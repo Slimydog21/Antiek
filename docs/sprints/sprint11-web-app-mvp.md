@@ -25,6 +25,73 @@ sprints once the operator has actually used the v0 surface for a week.
 
 ---
 
+## Voice and style discipline (load-bearing quality bar)
+
+This sprint MUST land the substrate-side prompt engineering for voice and
+style at the same time as the UI. The MVP only works if the output
+doesn't feel like LLM slop. Operator's words: "to eliminate the robotic
+nature of the output and that every output has the same flow of like
+bullet point, bullet point, bullet point."
+
+The discipline is documented in detail at
+[`docs/strategy/voice-and-style-discipline.md`](../strategy/voice-and-style-discipline.md).
+Summary of what changes in this sprint:
+
+**Substrate-side (Day 1, alongside the new endpoints):**
+- Synthesizer prompt (`roles/synthesizer/prompt.py`) gets a "voice and
+  style" section that: forbids em-dashes and other slop markers; requires
+  absorbing the source corpus's vocabulary; allows bullet structure ONLY
+  at the top-level insights-vs-questions distinction; mandates prose
+  flow within each section.
+- Evidence_retriever prompt (`roles/evidence_retriever/prompt.py`) gets
+  a parallel discipline so the upstream claims fed into the synthesizer
+  are also non-slop.
+- New role: `style_extractor` (optional, behind a feature flag for
+  Sprint 11; on by default for thematic/qualitative investigations,
+  off for purely quantitative ones). Reads the top-K corpus chunks
+  before synthesis, produces a short "house style guide" for the
+  sector, injects it into the synthesizer's context. ~150 LOC.
+
+**UI-side:**
+- The MasterMdViewer renders thesis summary as flowing prose (no
+  forced bullets at the top). Falsification conditions and execution
+  risks default to COLLAPSED — the primary reading experience is the
+  thesis itself, not the structural metadata around it.
+- Claim spans are inline (`<span>` not `<li>`) — wrapped in prose, not
+  broken out as a list.
+- Reading typography: serif body (Charter / Georgia / system serif),
+  not the system sans the trajectory view uses. Reading flow matters.
+
+## Primary source connection
+
+Operator: "Let's say you provided an insight or a question and you
+mentioned a data point and I say, where did you get this from? It
+would be great if you could pull the user towards the actual document
+... pull the user to the actual page."
+
+The substrate already has the metadata: every chunk row carries
+`section_path` which for ingested PDFs is "Page N" (set by
+`acquisition/books/reader.py` via `_join_pages_to_markdown`). The MVP
+ships these affordances:
+
+1. **In the chunk hover modal** (already in scope): add a button
+   "**Open in document viewer**" that navigates to
+   `/wrestle/<document_id>?page=<N>` where N is parsed from the chunk's
+   `section_path`.
+2. **Cross-mode linking**: the existing `apps/reading/src/components/PdfViewer.tsx`
+   gets a new `initialPage` prop. WrestleApp reads `?page=` from
+   the route query string and jumps the PDF to that page on load.
+3. **Legal posture flag**: a one-line footer in the chunk modal:
+   "Source: <document_title>. Used for research purposes." Documented
+   in `docs/strategy/post-mvp-roadmap.md` under "IP posture for source
+   ingestion" — for Sprint 11, the posture is "ingest everything we
+   can find online; address IP holders' concerns at scale in the
+   attribution-architecture sprint."
+
+This adds ~1 day to the sprint (Day 6.5). MasterMdViewer fetches +
+parsing stays as planned; chunk modal gets the "Open in document"
+button + WrestleApp gets the `?page=` query handling.
+
 ## Three architectural decisions (with rationale)
 
 ### Decision 1 — Extend `apps/reading/`, do not create a separate codebase
