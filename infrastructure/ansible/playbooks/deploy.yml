@@ -1,0 +1,141 @@
+---
+# ──────────────────────────────────────────────────────────────────────────
+# Antiek substrate — deploy a code change.
+#
+# Run after pushing a commit to the configured branch. Pulls the latest
+# code, refreshes dependencies, re-renders templates if they changed,
+# restarts the systemd unit, asserts /health is green.
+#
+# Safety: fails the playbook if the health check doesn't return
+# `registered_providers` non-empty. Better to surface a broken deploy
+# immediately than to leave it silently degraded.
+# ──────────────────────────────────────────────────────────────────────────
+
+- name: Antiek substrate — deploy update
+  hosts: antiek_prod
+  become: true
+  gather_facts: false
+
+  tasks:
+    # ── 1. Pull code ─────────────────────────────────────────────────────
+    - name: git pull
+      ansible.builtin.git:
+        repo: "{{ antiek_repo_url }}"
+        dest: "{{ antiek_install_dir }}"
+        version: "{{ antiek_repo_branch }}"
+        force: false
+      become_user: "{{ antiek_user }}"
+      register: git_pull
+      tags: [code]
+
+    - name: report git revision
+      ansible.builtin.debug:
+        msg: "now at {{ git_pull.after | default('(unchanged)') }}"
+      tags: [code]
+
+    # ── 2. Refresh dependencies ──────────────────────────────────────────
+    # `pip install -e` is fast when nothing changed (just re-reads
+    # pyproject.toml and the existing egg-info), so running it
+    # unconditionally is fine.
+    - name: refresh editable install + extras
+      ansible.builtin.pip:
+        name: "{{ antiek_install_dir }}[pdf,urls,embedding]"
+        editable: true
+        virtualenv: "{{ antiek_install_dir }}/.venv"
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    # ── 3. Re-render templates if they changed ───────────────────────────
+    - name: re-render antiek.service
+      ansible.builtin.template:
+        src: antiek.service.j2
+        dest: /etc/systemd/system/antiek.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_unit
+      tags: [systemd]
+
+    - name: systemd daemon-reload if unit changed
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: antiek_unit.changed
+      tags: [systemd]
+
+    - name: re-render Caddyfile
+      ansible.builtin.template:
+        src: Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        owner: root
+        group: caddy
+        mode: "0644"
+      register: caddyfile
+      tags: [caddy]
+
+    - name: reload caddy if Caddyfile changed
+      ansible.builtin.systemd:
+        name: caddy
+        state: reloaded
+      when: caddyfile.changed
+      tags: [caddy]
+
+    - name: re-render backup script
+      ansible.builtin.template:
+        src: backup.sh.j2
+        dest: /usr/local/bin/antiek-backup
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [backup]
+
+    # ── 4. Restart the substrate ────────────────────────────────────────
+    - name: restart antiek
+      ansible.builtin.systemd:
+        name: antiek.service
+        state: restarted
+      tags: [restart]
+
+    # ── 5. Wait for systemd to report it back up ────────────────────────
+    - name: wait for systemd active
+      ansible.builtin.command:
+        cmd: systemctl is-active antiek.service
+      register: systemd_status
+      retries: 6
+      delay: 5
+      until: systemd_status.stdout == "active"
+      changed_when: false
+      tags: [verify]
+
+    # ── 6. End-to-end health check via the public hostname ──────────────
+    # Run from the playbook control node (delegate_to: localhost) so we
+    # exercise the full Caddy → uvicorn path, not just the local socket.
+    - name: GET /health from public endpoint
+      ansible.builtin.uri:
+        url: "https://{{ api_domain }}/health"
+        return_content: true
+        status_code: 200
+      register: health
+      retries: 12
+      delay: 5
+      until: health.status == 200
+      delegate_to: localhost
+      become: false
+      tags: [verify]
+
+    - name: assert providers registered
+      # Fail the playbook hard if the secrets file isn't populated or
+      # OpenRouter isn't loadable. Surfaces a broken deploy NOW rather
+      # than later when an investigation fails.
+      ansible.builtin.assert:
+        that:
+          - health.json.status == "ok"
+          - health.json.registered_providers | length > 0
+        fail_msg: |
+          Deploy succeeded structurally but health check shows no
+          registered providers. Almost certainly the secrets file is
+          empty or malformed:
+            ssh root@{{ inventory_hostname }} cat {{ antiek_secrets_file }}
+        success_msg: |
+          Deploy verified: substrate is live with providers
+          {{ health.json.registered_providers }}.
+      tags: [verify]

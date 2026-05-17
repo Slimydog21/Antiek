@@ -1,0 +1,197 @@
+"""HTML → markdown extraction.
+
+Two stages:
+
+1. **Main-content isolation** (BeautifulSoup). Drop ``<script>``,
+   ``<style>``, ``<nav>``, ``<header>``, ``<footer>``, ``<aside>``,
+   and elements with role=banner/navigation/complementary. Prefer
+   the first of ``<article>`` / ``<main>`` / ``role=main`` / the
+   biggest ``<div>`` as the root; fall back to ``<body>``.
+
+2. **Markdown rendering** (``html2text``). ASCII-only output, link
+   inlining, no body width wrapping. Code blocks preserved via
+   ``<pre>`` → fenced.
+
+Title resolution order: ``<meta property=og:title>`` →
+``<title>`` → first ``<h1>``. Author resolution: ``<meta name=author>``
+→ ``<meta property=article:author>`` → schema.org/Person markup.
+Both fields are best-effort; ``None`` is a valid result.
+
+This is intentionally a lightweight extractor, not a full readability
+port. Pages where this misses badly (heavy JS / paywall stubs) should
+go through ``acquisition/books/`` after rendering to PDF instead.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List, Optional
+
+try:
+    from bs4 import BeautifulSoup, Tag  # type: ignore[import-not-found]
+except ImportError as e:  # pragma: no cover
+    raise ImportError(
+        "acquisition.urls.extract requires beautifulsoup4. "
+        "Run `pip install -e '.[urls]'` to install it."
+    ) from e
+
+try:
+    import html2text  # type: ignore[import-not-found]
+except ImportError as e:  # pragma: no cover
+    raise ImportError(
+        "acquisition.urls.extract requires html2text. "
+        "Run `pip install -e '.[urls]'` to install it."
+    ) from e
+
+
+@dataclass(frozen=True)
+class MarkdownDoc:
+    """Extracted document. ``markdown`` is the full body; ``title``
+    and ``author`` are best-effort. ``word_count`` is the markdown
+    body's whitespace-split count — a coarse sanity check before
+    chunking (very low → extractor likely missed the article)."""
+
+    title: Optional[str]
+    author: Optional[str]
+    markdown: str
+    word_count: int
+    final_url: Optional[str] = None
+
+
+# Tags to strip wholesale — UI chrome that pollutes the article body.
+_STRIP_TAGS = {
+    "script", "style", "noscript", "nav", "header", "footer", "aside",
+    "iframe", "form", "button", "svg",
+}
+_STRIP_ROLES = {"banner", "navigation", "complementary", "search"}
+
+
+def _strip_chrome(soup: BeautifulSoup) -> None:
+    """Remove UI chrome in place. We do this BEFORE main-content
+    selection so the biggest-div heuristic isn't tricked by a giant
+    sidebar."""
+    for tag in soup.find_all(list(_STRIP_TAGS)):
+        tag.decompose()
+    for el in soup.find_all(attrs={"role": True}):
+        if el.get("role") in _STRIP_ROLES:
+            el.decompose()
+
+
+def _pick_main(soup: BeautifulSoup) -> Tag:
+    """Pick the best root for article content. The order here
+    encodes our prior on which signals are most reliable."""
+    article = soup.find("article")
+    if article and len(article.get_text(strip=True)) > 100:
+        return article
+    main = soup.find("main")
+    if main and len(main.get_text(strip=True)) > 100:
+        return main
+    role_main = soup.find(attrs={"role": "main"})
+    if role_main and len(role_main.get_text(strip=True)) > 100:
+        return role_main
+
+    # Fallback: pick the <div> whose stripped text is largest.
+    # Bias toward divs with content-bearing class names if scores tie.
+    best = None
+    best_len = 0
+    for div in soup.find_all("div"):
+        txt = div.get_text(strip=True)
+        if len(txt) > best_len:
+            best = div
+            best_len = len(txt)
+    if best is not None and best_len >= 100:
+        return best
+    body = soup.body
+    if body is None:
+        return soup
+    return body
+
+
+def _resolve_title(soup: BeautifulSoup) -> Optional[str]:
+    og = soup.find("meta", attrs={"property": "og:title"})
+    if og and og.get("content"):
+        return og["content"].strip()
+    title = soup.find("title")
+    if title and title.get_text(strip=True):
+        return title.get_text(strip=True)
+    h1 = soup.find("h1")
+    if h1 and h1.get_text(strip=True):
+        return h1.get_text(strip=True)
+    return None
+
+
+def _resolve_author(soup: BeautifulSoup) -> Optional[str]:
+    for sel in [
+        {"name": "author"},
+        {"property": "article:author"},
+        {"name": "byl"},  # NYT
+    ]:
+        meta = soup.find("meta", attrs=sel)
+        if meta and meta.get("content"):
+            return meta["content"].strip()
+    sch = soup.find(attrs={"itemprop": "author"})
+    if sch:
+        name = sch.find(attrs={"itemprop": "name"})
+        if name and name.get_text(strip=True):
+            return name.get_text(strip=True)
+        txt = sch.get_text(strip=True)
+        if txt:
+            return txt
+    return None
+
+
+def _make_markdown_writer(base_url: Optional[str]) -> html2text.HTML2Text:
+    h = html2text.HTML2Text(baseurl=base_url or "")
+    h.body_width = 0  # no hard-wrap; chunker prefers long lines
+    h.ignore_images = True
+    h.ignore_emphasis = False
+    h.unicode_snob = True
+    h.skip_internal_links = True
+    h.protect_links = True
+    return h
+
+
+def html_to_markdown(
+    html: bytes | str,
+    *,
+    base_url: Optional[str] = None,
+) -> MarkdownDoc:
+    """Extract main content + render to markdown. ``html`` may be
+    raw bytes (assumed utf-8) or a string."""
+    if isinstance(html, bytes):
+        try:
+            html_str = html.decode("utf-8")
+        except UnicodeDecodeError:
+            # Fall back to latin-1 — preserves every byte rather than
+            # losing characters; the extractor's regex layer can cope.
+            html_str = html.decode("latin-1", errors="replace")
+    else:
+        html_str = html
+
+    soup = BeautifulSoup(html_str, "html.parser")
+    title = _resolve_title(soup)
+    author = _resolve_author(soup)
+    _strip_chrome(soup)
+    root = _pick_main(soup)
+
+    writer = _make_markdown_writer(base_url)
+    body_md = writer.handle(str(root)).strip()
+
+    # Prepend a leading title line so the chunker has the heading
+    # anchor (it splits on # / ## / etc.). Authors ride along when
+    # known — keeps provenance in the chunk text.
+    header_lines: List[str] = []
+    if title:
+        header_lines.append(f"# {title}")
+        header_lines.append("")
+    if author:
+        header_lines.append(f"_by {author}_")
+        header_lines.append("")
+    full = ("\n".join(header_lines) + body_md).strip()
+    return MarkdownDoc(
+        title=title,
+        author=author,
+        markdown=full,
+        word_count=len(full.split()),
+        final_url=base_url,
+    )

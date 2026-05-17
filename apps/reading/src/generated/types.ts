@@ -1,0 +1,1465 @@
+// AUTO-GENERATED — DO NOT EDIT.
+//
+// Generated from substrate/schemas/events.py by tools/codegen/emit_types.py.
+// Re-run after any schema change:   python tools/codegen/emit_types.py
+// CI gate that fails on drift:      python tools/codegen/check_staleness.py
+//
+// The Pydantic models in substrate/schemas/events.py are the single source
+// of truth. See docs/architecture_notes.md §11.1 (polyglot seam) for the
+// discipline rule that keeps this file in sync.
+
+export const ANTIEK_PARAM_VERSION = "0.1.0";
+export const EVENT_SCHEMA_VERSION = 3;
+
+// Stable action vocabulary. Values are persisted to the trajectory
+// store and MUST match substrate.schemas.events.ActionType exactly.
+export const ActionType = {
+  PHASE_ENTER: "phase.enter",
+  PHASE_EXIT: "phase.exit",
+  PHASE_VERIFY: "phase.verify",
+  ROLE_CALL_START: "role.call.start",
+  ROLE_CALL_END: "role.call.end",
+  ROLE_CALL_FAILED: "role.call.failed",
+  ROLE_VALIDATION_FAILED: "role.validation.failed",
+  ROLE_SELF_REPAIR_ATTEMPTED: "role.self_repair.attempted",
+  SYNTHESIZE_REQUESTED: "synthesize.requested",
+  SYNTHESIZE_DELIVERED: "synthesize.delivered",
+  AUDIT_FINDING_EMITTED: "audit.finding_emitted",
+  INVESTIGATION_START_REQUESTED: "investigation.start_requested",
+  INVESTIGATION_COMPLETED: "investigation.completed",
+  INVESTIGATION_FAILED: "investigation.failed",
+  DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
+  DECOMPOSE_QUESTION_DELIVERED: "decompose.delivered",
+  DECOMPOSER_PARAPHRASE_FLAGGED: "decomposer.paraphrase.flagged",
+  DECOMPOSER_REGENERATED: "decomposer.regenerated",
+  PARAMETER_EXTRACT_REQUESTED: "parameter_extract.requested",
+  PARAMETER_EXTRACT_DELIVERED: "parameter_extract.delivered",
+  EVIDENCE_RETRIEVE_REQUESTED: "evidence.retrieve.requested",
+  EVIDENCE_RETRIEVE_DELIVERED: "evidence.retrieve.delivered",
+  EVIDENCE_PACK_BUILT: "evidence.pack_built",
+  CONNECTOR_REQUESTED: "connector.requested",
+  CONNECTOR_DELIVERED: "connector.delivered",
+  CROSS_DOMAIN_KEYWORDS_RESOLVED: "cross_domain.keywords_resolved",
+  CROSS_DOMAIN_TRAVERSAL_RAN: "cross_domain.traversal_ran",
+  CONSTRAINT_PREFLIGHT: "constraint.preflight",
+  CONSTRAINT_VIOLATION_FOUND: "constraint.violation_found",
+  CONSTRAINT_REVISION_TRIGGERED: "constraint.revision_triggered",
+  CONSTRAINT_LOOP_RESOLVED: "constraint.loop_resolved",
+  GRAPH_NODE_INSERTED: "graph.node.inserted",
+  GRAPH_EDGE_INSERTED: "graph.edge.inserted",
+  GRAPH_TIER_OVERRIDDEN: "graph.tier.overridden",
+  GRAPH_SUPERSESSION_PROPOSED: "graph.supersession.proposed",
+  GRAPH_STALENESS_FLAGGED: "graph.staleness.flagged",
+  NODE_MERGE: "graph.node.merge",
+  EMBED_MODEL_REGISTER: "graph.embed_model.register",
+  TIER_REWRITE_BULK: "graph.tier.rewrite_bulk",
+  SUPERSESSION_APPLY: "graph.supersession.apply",
+  SUPERSESSION_DISMISS: "graph.supersession.dismiss",
+  SUPERSESSION_COEXIST: "graph.supersession.coexist",
+  STALENESS_RESOLVE: "graph.staleness.resolve",
+  SYNTHESIS_ARCHIVED: "synthesis.archived",
+  SUBSTRATE_MANIFEST_WRITTEN: "synthesis.substrate_manifest.written",
+  MASTER_MD_WRITTEN: "synthesis.master_md_written",
+  MASTER_MD_SKIPPED: "synthesis.master_md_skipped",
+  AUTO_PATCH_APPLIED: "skill.auto_patch_applied",
+  AUTO_PATCH_SKIPPED: "skill.auto_patch_skipped",
+  OUTCOME_RECORDED: "outcome.recorded",
+  RUBRIC_SCORED: "rubric.scored",
+  USER_ACCEPT_DELTA: "user.accept_delta",
+  USER_REJECT_DELTA: "user.reject_delta",
+  USER_MODIFY_DELTA: "user.modify_delta",
+  PIPELINE_TERMINATED: "pipeline.terminated",
+  KE_LLM_RESPONSE_FAILED: "knowledge_extraction.llm_response.failed",
+  DISPATCH_CALL: "dispatch.call",
+  CONTEXT_PACK_ASSEMBLED: "context_pack.assembled",
+  GRAPH_TIER_ASSIGNED: "graph.tier.assigned",
+  DOCUMENT_LOADED: "document.loaded",
+  DOCUMENT_REGION_SELECTED: "document.region_selected",
+  DISTILLATION_REQUESTED: "distillation.requested",
+  DISTILLATION_DELIVERED: "distillation.delivered",
+  CLAIM_CHALLENGE_RAISED: "claim.challenge_raised",
+  CLAIM_GROUNDING_CHECK_PASSED: "claim.grounding_check_passed",
+  CLAIM_GROUNDING_CHECK_FAILED: "claim.grounding_check_failed",
+  NOTE_EMERGED: "note.emerged",
+  NOTE_REFINED: "note.refined",
+  NOTE_COMPRESSED_DOC_WRITTEN: "note.compressed_doc_written",
+  QUESTION_IDENTIFIED: "question.identified",
+  QUESTION_ESCALATED_TO_RESEARCH: "question.escalated_to_research",
+  QUESTION_RESOLVED_BY_DOC: "question.resolved_by_doc",
+  CROSS_DOC_QUESTION_ANSWERED: "cross_doc.question_answered",
+  USER_ACCEPT_DISTILLATION: "user.accept_distillation",
+  USER_REJECT_DISTILLATION: "user.reject_distillation",
+  USER_EDIT_DISTILLATION: "user.edit_distillation",
+  ARTIFACT_GENERATED: "artifact.generated",
+  ARTIFACT_INTERACTED: "artifact.interacted",
+} as const;
+export type ActionType = typeof ActionType[keyof typeof ActionType];
+
+export type ConfidenceLevel = "high" | "moderate" | "low" | "unknown";
+
+export type ArtifactKind = "comparison_grid" | "knob_slider_exploration" | "claim_triage" | "model_parameter_explorer" | "other";
+
+export type TierClassificationMethod = "document_type_lookup" | "keyword_fallback" | "default";
+
+export type TierAdjustmentMethod = "regex" | "llm" | "none";
+
+export type StalenessResolution = "refreshed" | "confirmed_stale" | "dismissed";
+
+export type ThesisOutcomeStatus = "confirmed" | "partially_confirmed" | "disconfirmed" | "unresolved";
+
+export type ExecutionRiskSeverity = "critical" | "high" | "moderate" | "low" | "none";
+
+export type DecisionRecommendation = "proceed" | "pass" | "conditional";
+
+export type ActualDecision = "proceed" | "pass" | "conditional" | "not_observed";
+
+export type ProceedOutcome = "confirmed" | "partially_confirmed" | "disconfirmed" | "not_observed";
+
+export type SubQuestionCategory = "market_sizing" | "defensibility" | "unit_economics" | "team_and_execution" | "regulatory_exposure" | "competitive_dynamics" | "customer_concentration" | "technology_risk" | "capital_intensity" | "exit_pathways";
+
+export type EvidenceTypeRequired = "quantitative" | "qualitative" | "mixed";
+
+export type EvidenceType = "direct" | "inferred" | "gap";
+
+export type EvidenceConfidence = "high" | "moderate" | "low" | "insufficient";
+
+export type MetricValueType = "scalar" | "range" | "categorical" | "null";
+
+export type EvidenceStatus = "observed" | "imputed";
+
+export type TraversalAlgorithm = "shortest_simple_path" | "top_n_shortest_paths" | "depth_first_limited" | "bfs_semantic_stop";
+
+export type ThesisRiskSeverity = "critical" | "high" | "moderate" | "low";
+
+export type SynthesisRecommendation = "proceed" | "pass" | "conditional" | "undetermined" | "insufficient_evidence";
+
+export type AuditSeverity = "info" | "warning" | "critical";
+
+/**
+ * One layer of an assembled context pack. Embedded inside
+ * ``ContextPackAssembledPayload.layers``.
+ */
+export interface ContextLayer {
+  kind: "session" | "long_term_skill" | "graph_evidence" | "phase_metadata" | "param_version_stamp";
+  source: string;
+  tokens: number;
+}
+
+/**
+ * A typed unit of distilled truth. Embedded inside
+ * ``DistillationDeliveredPayload.claims`` and referenced by
+ * challenge / grounding-check events via ``claim_id``.
+ * 
+ * Why structured: a distillation stored as opaque prose cannot have
+ * its claims extracted to graph nodes, cannot be diffed, cannot be
+ * trained on. See ``docs/architecture_notes.md`` §13.1 (Layer 1).
+ */
+export interface Claim {
+  claim_id: string;
+  text: string;
+  confidence: "high" | "moderate" | "low" | "unknown";
+  attribution_region_ids: string[];
+  node_id?: string | null;
+}
+
+/**
+ * One thesis_components[i] outcome — does the claim hold against
+ * the observed ground truth?
+ */
+export interface ThesisOutcome {
+  thesis_claim: string;
+  outcome: "confirmed" | "partially_confirmed" | "disconfirmed" | "unresolved";
+  evidence?: string;
+  evidence_chunk_ids?: string[];
+}
+
+/**
+ * One falsification_conditions[i] check — did the predicted
+ * failure condition occur?
+ */
+export interface FalsificationOutcome {
+  condition: string;
+  occurred: boolean;
+  evidence?: string;
+}
+
+/**
+ * One execution_risks[i] check — did the risk manifest, and how
+ * severely vs the agent's anticipated severity?
+ */
+export interface ExecutionRiskOutcome {
+  risk: string;
+  manifested: boolean;
+  severity_actual: "critical" | "high" | "moderate" | "low" | "none";
+  evidence?: string;
+}
+
+/**
+ * Decision-outcome correlation. ``thesis_outcome_when_proceeded``
+ * is the structured grade — replaces keyword-scanning the prose
+ * field per Researchmaxx cohort.py.
+ */
+export interface DecisionAlignment {
+  agent_implicit_recommendation: "proceed" | "pass" | "conditional";
+  actual_decision: "proceed" | "pass" | "conditional" | "not_observed";
+  decision_outcome_at_observation: string;
+  thesis_outcome_when_proceeded?: "confirmed" | "partially_confirmed" | "disconfirmed" | "not_observed";
+}
+
+/**
+ * One evidence-addressable sub-question produced by the
+ * Decomposer. ``rationale`` must explain why the sub-question carries
+ * independent analytical weight — a deletable rationale is a signal
+ * the sub-question is performative (prompts/decomposer.md anti-pattern
+ * #4).
+ */
+export interface SubQuestion {
+  sub_question: string;
+  category: "market_sizing" | "defensibility" | "unit_economics" | "team_and_execution" | "regulatory_exposure" | "competitive_dynamics" | "customer_concentration" | "technology_risk" | "capital_intensity" | "exit_pathways";
+  rationale: string;
+  evidence_type_required: "quantitative" | "qualitative" | "mixed";
+}
+
+/**
+ * One retrieval keyword + optional synonyms. ``synonyms`` is
+ * capped at 3 by the prompt; the field is forward-additive (longer
+ * lists are NOT rejected here so historical traces with permissive
+ * schemas still validate).
+ */
+export interface Keyword {
+  term: string;
+  synonyms?: string[];
+}
+
+/**
+ * One flagged sub-question record. Mirrors the
+ * ``ParaphraseFlag`` dataclass in ``roles/decomposer/paraphrase.py``
+ * so the bridge can serialize check results into the trajectory
+ * without an adapter.
+ */
+export interface ParaphraseFlagRecord {
+  index: number;
+  sub_question: string;
+  cosine: number;
+}
+
+/**
+ * One evidence-cited claim produced by the Evidence Retriever.
+ * 
+ * ``source_tier_min`` is optional — ``None`` is the spec sentinel for
+ * "below the schema floor"; ``0`` is REJECTED (the upstream prompt's
+ * explicit prohibition). Valid integer range is [1, 5].
+ */
+export interface SupportingClaim {
+  claim: string;
+  evidence_type: "direct" | "inferred" | "gap";
+  chunk_ids?: string[];
+  edge_ids?: string[];
+  source_tier_min?: number | null;
+  confidence: "high" | "moderate" | "low" | "insufficient";
+  confidence_basis: string;
+}
+
+/**
+ * One enumerated gap. Gaps are first-class output — the prompt
+ * explicitly treats absent answers as information, not failure.
+ */
+export interface EvidentiaryGap {
+  gap_description: string;
+  additional_retrieval_suggested?: string | null;
+}
+
+/**
+ * Structured value attached to a Parameter. ``value_type`` is the
+ * discriminator; ``value`` and ``unit`` are present only for the
+ * numeric / categorical shapes.
+ * 
+ * The upstream "JSON null vs literal-string 'null'" rule (parser
+ * normalizes both to the literal ``"null"``) is enforced one layer
+ * higher in ``roles/parameter_extractor/parser.py`` — by the time a
+ * ``MetricValue`` reaches this Pydantic model, ``value_type`` is
+ * always a Literal string.
+ */
+export interface MetricValue {
+  value_type: "scalar" | "range" | "categorical" | "null";
+  value?: unknown | null;
+  unit?: string | null;
+}
+
+/**
+ * One design-critical parameter extracted from the evidence.
+ * Mirrors the role's output schema verbatim — ``source_chunk_ids``
+ * is a required list (the cite-every-claim discipline).
+ */
+export interface Parameter {
+  semantic_anchor: string;
+  metric_value: MetricValue;
+  qualitative_descriptor?: string | null;
+  evidence_status: "observed" | "imputed";
+  source_chunk_ids?: string[];
+  constraint_strictness: "hard" | "soft" | "target";
+}
+
+/**
+ * Pydantic mirror of the Sprint 4 day 3-4 ``Constraint`` dataclass.
+ * 
+ * Named ``ConstraintSpec`` (not ``Constraint``) to avoid naming
+ * collision with the dataclass that's already exported from
+ * ``middleware/constraint_check/constraints.py``. The bridge handler
+ * converts ``Parameter`` → ``ConstraintSpec`` at emit time via
+ * ``roles.parameter_extractor.parameters_to_constraints``; the
+ * Day 3 constraint-loop machinery reads ``ConstraintSpec`` records
+ * from the typed trajectory and reconstructs ``Constraint``
+ * dataclasses on the read side.
+ */
+export interface ConstraintSpec {
+  constraint_id: string;
+  strictness: "hard" | "soft" | "target";
+  kind: "numeric_range" | "must_include_term" | "must_attribute";
+  description: string;
+  config?: Record<string, unknown>;
+}
+
+/**
+ * One pre-resolved keyword → graph node mapping. ``low_confidence``
+ * is True when ``similarity < 0.80`` (the upstream threshold);
+ * the role must mark these but never silently drop them.
+ */
+export interface KeywordMapping {
+  keyword: string;
+  matched_node_id?: string | null;
+  matched_node_label?: string | null;
+  matched_node_type?: string | null;
+  similarity: number;
+  low_confidence?: boolean;
+}
+
+/**
+ * One (source_node_id, target_node_id) pair for the connector
+ * bridge to traverse between. Optional ``source_keyword`` /
+ * ``target_keyword`` are passed through for trajectory legibility.
+ */
+export interface SeedPair {
+  source_node_id: string;
+  target_node_id: string;
+  source_keyword?: string | null;
+  target_keyword?: string | null;
+}
+
+/**
+ * One structured path produced by traversal. Mirrors the dict
+ * shape ``substrate.graph.traverse._format_path`` returns, augmented
+ * with ``node_labels`` + ``edge_ids`` for citation back to the
+ * underlying graph.
+ */
+export interface GraphPath {
+  path_nodes: string[];
+  path_relations: string[];
+  depth: number;
+  avg_confidence: number;
+  node_labels?: string[];
+  edge_ids?: string[];
+}
+
+/**
+ * One NL rendering of a structured path. ``source_path_index`` is
+ * the offset into the ``paths`` list, so the Synthesizer can cite
+ * the underlying graph path verbatim.
+ */
+export interface NaturalLanguageRelationship {
+  text: string;
+  source_path_index: number;
+}
+
+/**
+ * One load-bearing claim in the thesis. Must cite either
+ * ``supporting_chunk_ids`` (evidence-grounded) OR
+ * ``supporting_path_indices`` (analogy-grounded via connector
+ * paths) — the upstream's "provenance is structural" rule. The
+ * parser enforces this disjunction; the Pydantic model carries the
+ * fields but doesn't reject empty-both at the schema layer.
+ * 
+ * ``effective_source_tier`` is in [1, 5] OR ``None``. ``0`` is
+ * forbidden (the upstream prompt's explicit prohibition; defended
+ * by ``Field(ge=1, le=5)``).
+ */
+export interface ThesisComponent {
+  claim: string;
+  confidence: "high" | "moderate" | "low" | "unknown";
+  supporting_chunk_ids?: string[];
+  supporting_path_indices?: number[];
+  confidence_basis?: string | null;
+  effective_source_tier?: number | null;
+  hedging_required?: boolean;
+}
+
+/**
+ * One falsification condition. ``specific_observable`` is required
+ * — the prompt's anti-pattern #1 is "vacuous falsification
+ * conditions" and the parser-side check enforces a minimum length.
+ */
+export interface FalsificationCondition {
+  condition: string;
+  specific_observable: string;
+  timeframe?: string | null;
+}
+
+/**
+ * One execution risk. ``severity_if_manifested`` is the
+ * four-value scale (no "none" — risks with no possible severity
+ * aren't risks).
+ */
+export interface ExecutionRisk {
+  risk: string;
+  severity_if_manifested: "critical" | "high" | "moderate" | "low";
+  leading_indicator?: string | null;
+}
+
+/**
+ * One {constraint, justification} record. Emitted when the
+ * synthesizer relaxes a soft constraint and the relaxation must be
+ * explicitly defensible.
+ */
+export interface ViolationJustification {
+  constraint: string;
+  justification: string;
+}
+
+/**
+ * The synthesizer's reported compliance against the
+ * parameter_extractor's constraints. The constraint loop machinery
+ * (Sprint 7 day 3) compares this against its own evaluation —
+ * a synthesizer that claims ``hard_constraints_satisfied=True``
+ * while the evaluator finds hard violations is caught at loop
+ * time.
+ */
+export interface ConstraintCompliance {
+  hard_constraints_satisfied: boolean;
+  soft_constraints_violated?: string[];
+  violations_justified?: ViolationJustification[];
+}
+
+/**
+ * One deduplicated substrate path the thesis components drew on.
+ * ``support_summary`` must be ≥20 characters — the upstream prompt's
+ * explicit minimum so "supports the thesis" doesn't survive
+ * validation.
+ */
+export interface ReasoningPathUsed {
+  path_node_ids: string[];
+  path_edge_ids?: string[];
+  support_summary: string;
+}
+
+/**
+ * Emitted by ``substrate/dispatch/`` on every LLM provider call.
+ * 
+ * The cost-tracking decorator populates these fields after the call
+ * returns; the event is then written to the trajectory.
+ */
+export interface DispatchCallPayload {
+  action_type: "dispatch.call";
+  provider: string;
+  model: string;
+  tier: "flash" | "pro" | "synthesis" | "verify" | "local";
+  target_role: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  latency_ms: number;
+  verification_required?: boolean;
+  fallback_chain_index?: number;
+  prompt_hash: string;
+  finish_reason?: "stop" | "length" | "tool_use" | "content_filter" | "error" | null;
+  context_pack_event_id?: string | null;
+}
+
+/**
+ * Emitted by ``substrate/context_pack/`` after each pack assembly.
+ * 
+ * Captures what the model actually saw at decision time — the layered
+ * composition + budget reality. This is the queryable property that
+ * backs §2.5's "what did the model actually see when it made this
+ * decision" guarantee.
+ */
+export interface ContextPackAssembledPayload {
+  action_type: "context_pack.assembled";
+  target_role: string;
+  target_tokens: number;
+  actual_tokens: number;
+  layers: ContextLayer[];
+  budget_overrun: boolean;
+  truncation_strategy_applied?: "head" | "tail" | "smart" | null;
+}
+
+export interface DocumentLoadedPayload {
+  action_type: "document.loaded";
+  media_type: "pdf" | "pasted_text" | "url_extracted" | "markdown";
+  content_hash: string;
+  size_bytes: number;
+  title?: string | null;
+  page_count?: number | null;
+  source_uri?: string | null;
+}
+
+export interface DocumentRegionSelectedPayload {
+  action_type: "document.region_selected";
+  region_id: string;
+  page?: number | null;
+  char_start: number;
+  char_end: number;
+  bbox?: [number, number, number, number] | null;
+  text_excerpt: string;
+}
+
+export interface DistillationRequestedPayload {
+  action_type: "distillation.requested";
+  region_id?: string | null;
+  user_prompt: string;
+  target_token_count: number;
+}
+
+/**
+ * Structured per architecture_notes §13.1 (Layer 1). The distillation
+ * is a list of typed Claims plus a prose rendering. Storing only an HTML
+ * or string blob would block claim extraction, diffing, and training.
+ */
+export interface DistillationDeliveredPayload {
+  action_type: "distillation.delivered";
+  request_event_id: string;
+  claims: Claim[];
+  rendered_text: string;
+  rendered_text_hash: string;
+  token_count: number;
+}
+
+/**
+ * ``challenged_claim_id`` references a Claim from a prior
+ * DistillationDelivered. None means the user challenged a claim that
+ * isn't (yet) in the system — ``claim_text`` carries it verbatim.
+ */
+export interface ClaimChallengeRaisedPayload {
+  action_type: "claim.challenge_raised";
+  challenged_claim_id?: string | null;
+  claim_text: string;
+  anchor_region_id?: string | null;
+  user_question: string;
+}
+
+export interface ClaimGroundingCheckPassedPayload {
+  action_type: "claim.grounding_check_passed";
+  claim_id?: string | null;
+  claim_text: string;
+  located_region_id: string;
+  confidence: number;
+}
+
+export interface ClaimGroundingCheckFailedPayload {
+  action_type: "claim.grounding_check_failed";
+  claim_id?: string | null;
+  claim_text: string;
+  reason: "absent_from_source" | "paraphrased_not_stated" | "out_of_scope" | "ambiguous";
+  searched_regions: string[];
+}
+
+export interface NoteEmergedPayload {
+  action_type: "note.emerged";
+  note_id: string;
+  note_text: string;
+  source_event_ids: string[];
+  confidence?: "high" | "moderate" | "low" | "unknown";
+  node_id?: string | null;
+}
+
+export interface NoteRefinedPayload {
+  action_type: "note.refined";
+  note_id: string;
+  previous_text: string;
+  new_text: string;
+  refinement_reason: string;
+}
+
+export interface NoteCompressedDocWrittenPayload {
+  action_type: "note.compressed_doc_written";
+  output_path: string;
+  note_count: number;
+  byte_size: number;
+}
+
+export interface QuestionIdentifiedPayload {
+  action_type: "question.identified";
+  question_id: string;
+  question_text: string;
+  anchor_region_id?: string | null;
+}
+
+export interface QuestionEscalatedToResearchPayload {
+  action_type: "question.escalated_to_research";
+  question_id: string;
+  child_investigation_id: string;
+}
+
+export interface QuestionResolvedByDocPayload {
+  action_type: "question.resolved_by_doc";
+  question_id: string;
+  answer_note_id: string;
+}
+
+export interface CrossDocQuestionAnsweredPayload {
+  action_type: "cross_doc.question_answered";
+  question_id: string;
+  question_document_id: string;
+  answer_document_id: string;
+  answer_note_id: string;
+}
+
+export interface UserAcceptDistillationPayload {
+  action_type: "user.accept_distillation";
+  distillation_event_id: string;
+}
+
+export interface UserRejectDistillationPayload {
+  action_type: "user.reject_distillation";
+  distillation_event_id: string;
+  reason: string;
+}
+
+/**
+ * The edited content is in the payload (mirrors NoteRefined). Hashes
+ * are for integrity; trajectory replay needs the actual text.
+ */
+export interface UserEditDistillationPayload {
+  action_type: "user.edit_distillation";
+  distillation_event_id: string;
+  edited_content: string;
+  original_content_hash: string;
+  edited_content_hash: string;
+}
+
+/**
+ * Emitted when a role generates an interactive HTML exploration
+ * artifact on disk. The HTML itself is opaque to the substrate; the
+ * structured intent lives here. See architecture_notes §13.1 Layer 4.
+ */
+export interface ArtifactGeneratedPayload {
+  action_type: "artifact.generated";
+  artifact_id: string;
+  artifact_kind: "comparison_grid" | "knob_slider_exploration" | "claim_triage" | "model_parameter_explorer" | "other";
+  intent: string;
+  generating_role: string;
+  artifact_path: string;
+  content_hash: string;
+  size_bytes: number;
+  source_event_ids: string[];
+}
+
+/**
+ * Lifecycle event for an artifact (opened / closed / dismissed).
+ * Substantive interactions inside the artifact emit their own typed
+ * events (user.accept_distillation, claim.challenge_raised, etc.); this
+ * event captures the lifecycle envelope only.
+ */
+export interface ArtifactInteractedPayload {
+  action_type: "artifact.interacted";
+  artifact_id: string;
+  interaction_kind: "opened" | "closed" | "dismissed";
+}
+
+/**
+ * Emitted once per document when the rule-based classifier assigns a
+ * tier at ingestion. The asymmetric design (rule-based assignment;
+ * LLM may only adjust DOWNWARD via TierOverriddenPayload) is preserved
+ * from Researchmaxx per architecture_notes §4.
+ */
+export interface TierAssignedPayload {
+  action_type: "graph.tier.assigned";
+  document_id: string;
+  document_type?: string | null;
+  assigned_tier: number;
+  classification_method: "document_type_lookup" | "keyword_fallback" | "default";
+  keyword_matches?: string[];
+}
+
+/**
+ * LLM-mediated downward adjustment after extraction. The asymmetry
+ * is enforced by the middleware: ``adjusted_tier >= original_tier``
+ * always (lower number = higher trust; the LLM can argue a source is
+ * less reliable than the rules say, never more).
+ */
+export interface TierOverriddenPayload {
+  action_type: "graph.tier.overridden";
+  chunk_id: string;
+  original_tier: number;
+  adjusted_tier: number;
+  adjustment_method: "regex" | "llm" | "none";
+  hedging_signals: string[];
+  reason: string;
+}
+
+/**
+ * A global reclassification sweep. Not scoped to a single
+ * investigation — the envelope's investigation_id is conventionally
+ * ``substrate.constants.SYSTEM_INVESTIGATION_ID`` (``"system"``).
+ */
+export interface TierRewriteBulkPayload {
+  action_type: "graph.tier.rewrite_bulk";
+  total: number;
+  updated: number;
+  unchanged: number;
+  by_tier: Record<number, number>;
+}
+
+/**
+ * Emitted when the staleness scanner queues a flag for an edge whose
+ * age exceeds the TTL for its claim_class. Flags are advisory — they
+ * queue the entity for refresh in the next investigation that touches
+ * it, not auto-invalidation.
+ */
+export interface StalenessFlaggedPayload {
+  action_type: "graph.staleness.flagged";
+  flag_id: string;
+  edge_id: string;
+  relation: string;
+  claim_class: string;
+  ttl_days: number;
+  age_days: number;
+}
+
+/**
+ * Emitted when a stale flag is resolved (refreshed / confirmed stale
+ * / dismissed). ``entity_kind`` is currently always 'edge' — the
+ * scanner only flags edges — but the Literal allows future expansion
+ * without a schema bump if we add node-level flags.
+ */
+export interface StalenessResolvePayload {
+  action_type: "graph.staleness.resolve";
+  flag_id: string;
+  entity_kind: "edge" | "node";
+  entity_id: string;
+  status: "refreshed" | "confirmed_stale" | "dismissed";
+  notes?: string;
+}
+
+/**
+ * Emitted by ``middleware/archive/`` when a synthesis is committed
+ * to the syntheses table. The envelope's ``synthesis_id`` carries the
+ * archived id; the payload carries the high-level metadata an
+ * analytics consumer needs WITHOUT reading the full synthesis row.
+ * 
+ * Architecture_notes §4: archive is the only writer to the syntheses
+ * table. This event is the canonical "synthesis exists now" signal
+ * for downstream consumers (backtest, cohort, weekly_report).
+ */
+export interface SynthesisArchivedPayload {
+  action_type: "synthesis.archived";
+  target_question: string;
+  synthesis_timestamp: string;
+  status: "draft" | "passed" | "regressed" | "max_iterations_reached" | "escalated";
+  implicit_recommendation: "proceed" | "pass" | "conditional" | "undetermined" | "insufficient_evidence";
+  model_versions?: Record<string, string>;
+  thesis_token_count?: number;
+  has_constraint_check_result?: boolean;
+}
+
+/**
+ * Emitted when the substrate manifest for an archived synthesis is
+ * pinned (one row per (synthesis_id, entity_kind, entity_id) tuple in
+ * the ``synthesis_substrate_manifest`` table). The envelope's
+ * ``synthesis_id`` links back to the synthesis.
+ */
+export interface SubstrateManifestWrittenPayload {
+  action_type: "synthesis.substrate_manifest.written";
+  synthesis_timestamp: string;
+  manifest_rows_written: number;
+  counts_by_kind: Record<string, number>;
+}
+
+/**
+ * Reviewer chose ``apply_supersession``: the old edge is closed
+ * (``valid_until`` set) and linked to the new edge via
+ * ``superseded_by``.
+ */
+export interface SupersessionApplyPayload {
+  action_type: "graph.supersession.apply";
+  candidate_id: string;
+  old_edge_id: string;
+  new_edge_id: string;
+  new_valid_until: string;
+  reviewer: string;
+  review_notes?: string;
+}
+
+/**
+ * Reviewer chose ``dismiss_new`` or ``dismiss_old``: one edge is
+ * closed without superseding the other. ``target`` records which
+ * side was dismissed.
+ */
+export interface SupersessionDismissPayload {
+  action_type: "graph.supersession.dismiss";
+  candidate_id: string;
+  edge_id: string;
+  target: "new" | "old";
+  valid_until: string;
+  reviewer: string;
+  review_notes?: string;
+}
+
+/**
+ * Reviewer chose ``coexist``: both edges remain active. The
+ * candidate is marked reviewed but no edge mutation occurs.
+ */
+export interface SupersessionCoexistPayload {
+  action_type: "graph.supersession.coexist";
+  candidate_id: string;
+  reviewer: string;
+  review_notes?: string;
+}
+
+/**
+ * Emitted by ``substrate/graph/ops.insert_node`` after a node row
+ * is committed. The envelope's ``investigation_id`` carries scope;
+ * the payload carries the identity + typing the node was admitted
+ * under so a downstream consumer can reconstruct "what was in the
+ * graph when this synthesis ran" without re-reading the row.
+ */
+export interface GraphNodeInsertedPayload {
+  action_type: "graph.node.inserted";
+  node_id: string;
+  canonical_label: string;
+  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint";
+  graph_scope: "depth" | "cross_domain" | "constraint";
+  has_embedding: boolean;
+}
+
+/**
+ * Emitted by ``substrate/graph/ops.insert_edge`` after an edge row
+ * is committed. Records the source/target/relation triple, the
+ * source attribution (document + chunk + tier), and the extraction
+ * confidence the extractor assigned at admission.
+ */
+export interface GraphEdgeInsertedPayload {
+  action_type: "graph.edge.inserted";
+  edge_id: string;
+  source_node_id: string;
+  target_node_id: string;
+  relation: string;
+  source_document_id?: string | null;
+  chunk_id?: string | null;
+  source_tier: number;
+  extraction_confidence: number;
+  graph_scope: "depth" | "cross_domain" | "constraint";
+}
+
+/**
+ * Emitted when a constraint check identifies a violation. One
+ * event per violation per iteration — a synthesis can produce many
+ * of these inside a single constraint loop pass.
+ */
+export interface ConstraintViolationFoundPayload {
+  action_type: "constraint.violation_found";
+  constraint_id: string;
+  strictness: "hard" | "soft" | "target";
+  constraint_kind: "numeric_range" | "must_include_term" | "must_attribute";
+  iteration: number;
+  target_claim_id?: string | null;
+  reason: string;
+}
+
+/**
+ * Emitted when the constraint loop decides to re-invoke the
+ * synthesizer because at least one HARD constraint is still violated
+ * after the latest iteration. The triggering_constraint_ids list lets
+ * a downstream cohort analysis correlate which constraint kinds
+ * consume the most iterations.
+ */
+export interface ConstraintRevisionTriggeredPayload {
+  action_type: "constraint.revision_triggered";
+  iteration: number;
+  triggering_constraint_ids: string[];
+}
+
+/**
+ * Emitted exactly once per constraint loop, on termination. The
+ * ``final_status`` mirrors the Researchmaxx terminal vocabulary so a
+ * migrated cohort backtest stays compatible.
+ */
+export interface ConstraintLoopResolvedPayload {
+  action_type: "constraint.loop_resolved";
+  final_status: "single_pass" | "passed" | "regressed" | "max_iterations_reached" | "escalated" | "preflight_failed";
+  total_iterations: number;
+  final_violation_count: number;
+}
+
+/**
+ * Emitted by ``middleware/outcomes/`` when an outcome row is
+ * written against a previously-archived synthesis. The envelope's
+ * ``synthesis_id`` carries the archived synthesis the outcome
+ * grades against.
+ */
+export interface OutcomeRecordedPayload {
+  action_type: "outcome.recorded";
+  outcome_id: string;
+  observer: string;
+  thesis_outcomes?: ThesisOutcome[];
+  falsification_outcomes?: FalsificationOutcome[];
+  execution_risk_outcomes?: ExecutionRiskOutcome[];
+  decision_alignment?: DecisionAlignment | null;
+  notes?: string;
+}
+
+/**
+ * Emitted by a verification skill (the constraint middleware's
+ * deterministic-rubric + judged-rubric pairing per architecture_notes
+ * §3.2). Captures both component scores plus the final aggregated
+ * score so cohort analysis can correlate verification quality to
+ * synthesizer outcomes.
+ * 
+ * All three score fields are in [0, 1] when set. Deterministic
+ * component may be None when the rubric is purely judgmental;
+ * judged component may be None when the rubric is purely
+ * deterministic; final_score is always required.
+ */
+export interface RubricScoredPayload {
+  action_type: "rubric.scored";
+  rubric_id: string;
+  target_claim_id?: string | null;
+  deterministic_score?: number | null;
+  judged_score?: number | null;
+  final_score: number;
+  notes?: string;
+}
+
+/**
+ * Emitted when ``PhaseLog.enter(phase_id)`` is called. The
+ * envelope's ``phase`` field carries the phase id; the payload
+ * captures the per-enter breadcrumbs the orchestrator started
+ * attaching for Phase 8 (knowledge extraction).
+ */
+export interface PhaseEnterPayload {
+  action_type: "phase.enter";
+  entered_at: string;
+  note?: string | null;
+  metadata_json?: string | null;
+}
+
+/**
+ * Emitted when ``PhaseLog.exit(phase_id)`` is called. ``outputs_hash``
+ * is the SHA-256 hash of the phase's output artifacts (paths +
+ * contents), computed at exit time so re-runs are observable.
+ */
+export interface PhaseExitPayload {
+  action_type: "phase.exit";
+  exited_at: string;
+  outputs_hash?: string | null;
+}
+
+/**
+ * Emitted when ``PhaseLog.verify(phase_id, evidence=...)`` is called.
+ * ``verification_evidence`` is freeform — a path, a query result, an
+ * SHA-256, or a 1-line proof — stored verbatim so a reviewer can audit
+ * why ``verify()`` was called. Load-bearing for Phase 8: without a
+ * verify event the phase did not actually compound the knowledge graph.
+ */
+export interface PhaseVerifyPayload {
+  action_type: "phase.verify";
+  verified_at: string;
+  verification_evidence: string;
+}
+
+/**
+ * Emitted by upstream callers (heartbeat, kanban, interview
+ * workflow) to request a Decomposer run. The bridge handler
+ * subscribes to this action_type, dispatches the role, and emits
+ * ``DECOMPOSE_QUESTION_DELIVERED`` when done.
+ * 
+ * ``context`` is optional domain framing — empty string when the
+ * caller has nothing extra to say.
+ */
+export interface DecomposeQuestionRequestedPayload {
+  action_type: "decompose.requested";
+  question: string;
+  context?: string;
+}
+
+/**
+ * Emitted by the Decomposer bridge once a (possibly regenerated)
+ * decomposition has been produced. Carries the structured output
+ * plus the paraphrase-guard outcome — ``paraphrase_pass_count`` is
+ * 1 for a clean first pass, 2 for a regenerated pass.
+ */
+export interface DecomposeQuestionDeliveredPayload {
+  action_type: "decompose.delivered";
+  decomposition: SubQuestion[];
+  keywords: Keyword[];
+  paraphrase_pass_count?: number;
+  paraphrase_flagged_count_final?: number;
+}
+
+/**
+ * Emitted when the paraphrase check on a Decomposer pass finds
+ * one or more sub-questions whose embedding sits within cosine
+ * similarity ≥ DECOMPOSER_PARAPHRASE_COSINE_MAX of the top-level
+ * question. The bridge follows this with a regeneration pass.
+ */
+export interface DecomposerParaphraseFlaggedPayload {
+  action_type: "decomposer.paraphrase.flagged";
+  pass_index: number;
+  n_sub_questions: number;
+  flagged: ParaphraseFlagRecord[];
+}
+
+/**
+ * Emitted exactly once when the Decomposer's regeneration pass
+ * completes. ``still_flagged`` is True when the second pass also
+ * produced paraphrases — the bridge still proceeds (one regen is the
+ * upstream's hard cap) but surfaces the failure mode on the
+ * trajectory.
+ */
+export interface DecomposerRegeneratedPayload {
+  action_type: "decomposer.regenerated";
+  flagged_after_regen: ParaphraseFlagRecord[];
+  still_flagged: boolean;
+}
+
+/**
+ * Emitted when ``synthesis_to_master.generate_master_md`` writes
+ * a fresh MASTER.md. ``byte_count`` is the on-disk size after the
+ * atomic write; ``topic_slug`` is the directory slug used (auto-
+ * derived from the synthesis's target_question when no override
+ * was passed).
+ */
+export interface MasterMdWrittenPayload {
+  action_type: "synthesis.master_md_written";
+  path: string;
+  synthesis_id: string;
+  byte_count: number;
+  topic_slug?: string | null;
+  param_version: string;
+}
+
+/**
+ * Emitted when ``synthesis_to_master`` skips regeneration because
+ * a MASTER.md with the same synthesis_id marker already exists.
+ * ``reason`` is the closed enum string (currently always
+ * ``idempotent_match``; left as a free string for forward additivity).
+ */
+export interface MasterMdSkippedPayload {
+  action_type: "synthesis.master_md_skipped";
+  path: string;
+  synthesis_id: string;
+  byte_count: number;
+  topic_slug?: string | null;
+  reason?: string;
+}
+
+/**
+ * Emitted by ``skills/domain/auto_patch.patch_from_synthesis``
+ * after a per-synthesis patch lands. ``patched`` / ``skipped`` /
+ * ``errors`` mirror the upstream result dict shape so a backfill
+ * operator CLI can render the same summary the legacy
+ * skill_patcher prints.
+ */
+export interface AutoPatchAppliedPayload {
+  action_type: "skill.auto_patch_applied";
+  synthesis_id: string;
+  matched_domains?: string[];
+  patched?: string[];
+  skipped?: string[];
+  errors?: Record<string, string>[];
+  status: string;
+}
+
+/**
+ * Emitted when a synthesis matched a domain but its skill file
+ * already carries the synthesis_id marker. Distinct from
+ * ``MasterMdSkippedPayload`` because mechanical skill backfill is a
+ * separate seam from MASTER.md regeneration — both surface independent
+ * idempotency outcomes.
+ */
+export interface AutoPatchSkippedPayload {
+  action_type: "skill.auto_patch_skipped";
+  synthesis_id: string;
+  domain: string;
+  skill_path: string;
+}
+
+/**
+ * Emitted by upstream callers (Decomposer downstream, manual
+ * invocation, batch backfill) to request an Evidence Retriever
+ * dispatch. The bridge subscribes to this action_type, dispatches
+ * the role at the flash tier, and emits
+ * ``EVIDENCE_RETRIEVE_DELIVERED`` when done.
+ * 
+ * ``chunks_block`` and ``subgraph_block`` are the **rendered**
+ * context strings the bridge upstream produced from its retrieval
+ * layer — they ride inside the request so the role's input is fully
+ * reconstructable from the trajectory (no opaque DB lookup needed
+ * at replay time).
+ */
+export interface EvidenceRetrieveRequestedPayload {
+  action_type: "evidence.retrieve.requested";
+  sub_question: string;
+  category: "market_sizing" | "defensibility" | "unit_economics" | "team_and_execution" | "regulatory_exposure" | "competitive_dynamics" | "customer_concentration" | "technology_risk" | "capital_intensity" | "exit_pathways";
+  evidence_type_required: "quantitative" | "qualitative" | "mixed";
+  top_k?: number;
+  chunks_block: string;
+  subgraph_block: string;
+}
+
+/**
+ * Emitted by the Evidence Retriever bridge once a parsed +
+ * validated response lands. ``insufficient_evidence=True`` means
+ * the role explicitly declined to answer; the downstream
+ * constraint loop / synthesizer reads this flag before composing.
+ */
+export interface EvidenceRetrieveDeliveredPayload {
+  action_type: "evidence.retrieve.delivered";
+  sub_question: string;
+  answer: string;
+  supporting_claims?: SupportingClaim[];
+  evidentiary_gaps?: EvidentiaryGap[];
+  insufficient_evidence?: boolean;
+}
+
+/**
+ * Emitted by upstream callers (orchestrator after evidence
+ * retrieval finishes) to request a Parameter Extractor dispatch.
+ * ``evidence_block`` is the pre-rendered JSON-stringified list of
+ * Evidence Retriever outputs, one block per sub-question.
+ */
+export interface ParameterExtractRequestedPayload {
+  action_type: "parameter_extract.requested";
+  evidence_block: string;
+}
+
+/**
+ * Emitted by the Parameter Extractor bridge once a parsed +
+ * validated response lands.
+ * 
+ * Two fields:
+ * - ``parameters`` — the role's literal output, preserved verbatim
+ *   so RL trajectory mining can score the raw extraction.
+ * - ``constraints`` — the derived ``ConstraintSpec`` list the Day 3
+ *   constraint-loop machinery consumes. Conversion happens at
+ *   bridge emit time so the loop reads typed input directly from
+ *   the trajectory.
+ */
+export interface ParameterExtractDeliveredPayload {
+  action_type: "parameter_extract.delivered";
+  parameters?: Parameter[];
+  constraints?: ConstraintSpec[];
+}
+
+/**
+ * Emitted by upstream callers to request a Connector dispatch.
+ * The bridge runs traversal against ``seed_pairs`` with the
+ * requested ``algorithm`` (default top_n_shortest_paths) and the
+ * per-pair top-N cap.
+ */
+export interface ConnectorRequestedPayload {
+  action_type: "connector.requested";
+  keyword_mappings?: KeywordMapping[];
+  seed_pairs?: SeedPair[];
+  algorithm?: "shortest_simple_path" | "top_n_shortest_paths" | "depth_first_limited" | "bfs_semantic_stop";
+  max_paths_per_pair?: number;
+}
+
+/**
+ * Emitted by the Connector bridge once a parsed + validated
+ * response lands. Carries:
+ * 
+ * - ``keyword_mappings`` — role's confirmation / correction of the
+ *   pre-resolved mappings; ``low_confidence`` flags preserved.
+ * - ``selected_algorithm`` — role's algorithm choice (echoes what
+ *   the bridge actually ran; lets the role correct in retrospect).
+ * - ``paths`` — structured paths from traversal, passed through
+ *   verbatim (the role MUST NOT edit them).
+ * - ``natural_language_relationships`` — one per path, with
+ *   ``source_path_index`` cite-back.
+ */
+export interface ConnectorDeliveredPayload {
+  action_type: "connector.delivered";
+  keyword_mappings?: KeywordMapping[];
+  selected_algorithm: "shortest_simple_path" | "top_n_shortest_paths" | "depth_first_limited" | "bfs_semantic_stop";
+  algorithm_rationale?: string | null;
+  paths?: GraphPath[];
+  natural_language_relationships?: NaturalLanguageRelationship[];
+}
+
+/**
+ * Emitted by the orchestrator after the four upstream roles
+ * (decomposer, evidence_retriever, parameter_extractor, connector)
+ * have all delivered. Carries the five pre-rendered prompt blocks
+ * verbatim so the role's input is fully reconstructable from the
+ * trajectory.
+ * 
+ * Definition order note: this payload sits AFTER ``ConstraintSpec``
+ * so its ``constraints: list[ConstraintSpec]`` field resolves at
+ * annotation-read time. Codegen reads ``__annotations__`` directly
+ * and can't resolve forward-string references.
+ */
+export interface SynthesizeRequestedPayload {
+  action_type: "synthesize.requested";
+  question: string;
+  decomposition_block: string;
+  evidence_block: string;
+  parameters_block: string;
+  substrate_block: string;
+  constraints?: ConstraintSpec[];
+}
+
+/**
+ * Emitted by the synthesizer bridge once a parsed + validated
+ * thesis lands AND the constraint loop has terminated. Carries the
+ * canonical thesis shape. The ``constraint_loop_status`` field is
+ * the loop's terminal verdict (single_pass / passed / regressed /
+ * max_iterations_reached). Iteration count is the number of
+ * synthesizer dispatches inside the loop (1 = no revision).
+ */
+export interface SynthesizeDeliveredPayload {
+  action_type: "synthesize.delivered";
+  thesis_summary: string;
+  implicit_recommendation: "proceed" | "pass" | "conditional" | "undetermined" | "insufficient_evidence";
+  thesis_components?: ThesisComponent[];
+  falsification_conditions?: FalsificationCondition[];
+  execution_risks?: ExecutionRisk[];
+  constraint_compliance: ConstraintCompliance;
+  reasoning_paths_used?: ReasoningPathUsed[];
+  conviction_level?: number | null;
+  constraint_loop_status?: "single_pass" | "passed" | "regressed" | "max_iterations_reached" | "escalated" | "preflight_failed";
+  constraint_loop_iterations?: number;
+}
+
+/**
+ * One audit finding. Optional ``target_phase`` + ``target_path``
+ * pinpoint the artifact the finding concerns; ``evidence`` is the
+ * diagnostic string the operator reads when triaging.
+ */
+export interface AuditFindingPayload {
+  action_type: "audit.finding_emitted";
+  category: string;
+  severity: "info" | "warning" | "critical";
+  description: string;
+  evidence: string;
+  target_phase?: number | null;
+  target_path?: string | null;
+}
+
+/**
+ * Cold-question entry point. The orchestrator subscribes to this
+ * action_type and spawns a per-investigation coroutine that walks
+ * phases 1-9. ``topic_slug`` (if supplied) is used for the MASTER.md
+ * output path; ``context`` is optional domain framing the
+ * Decomposer reads.
+ */
+export interface InvestigationStartRequestedPayload {
+  action_type: "investigation.start_requested";
+  question: string;
+  context?: string;
+  topic_slug?: string | null;
+  max_sub_questions?: number;
+}
+
+/**
+ * Terminal lifecycle event when Loop 1 converged cleanly. Carries
+ * the synthesis verdict + the constraint-loop verdict so a single
+ * event suffices to report outcome to a dashboard.
+ */
+export interface InvestigationCompletedPayload {
+  action_type: "investigation.completed";
+  thesis_summary: string;
+  implicit_recommendation: "proceed" | "pass" | "conditional" | "undetermined" | "insufficient_evidence";
+  constraint_loop_status: "single_pass" | "passed" | "regressed" | "max_iterations_reached" | "escalated" | "preflight_failed";
+  constraint_loop_iterations?: number;
+  master_md_path?: string | null;
+  domains_patched?: string[];
+  total_phases_verified?: number;
+}
+
+/**
+ * Terminal lifecycle event when Loop 1 aborted before
+ * completion. ``phase`` identifies which phase failed; ``reason``
+ * is the diagnostic string (postcondition failure message, exception
+ * repr, etc.).
+ */
+export interface InvestigationFailedPayload {
+  action_type: "investigation.failed";
+  phase: number;
+  reason: string;
+  last_completed_phase?: number | null;
+}
+
+/**
+ * Discriminated union over every typed payload. TS narrowing on
+ * ``payload.action_type`` selects the right variant.
+ */
+export type TypedPayload =
+  | DispatchCallPayload
+  | ContextPackAssembledPayload
+  | DocumentLoadedPayload
+  | DocumentRegionSelectedPayload
+  | DistillationRequestedPayload
+  | DistillationDeliveredPayload
+  | ClaimChallengeRaisedPayload
+  | ClaimGroundingCheckPassedPayload
+  | ClaimGroundingCheckFailedPayload
+  | NoteEmergedPayload
+  | NoteRefinedPayload
+  | NoteCompressedDocWrittenPayload
+  | QuestionIdentifiedPayload
+  | QuestionEscalatedToResearchPayload
+  | QuestionResolvedByDocPayload
+  | CrossDocQuestionAnsweredPayload
+  | UserAcceptDistillationPayload
+  | UserRejectDistillationPayload
+  | UserEditDistillationPayload
+  | ArtifactGeneratedPayload
+  | ArtifactInteractedPayload
+  | TierAssignedPayload
+  | TierOverriddenPayload
+  | TierRewriteBulkPayload
+  | StalenessFlaggedPayload
+  | StalenessResolvePayload
+  | SynthesisArchivedPayload
+  | SubstrateManifestWrittenPayload
+  | SupersessionApplyPayload
+  | SupersessionDismissPayload
+  | SupersessionCoexistPayload
+  | GraphNodeInsertedPayload
+  | GraphEdgeInsertedPayload
+  | ConstraintViolationFoundPayload
+  | ConstraintRevisionTriggeredPayload
+  | ConstraintLoopResolvedPayload
+  | OutcomeRecordedPayload
+  | RubricScoredPayload
+  | PhaseEnterPayload
+  | PhaseExitPayload
+  | PhaseVerifyPayload
+  | DecomposeQuestionRequestedPayload
+  | DecomposeQuestionDeliveredPayload
+  | DecomposerParaphraseFlaggedPayload
+  | DecomposerRegeneratedPayload
+  | MasterMdWrittenPayload
+  | MasterMdSkippedPayload
+  | AutoPatchAppliedPayload
+  | AutoPatchSkippedPayload
+  | EvidenceRetrieveRequestedPayload
+  | EvidenceRetrieveDeliveredPayload
+  | ParameterExtractRequestedPayload
+  | ParameterExtractDeliveredPayload
+  | ConnectorRequestedPayload
+  | ConnectorDeliveredPayload
+  | SynthesizeRequestedPayload
+  | SynthesizeDeliveredPayload
+  | AuditFindingPayload
+  | InvestigationStartRequestedPayload
+  | InvestigationCompletedPayload
+  | InvestigationFailedPayload;
+
+/**
+ * The envelope around a typed payload. Written one row per JSONL line
+ * while live; sealed to Parquet at investigation completion.
+ * 
+ * The top-level ``action_type`` is redundant with ``payload.action_type``
+ * but kept as a separate column for query efficiency — DuckDB filters on
+ * action_type without parsing the payload JSON. The model_validator
+ * asserts the two agree.
+ */
+export interface Event {
+  event_id: string;
+  investigation_id: string;
+  synthesis_id?: string | null;
+  phase?: number | null;
+  role?: string | null;
+  action_type: ActionType;
+  payload: TypedPayload;
+  parent_event_id?: string | null;
+  policy_id?: string;
+  param_version: string;
+  schema_version?: number;
+  emitted_at: string;
+  document_id?: string | null;
+}
+
+export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
+  "artifact.generated",
+  "artifact.interacted",
+  "audit.finding_emitted",
+  "claim.challenge_raised",
+  "claim.grounding_check_failed",
+  "claim.grounding_check_passed",
+  "connector.delivered",
+  "connector.requested",
+  "constraint.loop_resolved",
+  "constraint.revision_triggered",
+  "constraint.violation_found",
+  "context_pack.assembled",
+  "cross_doc.question_answered",
+  "decompose.delivered",
+  "decompose.requested",
+  "decomposer.paraphrase.flagged",
+  "decomposer.regenerated",
+  "dispatch.call",
+  "distillation.delivered",
+  "distillation.requested",
+  "document.loaded",
+  "document.region_selected",
+  "evidence.retrieve.delivered",
+  "evidence.retrieve.requested",
+  "graph.edge.inserted",
+  "graph.node.inserted",
+  "graph.staleness.flagged",
+  "graph.staleness.resolve",
+  "graph.supersession.apply",
+  "graph.supersession.coexist",
+  "graph.supersession.dismiss",
+  "graph.tier.assigned",
+  "graph.tier.overridden",
+  "graph.tier.rewrite_bulk",
+  "investigation.completed",
+  "investigation.failed",
+  "investigation.start_requested",
+  "note.compressed_doc_written",
+  "note.emerged",
+  "note.refined",
+  "outcome.recorded",
+  "parameter_extract.delivered",
+  "parameter_extract.requested",
+  "phase.enter",
+  "phase.exit",
+  "phase.verify",
+  "question.escalated_to_research",
+  "question.identified",
+  "question.resolved_by_doc",
+  "rubric.scored",
+  "skill.auto_patch_applied",
+  "skill.auto_patch_skipped",
+  "synthesis.archived",
+  "synthesis.master_md_skipped",
+  "synthesis.master_md_written",
+  "synthesis.substrate_manifest.written",
+  "synthesize.delivered",
+  "synthesize.requested",
+  "user.accept_distillation",
+  "user.edit_distillation",
+  "user.reject_distillation",
+]);
+
+export const WRESTLING_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
+  "claim.challenge_raised",
+  "claim.grounding_check_failed",
+  "claim.grounding_check_passed",
+  "distillation.delivered",
+  "distillation.requested",
+  "document.loaded",
+  "document.region_selected",
+  "note.compressed_doc_written",
+  "note.emerged",
+  "note.refined",
+  "question.escalated_to_research",
+  "question.identified",
+  "question.resolved_by_doc",
+  "user.accept_distillation",
+  "user.edit_distillation",
+  "user.reject_distillation",
+]);

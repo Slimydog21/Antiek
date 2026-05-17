@@ -1,0 +1,76 @@
+# {{ ansible_managed }}
+#
+# Caddy reverse proxy in front of uvicorn.
+#
+# Why Caddy not nginx?
+#   1. Automatic Let's Encrypt — no certbot, no cron renewal job, no
+#      ACME-challenge plumbing.
+#   2. Sane default timeouts (long enough to not break 10-minute LLM
+#      calls without explicit overrides — though we set them explicitly
+#      below for documentation).
+#   3. WebSocket support is automatic on `upgrade` requests; no special
+#      `proxy_pass` config like nginx demands.
+#   4. One file, mostly self-explanatory; nginx config blocks are dense.
+#
+# The TLS cert is provisioned on first request to https://api.antiek.ai
+# via ACME HTTP-01 (port 80). UFW must allow ports 80 AND 443 (setup.yml
+# does this). Cloudflare DNS for api.antiek.ai is NOT proxied (grey
+# cloud) so the ACME challenge hits Caddy directly.
+
+{{ api_domain }} {
+    # Long-running LLM dispatches can stay open for 600+ seconds. The
+    # 900s window matches the systemd unit's --timeout-keep-alive.
+    # Without this Caddy's default ~30s timeout would 504 mid-call.
+    reverse_proxy localhost:{{ uvicorn_port }} {
+        transport http {
+            # Time-to-first-byte from origin (uvicorn). Generous because
+            # synthesizer calls to Claude Opus via OpenRouter routinely
+            # take 20-30s end-to-end; with a tight DPI-suppression run,
+            # 90+ seconds is plausible.
+            read_timeout 900s
+
+            # Time we'll spend writing the response back. Generous for
+            # the same reason.
+            write_timeout 900s
+
+            # Dial timeout — origin should answer within 30s or it's
+            # down. (uvicorn is local; this is a sanity ceiling.)
+            dial_timeout 30s
+        }
+
+        # Pass real client IP so structlog can record it.
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # WebSockets: Caddy auto-detects `Upgrade: websocket` and proxies
+    # them indefinitely. The substrate's /ws/events endpoint needs this
+    # for the live event tail to work. No explicit config required.
+
+    # Compress text/JSON responses on the fly.
+    encode gzip zstd
+
+    # Structured access logs to a rotating file. Keep ~5 weeks of logs;
+    # `journalctl` has the application logs separately.
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+
+    # Security headers. Not exhaustive — add CSP, HSTS once the app
+    # surface (app.antiek.ai) is stable enough to know what it needs.
+    header {
+        # Don't leak Caddy/uvicorn versions.
+        -Server
+        # Prevent MIME-type sniffing.
+        X-Content-Type-Options "nosniff"
+        # Block clickjacking. SAMEORIGIN allows app.antiek.ai → api iframe;
+        # use DENY if you never need that.
+        X-Frame-Options "SAMEORIGIN"
+    }
+}

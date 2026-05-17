@@ -1,0 +1,45 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# terraform.tfvars.example
+#
+# Copy this to `terraform.tfvars` (which is gitignored) and fill in the
+# real values. OR set the same values as TF_VAR_<name> environment
+# variables — that's better for CI and one-off runs.
+#
+# Required values the operator MUST provide (no defaults — Terraform
+# will prompt at the CLI if any are missing):
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Hetzner Cloud API token. Generate at:
+#   https://console.hetzner.cloud → project → Security → API tokens
+# Permissions: Read & Write
+hetzner_token = "<HETZNER_CLOUD_API_TOKEN>"
+
+# Cloudflare API token. Generate at:
+#   https://dash.cloudflare.com → My Profile → API Tokens → Create Token
+# Permissions required (Custom token, scope to antiek.ai zone):
+#   Zone → DNS → Edit
+#   Zone → Zone Settings → Edit
+#   Account → Workers R2 Storage → Edit
+cloudflare_token = "<CLOUDFLARE_API_TOKEN>"
+
+# Cloudflare account ID — 32-character hex. Found at:
+#   Cloudflare dashboard → any domain → right sidebar → Account ID
+cloudflare_account_id = "<CLOUDFLARE_ACCOUNT_ID>"
+
+# Cloudflare zone ID for antiek.ai — 32-character hex. Found at:
+#   Cloudflare dashboard → antiek.ai → right sidebar → Zone ID
+cloudflare_zone_id = "<CLOUDFLARE_ZONE_ID_FOR_ANTIEK_AI>"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Optional overrides. Defaults are in variables.tf; uncomment only if you
+# need to change them.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ssh_public_key_path = "~/.ssh/antiek_ed25519.pub"
+# server_type         = "ccx23"
+# datacenter          = "fsn1-dc14"
+# image               = "ubuntu-24.04"
+# domain              = "antiek.ai"
+# api_subdomain       = "api"
+# r2_bucket_name      = "antiek-backups"
+# r2_bucket_location  = "eu"

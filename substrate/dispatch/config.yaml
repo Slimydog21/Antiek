@@ -1,0 +1,124 @@
+# Dispatch router configuration.
+#
+# Routing decisions live here, not in code. Changes to which backend
+# handles which role are a config edit, never a code edit.
+#
+# The "tier" abstraction maps to a concrete provider+model combination
+# in the `tiers` section below. Roles reference tiers, not providers
+# directly, so backend swaps (e.g., a new flash model) are one line.
+#
+# Pricing: USD per million tokens. **Operator owns these values.**
+# Provider pricing pages change without notice; the numbers below are
+# placeholders based on knowledge through January 2026 and MUST be
+# verified before relying on any cost report. Set ``0.0`` to disable
+# cost tracking for a tier.
+
+version: 0.1.0
+
+# ---------------------------------------------------------------------------
+# Tier definitions.
+# ---------------------------------------------------------------------------
+tiers:
+  flash:
+    # Bulk, cost-optimized. Note-taking, page-level ingestion,
+    # embedding-stage extraction. Routed via OpenRouter (single key).
+    provider: openrouter
+    model: deepseek/deepseek-v4-flash
+    pricing:
+      # Live OpenRouter pricing verified 2026-05-17.
+      input_per_mtok: 0.11
+      output_per_mtok: 0.22
+      cached_input_per_mtok: 0.011   # ~90% discount when cache hits
+    fallback:
+      provider: openrouter
+      model: deepseek/deepseek-chat-v3.1
+
+  pro:
+    # Reasoning-heavy primary work.
+    provider: openrouter
+    model: deepseek/deepseek-v4-pro
+    pricing:
+      input_per_mtok: 0.43
+      output_per_mtok: 0.87
+      cached_input_per_mtok: 0.043
+    fallback:
+      provider: openrouter
+      model: deepseek/deepseek-v3.2
+
+  synthesis:
+    # Highest-quality synthesis. Claude Opus 4.7 via OpenRouter.
+    provider: openrouter
+    model: anthropic/claude-opus-4.7
+    pricing:
+      input_per_mtok: 5.0
+      output_per_mtok: 25.0
+      cached_input_per_mtok: 0.50    # ephemeral cache discount estimate
+    fallback:
+      provider: openrouter
+      model: anthropic/claude-sonnet-4.6
+
+  verify:
+    # Cross-family verification. Routed through Hermes for the
+    # sanctioned subscription path.
+    provider: hermes
+    model: grok-4.3
+    pricing:
+      # Hermes routes via subscription, not pay-per-token; cost is
+      # attributed at the subscription level, not per call.
+      input_per_mtok: 0.0
+      output_per_mtok: 0.0
+      cached_input_per_mtok: 0.0
+
+  local:
+    # Deferred. The abstraction is here so adding a backend later is
+    # one new entry; calling code unchanged.
+    provider: null
+    model: null
+
+# ---------------------------------------------------------------------------
+# Role → tier mapping. Defaults match substrate/constants.py:DEFAULT_ROLE_TIER.
+# Override here without touching code.
+# ---------------------------------------------------------------------------
+role_tiers:
+  decomposer: pro
+  evidence_retriever: flash
+  parameter_extractor: flash
+  connector: pro
+  synthesizer: synthesis
+  user_agent: pro
+  note_taker: flash
+  challenger: pro
+  grounder: flash
+  tier_assigner: flash
+  constraint_checker: flash
+  verifier: verify
+
+# ---------------------------------------------------------------------------
+# Per-tier defaults. Roles can override at call time, but these are
+# the sane starting points.
+# ---------------------------------------------------------------------------
+tier_defaults:
+  flash:
+    max_tokens: 4096
+    temperature: 0.2
+    context_budget_tokens: 32000
+  pro:
+    max_tokens: 8192
+    temperature: 0.3
+    context_budget_tokens: 64000
+  synthesis:
+    max_tokens: 16384
+    temperature: 0.4
+    context_budget_tokens: 256000
+  verify:
+    max_tokens: 4096
+    temperature: 0.1
+    context_budget_tokens: 32000
+
+# ---------------------------------------------------------------------------
+# Cost tracking. The router records per-role and per-investigation
+# cost into the event log. Pricing values above are the source of truth.
+# ---------------------------------------------------------------------------
+cost_tracking:
+  enabled: true
+  emit_event_per_call: true

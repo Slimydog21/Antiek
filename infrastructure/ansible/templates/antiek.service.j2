@@ -1,0 +1,94 @@
+# {{ ansible_managed }}
+#
+# systemd unit for the Antiek substrate.
+#
+# ──────────────────────────────────────────────────────────────────────────
+# CRITICAL: --workers 1 is non-negotiable.
+#
+# The Antiek substrate uses DuckDB as its primary store. DuckDB is an
+# embedded single-writer database — two processes opening the file for
+# write will corrupt it within the first concurrent write. `runtime/
+# db_lock.py` enforces this via flock, so a second writer will refuse to
+# start, but the symptom (mysterious connection errors at boot) is hard
+# to diagnose. The discipline: one uvicorn process, one DuckDB writer,
+# period.
+#
+# If you ever need to scale concurrent investigations beyond what one
+# CCX23 can handle, the correct move is migrating DuckDB → Postgres (and
+# externalising the event log) — NOT spinning up `--workers 4`.
+# ──────────────────────────────────────────────────────────────────────────
+#
+# `--timeout-keep-alive 900` matches the orchestrator's worst-case
+# single-role timeout (DEFAULT_ROLE_TIMEOUT = 600s in
+# orchestration/loop_one/orchestrator.py, plus slack for sync/teardown).
+# The photonic-interconnects debugging session of 2026-05-17 established
+# 226s as observed-real-world for one DeepSeek V4 Pro call via OpenRouter;
+# 600s is the safety margin.
+
+[Unit]
+Description=Antiek substrate (FastAPI + Loop 1 orchestrator)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ antiek_user }}
+Group={{ antiek_group }}
+WorkingDirectory={{ antiek_install_dir }}
+
+# Secrets — API keys (OpenRouter etc) and any other runtime env vars.
+# This file is mode 0640 root:antiek; systemd reads it before dropping
+# privileges to {{ antiek_user }}.
+EnvironmentFile={{ antiek_secrets_file }}
+
+# Path so the venv's `uvicorn` resolves. Don't rely on the user's
+# .bashrc — systemd doesn't source it.
+Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"
+
+# Point the substrate at the right state dir (~/.antiek by default; we
+# override explicitly so a future home-dir change doesn't break things).
+Environment="ANTIEK_STATE_DIR={{ antiek_state_dir }}"
+Environment="ANTIEK_DUCKDB_PATH={{ antiek_state_dir }}/antiek.duckdb"
+Environment="ANTIEK_EVENT_LOG_DIR={{ antiek_state_dir }}/research_events"
+Environment="ANTIEK_KNOWLEDGE_SKILLS_DIR={{ antiek_state_dir }}/knowledge_skills"
+Environment="ANTIEK_RESEARCH_DIR={{ antiek_state_dir }}/research"
+
+# ── THE LOAD-BEARING LINE ────────────────────────────────────────────────
+# --workers 1 — DO NOT CHANGE without first migrating off DuckDB.
+# --timeout-keep-alive 900 — matches the orchestrator's longest await.
+ExecStart={{ antiek_install_dir }}/.venv/bin/uvicorn \
+    interfaces.research.api.app:app \
+    --host 127.0.0.1 \
+    --port {{ uvicorn_port }} \
+    --workers 1 \
+    --timeout-keep-alive 900
+
+# Restart automatically if the process dies (most likely cause: an
+# unhandled exception in a role bridge). 10s pause prevents tight crash
+# loops from saturating CPU/log volume.
+Restart=on-failure
+RestartSec=10s
+
+# stdout/stderr → journald. View with: journalctl -u antiek -f
+StandardOutput=journal
+StandardError=journal
+
+# ── Hardening ─────────────────────────────────────────────────────────────
+# The substrate writes to {{ antiek_state_dir }} and reads /tmp. Block
+# writes everywhere else — defence against a compromised role bridge that
+# tries to write outside its sandbox.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ antiek_state_dir }} /tmp /var/tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

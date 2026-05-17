@@ -1,0 +1,26 @@
+# Terraform-generated state and lock files.
+#
+# `terraform.tfstate` contains all provisioned resource IDs *and may
+# contain plaintext secrets* (Hetzner returns the SSH key, R2 access info
+# is computed, etc). Never commit. State lives on the operator's Mac for
+# the first apply; migrate to remote state in R2 once the bucket exists
+# (see runbooks/first-deploy.md).
+*.tfstate
+*.tfstate.*
+
+# *.tfvars holds the real values for sensitive variables. The shape goes
+# in terraform.tfvars.example, the values stay local.
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Plugin downloads + per-init scratch space — large and reproducible.
+.terraform/
+
+# `.terraform.lock.hcl` records exact provider versions resolved at last
+# init. Committing it (recommended) means everyone running `terraform
+# init` gets the same provider binaries. NOT gitignored.
+
+# Crash dumps if a provider panics.
+crash.log
+crash.*.log

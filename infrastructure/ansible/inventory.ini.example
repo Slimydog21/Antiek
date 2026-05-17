@@ -1,0 +1,22 @@
+# Antiek production Ansible inventory — TEMPLATE.
+#
+# Copy this file to `inventory.ini` (gitignored) and fill in the real
+# IPv4 address from `terraform output server_ipv4` after running
+# `terraform apply`.
+#
+# Why root user?
+#   The first connection to a fresh Hetzner Ubuntu image is as root —
+#   that's the only user that exists. setup.yml creates the unprivileged
+#   `antiek` user and copies authorized_keys over from root, but Ansible
+#   itself stays connected as root for the package-install / systemd-
+#   write operations that need privilege.
+#
+# Why ansible_python_interpreter=/usr/bin/python3?
+#   Ubuntu 24.04 puts python3 there. Without this hint Ansible probes,
+#   which works but emits a deprecation warning per task.
+
+[antiek_prod]
+antiek-prod-fsn1 ansible_host=<IPV4_FROM_TERRAFORM_OUTPUT> ansible_user=root ansible_ssh_private_key_file=~/.ssh/antiek_ed25519
+
+[antiek_prod:vars]
+ansible_python_interpreter=/usr/bin/python3

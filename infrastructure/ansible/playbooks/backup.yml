@@ -1,0 +1,30 @@
+---
+# ──────────────────────────────────────────────────────────────────────────
+# Antiek — manual backup trigger.
+#
+# Useful before risky operations: a deploy you're unsure about, a Python
+# version upgrade, before sleep on a critical day.
+#
+# Cron runs /usr/local/bin/antiek-backup nightly at 03:00 UTC. This
+# playbook just runs the same script on-demand and reports the result.
+# ──────────────────────────────────────────────────────────────────────────
+
+- name: Antiek — trigger backup
+  hosts: antiek_prod
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: run backup script
+      ansible.builtin.command:
+        cmd: /usr/local/bin/antiek-backup
+      register: backup_run
+      changed_when: true
+      # Backups can take a couple of minutes for large state — don't
+      # timeout prematurely.
+      async: 600
+      poll: 10
+
+    - name: print backup output
+      ansible.builtin.debug:
+        var: backup_run.stdout_lines

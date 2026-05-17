@@ -1,0 +1,88 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Non-secret Ansible variables.
+#
+# Every playbook task templating into a path or hostname should reference
+# one of these names, not hardcode the value. That way one edit here
+# changes behaviour everywhere consistently.
+#
+# Secrets (API keys, R2 access tokens) do NOT belong here. They live in:
+#   - /etc/antiek/secrets.env on the VM (Antiek runtime env vars)
+#   - --extra-vars @r2-creds.yml at ansible-playbook invocation time
+#     (R2 credentials for the backup script)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# ── Identity ─────────────────────────────────────────────────────────────────
+
+# The unprivileged user the substrate runs as. Created by setup.yml.
+# Deliberately NOT in the sudo group — sudo operations are the operator's,
+# via the root account.
+antiek_user: antiek
+antiek_group: antiek
+
+# ── Repository ───────────────────────────────────────────────────────────────
+
+# Antiek repo URL. Public-for-now is the simplest option (no deploy-key
+# wrangling) and the substrate has no secrets in code — all API keys are
+# runtime env vars. If you flip the repo to private, the setup playbook
+# needs to either authorize a deploy key on the VM or use HTTPS-with-token.
+# TODO: operator confirms repo URL.
+antiek_repo_url: "https://github.com/REPLACE_WITH_OPERATOR_USERNAME/Antiek.git"
+antiek_repo_branch: "main"
+
+# ── Filesystem paths ─────────────────────────────────────────────────────────
+
+# Code lives here. Owned by antiek:antiek after git clone.
+antiek_install_dir: "/opt/antiek"
+
+# Runtime state — DuckDB file, event log .jsonl files, knowledge skills
+# directory. MUST be on local NVMe (not a network volume) per the
+# DuckDB single-writer + low-latency requirement.
+antiek_state_dir: "/home/{{ antiek_user }}/.antiek"
+
+# Secrets file. Mode 0600, owner root:antiek (group-readable so the
+# systemd unit can EnvironmentFile= it). Populated by the operator
+# manually via `sudoedit` after setup.yml completes.
+antiek_secrets_dir: "/etc/antiek"
+antiek_secrets_file: "{{ antiek_secrets_dir }}/secrets.env"
+
+# ── Python ───────────────────────────────────────────────────────────────────
+
+# Ubuntu 24.04 ships Python 3.12 in its default repos. Antiek's
+# pyproject.toml declares `requires-python = ">=3.11"`, so 3.12 is fine.
+# Setting `3.13` would require enabling the deadsnakes PPA — flag this as
+# a future decision if a 3.13-specific feature becomes load-bearing.
+python_version: "3.12"
+
+# ── Network ──────────────────────────────────────────────────────────────────
+
+# uvicorn binds here. Caddy reverse-proxies localhost:{{ uvicorn_port }}.
+# Don't expose 8001 to the public network — UFW blocks it; Caddy is the
+# only thing that should reach it.
+uvicorn_port: 8001
+api_domain: "api.antiek.ai"
+
+# ── Caddy ────────────────────────────────────────────────────────────────────
+
+# The Caddy apt repo's signing key + apt source are installed in setup.yml.
+# Pinning to a specific minor version requires apt-pinning config (separate
+# decision); for now we install Caddy 2.x from Caddy's stable channel.
+
+# ── Backup ───────────────────────────────────────────────────────────────────
+
+# R2 bucket name + access endpoint. The endpoint pattern is
+# https://<ACCOUNT_ID>.r2.cloudflarestorage.com; the operator passes the
+# real value via --extra-vars when running setup.yml.
+backup_bucket_name: "antiek-backups"
+# r2_endpoint, r2_access_key, r2_secret_key: passed at invocation via
+# --extra-vars @r2-creds.yml (gitignored). Don't put them here.
+
+# Backup cron schedule. 03:00 UTC = ~midnight in the operator's morning
+# (Jeddah is UTC+3), so any failure is visible early-day instead of
+# overnight.
+backup_cron_minute: "0"
+backup_cron_hour: "3"
+
+# Retention policy (days). Older backups in R2 are deleted by the backup
+# script. Increase if you have evidence-of-substantive-loss concerns;
+# decrease to save R2 storage cost (~$0.015/GB/month).
+backup_retention_days: 14

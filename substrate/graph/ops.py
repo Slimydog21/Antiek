@@ -1,0 +1,331 @@
+"""Graph insert operations — typed wrappers around SQL writes.
+
+Every graph mutation passes through this module and emits the typed
+event for it. The architecture_notes §2.1 typed-event invariant
+requires the event log to be the source of truth; these helpers make
+that property structural rather than a discipline.
+
+What's here:
+
+- ``insert_document``, ``insert_chunk``, ``insert_node``, ``insert_edge``
+  — each takes a LockedConnection (write-locked per §2.3), writes the
+  row, emits the typed event AFTER the row commits. Returns the
+  generated id when one is computed from content.
+- ``content_addressed_id`` helper for deriving stable ids from content
+  hashes (SHA-256 prefix), matching the Researchmaxx convention.
+
+What's not here:
+
+- Bulk import (one-row-per-call by design; bulk paths land in
+  processing/chunking and processing/extraction once those migrate).
+- Embedding generation (the caller passes the embedding vector; the
+  ``processing/embedding`` module owns generation).
+- Tier classification (caller passes the tier; middleware/source_tier
+  produces it).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import sys
+import uuid
+from datetime import datetime
+from typing import Any, Optional, Sequence
+
+try:
+    from ...event_log import emit_typed
+    from ...runtime.db_lock import LockedConnection
+    from ...schemas import (
+        GraphEdgeInsertedPayload,
+        GraphNodeInsertedPayload,
+        GraphScope,
+        NodeType,
+    )
+except ImportError:  # pragma: no cover — direct-script fallback
+    _here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
+    from substrate.schemas import (  # type: ignore[no-redef]
+        GraphEdgeInsertedPayload,
+        GraphNodeInsertedPayload,
+        GraphScope,
+        NodeType,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Id generators
+# ---------------------------------------------------------------------------
+
+
+def content_addressed_id(prefix: str, content: str, n: int = 16) -> str:
+    """Stable id derived from a SHA-256 of ``content``. Matches the
+    Researchmaxx ``<prefix>-<16hex>`` convention.
+
+    Same content → same id, deterministically. The caller decides what
+    counts as "the same" content via what they pass in."""
+    h = hashlib.sha256(content.encode("utf-8")).hexdigest()[:n]
+    return f"{prefix}-{h}"
+
+
+def new_random_id(prefix: str) -> str:
+    """Allocate a fresh non-content-addressed id (uuid4 prefix)."""
+    return f"{prefix}-{uuid.uuid4().hex[:16]}"
+
+
+def _maybe_json(obj: Any) -> Optional[str]:
+    """Render an optional metadata dict to its TEXT column form. The
+    schema uses TEXT (not VARIANT) so application code is the only
+    JSON reader; mirror the convention from middleware/archive."""
+    if obj is None:
+        return None
+    if isinstance(obj, str):
+        json.loads(obj)  # validate
+        return obj
+    return json.dumps(obj, default=str)
+
+
+def _assert_write_locked(con: Any) -> None:
+    if not isinstance(con, LockedConnection):
+        raise TypeError(
+            f"graph ops require a LockedConnection (got {type(con).__name__}). "
+            "Acquire via runtime.db_lock.connect_write(db_path, purpose=...). "
+            "Architecture_notes §2.3: the only-writer invariant."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Documents
+# ---------------------------------------------------------------------------
+
+
+OnConflict = str  # "error" | "ignore"
+
+
+def _exists(con: Any, table: str, id_col: str, id_val: str) -> bool:
+    """Check whether a row with the given id exists. Used by
+    ``on_conflict='ignore'`` paths to make inserts idempotent."""
+    return con.execute(
+        f"SELECT 1 FROM {table} WHERE {id_col} = ? LIMIT 1", [id_val]
+    ).fetchone() is not None
+
+
+def insert_document(
+    con: LockedConnection,
+    *,
+    document_id: str,
+    source_tier: int,
+    document_type: str,
+    source_uri: Optional[str] = None,
+    title: Optional[str] = None,
+    author: Optional[str] = None,
+    published_at: Optional[datetime] = None,
+    investigation_id: Optional[str] = None,
+    raw_text: Optional[str] = None,
+    metadata: Optional[Any] = None,
+    on_conflict: OnConflict = "error",
+) -> str:
+    """Insert one document row. Returns the document_id.
+
+    Does not emit a typed event today — ``document.loaded`` already
+    captures the ingestion-side signal from the reading UI surface,
+    and a graph-level ``GRAPH_DOCUMENT_INSERTED`` would be redundant.
+    If we later need a graph-scoped admission signal that's distinct
+    from the surface-loaded event, we add it here as a new ActionType.
+
+    ``on_conflict``:
+      - ``"error"`` (default): a duplicate ``document_id`` raises.
+      - ``"ignore"``: silently skip if a row with that ``document_id``
+        already exists. Used by the wrestling bridge to keep
+        ``document.loaded`` handling idempotent.
+    """
+    _assert_write_locked(con)
+    if not 1 <= source_tier <= 5:
+        raise ValueError(f"source_tier must be 1..5, got {source_tier}")
+    if on_conflict == "ignore" and _exists(con, "documents", "document_id", document_id):
+        return document_id
+    con.execute(
+        "INSERT INTO documents "
+        "(document_id, source_uri, title, author, published_at, "
+        " source_tier, document_type, investigation_id, raw_text, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            document_id, source_uri, title, author, published_at,
+            int(source_tier), document_type, investigation_id, raw_text,
+            _maybe_json(metadata),
+        ],
+    )
+    return document_id
+
+
+# ---------------------------------------------------------------------------
+# Chunks
+# ---------------------------------------------------------------------------
+
+
+def insert_chunk(
+    con: LockedConnection,
+    *,
+    document_id: str,
+    chunk_index: int,
+    text: str,
+    section_path: Optional[str] = None,
+    embedding: Optional[Sequence[float]] = None,
+    token_count: int = 0,
+    chunk_id: Optional[str] = None,
+) -> str:
+    """Insert one chunk row. If ``chunk_id`` is not provided, a
+    content-addressed id is derived from the chunk text (matches the
+    Researchmaxx SHA-256 convention). Returns the chunk_id.
+
+    No typed event today — chunk insertion is a processing-layer
+    artifact; if RL trajectory analytics needs per-chunk events later
+    we can add ``GRAPH_CHUNK_INSERTED`` then.
+    """
+    _assert_write_locked(con)
+    cid = chunk_id or content_addressed_id("chunk", text)
+    if _exists(con, "chunks", "chunk_id", cid):
+        # Idempotent — content-addressed ids make duplicate inserts a
+        # no-op rather than a CHECK violation.
+        return cid
+    con.execute(
+        "INSERT INTO chunks "
+        "(chunk_id, document_id, chunk_index, section_path, text, embedding, token_count) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            cid, document_id, int(chunk_index), section_path, text,
+            list(embedding) if embedding is not None else None,
+            int(token_count),
+        ],
+    )
+    return cid
+
+
+# ---------------------------------------------------------------------------
+# Nodes
+# ---------------------------------------------------------------------------
+
+
+def insert_node(
+    con: LockedConnection,
+    *,
+    canonical_label: str,
+    node_type: str,  # NodeType Literal — validated at payload time
+    graph_scope: str,  # GraphScope Literal — validated at payload time
+    investigation_id: str,
+    embedding: Optional[Sequence[float]] = None,
+    metadata: Optional[Any] = None,
+    node_id: Optional[str] = None,
+    parent_event_id: Optional[str] = None,
+    on_conflict: OnConflict = "error",
+) -> str:
+    """Insert one node row AND emit GRAPH_NODE_INSERTED. Returns the
+    node_id.
+
+    Id allocation: if ``node_id`` is not provided, a content-addressed
+    id is derived from ``canonical_label|node_type|graph_scope``. Same
+    triple → same id, so callers using ``on_conflict='ignore'`` get
+    full idempotency (no duplicate event either)."""
+    _assert_write_locked(con)
+    nid = node_id or content_addressed_id("node", f"{canonical_label}|{node_type}|{graph_scope}")
+    if on_conflict == "ignore" and _exists(con, "nodes", "node_id", nid):
+        return nid  # row exists; no INSERT, no event — fully idempotent
+    con.execute(
+        "INSERT INTO nodes "
+        "(node_id, canonical_label, node_type, embedding, graph_scope, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            nid, canonical_label, node_type,
+            list(embedding) if embedding is not None else None,
+            graph_scope, _maybe_json(metadata),
+        ],
+    )
+    # Typed event AFTER the row commits — the Pydantic Literal validators
+    # on node_type and graph_scope raise here if the caller passed
+    # something the DB CHECK would also reject. We get both layers.
+    emit_typed(
+        investigation_id,
+        GraphNodeInsertedPayload(
+            node_id=nid,
+            canonical_label=canonical_label,
+            node_type=node_type,  # type: ignore[arg-type]
+            graph_scope=graph_scope,  # type: ignore[arg-type]
+            has_embedding=embedding is not None,
+        ),
+        parent_event_id=parent_event_id,
+        role="connector",
+    )
+    return nid
+
+
+# ---------------------------------------------------------------------------
+# Edges
+# ---------------------------------------------------------------------------
+
+
+def insert_edge(
+    con: LockedConnection,
+    *,
+    source_node_id: str,
+    target_node_id: str,
+    relation: str,
+    source_tier: int,
+    extraction_confidence: float,
+    graph_scope: str,
+    investigation_id: str,
+    chunk_id: Optional[str] = None,
+    source_document_id: Optional[str] = None,
+    valid_from: Optional[datetime] = None,
+    metadata: Optional[Any] = None,
+    edge_id: Optional[str] = None,
+    parent_event_id: Optional[str] = None,
+    on_conflict: OnConflict = "error",
+) -> str:
+    """Insert one edge row AND emit GRAPH_EDGE_INSERTED. Returns the
+    edge_id.
+
+    Id allocation: if ``edge_id`` is not provided, a content-addressed
+    id is derived from ``(source_node_id, relation, target_node_id,
+    chunk_id)``. Tying chunk_id into the hash means the same triple
+    from different chunks gets distinct ids — that's the desired
+    behavior for evidence-attributed graphs."""
+    _assert_write_locked(con)
+    eid = edge_id or content_addressed_id(
+        "edge",
+        f"{source_node_id}|{relation}|{target_node_id}|{chunk_id or '-'}",
+    )
+    if on_conflict == "ignore" and _exists(con, "edges", "edge_id", eid):
+        return eid
+    con.execute(
+        "INSERT INTO edges "
+        "(edge_id, source_node_id, target_node_id, relation, chunk_id, "
+        " source_document_id, source_tier, extraction_confidence, valid_from, "
+        " graph_scope, investigation_id, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            eid, source_node_id, target_node_id, relation, chunk_id,
+            source_document_id, int(source_tier), float(extraction_confidence),
+            valid_from or datetime(1970, 1, 1),
+            graph_scope, investigation_id, _maybe_json(metadata),
+        ],
+    )
+    emit_typed(
+        investigation_id,
+        GraphEdgeInsertedPayload(
+            edge_id=eid,
+            source_node_id=source_node_id,
+            target_node_id=target_node_id,
+            relation=relation,
+            source_document_id=source_document_id,
+            chunk_id=chunk_id,
+            source_tier=int(source_tier),
+            extraction_confidence=float(extraction_confidence),
+            graph_scope=graph_scope,  # type: ignore[arg-type]
+        ),
+        parent_event_id=parent_event_id,
+        role="connector",
+    )
+    return eid

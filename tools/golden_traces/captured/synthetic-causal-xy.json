@@ -1,0 +1,64 @@
+{
+  "trace_id": "gt-synthetic-001",
+  "captured_at": "2026-05-17T10:00:00Z",
+  "schema_version": 1,
+  "researchmaxx_commit": "synthetic",
+  "investigation_id": "synthetic-causal-xy",
+  "target_question": "Is X causally related to Y?",
+  "role_calls": [
+    {
+      "sequence_index": 0,
+      "role": "decomposer",
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "input_json": {
+        "target_question": "Is X causally related to Y?"
+      },
+      "input_text": null,
+      "output_json": {
+        "sub_questions": [
+          "What does X measure?",
+          "What does Y measure?",
+          "Is the link causal or correlative?",
+          "What confounders apply?",
+          "What temporal lag is required?"
+        ]
+      },
+      "output_text": null,
+      "input_hash": "11dad74022a359fd9f38d70161688f10b4e64c203a6dd621e3ced2e87e084bd3",
+      "output_hash": "7cf141589676ecc3ce3dd36d80bab3f339435669c8aecd7f3d7bc95d99d3d06e",
+      "latency_ms": null,
+      "input_tokens": 120,
+      "output_tokens": 80
+    },
+    {
+      "sequence_index": 1,
+      "role": "evidence_retriever",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "input_json": {
+        "sub_question": "What does X measure?",
+        "top_k": 5
+      },
+      "input_text": null,
+      "output_json": {
+        "chunk_ids": [
+          "chunk-1",
+          "chunk-2",
+          "chunk-3"
+        ],
+        "avg_similarity": 0.78
+      },
+      "output_text": null,
+      "input_hash": "d35729bc8e219163016aa459f0a5b2eeebd00f3470a071eb94a438ba07d161f8",
+      "output_hash": "e0f175ad4a00d41af280d6aee9e69179b3c48757e7d62ed35d774cfa45ab0089",
+      "latency_ms": null,
+      "input_tokens": 60,
+      "output_tokens": 40
+    }
+  ],
+  "final_synthesis_id": "syn-synthetic-001",
+  "final_thesis_text": null,
+  "final_thesis_hash": null,
+  "operator_notes": "Synthetic fixture for Sprint 5 extraction-test scaffolding. Not from a real investigation."
+}

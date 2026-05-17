@@ -1,0 +1,44 @@
+"""Typed event log — the on-policy RL trajectory substrate.
+
+See ``events.py`` for emit/seal/query operations.
+Payload schemas (the discriminated union) live in ``substrate/schemas/events.py``;
+this package re-exports ``ActionType`` and ``Event`` for back-compat with
+callers that import directly from ``substrate.event_log``.
+"""
+
+from ..schemas.events import (  # re-exported from the canonical schema source
+    DEFAULT_POLICY_ID,
+    EVENT_SCHEMA_VERSION,
+    ActionType,
+    Event,
+)
+from .events import (
+    EventEmitter,
+    action_counts,
+    default_events_dir,
+    emit_typed,
+    log_event,
+    seal_investigation,
+    trajectory,
+    validate_trajectory,
+)
+
+# Keep ANTIEK_PARAM_VERSION importable here too — many call sites read it
+# alongside ActionType.
+from ..constants import ANTIEK_PARAM_VERSION  # noqa: E402
+
+__all__ = [
+    "ANTIEK_PARAM_VERSION",
+    "EVENT_SCHEMA_VERSION",
+    "DEFAULT_POLICY_ID",
+    "ActionType",
+    "Event",
+    "EventEmitter",
+    "action_counts",
+    "default_events_dir",
+    "emit_typed",
+    "log_event",
+    "seal_investigation",
+    "trajectory",
+    "validate_trajectory",
+]

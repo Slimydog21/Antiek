@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The pdf.js text layer needs to overlay the canvas with transparent
+   text so selection works against the rendered glyphs. We position it
+   absolutely on top of the canvas; pdf.js itself sets per-span
+   positioning via the renderTextLayer helper. */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.18;             /* visible enough to debug; lower = invisible-but-selectable */
+  line-height: 1;
+  user-select: text;
+}
+.pdf-text-layer ::selection {
+  background: rgba(59, 130, 246, 0.35);  /* tailwind blue-500 alpha */
+}
+.pdf-text-layer span {
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  color: transparent;        /* glyphs come from canvas; text layer is the click target */
+}
+
+html, body, #root {
+  height: 100%;
+}

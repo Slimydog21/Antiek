@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+#
+# Antiek nightly backup.
+#
+# Snapshots DuckDB consistently (EXPORT DATABASE → directory of SQL +
+# Parquet), rsyncs the append-only event log and knowledge-skills dir,
+# tar+gzip, uploads to R2. Retention enforced in-script.
+#
+# Runs as root via cron at {{ backup_cron_hour }}:{{ backup_cron_minute }}
+# UTC. Output to /var/log/antiek-backup.log.
+#
+# Why EXPORT DATABASE not just `cp antiek.duckdb backup.duckdb`?
+#   Copying an open DuckDB file produces an inconsistent snapshot — the
+#   write-ahead log and the main file can be out of sync. EXPORT DATABASE
+#   takes a consistent transactional snapshot via DuckDB's own facility.
+#   It writes a directory of Parquet shards + a load.sql script; IMPORT
+#   DATABASE on the other end reconstitutes it.
+#
+# Why rsync the event log directly?
+#   The event log is append-only .jsonl files. Reading them while the
+#   substrate is still writing is safe (the substrate never rewrites or
+#   truncates). A torn line at the tail is fine — IMPORTantly, the
+#   substrate's startup re-reads the log idempotently.
+
+set -euo pipefail
+
+readonly STATE_DIR="{{ antiek_state_dir }}"
+readonly BUCKET="{{ backup_bucket_name }}"
+readonly RETENTION_DAYS="{{ backup_retention_days }}"
+readonly TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+readonly STAGING="/var/tmp/antiek-backup-${TIMESTAMP}"
+readonly ARCHIVE="/var/tmp/antiek-backup-${TIMESTAMP}.tar.gz"
+readonly LOG_PREFIX="[$(date -u --iso-8601=seconds)]"
+
+echo "${LOG_PREFIX} backup starting → r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz"
+
+# Always clean staging on exit, even if something below fails. Prevents
+# /var/tmp filling up if a partial backup is left behind.
+cleanup() {
+    rm -rf "${STAGING}" "${ARCHIVE}"
+}
+trap cleanup EXIT
+
+mkdir -p "${STAGING}"
+
+# ── 1. DuckDB consistent snapshot ─────────────────────────────────────────
+# Run as the antiek user so file ownership matches. DuckDB CLI isn't in
+# Ubuntu's apt repos as of 24.04, so we use the substrate's own venv —
+# the duckdb Python package is pinned in pyproject.toml and works headless.
+echo "${LOG_PREFIX} exporting DuckDB → ${STAGING}/duckdb"
+sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
+import duckdb
+con = duckdb.connect("${STATE_DIR}/antiek.duckdb", read_only=True)
+con.execute("EXPORT DATABASE '${STAGING}/duckdb' (FORMAT PARQUET);")
+con.close()
+PY
+
+# ── 2. Event log (append-only, safe to rsync live) ────────────────────────
+if [[ -d "${STATE_DIR}/research_events" ]]; then
+    echo "${LOG_PREFIX} rsync event log"
+    rsync -a "${STATE_DIR}/research_events/" "${STAGING}/research_events/"
+else
+    echo "${LOG_PREFIX} no event log directory yet; skipping"
+fi
+
+# ── 3. Knowledge skills (Phase 8 auto-patches accumulate here) ────────────
+if [[ -d "${STATE_DIR}/knowledge_skills" ]]; then
+    echo "${LOG_PREFIX} rsync knowledge_skills"
+    rsync -a "${STATE_DIR}/knowledge_skills/" "${STAGING}/knowledge_skills/"
+else
+    echo "${LOG_PREFIX} no knowledge_skills directory yet; skipping"
+fi
+
+# ── 4. Compress + upload ──────────────────────────────────────────────────
+echo "${LOG_PREFIX} tar+gzip"
+tar -czf "${ARCHIVE}" -C "/var/tmp" "$(basename "${STAGING}")"
+
+readonly ARCHIVE_SIZE_HUMAN="$(du -h "${ARCHIVE}" | cut -f1)"
+echo "${LOG_PREFIX} archive size: ${ARCHIVE_SIZE_HUMAN}"
+
+echo "${LOG_PREFIX} uploading to R2"
+rclone copyto "${ARCHIVE}" "r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz" \
+    --config /etc/rclone/rclone.conf
+
+# ── 5. Retention — prune old backups ──────────────────────────────────────
+# `|| true` because a delete failure shouldn't fail the whole backup
+# (more important to keep new backups landing than to keep old ones pruned).
+echo "${LOG_PREFIX} pruning backups older than ${RETENTION_DAYS}d"
+rclone delete --min-age "${RETENTION_DAYS}d" \
+    "r2:${BUCKET}/nightly/" \
+    --include "*.tar.gz" \
+    --config /etc/rclone/rclone.conf \
+    || echo "${LOG_PREFIX} WARN: retention prune failed (non-fatal)"
+
+echo "${LOG_PREFIX} backup complete"

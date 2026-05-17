@@ -1,0 +1,12 @@
+# Real inventory with VM IP — generated from inventory.ini.example.
+inventory.ini
+
+# R2 credentials passed via --extra-vars. Generated separately from
+# Cloudflare dashboard after Terraform creates the bucket.
+r2-creds.yml
+
+# Ansible retry files (created on failed plays).
+*.retry
+
+# Cached fact-gathering output.
+*.cache

@@ -1,0 +1,730 @@
+#!/usr/bin/env python3
+"""
+Typed event log for Antiek — the on-policy RL trajectory substrate.
+
+Migrated from Researchmaxx ``events.py`` (2026-05-16). The shape is
+unchanged; what's new is the Section "Wrestling" of the ActionType enum,
+which captures the document-wrestling loop documented in
+``docs/architecture_notes.md`` §9.
+
+This is the "typed events first" recommendation, refined by the
+architectural directive: **trajectory data is Parquet, append-only,
+separated from the graph (DuckDB).** The graph stays in
+``~/.antiek/research_graph.duckdb``; events live independently at
+``~/.antiek/research_events/``.
+
+Storage model
+-------------
+Per investigation:
+  Live phase  : ``{ANTIEK_RESEARCH_EVENTS_DIR}/{investigation_id}.jsonl``
+                One JSON object per line, append-only. No read-modify-write.
+  Sealed phase: ``{ANTIEK_RESEARCH_EVENTS_DIR}/{investigation_id}.parquet``
+                Atomic rewrite of the JSONL at investigation completion.
+                After sealing, the JSONL is deleted.
+
+Why append-only JSONL → sealed Parquet (not direct Parquet)?
+  Parquet is columnar and not append-friendly mid-investigation. Writing
+  to JSONL during the live run gives us crash-safety and zero contention;
+  sealing to Parquet at completion gives us the columnar, schema-typed
+  long-term format the downstream RL pipelines want. This is the common
+  pattern in event-sourcing systems (write-ahead log → compacted snapshot).
+
+Why not DuckDB?
+  The graph DB is the substrate for the knowledge graph. Trajectory data
+  is conceptually different: append-only, schema-versioned over time,
+  consumed by a different toolchain (Prime Intellect verifiers / prime-rl /
+  Hosted Training). Mixing them in DuckDB couples lifecycle, complicates
+  per-policy data partitioning, and forecloses moving the trajectory store
+  to object storage later without a migration. Querying remains
+  DuckDB-native via ``read_parquet('research_events/*.parquet')``.
+
+Schema (v3)
+-----------
+Each event row carries:
+  event_id          stable unique id
+  investigation_id  scope key
+  synthesis_id      nullable; set once archive_synthesis returns
+  phase             nullable; maps to AUTONOMOUS_RESEARCH_PHASES
+  role              nullable; e.g. 'decomposer', 'note_taker', 'grounder'
+  action_type       typed; see ActionType enum
+  payload           opaque JSON dict (action-type-specific)
+  parent_event_id   nullable; lets us reconstruct nested spans
+  policy_id         REQUIRED; identifies the policy that produced the
+                    artifact. Format: ``{model_id}/{prompt_version}`` for
+                    LLM calls; ``orchestrator-deterministic`` for code-only
+                    events. This is what lets downstream pipelines exclude
+                    closed-weight trajectories from open-weight RL training.
+  param_version     ANTIEK_PARAM_VERSION at emission time
+  schema_version    bumps when payload shape changes for a given action
+  emitted_at        ISO8601 UTC
+  document_id       nullable; set for wrestling-loop events anchored to a
+                    document. Optional on every other event.
+
+Failure handling
+----------------
+Telemetry must never break a real synthesis. Every emit is wrapped in
+``_safe``; errors print to stderr and return None.
+
+Environment toggles
+-------------------
+ANTIEK_RESEARCH_EVENTS_DIR    override default events dir
+ANTIEK_EVENTS_DISABLED        "1"/"true"/"yes" → no events written
+ANTIEK_HOME                   override base dir (defaults to ~/.antiek)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+import traceback
+import uuid
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterator, List, Optional
+
+# Package-relative imports work in installed mode (`pip install -e .`).
+# For direct-script execution (`python events.py ...`), fall back to a
+# sys.path-based lookup so the CLI still works in dev.
+try:
+    from ..constants import ANTIEK_PARAM_VERSION
+    from ..schemas.events import (
+        DEFAULT_POLICY_ID,
+        EVENT_SCHEMA_VERSION,
+        ActionType,
+        Event,
+        TypedPayload,
+    )
+except ImportError:  # pragma: no cover — direct-script fallback
+    _here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(_here))  # substrate/
+    from constants import ANTIEK_PARAM_VERSION  # type: ignore[no-redef]
+    from schemas.events import (  # type: ignore[no-redef]
+        DEFAULT_POLICY_ID,
+        EVENT_SCHEMA_VERSION,
+        ActionType,
+        Event,
+        TypedPayload,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+
+def default_events_dir() -> str:
+    return os.environ.get(
+        "ANTIEK_RESEARCH_EVENTS_DIR",
+        os.path.join(
+            os.environ.get("ANTIEK_HOME", os.path.expanduser("~/.antiek")),
+            "research_events",
+        ),
+    )
+
+
+def _jsonl_path(investigation_id: str, *, events_dir: Optional[str] = None) -> str:
+    d = events_dir or default_events_dir()
+    return os.path.join(d, f"{investigation_id}.jsonl")
+
+
+def _parquet_path(investigation_id: str, *, events_dir: Optional[str] = None) -> str:
+    d = events_dir or default_events_dir()
+    return os.path.join(d, f"{investigation_id}.parquet")
+
+
+# NOTE: ``ActionType``, ``EVENT_SCHEMA_VERSION``, ``DEFAULT_POLICY_ID`` and the
+# typed ``Event`` envelope live in ``substrate/schemas/events.py``. They are
+# imported above and re-exported by ``substrate/event_log/__init__.py`` so
+# legacy imports of the form ``from substrate.event_log import ActionType``
+# keep working. Schemas is the bottom of the dependency stack; this module
+# is purely operations (emit, seal, query).
+
+
+# ---------------------------------------------------------------------------
+# Low-level emit
+# ---------------------------------------------------------------------------
+
+
+def _safe(fn, *args, **kwargs):
+    """Telemetry must never break a real synthesis."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as e:  # pragma: no cover — diagnostic only
+        print(f"events emit failed (non-fatal): {e!r}", file=sys.stderr)
+        return None
+
+
+def _new_event_id() -> str:
+    return f"evt-{uuid.uuid4().hex[:12]}-{int(time.time() * 1000)}"
+
+
+def _coerce(at: "str | ActionType") -> str:
+    return at.value if isinstance(at, ActionType) else at
+
+
+def _events_disabled() -> bool:
+    return os.environ.get("ANTIEK_EVENTS_DISABLED", "").lower() in ("1", "true", "yes")
+
+
+def _append_jsonl(path: str, row: Dict[str, Any]):
+    """Append a single JSON line. Open in 'a' mode — atomic at OS level for
+    single-line writes ≤ PIPE_BUF. We never write multi-line payloads."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    line = json.dumps(row, default=str, separators=(",", ":"))
+    if "\n" in line:
+        line = line.replace("\n", "\\n")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
+def log_event(
+    investigation_id: str,
+    action_type: "str | ActionType",
+    *,
+    payload: Optional[Dict[str, Any]] = None,
+    parent_event_id: Optional[str] = None,
+    synthesis_id: Optional[str] = None,
+    phase: Optional[int] = None,
+    role: Optional[str] = None,
+    policy_id: Optional[str] = None,
+    document_id: Optional[str] = None,
+    events_dir: Optional[str] = None,
+) -> Optional[str]:
+    """Emit a single typed event into the investigation's JSONL trajectory.
+
+    Returns event_id on success, None when events are disabled or on failure.
+    Non-fatal: errors print to stderr.
+
+    ``document_id`` is set on wrestling-loop events to anchor them to a
+    specific source document. It is None for all Loop 1 events.
+    """
+    if _events_disabled():
+        return None
+
+    event_id = _new_event_id()
+    row = {
+        "event_id": event_id,
+        "investigation_id": investigation_id,
+        "synthesis_id": synthesis_id,
+        "phase": phase,
+        "role": role,
+        "action_type": _coerce(action_type),
+        "payload": payload or {},
+        "parent_event_id": parent_event_id,
+        "policy_id": policy_id or DEFAULT_POLICY_ID,
+        "param_version": ANTIEK_PARAM_VERSION,
+        "schema_version": EVENT_SCHEMA_VERSION,
+        "emitted_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "document_id": document_id,
+    }
+    path = _jsonl_path(investigation_id, events_dir=events_dir)
+    if _safe(_append_jsonl, path, row) is None:
+        return event_id
+    return event_id
+
+
+# ---------------------------------------------------------------------------
+# Typed emit — validated against substrate/schemas/events.py
+#
+# Use this path for any action_type whose payload model is defined in
+# substrate/schemas/events.py (the 19 currently-schemaed variants).
+# The legacy ``log_event`` path above still works for untyped action types
+# (the Researchmaxx vocabulary that hasn't been schemaed yet — see
+# architecture_notes §7 for the discipline that all variants get schemas
+# over time).
+# ---------------------------------------------------------------------------
+
+
+def emit_typed(
+    investigation_id: str,
+    payload: Any,  # one of the TypedPayload variants — validated by Event below
+    *,
+    parent_event_id: Optional[str] = None,
+    synthesis_id: Optional[str] = None,
+    phase: Optional[int] = None,
+    role: Optional[str] = None,
+    policy_id: Optional[str] = None,
+    document_id: Optional[str] = None,
+    events_dir: Optional[str] = None,
+) -> Optional[str]:
+    """Emit a typed event. ``action_type`` is derived from the payload's
+    discriminator; the Event envelope validates that the payload matches a
+    known variant, that wrestling events carry ``document_id``, and that
+    timestamps serialize as ISO 8601 with the ``Z`` suffix.
+
+    Returns event_id on success, None when events are disabled.
+    Non-fatal: validation errors are RE-RAISED (because a malformed event
+    is a substrate bug, not telemetry noise), but write errors print to
+    stderr and return the event_id so the caller's parent-stack stays
+    consistent.
+    """
+    if _events_disabled():
+        return None
+
+    event_id = _new_event_id()
+    # Construct the typed envelope; Pydantic validates the discriminator,
+    # the wrestling document_id requirement, and the payload field types.
+    # We intentionally do NOT _safe() this call — schema bugs should fail
+    # loudly.
+    event = Event(
+        event_id=event_id,
+        investigation_id=investigation_id,
+        synthesis_id=synthesis_id,
+        phase=phase,
+        role=role,
+        action_type=payload.action_type,
+        payload=payload,
+        parent_event_id=parent_event_id,
+        policy_id=policy_id or DEFAULT_POLICY_ID,
+        param_version=ANTIEK_PARAM_VERSION,
+        schema_version=EVENT_SCHEMA_VERSION,
+        emitted_at=datetime.now(timezone.utc),
+        document_id=document_id,
+    )
+
+    row = event.model_dump(mode="json")
+    path = _jsonl_path(investigation_id, events_dir=events_dir)
+    _safe(_append_jsonl, path, row)
+    return event_id
+
+
+# ---------------------------------------------------------------------------
+# EventEmitter — orchestrator-side helper with parent linkage + policy hints
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class EventEmitter:
+    """Stateful emitter held for the lifetime of an investigation.
+
+    Maintains a parent-event stack so nested spans inherit the right
+    parent_event_id. Carries a default policy_id for non-LLM events; LLM
+    calls override via ``emit(..., policy_id=...)``.
+
+    Also carries an optional default ``document_id`` which is convenient for
+    wrestling-loop callers that emit many document-scoped events in a row.
+    """
+
+    investigation_id: str
+    synthesis_id: Optional[str] = None
+    events_dir: Optional[str] = None
+    default_policy_id: str = DEFAULT_POLICY_ID
+    default_document_id: Optional[str] = None
+    enabled: bool = True
+    _parent_stack: List[str] = field(default_factory=list)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        investigation_id: str,
+        synthesis_id: Optional[str] = None,
+        events_dir: Optional[str] = None,
+        default_policy_id: str = DEFAULT_POLICY_ID,
+        default_document_id: Optional[str] = None,
+    ) -> "EventEmitter":
+        return cls(
+            investigation_id=investigation_id,
+            synthesis_id=synthesis_id,
+            events_dir=events_dir,
+            default_policy_id=default_policy_id,
+            default_document_id=default_document_id,
+            enabled=not _events_disabled(),
+        )
+
+    def set_synthesis_id(self, synthesis_id: str):
+        self.synthesis_id = synthesis_id
+
+    def set_document_id(self, document_id: Optional[str]):
+        """Convenience for wrestling-loop callers entering a per-document span."""
+        self.default_document_id = document_id
+
+    def emit(
+        self,
+        action_type: "str | ActionType",
+        *,
+        payload: Optional[Dict[str, Any]] = None,
+        phase: Optional[int] = None,
+        role: Optional[str] = None,
+        policy_id: Optional[str] = None,
+        parent_event_id: Optional[str] = None,
+        document_id: Optional[str] = None,
+    ) -> Optional[str]:
+        if not self.enabled:
+            return None
+        parent = parent_event_id if parent_event_id is not None else (
+            self._parent_stack[-1] if self._parent_stack else None
+        )
+        return log_event(
+            self.investigation_id,
+            action_type,
+            payload=payload,
+            parent_event_id=parent,
+            synthesis_id=self.synthesis_id,
+            phase=phase,
+            role=role,
+            policy_id=policy_id or self.default_policy_id,
+            document_id=document_id if document_id is not None else self.default_document_id,
+            events_dir=self.events_dir,
+        )
+
+    def emit_typed(
+        self,
+        payload: Any,  # one of the TypedPayload variants
+        *,
+        phase: Optional[int] = None,
+        role: Optional[str] = None,
+        policy_id: Optional[str] = None,
+        parent_event_id: Optional[str] = None,
+        document_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Typed counterpart to ``emit``. Validates the payload against the
+        discriminated union in ``substrate/schemas/events.py`` and writes a
+        row whose ``action_type`` is derived from the payload variant.
+
+        The same parent-stack and document-id inheritance rules apply as for
+        ``emit``.
+        """
+        if not self.enabled:
+            return None
+        parent = parent_event_id if parent_event_id is not None else (
+            self._parent_stack[-1] if self._parent_stack else None
+        )
+        return emit_typed(
+            self.investigation_id,
+            payload,
+            parent_event_id=parent,
+            synthesis_id=self.synthesis_id,
+            phase=phase,
+            role=role,
+            policy_id=policy_id or self.default_policy_id,
+            document_id=document_id if document_id is not None else self.default_document_id,
+            events_dir=self.events_dir,
+        )
+
+    @contextmanager
+    def span(
+        self,
+        start_action: "str | ActionType",
+        end_action: "str | ActionType",
+        *,
+        role: Optional[str] = None,
+        phase: Optional[int] = None,
+        policy_id: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        document_id: Optional[str] = None,
+        failed_action: "str | ActionType" = ActionType.ROLE_CALL_FAILED,
+    ) -> Iterator[Optional[str]]:
+        """Emit start, push onto parent stack, yield start_id, emit end on
+        success or failed_action on exception. Either way, pop the stack."""
+        start_id = self.emit(
+            start_action, role=role, phase=phase,
+            policy_id=policy_id, payload=payload, document_id=document_id,
+        )
+        if start_id and self.enabled:
+            self._parent_stack.append(start_id)
+        try:
+            yield start_id
+        except Exception:
+            tb = traceback.format_exc(limit=8)
+            self.emit(
+                failed_action,
+                role=role,
+                phase=phase,
+                policy_id=policy_id,
+                document_id=document_id,
+                payload={"start_event_id": start_id, "traceback_tail": tb[-2000:]},
+                parent_event_id=start_id,
+            )
+            raise
+        else:
+            self.emit(
+                end_action,
+                role=role,
+                phase=phase,
+                policy_id=policy_id,
+                document_id=document_id,
+                payload={"start_event_id": start_id},
+                parent_event_id=start_id,
+            )
+        finally:
+            if start_id and self._parent_stack and self._parent_stack[-1] == start_id:
+                self._parent_stack.pop()
+
+
+# ---------------------------------------------------------------------------
+# Sealing — JSONL → Parquet at investigation completion
+# ---------------------------------------------------------------------------
+
+
+def seal_investigation(
+    investigation_id: str,
+    *,
+    events_dir: Optional[str] = None,
+    delete_jsonl: bool = True,
+) -> Optional[str]:
+    """Convert the live JSONL trajectory to its sealed Parquet form.
+
+    Called by phase 9 (or by ``archive_synthesis`` if the user wires it there).
+    Returns the parquet path on success, None if the JSONL didn't exist or
+    pyarrow isn't available.
+
+    Idempotent: if the Parquet already exists, we re-seal (overwrite) only
+    if the JSONL is newer (mtime check).
+    """
+    jl = _jsonl_path(investigation_id, events_dir=events_dir)
+    pq = _parquet_path(investigation_id, events_dir=events_dir)
+
+    if not os.path.exists(jl):
+        if os.path.exists(pq):
+            return pq  # already sealed
+        return None
+
+    if os.path.exists(pq) and os.path.getmtime(pq) >= os.path.getmtime(jl):
+        if delete_jsonl:
+            os.remove(jl)
+        return pq
+
+    try:
+        import pyarrow as pa  # type: ignore[import]
+        import pyarrow.parquet as pq_writer  # type: ignore[import]
+    except ImportError:
+        print(
+            "events.seal_investigation: pyarrow not installed; "
+            "leaving JSONL in place. Install pyarrow to enable Parquet seal.",
+            file=sys.stderr,
+        )
+        return None
+
+    rows: List[Dict[str, Any]] = []
+    with open(jl, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                print(f"events.seal: skipping malformed line: {e!r}", file=sys.stderr)
+                continue
+    if not rows:
+        return None
+
+    for r in rows:
+        if isinstance(r.get("payload"), (dict, list)):
+            r["payload"] = json.dumps(r["payload"], default=str)
+
+    table = pa.Table.from_pylist(rows)
+    tmp = pq + ".tmp"
+    pq_writer.write_table(table, tmp, compression="zstd")
+    os.replace(tmp, pq)
+
+    if delete_jsonl:
+        os.remove(jl)
+    return pq
+
+
+# ---------------------------------------------------------------------------
+# Query helpers (analytics; not called by orchestrator)
+# ---------------------------------------------------------------------------
+
+
+def trajectory(
+    investigation_id: str,
+    *,
+    events_dir: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Read all events for an investigation, ordered by emission time.
+    Reads sealed Parquet if present; falls back to live JSONL otherwise.
+    """
+    pq = _parquet_path(investigation_id, events_dir=events_dir)
+    jl = _jsonl_path(investigation_id, events_dir=events_dir)
+
+    rows: List[Dict[str, Any]] = []
+    if os.path.exists(pq):
+        try:
+            import pyarrow.parquet as pq_reader  # type: ignore[import]
+            table = pq_reader.read_table(pq)
+            rows = table.to_pylist()
+        except ImportError:
+            print("pyarrow not installed; reading sealed Parquet requires pyarrow.",
+                  file=sys.stderr)
+    elif os.path.exists(jl):
+        with open(jl, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+
+    for r in rows:
+        if isinstance(r.get("payload"), str):
+            try:
+                r["payload"] = json.loads(r["payload"])
+            except (TypeError, ValueError):
+                pass
+
+    rows.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
+    return rows
+
+
+def action_counts(
+    investigation_id: Optional[str] = None,
+    *,
+    events_dir: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Per-action_type counts. If investigation_id is given, scoped to that
+    investigation; otherwise reads every Parquet/JSONL in the events dir.
+    """
+    counts: Dict[str, int] = {}
+    if investigation_id:
+        for r in trajectory(investigation_id, events_dir=events_dir):
+            at = r.get("action_type", "<missing>")
+            counts[at] = counts.get(at, 0) + 1
+    else:
+        d = events_dir or default_events_dir()
+        if not os.path.isdir(d):
+            return []
+        for fn in sorted(os.listdir(d)):
+            if fn.endswith(".parquet"):
+                iid = fn[: -len(".parquet")]
+            elif fn.endswith(".jsonl"):
+                iid = fn[: -len(".jsonl")]
+            else:
+                continue
+            for r in trajectory(iid, events_dir=events_dir):
+                at = r.get("action_type", "<missing>")
+                counts[at] = counts.get(at, 0) + 1
+    return [{"action_type": k, "count": v}
+            for k, v in sorted(counts.items(), key=lambda kv: -kv[1])]
+
+
+def validate_trajectory(
+    investigation_id: str,
+    *,
+    events_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Sanity-check a trajectory: dangling parent refs, ordering, required
+    fields. Returns a report dict; non-zero ``issues`` count = problems found.
+    """
+    rows = trajectory(investigation_id, events_dir=events_dir)
+    seen_ids: set = set()
+    issues: List[str] = []
+    policies: set = set()
+    for i, r in enumerate(rows):
+        eid = r.get("event_id")
+        if not eid:
+            issues.append(f"row {i}: missing event_id")
+            continue
+        seen_ids.add(eid)
+        if not r.get("action_type"):
+            issues.append(f"row {i}: missing action_type")
+        if r.get("policy_id"):
+            policies.add(r["policy_id"])
+    seen2: set = set()
+    for i, r in enumerate(rows):
+        eid = r.get("event_id")
+        parent = r.get("parent_event_id")
+        if parent and parent not in seen2:
+            issues.append(f"row {i} ({r.get('action_type')}): "
+                          f"parent_event_id {parent} not seen earlier in stream")
+        if eid:
+            seen2.add(eid)
+    return {
+        "investigation_id": investigation_id,
+        "row_count": len(rows),
+        "unique_event_ids": len(seen_ids),
+        "policies_seen": sorted(policies),
+        "issues": issues,
+    }
+
+
+# ---------------------------------------------------------------------------
+# CLI — diagnostic surface only
+# ---------------------------------------------------------------------------
+
+
+def _cmd_emit(args):
+    payload = json.loads(args.payload) if args.payload else None
+    eid = log_event(
+        args.investigation_id, args.action_type,
+        payload=payload, phase=args.phase, role=args.role,
+        synthesis_id=args.synthesis_id, parent_event_id=args.parent,
+        policy_id=args.policy_id, document_id=args.document_id,
+        events_dir=args.events_dir,
+    )
+    print(eid or "<failed-or-disabled>")
+
+
+def _cmd_trajectory(args):
+    print(json.dumps(trajectory(args.investigation_id, events_dir=args.events_dir),
+                     indent=2, default=str))
+
+
+def _cmd_counts(args):
+    print(json.dumps(action_counts(args.investigation_id, events_dir=args.events_dir),
+                     indent=2))
+
+
+def _cmd_seal(args):
+    out = seal_investigation(args.investigation_id, events_dir=args.events_dir,
+                             delete_jsonl=not args.keep_jsonl)
+    print(out or "<nothing-to-seal>")
+
+
+def _cmd_validate(args):
+    print(json.dumps(validate_trajectory(args.investigation_id, events_dir=args.events_dir),
+                     indent=2))
+
+
+def main():
+    import argparse
+    p = argparse.ArgumentParser(description="Antiek typed event log (Parquet trajectory)")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("emit")
+    sp.add_argument("--investigation-id", required=True)
+    sp.add_argument("--action-type", required=True)
+    sp.add_argument("--payload")
+    sp.add_argument("--phase", type=int)
+    sp.add_argument("--role")
+    sp.add_argument("--synthesis-id")
+    sp.add_argument("--parent")
+    sp.add_argument("--policy-id")
+    sp.add_argument("--document-id")
+    sp.add_argument("--events-dir")
+    sp.set_defaults(func=_cmd_emit)
+
+    sp = sub.add_parser("trajectory")
+    sp.add_argument("--investigation-id", required=True)
+    sp.add_argument("--events-dir")
+    sp.set_defaults(func=_cmd_trajectory)
+
+    sp = sub.add_parser("counts")
+    sp.add_argument("--investigation-id")
+    sp.add_argument("--events-dir")
+    sp.set_defaults(func=_cmd_counts)
+
+    sp = sub.add_parser("seal", help="Roll JSONL → Parquet for an investigation")
+    sp.add_argument("--investigation-id", required=True)
+    sp.add_argument("--keep-jsonl", action="store_true")
+    sp.add_argument("--events-dir")
+    sp.set_defaults(func=_cmd_seal)
+
+    sp = sub.add_parser("validate", help="Sanity check a trajectory")
+    sp.add_argument("--investigation-id", required=True)
+    sp.add_argument("--events-dir")
+    sp.set_defaults(func=_cmd_validate)
+
+    args = p.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,484 @@
+---
+# ──────────────────────────────────────────────────────────────────────────
+# Antiek production VM — initial bring-up.
+#
+# Runs against a fresh Hetzner Ubuntu 24.04 image, connecting as root
+# (the only user that exists yet). Idempotent: re-running produces the
+# same end state, no errors. Tasks are tagged so an operator running
+# `ansible-playbook ... --tags caddy` can re-run just the Caddy block.
+#
+# Required at invocation time:
+#   - inventory.ini (copied from inventory.ini.example, IP filled in)
+#   - r2-creds.yml passed via --extra-vars @r2-creds.yml. Shape:
+#         r2_endpoint: "https://<account-id>.r2.cloudflarestorage.com"
+#         r2_access_key: "<R2_ACCESS_KEY_ID>"
+#         r2_secret_key: "<R2_SECRET_ACCESS_KEY>"
+#     (Generated in the Cloudflare dashboard after Terraform creates the
+#     bucket. See runbooks/first-deploy.md step 10.)
+#
+# After this playbook completes, the operator still needs to:
+#   1. ssh root@<ip> sudoedit /etc/antiek/secrets.env — paste OPENROUTER_API_KEY
+#   2. ssh root@<ip> systemctl start antiek
+#   3. curl https://api.antiek.ai/health
+# ──────────────────────────────────────────────────────────────────────────
+
+- name: Antiek substrate — provision a fresh VM
+  hosts: antiek_prod
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    # ── Sanity: R2 creds were passed in ────────────────────────────────────
+    - name: assert R2 credentials present
+      ansible.builtin.assert:
+        that:
+          - r2_endpoint is defined
+          - r2_access_key is defined
+          - r2_secret_key is defined
+        fail_msg: |
+          R2 credentials missing. Re-run with:
+            ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml
+          See runbooks/first-deploy.md step 10 for the r2-creds.yml shape.
+
+  tasks:
+    # ──────────────────────────────────────────────────────────────────────
+    # 1. System update + base packages
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: apt update + upgrade
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: 3600
+      tags: [base]
+
+    - name: install base packages
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-venv
+          - python3-pip
+          - python3-dev
+          - git
+          - build-essential
+          - ufw
+          - unattended-upgrades
+          - rsync
+          - curl
+          - ca-certificates
+          - gnupg
+          - debian-keyring
+          - debian-archive-keyring
+          - apt-transport-https
+        state: present
+      tags: [base]
+
+    - name: install rclone for R2 uploads
+      ansible.builtin.apt:
+        name: rclone
+        state: present
+      tags: [base, backup]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 2. Unattended security upgrades (no auto-reboots)
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: enable unattended security upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/50unattended-upgrades
+        # Minimal: install security patches only; do NOT auto-reboot.
+        content: |
+          Unattended-Upgrade::Allowed-Origins {
+              "${distro_id}:${distro_codename}-security";
+              "${distro_id}ESMApps:${distro_codename}-apps-security";
+              "${distro_id}ESM:${distro_codename}-infra-security";
+          };
+          Unattended-Upgrade::Automatic-Reboot "false";
+        mode: "0644"
+      tags: [base, security]
+
+    - name: enable unattended-upgrades timer
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"
+      tags: [base, security]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 3. UFW firewall
+    # Default deny incoming. Allow 22 (SSH), 80 (Caddy ACME challenge),
+    # 443 (Caddy HTTPS). 8001 (uvicorn) deliberately NOT exposed — only
+    # Caddy reaches it via localhost.
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: ufw — default deny incoming
+      community.general.ufw:
+        default: deny
+        direction: incoming
+      tags: [firewall]
+
+    - name: ufw — default allow outgoing
+      community.general.ufw:
+        default: allow
+        direction: outgoing
+      tags: [firewall]
+
+    - name: ufw — allow SSH
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+      tags: [firewall]
+
+    - name: ufw — allow HTTP (Caddy ACME)
+      community.general.ufw:
+        rule: allow
+        port: "80"
+        proto: tcp
+      tags: [firewall]
+
+    - name: ufw — allow HTTPS
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+      tags: [firewall]
+
+    - name: ufw — enable
+      community.general.ufw:
+        state: enabled
+      tags: [firewall]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 4. Caddy — install from official repo (apt has an outdated version)
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: caddy — fetch signing key
+      ansible.builtin.get_url:
+        url: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+        dest: /usr/share/keyrings/caddy-stable-archive-keyring.gpg.armored
+        mode: "0644"
+      tags: [caddy]
+
+    - name: caddy — dearmor signing key (idempotent)
+      ansible.builtin.shell:
+        cmd: |
+          gpg --dearmor --yes \
+              -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+              /usr/share/keyrings/caddy-stable-archive-keyring.gpg.armored
+        creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      tags: [caddy]
+
+    - name: caddy — apt source
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/caddy-stable.list
+        content: |
+          deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+          deb-src [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg] https://dl.cloudsmith.io/public/caddy/stable/deb/debian any-version main
+        mode: "0644"
+      register: caddy_apt_source
+      tags: [caddy]
+
+    - name: caddy — apt update if source changed
+      ansible.builtin.apt:
+        update_cache: true
+      when: caddy_apt_source.changed
+      tags: [caddy]
+
+    - name: caddy — install
+      ansible.builtin.apt:
+        name: caddy
+        state: present
+      tags: [caddy]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 5. Antiek user
+    # No sudo. Sudo operations belong to root (the operator via SSH).
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: create antiek group
+      ansible.builtin.group:
+        name: "{{ antiek_group }}"
+        state: present
+      tags: [user]
+
+    - name: create antiek user
+      ansible.builtin.user:
+        name: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        shell: /bin/bash
+        home: "/home/{{ antiek_user }}"
+        create_home: true
+        state: present
+      tags: [user]
+
+    - name: authorize operator SSH key on antiek user
+      # Copy whatever root's authorized_keys has — that's the operator's
+      # key, uploaded by Terraform via hcloud_ssh_key.
+      ansible.posix.authorized_key:
+        user: "{{ antiek_user }}"
+        state: present
+        key: "{{ lookup('file', '/root/.ssh/authorized_keys') }}"
+      tags: [user]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 6. Repository + Python venv
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: ensure install dir
+      ansible.builtin.file:
+        path: "{{ antiek_install_dir }}"
+        state: directory
+        owner: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        mode: "0755"
+      tags: [code]
+
+    - name: clone Antiek repo
+      ansible.builtin.git:
+        repo: "{{ antiek_repo_url }}"
+        dest: "{{ antiek_install_dir }}"
+        version: "{{ antiek_repo_branch }}"
+        force: false # don't blow away local edits silently
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    - name: create Python venv
+      ansible.builtin.command:
+        cmd: "python3 -m venv .venv"
+        chdir: "{{ antiek_install_dir }}"
+        creates: "{{ antiek_install_dir }}/.venv/bin/python3"
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    - name: upgrade pip in venv
+      ansible.builtin.pip:
+        name:
+          - pip
+          - setuptools
+          - wheel
+        state: latest
+        virtualenv: "{{ antiek_install_dir }}/.venv"
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    - name: install Antiek with optional extras
+      ansible.builtin.pip:
+        name: "{{ antiek_install_dir }}[pdf,urls,embedding]"
+        editable: true
+        virtualenv: "{{ antiek_install_dir }}/.venv"
+        # Note: this resolves the editable install relative to the venv,
+        # so it correctly picks up pyproject.toml's optional-deps.
+      become_user: "{{ antiek_user }}"
+      tags: [code]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 7. Secrets directory + empty secrets file
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: ensure /etc/antiek dir
+      ansible.builtin.file:
+        path: "{{ antiek_secrets_dir }}"
+        state: directory
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [secrets]
+
+    - name: place empty secrets.env (do NOT overwrite if populated)
+      ansible.builtin.template:
+        src: secrets.env.j2
+        dest: "{{ antiek_secrets_file }}"
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0640"
+        force: false # critical: don't blow away a populated secrets file
+      tags: [secrets]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 8. State directory
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: ensure state directory tree
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      loop:
+        - "{{ antiek_state_dir }}"
+        - "{{ antiek_state_dir }}/research_events"
+        - "{{ antiek_state_dir }}/knowledge_skills"
+        - "{{ antiek_state_dir }}/research"
+      tags: [state]
+
+    - name: seed Phase 8 knowledge-skill template
+      # The Phase 8 compounding hook needs at least one <domain>-knowledge
+      # skill with a SKILL.md to patch into. Without this, runs report
+      # `domains_patched: []`. The seed is intentionally minimal.
+      ansible.builtin.copy:
+        dest: "{{ antiek_state_dir }}/knowledge_skills/general-knowledge/SKILL.md"
+        owner: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        mode: "0640"
+        force: false # don't overwrite if operator has customised it
+        content: |
+          # general-knowledge
+
+          Seed template for Antiek Phase 8 (compounding skill patch).
+          The agent appends extracted domain knowledge between the
+          markers below; each cold investigation that fires Phase 8
+          adds one or more sections here.
+
+          <!-- ANTIEK:KNOWLEDGE:BEGIN -->
+          <!-- ANTIEK:KNOWLEDGE:END -->
+      tags: [state]
+
+    - name: ensure general-knowledge subdir exists with right perms
+      ansible.builtin.file:
+        path: "{{ antiek_state_dir }}/knowledge_skills/general-knowledge"
+        state: directory
+        owner: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [state]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 9. systemd unit
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: render antiek.service
+      ansible.builtin.template:
+        src: antiek.service.j2
+        dest: /etc/systemd/system/antiek.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_unit
+      tags: [systemd]
+
+    - name: systemd daemon-reload if unit changed
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: antiek_unit.changed
+      tags: [systemd]
+
+    - name: enable antiek.service (but do NOT start — secrets are empty)
+      ansible.builtin.systemd:
+        name: antiek.service
+        enabled: true
+        # Deliberately no `state: started` here. setup.yml's job is to
+        # leave the service ready-to-start. The operator starts it after
+        # populating the secrets file.
+      tags: [systemd]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 10. Caddyfile
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: ensure /var/log/caddy exists
+      ansible.builtin.file:
+        path: /var/log/caddy
+        state: directory
+        owner: caddy
+        group: caddy
+        mode: "0755"
+      tags: [caddy]
+
+    - name: render Caddyfile
+      ansible.builtin.template:
+        src: Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        owner: root
+        group: caddy
+        mode: "0644"
+      register: caddyfile
+      tags: [caddy]
+
+    - name: reload caddy if Caddyfile changed
+      ansible.builtin.systemd:
+        name: caddy
+        state: reloaded
+      when: caddyfile.changed
+      tags: [caddy]
+
+    - name: ensure caddy is enabled + started
+      ansible.builtin.systemd:
+        name: caddy
+        enabled: true
+        state: started
+      tags: [caddy]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 11. Backup script + rclone config + cron
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: ensure /etc/rclone dir
+      ansible.builtin.file:
+        path: /etc/rclone
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      tags: [backup]
+
+    - name: render rclone config for R2
+      # rclone's `s3` backend with `provider = Cloudflare` is the canonical
+      # R2 setup. The endpoint format is account-scoped (no bucket in path).
+      ansible.builtin.copy:
+        dest: /etc/rclone/rclone.conf
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = {{ r2_access_key }}
+          secret_access_key = {{ r2_secret_key }}
+          endpoint = {{ r2_endpoint }}
+          # R2 requires no region; "auto" satisfies the s3 spec.
+          region = auto
+          # Cloudflare R2 doesn't support some S3 features; these flags
+          # tell rclone to skip them.
+          no_check_bucket = true
+      no_log: true # don't leak access key into journal
+      tags: [backup]
+
+    - name: install backup script
+      ansible.builtin.template:
+        src: backup.sh.j2
+        dest: /usr/local/bin/antiek-backup
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [backup]
+
+    - name: install backup cron job
+      ansible.builtin.cron:
+        name: antiek nightly backup
+        user: root
+        minute: "{{ backup_cron_minute }}"
+        hour: "{{ backup_cron_hour }}"
+        job: "/usr/local/bin/antiek-backup >> /var/log/antiek-backup.log 2>&1"
+        cron_file: antiek-backup
+      tags: [backup]
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 12. Completion message
+    # ──────────────────────────────────────────────────────────────────────
+
+    - name: print completion banner
+      ansible.builtin.debug:
+        msg: |
+          ── setup.yml complete ────────────────────────────────────────────
+          Next manual steps:
+            1. ssh root@{{ inventory_hostname }} sudoedit {{ antiek_secrets_file }}
+               (paste OPENROUTER_API_KEY=sk-or-v1-...)
+            2. ssh root@{{ inventory_hostname }} systemctl start antiek
+            3. curl https://{{ api_domain }}/health
+               → expect {"status":"ok",...,"registered_providers":["openrouter"]}
+          ──────────────────────────────────────────────────────────────────
