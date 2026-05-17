@@ -26,8 +26,16 @@ antiek_group: antiek
 # runtime env vars. If you flip the repo to private, the setup playbook
 # needs to either authorize a deploy key on the VM or use HTTPS-with-token.
 # TODO: operator confirms repo URL.
-antiek_repo_url: "https://github.com/Slimydog21/Antiek.git"
+antiek_repo_url: "git@github.com:Slimydog21/Antiek.git"
 antiek_repo_branch: "main"
+
+# Local path on the operator's Mac to the GitHub deploy private key.
+# Generated once with `ssh-keygen -t ed25519 -f ~/.ssh/antiek_deploy`;
+# the public counterpart is registered as a read-only deploy key on
+# the GitHub repo (`gh repo deploy-key add ...`). The Ansible playbook
+# uploads the private key to /home/antiek/.ssh/id_ed25519 on the VM
+# so git clone over SSH works for the private repo.
+antiek_deploy_key_local_path: "~/.ssh/antiek_deploy"
 
 # ── Filesystem paths ─────────────────────────────────────────────────────────
 

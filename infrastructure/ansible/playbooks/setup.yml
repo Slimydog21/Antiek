@@ -236,12 +236,55 @@
         mode: "0755"
       tags: [code]
 
-    - name: clone Antiek repo
+    # ── GitHub deploy-key setup (private repo path) ──
+    # The repo at antiek_repo_url is private. We use a read-only deploy
+    # key registered with GitHub. The private half lives on the operator's
+    # Mac; this task uploads it to the VM so the antiek user can clone
+    # over SSH. The corresponding public key was added to GitHub once via
+    # `gh repo deploy-key add` before setup.yml was first run.
+
+    - name: ensure ~/.ssh exists for antiek user
+      ansible.builtin.file:
+        path: "/home/{{ antiek_user }}/.ssh"
+        state: directory
+        owner: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        mode: "0700"
+      tags: [code, deploy_key]
+
+    - name: upload GitHub deploy private key
+      ansible.builtin.copy:
+        src: "{{ antiek_deploy_key_local_path }}"
+        dest: "/home/{{ antiek_user }}/.ssh/id_ed25519"
+        owner: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        mode: "0600"
+      tags: [code, deploy_key]
+
+    - name: pin github.com host key (avoids interactive prompt on first clone)
+      # Pre-populate known_hosts with GitHub's current ed25519 host key
+      # so the git clone doesn't prompt the antiek user (which Ansible
+      # would interpret as a hang). GitHub's host keys are documented at:
+      #   https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
+      # Refresh this entry if GitHub ever rotates (rare; last rotation 2023).
+      ansible.builtin.known_hosts:
+        path: "/home/{{ antiek_user }}/.ssh/known_hosts"
+        name: github.com
+        key: "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"
+        state: present
+      become_user: "{{ antiek_user }}"
+      tags: [code, deploy_key]
+
+    - name: clone Antiek repo (SSH; uses deploy key)
       ansible.builtin.git:
         repo: "{{ antiek_repo_url }}"
         dest: "{{ antiek_install_dir }}"
         version: "{{ antiek_repo_branch }}"
         force: false # don't blow away local edits silently
+        # Use the deploy key explicitly via SSH command override.
+        # IdentitiesOnly=yes prevents the SSH client from trying other
+        # keys in ~/.ssh/ (it would, otherwise, and might fail-fast).
+        key_file: "/home/{{ antiek_user }}/.ssh/id_ed25519"
       become_user: "{{ antiek_user }}"
       tags: [code]
 
