@@ -48,7 +48,7 @@
     # ── 3. Re-render templates if they changed ───────────────────────────
     - name: re-render antiek.service
       ansible.builtin.template:
-        src: antiek.service.j2
+        src: ../templates/antiek.service.j2
         dest: /etc/systemd/system/antiek.service
         owner: root
         group: root
@@ -64,7 +64,7 @@
 
     - name: re-render Caddyfile
       ansible.builtin.template:
-        src: Caddyfile.j2
+        src: ../templates/Caddyfile.j2
         dest: /etc/caddy/Caddyfile
         owner: root
         group: caddy
@@ -81,7 +81,7 @@
 
     - name: re-render backup script
       ansible.builtin.template:
-        src: backup.sh.j2
+        src: ../templates/backup.sh.j2
         dest: /usr/local/bin/antiek-backup
         owner: root
         group: "{{ antiek_group }}"

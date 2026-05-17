@@ -214,13 +214,21 @@
         state: present
       tags: [user]
 
+    - name: read operator's public key from the VM's root account
+      # `lookup('file', ...)` runs on the controller (the operator's Mac)
+      # and would fail because that path is the VM's, not the Mac's.
+      # `slurp` reads remote files via the SSH connection. Decoded
+      # in the next task.
+      ansible.builtin.slurp:
+        src: /root/.ssh/authorized_keys
+      register: root_authorized_keys
+      tags: [user]
+
     - name: authorize operator SSH key on antiek user
-      # Copy whatever root's authorized_keys has — that's the operator's
-      # key, uploaded by Terraform via hcloud_ssh_key.
       ansible.posix.authorized_key:
         user: "{{ antiek_user }}"
         state: present
-        key: "{{ lookup('file', '/root/.ssh/authorized_keys') }}"
+        key: "{{ root_authorized_keys.content | b64decode }}"
       tags: [user]
 
     # ──────────────────────────────────────────────────────────────────────
@@ -332,7 +340,7 @@
 
     - name: place empty secrets.env (do NOT overwrite if populated)
       ansible.builtin.template:
-        src: secrets.env.j2
+        src: ../templates/secrets.env.j2
         dest: "{{ antiek_secrets_file }}"
         owner: root
         group: "{{ antiek_group }}"
@@ -358,6 +366,17 @@
         - "{{ antiek_state_dir }}/research"
       tags: [state]
 
+    - name: ensure general-knowledge subdir exists with right perms
+      # Must precede the SKILL.md seed below — ansible.builtin.copy
+      # doesn't create intermediate directories on the destination.
+      ansible.builtin.file:
+        path: "{{ antiek_state_dir }}/knowledge_skills/general-knowledge"
+        state: directory
+        owner: "{{ antiek_user }}"
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [state]
+
     - name: seed Phase 8 knowledge-skill template
       # The Phase 8 compounding hook needs at least one <domain>-knowledge
       # skill with a SKILL.md to patch into. Without this, runs report
@@ -380,22 +399,13 @@
           <!-- ANTIEK:KNOWLEDGE:END -->
       tags: [state]
 
-    - name: ensure general-knowledge subdir exists with right perms
-      ansible.builtin.file:
-        path: "{{ antiek_state_dir }}/knowledge_skills/general-knowledge"
-        state: directory
-        owner: "{{ antiek_user }}"
-        group: "{{ antiek_group }}"
-        mode: "0750"
-      tags: [state]
-
     # ──────────────────────────────────────────────────────────────────────
     # 9. systemd unit
     # ──────────────────────────────────────────────────────────────────────
 
     - name: render antiek.service
       ansible.builtin.template:
-        src: antiek.service.j2
+        src: ../templates/antiek.service.j2
         dest: /etc/systemd/system/antiek.service
         owner: root
         group: root
@@ -433,7 +443,7 @@
 
     - name: render Caddyfile
       ansible.builtin.template:
-        src: Caddyfile.j2
+        src: ../templates/Caddyfile.j2
         dest: /etc/caddy/Caddyfile
         owner: root
         group: caddy
@@ -493,7 +503,7 @@
 
     - name: install backup script
       ansible.builtin.template:
-        src: backup.sh.j2
+        src: ../templates/backup.sh.j2
         dest: /usr/local/bin/antiek-backup
         owner: root
         group: "{{ antiek_group }}"
