@@ -16,16 +16,6 @@ export interface InvestigationState {
   completedAt: string | null;
 }
 
-const INITIAL_STATE: InvestigationState = {
-  id: "",
-  status: "loading",
-  question: null,
-  events: [],
-  terminalPayload: null,
-  costTotal: 0,
-  completedAt: null,
-};
-
 /**
  * Subscribe to one investigation's full state.
  *

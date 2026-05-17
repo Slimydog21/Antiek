@@ -221,7 +221,15 @@ def create_app(
         if env_val:
             cors_origins = [o.strip() for o in env_val.split(",") if o.strip()]
         else:
-            cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+            # Default allow-list:
+            # - localhost:5173 + 127.0.0.1:5173: Vite dev server (Mode B
+            #   wrestle UI; Mode A research workstation)
+            # - https://app.antiek.ai: production web app (Sprint 11)
+            cors_origins = [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "https://app.antiek.ai",
+            ]
     if cors_origins:
         app.add_middleware(
             CORSMiddleware,

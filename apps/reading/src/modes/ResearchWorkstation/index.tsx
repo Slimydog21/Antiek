@@ -1,19 +1,26 @@
+import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
+import type { InvestigationState } from "../../hooks/useInvestigation";
+import { parseSynthesis } from "../../lib/synthesisParser";
 import HeaderBar from "../shared/HeaderBar";
+import ChaseSlideOver from "./ChaseSlideOver";
 import ChatInputArea from "./ChatInputArea";
+import HighlightToolbar from "./HighlightToolbar";
+import InvestigationSidebar from "./InvestigationSidebar";
+import MasterMdViewer from "./MasterMdViewer";
 import TrajectoryView from "./TrajectoryView";
 
 /**
  * Mode A — Research Workstation.
  *
- * Two-column layout:
+ * Layout:
  *   Left  — InvestigationSidebar (past investigations tree)
  *   Center — TrajectoryView (live) → MasterMdViewer (post-completion)
- *
- * Day 3 ships: layout + chat input. Days 4-8 fill in the center +
- * sidebar + chunk modal + highlight-to-chase + tree.
+ *   Bottom of center — ChatInputArea
+ *   Floating — HighlightToolbar (anchored to selection)
+ *   Slide-over — ChaseSlideOver (chase-this child investigation flow)
  */
 export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
@@ -29,28 +36,20 @@ export default function ResearchWorkstation() {
         )}
       </HeaderBar>
       <div className="grid grid-cols-[280px_1fr] flex-1 min-h-0">
-        {/* Left — sidebar (day 6 fills this in) */}
         <aside className="border-r border-stone-200 bg-stone-50 overflow-y-auto">
-          <div className="p-3 text-xs font-mono text-stone-500">
-            <div className="text-stone-700 font-semibold mb-2">
-              Past investigations
-            </div>
-            <div className="text-stone-400 italic">
-              Sidebar coming Day 6.
-            </div>
-          </div>
+          <InvestigationSidebar />
         </aside>
-
-        {/* Center — empty state OR trajectory OR viewer */}
         <main className="flex flex-col min-h-0 bg-white">
-          <div className="flex-1 overflow-y-auto">
-            {investigationId ? (
-              <InvestigationCenter investigationId={investigationId} />
-            ) : (
-              <EmptyState />
-            )}
-          </div>
-          <ChatInputArea autoFocus={!investigationId} />
+          {investigationId ? (
+            <InvestigationCenter investigationId={investigationId} />
+          ) : (
+            <>
+              <div className="flex-1 overflow-y-auto">
+                <EmptyState />
+              </div>
+              <ChatInputArea autoFocus />
+            </>
+          )}
         </main>
       </div>
     </div>
@@ -77,6 +76,11 @@ function EmptyState() {
 
 function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const investigation = useInvestigation(investigationId);
+  const centerRef = useRef<HTMLDivElement>(null);
+  const [chase, setChase] = useState<{ open: boolean; text: string }>({
+    open: false,
+    text: "",
+  });
 
   if (investigation.status === "loading") {
     return (
@@ -92,7 +96,37 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       </div>
     );
   }
-  // Days 5+ will transition to MasterMdViewer when status === "completed".
-  // For Day 4 we render the trajectory for every non-loading/not-found state.
+
+  // Render trajectory or synthesis viewer; either way, ChatInputArea
+  // is pinned at the bottom (lets operator ask a follow-up question
+  // without leaving the current investigation's context).
+  return (
+    <>
+      <div ref={centerRef} className="flex-1 overflow-y-auto relative">
+        <CenterContent investigation={investigation} />
+        <HighlightToolbar
+          scopeRef={centerRef}
+          onChaseThis={(text) => setChase({ open: true, text })}
+        />
+      </div>
+      <ChatInputArea />
+      <ChaseSlideOver
+        open={chase.open}
+        spawnContext={chase.text}
+        parentInvestigationId={investigationId}
+        onClose={() => setChase((c) => ({ ...c, open: false }))}
+      />
+    </>
+  );
+}
+
+function CenterContent({ investigation }: { investigation: InvestigationState }) {
+  if (
+    investigation.status === "completed" ||
+    investigation.status === "failed"
+  ) {
+    const synth = parseSynthesis(investigation.events);
+    if (synth) return <MasterMdViewer synthesis={synth} />;
+  }
   return <TrajectoryView investigation={investigation} />;
 }
