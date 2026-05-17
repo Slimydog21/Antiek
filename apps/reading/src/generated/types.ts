@@ -1267,6 +1267,9 @@ export interface InvestigationStartRequestedPayload {
   max_sub_questions?: number;
   parent_investigation_id?: string | null;
   spawn_context?: string | null;
+  chase_mode?: "off" | "depth" | "duration";
+  chase_value?: number;
+  chase_budget_usd?: number;
 }
 
 /**

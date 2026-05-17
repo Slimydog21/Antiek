@@ -1405,6 +1405,14 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # Sprint 11: parent investigation lineage for chase-spawned children.
     parent_investigation_id: Optional[str] = None
     spawn_context: Optional[str] = None  # highlighted text from parent's synthesis
+    # Sprint 12: continuous chase mode. When chase_mode != "off", the
+    # orchestrator re-enters phase 1 with the strongest open question
+    # from current evidentiary_gaps as a new spawned sub-investigation
+    # until the stop condition is met. Defaults to single-shot.
+    chase_mode: Literal["off", "depth", "duration"] = "off"
+    chase_value: int = Field(default=0, ge=0)
+    # Hard budget cap in USD across the chase tree. Defaults to $2.
+    chase_budget_usd: float = Field(default=2.0, ge=0.0)
 
 
 class InvestigationSpawnedFromPayload(_PayloadBase):
