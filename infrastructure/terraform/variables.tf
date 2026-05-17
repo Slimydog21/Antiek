@@ -153,12 +153,13 @@ variable "r2_bucket_name" {
 
 variable "r2_bucket_location" {
   type        = string
-  default     = "eu"
+  default     = "WEUR"
   description = <<-EOT
-    R2 region hint. `eu` lands the bucket in Cloudflare's European
-    distribution (lowest latency from a Falkenstein VM). Other values:
-    `enam` (eastern North America), `wnam` (western), `apac` (asia-
-    pacific). Flag for the operator: if compliance dictates a Middle East
-    or non-EU region, change this.
+    R2 region hint. Cloudflare provider v4.x expects uppercase enum:
+    one of `WNAM` (western North America), `ENAM` (eastern), `WEUR`
+    (western Europe — recommended for Falkenstein VM), `EEUR` (eastern
+    Europe), `APAC` (asia-pacific), `OC` (oceania).
+    Flag: if compliance dictates a Middle East or non-EU region, this
+    is the knob.
   EOT
 }
