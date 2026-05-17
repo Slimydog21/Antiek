@@ -15,9 +15,14 @@ export interface EmittedEventResponse {
   action_type: string;
 }
 
-// The dev server proxies these prefixes to the Python backend
-// (vite.config.ts). Production should serve both from the same origin.
-const API_BASE = "";
+// In development, vite.config.ts proxies /events, /trajectory, /ws,
+// /health, /investigations, /chunks to localhost:8000. In production
+// the app at app.antiek.ai needs to hit api.antiek.ai explicitly.
+//
+// Set via VITE_API_BASE_URL at build time (Cloudflare Pages: configure
+// in the project's environment variables). Empty string falls back to
+// same-origin (dev-server proxy behavior).
+const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
 
 // EmittedEventResponse is generated but exported through types; redeclare
 // the request envelope here since it lives in the API layer, not in the

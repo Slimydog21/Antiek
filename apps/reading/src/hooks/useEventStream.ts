@@ -55,10 +55,21 @@ export function useEventStream(
       setState((s) => ({ ...s, status: "connecting" }));
 
       // Vite proxies /ws to ws://localhost:8000 in dev; in production
-      // both surfaces should be served from the same origin. We derive
-      // ws:// vs wss:// from window.location.protocol so HTTPS works.
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const url = `${proto}//${window.location.host}/ws/events?investigation_id=${encodeURIComponent(investigationId)}`;
+      // the Pages-hosted app needs to hit the substrate's WS at the
+      // API origin (api.antiek.ai), not the Pages origin.
+      //
+      // VITE_API_BASE_URL is the production HTTP base (e.g.
+      // "https://api.antiek.ai"); derive ws/wss from it. Falls back to
+      // same-origin when unset (dev).
+      const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
+      let wsBase: string;
+      if (apiBase) {
+        wsBase = apiBase.replace(/^http(s?):/i, (_m, s) => `ws${s}:`);
+      } else {
+        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+        wsBase = `${proto}//${window.location.host}`;
+      }
+      const url = `${wsBase}/ws/events?investigation_id=${encodeURIComponent(investigationId)}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
