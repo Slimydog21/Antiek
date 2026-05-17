@@ -26,7 +26,7 @@ antiek_group: antiek
 # runtime env vars. If you flip the repo to private, the setup playbook
 # needs to either authorize a deploy key on the VM or use HTTPS-with-token.
 # TODO: operator confirms repo URL.
-antiek_repo_url: "https://github.com/REPLACE_WITH_OPERATOR_USERNAME/Antiek.git"
+antiek_repo_url: "https://github.com/Slimydog21/Antiek.git"
 antiek_repo_branch: "main"
 
 # ── Filesystem paths ─────────────────────────────────────────────────────────
