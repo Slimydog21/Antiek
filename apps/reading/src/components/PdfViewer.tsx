@@ -19,6 +19,15 @@ interface PdfViewerProps {
    * trajectory.
    */
   onRegionSelected?: (regionId: string) => void;
+  /**
+   * 1-based page index to jump to on load. Used by Mode A's chunk-
+   * citation modal which deep-links into /wrestle/<doc>?page=N.
+   *
+   * Sprint 11 day 2 accepts the prop but the underlying viewer still
+   * renders page 1 only (single-page legacy implementation). Multi-
+   * page navigation lands in Sprint 11 day 8 polish.
+   */
+  initialPage?: number;
 }
 
 // Scale chosen for legibility on retina; lower = denser, higher = bigger.

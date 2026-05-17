@@ -89,10 +89,127 @@ export async function getHealth(): Promise<{
   param_version: string;
   schema_version: number;
   subscriber_count: number;
+  registered_providers?: string[];
 }> {
   const resp = await fetch(`${API_BASE}/health`);
   if (!resp.ok) {
     throw new ApiError("GET /health failed", resp.status, await resp.text());
+  }
+  return resp.json();
+}
+
+// ── Sprint 11: investigations + chunks ─────────────────────────────
+
+export interface StartInvestigationRequest {
+  question: string;
+  context?: string;
+  topic_slug?: string;
+  parent_investigation_id?: string;
+  spawn_context?: string;
+  max_sub_questions?: number;
+  investigation_id?: string;
+}
+
+export interface StartInvestigationResponse {
+  investigation_id: string;
+  status: string;
+  start_event_id: string;
+}
+
+/** POST /investigations — kick off a cold research investigation. */
+export async function startInvestigation(
+  req: StartInvestigationRequest,
+): Promise<StartInvestigationResponse> {
+  const resp = await fetch(`${API_BASE}/investigations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /investigations failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface InvestigationSummary {
+  investigation_id: string;
+  question: string | null;
+  status: "in_progress" | "completed" | "failed" | "not_found";
+  started_at: string | null;
+  completed_at: string | null;
+  cost_usd_total: number;
+  parent_investigation_id: string | null;
+}
+
+/** GET /investigations — list past investigations for the sidebar. */
+export async function listInvestigations(opts?: {
+  limit?: number;
+  status?: "in_progress" | "completed" | "failed";
+}): Promise<{ count: number; investigations: InvestigationSummary[] }> {
+  const url = new URL(`${API_BASE}/investigations`, window.location.origin);
+  if (opts?.limit !== undefined) url.searchParams.set("limit", String(opts.limit));
+  if (opts?.status !== undefined) url.searchParams.set("status", opts.status);
+  const resp = await fetch(url.toString());
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /investigations failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface InvestigationStatus {
+  investigation_id: string;
+  status: "in_progress" | "completed" | "failed" | "not_found";
+  current_phase: number | null;
+  last_delivered_action_type: string | null;
+  terminal_payload: Record<string, unknown> | null;
+}
+
+/** GET /investigations/{id} — fetch terminal-state status. */
+export async function getInvestigationStatus(
+  investigationId: string,
+): Promise<InvestigationStatus> {
+  const resp = await fetch(
+    `${API_BASE}/investigations/${encodeURIComponent(investigationId)}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /investigations/{id} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface ChunkResponse {
+  chunk_id: string;
+  text: string;
+  section_path: string | null;
+  token_count: number;
+  document_id: string;
+  document_title: string | null;
+  source_tier: number;
+}
+
+/** GET /chunks/{id} — used by Mode A's claim hover modal. */
+export async function getChunk(chunkId: string): Promise<ChunkResponse> {
+  const resp = await fetch(
+    `${API_BASE}/chunks/${encodeURIComponent(chunkId)}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /chunks/{id} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
   }
   return resp.json();
 }
