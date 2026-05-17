@@ -63,6 +63,21 @@ Before you respond, verify your draft does **not** exhibit any of these:
 2. **Unjustified confidence.** Confidence is decorrelated from the model's surface fluency. `confidence_basis` must reference specific chunk counts and tiers, not the feel of the answer.
 3. **Suppressing the gaps field.** Producing a complete-looking answer with `evidentiary_gaps: []` when in fact gaps exist degrades downstream constraint checking and synthesis. List the gaps even when the answer is otherwise strong.
 4. **Citing chunks you did not actually use.** Every `chunk_id` in a claim must contain language that supports the claim. Pro-forma citations get caught at backtest time.
+
+## Voice for claim text
+
+Each `claim` field is read by a synthesizer downstream AND by a human in the trajectory view. Write claim text as you would write a research note for yourself: specific, citing the source's language, avoiding generic AI vocabulary.
+
+**Forbidden in claim text:**
+- Em-dashes
+- "The context indicates that..." preamble. State the claim.
+- Padding clauses ("It should be noted that...", "It is worth observing that...").
+
+A good claim: *"Malanowski reports LSL and block-lattice filters achieve >40 dB sidelobe reduction relative to the DPI peak on real passive radar data."*
+
+A bad claim (current default): *"The context indicates that adaptive filtering algorithms, specifically least-squares lattice (LSL) and block lattice filters, have been reported to demonstrate sidelobe level reductions exceeding 40 dB relative to direct-path interference peaks based on real passive radar dataset evidence."*
+
+Same information; first reads like research, second reads like a parsing artifact.
 """.strip()
 
 

@@ -1,0 +1,242 @@
+"""Tests for Sprint 11 substrate API additions.
+
+Coverage:
+- New ActionType INVESTIGATION_SPAWNED_FROM + payload validation
+- POST /investigations accepts parent_investigation_id + spawn_context
+- POST /investigations emits INVESTIGATION_SPAWNED_FROM event when parent set
+- GET /chunks/{chunk_id} happy path + 404
+- GET /investigations (list) happy path + status filter
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+
+import pytest
+from fastapi.testclient import TestClient
+
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+
+from substrate.schemas import (
+    ActionType,
+    InvestigationSpawnedFromPayload,
+    InvestigationStartRequestedPayload,
+    TYPED_PAYLOAD_ACTION_TYPES,
+)
+
+
+# ── 1. Schema additions ─────────────────────────────────────────────
+
+
+def test_new_action_type_in_typed_set():
+    """The new ActionType must be in TYPED_PAYLOAD_ACTION_TYPES so
+    the event log's typed-payload reconstruction recognizes it."""
+    assert ActionType.INVESTIGATION_SPAWNED_FROM.value in TYPED_PAYLOAD_ACTION_TYPES
+
+
+def test_spawned_from_payload_round_trip():
+    p = InvestigationSpawnedFromPayload(
+        parent_investigation_id="inv-parent-abc",
+        spawn_context="highlighted text from parent",
+        parent_event_id="evt-xyz-123",
+    )
+    assert p.action_type == ActionType.INVESTIGATION_SPAWNED_FROM
+    assert p.parent_investigation_id == "inv-parent-abc"
+    assert p.spawn_context == "highlighted text from parent"
+    # Round-trip through model_dump
+    raw = p.model_dump()
+    assert raw["parent_investigation_id"] == "inv-parent-abc"
+
+
+def test_start_payload_carries_optional_parent_fields():
+    p = InvestigationStartRequestedPayload(
+        question="What is X?",
+        parent_investigation_id="inv-parent",
+        spawn_context="from parent",
+    )
+    assert p.parent_investigation_id == "inv-parent"
+    assert p.spawn_context == "from parent"
+
+
+def test_start_payload_parent_fields_optional():
+    """Default behavior unchanged — parent fields are optional."""
+    p = InvestigationStartRequestedPayload(question="What is Y?")
+    assert p.parent_investigation_id is None
+    assert p.spawn_context is None
+
+
+# ── 2. POST /investigations with parent ──────────────────────────────
+
+
+@pytest.fixture
+def temp_substrate(monkeypatch):
+    tmp = tempfile.mkdtemp(prefix="antiek-sprint11-")
+    db_path = os.path.join(tmp, "graph.duckdb")
+    events_dir = os.path.join(tmp, "events")
+    os.makedirs(events_dir, exist_ok=True)
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
+    yield {"db_path": db_path, "events_dir": events_dir, "tmpdir": tmp}
+
+
+def _client(temp_substrate):
+    from interfaces.research.api.app import create_app
+    app = create_app(
+        register_wrestling=False,
+        register_providers=False,
+        cors_origins=[],
+    )
+    return TestClient(app)
+
+
+def test_post_investigation_with_parent_emits_spawned_from(temp_substrate):
+    client = _client(temp_substrate)
+    resp = client.post("/investigations", json={
+        "question": "Why does X happen?",
+        "parent_investigation_id": "inv-parent-foo",
+        "spawn_context": "the highlighted text",
+    })
+    assert resp.status_code == 202
+    inv_id = resp.json()["investigation_id"]
+
+    # Trajectory should contain both start_requested AND spawned_from
+    traj = client.get(f"/trajectory/{inv_id}").json()
+    types = [e.get("action_type") for e in traj["events"]]
+    assert ActionType.INVESTIGATION_START_REQUESTED.value in types
+    assert ActionType.INVESTIGATION_SPAWNED_FROM.value in types
+
+    # spawned_from payload should carry the parent info
+    spawned = next(
+        e for e in traj["events"]
+        if e["action_type"] == ActionType.INVESTIGATION_SPAWNED_FROM.value
+    )
+    assert spawned["payload"]["parent_investigation_id"] == "inv-parent-foo"
+    assert spawned["payload"]["spawn_context"] == "the highlighted text"
+
+
+def test_post_investigation_without_parent_does_not_emit_spawned_from(
+    temp_substrate,
+):
+    client = _client(temp_substrate)
+    resp = client.post("/investigations", json={
+        "question": "Plain cold question.",
+    })
+    assert resp.status_code == 202
+    inv_id = resp.json()["investigation_id"]
+    traj = client.get(f"/trajectory/{inv_id}").json()
+    types = [e.get("action_type") for e in traj["events"]]
+    assert ActionType.INVESTIGATION_SPAWNED_FROM.value not in types
+
+
+# ── 3. GET /chunks/{id} ──────────────────────────────────────────────
+
+
+def test_get_chunk_happy_path(temp_substrate):
+    """Seed a chunk via the graph ops, then fetch it via the API."""
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(temp_substrate["db_path"])
+    with connect_write(temp_substrate["db_path"], purpose="test") as con:
+        insert_document(
+            con, document_id="doc-test", source_tier=2,
+            document_type="academic_paper", title="Test Document",
+        )
+        chunk_id = insert_chunk(
+            con, document_id="doc-test", chunk_index=0,
+            text="The substantive chunk text.", section_path="Page 1",
+        )
+
+    client = _client(temp_substrate)
+    resp = client.get(f"/chunks/{chunk_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["chunk_id"] == chunk_id
+    assert body["text"] == "The substantive chunk text."
+    assert body["section_path"] == "Page 1"
+    assert body["document_id"] == "doc-test"
+    assert body["document_title"] == "Test Document"
+    assert body["source_tier"] == 2
+
+
+def test_get_chunk_404(temp_substrate):
+    from substrate.graph.schema import init_database_at_path
+    init_database_at_path(temp_substrate["db_path"])
+    client = _client(temp_substrate)
+    resp = client.get("/chunks/chunk-does-not-exist")
+    assert resp.status_code == 404
+
+
+# ── 4. GET /investigations (list) ────────────────────────────────────
+
+
+def test_list_investigations_empty(temp_substrate):
+    """Empty events dir → empty list."""
+    client = _client(temp_substrate)
+    resp = client.get("/investigations")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 0
+    assert body["investigations"] == []
+
+
+def test_list_investigations_returns_summaries(temp_substrate):
+    client = _client(temp_substrate)
+    # Create 3 investigations
+    for q in ("first question?", "second question?", "third question?"):
+        r = client.post("/investigations", json={"question": q})
+        assert r.status_code == 202
+
+    resp = client.get("/investigations")
+    body = resp.json()
+    assert body["count"] == 3
+    questions = {s["question"] for s in body["investigations"]}
+    assert questions == {
+        "first question?", "second question?", "third question?",
+    }
+    # All in_progress (no orchestrator running in test)
+    for s in body["investigations"]:
+        assert s["status"] == "in_progress"
+        assert s["started_at"] is not None
+        assert s["cost_usd_total"] == 0.0
+
+
+def test_list_investigations_status_filter(temp_substrate):
+    """Status filter narrows to matching investigations."""
+    client = _client(temp_substrate)
+    r = client.post("/investigations", json={"question": "active query?"})
+    assert r.status_code == 202
+
+    resp = client.get("/investigations?status=in_progress")
+    assert resp.json()["count"] == 1
+
+    resp = client.get("/investigations?status=completed")
+    assert resp.json()["count"] == 0
+
+
+def test_list_investigations_carries_parent_lineage(temp_substrate):
+    client = _client(temp_substrate)
+    parent = client.post("/investigations", json={"question": "parent q?"}).json()
+    child = client.post("/investigations", json={
+        "question": "child q?",
+        "parent_investigation_id": parent["investigation_id"],
+        "spawn_context": "from parent",
+    }).json()
+
+    resp = client.get("/investigations").json()
+    by_id = {s["investigation_id"]: s for s in resp["investigations"]}
+    assert by_id[child["investigation_id"]]["parent_investigation_id"] == parent["investigation_id"]
+    assert by_id[parent["investigation_id"]]["parent_investigation_id"] is None
+
+
+def test_list_investigations_limit(temp_substrate):
+    client = _client(temp_substrate)
+    for i in range(5):
+        client.post("/investigations", json={"question": f"q{i}?"})
+    resp = client.get("/investigations?limit=3")
+    assert resp.json()["count"] == 3

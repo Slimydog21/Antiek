@@ -72,6 +72,7 @@ from .events import (
     GraphScope,
     InvestigationCompletedPayload,
     InvestigationFailedPayload,
+    InvestigationSpawnedFromPayload,
     InvestigationStartRequestedPayload,
     Keyword,
     KeywordMapping,
@@ -251,4 +252,5 @@ __all__ = [
     "InvestigationStartRequestedPayload",
     "InvestigationCompletedPayload",
     "InvestigationFailedPayload",
+    "InvestigationSpawnedFromPayload",
 ]

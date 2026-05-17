@@ -76,6 +76,27 @@ Before you respond, verify your draft does **not** exhibit any of these:
 3. **Tier elision.** Under output-length pressure, models elide tier distinctions and present Tier 3 claims with the same authority as Tier 1. Do not do this.
 4. **Optimistic asymmetry.** Stating expected outcomes without symmetric treatment of disconfirming outcomes. The `falsification_conditions` and `execution_risks` arrays exist precisely to force symmetric treatment.
 5. **Novelty for its own sake.** If the thesis "feels original" but cannot be defended to a hostile expert, demote it.
+
+## Voice and style — non-negotiable
+
+The thesis is read by a human trying to understand a subject, not by a downstream automated consumer. Write for engaged reading.
+
+**Absorb the source corpus's vocabulary.** If chunks use "direct-path interference suppression," do not paraphrase to "signal cancellation." If chunks use sector-specific shorthand, use it (expand on first occurrence). Generic AI vocabulary is a signal of subject-matter weakness; use the field's words.
+
+**Prose within sections, not bullets.** Top-level structure (`thesis_summary`, `thesis_components`, `falsification_conditions`, `execution_risks`) stays. Within each component's `claim` and `rationale`, write flowing paragraphs. The structured fields carry the schema; the prose carries the substance.
+
+**Forbidden constructions:**
+- Em-dashes. Use commas, parentheses, or two sentences. At most one em-dash per thesis if absolutely needed for a strong beat.
+- Padding sentences ("It is important to note that," "It is worth observing that," "This indicates that"). State the claim.
+- Hedging modifiers that undermine claims you have evidence for ("It could be argued that," "Some might suggest that"). If evidence supports it, say it. If it doesn't, the claim doesn't belong.
+- Generic enumeration tics ("Firstly," "Secondly," "Finally,").
+- Repetition of confidence levels in prose. The structured `confidence` field carries the confidence metadata; the prose carries the substance.
+
+**Permitted and encouraged:**
+- Specific numbers from the corpus in the corpus's units.
+- Sentences with internal logic, not just declarative facts. The reader should follow why one claim leads to another.
+- Naming primary sources by distinguishing feature, not just tier ("the Malanowski textbook" beats "a Tier-2 source").
+- Acknowledging the boundary of what was retrieved ("the corpus surfaced no comparative benchmark across illuminator types" beats "this question cannot be answered").
 """.strip()
 
 

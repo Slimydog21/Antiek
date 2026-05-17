@@ -93,13 +93,56 @@ class InvestigationStartRequest(BaseModel):
     """POST body for ``/investigations``. Operator-facing cold-question
     entry point. ``investigation_id`` is auto-generated when omitted —
     use a stable id when retrying the same question for backtest
-    correlation."""
+    correlation.
+
+    Sprint 11: ``parent_investigation_id`` + ``spawn_context`` are
+    optional metadata for the web app's highlight-to-chase mechanic.
+    When supplied, the substrate emits an ``INVESTIGATION_SPAWNED_FROM``
+    event recording the lineage."""
 
     question: str = Field(..., min_length=3)
     context: str = ""
     topic_slug: Optional[str] = None
     max_sub_questions: int = Field(default=8, ge=1, le=20)
     investigation_id: Optional[str] = None
+    parent_investigation_id: Optional[str] = None
+    spawn_context: Optional[str] = None
+
+
+# ── Sprint 11 additions ────────────────────────────────────────────────
+
+
+class ChunkResponse(BaseModel):
+    """Response from ``GET /chunks/{chunk_id}``. Used by the web app's
+    claim hover modal to surface the actual chunk text + source
+    document title for any cited chunk_id."""
+
+    chunk_id: str
+    text: str
+    section_path: Optional[str] = None
+    token_count: int = 0
+    document_id: str
+    document_title: Optional[str] = None
+    source_tier: int = Field(ge=1, le=5)
+
+
+class InvestigationSummary(BaseModel):
+    """One row in the ``GET /investigations`` list response. Carries
+    the minimum the web app's sidebar needs to render a tree of past
+    investigations."""
+
+    investigation_id: str
+    question: Optional[str] = None
+    status: str  # "in_progress" | "completed" | "failed" | "not_found"
+    started_at: Optional[str] = None  # ISO8601
+    completed_at: Optional[str] = None  # ISO8601, terminal events only
+    cost_usd_total: float = 0.0
+    parent_investigation_id: Optional[str] = None
+
+
+class InvestigationListResponse(BaseModel):
+    count: int
+    investigations: list[InvestigationSummary] = Field(default_factory=list)
 
 
 class InvestigationStartResponse(BaseModel):
@@ -401,7 +444,10 @@ def create_app(
         # at module import time so test setups that monkey-patch the
         # schema layer (drift tests) don't see a partially-initialized
         # module.
-        from substrate.schemas import InvestigationStartRequestedPayload
+        from substrate.schemas import (
+            InvestigationSpawnedFromPayload,
+            InvestigationStartRequestedPayload,
+        )
         import uuid as _uuid
 
         investigation_id = (
@@ -415,6 +461,8 @@ def create_app(
                     context=req.context,
                     topic_slug=req.topic_slug,
                     max_sub_questions=req.max_sub_questions,
+                    parent_investigation_id=req.parent_investigation_id,
+                    spawn_context=req.spawn_context,
                 ),
                 role="operator",
                 policy_id="operator-cli",
@@ -427,6 +475,24 @@ def create_app(
                 status_code=503,
                 detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
             )
+
+        # Sprint 11: emit the spawn-lineage event when parent provided.
+        # Non-fatal if it fails; the start event already encodes the
+        # lineage in its own payload.
+        if req.parent_investigation_id:
+            try:
+                emit_typed(
+                    investigation_id,
+                    InvestigationSpawnedFromPayload(
+                        parent_investigation_id=req.parent_investigation_id,
+                        spawn_context=req.spawn_context or "",
+                    ),
+                    role="operator",
+                    policy_id="operator-cli",
+                    parent_event_id=event_id,
+                )
+            except Exception:  # pragma: no cover — diagnostic
+                pass
 
         # Broadcast the start event so the orchestrator handler
         # subscribed to it spawns the per-investigation coroutine.
@@ -508,6 +574,145 @@ def create_app(
             current_phase=last_phase,
             last_delivered_action_type=last_delivered,
             terminal_payload=None,
+        )
+
+    # ── Sprint 11: list investigations + chunk fetch ───────────
+
+    @app.get(
+        "/investigations",
+        response_model=InvestigationListResponse,
+    )
+    async def list_investigations(
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+        status_filter: Annotated[
+            Optional[str], Query(alias="status")
+        ] = None,
+    ) -> InvestigationListResponse:
+        """List recent investigations. Walks the events directory to
+        discover all unique investigation_ids, then summarizes each
+        with its start question + terminal status + cost.
+
+        Filter by ``status`` to narrow (one of: ``in_progress``,
+        ``completed``, ``failed``). Default limit 50, sorted newest
+        first."""
+        import os as _os
+        from substrate.event_log import default_events_dir
+        from substrate.schemas import ActionType
+
+        events_dir = default_events_dir()
+        if not _os.path.isdir(events_dir):
+            return InvestigationListResponse(count=0, investigations=[])
+
+        completed_action = ActionType.INVESTIGATION_COMPLETED.value
+        failed_action = ActionType.INVESTIGATION_FAILED.value
+        start_action = ActionType.INVESTIGATION_START_REQUESTED.value
+
+        summaries: list[InvestigationSummary] = []
+        for filename in _os.listdir(events_dir):
+            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
+                continue
+            inv_id = filename[:-len(".jsonl")]
+            rows = trajectory(inv_id)
+            if not rows:
+                continue
+
+            question: Optional[str] = None
+            started_at: Optional[str] = None
+            completed_at: Optional[str] = None
+            cost_total = 0.0
+            terminal_status = "in_progress"
+            parent_inv_id: Optional[str] = None
+
+            for r in rows:
+                at = r.get("action_type")
+                payload = r.get("payload") or {}
+                if at == start_action and question is None:
+                    question = payload.get("question")
+                    started_at = r.get("emitted_at")
+                    parent_inv_id = payload.get("parent_investigation_id")
+                elif at == completed_action:
+                    terminal_status = "completed"
+                    completed_at = r.get("emitted_at")
+                elif at == failed_action:
+                    terminal_status = "failed"
+                    completed_at = r.get("emitted_at")
+                elif at == "dispatch.call":
+                    try:
+                        cost_total += float(payload.get("cost_usd", 0.0))
+                    except (TypeError, ValueError):
+                        pass
+
+            if status_filter and terminal_status != status_filter:
+                continue
+
+            summaries.append(InvestigationSummary(
+                investigation_id=inv_id,
+                question=question,
+                status=terminal_status,
+                started_at=started_at,
+                completed_at=completed_at,
+                cost_usd_total=round(cost_total, 6),
+                parent_investigation_id=parent_inv_id,
+            ))
+
+        # Sort newest-first by started_at (ISO8601 strings sort lexically).
+        summaries.sort(
+            key=lambda s: s.started_at or "",
+            reverse=True,
+        )
+        summaries = summaries[:limit]
+        return InvestigationListResponse(
+            count=len(summaries), investigations=summaries,
+        )
+
+    @app.get(
+        "/chunks/{chunk_id}",
+        response_model=ChunkResponse,
+    )
+    async def get_chunk(chunk_id: str) -> ChunkResponse:
+        """Read-only chunk fetch. Used by the web app's claim hover
+        modal to surface the actual chunk text + source document
+        title for any cited chunk_id."""
+        import duckdb as _duckdb
+        from substrate.graph import default_db_path
+
+        db_path = default_db_path()
+        try:
+            con = _duckdb.connect(db_path, read_only=True)
+        except _duckdb.IOException as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Graph DB unreachable: {exc}",
+            ) from exc
+
+        try:
+            row = con.execute(
+                """
+                SELECT c.chunk_id, c.text, c.section_path, c.token_count,
+                       c.document_id, d.title, d.source_tier
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.document_id
+                WHERE c.chunk_id = ?
+                """,
+                [chunk_id],
+            ).fetchone()
+        finally:
+            con.close()
+
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"chunk_id {chunk_id!r} not found",
+            )
+
+        return ChunkResponse(
+            chunk_id=row[0],
+            text=row[1] or "",
+            section_path=row[2],
+            token_count=int(row[3] or 0),
+            document_id=row[4],
+            document_title=row[5],
+            source_tier=int(row[6]),
         )
 
     # ── WebSocket live tail ─────────────────────────────────────

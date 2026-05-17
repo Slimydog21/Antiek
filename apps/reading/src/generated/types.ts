@@ -28,6 +28,7 @@ export const ActionType = {
   INVESTIGATION_START_REQUESTED: "investigation.start_requested",
   INVESTIGATION_COMPLETED: "investigation.completed",
   INVESTIGATION_FAILED: "investigation.failed",
+  INVESTIGATION_SPAWNED_FROM: "investigation.spawned_from",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
   DECOMPOSE_QUESTION_DELIVERED: "decompose.delivered",
   DECOMPOSER_PARAPHRASE_FLAGGED: "decomposer.paraphrase.flagged",
@@ -1251,6 +1252,12 @@ export interface AuditFindingPayload {
  * phases 1-9. ``topic_slug`` (if supplied) is used for the MASTER.md
  * output path; ``context`` is optional domain framing the
  * Decomposer reads.
+ * 
+ * Sprint 11 adds ``parent_investigation_id`` + ``spawn_context`` for
+ * the web app's highlight-to-chase mechanic. Both are metadata-only;
+ * the orchestrator doesn't change behavior based on them, but the
+ * web app uses them to render the chase tree and ChaseSlideOver pulls
+ * ``spawn_context`` as the highlighted-text-from-parent.
  */
 export interface InvestigationStartRequestedPayload {
   action_type: "investigation.start_requested";
@@ -1258,6 +1265,8 @@ export interface InvestigationStartRequestedPayload {
   context?: string;
   topic_slug?: string | null;
   max_sub_questions?: number;
+  parent_investigation_id?: string | null;
+  spawn_context?: string | null;
 }
 
 /**
@@ -1287,6 +1296,25 @@ export interface InvestigationFailedPayload {
   phase: number;
   reason: string;
   last_completed_phase?: number | null;
+}
+
+/**
+ * Emitted when a new investigation is spawned from a parent's
+ * synthesis via the web app's chase-this mechanic. Carries the
+ * parent_investigation_id, the parent_event_id (typically the
+ * parent's synthesis.delivered event), and the highlighted text the
+ * operator was chasing.
+ * 
+ * The substrate doesn't act on this event; it's UI metadata. The
+ * web app's useInvestigationTree hook reads these events to render
+ * the chase tree (migrating off localStorage once the substrate
+ * consumer is wired).
+ */
+export interface InvestigationSpawnedFromPayload {
+  action_type: "investigation.spawned_from";
+  parent_investigation_id: string;
+  parent_event_id?: string | null;
+  spawn_context?: string;
 }
 
 /**
@@ -1354,7 +1382,8 @@ export type TypedPayload =
   | AuditFindingPayload
   | InvestigationStartRequestedPayload
   | InvestigationCompletedPayload
-  | InvestigationFailedPayload;
+  | InvestigationFailedPayload
+  | InvestigationSpawnedFromPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1418,6 +1447,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "graph.tier.rewrite_bulk",
   "investigation.completed",
   "investigation.failed",
+  "investigation.spawned_from",
   "investigation.start_requested",
   "note.compressed_doc_written",
   "note.emerged",

@@ -81,6 +81,11 @@ class ActionType(str, Enum):
     INVESTIGATION_START_REQUESTED = "investigation.start_requested"
     INVESTIGATION_COMPLETED = "investigation.completed"
     INVESTIGATION_FAILED = "investigation.failed"
+    # Sprint 11: web app highlight-to-chase mechanic emits this when a
+    # child investigation is spawned from a parent's synthesis. Metadata
+    # only — the substrate doesn't act on the parent/child relationship,
+    # but the web app uses it to render the chase tree.
+    INVESTIGATION_SPAWNED_FROM = "investigation.spawned_from"
 
     # ── Decomposer-specific ──
     DECOMPOSE_QUESTION_REQUESTED = "decompose.requested"
@@ -1379,7 +1384,13 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     action_type and spawns a per-investigation coroutine that walks
     phases 1-9. ``topic_slug`` (if supplied) is used for the MASTER.md
     output path; ``context`` is optional domain framing the
-    Decomposer reads."""
+    Decomposer reads.
+
+    Sprint 11 adds ``parent_investigation_id`` + ``spawn_context`` for
+    the web app's highlight-to-chase mechanic. Both are metadata-only;
+    the orchestrator doesn't change behavior based on them, but the
+    web app uses them to render the chase tree and ChaseSlideOver pulls
+    ``spawn_context`` as the highlighted-text-from-parent."""
 
     action_type: Literal[ActionType.INVESTIGATION_START_REQUESTED] = (
         ActionType.INVESTIGATION_START_REQUESTED
@@ -1391,6 +1402,29 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # from the Decomposer). The orchestrator clamps to this max; the
     # actual count is min(decomposition_length, max_sub_questions).
     max_sub_questions: int = Field(default=8, ge=1, le=20)
+    # Sprint 11: parent investigation lineage for chase-spawned children.
+    parent_investigation_id: Optional[str] = None
+    spawn_context: Optional[str] = None  # highlighted text from parent's synthesis
+
+
+class InvestigationSpawnedFromPayload(_PayloadBase):
+    """Emitted when a new investigation is spawned from a parent's
+    synthesis via the web app's chase-this mechanic. Carries the
+    parent_investigation_id, the parent_event_id (typically the
+    parent's synthesis.delivered event), and the highlighted text the
+    operator was chasing.
+
+    The substrate doesn't act on this event; it's UI metadata. The
+    web app's useInvestigationTree hook reads these events to render
+    the chase tree (migrating off localStorage once the substrate
+    consumer is wired)."""
+
+    action_type: Literal[ActionType.INVESTIGATION_SPAWNED_FROM] = (
+        ActionType.INVESTIGATION_SPAWNED_FROM
+    )
+    parent_investigation_id: str
+    parent_event_id: Optional[str] = None
+    spawn_context: str = ""
 
 
 class InvestigationCompletedPayload(_PayloadBase):
@@ -1815,6 +1849,7 @@ TypedPayload = Annotated[
         InvestigationStartRequestedPayload,
         InvestigationCompletedPayload,
         InvestigationFailedPayload,
+        InvestigationSpawnedFromPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -1884,6 +1919,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.INVESTIGATION_START_REQUESTED.value,
     ActionType.INVESTIGATION_COMPLETED.value,
     ActionType.INVESTIGATION_FAILED.value,
+    ActionType.INVESTIGATION_SPAWNED_FROM.value,
 })
 
 
@@ -2122,4 +2158,5 @@ __all__ = [
     "InvestigationStartRequestedPayload",
     "InvestigationCompletedPayload",
     "InvestigationFailedPayload",
+    "InvestigationSpawnedFromPayload",
 ]

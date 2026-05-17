@@ -73,7 +73,13 @@ CREATE TABLE IF NOT EXISTS documents (
     document_type    TEXT NOT NULL,
     investigation_id TEXT,
     raw_text         TEXT,
-    metadata         TEXT          -- JSON string; VARIANT upgrade deferred
+    metadata         TEXT,         -- JSON string; VARIANT upgrade deferred
+    -- Sprint 11 multi-user schema prep: every row carries an owner_user_id
+    -- defaulting to a single-operator constant. The substrate stays
+    -- single-user today; multi-user lands by changing the application
+    -- layer's filter without schema migration. See master-product-spec
+    -- §13 (account model + network effects).
+    owner_user_id    TEXT NOT NULL DEFAULT '__operator__'
 );
 
 -- ============================================================
