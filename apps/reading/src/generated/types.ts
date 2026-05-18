@@ -31,6 +31,7 @@ export const ActionType = {
   INVESTIGATION_SPAWNED_FROM: "investigation.spawned_from",
   INVESTIGATION_CHASE_HALTED: "investigation.chase_halted",
   CLAIM_ASSERTED_BY_OPERATOR: "claim.asserted_by_operator",
+  PAGE_ATTRIBUTION_COMPUTED: "page.attribution.computed",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
   DECOMPOSE_QUESTION_DELIVERED: "decompose.delivered",
   DECOMPOSER_PARAPHRASE_FLAGGED: "decomposer.paraphrase.flagged",
@@ -1369,6 +1370,26 @@ export interface ClaimAssertedByOperatorPayload {
 }
 
 /**
+ * Sprint 16 — emitted per synthesis-attribution computation.
+ * 
+ * ``algorithm_shares`` is the full three-algorithm map; each value
+ * is itself a ``{document_id: share}`` dict where shares sum to 1.0
+ * (subject to float rounding). ``algorithm`` key is one of "A",
+ * "B", "C" matching master spec §9.3.
+ * 
+ * Phase 1 (this sprint): telemetry only. No payouts triggered by
+ * this event. The phase-2 payout job reads these events to decide
+ * splits — but that pipeline isn't wired yet.
+ */
+export interface PageAttributionComputedPayload {
+  action_type: "page.attribution.computed";
+  synthesis_id: string;
+  algorithm_shares?: Record<string, Record<string, number>>;
+  claim_count?: number;
+  document_count?: number;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1436,7 +1457,8 @@ export type TypedPayload =
   | InvestigationFailedPayload
   | InvestigationSpawnedFromPayload
   | InvestigationChaseHaltedPayload
-  | ClaimAssertedByOperatorPayload;
+  | ClaimAssertedByOperatorPayload
+  | PageAttributionComputedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1508,6 +1530,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "note.emerged",
   "note.refined",
   "outcome.recorded",
+  "page.attribution.computed",
   "parameter_extract.delivered",
   "parameter_extract.requested",
   "phase.enter",

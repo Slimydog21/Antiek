@@ -63,6 +63,7 @@ from .events import (
     EvidentiaryGap,
     ExecutionRisk,
     ClaimAssertedByOperatorPayload,
+    PageAttributionComputedPayload,
     ExecutionRiskOutcome,
     ExecutionRiskSeverity,
     FalsificationCondition,
@@ -257,4 +258,5 @@ __all__ = [
     "InvestigationSpawnedFromPayload",
     "InvestigationChaseHaltedPayload",
     "ClaimAssertedByOperatorPayload",
+    "PageAttributionComputedPayload",
 ]

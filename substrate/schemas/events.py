@@ -94,6 +94,12 @@ class ActionType(str, Enum):
     # substrate optionally promotes the edit to a first-class claim
     # that future investigations can cite.
     CLAIM_ASSERTED_BY_OPERATOR = "claim.asserted_by_operator"
+    # Sprint 16 partial: IP attribution telemetry (master spec §9.8
+    # Phase 1). Emitted by substrate.attribution.compute for each
+    # synthesis-attribution computation. Carries all three algorithm
+    # share maps for the operator to validate against intuition before
+    # any payouts go live.
+    PAGE_ATTRIBUTION_COMPUTED = "page.attribution.computed"
 
     # ── Decomposer-specific ──
     DECOMPOSE_QUESTION_REQUESTED = "decompose.requested"
@@ -1467,6 +1473,27 @@ class InvestigationSpawnedFromPayload(_PayloadBase):
     spawn_context: str = ""
 
 
+class PageAttributionComputedPayload(_PayloadBase):
+    """Sprint 16 — emitted per synthesis-attribution computation.
+
+    ``algorithm_shares`` is the full three-algorithm map; each value
+    is itself a ``{document_id: share}`` dict where shares sum to 1.0
+    (subject to float rounding). ``algorithm`` key is one of "A",
+    "B", "C" matching master spec §9.3.
+
+    Phase 1 (this sprint): telemetry only. No payouts triggered by
+    this event. The phase-2 payout job reads these events to decide
+    splits — but that pipeline isn't wired yet."""
+
+    action_type: Literal[ActionType.PAGE_ATTRIBUTION_COMPUTED] = (
+        ActionType.PAGE_ATTRIBUTION_COMPUTED
+    )
+    synthesis_id: str
+    algorithm_shares: dict[str, dict[str, float]] = Field(default_factory=dict)
+    claim_count: int = Field(default=0, ge=0)
+    document_count: int = Field(default=0, ge=0)
+
+
 class ClaimAssertedByOperatorPayload(_PayloadBase):
     """Sprint 15 — emitted when the operator's edit to creative_writer's
     output is promoted to a first-class graph claim. Master spec §10.4
@@ -1922,6 +1949,7 @@ TypedPayload = Annotated[
         InvestigationSpawnedFromPayload,
         InvestigationChaseHaltedPayload,
         ClaimAssertedByOperatorPayload,
+        PageAttributionComputedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -1994,6 +2022,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.INVESTIGATION_SPAWNED_FROM.value,
     ActionType.INVESTIGATION_CHASE_HALTED.value,
     ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
+    ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
 })
 
 
@@ -2235,4 +2264,5 @@ __all__ = [
     "InvestigationSpawnedFromPayload",
     "InvestigationChaseHaltedPayload",
     "ClaimAssertedByOperatorPayload",
+    "PageAttributionComputedPayload",
 ]

@@ -387,6 +387,25 @@ class ExportFormat(BaseModel):
     filename: str
 
 
+# ── Sprint 16 partial: IP attribution telemetry ───────────────────────
+
+
+class AttributionAlgorithmShares(BaseModel):
+    algorithm: Literal["A", "B", "C"]
+    shares: dict[str, float] = Field(default_factory=dict)
+    document_titles: dict[str, str] = Field(default_factory=dict)
+    document_count: int = 0
+    claim_count: int = 0
+
+
+class AttributionReportResponse(BaseModel):
+    synthesis_id: str
+    target_question: str
+    option_a: AttributionAlgorithmShares
+    option_b: AttributionAlgorithmShares
+    option_c: AttributionAlgorithmShares
+
+
 # ---------------------------------------------------------------------------
 # Source kind detection (Sprint 12)
 # ---------------------------------------------------------------------------
@@ -1571,6 +1590,47 @@ def create_app(
         return ExportFormat(
             format="json", content=_json.dumps(bundle, indent=2),
             filename=f"{deliverable_id}.json",
+        )
+
+    # ── Sprint 16 partial: attribution telemetry ───────────────────
+
+    @app.get(
+        "/attribution/synthesis/{synthesis_id}",
+        response_model=AttributionReportResponse,
+    )
+    async def get_attribution_report(
+        synthesis_id: str,
+        emit_event: bool = Query(default=False),
+    ) -> AttributionReportResponse:
+        """Compute attribution shares for a synthesis under all three
+        algorithms (master spec §9.3). Phase 1 = telemetry only; no
+        payouts attached to the result. When ``emit_event=true``, the
+        compute pipeline also writes a ``page.attribution.computed``
+        event to the log so the operator can replay the computation
+        history later."""
+        from substrate.attribution import compute_attribution_for_synthesis
+        try:
+            r = compute_attribution_for_synthesis(
+                synthesis_id, emit_event=emit_event,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+        def _to_resp(algo, result) -> AttributionAlgorithmShares:
+            return AttributionAlgorithmShares(
+                algorithm=algo,
+                shares=dict(result.shares),
+                document_titles=dict(result.document_titles),
+                document_count=result.document_count,
+                claim_count=result.claim_count,
+            )
+
+        return AttributionReportResponse(
+            synthesis_id=r.synthesis_id,
+            target_question=r.target_question,
+            option_a=_to_resp("A", r.option_a),
+            option_b=_to_resp("B", r.option_b),
+            option_c=_to_resp("C", r.option_c),
         )
 
     # ── Sprint 13: voice notes ─────────────────────────────────────
