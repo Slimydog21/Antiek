@@ -476,7 +476,31 @@ def check_phase_8(
 
     The keystone discipline: Phase 8 is "did this investigation
     actually compound?". Either evidence shape is sufficient
-    proof."""
+    proof.
+
+    2026-05-18 H2.5 escape hatch: when the upstream synthesis was
+    ``insufficient_evidence``, there is no defensible thesis to
+    extract knowledge from, and Phase 8 cannot produce a non-empty
+    ``patched`` list. Treat that as a no-op pass — the substrate
+    correctly compounded an underdetermined verdict, which is itself
+    a useful signal (the operator now knows this question is
+    unresolvable on current evidence). Mirrors Phase 6's escape
+    hatch."""
+    # ── (0) Insufficient-evidence escape hatch ──
+    synth_events = _events_of_type(
+        investigation_id, ActionType.SYNTHESIZE_DELIVERED,
+    )
+    for e in reversed(synth_events):
+        payload = e.payload
+        if isinstance(payload, SynthesizeDeliveredPayload):
+            if payload.implicit_recommendation == "insufficient_evidence":
+                return True, (
+                    "phase 8 skipped: upstream synthesis was "
+                    "insufficient_evidence — no defensible thesis to "
+                    "compound into the knowledge graph"
+                )
+            break
+
     # ── (A) Trajectory event ──
     events = _events_of_type(investigation_id, ActionType.AUTO_PATCH_APPLIED)
     for e in reversed(events):

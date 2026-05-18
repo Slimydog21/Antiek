@@ -452,6 +452,41 @@ def test_phase_8_no_match_rejected_when_no_file_growth(tmp_path):
     assert ok is False
 
 
+def test_phase_8_insufficient_evidence_short_circuits_pass(tmp_path):
+    """2026-05-18 H2.5: when upstream synthesis was insufficient_evidence,
+    Phase 8 cannot produce non-empty patched lists (no defensible
+    thesis → no knowledge to extract). Phase 8 short-circuits to PASS
+    so the substrate can end an underdetermined investigation cleanly.
+    Mirrors Phase 6's same-sprint escape hatch."""
+    emit_typed(
+        "inv-p8ie",
+        SynthesizeDeliveredPayload(
+            thesis_summary="No qualifying evidence on the question.",
+            implicit_recommendation="insufficient_evidence",
+            thesis_components=[],
+            falsification_conditions=[],
+            execution_risks=[],
+            constraint_compliance=ConstraintCompliance(
+                hard_constraints_satisfied=False,
+                soft_constraints_violated=[],
+                violations_justified=[],
+            ),
+            reasoning_paths_used=[],
+            constraint_loop_status="single_pass",  # type: ignore[arg-type]
+        ),
+        role="synthesizer", policy_id="stub/stub",
+    )
+    # Phase 8 is asked to verify with NO auto_patch_applied event and
+    # NO skill files. Pre-H2.5 this would fail; post-H2.5 the
+    # insufficient_evidence verdict short-circuits to pass before the
+    # A/B checks run.
+    ok, reason = check_phase_8(
+        "inv-p8ie", knowledge_skills_dir=str(tmp_path / "skills-ie"),
+    )
+    assert ok is True
+    assert "insufficient_evidence" in reason
+
+
 def test_phase_8_skill_file_mtime_fallback(tmp_path):
     """No AUTO_PATCH_APPLIED event but a skill file modified recently
     → passes (mtime fallback)."""
