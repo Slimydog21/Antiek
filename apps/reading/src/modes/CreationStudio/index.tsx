@@ -8,12 +8,28 @@ import {
   getDeliverable,
   ingestVoiceNote,
   listDeliverables,
+  reorderBlock,
+  type BlockKind,
   type DeliverableDetailResponse,
   type DeliverableKind,
   type DeliverableSummary,
   type SectionResponse,
 } from "../../lib/api";
 import HeaderBar from "../shared/HeaderBar";
+import BlockPalette, {
+  DRAG_MIME,
+  type PaletteDragPayload,
+} from "./BlockPalette";
+
+interface SectionDragPayload {
+  from: "section";
+  section_id: string;
+  block_kind: BlockKind;
+  block_id: string;
+  block_index: number;
+}
+
+type DragPayload = PaletteDragPayload | SectionDragPayload;
 
 type RecordingState = "idle" | "recording" | "transcribing" | "ingested";
 
@@ -42,9 +58,10 @@ export default function CreationStudio() {
     <div className="flex flex-col h-screen bg-stone-50">
       <HeaderBar />
       <main className="flex-1 overflow-hidden">
-        <div className="h-full max-w-6xl mx-auto px-6 py-6 grid grid-cols-[280px_1fr] gap-6">
+        <div className="h-full max-w-7xl mx-auto px-6 py-6 grid grid-cols-[260px_1fr_280px] gap-6">
           <DeliverableSidebar />
           <DeliverableDetail />
+          <BlockPalette />
         </div>
       </main>
     </div>
@@ -225,9 +242,9 @@ function SectionCard({
 }) {
   const [showAttach, setShowAttach] = useState(false);
   const [blockId, setBlockId] = useState("");
-  const [blockKind, setBlockKind] =
-    useState<"insight" | "open_question" | "operator_note" | "claim">("insight");
+  const [blockKind, setBlockKind] = useState<BlockKind>("insight");
   const [busy, setBusy] = useState(false);
+  const [dropHover, setDropHover] = useState(false);
 
   async function handleAttach(e: React.FormEvent) {
     e.preventDefault();
@@ -248,8 +265,62 @@ function SectionCard({
     }
   }
 
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDropHover(false);
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (!raw) return;
+    let payload: DragPayload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    setBusy(true);
+    try {
+      if (payload.from === "palette") {
+        await attachBlock({
+          section_id: section.section_id,
+          block_kind: payload.block_kind,
+          block_id: payload.block_id,
+          block_index: section.block_count,
+        });
+      } else if (payload.from === "section") {
+        if (payload.section_id === section.section_id) {
+          // No-op: dropped onto its own section. Skip.
+        } else {
+          await reorderBlock({
+            section_id: payload.section_id,
+            block_kind: payload.block_kind,
+            block_id: payload.block_id,
+            new_section_id: section.section_id,
+            new_block_index: section.block_count,
+          });
+        }
+      }
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <li className="bg-white border border-stone-200 rounded-md p-4">
+    <li
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes(DRAG_MIME)) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setDropHover(true);
+        }
+      }}
+      onDragLeave={() => setDropHover(false)}
+      onDrop={handleDrop}
+      className={`bg-white border rounded-md p-4 transition-colors ${
+        dropHover
+          ? "border-emerald-500 ring-2 ring-emerald-300"
+          : "border-stone-200"
+      }`}
+    >
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <p className="text-xs text-stone-500">
@@ -270,9 +341,8 @@ function SectionCard({
         </p>
       ) : (
         <p className="mt-3 text-xs text-stone-400 italic">
-          No prose yet. Attach blocks and run the creative_writer role
-          (Sprint 14 wires this from the UI; today you can dispatch via
-          the orchestrator from a notebook).
+          No prose yet. Drag blocks from the palette → click "Generate
+          prose" once Sprint 14 wires the creative_writer dispatch.
         </p>
       )}
 
@@ -281,8 +351,12 @@ function SectionCard({
           onClick={() => setShowAttach((v) => !v)}
           className="text-xs text-stone-600 hover:text-stone-900 underline"
         >
-          {showAttach ? "Cancel" : "Attach block"}
+          {showAttach ? "Cancel" : "Attach by id"}
         </button>
+        <span className="text-xs text-stone-400">
+          · or drag from the palette →
+        </span>
+        {busy && <span className="text-xs text-stone-400">working…</span>}
       </div>
 
       {showAttach && (
@@ -292,15 +366,7 @@ function SectionCard({
         >
           <select
             value={blockKind}
-            onChange={(e) =>
-              setBlockKind(
-                e.target.value as
-                  | "insight"
-                  | "open_question"
-                  | "operator_note"
-                  | "claim",
-              )
-            }
+            onChange={(e) => setBlockKind(e.target.value as BlockKind)}
             className="px-2 py-1 text-xs border border-stone-300 rounded"
           >
             <option value="insight">insight</option>

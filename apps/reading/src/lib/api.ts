@@ -366,6 +366,56 @@ export async function attachBlock(req: {
   }
 }
 
+// ── Sprint 14: block search + reorder ──────────────────────────────
+
+export interface BlockSearchHit {
+  block_id: string;
+  block_kind: BlockKind;
+  label: string;
+  body: string;
+  source_tier: number | null;
+  document_title: string | null;
+}
+
+export async function searchBlocks(
+  q: string,
+  limit = 20,
+): Promise<{ count: number; hits: BlockSearchHit[] }> {
+  const url = new URL(`${API_BASE}/blocks/search`, window.location.origin);
+  url.searchParams.set("q", q);
+  url.searchParams.set("limit", String(limit));
+  const resp = await fetch(url.toString());
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /blocks/search failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function reorderBlock(req: {
+  section_id: string;
+  block_kind: BlockKind;
+  block_id: string;
+  new_section_id?: string;
+  new_block_index: number;
+}): Promise<void> {
+  const resp = await fetch(`${API_BASE}/sections/reorder-block`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /sections/reorder-block failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+}
+
 // ── Sprint 13: voice notes ─────────────────────────────────────────
 
 export interface VoiceNoteIngestRequest {

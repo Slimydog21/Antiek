@@ -106,6 +106,15 @@ CREATIVE_WRITER_USER_TEMPLATE = """\
 
 {style_guide}
 
+## Adjacent sections (Sprint 14 — multi-section coherence)
+
+The deliverable's prior sections (already written) and upcoming
+sections (titles only) are provided so you can avoid repetition
+and steer transitions naturally. Do NOT restate material from
+prior sections; reference them by section title only when needed.
+
+{adjacent_sections_block}
+
 ## Attached blocks (in operator-specified order)
 
 {blocks_block}
@@ -129,6 +138,16 @@ class CreativeWriterBlock:
 
 
 @dataclass(frozen=True)
+class AdjacentSection:
+    """A prior-or-upcoming section in the deliverable. Prior sections
+    carry the actual prose; upcoming sections carry only the title."""
+
+    section_index: int
+    title: str
+    prose_text: Optional[str] = None  # None means "upcoming"
+
+
+@dataclass(frozen=True)
 class CreativeWriterContext:
     """All inputs the user template needs."""
 
@@ -139,6 +158,7 @@ class CreativeWriterContext:
     section_count: int
     blocks: List[CreativeWriterBlock] = field(default_factory=list)
     style_guide: str = ""
+    adjacent_sections: List[AdjacentSection] = field(default_factory=list)
 
 
 def _render_block(block: CreativeWriterBlock) -> str:
@@ -151,11 +171,25 @@ def _render_block(block: CreativeWriterBlock) -> str:
     )
 
 
+def _render_adjacent(sec: AdjacentSection) -> str:
+    pos = f"§{sec.section_index + 1}"
+    if sec.prose_text:
+        return (
+            f"### Prior {pos} — {sec.title or '(untitled)'}\n\n"
+            f"{sec.prose_text.strip()}"
+        )
+    return f"### Upcoming {pos} — {sec.title or '(untitled)'}\n\n_(not yet written)_"
+
+
 def render_user_template(ctx: CreativeWriterContext) -> str:
     """Fill the user template with the context."""
     blocks_block = (
         "\n\n".join(_render_block(b) for b in ctx.blocks)
         if ctx.blocks else "_No blocks attached to this section._"
+    )
+    adjacent_block = (
+        "\n\n".join(_render_adjacent(s) for s in ctx.adjacent_sections)
+        if ctx.adjacent_sections else "_No adjacent sections yet._"
     )
     style_guide = ctx.style_guide.strip() or (
         "_No style guide provided — default to substrate voice and style discipline._"
@@ -168,6 +202,7 @@ def render_user_template(ctx: CreativeWriterContext) -> str:
         section_count=ctx.section_count,
         style_guide=style_guide,
         blocks_block=blocks_block,
+        adjacent_sections_block=adjacent_block,
     )
 
 

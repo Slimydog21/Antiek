@@ -156,7 +156,7 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Optional[Literal["arxiv", "youtube", "podcast", "url"]] = None
+    kind: Optional[Literal["arxiv", "youtube", "podcast", "twitter", "url"]] = None
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: Optional[int] = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
@@ -294,6 +294,67 @@ class VoiceNoteIngestResponse(BaseModel):
     title: Optional[str] = None
 
 
+# ── Sprint 14: twitter thread ingest + block search + reorder ─────────
+
+
+class TwitterTweetPayload(BaseModel):
+    """One tweet within a captured thread (extension payload)."""
+
+    tweet_id: str = Field(..., min_length=1)
+    text: str = Field(default="", max_length=10_000)
+    author_handle: str = Field(default="", max_length=64)
+    author_verified: bool = False
+    posted_at: Optional[str] = None  # ISO 8601
+    reply_to: Optional[str] = None
+    quote_of: Optional[str] = None
+    media_urls: list[str] = Field(default_factory=list)
+
+
+class TwitterThreadIngestRequest(BaseModel):
+    """Browser-extension POST shape for capturing an X thread."""
+
+    thread_url: str = Field(..., min_length=10)
+    root_tweet_id: str = Field(..., min_length=1)
+    author_handle: str = Field(..., min_length=1, max_length=64)
+    tweets: list[TwitterTweetPayload] = Field(..., min_length=1)
+    investigation_id: str = Field(default="__operator__", min_length=1)
+
+
+class TwitterThreadIngestResponse(BaseModel):
+    status: Literal["ingested", "skipped"]
+    document_id: str
+    document_loaded_event_id: Optional[str] = None
+    chunks_written: int = 0
+    skipped_reason: Optional[str] = None
+    title: Optional[str] = None
+
+
+class BlockSearchHit(BaseModel):
+    """One hit from the creation-surface block palette search."""
+
+    block_id: str
+    block_kind: Literal["insight", "open_question", "operator_note", "claim"]
+    label: str
+    body: str
+    source_tier: Optional[int] = None
+    document_title: Optional[str] = None
+
+
+class BlockSearchResponse(BaseModel):
+    count: int
+    hits: list[BlockSearchHit] = Field(default_factory=list)
+
+
+class ReorderBlockRequest(BaseModel):
+    """Move a block within / between sections (Mode C drag-drop)."""
+
+    section_id: str = Field(..., min_length=1)
+    block_kind: Literal["insight", "open_question", "operator_note", "claim"]
+    block_id: str = Field(..., min_length=1)
+    new_section_id: Optional[str] = None  # if None, reorder within section
+    new_block_index: int = Field(..., ge=0)
+
+
 # ---------------------------------------------------------------------------
 # Source kind detection (Sprint 12)
 # ---------------------------------------------------------------------------
@@ -313,6 +374,8 @@ def _detect_source_kind(
         return "arxiv"
     if "youtube.com" in u or "youtu.be" in u:
         return "youtube"
+    if "twitter.com" in u or "x.com" in u or "://t.co" in u:
+        return "twitter"
     # Podcast feeds: heuristic — RSS-ish URL OR explicit feed-like path.
     # The dashboard convention "podcasts.<host>/feed" + ".rss"
     # extensions cover most.
@@ -985,6 +1048,22 @@ def create_app(
                     episodes_processed=len(results),
                     episodes_ingested=ingested,
                 )
+            elif detected == "twitter":
+                # The URL alone is insufficient for X — the auth wall
+                # blocks direct fetch. Tell the operator to use the
+                # browser extension's POST /sources/twitter endpoint
+                # instead. This keeps /sources/ingest honest about
+                # what it can synchronously do.
+                return IngestSourceResponse(
+                    status="error",
+                    detected_kind="twitter",
+                    error_message=(
+                        "X threads cannot be ingested by URL alone "
+                        "(auth wall). Use the browser extension at "
+                        "apps/x-extension/ which POSTs to "
+                        "/sources/twitter with the captured thread."
+                    ),
+                )
             elif detected == "url":
                 from acquisition.urls import ingest_url
                 kwargs = {"investigation_id": req.investigation_id}
@@ -1169,6 +1248,123 @@ def create_app(
                 block_index=req.block_index,
             )
         return {"status": "attached"}
+
+    # ── Sprint 14: block search + reorder + twitter ─────────────────
+
+    @app.get("/blocks/search", response_model=BlockSearchResponse)
+    async def block_search(
+        q: str = Query(default="", max_length=200),
+        limit: int = Query(default=20, ge=1, le=100),
+    ) -> BlockSearchResponse:
+        """Search the operator's graph for insight/claim/note blocks to
+        drag into a deliverable section. Mode C palette uses this.
+
+        Sprint 14 implementation: ILIKE over nodes.canonical_label +
+        metadata. Sprint 15 swaps in cosine search via the embedding
+        column so semantic matches surface."""
+        import duckdb
+        db = _resolve_db_path()
+        like = f"%{q}%" if q.strip() else "%"
+        con = duckdb.connect(db, read_only=True)
+        try:
+            rows = con.execute(
+                "SELECT n.node_id, n.canonical_label, n.node_type, "
+                "       n.metadata, d.title, d.source_tier "
+                "FROM nodes n "
+                "LEFT JOIN chunks c ON ("
+                "    CAST(json_extract_string(n.metadata, '$.chunk_id') AS VARCHAR) = c.chunk_id"
+                ") "
+                "LEFT JOIN documents d ON c.document_id = d.document_id "
+                "WHERE n.canonical_label ILIKE ? "
+                "ORDER BY n.created_at DESC LIMIT ?",
+                [like, limit],
+            ).fetchall()
+        finally:
+            con.close()
+        hits: list[BlockSearchHit] = []
+        for r in rows:
+            hits.append(BlockSearchHit(
+                block_id=r[0],
+                block_kind="insight",  # all node rows surface as 'insight' here
+                label=r[1] or "(no label)",
+                body=r[1] or "",
+                source_tier=r[5],
+                document_title=r[4],
+            ))
+        return BlockSearchResponse(count=len(hits), hits=hits)
+
+    @app.post("/sections/reorder-block", status_code=202)
+    async def post_reorder_block(req: ReorderBlockRequest) -> dict:
+        """Move a block within a section, or to a new section.
+
+        Implementation note: section_blocks has a composite PK
+        ``(section_id, block_kind, block_id)``. Moving to a new
+        section requires DELETE + INSERT under the same lock."""
+        from runtime.db_lock import connect_write
+        db = _resolve_db_path()
+        target_section = req.new_section_id or req.section_id
+        with connect_write(db, purpose="sections/reorder") as con:
+            # Validate target section exists
+            row = con.execute(
+                "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
+                [target_section],
+            ).fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=404, detail="target section not found",
+                )
+            # If moving across sections, DELETE old + INSERT new
+            if (
+                req.new_section_id is not None
+                and req.new_section_id != req.section_id
+            ):
+                con.execute(
+                    "DELETE FROM section_blocks WHERE section_id = ? "
+                    "AND block_kind = ? AND block_id = ?",
+                    [req.section_id, req.block_kind, req.block_id],
+                )
+                con.execute(
+                    "INSERT INTO section_blocks "
+                    "(section_id, block_kind, block_id, block_index) "
+                    "VALUES (?, ?, ?, ?)",
+                    [target_section, req.block_kind, req.block_id,
+                     int(req.new_block_index)],
+                )
+            else:
+                # In-section reorder: just bump the index
+                con.execute(
+                    "UPDATE section_blocks SET block_index = ? "
+                    "WHERE section_id = ? AND block_kind = ? AND block_id = ?",
+                    [int(req.new_block_index), req.section_id,
+                     req.block_kind, req.block_id],
+                )
+        return {"status": "reordered"}
+
+    @app.post(
+        "/sources/twitter",
+        response_model=TwitterThreadIngestResponse,
+        status_code=202,
+    )
+    async def post_twitter_thread(
+        req: TwitterThreadIngestRequest,
+    ) -> TwitterThreadIngestResponse:
+        """Ingest a captured X thread. The browser extension at
+        ``apps/x-extension/`` POSTs to this endpoint with the DOM-
+        extracted thread content."""
+        from acquisition.twitter import ingest_thread_payload
+        payload = req.model_dump()
+        investigation_id = payload.pop("investigation_id")
+        r = ingest_thread_payload(payload, investigation_id=investigation_id)
+        return TwitterThreadIngestResponse(
+            status=(
+                "ingested" if r.chunks_written > 0 else "skipped"
+            ),
+            document_id=r.document_id,
+            document_loaded_event_id=r.document_loaded_event_id,
+            chunks_written=r.chunks_written,
+            skipped_reason=r.skipped_reason,
+            title=r.title,
+        )
 
     # ── Sprint 13: voice notes ─────────────────────────────────────
 

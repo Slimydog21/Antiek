@@ -13,6 +13,7 @@ if _REPO not in sys.path:
 
 from roles.creative_writer import (
     CREATIVE_WRITER_SYSTEM_PROMPT,
+    AdjacentSection,
     CreativeWriterBlock,
     CreativeWriterContext,
     CreativeWriterValidationError,
@@ -173,3 +174,65 @@ def test_parser_no_json_rejected():
     raw = "I am the model and I will not produce JSON today."
     with pytest.raises(CreativeWriterValidationError, match="no JSON"):
         parse_creative_writer_response(raw, known_block_ids=set())
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 4. Multi-section coherence (Sprint 14)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_render_user_template_no_adjacent_sections_shows_placeholder():
+    txt = render_user_template(_ctx())
+    assert "No adjacent sections yet" in txt
+
+
+def test_render_user_template_prior_section_includes_prose():
+    ctx = CreativeWriterContext(
+        deliverable_title="Memo",
+        deliverable_kind="research_memo",
+        section_title="Body",
+        section_index=1,
+        section_count=3,
+        adjacent_sections=[
+            AdjacentSection(
+                section_index=0,
+                title="Intro",
+                prose_text="The substrate compounds nonlinearly.",
+            ),
+        ],
+    )
+    txt = render_user_template(ctx)
+    assert "Prior §1" in txt
+    assert "Intro" in txt
+    assert "compounds nonlinearly" in txt
+
+
+def test_render_user_template_upcoming_section_shows_title_only():
+    ctx = CreativeWriterContext(
+        deliverable_title="Memo",
+        deliverable_kind="research_memo",
+        section_title="Body",
+        section_index=1,
+        section_count=3,
+        adjacent_sections=[
+            AdjacentSection(section_index=2, title="Conclusion"),
+        ],
+    )
+    txt = render_user_template(ctx)
+    assert "Upcoming §3" in txt
+    assert "Conclusion" in txt
+    assert "not yet written" in txt
+
+
+def test_system_prompt_warns_against_repetition():
+    # Hard discipline lock-in for multi-section coherence: the user
+    # template tells the model to avoid restating prior material.
+    ctx = CreativeWriterContext(
+        deliverable_title="Memo", deliverable_kind="research_memo",
+        section_title="Body", section_index=1, section_count=2,
+        adjacent_sections=[
+            AdjacentSection(section_index=0, title="Intro", prose_text="x"),
+        ],
+    )
+    txt = render_user_template(ctx)
+    assert "Do NOT restate" in txt or "repetition" in txt.lower()
