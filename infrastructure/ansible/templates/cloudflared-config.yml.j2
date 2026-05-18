@@ -1,0 +1,33 @@
+# Ansible managed.
+#
+# Cloudflare Tunnel config for api.antiek.ai. Replaces the previous
+# grey-cloud direct-IP exposure (where Caddy terminated TLS on the
+# public Hetzner IP). Cloudflare now terminates TLS at the edge; this
+# tunnel forwards the cleartext payload to uvicorn on 127.0.0.1:8001.
+#
+# Substrate stays bound to 127.0.0.1 — never sees the public internet.
+# Public attack surface on Hetzner reduced to port 22 (SSH) only.
+#
+# Why no Caddy in the path anymore:
+#   The tunnel itself implements long-running connection support
+#   (originRequest below) and Cloudflare handles TLS at the edge.
+#   Caddy's reverse_proxy/TLS termination are both redundant now.
+
+tunnel: {{ cloudflared_tunnel_id }}
+credentials-file: /etc/cloudflared/{{ cloudflared_tunnel_id }}.json
+
+ingress:
+  - hostname: api.antiek.ai
+    service: http://127.0.0.1:8001
+    originRequest:
+      # Match the substrate's longest single-role timeout (600s)
+      # with slack for sync/teardown — matches the systemd unit's
+      # --timeout-keep-alive 900s.
+      connectTimeout: 30s
+      tlsTimeout: 10s
+      tcpKeepAlive: 30s
+      noHappyEyeballs: false
+      keepAliveConnections: 100
+      keepAliveTimeout: 300s
+      httpHostHeader: api.antiek.ai
+  - service: http_status:404
