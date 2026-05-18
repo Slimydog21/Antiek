@@ -406,6 +406,82 @@ class AttributionReportResponse(BaseModel):
     option_c: AttributionAlgorithmShares
 
 
+# ── Sprint 16: interview projects + interviews ────────────────────────
+
+
+class CreateInterviewProjectRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    topic_description: Optional[str] = Field(default=None, max_length=4000)
+    deliverable_id: Optional[str] = None
+    must_cover: list[str] = Field(default_factory=list)
+    framing: Optional[str] = Field(default=None, max_length=4000)
+
+
+class InterviewProjectSummary(BaseModel):
+    project_id: str
+    title: str
+    topic_description: Optional[str]
+    deliverable_id: Optional[str]
+    must_cover: list[str] = Field(default_factory=list)
+    framing: Optional[str] = None
+    interview_count: int = 0
+    completed_count: int = 0
+    created_at: Optional[str] = None
+
+
+class InviteInterviewRequest(BaseModel):
+    project_id: str
+    informant_handle: Optional[str] = Field(default=None, max_length=200)
+    informant_email: Optional[str] = Field(default=None, max_length=320)
+
+
+class InterviewSummary(BaseModel):
+    interview_id: str
+    project_id: str
+    informant_handle: Optional[str]
+    informant_email: Optional[str]
+    status: Literal[
+        "invited", "in_progress", "completed", "declined", "incomplete",
+    ]
+    invited_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    turn_count: int = 0
+
+
+class InterviewTurnPayload(BaseModel):
+    role: Literal["interviewer", "informant"]
+    text: str
+    ts: Optional[str] = None
+
+
+class InterviewDetailResponse(BaseModel):
+    interview_id: str
+    project_id: str
+    project_title: str
+    topic_description: Optional[str]
+    framing: Optional[str]
+    must_cover: list[str]
+    status: str
+    consent_recorded: bool
+    transcript: list[InterviewTurnPayload] = Field(default_factory=list)
+
+
+class InterviewTurnRequest(BaseModel):
+    role: Literal["interviewer", "informant"]
+    text: str = Field(..., min_length=1, max_length=20_000)
+
+
+class InterviewTurnResponse(BaseModel):
+    interview_id: str
+    turn_count: int
+    status: str
+
+
+class CompleteInterviewRequest(BaseModel):
+    transcript_document_id: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Source kind detection (Sprint 12)
 # ---------------------------------------------------------------------------
@@ -1631,6 +1707,244 @@ def create_app(
             option_a=_to_resp("A", r.option_a),
             option_b=_to_resp("B", r.option_b),
             option_c=_to_resp("C", r.option_c),
+        )
+
+    # ── Sprint 16: interview projects + interviews ─────────────────
+
+    @app.post(
+        "/interview-projects",
+        response_model=InterviewProjectSummary,
+        status_code=201,
+    )
+    async def post_interview_project(
+        req: CreateInterviewProjectRequest,
+    ) -> InterviewProjectSummary:
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import insert_interview_project
+        import json as _json
+
+        db = _resolve_db_path()
+        guide = {
+            "must_cover": req.must_cover,
+            "framing": req.framing or "",
+        }
+        with connect_write(db, purpose="interview_projects/create") as con:
+            pid = insert_interview_project(
+                con,
+                title=req.title,
+                topic_description=req.topic_description,
+                deliverable_id=req.deliverable_id,
+                interview_guide=guide,
+            )
+            row = con.execute(
+                "SELECT title, topic_description, deliverable_id, "
+                "strftime(created_at, '%Y-%m-%dT%H:%M:%S') "
+                "FROM interview_projects WHERE project_id = ?", [pid],
+            ).fetchone()
+        return InterviewProjectSummary(
+            project_id=pid, title=row[0], topic_description=row[1],
+            deliverable_id=row[2], must_cover=req.must_cover,
+            framing=req.framing, created_at=row[3],
+        )
+
+    @app.get(
+        "/interview-projects",
+        response_model=list[InterviewProjectSummary],
+    )
+    async def list_interview_projects() -> list[InterviewProjectSummary]:
+        import duckdb
+        import json as _json
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            rows = con.execute(
+                "SELECT p.project_id, p.title, p.topic_description, "
+                "p.deliverable_id, p.interview_guide, "
+                "strftime(p.created_at, '%Y-%m-%dT%H:%M:%S'), "
+                "(SELECT COUNT(*) FROM interviews i WHERE i.project_id = p.project_id), "
+                "(SELECT COUNT(*) FROM interviews i WHERE i.project_id = p.project_id AND i.status = 'completed') "
+                "FROM interview_projects p ORDER BY p.created_at DESC",
+            ).fetchall()
+        finally:
+            con.close()
+        out: list[InterviewProjectSummary] = []
+        for r in rows:
+            guide = {}
+            if r[4]:
+                try:
+                    guide = _json.loads(r[4])
+                except (ValueError, TypeError):
+                    guide = {}
+            out.append(InterviewProjectSummary(
+                project_id=r[0], title=r[1], topic_description=r[2],
+                deliverable_id=r[3],
+                must_cover=list(guide.get("must_cover") or []),
+                framing=guide.get("framing"),
+                created_at=r[5],
+                interview_count=int(r[6] or 0),
+                completed_count=int(r[7] or 0),
+            ))
+        return out
+
+    @app.post(
+        "/interviews",
+        response_model=InterviewSummary,
+        status_code=201,
+    )
+    async def post_invite_interview(req: InviteInterviewRequest) -> InterviewSummary:
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import insert_interview
+
+        db = _resolve_db_path()
+        with connect_write(db, purpose="interviews/invite") as con:
+            project_row = con.execute(
+                "SELECT 1 FROM interview_projects WHERE project_id = ?",
+                [req.project_id],
+            ).fetchone()
+            if project_row is None:
+                raise HTTPException(
+                    status_code=404, detail="interview project not found",
+                )
+            iid = insert_interview(
+                con,
+                project_id=req.project_id,
+                informant_handle=req.informant_handle,
+                informant_email=req.informant_email,
+            )
+            row = con.execute(
+                "SELECT informant_handle, informant_email, status, "
+                "strftime(invited_at, '%Y-%m-%dT%H:%M:%S') "
+                "FROM interviews WHERE interview_id = ?", [iid],
+            ).fetchone()
+        return InterviewSummary(
+            interview_id=iid, project_id=req.project_id,
+            informant_handle=row[0], informant_email=row[1],
+            status=row[2], invited_at=row[3], turn_count=0,
+        )
+
+    @app.get(
+        "/interviews/{interview_id}",
+        response_model=InterviewDetailResponse,
+    )
+    async def get_interview(interview_id: str) -> InterviewDetailResponse:
+        import duckdb
+        import json as _json
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            row = con.execute(
+                "SELECT i.interview_id, i.project_id, i.status, "
+                "i.consent_recorded, i.transcript_turns, "
+                "p.title, p.topic_description, p.interview_guide "
+                "FROM interviews i "
+                "JOIN interview_projects p ON i.project_id = p.project_id "
+                "WHERE i.interview_id = ?", [interview_id],
+            ).fetchone()
+        finally:
+            con.close()
+        if row is None:
+            raise HTTPException(status_code=404, detail="interview not found")
+        guide = {}
+        if row[7]:
+            try:
+                guide = _json.loads(row[7])
+            except (ValueError, TypeError):
+                pass
+        turns = []
+        if row[4]:
+            try:
+                raw_turns = _json.loads(row[4])
+                turns = [
+                    InterviewTurnPayload(**t) for t in raw_turns if isinstance(t, dict)
+                ]
+            except (ValueError, TypeError):
+                turns = []
+        return InterviewDetailResponse(
+            interview_id=row[0], project_id=row[1],
+            project_title=row[5], topic_description=row[6],
+            framing=guide.get("framing"),
+            must_cover=list(guide.get("must_cover") or []),
+            status=row[2],
+            consent_recorded=bool(row[3]),
+            transcript=turns,
+        )
+
+    @app.post(
+        "/interviews/{interview_id}/turn",
+        response_model=InterviewTurnResponse,
+        status_code=202,
+    )
+    async def post_interview_turn(
+        interview_id: str, req: InterviewTurnRequest,
+    ) -> InterviewTurnResponse:
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import append_interview_turn
+
+        db = _resolve_db_path()
+        with connect_write(db, purpose="interviews/turn") as con:
+            try:
+                count = append_interview_turn(
+                    con,
+                    interview_id=interview_id,
+                    role=req.role,
+                    text=req.text,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+            (status,) = con.execute(
+                "SELECT status FROM interviews WHERE interview_id = ?",
+                [interview_id],
+            ).fetchone()
+        return InterviewTurnResponse(
+            interview_id=interview_id, turn_count=count, status=status,
+        )
+
+    @app.post(
+        "/interviews/{interview_id}/complete",
+        response_model=InterviewSummary,
+        status_code=202,
+    )
+    async def post_complete_interview(
+        interview_id: str, req: CompleteInterviewRequest,
+    ) -> InterviewSummary:
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import complete_interview
+
+        db = _resolve_db_path()
+        with connect_write(db, purpose="interviews/complete") as con:
+            row = con.execute(
+                "SELECT 1 FROM interviews WHERE interview_id = ?",
+                [interview_id],
+            ).fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=404, detail="interview not found",
+                )
+            complete_interview(
+                con,
+                interview_id=interview_id,
+                transcript_document_id=req.transcript_document_id,
+            )
+            r = con.execute(
+                "SELECT project_id, informant_handle, informant_email, "
+                "status, strftime(invited_at, '%Y-%m-%dT%H:%M:%S'), "
+                "strftime(started_at, '%Y-%m-%dT%H:%M:%S'), "
+                "strftime(completed_at, '%Y-%m-%dT%H:%M:%S'), "
+                "transcript_turns "
+                "FROM interviews WHERE interview_id = ?", [interview_id],
+            ).fetchone()
+        import json as _json
+        turn_count = 0
+        if r[7]:
+            try:
+                turn_count = len(_json.loads(r[7]))
+            except (ValueError, TypeError):
+                turn_count = 0
+        return InterviewSummary(
+            interview_id=interview_id, project_id=r[0],
+            informant_handle=r[1], informant_email=r[2], status=r[3],
+            invited_at=r[4], started_at=r[5], completed_at=r[6],
+            turn_count=turn_count,
         )
 
     # ── Sprint 13: voice notes ─────────────────────────────────────

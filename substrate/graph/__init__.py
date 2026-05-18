@@ -49,12 +49,16 @@ def ensure_initialized(db_path: _Optional[str] = None) -> str:
 
 
 from .ops import (
+    append_interview_turn,
     attach_block_to_section,
+    complete_interview,
     content_addressed_id,
     insert_chunk,
     insert_deliverable,
     insert_document,
     insert_edge,
+    insert_interview,
+    insert_interview_project,
     insert_node,
     insert_section,
     new_random_id,
@@ -120,6 +124,10 @@ __all__ = [
     "insert_section",
     "attach_block_to_section",
     "update_section_prose",
+    "insert_interview_project",
+    "insert_interview",
+    "append_interview_turn",
+    "complete_interview",
     "content_addressed_id",
     "new_random_id",
     # search

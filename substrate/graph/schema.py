@@ -288,6 +288,38 @@ CREATE TABLE IF NOT EXISTS section_blocks (
 );
 
 -- ============================================================
+-- DeepBlu interviews (Sprint 16) — master spec §11.2
+-- ============================================================
+-- An interview_project bundles per-informant interviews under one
+-- topic. Each interview row tracks one informant's session: invite,
+-- consent, transcript document, status.
+CREATE TABLE IF NOT EXISTS interview_projects (
+    project_id        TEXT PRIMARY KEY,
+    title             TEXT NOT NULL,
+    topic_description TEXT,
+    deliverable_id    TEXT REFERENCES deliverables(deliverable_id),
+    interview_guide   TEXT,
+    owner_user_id     TEXT NOT NULL DEFAULT '__operator__',
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS interviews (
+    interview_id           TEXT PRIMARY KEY,
+    project_id             TEXT NOT NULL REFERENCES interview_projects(project_id),
+    informant_handle       TEXT,
+    informant_email        TEXT,
+    invited_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    started_at             TIMESTAMP,
+    completed_at           TIMESTAMP,
+    transcript_document_id TEXT REFERENCES documents(document_id),
+    consent_recorded       BOOLEAN NOT NULL DEFAULT FALSE,
+    status                 TEXT NOT NULL DEFAULT 'invited' CHECK (status IN (
+        'invited', 'in_progress', 'completed', 'declined', 'incomplete'
+    )),
+    transcript_turns       TEXT  -- JSON array of {role, text, ts}
+);
+
+-- ============================================================
 -- Indexes for backtest query patterns
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_syntheses_timestamp ON syntheses(synthesis_timestamp);
@@ -300,6 +332,8 @@ CREATE INDEX IF NOT EXISTS idx_tier_overrides_set_at ON chunk_tier_overrides(set
 CREATE INDEX IF NOT EXISTS idx_edges_extracted ON edges(extracted_at);
 CREATE INDEX IF NOT EXISTS idx_sections_deliverable ON deliverable_sections(deliverable_id);
 CREATE INDEX IF NOT EXISTS idx_section_blocks_section ON section_blocks(section_id);
+CREATE INDEX IF NOT EXISTS idx_interviews_project ON interviews(project_id);
+CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
 """
 
 
@@ -309,6 +343,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "syntheses", "synthesis_substrate_manifest",
     "outcomes", "chunk_tier_overrides",
     "deliverables", "deliverable_sections", "section_blocks",
+    "interview_projects", "interviews",
 )
 
 
