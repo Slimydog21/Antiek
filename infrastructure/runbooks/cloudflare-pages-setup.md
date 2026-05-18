@@ -1,121 +1,89 @@
-# Cloudflare Pages Setup — `app.antiek.ai`
+# Cloudflare Pages — `antiek.ai` (canonical)
 
-**One-time operator action.** Sprint 11 ships the web app code but the
-Pages project itself was deferred from Sprint 10 IaC (Terraform doesn't
-have a `cloudflare_pages_project` resource that creates the
-GitHub-connected build pipeline in one shot — that's a dashboard flow).
+**Status: live as of 2026-05-18.** This runbook documents the
+*current* shape rather than the original Sprint 11 plan. The original
+plan called for a Pages project named `antiek-ai` serving
+`app.antiek.ai`. What actually shipped: a Pages project named
+`antiek` initially serving `app.antiek.ai`, then migrated to serve
+the bare apex `antiek.ai` as canonical.
 
-After this, every `git push` to `main` auto-builds + deploys
-`app.antiek.ai`.
+For the historical Sprint 11 plan (now superseded), see the spec at
+`docs/master-product-spec.md` and `docs/sprints/sprint11-web-app-mvp.md`.
 
 ---
 
-## Prerequisites
+## Current production wiring
 
-- DNS CNAME `app.antiek.ai → antiek-ai.pages.dev` is already configured
-  (Terraform created it in Sprint 10).
-- GitHub repo `Slimydog21/Antiek` is connected via the `gh auth login`
-  done in Sprint 11 setup.
-- The Antiek substrate is live at `https://api.antiek.ai` (Sprint 10).
+- **Pages project**: `antiek` (in the operator's Cloudflare account)
+- **Source**: GitHub `Slimydog21/Antiek`, production branch `main`
+- **Build command**: `cd apps/reading && npm install && npm run build`
+- **Build output**: `apps/reading/dist`
+- **Build env**:
+  - `VITE_API_BASE_URL=https://api.antiek.ai`
+- **Custom domains**:
+  - `antiek.ai` (canonical, 2026-05-18)
+  - `app.antiek.ai` (deprecated; deletable once no reachable client
+    is sending requests from it — the CORS allow-list in
+    `interfaces/research/api/app.py` keeps it acceptable during the
+    cut-over window)
+- **DNS**: Cloudflare-managed in the `antiek.ai` zone; the apex uses
+  CNAME flattening to the Pages project's edge.
 
-## Steps
+## Initial setup (one-time, completed)
+
+These steps were operator-driven via the Cloudflare dashboard. Kept
+here as a reference for any future Pages project (e.g. interview UI
+in Sprint 17, publisher dashboard in Sprint 18).
 
 ### 1. Create the Pages project
 
-- Open https://dash.cloudflare.com
-- Left sidebar: **Workers & Pages** → top-right: **Create application**
-  → **Pages** tab → **Connect to Git**
-- If prompted, install the Cloudflare GitHub App on your account and
-  authorize access to `Slimydog21/Antiek` (you can pick "only select
-  repositories" → Antiek)
-- Click **Antiek** in the repo list → **Begin setup**
+- https://dash.cloudflare.com → **Workers & Pages** → **Create
+  application** → **Pages** tab → **Connect to Git**
+- Install the Cloudflare GitHub App on your account if prompted;
+  authorize access to `Slimydog21/Antiek` (only-select-repositories
+  is fine).
+- Click `Antiek` in the repo list → **Begin setup**.
 
 ### 2. Build configuration
 
 | Field | Value |
 |---|---|
-| Project name | **`antiek-ai`** (must match the existing CNAME target `antiek-ai.pages.dev`) |
+| Project name | `antiek` |
 | Production branch | `main` |
-| Framework preset | None (or "Vite" if you want — it just preselects fields) |
+| Framework preset | None (or "Vite") |
 | Build command | `cd apps/reading && npm install && npm run build` |
 | Build output directory | `apps/reading/dist` |
-| Root directory | (leave empty) |
+| Root directory | (leave blank) |
 
-### 3. Environment variables
+### 3. Environment variables (production)
 
-Add one variable (under **Environment variables** in the setup form):
+- `VITE_API_BASE_URL=https://api.antiek.ai`
+- *(H4 will add `VITE_OPERATOR_TOKEN=op_...` after the auth-at-the-
+  edge cut-over.)*
 
-| Name | Value | Scope |
-|---|---|---|
-| `VITE_API_BASE_URL` | `https://api.antiek.ai` | Production |
+### 4. Custom domains
 
-This is what makes the deployed bundle call your substrate at
-`api.antiek.ai` instead of trying to use same-origin paths.
+Add `antiek.ai` first. Cloudflare detects the existing DNS record
+and uses CNAME flattening to serve the Pages edge at the apex.
+Adding `app.antiek.ai` is optional — only useful during the cut-over
+window from the old subdomain. Once nothing reachable still requests
+`app.antiek.ai`, delete the custom domain from the Pages project and
+remove the entry from the substrate's CORS allow-list.
 
-### 4. Save and Deploy
-
-Click **Save and Deploy**. First build takes ~2-3 minutes.
-
-When it succeeds, the build log shows `dist/index.html` (~0.45 KB) +
-the JS/CSS bundles. The deployment URL appears as
-`https://<random>.antiek-ai.pages.dev`.
-
-### 5. Bind to the custom domain
-
-- After the first deploy, in the project view: **Custom domains** tab
-  → **Set up a custom domain**
-- Enter `app.antiek.ai` → **Continue** → **Activate domain**
-- Cloudflare detects the existing CNAME and wires everything up.
-- TLS provisions automatically within ~60 seconds.
-
-### 6. Verify
+## Verification
 
 ```bash
-curl -I https://app.antiek.ai/
-# Expect: HTTP/2 200, content-type: text/html
+curl -sI https://antiek.ai/                    # expect 200
+curl -s  https://antiek.ai/ | head -10         # expect Antiek index.html
+curl -s  https://api.antiek.ai/health | jq .   # expect hermes in registered_providers
 ```
 
-Open https://app.antiek.ai in a browser. You should see Mode A
-(research workstation) with the empty chat input.
+## Sub-pages (Sprint 17+)
 
-Quick functional check:
-1. Header shows "Antiek" + a "Research / Wrestle" toggle
-2. Empty state has serif "What do you want to research?" prompt
-3. Sidebar says "No investigations yet. Ask a question to start."
-4. Type a tiny throwaway question, hit Cmd+Enter
-5. Should POST `https://api.antiek.ai/investigations` (check
-   browser DevTools → Network) and navigate to `/inv/<id>`
-6. Trajectory view starts rendering phase rows live via the
-   WebSocket connection to `wss://api.antiek.ai/ws/events`
+Future deployments are separate Pages projects under the same zone:
 
-If the trajectory view stays blank: the WebSocket isn't connecting.
-Check DevTools console for a `wss://` error. Common cause: the
-`VITE_API_BASE_URL` env var wasn't set during build (the bundle
-falls back to same-origin and tries `wss://app.antiek.ai/ws/events`,
-which doesn't exist).
+- `interview.antiek.ai` → Sprint 17 informant UI (Pages or Worker)
+- `publisher.antiek.ai` → Sprint 18 publisher dashboard (Pages)
 
-## After every code push
-
-Cloudflare Pages auto-deploys on push to `main`. No manual action
-needed. Build status appears in the project's **Deployments** tab.
-
-The substrate's deploy is still manual:
-```bash
-cd ~/Desktop/Antiek/infrastructure/ansible
-ansible-playbook -i inventory.ini playbooks/deploy.yml
-```
-
-So pushing a change that touches BOTH the substrate AND the web app
-means:
-1. `git push` (triggers Pages auto-deploy of the web app)
-2. `ansible-playbook deploy.yml` (deploys the substrate change)
-
-Order matters if the new web-app version depends on a new substrate
-endpoint: deploy the substrate FIRST, then the Pages build will
-land. Otherwise the deployed bundle calls an endpoint that 404s for
-~2-3 minutes until Pages finishes building.
-
-## Cost
-
-Cloudflare Pages free tier: 500 builds/month, unlimited bandwidth,
-unlimited requests. Antiek is nowhere near these limits.
+Each takes the same shape: new Pages project, new custom domain,
+build env wires to `api.antiek.ai`.

@@ -40,7 +40,7 @@ EVENTS_DIR="${ANTIEK_EVENTS_DIR:-/home/antiek/.antiek/research_events}"
 SMOKE_TIMEOUT_S="${SMOKE_TIMEOUT_S:-300}"
 
 INV_ID="smoke_$(date +%Y%m%d_%H%M%S)_$$"
-QUESTION="${SMOKE_QUESTION:-in one sentence, what does the substrate do?}"
+QUESTION="${SMOKE_QUESTION:-Will high-bandwidth memory supply constraints meaningfully limit datacenter GPU deployments through 2027?}"
 
 for cmd in curl ssh scp jq; do
   if ! command -v "$cmd" >/dev/null 2>&1; then

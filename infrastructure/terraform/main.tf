@@ -124,23 +124,37 @@ resource "cloudflare_record" "api_aaaa" {
 # ──────────────────────────────────────────────────────────────────────────────
 # 4. DNS — app subdomain → Cloudflare Pages.
 #
-# The Pages project itself (antiek-ai) is created separately via the
-# Cloudflare dashboard (operator's task). Once it exists, its target is
-# `antiek-ai.pages.dev`. This CNAME just sends app.antiek.ai there.
+# ⚠️  DEPRECATED 2026-05-18. The Pages project is named `antiek` (NOT
+#     `antiek-ai` as this block targets), and the operator migrated the
+#     canonical web URL from `app.antiek.ai` to the bare apex
+#     `antiek.ai`. The Pages project's "Custom domains" dashboard flow
+#     manages DNS records for `antiek.ai` and `app.antiek.ai` directly;
+#     this Terraform block is now orphaned and likely stale.
 #
-# `proxied = true` because Pages requires proxying (Cloudflare serves the
-# static assets from the edge cache).
+#     The block is preserved (commented out) rather than removed so a
+#     `terraform apply` does NOT destroy any record that Pages may
+#     have adopted. Migration shape:
+#       1. Operator deletes `app.antiek.ai` from the Pages project
+#          (Cloudflare dashboard → antiek project → Custom domains).
+#       2. Operator runs `terraform state rm cloudflare_record.app_cname`
+#          to drop the resource from state without touching the
+#          (now-already-removed) record.
+#       3. Future Pages projects (e.g. interview.antiek.ai in Sprint 17)
+#          should use the Custom-domains dashboard flow rather than
+#          Terraform — `cloudflare_pages_project` doesn't exist as a
+#          one-shot resource in the provider, and DNS-only Terraform
+#          fights with Pages auto-management.
 # ──────────────────────────────────────────────────────────────────────────────
 
-resource "cloudflare_record" "app_cname" {
-  zone_id = var.cloudflare_zone_id
-  name    = "app"
-  value   = "antiek-ai.pages.dev" # operator must create this Pages project separately
-  type    = "CNAME"
-  ttl     = 1 # 1 = "automatic" when proxied
-  proxied = true
-  comment = "app.antiek.ai → Cloudflare Pages (project created via CF dashboard)"
-}
+# resource "cloudflare_record" "app_cname" {
+#   zone_id = var.cloudflare_zone_id
+#   name    = "app"
+#   value   = "antiek-ai.pages.dev" # incorrect — actual project is `antiek`
+#   type    = "CNAME"
+#   ttl     = 1
+#   proxied = true
+#   comment = "app.antiek.ai → Cloudflare Pages (DEPRECATED 2026-05-18)"
+# }
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 5. R2 bucket for backups.

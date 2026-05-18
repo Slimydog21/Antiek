@@ -607,10 +607,17 @@ def create_app(
             # Default allow-list:
             # - localhost:5173 + 127.0.0.1:5173: Vite dev server (Mode B
             #   wrestle UI; Mode A research workstation)
-            # - https://app.antiek.ai: production web app (Sprint 11)
+            # - https://antiek.ai: production web app (canonical apex,
+            #   2026-05-18 migration from app.antiek.ai)
+            # - https://app.antiek.ai: deprecated alias, kept in the
+            #   allow-list during the cut-over window. Remove this entry
+            #   once the operator deletes the app.antiek.ai custom
+            #   domain on the Cloudflare Pages project — by then no
+            #   reachable client should be sending requests from it.
             cors_origins = [
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
+                "https://antiek.ai",
                 "https://app.antiek.ai",
             ]
     if cors_origins:
@@ -621,6 +628,69 @@ def create_app(
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    # ── H4: operator bearer middleware ──
+    # When ANTIEK_OPERATOR_TOKEN is set, every path except the always-
+    # open ones requires ``Authorization: Bearer <token>``. When the
+    # env var is unset (test / local dev), enforcement is bypassed
+    # and the API is open as before.
+    #
+    # The "always open" set is deliberately narrow:
+    # - ``/health`` — the bridge-health probe and uptime monitors
+    #   need to hit this without credentials. Returns only binary
+    #   up/down state plus the list of registered providers; no
+    #   investigation content or operator state.
+    # - OPTIONS — CORS preflight; browsers handle these automatically
+    #   before the actual request, no auth header is sent yet.
+    #
+    # Everything else (including /trajectory, /chunks, /deliverables,
+    # /ops/provider-ratio, etc.) gates on the bearer. Read endpoints
+    # expose operator-sensitive content (investigation trajectories,
+    # draft prose, knowledge graph) so they need protection too —
+    # this is single-operator-private, not "read is fine."
+    _OPERATOR_AUTH_OPEN_PATHS: set[str] = {"/health"}
+    _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
+
+    @app.middleware("http")
+    async def _operator_bearer_middleware(request, call_next):
+        expected = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
+        if not expected:
+            # Enforcement disabled (no token configured). Existing
+            # tests + local dev work unchanged.
+            return await call_next(request)
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
+            return await call_next(request)
+        auth = request.headers.get("Authorization", "")
+        scheme, _, token = auth.partition(" ")
+        if scheme.lower() != "bearer" or not token.strip():
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": {
+                        "message": (
+                            "Missing or malformed Authorization header. "
+                            "This API requires Bearer-token auth."
+                        ),
+                        "code": "operator_auth_missing",
+                    }
+                },
+            )
+        import secrets as _secrets
+        if not _secrets.compare_digest(token.strip(), expected):
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": {
+                        "message": "Operator bearer does not match.",
+                        "code": "operator_auth_mismatch",
+                    }
+                },
+            )
+        return await call_next(request)
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
     # Expose for tests and admin endpoints.

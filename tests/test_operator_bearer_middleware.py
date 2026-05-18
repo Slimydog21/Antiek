@@ -1,0 +1,184 @@
+"""Tests for the H4 operator-bearer middleware.
+
+When ``ANTIEK_OPERATOR_TOKEN`` is set, every path except ``/health``
++ CORS preflights requires ``Authorization: Bearer <token>``. When
+unset, enforcement is bypassed (test / local-dev default).
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import tempfile
+
+import pytest
+from fastapi.testclient import TestClient
+
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+
+
+@pytest.fixture
+def temp_substrate(monkeypatch):
+    tmp = tempfile.mkdtemp(prefix="antiek-h4-")
+    events_dir = os.path.join(tmp, "events")
+    os.makedirs(events_dir, exist_ok=True)
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", os.path.join(tmp, "g.duckdb"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
+    yield {"events_dir": events_dir, "tmpdir": tmp}
+
+
+def _client_with_token(_, token: str | None, monkeypatch):
+    if token is None:
+        monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    else:
+        monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", token)
+    from interfaces.research.api.app import create_app
+    app = create_app(
+        register_wrestling=False, register_providers=False, cors_origins=[],
+    )
+    return TestClient(app)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 1. Disabled by default (no env var)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_no_env_var_no_enforcement(temp_substrate, monkeypatch):
+    """Default state: ANTIEK_OPERATOR_TOKEN unset, everything open.
+    Existing tests + local dev work unchanged."""
+    client = _client_with_token(temp_substrate, None, monkeypatch)
+    # /investigations is a write endpoint — would be gated when token set
+    resp = client.get("/investigations")
+    assert resp.status_code == 200
+
+
+def test_no_env_var_health_open(temp_substrate, monkeypatch):
+    client = _client_with_token(temp_substrate, None, monkeypatch)
+    resp = client.get("/health")
+    assert resp.status_code == 200
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 2. Health stays open even with token enforcement on
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_health_open_with_token_set(temp_substrate, monkeypatch):
+    """The probe + uptime monitors must be able to hit /health
+    without credentials. Returns only binary up/down state +
+    registered providers; no operator-sensitive content."""
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.get("/health")  # no Authorization header
+    assert resp.status_code == 200
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 3. Everything else requires the bearer when token is set
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_gated_path_missing_auth_rejected(temp_substrate, monkeypatch):
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.get("/investigations")  # no Authorization header
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["error"]["code"] == "operator_auth_missing"
+
+
+def test_gated_path_wrong_bearer_rejected(temp_substrate, monkeypatch):
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.get(
+        "/investigations", headers={"Authorization": "Bearer wrong"},
+    )
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["error"]["code"] == "operator_auth_mismatch"
+
+
+def test_gated_path_correct_bearer_passes(temp_substrate, monkeypatch):
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.get(
+        "/investigations", headers={"Authorization": "Bearer op_secret"},
+    )
+    assert resp.status_code == 200
+
+
+def test_malformed_scheme_rejected(temp_substrate, monkeypatch):
+    """Authorization header without ``Bearer`` scheme → 401."""
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.get(
+        "/investigations", headers={"Authorization": "Basic op_secret"},
+    )
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["error"]["code"] == "operator_auth_missing"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 4. POST endpoints (cost-bearing) also gated
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_post_investigations_requires_bearer(temp_substrate, monkeypatch):
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.post(
+        "/investigations", json={"question": "x"},
+    )
+    assert resp.status_code == 401
+
+
+def test_post_investigations_with_bearer_proceeds(temp_substrate, monkeypatch):
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.post(
+        "/investigations",
+        json={"question": "valid question for the handler"},
+        headers={"Authorization": "Bearer op_secret"},
+    )
+    # 202 Accepted — the bearer passed and the request reached the
+    # FastAPI handler. The handler accepts the start request.
+    assert resp.status_code == 202
+
+
+def test_ops_endpoint_also_gated(temp_substrate, monkeypatch):
+    """/ops/provider-ratio exposes dispatch metadata; gated."""
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.get("/ops/provider-ratio")
+    assert resp.status_code == 401
+    resp = client.get(
+        "/ops/provider-ratio",
+        headers={"Authorization": "Bearer op_secret"},
+    )
+    assert resp.status_code == 200
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 5. CORS preflight bypass
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_options_preflight_passes_without_auth(temp_substrate, monkeypatch):
+    """OPTIONS preflights must NOT require the bearer — browsers
+    handle CORS preflights automatically before sending the
+    Authorization header, so blocking them at auth would prevent the
+    actual request from ever firing.
+
+    With CORS enabled, OPTIONS goes through CORSMiddleware (200/204).
+    With CORS disabled (e.g. this test's ``cors_origins=[]`` setup),
+    OPTIONS falls through to FastAPI's router which returns 405 since
+    no OPTIONS route is registered. Either status proves the auth
+    middleware did NOT 401 — that's what matters."""
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+    resp = client.options(
+        "/investigations",
+        headers={
+            "Origin": "https://app.antiek.ai",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert resp.status_code != 401
+    # auth middleware bypassed for OPTIONS regardless of the routing-
+    # layer answer
+    assert resp.status_code in (200, 204, 405)
