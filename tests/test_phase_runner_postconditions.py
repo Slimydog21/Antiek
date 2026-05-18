@@ -329,6 +329,41 @@ def test_phase_6_vacuous_stub_rejected():
     assert ok is False
 
 
+def test_phase_6_insufficient_evidence_with_empty_falsifications_accepted():
+    """Regression for 2026-05-18 H2.5 incident.
+
+    The synthesizer's contract: when it cannot produce a defensible
+    thesis with non-vacuous falsifications, signal
+    ``insufficient_evidence`` and emit empty falsification_conditions.
+    This is a converged terminal state — the substrate ran, tried,
+    and the answer is "no defensible thesis." Phase 6 must accept it,
+    or Loop 1 has no way to end an underdetermined investigation
+    cleanly. The parser at roles/synthesizer/parser.py already honors
+    this escape hatch; this test locks in that the postcondition
+    matches."""
+    emit_typed(
+        "inv-p6ie",
+        SynthesizeDeliveredPayload(
+            thesis_summary="",
+            implicit_recommendation="insufficient_evidence",
+            thesis_components=[],
+            falsification_conditions=[],  # empty — would normally be vacuous
+            execution_risks=[],
+            constraint_compliance=ConstraintCompliance(
+                hard_constraints_satisfied=False,
+                soft_constraints_violated=[],
+                violations_justified=[],
+            ),
+            reasoning_paths_used=[],
+            constraint_loop_status="single_pass",  # type: ignore[arg-type]
+        ),
+        role="synthesizer", policy_id="stub/stub",
+    )
+    ok, reason = check_phase_6("inv-p6ie")
+    assert ok is True
+    assert "insufficient_evidence" in reason
+
+
 # ---------------------------------------------------------------------------
 # 7. Phase 7
 # ---------------------------------------------------------------------------

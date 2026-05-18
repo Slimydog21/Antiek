@@ -481,14 +481,26 @@ async def test_loop_one_decomposer_failure_emits_failed_at_phase_1(
 
 
 @pytest.mark.asyncio
-async def test_loop_one_synthesizer_failure_emits_failed_at_phase_6(
+async def test_loop_one_synthesizer_unparseable_converges_via_insufficient_evidence(
     monkeypatch, app_and_bus, async_client, tmp_path,
 ):
     """When phase 1-5 land but the synthesizer can't produce a
-    convergent thesis, the orchestrator emits FAILED at phase 6 with
-    last_completed_phase=5."""
+    parseable thesis (even after one self-repair retry), the bridge
+    falls through to the empty-delivered shape with
+    ``insufficient_evidence`` recommendation. Phase 6's escape hatch
+    accepts that as converged — the investigation terminates as
+    ``completed``, not ``failed``. Observability is preserved: the
+    empty thesis_summary + thesis_components signal the substrate
+    couldn't produce a defensible answer.
+
+    History: pre-2026-05-18 (H2.5), the same path produced
+    investigation.failed because Phase 6 had no escape hatch. The
+    H2.5 change graduated the substrate to "underdetermined is a
+    valid terminal state" — the operator now sees verdicts like
+    "no defensible thesis from the available evidence" instead of
+    opaque substrate failures."""
     _, bus = app_and_bus
-    inv = "inv-loop-fail-6"
+    inv = "inv-loop-synth-unparseable"
 
     # Seed the research dir with the phase 1-5 artifacts so those
     # postconditions pass (we want to isolate the synth-failure path).
@@ -514,9 +526,10 @@ async def test_loop_one_synthesizer_failure_emits_failed_at_phase_6(
         "Round 2 critique " * 40
     )
 
-    # Synth stub returns un-parseable text → bridge emits a fallback
-    # Delivered with insufficient_evidence + empty falsifications,
-    # which fails Phase 6's vacuous-falsification check.
+    # Synth stub returns un-parseable text on both first dispatch and
+    # the self-repair retry. Bridge emits a fallback Delivered with
+    # insufficient_evidence + empty falsifications, which Phase 6's
+    # escape hatch now accepts.
     register_provider(_RoleStubProvider({
         "decomposer": _DECOMPOSER_RESPONSE,
         "evidence_retriever": _evidence_response_for("(any)"),
@@ -533,9 +546,11 @@ async def test_loop_one_synthesizer_failure_emits_failed_at_phase_6(
 
     terminal = await _await_terminal(bus, inv, timeout=20.0)
     assert terminal is not None
-    assert terminal["action_type"] == ActionType.INVESTIGATION_FAILED.value
+    assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
     e = Event.model_validate(terminal)
+    # The completion payload carries thesis_summary="" — the operator-
+    # facing signal that the substrate couldn't produce a defensible
+    # thesis. The investigation IS complete; the answer IS "underdetermined."
     p = e.payload
-    assert isinstance(p, InvestigationFailedPayload)
-    assert p.phase == 6
-    assert p.last_completed_phase == 5
+    assert p.implicit_recommendation == "insufficient_evidence"
+    assert p.thesis_summary == ""

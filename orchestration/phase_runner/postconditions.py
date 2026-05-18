@@ -371,6 +371,25 @@ def check_phase_6(
             continue
         if payload.constraint_loop_status not in _PHASE_6_VERIFY_STATUSES:
             continue
+        # 2026-05-18 H2.5: insufficient_evidence escape hatch.
+        # The synthesizer's contract says: "if you cannot produce a
+        # defensible thesis with non-vacuous falsifications, signal
+        # insufficient_evidence and emit empty arrays." When the
+        # synthesizer correctly signals that, this is a converged
+        # terminal state — the investigation IS complete, the answer
+        # IS "no defensible thesis." Phase 6 must accept that as
+        # converged or the whole substrate has no way to end an
+        # underdetermined investigation cleanly. The parser already
+        # honors this escape hatch (roles/synthesizer/parser.py); the
+        # postcondition was lagging.
+        if payload.implicit_recommendation == "insufficient_evidence":
+            return True, (
+                f"synthesize.delivered: insufficient_evidence verdict "
+                f"(constraint_loop_status={payload.constraint_loop_status}, "
+                f"iterations={payload.constraint_loop_iterations}). "
+                f"Empty/vacuous falsifications are acceptable under this "
+                f"recommendation."
+            )
         vacuous, why = _falsifications_are_vacuous(payload.falsification_conditions)
         if vacuous:
             return False, (
