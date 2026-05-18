@@ -36,6 +36,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? ""
 // against abuse is Cloudflare-level rate limiting at the edge.
 // Acceptable posture for single-operator usage; revisit when there
 // are real users (master spec §13, deferred).
+// h4-rebuild-trigger 2026-05-18
 const API_OPERATOR_TOKEN = (import.meta.env.VITE_OPERATOR_TOKEN as string | undefined) ?? "";
 
 /** Merge auth + caller-supplied headers. Bearer wins on conflict. */
