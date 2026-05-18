@@ -609,16 +609,15 @@ def create_app(
             #   wrestle UI; Mode A research workstation)
             # - https://antiek.ai: production web app (canonical apex,
             #   2026-05-18 migration from app.antiek.ai)
-            # - https://app.antiek.ai: deprecated alias, kept in the
-            #   allow-list during the cut-over window. Remove this entry
-            #   once the operator deletes the app.antiek.ai custom
-            #   domain on the Cloudflare Pages project — by then no
-            #   reachable client should be sending requests from it.
+            #
+            # The app.antiek.ai deprecation alias was removed from this
+            # list after the operator deleted the custom domain on the
+            # Cloudflare Pages project (2026-05-18). No reachable client
+            # should be sending requests from that origin anymore.
             cors_origins = [
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
                 "https://antiek.ai",
-                "https://app.antiek.ai",
             ]
     if cors_origins:
         app.add_middleware(
