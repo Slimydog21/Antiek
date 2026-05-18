@@ -70,6 +70,7 @@ from .events import (
     GraphNodeInsertedPayload,
     GraphPath,
     GraphScope,
+    InvestigationChaseHaltedPayload,
     InvestigationCompletedPayload,
     InvestigationFailedPayload,
     InvestigationSpawnedFromPayload,
@@ -253,4 +254,5 @@ __all__ = [
     "InvestigationCompletedPayload",
     "InvestigationFailedPayload",
     "InvestigationSpawnedFromPayload",
+    "InvestigationChaseHaltedPayload",
 ]

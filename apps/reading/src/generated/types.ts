@@ -29,6 +29,7 @@ export const ActionType = {
   INVESTIGATION_COMPLETED: "investigation.completed",
   INVESTIGATION_FAILED: "investigation.failed",
   INVESTIGATION_SPAWNED_FROM: "investigation.spawned_from",
+  INVESTIGATION_CHASE_HALTED: "investigation.chase_halted",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
   DECOMPOSE_QUESTION_DELIVERED: "decompose.delivered",
   DECOMPOSER_PARAPHRASE_FLAGGED: "decomposer.paraphrase.flagged",
@@ -1321,6 +1322,23 @@ export interface InvestigationSpawnedFromPayload {
 }
 
 /**
+ * Emitted when the orchestrator decides not to spawn a child
+ * investigation despite chase_mode != "off". The reason field tells
+ * the operator (and the UI) why the chase chain stopped here.
+ * 
+ * Sprint 12 — first interpretation of continuous mode. The full
+ * daemon model (cross-investigation pollination) lands in Sprint
+ * 14+ per master-product-spec section 7.3.
+ */
+export interface InvestigationChaseHaltedPayload {
+  action_type: "investigation.chase_halted";
+  reason: "depth_reached" | "duration_reached" | "budget_exceeded" | "no_open_questions" | "chase_disabled";
+  depth_reached?: number;
+  duration_seconds?: number;
+  cost_total_usd?: number;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1386,7 +1404,8 @@ export type TypedPayload =
   | InvestigationStartRequestedPayload
   | InvestigationCompletedPayload
   | InvestigationFailedPayload
-  | InvestigationSpawnedFromPayload;
+  | InvestigationSpawnedFromPayload
+  | InvestigationChaseHaltedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1448,6 +1467,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "graph.tier.assigned",
   "graph.tier.overridden",
   "graph.tier.rewrite_bulk",
+  "investigation.chase_halted",
   "investigation.completed",
   "investigation.failed",
   "investigation.spawned_from",

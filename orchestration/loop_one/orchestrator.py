@@ -75,8 +75,10 @@ from substrate.schemas import (  # noqa: E402
     EvidenceRetrieveDeliveredPayload,
     EvidenceRetrieveRequestedPayload,
     Event,
+    InvestigationChaseHaltedPayload,
     InvestigationCompletedPayload,
     InvestigationFailedPayload,
+    InvestigationSpawnedFromPayload,
     InvestigationStartRequestedPayload,
     ParameterExtractDeliveredPayload,
     ParameterExtractRequestedPayload,
@@ -280,6 +282,13 @@ class InvestigationContext:
     last_completed_phase: int = 0
     failed_phase: Optional[int] = None
     fail_reason: str = ""
+    # Sprint 12: continuous-chase parameters threaded from the start
+    # payload. When chase_mode != "off", the orchestrator hooks
+    # _maybe_spawn_chase_child after _run_investigation completes.
+    chase_mode: str = "off"
+    chase_value: int = 0
+    chase_budget_usd: float = 2.0
+    parent_investigation_id: Optional[str] = None
 
 
 def _action_value(action_type) -> str:
@@ -860,17 +869,217 @@ def make_loop_one_handler(
             context=req.context,
             topic_slug=req.topic_slug,
             max_sub_questions=req.max_sub_questions,
+            chase_mode=req.chase_mode,
+            chase_value=req.chase_value,
+            chase_budget_usd=req.chase_budget_usd,
+            parent_investigation_id=req.parent_investigation_id,
         )
+
+        async def run_and_maybe_chase() -> None:
+            await _run_investigation(ctx, broadcaster, coordinator)
+            # Only spawn a chase child if the investigation reached a
+            # terminal state we can build on (we don't chase failures).
+            if ctx.synthesis is not None and ctx.failed_phase is None:
+                await _maybe_spawn_chase_child(ctx, broadcaster)
+
         # Detached task — the orchestrator runs alongside the request
-        # handler that triggered it. The broadcaster's wait_for_handlers
-        # primitive lets tests await all in-flight orchestrator tasks
-        # before asserting.
+        # handler that triggered it.
         asyncio.create_task(
-            _run_investigation(ctx, broadcaster, coordinator),
+            run_and_maybe_chase(),
             name=f"loop_one:{event.investigation_id}",
         )
 
     return handle_investigation_start
+
+
+# ---------------------------------------------------------------------------
+# Sprint 12 — continuous chase mode
+# ---------------------------------------------------------------------------
+
+
+def _walk_chase_chain(investigation_id: str) -> tuple[int, str]:
+    """Walk the parent_investigation_id chain backwards via trajectories.
+    Returns ``(depth, root_id)``. depth=0 means this is the chase root.
+
+    Uses the trajectory's INVESTIGATION_START_REQUESTED event to find
+    each parent. Capped at 32 hops for safety against accidental
+    cycles."""
+    from substrate.event_log import trajectory
+
+    depth = 0
+    current = investigation_id
+    root = investigation_id
+    seen: set[str] = {current}
+    for _ in range(32):
+        rows = trajectory(current)
+        parent: Optional[str] = None
+        for r in rows:
+            if r.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value:
+                p = (r.get("payload") or {}).get("parent_investigation_id")
+                if p:
+                    parent = p
+                break
+        if not parent or parent in seen:
+            return depth, root
+        depth += 1
+        root = parent
+        current = parent
+        seen.add(parent)
+    return depth, root
+
+
+def _accumulated_chase_cost_usd(investigation_id: str) -> float:
+    """Sum dispatch.call.cost_usd across the full chase chain (current
+    inv + all ancestors). Approximation: each chain node walked once;
+    siblings of ancestors not counted (the chase model treats each
+    branch as its own budget context)."""
+    from substrate.event_log import trajectory
+
+    total = 0.0
+    current: Optional[str] = investigation_id
+    seen: set[str] = set()
+    for _ in range(32):
+        if not current or current in seen:
+            break
+        seen.add(current)
+        rows = trajectory(current)
+        parent: Optional[str] = None
+        for r in rows:
+            at = r.get("action_type")
+            if at == ActionType.DISPATCH_CALL.value:
+                try:
+                    total += float((r.get("payload") or {}).get("cost_usd") or 0.0)
+                except (TypeError, ValueError):
+                    pass
+            elif at == ActionType.INVESTIGATION_START_REQUESTED.value:
+                parent = (r.get("payload") or {}).get("parent_investigation_id")
+        current = parent
+    return total
+
+
+def _select_chase_question(ctx: InvestigationContext) -> Optional[str]:
+    """Pick the strongest open question from this investigation's
+    accumulated evidentiary_gaps. v0: first non-empty gap from the
+    first evidence_retrieve.delivered that has any gaps. Later
+    versions can rank by source_tier, co-occurrence across siblings,
+    operator preference signals."""
+    for ev in ctx.evidence:
+        gaps = ev.evidentiary_gaps or []
+        for gap in gaps:
+            # Pydantic EvidentiaryGap carries gap_description; dict
+            # fallback for parser-produced records that haven't been
+            # validated yet.
+            text: Optional[str] = None
+            if hasattr(gap, "gap_description"):
+                text = getattr(gap, "gap_description")
+            elif isinstance(gap, dict):
+                text = (
+                    gap.get("gap_description")
+                    or gap.get("gap")
+                    or gap.get("description")
+                )
+            if text and isinstance(text, str) and text.strip():
+                return text.strip()
+    return None
+
+
+async def _maybe_spawn_chase_child(
+    ctx: InvestigationContext,
+    broadcaster: EventBroadcaster,
+) -> None:
+    """Decide whether to spawn a child investigation per the chase
+    parameters. Emits INVESTIGATION_CHASE_HALTED with the reason when
+    halting; emits a new INVESTIGATION_START_REQUESTED when continuing.
+    The substrate's own handler picks up the new start event and runs
+    its own task — chase recursion happens organically."""
+    if ctx.chase_mode == "off":
+        return  # not a chase investigation, nothing to do
+
+    depth, root_id = _walk_chase_chain(ctx.investigation_id)
+    cost_total = _accumulated_chase_cost_usd(ctx.investigation_id)
+
+    halt_reason: Optional[str] = None
+    if ctx.chase_mode == "depth":
+        if depth + 1 > ctx.chase_value:
+            halt_reason = "depth_reached"
+    elif ctx.chase_mode == "duration":
+        # Estimate elapsed via the root start event timestamp.
+        from datetime import datetime, timezone
+        from substrate.event_log import trajectory
+        root_started_at: Optional[str] = None
+        for r in trajectory(root_id):
+            if r.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value:
+                root_started_at = r.get("emitted_at")
+                break
+        if root_started_at:
+            try:
+                t0 = datetime.fromisoformat(
+                    root_started_at.replace("Z", "+00:00")
+                )
+                now = datetime.now(timezone.utc)
+                elapsed_hours = (now - t0).total_seconds() / 3600.0
+                if elapsed_hours >= ctx.chase_value:
+                    halt_reason = "duration_reached"
+            except ValueError:
+                pass
+
+    if halt_reason is None and cost_total >= ctx.chase_budget_usd:
+        halt_reason = "budget_exceeded"
+
+    next_question: Optional[str] = None
+    if halt_reason is None:
+        next_question = _select_chase_question(ctx)
+        if next_question is None:
+            halt_reason = "no_open_questions"
+
+    if halt_reason is not None:
+        await broadcast_emit(
+            broadcaster,
+            ctx.investigation_id,
+            InvestigationChaseHaltedPayload(
+                reason=halt_reason,
+                depth_reached=depth,
+                cost_total_usd=round(cost_total, 6),
+            ),
+            role="orchestrator",
+            policy_id="orchestrator-chase",
+        )
+        return
+
+    # Spawn the child: emit a new INVESTIGATION_START_REQUESTED event
+    # for a fresh investigation id. The same handler picks it up and
+    # runs Loop 1, then itself checks chase conditions at the end.
+    import uuid as _uuid
+
+    child_id = f"inv-{_uuid.uuid4().hex[:12]}"
+    await broadcast_emit(
+        broadcaster,
+        child_id,
+        InvestigationStartRequestedPayload(
+            question=next_question,
+            context=ctx.context,
+            topic_slug=ctx.topic_slug,
+            max_sub_questions=ctx.max_sub_questions,
+            parent_investigation_id=ctx.investigation_id,
+            spawn_context=next_question,
+            chase_mode=ctx.chase_mode,
+            chase_value=ctx.chase_value,
+            chase_budget_usd=ctx.chase_budget_usd,
+        ),
+        role="orchestrator",
+        policy_id="orchestrator-chase",
+    )
+    # Also emit a SPAWNED_FROM record for tree-rendering visibility.
+    await broadcast_emit(
+        broadcaster,
+        child_id,
+        InvestigationSpawnedFromPayload(
+            parent_investigation_id=ctx.investigation_id,
+            spawn_context=next_question,
+        ),
+        role="orchestrator",
+        policy_id="orchestrator-chase",
+    )
 
 
 def register_handlers(

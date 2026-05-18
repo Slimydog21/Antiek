@@ -375,11 +375,17 @@ def test_config_loads_from_yaml_file():
     assert "flash" in config.tiers
     assert "synthesis" in config.tiers
     assert config.role_tiers["synthesizer"] == "synthesis"
-    # Sprint 10 hotfix (2026-05-17): all tiers route via OpenRouter so
-    # a single key drives the whole substrate. Fallback within the same
-    # provider points at a sibling model.
+    # Sprint 12 routing change (2026-05-18, operator directive): all
+    # tiers route through Hermes/Grok primary with OpenRouter
+    # (DeepSeek + Claude) as fallback. Volume over per-call quality —
+    # the substrate's compounding loop turns dispatch volume into
+    # synthesis quality; SuperGrok via Hermes OAuth captures
+    # already-paid-for inference. Fallback to Claude Opus on
+    # synthesis tier preserves the high-quality option when Hermes
+    # is unreachable.
     syn = config.tiers["synthesis"]
-    assert syn.provider == "openrouter"
-    assert syn.model == "anthropic/claude-opus-4.7"
+    assert syn.provider == "hermes"
+    assert syn.model == "grok-4.3"
     assert syn.fallback is not None
     assert syn.fallback.provider == "openrouter"
+    assert syn.fallback.model == "anthropic/claude-opus-4.7"

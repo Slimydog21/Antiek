@@ -86,6 +86,9 @@ class ActionType(str, Enum):
     # only — the substrate doesn't act on the parent/child relationship,
     # but the web app uses it to render the chase tree.
     INVESTIGATION_SPAWNED_FROM = "investigation.spawned_from"
+    # Sprint 12: continuous chase mode — the orchestrator emits these
+    # at the boundary between one chase iteration and the next.
+    INVESTIGATION_CHASE_HALTED = "investigation.chase_halted"
 
     # ── Decomposer-specific ──
     DECOMPOSE_QUESTION_REQUESTED = "decompose.requested"
@@ -1415,6 +1418,30 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     chase_budget_usd: float = Field(default=2.0, ge=0.0)
 
 
+class InvestigationChaseHaltedPayload(_PayloadBase):
+    """Emitted when the orchestrator decides not to spawn a child
+    investigation despite chase_mode != "off". The reason field tells
+    the operator (and the UI) why the chase chain stopped here.
+
+    Sprint 12 — first interpretation of continuous mode. The full
+    daemon model (cross-investigation pollination) lands in Sprint
+    14+ per master-product-spec section 7.3."""
+
+    action_type: Literal[ActionType.INVESTIGATION_CHASE_HALTED] = (
+        ActionType.INVESTIGATION_CHASE_HALTED
+    )
+    reason: Literal[
+        "depth_reached",
+        "duration_reached",
+        "budget_exceeded",
+        "no_open_questions",
+        "chase_disabled",
+    ]
+    depth_reached: int = Field(default=0, ge=0)
+    duration_seconds: float = Field(default=0.0, ge=0.0)
+    cost_total_usd: float = Field(default=0.0, ge=0.0)
+
+
 class InvestigationSpawnedFromPayload(_PayloadBase):
     """Emitted when a new investigation is spawned from a parent's
     synthesis via the web app's chase-this mechanic. Carries the
@@ -1858,6 +1885,7 @@ TypedPayload = Annotated[
         InvestigationCompletedPayload,
         InvestigationFailedPayload,
         InvestigationSpawnedFromPayload,
+        InvestigationChaseHaltedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -1928,6 +1956,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.INVESTIGATION_COMPLETED.value,
     ActionType.INVESTIGATION_FAILED.value,
     ActionType.INVESTIGATION_SPAWNED_FROM.value,
+    ActionType.INVESTIGATION_CHASE_HALTED.value,
 })
 
 
@@ -2167,4 +2196,5 @@ __all__ = [
     "InvestigationCompletedPayload",
     "InvestigationFailedPayload",
     "InvestigationSpawnedFromPayload",
+    "InvestigationChaseHaltedPayload",
 ]
