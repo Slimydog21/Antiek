@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -145,6 +145,44 @@ class InvestigationListResponse(BaseModel):
     investigations: list[InvestigationSummary] = Field(default_factory=list)
 
 
+# ── Sprint 12: ingest endpoint ─────────────────────────────────────
+
+
+class IngestSourceRequest(BaseModel):
+    """POST body for ``/sources/ingest``. The substrate auto-detects
+    the source kind from the URL pattern unless ``kind`` is set
+    explicitly. ``investigation_id`` binds the ingested content into
+    a research project; pass the operator's current investigation_id
+    when adding evidence to a specific run."""
+
+    url: str = Field(..., min_length=8)
+    kind: Optional[Literal["arxiv", "youtube", "podcast", "url"]] = None
+    investigation_id: str = Field(default="__operator__", min_length=1)
+    source_tier: Optional[int] = Field(default=None, ge=1, le=5)
+    max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
+
+
+class IngestSourceResponse(BaseModel):
+    """What ``POST /sources/ingest`` returns. ``status`` is one of:
+    - ``ingested`` — document + chunks + nodes landed
+    - ``skipped`` — document.loaded event fired but graph writes
+      skipped (low_word_count, no_transcript, etc); ``skipped_reason``
+      explains why
+    - ``error`` — adapter raised; details in ``error_message``"""
+
+    status: Literal["ingested", "skipped", "error"]
+    detected_kind: str
+    document_id: Optional[str] = None
+    document_loaded_event_id: Optional[str] = None
+    chunks_written: int = 0
+    skipped_reason: Optional[str] = None
+    error_message: Optional[str] = None
+    title: Optional[str] = None
+    # For podcast-feed bulk ingest: per-episode summaries
+    episodes_processed: int = 0
+    episodes_ingested: int = 0
+
+
 class InvestigationStartResponse(BaseModel):
     """Response from ``POST /investigations`` — the cold-question
     handle the operator polls against ``GET /investigations/{id}``."""
@@ -172,6 +210,55 @@ class InvestigationStatusResponse(BaseModel):
     current_phase: Optional[int] = None
     last_delivered_action_type: Optional[str] = None
     terminal_payload: Optional[dict] = None
+
+
+# ---------------------------------------------------------------------------
+# Source kind detection (Sprint 12)
+# ---------------------------------------------------------------------------
+
+
+def _detect_source_kind(
+    url: str, explicit: Optional[str] = None,
+) -> Optional[str]:
+    """Auto-detect a source kind from the URL pattern. Operator can
+    override via the ``kind`` field on the request. Returns the kind
+    name or None if unrecognized (caller treats as URL fallback or
+    errors)."""
+    if explicit:
+        return explicit
+    u = url.lower().strip()
+    if "arxiv.org" in u or "/abs/" in u:
+        return "arxiv"
+    if "youtube.com" in u or "youtu.be" in u:
+        return "youtube"
+    # Podcast feeds: heuristic — RSS-ish URL OR explicit feed-like path.
+    # The dashboard convention "podcasts.<host>/feed" + ".rss"
+    # extensions cover most.
+    if (
+        u.endswith(".rss")
+        or u.endswith(".xml")
+        or "/rss" in u
+        or "/feed" in u
+        or u.endswith("/podcast")
+    ):
+        return "podcast"
+    # Default: treat as a plain URL article (acquisition/urls).
+    return "url"
+
+
+def _extract_arxiv_id(url: str) -> Optional[str]:
+    """Pull the arXiv id out of a URL like
+    ``https://arxiv.org/abs/2402.03300`` (or variations)."""
+    import re
+    m = re.search(r"arxiv\.org/(?:abs|pdf)/([A-Za-z0-9.\-]+)", url)
+    if m:
+        # Strip ``vN`` version suffix; the arXiv client handles
+        # versioning internally.
+        return m.group(1).split("v")[0]
+    # Bare id (e.g. "2402.03300")
+    if re.fullmatch(r"\d{4}\.\d{4,5}(v\d+)?", url.strip()):
+        return url.strip().split("v")[0]
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -722,6 +809,126 @@ def create_app(
             document_title=row[5],
             source_tier=int(row[6]),
         )
+
+    # ── Sprint 12: source ingest ─────────────────────────────────
+
+    @app.post(
+        "/sources/ingest",
+        response_model=IngestSourceResponse,
+        status_code=202,
+    )
+    async def post_ingest_source(
+        req: IngestSourceRequest,
+    ) -> IngestSourceResponse:
+        """Ingest a URL into the substrate graph. Auto-detects source
+        kind unless ``req.kind`` is set. Routes to the appropriate
+        acquisition adapter (arxiv / youtube / podcast / url).
+
+        Returns 202 immediately if the underlying adapter completes
+        synchronously; podcast feeds with multiple episodes can take
+        longer but are still synchronous within this handler. For
+        very large feeds (>20 episodes) the client should pass
+        ``max_episodes`` to cap latency."""
+        detected = _detect_source_kind(req.url, req.kind)
+        try:
+            if detected == "arxiv":
+                from acquisition.arxiv import ingest_paper as _ip
+                from acquisition.arxiv import fetch_by_id as _fbi
+                # Extract the arXiv id from the URL if needed
+                arxiv_id = _extract_arxiv_id(req.url)
+                if not arxiv_id:
+                    raise ValueError(
+                        "Could not extract arXiv id from URL"
+                    )
+                paper = _fbi(arxiv_id)
+                if not paper:
+                    raise ValueError(
+                        f"arXiv paper {arxiv_id!r} not found"
+                    )
+                kwargs = {"investigation_id": req.investigation_id}
+                if req.source_tier is not None:
+                    kwargs["source_tier"] = req.source_tier
+                r = _ip(paper, **kwargs)
+                return IngestSourceResponse(
+                    status="ingested" if r.chunks_written > 0 else "skipped",
+                    detected_kind="arxiv",
+                    document_id=r.document_id,
+                    document_loaded_event_id=r.document_loaded_event_id,
+                    chunks_written=r.chunks_written,
+                    title=paper.title,
+                )
+            elif detected == "youtube":
+                from acquisition.youtube import ingest_youtube
+                kwargs = {"investigation_id": req.investigation_id}
+                if req.source_tier is not None:
+                    kwargs["source_tier"] = req.source_tier
+                r = ingest_youtube(req.url, **kwargs)
+                return IngestSourceResponse(
+                    status=(
+                        "ingested" if r.chunks_written > 0
+                        else "skipped"
+                    ),
+                    detected_kind="youtube",
+                    document_id=r.document_id,
+                    document_loaded_event_id=r.document_loaded_event_id,
+                    chunks_written=r.chunks_written,
+                    skipped_reason=r.skipped_reason,
+                    title=r.title,
+                )
+            elif detected == "podcast":
+                from acquisition.podcasts import ingest_feed
+                kwargs = {
+                    "investigation_id": req.investigation_id,
+                    "max_episodes": req.max_episodes,
+                }
+                if req.source_tier is not None:
+                    kwargs["source_tier"] = req.source_tier
+                results = ingest_feed(req.url, **kwargs)
+                ingested = sum(1 for r in results if r.chunks_written > 0)
+                total_chunks = sum(r.chunks_written for r in results)
+                # Report the most recent ingested episode's title as
+                # the response title (most useful operator signal).
+                title = next(
+                    (r.title for r in results if r.chunks_written > 0),
+                    results[0].title if results else None,
+                )
+                return IngestSourceResponse(
+                    status="ingested" if ingested > 0 else "skipped",
+                    detected_kind="podcast",
+                    chunks_written=total_chunks,
+                    skipped_reason=(
+                        None if ingested > 0 else "no_episodes_with_transcripts"
+                    ),
+                    title=title,
+                    episodes_processed=len(results),
+                    episodes_ingested=ingested,
+                )
+            elif detected == "url":
+                from acquisition.urls import ingest_url
+                kwargs = {"investigation_id": req.investigation_id}
+                if req.source_tier is not None:
+                    kwargs["source_tier"] = req.source_tier
+                r = ingest_url(req.url, **kwargs)
+                return IngestSourceResponse(
+                    status=(
+                        "ingested" if r.chunks_written > 0
+                        else "skipped"
+                    ),
+                    detected_kind="url",
+                    document_id=r.document_id,
+                    document_loaded_event_id=r.document_loaded_event_id,
+                    chunks_written=r.chunks_written,
+                    skipped_reason=r.skipped_reason,
+                    title=r.title,
+                )
+            else:
+                raise ValueError(f"unsupported source kind: {detected!r}")
+        except Exception as exc:
+            return IngestSourceResponse(
+                status="error",
+                detected_kind=detected or "unknown",
+                error_message=f"{type(exc).__name__}: {exc}",
+            )
 
     # ── WebSocket live tail ─────────────────────────────────────
 

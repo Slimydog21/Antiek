@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import ResearchWorkstation from "./modes/ResearchWorkstation";
+import Sources from "./modes/Sources";
 import WrestleApp from "./modes/WrestleApp";
 
 /**
@@ -23,6 +24,7 @@ export default function App() {
       <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
       <Route path="/wrestle" element={<WrestleApp />} />
       <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+      <Route path="/sources" element={<Sources />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

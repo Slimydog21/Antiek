@@ -204,6 +204,50 @@ export interface ChunkResponse {
   source_tier: number;
 }
 
+// ── Sprint 12: source ingest ───────────────────────────────────────
+
+export type SourceKind = "arxiv" | "youtube" | "podcast" | "url";
+
+export interface IngestSourceRequest {
+  url: string;
+  kind?: SourceKind;
+  investigation_id?: string;
+  source_tier?: number;
+  max_episodes?: number;
+}
+
+export interface IngestSourceResponse {
+  status: "ingested" | "skipped" | "error";
+  detected_kind: string;
+  document_id: string | null;
+  document_loaded_event_id: string | null;
+  chunks_written: number;
+  skipped_reason: string | null;
+  error_message: string | null;
+  title: string | null;
+  episodes_processed: number;
+  episodes_ingested: number;
+}
+
+/** POST /sources/ingest — add a URL to the substrate graph. */
+export async function ingestSource(
+  req: IngestSourceRequest,
+): Promise<IngestSourceResponse> {
+  const resp = await fetch(`${API_BASE}/sources/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /sources/ingest failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** GET /chunks/{id} — used by Mode A's claim hover modal. */
 export async function getChunk(chunkId: string): Promise<ChunkResponse> {
   const resp = await fetch(

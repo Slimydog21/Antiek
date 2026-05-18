@@ -1,0 +1,314 @@
+"""Podcast acquisition client.
+
+Two ingestion paths:
+
+1. **RSS feed → list episodes.** Operator provides a podcast's RSS feed
+   URL. ``fetch_feed`` returns a ``Podcast`` with metadata + episode
+   list. Each ``Episode`` carries the audio enclosure URL + any
+   transcript URL we can detect in the feed entry.
+
+2. **Single episode → fetch transcript.** ``fetch_episode_transcript``
+   pulls a transcript when the episode entry advertises one (via
+   ``podcast:transcript`` namespace, ``itunes:transcript``, or a
+   linked ``.txt`` / ``.vtt`` / ``.srt`` file).
+
+What this does NOT do (Sprint 12 scope):
+  - Whisper transcription of audio. Substantial work + cost
+    ($0.006/min) + needs an OpenAI key. Episodes without a published
+    transcript are flagged ``no_transcript`` and skipped on ingest.
+  - Pacing across episodes for a full-feed bulk ingest. The adapter
+    handles one episode at a time; bulk-ingest is a caller concern.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import List, Optional
+
+import httpx
+
+
+# --- VTT / SRT regex ---------------------------------------------------------
+# We strip cue numbering, timestamps, and tag artifacts so the
+# transcript reads as plain text after extraction.
+_VTT_TIMESTAMP_RE = re.compile(
+    r"^\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}.*$",
+    re.MULTILINE,
+)
+_SRT_TIMESTAMP_RE = re.compile(
+    r"^\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}.*$",
+    re.MULTILINE,
+)
+_VTT_HEADER_RE = re.compile(r"^WEBVTT.*$", re.MULTILINE)
+_SRT_CUE_NUMBER_RE = re.compile(r"^\d+\s*$", re.MULTILINE)
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+DEFAULT_TIMEOUT_S = 30.0
+DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.podcasts)"
+
+
+@dataclass(frozen=True)
+class Episode:
+    """One episode from an RSS feed."""
+
+    episode_id: str  # GUID from RSS, or computed hash of audio_url
+    title: str
+    description: str
+    published_at: Optional[datetime]
+    duration_seconds: int  # 0 when not advertised
+    audio_url: Optional[str]
+    transcript_url: Optional[str]
+    episode_url: Optional[str]  # web page for the episode, if distinct
+
+
+@dataclass(frozen=True)
+class Podcast:
+    """A podcast's RSS feed + episode list."""
+
+    feed_url: str
+    title: str
+    author: str
+    description: str
+    language: str
+    episodes: List[Episode] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Feed fetch + parse
+# ---------------------------------------------------------------------------
+
+
+def _detect_transcript_url(entry: dict) -> Optional[str]:
+    """Look for a transcript URL in an RSS entry. Supports:
+      - <podcast:transcript url="..." type="text/plain | text/vtt | text/srt"/>
+        (Podcasting 2.0 namespace, parsed by feedparser as
+        ``podcast_transcript`` or similar)
+      - <itunes:transcript> (rarer)
+      - A link in <links> with type matching transcript-ish MIME
+
+    Returns the first URL found, or None."""
+    # feedparser populates `entry.podcast_transcript` for the
+    # Podcasting 2.0 namespace, but the exact attribute name varies
+    # by version. We probe a few likely candidates.
+    for key in ("podcast_transcripts", "podcast_transcript", "transcripts"):
+        val = entry.get(key) if isinstance(entry, dict) else getattr(entry, key, None)
+        if not val:
+            continue
+        if isinstance(val, list) and val:
+            for v in val:
+                url = (
+                    v.get("url") if isinstance(v, dict) else getattr(v, "url", None)
+                )
+                if url:
+                    return url
+        elif isinstance(val, dict):
+            url = val.get("url")
+            if url:
+                return url
+    # Scan generic links for transcript-flavored MIME types
+    links = entry.get("links") if isinstance(entry, dict) else getattr(entry, "links", None)
+    if isinstance(links, list):
+        for link in links:
+            rel = (link.get("rel") if isinstance(link, dict) else getattr(link, "rel", None)) or ""
+            mtype = (link.get("type") if isinstance(link, dict) else getattr(link, "type", None)) or ""
+            href = (link.get("href") if isinstance(link, dict) else getattr(link, "href", None)) or ""
+            if not href:
+                continue
+            if (
+                "transcript" in rel.lower()
+                or "transcript" in mtype.lower()
+                or any(href.lower().endswith(ext) for ext in (".vtt", ".srt", ".txt"))
+            ):
+                return href
+    return None
+
+
+def _detect_audio_url(entry: dict) -> Optional[str]:
+    """Find the audio enclosure URL. feedparser exposes RSS enclosures
+    as ``entry.enclosures``; we accept anything with audio/* MIME."""
+    enclosures = (
+        entry.get("enclosures") if isinstance(entry, dict)
+        else getattr(entry, "enclosures", None)
+    )
+    if not enclosures:
+        return None
+    for enc in enclosures:
+        mtype = (
+            enc.get("type") if isinstance(enc, dict)
+            else getattr(enc, "type", None)
+        ) or ""
+        href = (
+            enc.get("href") if isinstance(enc, dict)
+            else getattr(enc, "href", enc.get("url") if isinstance(enc, dict) else None)
+        )
+        if href and (
+            mtype.startswith("audio/") or any(
+                href.lower().endswith(ext) for ext in (".mp3", ".m4a", ".aac", ".ogg", ".wav")
+            )
+        ):
+            return href
+    return None
+
+
+def _parse_duration(entry: dict) -> int:
+    """Parse ``itunes:duration`` into seconds. Accepts ``HH:MM:SS``,
+    ``MM:SS``, or raw seconds string. Returns 0 when unparseable."""
+    val = (
+        entry.get("itunes_duration") if isinstance(entry, dict)
+        else getattr(entry, "itunes_duration", None)
+    )
+    if not val:
+        return 0
+    s = str(val).strip()
+    try:
+        parts = s.split(":")
+        parts = [int(p) for p in parts]
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        if len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+        if len(parts) == 1:
+            return parts[0]
+    except ValueError:
+        pass
+    return 0
+
+
+def _parse_published(entry: dict) -> Optional[datetime]:
+    """Parse the entry's published timestamp. feedparser already
+    converts ``pubDate`` into ``published_parsed`` (time.struct_time);
+    we convert to UTC datetime."""
+    parsed = (
+        entry.get("published_parsed") if isinstance(entry, dict)
+        else getattr(entry, "published_parsed", None)
+    )
+    if not parsed:
+        return None
+    try:
+        import time as _time
+        epoch = _time.mktime(parsed)  # type: ignore[arg-type]
+        return datetime.fromtimestamp(epoch, tz=timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_feed(
+    feed_url: str,
+    *,
+    max_episodes: Optional[int] = None,
+    client: Optional[httpx.Client] = None,
+) -> Podcast:
+    """Fetch + parse an RSS feed. Returns a ``Podcast`` with episodes.
+
+    ``max_episodes`` (newest-first) caps the list — useful when a
+    long-running podcast has 500+ episodes and you only want the
+    most recent N."""
+    try:
+        import feedparser  # type: ignore[import-not-found]
+    except ImportError as e:  # pragma: no cover
+        raise ImportError(
+            "acquisition.podcasts requires feedparser. Run "
+            "`pip install -e '.[rss]'`."
+        ) from e
+
+    # Download via httpx so caller can inject MockTransport in tests.
+    headers = {"User-Agent": DEFAULT_USER_AGENT}
+    if client is not None:
+        r = client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+    else:
+        with httpx.Client(follow_redirects=True) as c:
+            r = c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+    r.raise_for_status()
+
+    parsed = feedparser.parse(r.content)
+    channel = parsed.get("feed", {}) if hasattr(parsed, "get") else parsed.feed
+
+    entries = parsed.entries if hasattr(parsed, "entries") else []
+    if max_episodes is not None:
+        entries = entries[:max_episodes]
+
+    episodes: List[Episode] = []
+    for e in entries:
+        eid = (
+            (e.get("id") if isinstance(e, dict) else getattr(e, "id", None))
+            or (e.get("guid") if isinstance(e, dict) else getattr(e, "guid", None))
+            or _detect_audio_url(e)
+            or (e.get("link") if isinstance(e, dict) else getattr(e, "link", None))
+        )
+        if not eid:
+            continue
+        episodes.append(Episode(
+            episode_id=str(eid),
+            title=(e.get("title") if isinstance(e, dict) else getattr(e, "title", "")) or "",
+            description=(
+                e.get("summary") if isinstance(e, dict) else getattr(e, "summary", "")
+            ) or "",
+            published_at=_parse_published(e),
+            duration_seconds=_parse_duration(e),
+            audio_url=_detect_audio_url(e),
+            transcript_url=_detect_transcript_url(e),
+            episode_url=(
+                e.get("link") if isinstance(e, dict) else getattr(e, "link", None)
+            ),
+        ))
+
+    return Podcast(
+        feed_url=feed_url,
+        title=channel.get("title") if isinstance(channel, dict) else getattr(channel, "title", "") or "",
+        author=(channel.get("author") if isinstance(channel, dict) else getattr(channel, "author", "")) or "",
+        description=(channel.get("subtitle") if isinstance(channel, dict) else getattr(channel, "subtitle", "")) or "",
+        language=(channel.get("language") if isinstance(channel, dict) else getattr(channel, "language", "")) or "",
+        episodes=episodes,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Transcript fetch
+# ---------------------------------------------------------------------------
+
+
+def _clean_vtt(text: str) -> str:
+    """Strip WEBVTT header, cue timestamps, and inline tags. Returns
+    the prose-only body."""
+    text = _VTT_HEADER_RE.sub("", text)
+    text = _VTT_TIMESTAMP_RE.sub("", text)
+    text = _VTT_TAG_RE.sub("", text)
+    # Drop standalone numeric cue ids and collapse blank lines.
+    text = _SRT_CUE_NUMBER_RE.sub("", text)
+    return "\n".join(line for line in text.splitlines() if line.strip())
+
+
+def _clean_srt(text: str) -> str:
+    """Strip SRT cue numbers and timestamps."""
+    text = _SRT_TIMESTAMP_RE.sub("", text)
+    text = _SRT_CUE_NUMBER_RE.sub("", text)
+    return "\n".join(line for line in text.splitlines() if line.strip())
+
+
+def fetch_episode_transcript(
+    transcript_url: str,
+    *,
+    client: Optional[httpx.Client] = None,
+) -> str:
+    """Fetch a transcript file and normalize to plain text. Returns
+    the cleaned text, or an empty string when the fetch fails."""
+    headers = {"User-Agent": DEFAULT_USER_AGENT}
+    try:
+        if client is not None:
+            r = client.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        else:
+            with httpx.Client(follow_redirects=True) as c:
+                r = c.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        r.raise_for_status()
+    except (httpx.HTTPError, httpx.TimeoutException):
+        return ""
+    body = r.text
+    # Detect format heuristically by URL extension + content sniffing.
+    url_lower = transcript_url.lower()
+    if url_lower.endswith(".vtt") or body.lstrip().startswith("WEBVTT"):
+        return _clean_vtt(body)
+    if url_lower.endswith(".srt"):
+        return _clean_srt(body)
+    # Plain text (or HTML — caller can post-process if needed)
+    return body.strip()

@@ -41,6 +41,18 @@ export default function HeaderBar({
           >
             Wrestle
           </NavLink>
+          <NavLink
+            to="/sources"
+            className={({ isActive }) =>
+              `px-2.5 py-1 rounded transition-colors ${
+                isActive
+                  ? "bg-white text-stone-900 shadow-sm font-medium"
+                  : "text-stone-500 hover:text-stone-900"
+              }`
+            }
+          >
+            Sources
+          </NavLink>
         </nav>
       </div>
       <div className="flex items-center gap-3">{children}</div>
