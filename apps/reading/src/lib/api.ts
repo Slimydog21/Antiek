@@ -24,22 +24,28 @@ export interface EmittedEventResponse {
 // same-origin (dev-server proxy behavior).
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
 
-// H4: operator bearer. Baked at build time via Cloudflare Pages env.
-// When set, attached to every API request as
-// ``Authorization: Bearer <token>``. The substrate's middleware
-// rejects requests without it once ``ANTIEK_OPERATOR_TOKEN`` is set
-// server-side.
+// Auth (H4.5): the web app does NOT carry a bearer token. The
+// substrate is gated by Cloudflare Access (configured on
+// app.antiek.ai + api.antiek.ai in the same Access application).
+// When the operator visits app.antiek.ai, Cloudflare prompts for
+// authentication, sets a signed JWT cookie, and AUTOMATICALLY
+// injects ``Cf-Access-Authenticated-User-Email`` into requests
+// from the authenticated browser to any host in the same Access
+// application.
 //
-// Security shape: the token IS visible in the JS bundle. Anyone with
-// access to ``view-source:app.antiek.ai`` can grab it. This is
-// security-through-obscurity at the API layer; the real defense
-// against abuse is Cloudflare-level rate limiting at the edge.
-// Acceptable posture for single-operator usage; revisit when there
-// are real users (master spec §13, deferred).
-// h4-rebuild-trigger 2026-05-18
-const API_OPERATOR_TOKEN = (import.meta.env.VITE_OPERATOR_TOKEN as string | undefined) ?? "";
+// The substrate's middleware reads that header and matches against
+// ``ANTIEK_OPERATOR_EMAIL``. No build-time secret; no token in
+// the JS bundle.
+//
+// ``credentials: "include"`` is load-bearing: without it,
+// Cloudflare's session cookie does NOT travel cross-origin
+// (app.antiek.ai → api.antiek.ai) and every request 401s.
+//
+// Bearer tokens (``ANTIEK_OPERATOR_TOKEN``) still exist server-side
+// for machine callers (smoke runs, probes, CI). Those carry the
+// bearer directly. The web app uses neither.
 
-/** Merge auth + caller-supplied headers. Bearer wins on conflict. */
+/** Merge caller-supplied headers; auth comes via Cloudflare cookie. */
 function authHeaders(extra?: HeadersInit): Record<string, string> {
   const merged: Record<string, string> = {};
   if (extra) {
@@ -51,15 +57,16 @@ function authHeaders(extra?: HeadersInit): Record<string, string> {
       Object.assign(merged, extra);
     }
   }
-  if (API_OPERATOR_TOKEN) {
-    merged["Authorization"] = `Bearer ${API_OPERATOR_TOKEN}`;
-  }
   return merged;
 }
 
-/** Drop-in wrapper around ``fetch`` that injects the operator bearer. */
+/** ``fetch`` wrapper that sends Cloudflare Access cookies. */
 function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(input, { ...(init ?? {}), headers: authHeaders(init?.headers) });
+  return fetch(input, {
+    ...(init ?? {}),
+    headers: authHeaders(init?.headers),
+    credentials: "include",
+  });
 }
 
 // EmittedEventResponse is generated but exported through types; redeclare

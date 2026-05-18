@@ -29,11 +29,17 @@ def temp_substrate(monkeypatch):
     yield {"events_dir": events_dir, "tmpdir": tmp}
 
 
-def _client_with_token(_, token: str | None, monkeypatch):
+def _client_with_token(
+    _, token: str | None, monkeypatch, *, email: str | None = None,
+):
     if token is None:
         monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     else:
         monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", token)
+    if email is None:
+        monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    else:
+        monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", email)
     from interfaces.research.api.app import create_app
     app = create_app(
         register_wrestling=False, register_providers=False, cors_origins=[],
@@ -47,8 +53,9 @@ def _client_with_token(_, token: str | None, monkeypatch):
 
 
 def test_no_env_var_no_enforcement(temp_substrate, monkeypatch):
-    """Default state: ANTIEK_OPERATOR_TOKEN unset, everything open.
-    Existing tests + local dev work unchanged."""
+    """Default state: both ANTIEK_OPERATOR_TOKEN and
+    ANTIEK_OPERATOR_EMAIL unset → everything open. Existing tests +
+    local dev work unchanged."""
     client = _client_with_token(temp_substrate, None, monkeypatch)
     # /investigations is a write endpoint — would be gated when token set
     resp = client.get("/investigations")
@@ -85,7 +92,7 @@ def test_gated_path_missing_auth_rejected(temp_substrate, monkeypatch):
     resp = client.get("/investigations")  # no Authorization header
     assert resp.status_code == 401
     body = resp.json()
-    assert body["error"]["code"] == "operator_auth_missing"
+    assert body["error"]["code"] == "operator_auth_required"
 
 
 def test_gated_path_wrong_bearer_rejected(temp_substrate, monkeypatch):
@@ -95,7 +102,7 @@ def test_gated_path_wrong_bearer_rejected(temp_substrate, monkeypatch):
     )
     assert resp.status_code == 401
     body = resp.json()
-    assert body["error"]["code"] == "operator_auth_mismatch"
+    assert body["error"]["code"] == "operator_auth_required"
 
 
 def test_gated_path_correct_bearer_passes(temp_substrate, monkeypatch):
@@ -114,7 +121,7 @@ def test_malformed_scheme_rejected(temp_substrate, monkeypatch):
     )
     assert resp.status_code == 401
     body = resp.json()
-    assert body["error"]["code"] == "operator_auth_missing"
+    assert body["error"]["code"] == "operator_auth_required"
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -182,3 +189,92 @@ def test_options_preflight_passes_without_auth(temp_substrate, monkeypatch):
     # auth middleware bypassed for OPTIONS regardless of the routing-
     # layer answer
     assert resp.status_code in (200, 204, 405)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 6. Cloudflare Access email path (H4.5)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_cf_access_email_match_passes(temp_substrate, monkeypatch):
+    """When ANTIEK_OPERATOR_EMAIL is set and the request carries a
+    matching ``Cf-Access-Authenticated-User-Email`` header, the
+    request passes without needing a bearer."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch, email="op@antiek.ai",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Authenticated-User-Email": "op@antiek.ai"},
+    )
+    assert resp.status_code == 200
+
+
+def test_cf_access_email_case_insensitive(temp_substrate, monkeypatch):
+    """Email comparison is case-insensitive — Cloudflare may send
+    the header in any case."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch, email="op@antiek.ai",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Authenticated-User-Email": "OP@ANTIEK.AI"},
+    )
+    assert resp.status_code == 200
+
+
+def test_cf_access_email_mismatch_rejected(temp_substrate, monkeypatch):
+    """Wrong email in the header → 401."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch, email="op@antiek.ai",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Authenticated-User-Email": "intruder@example.com"},
+    )
+    assert resp.status_code == 401
+
+
+def test_cf_access_email_missing_rejected_when_email_required(
+    temp_substrate, monkeypatch,
+):
+    """No header + email gate configured → 401."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch, email="op@antiek.ai",
+    )
+    resp = client.get("/investigations")
+    assert resp.status_code == 401
+
+
+def test_both_paths_either_suffices_email(temp_substrate, monkeypatch):
+    """Both env vars set → email path passes without needing bearer."""
+    client = _client_with_token(
+        temp_substrate, "op_secret", monkeypatch, email="op@antiek.ai",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Authenticated-User-Email": "op@antiek.ai"},
+    )
+    assert resp.status_code == 200
+
+
+def test_both_paths_either_suffices_bearer(temp_substrate, monkeypatch):
+    """Both env vars set → bearer path passes without needing email."""
+    client = _client_with_token(
+        temp_substrate, "op_secret", monkeypatch, email="op@antiek.ai",
+    )
+    resp = client.get(
+        "/investigations", headers={"Authorization": "Bearer op_secret"},
+    )
+    assert resp.status_code == 200
+
+
+def test_both_paths_neither_supplied_rejected(temp_substrate, monkeypatch):
+    """Both env vars set + request supplies neither → 401."""
+    client = _client_with_token(
+        temp_substrate, "op_secret", monkeypatch, email="op@antiek.ai",
+    )
+    resp = client.get("/investigations")
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["error"]["code"] == "operator_auth_required"

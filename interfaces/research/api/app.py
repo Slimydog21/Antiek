@@ -628,68 +628,100 @@ def create_app(
             allow_headers=["*"],
         )
 
-    # ── H4: operator bearer middleware ──
-    # When ANTIEK_OPERATOR_TOKEN is set, every path except the always-
-    # open ones requires ``Authorization: Bearer <token>``. When the
-    # env var is unset (test / local dev), enforcement is bypassed
-    # and the API is open as before.
+    # ── H4 + H4.5: operator auth middleware ──
+    # TWO complementary auth paths, both opt-in via env vars:
     #
-    # The "always open" set is deliberately narrow:
-    # - ``/health`` — the bridge-health probe and uptime monitors
-    #   need to hit this without credentials. Returns only binary
-    #   up/down state plus the list of registered providers; no
-    #   investigation content or operator state.
-    # - OPTIONS — CORS preflight; browsers handle these automatically
-    #   before the actual request, no auth header is sent yet.
+    # (1) Cloudflare Access (browser users) — when
+    #     ANTIEK_OPERATOR_EMAIL is set, requests carrying a
+    #     ``Cf-Access-Authenticated-User-Email`` header that matches
+    #     the env value pass. Cloudflare Access injects this header
+    #     on requests originating from the operator's authenticated
+    #     browser session.
     #
-    # Everything else (including /trajectory, /chunks, /deliverables,
-    # /ops/provider-ratio, etc.) gates on the bearer. Read endpoints
-    # expose operator-sensitive content (investigation trajectories,
-    # draft prose, knowledge graph) so they need protection too —
-    # this is single-operator-private, not "read is fine."
+    # (2) Bearer token (machine callers) — when
+    #     ANTIEK_OPERATOR_TOKEN is set, requests carrying
+    #     ``Authorization: Bearer <token>`` matching the env pass.
+    #     This is for probes (smoke runs, health checks), ops
+    #     scripts, and any non-browser client.
+    #
+    # When BOTH env vars are unset, enforcement is bypassed and the
+    # API is open (existing tests + local dev unchanged). When one
+    # is set, requests must pass that path or be rejected. When
+    # both are set, either path suffices.
+    #
+    # Why both:
+    # - Cloudflare Access alone leaves the substrate unauth'd for
+    #   ops scripts / health probes / CI smokes. Cloudflare Access
+    #   service tokens exist but are heavier than a static bearer
+    #   for a single-operator deployment.
+    # - Bearer alone forces the token into the web app's JS bundle
+    #   (where it's visible to anyone with view-source — not
+    #   actually private). Routing browser auth through Cloudflare
+    #   Access is the architecturally correct path.
+    #
+    # Multi-tenant trajectory (Sprint 19+): replace the
+    # ANTIEK_OPERATOR_EMAIL match with an email-to-tenant-ID lookup
+    # and add per-tenant bearer tokens. Same middleware shape;
+    # additive change.
+    #
+    # SECURITY NOTE: ``Cf-Access-Authenticated-User-Email`` is a
+    # plain header. A direct caller to the Hetzner IP (bypassing
+    # Cloudflare) could spoof it. This is mitigated by:
+    # (a) Caddy origin restriction to Cloudflare edge IPs (H4.6
+    #     follow-on; not yet implemented).
+    # (b) The bearer path provides credential-based auth that
+    #     can't be spoofed by header injection.
+    # Until (a) lands, treat this as defense-in-depth, not the
+    # sole gate.
     _OPERATOR_AUTH_OPEN_PATHS: set[str] = {"/health"}
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
+    _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
+    _CF_ACCESS_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
 
     @app.middleware("http")
-    async def _operator_bearer_middleware(request, call_next):
-        expected = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        if not expected:
-            # Enforcement disabled (no token configured). Existing
-            # tests + local dev work unchanged.
+    async def _operator_auth_middleware(request, call_next):
+        expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
+        expected_email = os.environ.get(_OPERATOR_EMAIL_ENV, "").strip().lower()
+        if not expected_token and not expected_email:
+            # Enforcement disabled. Existing tests + local dev
+            # work unchanged.
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
         if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
             return await call_next(request)
-        auth = request.headers.get("Authorization", "")
-        scheme, _, token = auth.partition(" ")
-        if scheme.lower() != "bearer" or not token.strip():
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "error": {
-                        "message": (
-                            "Missing or malformed Authorization header. "
-                            "This API requires Bearer-token auth."
-                        ),
-                        "code": "operator_auth_missing",
-                    }
-                },
-            )
-        import secrets as _secrets
-        if not _secrets.compare_digest(token.strip(), expected):
-            from fastapi.responses import JSONResponse
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "error": {
-                        "message": "Operator bearer does not match.",
-                        "code": "operator_auth_mismatch",
-                    }
-                },
-            )
-        return await call_next(request)
+
+        # Path 1: Cloudflare Access email header
+        if expected_email:
+            cf_email = request.headers.get(
+                _CF_ACCESS_EMAIL_HEADER, "",
+            ).strip().lower()
+            if cf_email and cf_email == expected_email:
+                return await call_next(request)
+
+        # Path 2: Bearer token
+        if expected_token:
+            auth = request.headers.get("Authorization", "")
+            scheme, _, token = auth.partition(" ")
+            if scheme.lower() == "bearer" and token.strip():
+                import secrets as _secrets
+                if _secrets.compare_digest(token.strip(), expected_token):
+                    return await call_next(request)
+
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=401,
+            content={
+                "error": {
+                    "message": (
+                        "Authentication required. Either Cloudflare "
+                        "Access (browser) or "
+                        "Authorization: Bearer <token> (machine)."
+                    ),
+                    "code": "operator_auth_required",
+                }
+            },
+        )
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
     # Expose for tests and admin endpoints.
