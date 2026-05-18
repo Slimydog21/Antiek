@@ -1,0 +1,112 @@
+name: CI
+
+# Substrate test gate. Runs the full pytest suite on every push to
+# main and on every PR. Failure blocks the deploy webhook (when
+# wired); for now the deploy stays manual but the gate exists.
+#
+# Why pytest only (not lint / typecheck / coverage gates): start
+# with the test that catches regressions and add stricter checks
+# when they pay for themselves. The substrate has 1414+ tests that
+# meaningfully cover behavior; lint adds noise per change. Defer.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # let the operator trigger from the Actions tab
+
+concurrency:
+  # One CI run per branch. New pushes cancel the previous run.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # We don't need history for the test run, but a depth of 1
+          # means git log inside tests (none today, but defensive)
+          # would fail. Default depth is fine.
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Antiek + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          # The substrate uses sentence-transformers / pypdf etc.
+          # in some test paths. Install with the extras the test
+          # suite actually exercises — leave out ``interview``
+          # because openai-whisper drags in 100+MB of torch state
+          # that no current test depends on.
+          pip install -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+
+      - name: Run pytest
+        env:
+          # Tests should NEVER hit real provider APIs. The dispatch
+          # tests use in-process mocks; we still defend in depth by
+          # leaving these unset so a leaky test fails fast rather
+          # than burning operator credentials.
+          DEEPSEEK_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          HERMES_API_KEY: ""
+          XAI_API_KEY: ""
+          OPENAI_API_KEY: ""
+          # H4: operator-bearer middleware is opt-in. Leave the env
+          # unset so the existing endpoint tests work without an
+          # extra Authorization header.
+          ANTIEK_OPERATOR_TOKEN: ""
+        run: |
+          python -m pytest tests/ -q
+
+      - name: Codegen staleness check
+        # Catches the case where someone edits a Pydantic schema in
+        # substrate/schemas/ without regenerating
+        # apps/reading/src/generated/types.ts. The TS types are the
+        # contract between substrate + web app; drift here causes
+        # silent type lies at the JS boundary.
+        run: |
+          python tools/codegen/emit_types.py --stdout > /tmp/regen_types.ts
+          if ! diff -q /tmp/regen_types.ts apps/reading/src/generated/types.ts; then
+            echo "::error::Generated TS types are stale. Run:"
+            echo "::error::  python tools/codegen/emit_types.py --stdout > apps/reading/src/generated/types.ts"
+            diff /tmp/regen_types.ts apps/reading/src/generated/types.ts | head -30 || true
+            exit 1
+          fi
+          echo "TS types in sync with Pydantic schemas."
+
+  tsc:
+    name: tsc
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/reading/package-lock.json
+
+      - name: Install web app deps
+        working-directory: apps/reading
+        run: npm ci
+
+      - name: Type-check
+        working-directory: apps/reading
+        run: npx tsc --noEmit
