@@ -75,7 +75,14 @@ jobs:
           # extra Authorization header.
           ANTIEK_OPERATOR_TOKEN: ""
         run: |
-          python -m pytest tests/ -q
+          # Cap pytest-xdist at 2 workers in CI (GH Actions runners
+          # are 2-core). pyproject's ``addopts -n auto`` will run 12+
+          # workers locally; in CI that starves async investigation
+          # tests which spawn 3 concurrent ops each and time-budget
+          # via asyncio.wait_for, leading to flaky completion checks.
+          # The ``--override-ini`` keeps pyproject as the source of
+          # truth for everything but the worker count.
+          python -m pytest tests/ -q --override-ini="addopts=-m 'not integration' -n 2"
 
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
