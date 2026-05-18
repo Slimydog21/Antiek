@@ -213,7 +213,20 @@ def parse_evidence_response(
             "response did not contain a parseable JSON object"
         )
 
-    sub_question = _require_str(obj.get("sub_question"), "sub_question", "top")
+    # Model may omit or null the ``sub_question`` echo. Production
+    # observed grok-4.3 returning ``"sub_question": null`` on
+    # 2026-05-18, blocking every evidence_retriever parse. When the
+    # bridge has supplied an ``expected_sub_question``, use it as a
+    # fallback: the orchestrator is the source of truth for which
+    # sub-question was dispatched, and a model that doesn't echo
+    # cleanly does not need to brick the parse. The mismatch branch
+    # below still catches the case where the model returns a
+    # DIFFERENT non-null string.
+    raw_sub_question = obj.get("sub_question")
+    if raw_sub_question is None and expected_sub_question is not None:
+        sub_question = expected_sub_question
+    else:
+        sub_question = _require_str(raw_sub_question, "sub_question", "top")
     if expected_sub_question is not None and sub_question.strip() != expected_sub_question.strip():
         raise EvidenceValidationError(
             f"sub_question mismatch: model returned {sub_question!r}, "

@@ -389,3 +389,29 @@ def test_config_loads_from_yaml_file():
     assert syn.fallback is not None
     assert syn.fallback.provider == "openrouter"
     assert syn.fallback.model == "anthropic/claude-opus-4.7"
+
+
+def test_config_role_tiers_covers_every_dispatching_role():
+    """Regression for 2026-05-18 production incident.
+
+    ``skills/domain/extract.py`` dispatches with
+    ``role="knowledge_extractor"``. Without that key in
+    ``role_tiers``, the router raises
+    ``KeyError("Role 'knowledge_extractor' not in config.role_tiers")``
+    and Phase 8 ends with an empty ``auto_patch_applied`` event,
+    which then fails the Phase 8 postcondition and bricks the whole
+    investigation. Lock in every role that the code dispatches with
+    so a future refactor that adds a role doesn't silently regress."""
+    config_path = Path(__file__).parent.parent / "substrate" / "dispatch" / "config.yaml"
+    config = DispatchConfig.from_yaml(config_path)
+    required_roles = {
+        "decomposer", "evidence_retriever", "parameter_extractor",
+        "connector", "synthesizer", "user_agent", "note_taker",
+        "challenger", "grounder", "tier_assigner", "constraint_checker",
+        "verifier", "knowledge_extractor",
+    }
+    missing = required_roles - set(config.role_tiers)
+    assert not missing, (
+        f"role_tiers missing entries for {missing}. Any role the code "
+        f"dispatches must be present here or the router raises KeyError."
+    )

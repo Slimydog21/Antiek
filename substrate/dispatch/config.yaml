@@ -132,6 +132,15 @@ role_tiers:
   tier_assigner: flash
   constraint_checker: flash
   verifier: verify
+  # Phase 8 knowledge extraction. ``skills/domain/extract.py``
+  # dispatches with role="knowledge_extractor"; without this entry,
+  # the call raised ``KeyError("Role 'knowledge_extractor' not in
+  # config.role_tiers")``, every Phase 8 run produced an empty
+  # ``auto_patch_applied`` event with ``patched=[]``, and the Phase 8
+  # postcondition then failed the whole investigation. Test fixtures
+  # at tests/test_loop_one_orchestrator.py:176 had this routed to
+  # ``pro``; matching production. Fixed 2026-05-18.
+  knowledge_extractor: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are

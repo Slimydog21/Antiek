@@ -53,6 +53,18 @@ Environment="ANTIEK_EVENT_LOG_DIR={{ antiek_state_dir }}/research_events"
 Environment="ANTIEK_KNOWLEDGE_SKILLS_DIR={{ antiek_state_dir }}/knowledge_skills"
 Environment="ANTIEK_RESEARCH_DIR={{ antiek_state_dir }}/research"
 
+# ML model cache redirects. The decomposer's paraphrase check loads a
+# sentence-transformer embedder; without these overrides, HuggingFace +
+# sentence-transformers default to ~/.cache/huggingface and ~/.cache/torch
+# which fall OUTSIDE ReadWritePaths (because ProtectHome=read-only). The
+# embedder load then dies with OSError(30, "Read-only file system") and
+# the paraphrase check degrades to a no-op. Redirecting into the state
+# dir keeps caches inside the one explicitly-writable subtree. Fixed
+# 2026-05-18 (H2 substrate regression sweep).
+Environment="HF_HOME={{ antiek_state_dir }}/cache/hf"
+Environment="SENTENCE_TRANSFORMERS_HOME={{ antiek_state_dir }}/cache/sentence-transformers"
+Environment="TORCH_HOME={{ antiek_state_dir }}/cache/torch"
+
 # ── THE LOAD-BEARING LINE ────────────────────────────────────────────────
 # --workers 1 — DO NOT CHANGE without first migrating off DuckDB.
 # --timeout-keep-alive 900 — matches the orchestrator's longest await.

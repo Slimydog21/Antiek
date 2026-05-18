@@ -218,6 +218,45 @@ def test_parse_sub_question_mismatch_rejected():
         parse_evidence_response(raw, expected_sub_question="different question")
 
 
+def test_parse_null_sub_question_falls_back_to_expected():
+    """Regression for 2026-05-18 production incident.
+
+    grok-4.3 returned ``"sub_question": null`` in production
+    responses, blocking every evidence_retriever parse with
+    ``top: field 'sub_question' must be a string (got NoneType)``.
+    The orchestrator IS the source of truth for which sub-question
+    was dispatched; the model's echo is a soft cross-check. When the
+    model nulls the field and the bridge supplied
+    ``expected_sub_question``, fall back to the expected value rather
+    than failing the parse."""
+    payload = _good_response()
+    payload["sub_question"] = None
+    out = parse_evidence_response(
+        json.dumps(payload), expected_sub_question="What is X?",
+    )
+    assert out.sub_question == "What is X?"
+
+
+def test_parse_missing_sub_question_falls_back_to_expected():
+    """``sub_question`` key entirely absent → same fallback."""
+    payload = _good_response()
+    del payload["sub_question"]
+    out = parse_evidence_response(
+        json.dumps(payload), expected_sub_question="What is X?",
+    )
+    assert out.sub_question == "What is X?"
+
+
+def test_parse_null_sub_question_without_expected_still_rejected():
+    """Without ``expected_sub_question`` the parser has no way to
+    recover the field — null still raises. The fallback is strictly
+    bridge-driven."""
+    payload = _good_response()
+    payload["sub_question"] = None
+    with pytest.raises(EvidenceValidationError, match="sub_question"):
+        parse_evidence_response(json.dumps(payload))
+
+
 def test_parse_missing_answer_rejected():
     payload = _good_response()
     del payload["answer"]
