@@ -1,0 +1,18 @@
+# Ansible managed.
+#
+# Health probe runner. Triggered by antiek-health-probe.timer
+# every 5 minutes. Wrapper at /usr/local/bin/antiek-health-probe
+# (rendered from antiek-health-probe.sh.j2) sources secrets.env
+# then invokes tools/ops/health_probe.sh.
+
+[Unit]
+Description=Antiek bridge + provider-ratio health probe
+Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/ops/health_probe.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/antiek-health-probe
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=60
+NoNewPrivileges=true

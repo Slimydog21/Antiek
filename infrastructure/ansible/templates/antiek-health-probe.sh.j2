@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Ansible managed.
+#
+# Wrapper that sources /etc/antiek/secrets.env (where ANTIEK_OPERATOR_TOKEN
+# already lives for the substrate) and then invokes the probe script.
+# The probe checks hermes-bridge.antiek.ai/health + api.antiek.ai
+# /ops/provider-ratio and posts to ANTIEK_ALERT_WEBHOOK when either
+# signal trips.
+#
+# Triggered by antiek-health-probe.timer (5-minute cadence).
+
+set -euo pipefail
+
+set -a
+source /etc/antiek/secrets.env
+set +a
+
+exec /opt/antiek/tools/ops/health_probe.sh "$@"

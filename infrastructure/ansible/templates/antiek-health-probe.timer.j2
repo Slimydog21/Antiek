@@ -1,0 +1,17 @@
+# Ansible managed.
+#
+# Health probe fires every 5 minutes, 2 minutes after boot. Logs to
+# journalctl by default. When ANTIEK_ALERT_WEBHOOK is set in
+# /etc/antiek/secrets.env, alerts also post to that webhook.
+
+[Unit]
+Description=Antiek health probe — every 5 minutes
+Documentation=https://github.com/Slimydog21/Antiek
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=antiek-health-probe.service
+
+[Install]
+WantedBy=timers.target
