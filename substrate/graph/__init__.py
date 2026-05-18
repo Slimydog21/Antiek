@@ -49,12 +49,16 @@ def ensure_initialized(db_path: _Optional[str] = None) -> str:
 
 
 from .ops import (
+    attach_block_to_section,
     content_addressed_id,
     insert_chunk,
+    insert_deliverable,
     insert_document,
     insert_edge,
     insert_node,
+    insert_section,
     new_random_id,
+    update_section_prose,
 )
 from .schema import (
     ANTIEK_GRAPH_SCHEMA_V1_SQL,
@@ -112,6 +116,10 @@ __all__ = [
     "insert_chunk",
     "insert_node",
     "insert_edge",
+    "insert_deliverable",
+    "insert_section",
+    "attach_block_to_section",
+    "update_section_prose",
     "content_addressed_id",
     "new_random_id",
     # search

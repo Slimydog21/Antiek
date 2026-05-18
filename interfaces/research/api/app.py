@@ -212,6 +212,88 @@ class InvestigationStatusResponse(BaseModel):
     terminal_payload: Optional[dict] = None
 
 
+# ── Sprint 13: deliverables + voice notes ─────────────────────────────
+
+
+class CreateDeliverableRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    deliverable_kind: Literal[
+        "research_memo", "book_chapter", "biography_section",
+        "investor_brief", "general_essay",
+    ]
+    investigation_root_id: Optional[str] = None
+
+
+class DeliverableSummary(BaseModel):
+    deliverable_id: str
+    title: str
+    deliverable_kind: str
+    investigation_root_id: Optional[str]
+    status: str
+    created_at: Optional[str]
+    updated_at: Optional[str]
+    section_count: int = 0
+
+
+class DeliverableListResponse(BaseModel):
+    count: int
+    deliverables: list[DeliverableSummary] = Field(default_factory=list)
+
+
+class CreateSectionRequest(BaseModel):
+    deliverable_id: str
+    section_index: int = Field(..., ge=0)
+    title: Optional[str] = None
+    parent_section_id: Optional[str] = None
+
+
+class AttachBlockRequest(BaseModel):
+    section_id: str
+    block_kind: Literal["insight", "open_question", "operator_note", "claim"]
+    block_id: str
+    block_index: int = Field(..., ge=0)
+
+
+class SectionResponse(BaseModel):
+    section_id: str
+    deliverable_id: str
+    parent_section_id: Optional[str]
+    section_index: int
+    title: Optional[str]
+    prose_text: Optional[str]
+    prose_provenance: Optional[dict]
+    block_count: int = 0
+
+
+class DeliverableDetailResponse(BaseModel):
+    deliverable_id: str
+    title: str
+    deliverable_kind: str
+    status: str
+    sections: list[SectionResponse] = Field(default_factory=list)
+
+
+class VoiceNoteIngestRequest(BaseModel):
+    """Operator-facing endpoint accepts a pre-transcribed payload OR
+    an audio file (multipart). The JSON shape here is for the
+    transcript-only path; the audio path uses ``UploadFile``."""
+
+    transcript: str = Field(..., min_length=1)
+    investigation_id: str = Field(default="__operator__", min_length=1)
+    title: Optional[str] = None
+    duration_seconds: float = 0.0
+    language: Optional[str] = None
+
+
+class VoiceNoteIngestResponse(BaseModel):
+    status: Literal["ingested", "skipped"]
+    document_id: str
+    document_loaded_event_id: Optional[str] = None
+    chunks_written: int = 0
+    skipped_reason: Optional[str] = None
+    title: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Source kind detection (Sprint 12)
 # ---------------------------------------------------------------------------
@@ -929,6 +1011,195 @@ def create_app(
                 detected_kind=detected or "unknown",
                 error_message=f"{type(exc).__name__}: {exc}",
             )
+
+    # ── Sprint 13: deliverables (creation surface) ─────────────────
+
+    def _resolve_db_path() -> str:
+        from substrate.graph import default_db_path, ensure_initialized
+        path = default_db_path()
+        ensure_initialized(path)
+        return path
+
+    @app.post("/deliverables", response_model=DeliverableSummary, status_code=201)
+    async def post_deliverable(req: CreateDeliverableRequest) -> DeliverableSummary:
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import insert_deliverable
+
+        db = _resolve_db_path()
+        with connect_write(db, purpose="deliverables/create") as con:
+            did = insert_deliverable(
+                con,
+                title=req.title,
+                deliverable_kind=req.deliverable_kind,
+                investigation_root_id=req.investigation_root_id,
+            )
+            row = con.execute(
+                "SELECT deliverable_id, title, deliverable_kind, "
+                "investigation_root_id, status, "
+                "strftime(created_at, '%Y-%m-%dT%H:%M:%S'), "
+                "strftime(updated_at, '%Y-%m-%dT%H:%M:%S') "
+                "FROM deliverables WHERE deliverable_id = ?", [did],
+            ).fetchone()
+        return DeliverableSummary(
+            deliverable_id=row[0], title=row[1], deliverable_kind=row[2],
+            investigation_root_id=row[3], status=row[4],
+            created_at=row[5], updated_at=row[6], section_count=0,
+        )
+
+    @app.get("/deliverables", response_model=DeliverableListResponse)
+    async def list_deliverables(limit: int = 50) -> DeliverableListResponse:
+        import duckdb
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            rows = con.execute(
+                "SELECT d.deliverable_id, d.title, d.deliverable_kind, "
+                "d.investigation_root_id, d.status, "
+                "strftime(d.created_at, '%Y-%m-%dT%H:%M:%S'), "
+                "strftime(d.updated_at, '%Y-%m-%dT%H:%M:%S'), "
+                "(SELECT COUNT(*) FROM deliverable_sections s "
+                " WHERE s.deliverable_id = d.deliverable_id) "
+                "FROM deliverables d ORDER BY d.created_at DESC LIMIT ?",
+                [limit],
+            ).fetchall()
+        finally:
+            con.close()
+        return DeliverableListResponse(
+            count=len(rows),
+            deliverables=[
+                DeliverableSummary(
+                    deliverable_id=r[0], title=r[1], deliverable_kind=r[2],
+                    investigation_root_id=r[3], status=r[4],
+                    created_at=r[5], updated_at=r[6], section_count=r[7] or 0,
+                ) for r in rows
+            ],
+        )
+
+    @app.get("/deliverables/{deliverable_id}", response_model=DeliverableDetailResponse)
+    async def get_deliverable(deliverable_id: str) -> DeliverableDetailResponse:
+        import duckdb
+        import json as _json
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            head = con.execute(
+                "SELECT deliverable_id, title, deliverable_kind, status "
+                "FROM deliverables WHERE deliverable_id = ?", [deliverable_id],
+            ).fetchone()
+            if head is None:
+                raise HTTPException(status_code=404, detail="deliverable not found")
+            sec_rows = con.execute(
+                "SELECT s.section_id, s.deliverable_id, s.parent_section_id, "
+                "s.section_index, s.title, s.prose_text, s.prose_provenance, "
+                "(SELECT COUNT(*) FROM section_blocks sb WHERE sb.section_id = s.section_id) "
+                "FROM deliverable_sections s WHERE s.deliverable_id = ? "
+                "ORDER BY s.section_index ASC", [deliverable_id],
+            ).fetchall()
+        finally:
+            con.close()
+        sections = []
+        for r in sec_rows:
+            prov = None
+            if r[6]:
+                try:
+                    prov = _json.loads(r[6])
+                except (ValueError, TypeError):
+                    prov = None
+            sections.append(SectionResponse(
+                section_id=r[0], deliverable_id=r[1],
+                parent_section_id=r[2], section_index=r[3], title=r[4],
+                prose_text=r[5], prose_provenance=prov,
+                block_count=r[7] or 0,
+            ))
+        return DeliverableDetailResponse(
+            deliverable_id=head[0], title=head[1],
+            deliverable_kind=head[2], status=head[3], sections=sections,
+        )
+
+    @app.post("/sections", response_model=SectionResponse, status_code=201)
+    async def post_section(req: CreateSectionRequest) -> SectionResponse:
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import insert_section
+
+        db = _resolve_db_path()
+        with connect_write(db, purpose="sections/create") as con:
+            # Verify deliverable exists
+            row = con.execute(
+                "SELECT 1 FROM deliverables WHERE deliverable_id = ?",
+                [req.deliverable_id],
+            ).fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=404, detail="deliverable not found",
+                )
+            sid = insert_section(
+                con,
+                deliverable_id=req.deliverable_id,
+                section_index=req.section_index,
+                title=req.title,
+                parent_section_id=req.parent_section_id,
+            )
+        return SectionResponse(
+            section_id=sid, deliverable_id=req.deliverable_id,
+            parent_section_id=req.parent_section_id,
+            section_index=req.section_index, title=req.title,
+            prose_text=None, prose_provenance=None, block_count=0,
+        )
+
+    @app.post("/sections/attach-block", status_code=202)
+    async def post_attach_block(req: AttachBlockRequest) -> dict:
+        from runtime.db_lock import connect_write
+        from substrate.graph.ops import attach_block_to_section
+
+        db = _resolve_db_path()
+        with connect_write(db, purpose="sections/attach_block") as con:
+            row = con.execute(
+                "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
+                [req.section_id],
+            ).fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=404, detail="section not found",
+                )
+            attach_block_to_section(
+                con,
+                section_id=req.section_id,
+                block_kind=req.block_kind,
+                block_id=req.block_id,
+                block_index=req.block_index,
+            )
+        return {"status": "attached"}
+
+    # ── Sprint 13: voice notes ─────────────────────────────────────
+
+    @app.post(
+        "/voice-notes/ingest",
+        response_model=VoiceNoteIngestResponse,
+        status_code=202,
+    )
+    async def post_voice_note(req: VoiceNoteIngestRequest) -> VoiceNoteIngestResponse:
+        """Ingest a pre-transcribed voice note. The audio-upload path
+        (multipart) is a Sprint-13-end stretch goal; for now the
+        operator records client-side, transcribes client-side or
+        via OpenAI directly, and posts the transcript."""
+        from acquisition.voice import ingest_voice_note
+        r = ingest_voice_note(
+            req.transcript,
+            investigation_id=req.investigation_id,
+            title=req.title,
+            duration_seconds=req.duration_seconds,
+            language=req.language,
+        )
+        return VoiceNoteIngestResponse(
+            status=(
+                "ingested" if r.chunks_written > 0 else "skipped"
+            ),
+            document_id=r.document_id,
+            document_loaded_event_id=r.document_loaded_event_id,
+            chunks_written=r.chunks_written,
+            skipped_reason=r.skipped_reason,
+            title=r.title,
+        )
 
     # ── WebSocket live tail ─────────────────────────────────────
 

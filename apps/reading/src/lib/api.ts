@@ -229,6 +229,180 @@ export interface IngestSourceResponse {
   episodes_ingested: number;
 }
 
+// ── Sprint 13: deliverables (creation surface) ─────────────────────
+
+export type DeliverableKind =
+  | "research_memo"
+  | "book_chapter"
+  | "biography_section"
+  | "investor_brief"
+  | "general_essay";
+
+export type BlockKind =
+  | "insight"
+  | "open_question"
+  | "operator_note"
+  | "claim";
+
+export interface DeliverableSummary {
+  deliverable_id: string;
+  title: string;
+  deliverable_kind: DeliverableKind;
+  investigation_root_id: string | null;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  section_count: number;
+}
+
+export interface SectionResponse {
+  section_id: string;
+  deliverable_id: string;
+  parent_section_id: string | null;
+  section_index: number;
+  title: string | null;
+  prose_text: string | null;
+  prose_provenance: Record<string, string[]> | null;
+  block_count: number;
+}
+
+export interface DeliverableDetailResponse {
+  deliverable_id: string;
+  title: string;
+  deliverable_kind: DeliverableKind;
+  status: string;
+  sections: SectionResponse[];
+}
+
+export async function createDeliverable(req: {
+  title: string;
+  deliverable_kind: DeliverableKind;
+  investigation_root_id?: string;
+}): Promise<DeliverableSummary> {
+  const resp = await fetch(`${API_BASE}/deliverables`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /deliverables failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function listDeliverables(): Promise<{
+  count: number;
+  deliverables: DeliverableSummary[];
+}> {
+  const resp = await fetch(`${API_BASE}/deliverables`);
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /deliverables failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function getDeliverable(
+  id: string,
+): Promise<DeliverableDetailResponse> {
+  const resp = await fetch(
+    `${API_BASE}/deliverables/${encodeURIComponent(id)}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /deliverables/{id} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function createSection(req: {
+  deliverable_id: string;
+  section_index: number;
+  title?: string;
+  parent_section_id?: string;
+}): Promise<SectionResponse> {
+  const resp = await fetch(`${API_BASE}/sections`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /sections failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export async function attachBlock(req: {
+  section_id: string;
+  block_kind: BlockKind;
+  block_id: string;
+  block_index: number;
+}): Promise<void> {
+  const resp = await fetch(`${API_BASE}/sections/attach-block`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /sections/attach-block failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+}
+
+// ── Sprint 13: voice notes ─────────────────────────────────────────
+
+export interface VoiceNoteIngestRequest {
+  transcript: string;
+  investigation_id?: string;
+  title?: string;
+  duration_seconds?: number;
+  language?: string;
+}
+
+export interface VoiceNoteIngestResponse {
+  status: "ingested" | "skipped";
+  document_id: string;
+  document_loaded_event_id: string | null;
+  chunks_written: number;
+  skipped_reason: string | null;
+  title: string | null;
+}
+
+export async function ingestVoiceNote(
+  req: VoiceNoteIngestRequest,
+): Promise<VoiceNoteIngestResponse> {
+  const resp = await fetch(`${API_BASE}/voice-notes/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /voice-notes/ingest failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** POST /sources/ingest — add a URL to the substrate graph. */
 export async function ingestSource(
   req: IngestSourceRequest,

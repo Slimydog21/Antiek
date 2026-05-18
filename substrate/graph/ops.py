@@ -329,3 +329,110 @@ def insert_edge(
         role="connector",
     )
     return eid
+
+
+# ---------------------------------------------------------------------------
+# Deliverables (Sprint 13 — creation surface)
+# ---------------------------------------------------------------------------
+
+
+_DELIVERABLE_KINDS = (
+    "research_memo", "book_chapter", "biography_section",
+    "investor_brief", "general_essay",
+)
+
+
+def insert_deliverable(
+    con: LockedConnection,
+    *,
+    title: str,
+    deliverable_kind: str,
+    investigation_root_id: Optional[str] = None,
+    owner_user_id: str = "__operator__",
+    metadata: Optional[Any] = None,
+    deliverable_id: Optional[str] = None,
+) -> str:
+    """Create a new deliverable (operator-facing document being
+    assembled). Returns its ``deliverable_id``."""
+    _assert_write_locked(con)
+    if deliverable_kind not in _DELIVERABLE_KINDS:
+        raise ValueError(
+            f"deliverable_kind must be one of {_DELIVERABLE_KINDS}, "
+            f"got {deliverable_kind!r}"
+        )
+    did = deliverable_id or new_random_id("dlv")
+    con.execute(
+        "INSERT INTO deliverables "
+        "(deliverable_id, title, deliverable_kind, investigation_root_id, "
+        " owner_user_id, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [did, title, deliverable_kind, investigation_root_id,
+         owner_user_id, _maybe_json(metadata)],
+    )
+    return did
+
+
+def insert_section(
+    con: LockedConnection,
+    *,
+    deliverable_id: str,
+    section_index: int,
+    title: Optional[str] = None,
+    parent_section_id: Optional[str] = None,
+    prose_text: Optional[str] = None,
+    prose_provenance: Optional[Any] = None,
+    section_id: Optional[str] = None,
+) -> str:
+    """Insert one section under a deliverable. Returns ``section_id``."""
+    _assert_write_locked(con)
+    sid = section_id or new_random_id("sec")
+    con.execute(
+        "INSERT INTO deliverable_sections "
+        "(section_id, deliverable_id, parent_section_id, section_index, "
+        " title, prose_text, prose_provenance) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [sid, deliverable_id, parent_section_id, int(section_index),
+         title, prose_text, _maybe_json(prose_provenance)],
+    )
+    return sid
+
+
+def attach_block_to_section(
+    con: LockedConnection,
+    *,
+    section_id: str,
+    block_kind: str,
+    block_id: str,
+    block_index: int,
+) -> None:
+    """Attach an insight/claim/note block to a section in a specific
+    order. Idempotent: PRIMARY KEY collision raises, caller should
+    handle reordering via update_section_block_index."""
+    _assert_write_locked(con)
+    if block_kind not in ("insight", "open_question", "operator_note", "claim"):
+        raise ValueError(f"unknown block_kind: {block_kind!r}")
+    con.execute(
+        "INSERT INTO section_blocks "
+        "(section_id, block_kind, block_id, block_index) "
+        "VALUES (?, ?, ?, ?)",
+        [section_id, block_kind, block_id, int(block_index)],
+    )
+
+
+def update_section_prose(
+    con: LockedConnection,
+    *,
+    section_id: str,
+    prose_text: str,
+    prose_provenance: Optional[Any] = None,
+) -> None:
+    """Persist generated/edited prose for a section. ``prose_provenance``
+    is a JSON map (paragraph_index → list of contributing block_ids)
+    or None."""
+    _assert_write_locked(con)
+    con.execute(
+        "UPDATE deliverable_sections "
+        "SET prose_text = ?, prose_provenance = ?, updated_at = CURRENT_TIMESTAMP "
+        "WHERE section_id = ?",
+        [prose_text, _maybe_json(prose_provenance), section_id],
+    )

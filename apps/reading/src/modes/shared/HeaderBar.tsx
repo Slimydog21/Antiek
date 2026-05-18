@@ -53,6 +53,18 @@ export default function HeaderBar({
           >
             Sources
           </NavLink>
+          <NavLink
+            to="/create"
+            className={({ isActive }) =>
+              `px-2.5 py-1 rounded transition-colors ${
+                isActive
+                  ? "bg-white text-stone-900 shadow-sm font-medium"
+                  : "text-stone-500 hover:text-stone-900"
+              }`
+            }
+          >
+            Create
+          </NavLink>
         </nav>
       </div>
       <div className="flex items-center gap-3">{children}</div>

@@ -240,6 +240,54 @@ CREATE TABLE IF NOT EXISTS chunk_tier_overrides (
 );
 
 -- ============================================================
+-- Creation surface (Sprint 13) — deliverables, sections, block links
+-- ============================================================
+-- A deliverable is an operator-assembled document (memo, chapter,
+-- brief). Sections within it carry generated prose; section_blocks
+-- attaches insight blocks (nodes / claims / notes) to a section in
+-- a stable order. The creative_writer role consumes the attached
+-- blocks + section title + deliverable kind to generate prose_text.
+CREATE TABLE IF NOT EXISTS deliverables (
+    deliverable_id        TEXT PRIMARY KEY,
+    title                 TEXT NOT NULL,
+    deliverable_kind      TEXT NOT NULL CHECK (deliverable_kind IN (
+        'research_memo', 'book_chapter', 'biography_section',
+        'investor_brief', 'general_essay'
+    )),
+    investigation_root_id TEXT,
+    owner_user_id         TEXT NOT NULL DEFAULT '__operator__',
+    created_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status                TEXT NOT NULL DEFAULT 'draft' CHECK (status IN (
+        'draft', 'in_review', 'final'
+    )),
+    metadata              TEXT
+);
+
+CREATE TABLE IF NOT EXISTS deliverable_sections (
+    section_id        TEXT PRIMARY KEY,
+    deliverable_id    TEXT NOT NULL REFERENCES deliverables(deliverable_id),
+    parent_section_id TEXT REFERENCES deliverable_sections(section_id),
+    section_index     INTEGER NOT NULL,
+    title             TEXT,
+    prose_text        TEXT,
+    prose_provenance  TEXT,
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS section_blocks (
+    section_id   TEXT NOT NULL REFERENCES deliverable_sections(section_id),
+    block_kind   TEXT NOT NULL CHECK (block_kind IN (
+        'insight', 'open_question', 'operator_note', 'claim'
+    )),
+    block_id     TEXT NOT NULL,
+    block_index  INTEGER NOT NULL,
+    attached_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (section_id, block_kind, block_id)
+);
+
+-- ============================================================
 -- Indexes for backtest query patterns
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_syntheses_timestamp ON syntheses(synthesis_timestamp);
@@ -250,6 +298,8 @@ CREATE INDEX IF NOT EXISTS idx_outcomes_synthesis ON outcomes(synthesis_id);
 CREATE INDEX IF NOT EXISTS idx_outcomes_observed ON outcomes(observed_at);
 CREATE INDEX IF NOT EXISTS idx_tier_overrides_set_at ON chunk_tier_overrides(set_at);
 CREATE INDEX IF NOT EXISTS idx_edges_extracted ON edges(extracted_at);
+CREATE INDEX IF NOT EXISTS idx_sections_deliverable ON deliverable_sections(deliverable_id);
+CREATE INDEX IF NOT EXISTS idx_section_blocks_section ON section_blocks(section_id);
 """
 
 
@@ -258,6 +308,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "documents", "chunks", "nodes", "edges",
     "syntheses", "synthesis_substrate_manifest",
     "outcomes", "chunk_tier_overrides",
+    "deliverables", "deliverable_sections", "section_blocks",
 )
 
 
