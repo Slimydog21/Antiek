@@ -38,6 +38,15 @@ SSH_KEY="${ANTIEK_SSH_KEY:-$HOME/.ssh/antiek_ed25519}"
 SSH_TARGET="${ANTIEK_SSH_TARGET:-root@167.235.202.98}"
 EVENTS_DIR="${ANTIEK_EVENTS_DIR:-/home/antiek/.antiek/research_events}"
 SMOKE_TIMEOUT_S="${SMOKE_TIMEOUT_S:-300}"
+# H4: operator bearer. When set, attached to all api.antiek.ai
+# requests as ``Authorization: Bearer <token>``. Source it from the
+# same place the substrate reads ANTIEK_OPERATOR_TOKEN to avoid
+# token-drift surprises.
+OP_TOKEN="${ANTIEK_OPERATOR_TOKEN:-}"
+AUTH_HEADER=()
+if [ -n "$OP_TOKEN" ]; then
+  AUTH_HEADER=(-H "Authorization: Bearer $OP_TOKEN")
+fi
 
 INV_ID="smoke_$(date +%Y%m%d_%H%M%S)_$$"
 QUESTION="${SMOKE_QUESTION:-Will high-bandwidth memory supply constraints meaningfully limit datacenter GPU deployments through 2027?}"
@@ -51,6 +60,7 @@ done
 
 echo "smoke: firing investigation $INV_ID at $API_URL"
 resp=$(curl -fsS -X POST "$API_URL/investigations" \
+  "${AUTH_HEADER[@]}" \
   -H 'Content-Type: application/json' \
   -d "$(jq -nc --arg q "$QUESTION" --arg id "$INV_ID" \
     '{question: $q, investigation_id: $id}')") || {

@@ -24,6 +24,43 @@ export interface EmittedEventResponse {
 // same-origin (dev-server proxy behavior).
 const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
 
+// H4: operator bearer. Baked at build time via Cloudflare Pages env.
+// When set, attached to every API request as
+// ``Authorization: Bearer <token>``. The substrate's middleware
+// rejects requests without it once ``ANTIEK_OPERATOR_TOKEN`` is set
+// server-side.
+//
+// Security shape: the token IS visible in the JS bundle. Anyone with
+// access to ``view-source:app.antiek.ai`` can grab it. This is
+// security-through-obscurity at the API layer; the real defense
+// against abuse is Cloudflare-level rate limiting at the edge.
+// Acceptable posture for single-operator usage; revisit when there
+// are real users (master spec §13, deferred).
+const API_OPERATOR_TOKEN = (import.meta.env.VITE_OPERATOR_TOKEN as string | undefined) ?? "";
+
+/** Merge auth + caller-supplied headers. Bearer wins on conflict. */
+function authHeaders(extra?: HeadersInit): Record<string, string> {
+  const merged: Record<string, string> = {};
+  if (extra) {
+    if (extra instanceof Headers) {
+      extra.forEach((v, k) => { merged[k] = v; });
+    } else if (Array.isArray(extra)) {
+      for (const [k, v] of extra) merged[k] = v;
+    } else {
+      Object.assign(merged, extra);
+    }
+  }
+  if (API_OPERATOR_TOKEN) {
+    merged["Authorization"] = `Bearer ${API_OPERATOR_TOKEN}`;
+  }
+  return merged;
+}
+
+/** Drop-in wrapper around ``fetch`` that injects the operator bearer. */
+function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, { ...(init ?? {}), headers: authHeaders(init?.headers) });
+}
+
 // EmittedEventResponse is generated but exported through types; redeclare
 // the request envelope here since it lives in the API layer, not in the
 // substrate schemas.
@@ -51,7 +88,7 @@ export class ApiError extends Error {
 export async function postTypedEvent(
   envelope: TypedEventEnvelope,
 ): Promise<EmittedEventResponse> {
-  const resp = await fetch(`${API_BASE}/events/typed`, {
+  const resp = await apiFetch(`${API_BASE}/events/typed`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(envelope),
@@ -78,7 +115,7 @@ export async function getTrajectory(
   if (limit !== undefined) {
     url.searchParams.set("limit", String(limit));
   }
-  const resp = await fetch(url.toString());
+  const resp = await apiFetch(url.toString());
   if (!resp.ok) {
     throw new ApiError(
       `GET /trajectory failed: HTTP ${resp.status}`,
@@ -96,7 +133,7 @@ export async function getHealth(): Promise<{
   subscriber_count: number;
   registered_providers?: string[];
 }> {
-  const resp = await fetch(`${API_BASE}/health`);
+  const resp = await apiFetch(`${API_BASE}/health`);
   if (!resp.ok) {
     throw new ApiError("GET /health failed", resp.status, await resp.text());
   }
@@ -125,7 +162,7 @@ export interface StartInvestigationResponse {
 export async function startInvestigation(
   req: StartInvestigationRequest,
 ): Promise<StartInvestigationResponse> {
-  const resp = await fetch(`${API_BASE}/investigations`, {
+  const resp = await apiFetch(`${API_BASE}/investigations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -158,7 +195,7 @@ export async function listInvestigations(opts?: {
   const url = new URL(`${API_BASE}/investigations`, window.location.origin);
   if (opts?.limit !== undefined) url.searchParams.set("limit", String(opts.limit));
   if (opts?.status !== undefined) url.searchParams.set("status", opts.status);
-  const resp = await fetch(url.toString());
+  const resp = await apiFetch(url.toString());
   if (!resp.ok) {
     throw new ApiError(
       `GET /investigations failed: HTTP ${resp.status}`,
@@ -181,7 +218,7 @@ export interface InvestigationStatus {
 export async function getInvestigationStatus(
   investigationId: string,
 ): Promise<InvestigationStatus> {
-  const resp = await fetch(
+  const resp = await apiFetch(
     `${API_BASE}/investigations/${encodeURIComponent(investigationId)}`,
   );
   if (!resp.ok) {
@@ -279,7 +316,7 @@ export async function createDeliverable(req: {
   deliverable_kind: DeliverableKind;
   investigation_root_id?: string;
 }): Promise<DeliverableSummary> {
-  const resp = await fetch(`${API_BASE}/deliverables`, {
+  const resp = await apiFetch(`${API_BASE}/deliverables`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -298,7 +335,7 @@ export async function listDeliverables(): Promise<{
   count: number;
   deliverables: DeliverableSummary[];
 }> {
-  const resp = await fetch(`${API_BASE}/deliverables`);
+  const resp = await apiFetch(`${API_BASE}/deliverables`);
   if (!resp.ok) {
     throw new ApiError(
       `GET /deliverables failed: HTTP ${resp.status}`,
@@ -312,7 +349,7 @@ export async function listDeliverables(): Promise<{
 export async function getDeliverable(
   id: string,
 ): Promise<DeliverableDetailResponse> {
-  const resp = await fetch(
+  const resp = await apiFetch(
     `${API_BASE}/deliverables/${encodeURIComponent(id)}`,
   );
   if (!resp.ok) {
@@ -331,7 +368,7 @@ export async function createSection(req: {
   title?: string;
   parent_section_id?: string;
 }): Promise<SectionResponse> {
-  const resp = await fetch(`${API_BASE}/sections`, {
+  const resp = await apiFetch(`${API_BASE}/sections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -352,7 +389,7 @@ export async function attachBlock(req: {
   block_id: string;
   block_index: number;
 }): Promise<void> {
-  const resp = await fetch(`${API_BASE}/sections/attach-block`, {
+  const resp = await apiFetch(`${API_BASE}/sections/attach-block`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -384,7 +421,7 @@ export async function searchBlocks(
   const url = new URL(`${API_BASE}/blocks/search`, window.location.origin);
   url.searchParams.set("q", q);
   url.searchParams.set("limit", String(limit));
-  const resp = await fetch(url.toString());
+  const resp = await apiFetch(url.toString());
   if (!resp.ok) {
     throw new ApiError(
       `GET /blocks/search failed: HTTP ${resp.status}`,
@@ -402,7 +439,7 @@ export async function reorderBlock(req: {
   new_section_id?: string;
   new_block_index: number;
 }): Promise<void> {
-  const resp = await fetch(`${API_BASE}/sections/reorder-block`, {
+  const resp = await apiFetch(`${API_BASE}/sections/reorder-block`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -437,7 +474,7 @@ export async function updateSectionProse(
   sectionId: string,
   req: UpdateSectionProseRequest,
 ): Promise<UpdateSectionProseResponse> {
-  const resp = await fetch(
+  const resp = await apiFetch(
     `${API_BASE}/sections/${encodeURIComponent(sectionId)}/prose`,
     {
       method: "PATCH",
@@ -472,7 +509,7 @@ export async function exportDeliverable(
     window.location.origin,
   );
   url.searchParams.set("format", format);
-  const resp = await fetch(url.toString());
+  const resp = await apiFetch(url.toString());
   if (!resp.ok) {
     throw new ApiError(
       `GET /deliverables/{id}/export failed: HTTP ${resp.status}`,
@@ -505,7 +542,7 @@ export interface VoiceNoteIngestResponse {
 export async function ingestVoiceNote(
   req: VoiceNoteIngestRequest,
 ): Promise<VoiceNoteIngestResponse> {
-  const resp = await fetch(`${API_BASE}/voice-notes/ingest`, {
+  const resp = await apiFetch(`${API_BASE}/voice-notes/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -524,7 +561,7 @@ export async function ingestVoiceNote(
 export async function ingestSource(
   req: IngestSourceRequest,
 ): Promise<IngestSourceResponse> {
-  const resp = await fetch(`${API_BASE}/sources/ingest`, {
+  const resp = await apiFetch(`${API_BASE}/sources/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -541,7 +578,7 @@ export async function ingestSource(
 
 /** GET /chunks/{id} — used by Mode A's claim hover modal. */
 export async function getChunk(chunkId: string): Promise<ChunkResponse> {
-  const resp = await fetch(
+  const resp = await apiFetch(
     `${API_BASE}/chunks/${encodeURIComponent(chunkId)}`,
   );
   if (!resp.ok) {

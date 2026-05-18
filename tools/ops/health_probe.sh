@@ -33,6 +33,13 @@ API_URL="${ANTIEK_API_URL:-https://api.antiek.ai}"
 BRIDGE_URL="${ANTIEK_BRIDGE_URL:-https://hermes-bridge.antiek.ai}"
 WEBHOOK="${ANTIEK_ALERT_WEBHOOK:-}"
 WINDOW="${PROVIDER_RATIO_WINDOW_MIN:-15}"
+# H4: operator bearer for api.antiek.ai. The bridge's /health stays
+# open (probed without auth) but the substrate's /ops endpoints gate.
+OP_TOKEN="${ANTIEK_OPERATOR_TOKEN:-}"
+API_AUTH_HEADER=()
+if [ -n "$OP_TOKEN" ]; then
+  API_AUTH_HEADER=(-H "Authorization: Bearer $OP_TOKEN")
+fi
 
 for cmd in curl jq; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "probe: missing $cmd" >&2; exit 3; }
@@ -52,7 +59,7 @@ else
 fi
 
 # ── (2) Provider ratio ──
-ratio_body=$(curl -fsS --max-time 8 \
+ratio_body=$(curl -fsS --max-time 8 "${API_AUTH_HEADER[@]}" \
   "$API_URL/ops/provider-ratio?window_minutes=$WINDOW" 2>/dev/null || true)
 if [ -z "$ratio_body" ]; then
   alerts+=("API DOWN: $API_URL/ops/provider-ratio returned nothing")
