@@ -30,6 +30,7 @@ export const ActionType = {
   INVESTIGATION_FAILED: "investigation.failed",
   INVESTIGATION_SPAWNED_FROM: "investigation.spawned_from",
   INVESTIGATION_CHASE_HALTED: "investigation.chase_halted",
+  CLAIM_ASSERTED_BY_OPERATOR: "claim.asserted_by_operator",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
   DECOMPOSE_QUESTION_DELIVERED: "decompose.delivered",
   DECOMPOSER_PARAPHRASE_FLAGGED: "decomposer.paraphrase.flagged",
@@ -1339,6 +1340,35 @@ export interface InvestigationChaseHaltedPayload {
 }
 
 /**
+ * Sprint 15 — emitted when the operator's edit to creative_writer's
+ * output is promoted to a first-class graph claim. Master spec §10.4
+ * Option B.
+ * 
+ * The original generated prose and the operator's edit are both
+ * preserved so the audit trail captures the delta. ``claim_text`` is
+ * canonically the operator's text; ``original_text`` is the
+ * creative_writer output it replaced. ``source_tier`` defaults to 5
+ * (unsupported) unless the operator manually attaches chunk
+ * citations — at which point the substrate's grounder can verify it
+ * and downgrade the tier.
+ * 
+ * ``node_id`` is the graph node row the claim was promoted to. The
+ * web app uses this to surface the claim under its origin
+ * deliverable + section in future search.
+ */
+export interface ClaimAssertedByOperatorPayload {
+  action_type: "claim.asserted_by_operator";
+  deliverable_id: string;
+  section_id: string;
+  claim_text: string;
+  original_text?: string | null;
+  node_id?: string | null;
+  source_tier?: number;
+  operator_id?: string;
+  cited_chunk_ids?: string[];
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1405,7 +1435,8 @@ export type TypedPayload =
   | InvestigationCompletedPayload
   | InvestigationFailedPayload
   | InvestigationSpawnedFromPayload
-  | InvestigationChaseHaltedPayload;
+  | InvestigationChaseHaltedPayload
+  | ClaimAssertedByOperatorPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1436,6 +1467,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "artifact.generated",
   "artifact.interacted",
   "audit.finding_emitted",
+  "claim.asserted_by_operator",
   "claim.challenge_raised",
   "claim.grounding_check_failed",
   "claim.grounding_check_passed",

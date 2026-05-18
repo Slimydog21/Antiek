@@ -89,6 +89,11 @@ class ActionType(str, Enum):
     # Sprint 12: continuous chase mode — the orchestrator emits these
     # at the boundary between one chase iteration and the next.
     INVESTIGATION_CHASE_HALTED = "investigation.chase_halted"
+    # Sprint 15: creation surface edit-back-into-graph (master spec
+    # §10.4 Option B). When the operator edits generated prose, the
+    # substrate optionally promotes the edit to a first-class claim
+    # that future investigations can cite.
+    CLAIM_ASSERTED_BY_OPERATOR = "claim.asserted_by_operator"
 
     # ── Decomposer-specific ──
     DECOMPOSE_QUESTION_REQUESTED = "decompose.requested"
@@ -1462,6 +1467,36 @@ class InvestigationSpawnedFromPayload(_PayloadBase):
     spawn_context: str = ""
 
 
+class ClaimAssertedByOperatorPayload(_PayloadBase):
+    """Sprint 15 — emitted when the operator's edit to creative_writer's
+    output is promoted to a first-class graph claim. Master spec §10.4
+    Option B.
+
+    The original generated prose and the operator's edit are both
+    preserved so the audit trail captures the delta. ``claim_text`` is
+    canonically the operator's text; ``original_text`` is the
+    creative_writer output it replaced. ``source_tier`` defaults to 5
+    (unsupported) unless the operator manually attaches chunk
+    citations — at which point the substrate's grounder can verify it
+    and downgrade the tier.
+
+    ``node_id`` is the graph node row the claim was promoted to. The
+    web app uses this to surface the claim under its origin
+    deliverable + section in future search."""
+
+    action_type: Literal[ActionType.CLAIM_ASSERTED_BY_OPERATOR] = (
+        ActionType.CLAIM_ASSERTED_BY_OPERATOR
+    )
+    deliverable_id: str
+    section_id: str
+    claim_text: str
+    original_text: Optional[str] = None
+    node_id: Optional[str] = None
+    source_tier: int = Field(default=5, ge=1, le=5)
+    operator_id: str = "__operator__"
+    cited_chunk_ids: list[str] = Field(default_factory=list)
+
+
 class InvestigationCompletedPayload(_PayloadBase):
     """Terminal lifecycle event when Loop 1 converged cleanly. Carries
     the synthesis verdict + the constraint-loop verdict so a single
@@ -1886,6 +1921,7 @@ TypedPayload = Annotated[
         InvestigationFailedPayload,
         InvestigationSpawnedFromPayload,
         InvestigationChaseHaltedPayload,
+        ClaimAssertedByOperatorPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -1957,6 +1993,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.INVESTIGATION_FAILED.value,
     ActionType.INVESTIGATION_SPAWNED_FROM.value,
     ActionType.INVESTIGATION_CHASE_HALTED.value,
+    ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
 })
 
 
@@ -2197,4 +2234,5 @@ __all__ = [
     "InvestigationFailedPayload",
     "InvestigationSpawnedFromPayload",
     "InvestigationChaseHaltedPayload",
+    "ClaimAssertedByOperatorPayload",
 ]

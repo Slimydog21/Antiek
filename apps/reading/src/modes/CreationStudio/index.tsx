@@ -5,14 +5,17 @@ import {
   attachBlock,
   createDeliverable,
   createSection,
+  exportDeliverable,
   getDeliverable,
   ingestVoiceNote,
   listDeliverables,
   reorderBlock,
+  updateSectionProse,
   type BlockKind,
   type DeliverableDetailResponse,
   type DeliverableKind,
   type DeliverableSummary,
+  type ExportFormatName,
   type SectionResponse,
 } from "../../lib/api";
 import HeaderBar from "../shared/HeaderBar";
@@ -209,13 +212,16 @@ function DeliverableDetail() {
 
   return (
     <section className="overflow-y-auto pr-2">
-      <header className="mb-6">
-        <p className="text-xs uppercase tracking-wide text-stone-500">
-          {DELIVERABLE_KIND_LABELS[detail.deliverable_kind] ?? detail.deliverable_kind}
-        </p>
-        <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
-          {detail.title}
-        </h1>
+      <header className="mb-6 flex items-baseline justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-stone-500">
+            {DELIVERABLE_KIND_LABELS[detail.deliverable_kind] ?? detail.deliverable_kind}
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
+            {detail.title}
+          </h1>
+        </div>
+        <ExportButton deliverableId={detail.deliverable_id} />
       </header>
 
       <ul className="space-y-4">
@@ -230,6 +236,61 @@ function DeliverableDetail() {
         onCreated={refresh}
       />
     </section>
+  );
+}
+
+function ExportButton({ deliverableId }: { deliverableId: string }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function doExport(format: ExportFormatName) {
+    setBusy(true);
+    try {
+      const r = await exportDeliverable(deliverableId, format);
+      const mime =
+        format === "markdown"
+          ? "text/markdown"
+          : format === "html"
+            ? "text/html"
+            : "application/json";
+      const blob = new Blob([r.content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = r.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="px-3 py-1.5 bg-stone-200 hover:bg-stone-300 text-stone-900 text-sm rounded"
+      >
+        Export
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-1 bg-white border border-stone-200 rounded shadow-md text-xs z-10 min-w-[140px]">
+          {(["markdown", "html", "json"] as ExportFormatName[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => void doExport(f)}
+              disabled={busy}
+              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 disabled:text-stone-400"
+            >
+              {f === "markdown" ? "Markdown (.md)" : f === "html" ? "HTML (.html)" : "JSON bundle (.json)"}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -335,16 +396,8 @@ function SectionCard({
         </span>
       </div>
 
-      {section.prose_text ? (
-        <p className="mt-3 text-sm text-stone-700 whitespace-pre-line">
-          {section.prose_text}
-        </p>
-      ) : (
-        <p className="mt-3 text-xs text-stone-400 italic">
-          No prose yet. Drag blocks from the palette → click "Generate
-          prose" once Sprint 14 wires the creative_writer dispatch.
-        </p>
-      )}
+      <ProseEditor section={section} onSaved={onChanged} />
+
 
       <div className="mt-3 flex items-center gap-2">
         <button
@@ -390,6 +443,121 @@ function SectionCard({
         </form>
       )}
     </li>
+  );
+}
+
+function ProseEditor({
+  section,
+  onSaved,
+}: {
+  section: SectionResponse;
+  onSaved: () => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(section.prose_text || "");
+  const [promote, setPromote] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [lastStatus, setLastStatus] = useState<"saved" | "saved_and_promoted" | null>(null);
+
+  // If the section is refreshed from above with new prose, mirror it.
+  useEffect(() => {
+    setText(section.prose_text || "");
+  }, [section.section_id, section.prose_text]);
+
+  async function handleSave() {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      const r = await updateSectionProse(section.section_id, {
+        prose_text: text,
+        original_text: section.prose_text || undefined,
+        promote_to_graph: promote,
+      });
+      setLastStatus(r.status);
+      setEditing(false);
+      await onSaved();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="mt-3">
+        {section.prose_text ? (
+          <p className="text-sm text-stone-700 whitespace-pre-line">
+            {section.prose_text}
+          </p>
+        ) : (
+          <p className="text-xs text-stone-400 italic">
+            No prose yet. Drag blocks from the palette →, then click
+            Edit to add prose. (Sprint 14+ wires the creative_writer
+            role to generate from attached blocks.)
+          </p>
+        )}
+        <div className="mt-2 flex items-center gap-3">
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs text-stone-600 hover:text-stone-900 underline"
+          >
+            Edit prose
+          </button>
+          {lastStatus && (
+            <span
+              className={`text-xs ${
+                lastStatus === "saved_and_promoted"
+                  ? "text-emerald-700"
+                  : "text-stone-500"
+              }`}
+            >
+              {lastStatus === "saved_and_promoted"
+                ? "✓ saved & promoted to graph"
+                : "✓ saved"}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={Math.max(6, Math.min(20, text.split("\n").length + 1))}
+        className="w-full px-3 py-2 text-sm border border-stone-300 rounded font-serif focus:outline-none focus:ring-2 focus:ring-stone-400"
+      />
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <label className="flex items-center gap-1.5 text-xs text-stone-700">
+          <input
+            type="checkbox"
+            checked={promote}
+            onChange={(e) => setPromote(e.target.checked)}
+          />
+          Promote to graph as operator-asserted claim
+        </label>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setEditing(false);
+              setText(section.prose_text || "");
+            }}
+            disabled={busy}
+            className="px-3 py-1 text-xs text-stone-600 hover:text-stone-900"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={busy || !text.trim()}
+            className="px-3 py-1 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white text-xs rounded"
+          >
+            {busy ? "Saving…" : promote ? "Save & promote" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

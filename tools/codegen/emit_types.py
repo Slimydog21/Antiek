@@ -198,6 +198,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.InvestigationFailedPayload,
     schema_module.InvestigationSpawnedFromPayload,
     schema_module.InvestigationChaseHaltedPayload,
+    schema_module.ClaimAssertedByOperatorPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.

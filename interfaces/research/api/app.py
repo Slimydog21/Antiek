@@ -355,6 +355,38 @@ class ReorderBlockRequest(BaseModel):
     new_block_index: int = Field(..., ge=0)
 
 
+# ── Sprint 15: edit-back-into-graph + export ──────────────────────────
+
+
+class UpdateSectionProseRequest(BaseModel):
+    """PATCH a section's prose. When ``promote_to_graph`` is true, the
+    edited prose is also written as a new operator-asserted claim
+    node + CLAIM_ASSERTED_BY_OPERATOR event."""
+
+    prose_text: str = Field(..., min_length=1)
+    original_text: Optional[str] = None  # what creative_writer produced
+    promote_to_graph: bool = False
+    cited_chunk_ids: list[str] = Field(default_factory=list)
+    investigation_id: str = Field(default="__operator__", min_length=1)
+
+
+class UpdateSectionProseResponse(BaseModel):
+    status: Literal["saved", "saved_and_promoted"]
+    section_id: str
+    claim_node_id: Optional[str] = None
+    claim_event_id: Optional[str] = None
+
+
+class ExportFormat(BaseModel):
+    """Query-side echo of the chosen format. Used in JSON responses for
+    /deliverables/{id}/export when the operator wants the raw content
+    delivered as JSON."""
+
+    format: Literal["markdown", "html", "json"]
+    content: str
+    filename: str
+
+
 # ---------------------------------------------------------------------------
 # Source kind detection (Sprint 12)
 # ---------------------------------------------------------------------------
@@ -1364,6 +1396,181 @@ def create_app(
             chunks_written=r.chunks_written,
             skipped_reason=r.skipped_reason,
             title=r.title,
+        )
+
+    # ── Sprint 15: section prose update + promote-to-graph ─────────
+
+    @app.patch(
+        "/sections/{section_id}/prose",
+        response_model=UpdateSectionProseResponse,
+        status_code=202,
+    )
+    async def patch_section_prose(
+        section_id: str, req: UpdateSectionProseRequest,
+    ) -> UpdateSectionProseResponse:
+        """Save edited prose for a section. Optionally promote the edit
+        to a first-class operator-asserted claim in the graph (master
+        spec §10.4 Option B)."""
+        from runtime.db_lock import connect_write
+        from substrate.event_log import emit_typed
+        from substrate.graph.ops import insert_node, update_section_prose
+        from substrate.schemas import ClaimAssertedByOperatorPayload
+
+        db = _resolve_db_path()
+        with connect_write(db, purpose="sections/prose_update") as con:
+            row = con.execute(
+                "SELECT deliverable_id FROM deliverable_sections "
+                "WHERE section_id = ?", [section_id],
+            ).fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=404, detail="section not found",
+                )
+            deliverable_id = row[0]
+            update_section_prose(
+                con, section_id=section_id, prose_text=req.prose_text,
+            )
+            claim_node_id: Optional[str] = None
+            if req.promote_to_graph:
+                # Use the section title + first line of the prose as
+                # the claim's canonical label (keeps it indexable).
+                label = req.prose_text.strip().splitlines()[0]
+                if len(label) > 160:
+                    label = label[:159] + "…"
+                claim_node_id = insert_node(
+                    con,
+                    canonical_label=label,
+                    node_type="claim",
+                    graph_scope="cross_domain",
+                    investigation_id=req.investigation_id,
+                    metadata={
+                        "source": "operator_asserted",
+                        "deliverable_id": deliverable_id,
+                        "section_id": section_id,
+                        "policy_id": f"operator/{deliverable_id}",
+                        "cited_chunk_ids": req.cited_chunk_ids,
+                    },
+                    on_conflict="ignore",
+                )
+
+        claim_event_id: Optional[str] = None
+        if req.promote_to_graph and claim_node_id is not None:
+            # Source tier: default 5 (unsupported) unless the operator
+            # explicitly attached chunk citations. Even with citations
+            # we keep it at tier 5 until the grounder verifies — the
+            # grounder demotes the tier on success.
+            payload = ClaimAssertedByOperatorPayload(
+                deliverable_id=deliverable_id,
+                section_id=section_id,
+                claim_text=req.prose_text,
+                original_text=req.original_text,
+                node_id=claim_node_id,
+                source_tier=5,
+                cited_chunk_ids=req.cited_chunk_ids,
+            )
+            claim_event_id = emit_typed(
+                req.investigation_id, payload,
+                role="creation_surface",
+                policy_id=f"operator/{deliverable_id}",
+            )
+            return UpdateSectionProseResponse(
+                status="saved_and_promoted",
+                section_id=section_id,
+                claim_node_id=claim_node_id,
+                claim_event_id=claim_event_id,
+            )
+        return UpdateSectionProseResponse(
+            status="saved", section_id=section_id,
+        )
+
+    @app.get("/deliverables/{deliverable_id}/export")
+    async def export_deliverable(
+        deliverable_id: str,
+        format: str = Query(default="markdown"),
+    ) -> ExportFormat:
+        """Export a deliverable as Markdown, HTML, or a structured JSON
+        bundle. Returns the content inline (the caller can save it via
+        the Blob API in the browser). The substrate keeps no
+        notion of "rendered files" — every export is a fresh derivation
+        from the section rows."""
+        if format not in ("markdown", "html", "json"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"format must be markdown|html|json, got {format!r}",
+            )
+        import duckdb
+        import json as _json
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            head = con.execute(
+                "SELECT title, deliverable_kind FROM deliverables "
+                "WHERE deliverable_id = ?", [deliverable_id],
+            ).fetchone()
+            if head is None:
+                raise HTTPException(
+                    status_code=404, detail="deliverable not found",
+                )
+            secs = con.execute(
+                "SELECT section_index, title, prose_text "
+                "FROM deliverable_sections WHERE deliverable_id = ? "
+                "ORDER BY section_index ASC", [deliverable_id],
+            ).fetchall()
+        finally:
+            con.close()
+        title = head[0]
+        kind = head[1]
+        if format == "markdown":
+            lines = [f"# {title}", "", f"_{kind}_", ""]
+            for idx, sec_title, prose in secs:
+                lines.append(f"## {sec_title or f'Section {idx + 1}'}")
+                lines.append("")
+                lines.append((prose or "_(no prose yet)_").strip())
+                lines.append("")
+            content = "\n".join(lines)
+            return ExportFormat(
+                format="markdown", content=content,
+                filename=f"{deliverable_id}.md",
+            )
+        if format == "html":
+            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            parts = [
+                "<!doctype html>",
+                f"<html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>",
+                f"<h1>{esc(title)}</h1>",
+                f"<p><em>{esc(kind)}</em></p>",
+            ]
+            for idx, sec_title, prose in secs:
+                heading = sec_title or f"Section {idx + 1}"
+                parts.append(f"<h2>{esc(heading)}</h2>")
+                if prose:
+                    for para in prose.split("\n\n"):
+                        parts.append(f"<p>{esc(para)}</p>")
+                else:
+                    parts.append("<p><em>(no prose yet)</em></p>")
+            parts.append("</body></html>")
+            content = "\n".join(parts)
+            return ExportFormat(
+                format="html", content=content,
+                filename=f"{deliverable_id}.html",
+            )
+        # format == "json"
+        bundle = {
+            "deliverable_id": deliverable_id,
+            "title": title,
+            "deliverable_kind": kind,
+            "sections": [
+                {
+                    "section_index": idx,
+                    "title": sec_title,
+                    "prose_text": prose,
+                }
+                for idx, sec_title, prose in secs
+            ],
+        }
+        return ExportFormat(
+            format="json", content=_json.dumps(bundle, indent=2),
+            filename=f"{deliverable_id}.json",
         )
 
     # ── Sprint 13: voice notes ─────────────────────────────────────

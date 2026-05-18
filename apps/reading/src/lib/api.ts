@@ -416,6 +416,73 @@ export async function reorderBlock(req: {
   }
 }
 
+// ── Sprint 15: prose update + export ───────────────────────────────
+
+export interface UpdateSectionProseRequest {
+  prose_text: string;
+  original_text?: string;
+  promote_to_graph?: boolean;
+  cited_chunk_ids?: string[];
+  investigation_id?: string;
+}
+
+export interface UpdateSectionProseResponse {
+  status: "saved" | "saved_and_promoted";
+  section_id: string;
+  claim_node_id: string | null;
+  claim_event_id: string | null;
+}
+
+export async function updateSectionProse(
+  sectionId: string,
+  req: UpdateSectionProseRequest,
+): Promise<UpdateSectionProseResponse> {
+  const resp = await fetch(
+    `${API_BASE}/sections/${encodeURIComponent(sectionId)}/prose`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `PATCH /sections/{id}/prose failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export type ExportFormatName = "markdown" | "html" | "json";
+
+export interface ExportFormatResponse {
+  format: ExportFormatName;
+  content: string;
+  filename: string;
+}
+
+export async function exportDeliverable(
+  id: string,
+  format: ExportFormatName,
+): Promise<ExportFormatResponse> {
+  const url = new URL(
+    `${API_BASE}/deliverables/${encodeURIComponent(id)}/export`,
+    window.location.origin,
+  );
+  url.searchParams.set("format", format);
+  const resp = await fetch(url.toString());
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /deliverables/{id}/export failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 // ── Sprint 13: voice notes ─────────────────────────────────────────
 
 export interface VoiceNoteIngestRequest {
