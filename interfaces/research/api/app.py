@@ -676,13 +676,18 @@ def create_app(
     _OPERATOR_AUTH_OPEN_PATHS: set[str] = {"/health"}
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
+    _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV = "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID"
     _CF_ACCESS_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
+    _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
 
     @app.middleware("http")
     async def _operator_auth_middleware(request, call_next):
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
         expected_email = os.environ.get(_OPERATOR_EMAIL_ENV, "").strip().lower()
-        if not expected_token and not expected_email:
+        expected_st_client_id = os.environ.get(
+            _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
+        ).strip().lower()
+        if not expected_token and not expected_email and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged.
             return await call_next(request)
@@ -691,7 +696,7 @@ def create_app(
         if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
             return await call_next(request)
 
-        # Path 1: Cloudflare Access email header
+        # Path 1: Cloudflare Access — browser SSO (email header)
         if expected_email:
             cf_email = request.headers.get(
                 _CF_ACCESS_EMAIL_HEADER, "",
@@ -699,7 +704,29 @@ def create_app(
             if cf_email and cf_email == expected_email:
                 return await call_next(request)
 
-        # Path 2: Bearer token
+        # Path 2: Cloudflare Access — Service Token (machine callers)
+        # Cloudflare validates the CF-Access-Client-Id +
+        # CF-Access-Client-Secret pair at the edge before forwarding;
+        # the substrate trusts the Client Id's arrival as
+        # validation-already-happened-by-Cloudflare. We additionally
+        # match it against a configured value so multiple service
+        # tokens (e.g. operator's machine + a future CI token) can be
+        # distinguished by which one is allowed here.
+        #
+        # Note: only the Client Id is checked. The Client Secret is
+        # only visible to Cloudflare; treating Secret absence at this
+        # layer as failure would just duplicate the edge check. Trust
+        # boundary: anything reaching the origin with a Cf-Access-*
+        # header has been validated by Cloudflare's edge.
+        if expected_st_client_id:
+            cf_client_id = request.headers.get(
+                _CF_ACCESS_CLIENT_ID_HEADER, "",
+            ).strip().lower()
+            if cf_client_id and cf_client_id == expected_st_client_id:
+                return await call_next(request)
+
+        # Path 3: Bearer token (legacy + backstop for direct-to-origin
+        # callers that aren't going through Cloudflare Access)
         if expected_token:
             auth = request.headers.get("Authorization", "")
             scheme, _, token = auth.partition(" ")
@@ -714,9 +741,11 @@ def create_app(
             content={
                 "error": {
                     "message": (
-                        "Authentication required. Either Cloudflare "
-                        "Access (browser) or "
-                        "Authorization: Bearer <token> (machine)."
+                        "Authentication required. One of: Cloudflare "
+                        "Access browser session (Cf-Access-Authenticated-"
+                        "User-Email), Cloudflare Access service token "
+                        "(Cf-Access-Client-Id + Cf-Access-Client-Secret), "
+                        "or Authorization: Bearer <operator-token>."
                     ),
                     "code": "operator_auth_required",
                 }

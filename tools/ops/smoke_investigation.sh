@@ -38,14 +38,30 @@ SSH_KEY="${ANTIEK_SSH_KEY:-$HOME/.ssh/antiek_ed25519}"
 SSH_TARGET="${ANTIEK_SSH_TARGET:-root@167.235.202.98}"
 EVENTS_DIR="${ANTIEK_EVENTS_DIR:-/home/antiek/.antiek/research_events}"
 SMOKE_TIMEOUT_S="${SMOKE_TIMEOUT_S:-300}"
-# H4: operator bearer. When set, attached to all api.antiek.ai
-# requests as ``Authorization: Bearer <token>``. Source it from the
-# same place the substrate reads ANTIEK_OPERATOR_TOKEN to avoid
-# token-drift surprises.
+# H4.5: auth headers for machine callers behind Cloudflare Access.
+#
+# Two complementary headers + a fallback:
+# - Cf-Access-Client-Id + Cf-Access-Client-Secret: Cloudflare
+#   Service Token credentials. Required when the API is behind
+#   Cloudflare Access; without them, Cloudflare's edge redirects
+#   the request to the OTP login page and the script can't follow.
+# - Authorization: Bearer: substrate-level fallback if Cloudflare
+#   Access is bypassed (direct-to-origin) or if the substrate is
+#   running in a mode where Service Tokens aren't yet provisioned.
+#
+# All three env vars are sourced from /etc/antiek/secrets.env on
+# Hetzner (via the antiek-health-probe wrapper) or the operator's
+# laptop shell. None of them are embedded in the script itself.
 OP_TOKEN="${ANTIEK_OPERATOR_TOKEN:-}"
+CF_CLIENT_ID="${CF_ACCESS_CLIENT_ID:-}"
+CF_CLIENT_SECRET="${CF_ACCESS_CLIENT_SECRET:-}"
 AUTH_HEADER=()
+if [ -n "$CF_CLIENT_ID" ] && [ -n "$CF_CLIENT_SECRET" ]; then
+  AUTH_HEADER+=(-H "CF-Access-Client-Id: $CF_CLIENT_ID")
+  AUTH_HEADER+=(-H "CF-Access-Client-Secret: $CF_CLIENT_SECRET")
+fi
 if [ -n "$OP_TOKEN" ]; then
-  AUTH_HEADER=(-H "Authorization: Bearer $OP_TOKEN")
+  AUTH_HEADER+=(-H "Authorization: Bearer $OP_TOKEN")
 fi
 
 INV_ID="smoke_$(date +%Y%m%d_%H%M%S)_$$"

@@ -30,7 +30,9 @@ def temp_substrate(monkeypatch):
 
 
 def _client_with_token(
-    _, token: str | None, monkeypatch, *, email: str | None = None,
+    _, token: str | None, monkeypatch, *,
+    email: str | None = None,
+    service_token_client_id: str | None = None,
 ):
     if token is None:
         monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
@@ -40,6 +42,15 @@ def _client_with_token(
         monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
     else:
         monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", email)
+    if service_token_client_id is None:
+        monkeypatch.delenv(
+            "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False,
+        )
+    else:
+        monkeypatch.setenv(
+            "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID",
+            service_token_client_id,
+        )
     from interfaces.research.api.app import create_app
     app = create_app(
         register_wrestling=False, register_providers=False, cors_origins=[],
@@ -278,3 +289,117 @@ def test_both_paths_neither_supplied_rejected(temp_substrate, monkeypatch):
     assert resp.status_code == 401
     body = resp.json()
     assert body["error"]["code"] == "operator_auth_required"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 7. Cloudflare Access Service Token path (machine callers, H4.5)
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_service_token_client_id_match_passes(temp_substrate, monkeypatch):
+    """When ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID is set and the
+    request carries a matching ``Cf-Access-Client-Id`` header, the
+    request passes. Cloudflare's edge validates the Client-Id +
+    Client-Secret pair before forwarding; the substrate trusts the
+    header's arrival as proof of validation."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch,
+        service_token_client_id="ab12cd.access",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Client-Id": "ab12cd.access"},
+    )
+    assert resp.status_code == 200
+
+
+def test_service_token_client_id_case_insensitive(temp_substrate, monkeypatch):
+    """Client Id comparison is case-insensitive — Cloudflare's header
+    casing may vary on the wire even if the value is canonically
+    lowercase."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch,
+        service_token_client_id="ab12cd.access",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Client-Id": "AB12CD.ACCESS"},
+    )
+    assert resp.status_code == 200
+
+
+def test_service_token_client_id_mismatch_rejected(temp_substrate, monkeypatch):
+    """Wrong Client Id → 401. Distinguishes the operator's machine
+    token from any future service tokens added to the same Access
+    application."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch,
+        service_token_client_id="ab12cd.access",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Client-Id": "ffffff.access"},
+    )
+    assert resp.status_code == 401
+
+
+def test_service_token_three_paths_active_email_passes(temp_substrate, monkeypatch):
+    """All three env vars set → any single path matches."""
+    client = _client_with_token(
+        temp_substrate, "op_secret", monkeypatch,
+        email="op@antiek.ai",
+        service_token_client_id="ab12cd.access",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Authenticated-User-Email": "op@antiek.ai"},
+    )
+    assert resp.status_code == 200
+
+
+def test_service_token_three_paths_active_service_token_passes(
+    temp_substrate, monkeypatch,
+):
+    client = _client_with_token(
+        temp_substrate, "op_secret", monkeypatch,
+        email="op@antiek.ai",
+        service_token_client_id="ab12cd.access",
+    )
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Client-Id": "ab12cd.access"},
+    )
+    assert resp.status_code == 200
+
+
+def test_service_token_three_paths_active_bearer_passes(
+    temp_substrate, monkeypatch,
+):
+    client = _client_with_token(
+        temp_substrate, "op_secret", monkeypatch,
+        email="op@antiek.ai",
+        service_token_client_id="ab12cd.access",
+    )
+    resp = client.get(
+        "/investigations", headers={"Authorization": "Bearer op_secret"},
+    )
+    assert resp.status_code == 200
+
+
+def test_service_token_alone_no_other_env_works(temp_substrate, monkeypatch):
+    """Service Token can be the SOLE auth path — bearer + email
+    unset, service-token-client-id set. Useful for deployments that
+    only ever serve machine callers."""
+    client = _client_with_token(
+        temp_substrate, None, monkeypatch,
+        service_token_client_id="ab12cd.access",
+    )
+    # No Cf-Access-* and no Authorization → 401
+    resp = client.get("/investigations")
+    assert resp.status_code == 401
+    # With the Cf-Access-Client-Id → 200
+    resp = client.get(
+        "/investigations",
+        headers={"Cf-Access-Client-Id": "ab12cd.access"},
+    )
+    assert resp.status_code == 200

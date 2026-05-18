@@ -33,12 +33,21 @@ API_URL="${ANTIEK_API_URL:-https://api.antiek.ai}"
 BRIDGE_URL="${ANTIEK_BRIDGE_URL:-https://hermes-bridge.antiek.ai}"
 WEBHOOK="${ANTIEK_ALERT_WEBHOOK:-}"
 WINDOW="${PROVIDER_RATIO_WINDOW_MIN:-15}"
-# H4: operator bearer for api.antiek.ai. The bridge's /health stays
-# open (probed without auth) but the substrate's /ops endpoints gate.
+# H4.5: auth headers for machine callers behind Cloudflare Access.
+# Same shape as smoke_investigation.sh — Cf-Access-Client-Id +
+# Cf-Access-Client-Secret for the edge gate, plus an
+# Authorization: Bearer fallback for the substrate-level gate.
+# The bridge's /health stays open (probed without auth).
 OP_TOKEN="${ANTIEK_OPERATOR_TOKEN:-}"
+CF_CLIENT_ID="${CF_ACCESS_CLIENT_ID:-}"
+CF_CLIENT_SECRET="${CF_ACCESS_CLIENT_SECRET:-}"
 API_AUTH_HEADER=()
+if [ -n "$CF_CLIENT_ID" ] && [ -n "$CF_CLIENT_SECRET" ]; then
+  API_AUTH_HEADER+=(-H "CF-Access-Client-Id: $CF_CLIENT_ID")
+  API_AUTH_HEADER+=(-H "CF-Access-Client-Secret: $CF_CLIENT_SECRET")
+fi
 if [ -n "$OP_TOKEN" ]; then
-  API_AUTH_HEADER=(-H "Authorization: Bearer $OP_TOKEN")
+  API_AUTH_HEADER+=(-H "Authorization: Bearer $OP_TOKEN")
 fi
 
 for cmd in curl jq; do
