@@ -84,6 +84,13 @@ tiers:
       input_per_mtok: 0.0
       output_per_mtok: 0.0
       cached_input_per_mtok: 0.0
+    # Verifier MUST have a fallback. Without one, a bridge outage
+    # bricks every verifier call (the role most directly responsible
+    # for catching substrate quality regressions). Architectural
+    # invariant — see tests/test_dispatch_fallback_chain.py.
+    fallback:
+      provider: openrouter
+      model: deepseek/deepseek-v4-pro
 
   transcription:
     # Sprint 13 — voice note ingestion. Whisper-grade audio→text.
