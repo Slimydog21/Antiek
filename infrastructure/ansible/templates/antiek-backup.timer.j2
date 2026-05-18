@@ -1,0 +1,18 @@
+# Ansible managed.
+#
+# Nightly trigger for antiek-backup.service. 03:00 UTC.
+
+[Unit]
+Description=Antiek nightly backup timer (03:00 UTC)
+Documentation=https://github.com/Slimydog21/Antiek
+
+[Timer]
+# Fire at 03:00 UTC daily. Persistent=true ensures a missed run
+# (VM down at the scheduled time) fires on next boot rather than
+# being silently skipped.
+OnCalendar=*-*-* 03:00:00 UTC
+Persistent=true
+Unit=antiek-backup.service
+
+[Install]
+WantedBy=timers.target

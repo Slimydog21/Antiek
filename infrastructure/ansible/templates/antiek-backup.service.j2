@@ -1,0 +1,28 @@
+# Ansible managed.
+#
+# Antiek nightly backup runner. Triggered by antiek-backup.timer.
+# Script lives at /usr/local/bin/antiek-backup (rendered from
+# backup.sh.j2). Logs to /var/log/antiek-backup.log.
+
+[Unit]
+Description=Antiek nightly backup (DuckDB EXPORT + event log + R2 upload)
+Documentation=https://github.com/Slimydog21/Antiek/blob/main/infrastructure/ansible/templates/backup.sh.j2
+Wants=network-online.target
+After=network-online.target antiek.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/antiek-backup
+StandardOutput=append:/var/log/antiek-backup.log
+StandardError=append:/var/log/antiek-backup.log
+# A backup pass can run for several minutes once the corpus grows;
+# 30 min is plenty headroom for the current ~100KB corpus and
+# leaves safety margin for Sprint 19+ corpora.
+TimeoutStartSec=1800
+# Hardening — root-run script that doesn't need to bind ports or
+# persist new state outside the substrate state dir.
+ProtectSystem=strict
+ReadWritePaths=/var/tmp /var/log /home/antiek/.antiek
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true

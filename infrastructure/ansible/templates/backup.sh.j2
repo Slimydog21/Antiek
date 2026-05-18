@@ -43,6 +43,14 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${STAGING}"
+# DuckDB EXPORT below runs as the antiek user (file ownership of
+# the snapshot matches the substrate's process); the staging dir
+# was created by root and antiek can't write into it without an
+# explicit chown. Chowning is cheaper than restructuring the
+# privilege model. Cleanup trap above still removes regardless of
+# owner. Fixed 2026-05-18 — was silently making nightly backups
+# fail at the EXPORT step before the timer ever fired.
+chown antiek:antiek "${STAGING}"
 
 # ── 1. DuckDB consistent snapshot ─────────────────────────────────────────
 # Run as the antiek user so file ownership matches. DuckDB CLI isn't in
