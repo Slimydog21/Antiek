@@ -86,6 +86,46 @@ def test_only_filter(monkeypatch):
     assert "anthropic" not in _PROVIDER_REGISTRY
 
 
+def test_hermes_provider_url_does_not_double_v1(monkeypatch):
+    """Regression for the 2026-05-18 production incident.
+
+    The Hermes bootstrap shipped without ``chat_completions_path``
+    override, so it used the default ``/v1/chat/completions``. With
+    ``ANTIEK_HERMES_BASE_URL=https://hermes-bridge.antiek.ai/v1`` (the
+    natural posture matching OpenRouter), the constructed URL became
+    ``/v1/v1/chat/completions`` and the Cloudflare-tunneled proxy 404'd
+    every single call as ``path_not_allowed``. The substrate's
+    fallback chain silently routed 100% of inference to OpenRouter
+    while ``/health.registered_providers`` still reported ``hermes`` —
+    a true silent-failure-via-fallback case.
+
+    Lock in: Hermes URL must end with exactly one ``/v1/chat/completions``
+    when the env var carries the ``/v1`` suffix."""
+    monkeypatch.setenv("HERMES_API_KEY", "hb_test")
+    monkeypatch.setenv(
+        "ANTIEK_HERMES_BASE_URL", "https://hermes-bridge.antiek.ai/v1",
+    )
+    for k in (
+        "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY", "XIAOMI_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    register_default_providers(quiet=True)
+    hermes = get_provider("hermes")
+    constructed = hermes.base_url + hermes.chat_completions_path
+    assert constructed == "https://hermes-bridge.antiek.ai/v1/chat/completions", (
+        f"Hermes URL is {constructed!r}; expected exactly one /v1/. "
+        f"Double-/v1/ would route every call to the proxy's 'path_not_allowed' "
+        f"branch and silently fail through to fallback."
+    )
+    assert hermes.chat_completions_path == "/chat/completions", (
+        "Hermes must override chat_completions_path so the env var carries "
+        "the /v1 prefix (matching OpenRouter's pattern). The provider's "
+        "default of /v1/chat/completions is unsafe for Hermes deployments "
+        "whose base URL already includes /v1."
+    )
+
+
 def test_create_app_auto_registers_in_default_mode(monkeypatch):
     """The bug we hit on 2026-05-17: production create_app() must
     register providers. Without this wiring, /health.registered_providers

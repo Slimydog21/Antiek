@@ -83,6 +83,16 @@ def _maybe_xiaomi() -> Optional[OpenAICompatProvider]:
 def _maybe_hermes() -> Optional[OpenAICompatProvider]:
     # Hermes is the operator's local subscription gateway. Disabled
     # by default; opt-in via HERMES_API_KEY + ANTIEK_HERMES_BASE_URL.
+    #
+    # ``chat_completions_path="/chat/completions"`` matches the
+    # OpenRouter pattern: the base URL carries the API-version prefix
+    # (``/v1``) and the path appended by the provider does NOT repeat
+    # it. Production caught a double-``/v1/`` 404 here when the env
+    # var was ``https://hermes-bridge.antiek.ai/v1`` and the default
+    # path of ``/v1/chat/completions`` was appended — the proxy
+    # rejected ``/v1/v1/chat/completions`` as path_not_allowed,
+    # silently dispatching every call to the OpenRouter fallback for
+    # 100% of inference. Fixed 2026-05-18.
     if not os.environ.get("HERMES_API_KEY"):
         return None
     return OpenAICompatProvider(
@@ -91,6 +101,7 @@ def _maybe_hermes() -> Optional[OpenAICompatProvider]:
             "ANTIEK_HERMES_BASE_URL", "http://localhost:8080/v1",
         ),
         api_key_env="HERMES_API_KEY",
+        chat_completions_path="/chat/completions",
     )
 
 
