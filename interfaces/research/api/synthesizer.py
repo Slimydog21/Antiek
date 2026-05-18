@@ -191,10 +191,9 @@ def _empty_delivered_payload(
 # ---------------------------------------------------------------------------
 
 
-def _dispatch_and_parse(
-    prompt: str,
-    event: Event,
-) -> tuple[Optional[ThesisResult], str]:
+def _dispatch_once(prompt: str, event: Event) -> tuple[Optional[str], str]:
+    """One dispatch attempt. Returns (response_text, policy_id) or
+    (None, fallback_policy_id) on ProviderError / KeyError."""
     try:
         result = dispatch(
             prompt,
@@ -202,8 +201,7 @@ def _dispatch_and_parse(
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
         )
-        response_text = result.text
-        policy_id = f"{result.provider}/{result.model}"
+        return result.text, f"{result.provider}/{result.model}"
     except (ProviderError, KeyError) as exc:
         print(
             f"synthesizer.handle: dispatch failed — "
@@ -212,15 +210,74 @@ def _dispatch_and_parse(
         )
         return None, "synthesizer-fallback/no-provider"
 
+
+def _dispatch_and_parse(
+    prompt: str,
+    event: Event,
+    *,
+    rerender_with_prefix=None,
+) -> tuple[Optional[ThesisResult], str]:
+    """Dispatch + parse with one self-repair retry on parse failure.
+
+    When the model produces structurally-malformed output (typically:
+    empty ``falsification_conditions``, missing top-level keys, etc.)
+    the bridge gives the model ONE chance to fix it by re-dispatching
+    with the validation error prepended. If the retry also fails to
+    parse, returns ``(None, policy_id)`` and the caller falls through
+    to the empty-delivered shape (existing contract).
+
+    ``rerender_with_prefix(prefix: str) -> str`` is an optional
+    closure that lets the caller re-render the full prompt with a
+    user-template prefix. When omitted, the retry simply prepends to
+    the original prompt — adequate for the parse-failure case where
+    the model needs to see what was structurally wrong with its
+    previous attempt."""
+    response_text, policy_id = _dispatch_once(prompt, event)
+    if response_text is None:
+        return None, policy_id
+
     try:
-        parsed = parse_synthesizer_response(response_text)
-        return parsed, policy_id
+        return parse_synthesizer_response(response_text), policy_id
     except SynthesizerValidationError as exc:
+        first_error = exc
         print(
-            f"synthesizer.handle: parse failed — {exc}",
+            f"synthesizer.handle: parse failed — {first_error} — attempting one self-repair",
             flush=True,
         )
-        return None, policy_id
+
+    # 2026-05-18 H2.5: one self-repair attempt. The synthesizer's
+    # response was structurally wrong; tell the model exactly what
+    # was wrong and re-dispatch. Most observed grok-4.3 failure modes
+    # (empty falsification_conditions, missing keys, wrong recommendation
+    # vocabulary) recover on a single retry once the model sees its
+    # own mistake described.
+    repair_prefix = (
+        "Your previous response failed the substrate's structural "
+        "contract with the following error:\n\n"
+        f"    {first_error!s}\n\n"
+        "This is your one and only chance to fix it. Produce a "
+        "response that satisfies the contract above. Pay particular "
+        "attention to the substrate's non-negotiable constraints in "
+        "the system prompt — they are not stylistic preferences.\n\n"
+        "----\n\n"
+    )
+    if rerender_with_prefix is not None:
+        retry_prompt = rerender_with_prefix(repair_prefix)
+    else:
+        retry_prompt = repair_prefix + prompt
+
+    retry_text, retry_policy = _dispatch_once(retry_prompt, event)
+    if retry_text is None:
+        return None, retry_policy
+
+    try:
+        return parse_synthesizer_response(retry_text), retry_policy
+    except SynthesizerValidationError as exc2:
+        print(
+            f"synthesizer.handle: self-repair retry also failed — {exc2}",
+            flush=True,
+        )
+        return None, retry_policy
 
 
 # ---------------------------------------------------------------------------

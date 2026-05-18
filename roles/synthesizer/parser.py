@@ -442,6 +442,22 @@ def parse_synthesizer_response(text: str) -> ThesisResult:
         raise SynthesizerValidationError(
             "top: falsification_conditions must be a list"
         )
+    # 2026-05-18 H2.5: the empty list is forbidden unless the
+    # synthesizer is signaling ``insufficient_evidence``. grok-4.3
+    # was observed in production returning ``"falsification_conditions":
+    # []`` alongside a ``proceed`` recommendation, which the phase-6
+    # postcondition rejects ("vacuous falsifications"). Catching the
+    # condition at the parser layer surfaces it as a structural
+    # contract violation, where downstream bridges can decide whether
+    # to retry the dispatch.
+    if not falsifications_raw and recommendation != "insufficient_evidence":
+        raise SynthesizerValidationError(
+            "top: falsification_conditions must contain at least one "
+            "entry unless implicit_recommendation == "
+            "'insufficient_evidence'. A thesis without specific "
+            "falsifying conditions is unfalsifiable and therefore "
+            "not a thesis the substrate can defend."
+        )
     falsifications = tuple(
         _parse_falsification(f, i) for i, f in enumerate(falsifications_raw)
     )

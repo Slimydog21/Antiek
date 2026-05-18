@@ -224,9 +224,53 @@ def test_parser_insufficient_evidence_allows_empty_provenance():
             "hedging_required": True,
         }],
         reasoning_paths_used=[],
+        falsification_conditions=[],
     )
     out = parse_synthesizer_response(json.dumps(payload))
     assert out.implicit_recommendation == "insufficient_evidence"
+    assert out.falsification_conditions == ()
+
+
+def test_parser_empty_falsifications_rejected_when_proceeding():
+    """Regression for 2026-05-18 production incident.
+
+    grok-4.3 was observed returning ``"falsification_conditions": []``
+    alongside ``implicit_recommendation: "proceed"``, which the
+    phase-6 postcondition rejected with "vacuous falsifications"
+    and failed the whole investigation. Catch it at the parser layer
+    so the synthesizer bridge gets a chance to self-repair before
+    propagating through six more phases."""
+    payload = _good_thesis(
+        implicit_recommendation="proceed",
+        falsification_conditions=[],
+    )
+    with pytest.raises(
+        SynthesizerValidationError,
+        match="falsification_conditions must contain at least one",
+    ):
+        parse_synthesizer_response(json.dumps(payload))
+
+
+def test_parser_empty_falsifications_allowed_when_insufficient_evidence():
+    """The escape hatch: when the synthesizer explicitly signals it
+    cannot produce a defensible thesis, empty falsifications are
+    acceptable (the recommendation IS the disclaimer)."""
+    payload = _good_thesis(
+        implicit_recommendation="insufficient_evidence",
+        thesis_components=[{
+            "claim": "No defensible thesis from the available evidence.",
+            "confidence": "unknown",
+            "supporting_chunk_ids": [],
+            "supporting_path_indices": [],
+            "effective_source_tier": None,
+            "hedging_required": True,
+        }],
+        falsification_conditions=[],
+        reasoning_paths_used=[],
+    )
+    out = parse_synthesizer_response(json.dumps(payload))
+    assert out.implicit_recommendation == "insufficient_evidence"
+    assert out.falsification_conditions == ()
 
 
 # ---------------------------------------------------------------------------
