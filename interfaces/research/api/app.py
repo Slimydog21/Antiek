@@ -387,6 +387,30 @@ class ExportFormat(BaseModel):
     filename: str
 
 
+# ── Sprint H3: observability ──────────────────────────────────────────
+
+
+class ProviderRatioBreakdown(BaseModel):
+    provider: str
+    success_count: int = 0
+    error_count: int = 0
+    total: int = 0
+
+
+class ProviderRatioResponse(BaseModel):
+    """Operator-facing provider ratio for the last N minutes. Used by
+    the bridge-health alerting cron to detect silent Hermes-primary
+    failures that the OpenRouter fallback is hiding."""
+
+    window_minutes: int
+    total_dispatches: int
+    by_provider: list[ProviderRatioBreakdown] = Field(default_factory=list)
+    hermes_success_fraction: float = 0.0
+    openrouter_fraction: float = 0.0
+    alert_recommended: bool = False
+    alert_reason: Optional[str] = None
+
+
 # ── Sprint 16 partial: IP attribution telemetry ───────────────────────
 
 
@@ -1666,6 +1690,134 @@ def create_app(
         return ExportFormat(
             format="json", content=_json.dumps(bundle, indent=2),
             filename=f"{deliverable_id}.json",
+        )
+
+    # ── Sprint H3: observability ───────────────────────────────────
+
+    @app.get("/ops/provider-ratio", response_model=ProviderRatioResponse)
+    async def get_provider_ratio(
+        window_minutes: int = Query(default=15, ge=1, le=1440),
+        openrouter_alert_threshold: float = Query(default=0.10, ge=0.0, le=1.0),
+    ) -> ProviderRatioResponse:
+        """Aggregate dispatch.call events in the last ``window_minutes``
+        and surface per-provider success/error counts. An alerting cron
+        polls this endpoint and routes to a webhook when
+        ``alert_recommended=True`` — typical signal that the bridge has
+        gone silent and OpenRouter is silently carrying inference."""
+        import os as _os
+        import json as _json
+        from datetime import datetime, timezone, timedelta
+        from substrate.event_log import default_events_dir
+
+        events_dir = default_events_dir()
+        if not _os.path.isdir(events_dir):
+            return ProviderRatioResponse(
+                window_minutes=window_minutes, total_dispatches=0,
+            )
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+
+        per_provider: dict[str, dict[str, int]] = {}
+        total = 0
+        for filename in _os.listdir(events_dir):
+            if not filename.endswith(".jsonl"):
+                continue
+            path = _os.path.join(events_dir, filename)
+            try:
+                stat_mtime = datetime.fromtimestamp(
+                    _os.path.getmtime(path), tz=timezone.utc,
+                )
+            except OSError:
+                continue
+            # Skip files entirely older than the cutoff window — saves
+            # an open() on the long tail of historical investigations.
+            if stat_mtime < cutoff:
+                continue
+            try:
+                with open(path, "r") as fp:
+                    for line in fp:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            ev = _json.loads(line)
+                        except _json.JSONDecodeError:
+                            continue
+                        if ev.get("action_type") != "dispatch.call":
+                            continue
+                        ts_str = ev.get("created_at") or ev.get("ts")
+                        if ts_str:
+                            try:
+                                ts = datetime.fromisoformat(
+                                    ts_str.replace("Z", "+00:00")
+                                )
+                                if ts.tzinfo is None:
+                                    ts = ts.replace(tzinfo=timezone.utc)
+                                if ts < cutoff:
+                                    continue
+                            except (ValueError, TypeError):
+                                pass
+                        payload = ev.get("payload") or {}
+                        provider = str(payload.get("provider") or "unknown")
+                        finish = str(payload.get("finish_reason") or "")
+                        bucket = per_provider.setdefault(
+                            provider, {"success": 0, "error": 0},
+                        )
+                        if finish == "error":
+                            bucket["error"] += 1
+                        else:
+                            bucket["success"] += 1
+                        total += 1
+            except OSError:
+                continue
+
+        breakdown = []
+        for provider in sorted(per_provider):
+            b = per_provider[provider]
+            breakdown.append(ProviderRatioBreakdown(
+                provider=provider,
+                success_count=b["success"],
+                error_count=b["error"],
+                total=b["success"] + b["error"],
+            ))
+
+        hermes_b = per_provider.get("hermes", {"success": 0, "error": 0})
+        or_b = per_provider.get("openrouter", {"success": 0, "error": 0})
+        hermes_success = hermes_b["success"]
+        openrouter_total = or_b["success"] + or_b["error"]
+
+        hermes_success_fraction = (
+            hermes_success / total if total > 0 else 0.0
+        )
+        openrouter_fraction = (
+            openrouter_total / total if total > 0 else 0.0
+        )
+
+        alert = False
+        reason: Optional[str] = None
+        # Two trigger shapes the operator cares about:
+        # 1. Heavy openrouter usage (bridge silently failing) — primary
+        #    signal that Hermes-primary has dropped out.
+        # 2. NO recent dispatches at all when there should have been —
+        #    can't distinguish "operator inactive" from "substrate
+        #    silently broken" without a baseline; leave that to the
+        #    bridge-health probe.
+        if total > 0 and openrouter_fraction > openrouter_alert_threshold:
+            alert = True
+            reason = (
+                f"openrouter handled {openrouter_fraction:.0%} of "
+                f"{total} dispatches in the last {window_minutes}m "
+                f"(threshold {openrouter_alert_threshold:.0%}). "
+                f"Hermes-primary is likely silently failing."
+            )
+
+        return ProviderRatioResponse(
+            window_minutes=window_minutes,
+            total_dispatches=total,
+            by_provider=breakdown,
+            hermes_success_fraction=hermes_success_fraction,
+            openrouter_fraction=openrouter_fraction,
+            alert_recommended=alert,
+            alert_reason=reason,
         )
 
     # ── Sprint 16 partial: attribution telemetry ───────────────────
