@@ -489,7 +489,17 @@ def test_phase_8_insufficient_evidence_short_circuits_pass(tmp_path):
 
 def test_phase_8_skill_file_mtime_fallback(tmp_path):
     """No AUTO_PATCH_APPLIED event but a skill file modified recently
-    → passes (mtime fallback)."""
+    → passes (mtime fallback).
+
+    History (H4.5, 2026-05-18): this test previously constructed
+    ``started_at`` as a naive datetime via
+    ``datetime.fromtimestamp(past)``, which the buggy postcondition's
+    naive-timestamp comparison silently treated as local time —
+    round-tripping the test's UTC epoch through the operator's
+    timezone offset. The bug masked itself by accepting the malformed
+    cutoff and producing the expected boolean result. After the fix,
+    ``started_at`` is explicitly UTC-aware, and the postcondition
+    accepts that without ambiguity."""
     skills_root = tmp_path / "skills"
     quantum_dir = skills_root / "quantum-knowledge"
     quantum_dir.mkdir(parents=True)
@@ -497,10 +507,10 @@ def test_phase_8_skill_file_mtime_fallback(tmp_path):
     skill_file.write_text("# Quantum\n\n## Findings\n")
 
     # Use a past investigation start (1 hour ago) so the file's NOW
-    # mtime is strictly after it.
-    past = datetime.now(timezone.utc).replace(tzinfo=None).timestamp() - 3600
+    # mtime is strictly after it. UTC-aware throughout.
+    past = datetime.now(timezone.utc).timestamp() - 3600
     os.utime(str(skill_file), (past + 1800, past + 1800))  # 30 min after start
-    started_at = datetime.fromtimestamp(past)
+    started_at = datetime.fromtimestamp(past, tz=timezone.utc)
 
     ok, reason = check_phase_8(
         "inv-p8mtime",
@@ -509,6 +519,44 @@ def test_phase_8_skill_file_mtime_fallback(tmp_path):
     )
     assert ok is True
     assert "modified after" in reason
+
+
+def test_phase_8_naive_started_at_treated_as_utc(tmp_path):
+    """Regression for the H4.5 timezone bug: a naive
+    ``investigation_started_at`` must be interpreted as UTC, not as
+    local time. Pre-fix, ``.timestamp()`` on a naive datetime used
+    local time, which on a non-UTC machine shifted the cutoff by the
+    local UTC offset and made path B falsely pass even when the
+    seed file's mtime predated the real investigation start."""
+    import time as _time
+    skills_root = tmp_path / "skills"
+    quantum_dir = skills_root / "quantum-knowledge"
+    quantum_dir.mkdir(parents=True)
+    skill_file = quantum_dir / "SKILL.md"
+    skill_file.write_text("# Quantum\n\n## Findings\n")
+
+    # Seed file's mtime is exactly NOW.
+    now_ts = _time.time()
+    os.utime(str(skill_file), (now_ts, now_ts))
+
+    # Pass a naive datetime FIVE MINUTES IN THE FUTURE (UTC). Should
+    # be interpreted as UTC, putting the cutoff AFTER the file's
+    # mtime, so path B fails. Pre-fix on UTC+N machines, this would
+    # silently pass because the naive timestamp() shifted backwards.
+    from datetime import timedelta as _timedelta
+    future_naive_utc = (datetime.now(timezone.utc) + _timedelta(minutes=5)).replace(tzinfo=None)
+    assert future_naive_utc.tzinfo is None, "test setup assumes naive"
+
+    ok, reason = check_phase_8(
+        "inv-p8tz",
+        knowledge_skills_dir=str(skills_root),
+        investigation_started_at=future_naive_utc,
+    )
+    assert ok is False, (
+        f"naive started_at must be UTC; with cutoff 5min in future "
+        f"the seed file's NOW mtime cannot satisfy the > check. "
+        f"Got ok={ok}, reason={reason}"
+    )
 
 
 # ---------------------------------------------------------------------------

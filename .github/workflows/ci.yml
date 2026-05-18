@@ -75,12 +75,7 @@ jobs:
           # extra Authorization header.
           ANTIEK_OPERATOR_TOKEN: ""
         run: |
-          # Exclude flaky_in_ci tests — they pass locally but fail
-          # in GH Actions for environment-specific reasons (see
-          # pyproject [tool.pytest.ini_options].markers for the
-          # discipline). Periodically audit ``grep -rn
-          # flaky_in_ci tests/`` to avoid accumulation.
-          python -m pytest tests/ -q -m "not integration and not flaky_in_ci"
+          python -m pytest tests/ -q -m "not integration"
 
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in

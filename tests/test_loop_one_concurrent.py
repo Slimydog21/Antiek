@@ -97,14 +97,24 @@ def _synthesizer_response_for(inv_id: str) -> str:
     """Synthesizer response tagged with the investigation_id so we
     can detect cross-contamination in the thesis content."""
     return json.dumps({
+        # The "quantum" keyword routes ``classify_domains`` to the
+        # ``quantum-computing-knowledge`` domain that the test fixture
+        # seeds. Without it, Phase 8 has no domain to patch and the
+        # auto_patch_applied event fires with ``patched=[]``, which
+        # the postcondition correctly rejects. Was relying on a
+        # since-fixed timezone-naive cutoff bug in
+        # check_phase_8 — see H4.5 (2026-05-18).
         "thesis_summary": (
-            f"Thesis for {inv_id}: X holds in primary evidence under "
-            "tier-1 sources."
+            f"Thesis for {inv_id}: quantum substrates hold under "
+            "tier-1 evidence (primary sources)."
         ),
         "implicit_recommendation": "proceed",
         "thesis_components": [
             {
-                "claim": f"X holds for {inv_id} per primary evidence.",
+                "claim": (
+                    f"Quantum substrate evidence supports {inv_id} per "
+                    "primary sources."
+                ),
                 "confidence": "high",
                 "confidence_basis": "two SEC filings + peer-reviewed paper",
                 "supporting_chunk_ids": [f"chunk-{inv_id}-1"],
@@ -452,7 +462,6 @@ async def test_three_concurrent_investigations_complete_independently(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.flaky_in_ci
 @pytest.mark.asyncio
 async def test_per_investigation_file_markers_isolated(
     monkeypatch, app_and_bus, async_client, tmp_path,
@@ -461,18 +470,17 @@ async def test_per_investigation_file_markers_isolated(
     round1-*.md, etc.) land in its OWN research dir. No marker
     should appear in another investigation's directory.
 
-    Marked flaky_in_ci 2026-05-18: passes consistently locally
-    (Python 3.14 macOS) but fails in GH Actions (Python 3.14 linux)
-    due to ``_PerInvestigationStub``'s prompt-parsing heuristic. The
-    stub reads ``Investigation ID:`` out of the rendered prompt to
-    branch responses per investigation, and the rendered whitespace
-    /formatting differs subtly between platforms — CI gets the
-    generic fallback response which lacks the "quantum" keyword the
-    auto_patch domain-matcher looks for. Investigate by making
-    ``_PerInvestigationStub.call()`` use a more robust identifier
-    extraction (e.g. structured threading-local rather than prompt
-    parsing). H5 ships CI with this test skipped; the underlying
-    substrate behavior is correct."""
+    History (2026-05-18 H4.5): this test was briefly marked
+    flaky_in_ci when the failure was misdiagnosed as a stub
+    prompt-parsing issue. Real root cause was a timezone-naive
+    datetime bug in ``check_phase_8`` (see fix in
+    orchestration/phase_runner/postconditions.py). The bug silently
+    shifted the Phase 8 cutoff backwards by the local UTC offset,
+    making every seed file appear "modified after" the cutoff on
+    non-UTC dev machines. CI runs UTC, so the cutoff didn't shift,
+    and the seed file's pre-investigation-start mtime failed the
+    strict ``>`` check. Marker removed once the postcondition was
+    fixed."""
     _, bus = app_and_bus
     register_provider(_PerInvestigationStub())
     _patch_dispatch(monkeypatch, _all_role_config())
@@ -517,7 +525,6 @@ async def test_per_investigation_file_markers_isolated(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.flaky_in_ci
 @pytest.mark.asyncio
 async def test_handler_fan_out_no_lost_events(
     monkeypatch, app_and_bus, async_client,
@@ -530,9 +537,10 @@ async def test_handler_fan_out_no_lost_events(
     Per-investigation trajectory walks confirm no events were
     dropped by the broadcaster's handler dispatch under load.
 
-    Marked flaky_in_ci — same root cause as
-    ``test_per_investigation_file_markers_isolated``: stub prompt
-    parsing fragility between local and CI Python builds."""
+    Same H4.5 history as the sibling test above: was briefly
+    flaky_in_ci due to a timezone-naive datetime bug in Phase 8's
+    postcondition. Real fix landed in
+    orchestration/phase_runner/postconditions.py."""
     _, bus = app_and_bus
     register_provider(_PerInvestigationStub())
     _patch_dispatch(monkeypatch, _all_role_config())

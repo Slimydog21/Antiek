@@ -98,5 +98,4 @@ asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
 markers = [
     "integration: tests requiring external services / live LLM / network",
-    "flaky_in_ci: passes locally, fails in GH Actions for environment-specific reasons (stub prompt parsing fragility, fs timing, etc.). Excluded from CI runs via the workflow's marker filter; still runs locally with the default pytest invocation. Audit periodically — do not accumulate.",
 ]

@@ -527,13 +527,30 @@ def check_phase_8(
             plog = PhaseLog.open(investigation_id)
             ts = plog.data.get("created_at")
             if ts:
-                cutoff = datetime.fromisoformat(ts.rstrip("Z"))
+                # 2026-05-18 H4.5 fix: ``rstrip("Z")`` + naive
+                # ``fromisoformat`` produced a tzinfo=None datetime
+                # whose ``.timestamp()`` was interpreted as LOCAL
+                # time. On the operator's UTC+3 dev machine this
+                # silently shifted the cutoff 3 hours backwards,
+                # making every seed file appear "modified after"
+                # the cutoff. The same bug was masked in production
+                # (UTC server) because real investigations satisfy
+                # path A or the insufficient_evidence escape hatch
+                # — only the test path with a no-domains-match
+                # synthesizer hit the broken path B comparison.
+                # Now we keep timezone info through the comparison.
+                cutoff = datetime.fromisoformat(ts.replace("Z", "+00:00"))
         except Exception:
             pass
     if cutoff is None:
-        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
-    if cutoff.tzinfo is not None:
-        cutoff = cutoff.astimezone(timezone.utc).replace(tzinfo=None)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    if cutoff.tzinfo is None:
+        # Backstop: any naive cutoff is interpreted as UTC, not
+        # local time. The operator-supplied
+        # ``investigation_started_at`` kwarg is documented as UTC
+        # per the docstring; defensive-cast here so a stray naive
+        # value doesn't reintroduce the local-time-shift bug.
+        cutoff = cutoff.replace(tzinfo=timezone.utc)
     cutoff_ts = cutoff.timestamp()
 
     for entry in sorted(os.listdir(knowledge_skills_dir)):
