@@ -36,10 +36,16 @@ jobs:
           # would fail. Default depth is fine.
           fetch-depth: 0
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          # Pinned to 3.14 to match the operator's local development
+          # environment AND the Python version that produces the
+          # canonical Pydantic schema → TS types serialization.
+          # Cross-version drift in model_json_schema() output had
+          # CI flagging types.ts as stale even when committed types
+          # were correct.
+          python-version: '3.14'
           cache: 'pip'
 
       - name: Install Antiek + dev deps
