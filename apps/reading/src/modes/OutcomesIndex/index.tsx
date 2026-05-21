@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
+import LemonTable from "../../components/lemon/LemonTable";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -24,6 +25,7 @@ interface OutcomeRow {
 }
 
 export default function OutcomesIndex() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<OutcomeRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,27 +104,45 @@ export default function OutcomesIndex() {
           )}
 
           {rows.length > 0 && (
-            <section className="border border-rule dark:border-charcoal-1 rounded-md divide-y divide-rule dark:divide-charcoal-1">
-              {rows.map((r) => (
-                <Link
-                  key={r.outcome_id}
-                  to={`/outcomes/${encodeURIComponent(r.synthesis_id)}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-mono text-ink dark:text-bright truncate">
+            // S10 acceptance: OutcomesIndex uses LemonTable.
+            <LemonTable
+              rows={rows}
+              rowKey={(r) => r.outcome_id}
+              onRowClick={(r) =>
+                navigate(`/outcomes/${encodeURIComponent(r.synthesis_id)}`)
+              }
+              columns={[
+                {
+                  key: "synthesis",
+                  header: "Synthesis",
+                  width: "55%",
+                  render: (r) => (
+                    <span className="font-mono text-ink dark:text-bright truncate inline-block max-w-full">
                       {r.synthesis_id}
-                    </p>
-                    <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                    </span>
+                  ),
+                },
+                {
+                  key: "observed",
+                  header: "Observed",
+                  render: (r) => (
+                    <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
                       {r.observed_at} · {r.observer}
-                    </p>
-                  </div>
-                  <span className="text-[10px] uppercase tracking-wider font-mono text-ink-mute dark:text-moonlight shrink-0">
-                    {r.outcome_id.slice(0, 12)}
-                  </span>
-                </Link>
-              ))}
-            </section>
+                    </span>
+                  ),
+                },
+                {
+                  key: "outcome",
+                  header: "Outcome id",
+                  align: "right",
+                  render: (r) => (
+                    <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight">
+                      {r.outcome_id.slice(0, 12)}
+                    </span>
+                  ),
+                },
+              ]}
+            />
           )}
         </div>
       </main>

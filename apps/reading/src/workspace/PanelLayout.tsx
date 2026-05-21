@@ -1,6 +1,7 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
+import { toast } from "../components/lemon/LemonToast";
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
@@ -62,6 +63,45 @@ export function PanelLayout({ mainSlot }: Props) {
   const dockTransition = reduceMotion
     ? "transition-none"
     : "transition-[width] duration-150 ease-out";
+
+  // S11 acceptance: at tier `lg`, if both docks have content the
+  // right dock auto-collapses. Surface this as a toast the first
+  // time it happens after a viewport-tier crossing into lg so the
+  // operator understands the visual change.
+  const prevTierRef = useRef(tier);
+  useEffect(() => {
+    if (
+      prevTierRef.current !== "lg" &&
+      tier === "lg" &&
+      dockLeftIds.length > 0 &&
+      dockRightIds.length > 0
+    ) {
+      toast.info(
+        "Tight viewport — right dock auto-collapsed. Toggle via the right panel's kebab.",
+      );
+    }
+    prevTierRef.current = tier;
+  }, [tier, dockLeftIds.length, dockRightIds.length]);
+
+  // S11 acceptance: tier `sm` (< 768px) renders a "use a larger
+  // screen" splash; the workspace shell is not designed for phone
+  // widths. The mainSlot still renders so the operator sees real
+  // content if they ignore the splash; the workspace primitives
+  // are hidden so they don't fight the layout at this size.
+  if (tier === "sm") {
+    return (
+      <div className="h-full w-full flex flex-col bg-ice-2 dark:bg-space-2 overflow-hidden">
+        <div className="px-4 py-3 bg-sun text-ink font-mono text-[12px] flex items-center gap-3">
+          <span aria-hidden="true">⚠</span>
+          <span className="flex-1">
+            Antiek is designed for ≥ 1024 px viewports. Open a larger
+            screen for the workspace chrome.
+          </span>
+        </div>
+        <div className="flex-1 min-h-0 overflow-auto">{mainSlot}</div>
+      </div>
+    );
+  }
 
   // Pointer-event-based vertical resize of the bottom dock.
   const startRef = useRef<{ y: number; h: number } | null>(null);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import LemonCard from "../../components/lemon/LemonCard";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -118,18 +119,19 @@ export default function Stats() {
 
           {data &&
             TABLE_GROUPS.map((group) => (
-              <section
+              // S10 acceptance: each Stats group/metric → LemonCard.
+              <LemonCard
                 key={group.title}
-                className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3"
+                elevation="z2"
+                title={group.title}
               >
-                <h2 className="text-sm font-serif text-ink dark:text-bright">
-                  {group.title}
-                </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 pt-2">
                   {group.tables.map((t) => (
-                    <div
+                    <LemonCard
                       key={t}
-                      className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2 text-center"
+                      elevation="z1"
+                      colour="glacial"
+                      className="px-3 py-2 text-center"
                     >
                       <p className="text-2xl font-serif text-ink dark:text-bright">
                         {(data.counts[t] ?? 0).toLocaleString()}
@@ -137,10 +139,10 @@ export default function Stats() {
                       <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
                         {t.replace(/_/g, " ")}
                       </p>
-                    </div>
+                    </LemonCard>
                   ))}
                 </div>
-              </section>
+              </LemonCard>
             ))}
         </div>
       </main>

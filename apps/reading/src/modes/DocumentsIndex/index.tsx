@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
+import LemonTable from "../../components/lemon/LemonTable";
+import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -27,6 +29,7 @@ const TIER_FILTERS = ["all", 1, 2, 3, 4, 5] as const;
 type TierFilter = (typeof TIER_FILTERS)[number];
 
 export default function DocumentsIndex() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,45 +150,70 @@ export default function DocumentsIndex() {
           )}
 
           {rows.length > 0 && (
-            <section className="border border-rule dark:border-charcoal-1 rounded-md divide-y divide-rule dark:divide-charcoal-1">
-              {rows.map((r) => (
-                <Link
-                  key={r.document_id}
-                  to={`/wrestle/${encodeURIComponent(r.document_id)}`}
-                  className="block px-4 py-3 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-sm font-serif text-ink dark:text-bright truncate flex-1">
-                      {r.title ?? r.document_id}
-                    </p>
-                    <span
-                      className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded shrink-0 ${
+            // S10 acceptance: DocumentsIndex uses LemonTable.
+            <LemonTable
+              rows={rows}
+              rowKey={(r) => r.document_id}
+              onRowClick={(r) =>
+                navigate(`/wrestle/${encodeURIComponent(r.document_id)}`)
+              }
+              columns={[
+                {
+                  key: "title",
+                  header: "Title",
+                  width: "50%",
+                  render: (r) => (
+                    <div>
+                      <p className="font-serif text-ink dark:text-bright truncate">
+                        {r.title ?? r.document_id}
+                      </p>
+                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                        {r.document_id}
+                        {r.document_type && <> · {r.document_type}</>}
+                        {r.content_class && <> · {r.content_class}</>}
+                      </p>
+                      {r.source_uri && (
+                        <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight truncate">
+                          {r.source_uri}
+                        </p>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  key: "investigation",
+                  header: "Investigation",
+                  render: (r) =>
+                    r.investigation_id ? (
+                      <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+                        {r.investigation_id.slice(0, 12)}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight italic">
+                        unassigned
+                      </span>
+                    ),
+                },
+                {
+                  key: "tier",
+                  header: "Tier",
+                  align: "right",
+                  render: (r) => (
+                    <LemonTag
+                      colour={
                         r.source_tier <= 2
-                          ? "bg-emerald-100 text-emerald-700"
+                          ? "aurora"
                           : r.source_tier <= 4
-                            ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
-                            : "bg-sun/10 text-amber-800"
-                      }`}
+                            ? "muted"
+                            : "sun"
+                      }
                     >
                       tier {r.source_tier}
-                    </span>
-                  </div>
-                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
-                    {r.document_id}
-                    {r.document_type && <> · {r.document_type}</>}
-                    {r.investigation_id && (
-                      <> · inv: {r.investigation_id.slice(0, 8)}</>
-                    )}
-                    {r.content_class && <> · {r.content_class}</>}
-                  </p>
-                  {r.source_uri && (
-                    <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight truncate">
-                      {r.source_uri}
-                    </p>
-                  )}
-                </Link>
-              ))}
-            </section>
+                    </LemonTag>
+                  ),
+                },
+              ]}
+            />
           )}
         </div>
       </main>

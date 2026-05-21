@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import LemonCard from "../../components/lemon/LemonCard";
 import {
   ingestSource,
   type IngestSourceResponse,
@@ -253,11 +254,13 @@ export default function Sources() {
               <h2 className="text-sm font-semibold text-ink dark:text-bright mb-3">
                 Recent ingests
               </h2>
-              <ul className="space-y-2">
+              {/* S10 acceptance: each adapter card → LemonCard. */}
+              <div className="space-y-2">
                 {rows.map((row, idx) => (
-                  <li
+                  <LemonCard
                     key={`${row.url}-${row.startedAt}-${idx}`}
-                    className="bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded p-3 flex items-start justify-between gap-3"
+                    elevation="z1"
+                    className="p-3 flex items-start justify-between gap-3"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -305,9 +308,9 @@ export default function Sources() {
                         </>
                       )}
                     </div>
-                  </li>
+                  </LemonCard>
                 ))}
-              </ul>
+              </div>
             </section>
           )}
         </div>

@@ -94,6 +94,40 @@ export function PanelLayoutPanel({ id }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [panel, isFocused, id]);
 
+  // S11 acceptance: in-panel focus trap. Tab inside a panel cycles
+  // between the panel's focusable descendants; reaching the last and
+  // pressing Tab wraps back to the first (and vice versa for Shift+
+  // Tab on the first). The operator switches panels via ⌘[ / ⌘].
+  const rootRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!panel) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const FOCUSABLE =
+      'a[href], button:not([disabled]), textarea:not([disabled]), ' +
+      'input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      if (!root.contains(document.activeElement)) return;
+      const nodes = Array.from(
+        root.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ).filter((el) => !el.hasAttribute("disabled"));
+      if (nodes.length === 0) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    root.addEventListener("keydown", onKey);
+    return () => root.removeEventListener("keydown", onKey);
+  }, [panel]);
+
   if (!panel) return null;
   const Renderer = PanelRegistry[panel.kind];
 
@@ -132,6 +166,9 @@ export function PanelLayoutPanel({ id }: Props) {
         onMouseDownCapture={onMouseDownRaise}
         role="region"
         aria-label={panel.title}
+        ref={(el) => {
+          rootRef.current = el;
+        }}
       >
         <PanelHandle id={id} draggable resizable />
         <div className="flex-1 min-h-0 overflow-auto">
@@ -157,6 +194,9 @@ export function PanelLayoutPanel({ id }: Props) {
       onMouseDownCapture={() => useWorkspace.getState().focus(id)}
       role="region"
       aria-label={panel.title}
+      ref={(el) => {
+        rootRef.current = el;
+      }}
     >
       <PanelHandle id={id} draggable={false} resizable={false} />
       <div className="flex-1 min-h-0 overflow-auto">

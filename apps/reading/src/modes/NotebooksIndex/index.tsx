@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
+import LemonTable from "../../components/lemon/LemonTable";
+import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -182,36 +184,59 @@ export default function NotebooksIndex() {
           )}
 
           {filtered.length > 0 && (
-            <section className="border border-rule dark:border-charcoal-1 rounded-md divide-y divide-rule dark:divide-charcoal-1">
-              {filtered.map((r) => (
-                <Link
-                  key={r.notebook_id}
-                  to={`/notebook/${encodeURIComponent(r.notebook_id)}`}
-                  className="block px-4 py-3 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-sm font-serif text-ink dark:text-bright truncate flex-1">
-                      {r.title}
-                    </p>
-                    <span
-                      className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded shrink-0 ${
+            // S10 acceptance: NotebooksIndex uses LemonTable.
+            <LemonTable
+              rows={filtered}
+              rowKey={(r) => r.notebook_id}
+              onRowClick={(r) =>
+                navigate(`/notebook/${encodeURIComponent(r.notebook_id)}`)
+              }
+              columns={[
+                {
+                  key: "title",
+                  header: "Title",
+                  width: "55%",
+                  render: (r) => (
+                    <div>
+                      <p className="font-serif text-ink dark:text-bright truncate">
+                        {r.title}
+                      </p>
+                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                        {r.notebook_id}
+                        {r.investigation_id && (
+                          <> · inv: {r.investigation_id.slice(0, 8)}</>
+                        )}
+                      </p>
+                    </div>
+                  ),
+                },
+                {
+                  key: "updated",
+                  header: "Updated",
+                  render: (r) => (
+                    <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
+                      {r.updated_at}
+                    </span>
+                  ),
+                },
+                {
+                  key: "class",
+                  header: "Class",
+                  align: "right",
+                  render: (r) => (
+                    <LemonTag
+                      colour={
                         r.content_class === "user_public_contribution"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
-                      }`}
+                          ? "aurora"
+                          : "muted"
+                      }
                     >
                       {r.content_class.replace(/_/g, " ")}
-                    </span>
-                  </div>
-                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
-                    {r.notebook_id} · updated {r.updated_at}
-                    {r.investigation_id && (
-                      <> · inv: {r.investigation_id.slice(0, 8)}</>
-                    )}
-                  </p>
-                </Link>
-              ))}
-            </section>
+                    </LemonTag>
+                  ),
+                },
+              ]}
+            />
           )}
         </div>
       </main>
