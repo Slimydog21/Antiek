@@ -6,10 +6,14 @@ import type { Editor as TipTapEditor } from "@tiptap/react";
 
 import { toast } from "../../components/lemon/LemonToast";
 import { API_BASE, apiFetch } from "../../lib/api";
+import { ChatExchangeBlock } from "./blocks/ChatExchangeBlock";
 import { ClaimCardBlock } from "./blocks/ClaimCardBlock";
 import { CrossDocLinkBlock } from "./blocks/CrossDocLinkBlock";
+import { ImageBlock } from "./blocks/ImageBlock";
+import { LatexBlock } from "./blocks/LatexBlock";
 import { MasterSectionBlock } from "./blocks/MasterSectionBlock";
 import { NoteBlock } from "./blocks/NoteBlock";
+import { QuestionCardBlock } from "./blocks/QuestionCardBlock";
 import { RegionEmbedBlock } from "./blocks/RegionEmbedBlock";
 import { SlashMenu } from "./SlashMenu";
 
@@ -124,6 +128,10 @@ export function NotebookEditor({
       RegionEmbedBlock,
       NoteBlock,
       CrossDocLinkBlock,
+      QuestionCardBlock,
+      ChatExchangeBlock,
+      ImageBlock,
+      LatexBlock,
       MasterSectionBlock,
     ],
     content: initialStored?.html ?? initialContent ?? "<p></p>",

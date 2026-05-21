@@ -1,4 +1,5 @@
 import { useState } from "react";
+import LemonCard from "../../components/lemon/LemonCard";
 import type { Event } from "../../generated/types";
 
 /**
@@ -254,6 +255,12 @@ function GenericRow({ event }: { event: Event }) {
 
 // ── Shared chrome ────────────────────────────────────────────────────
 
+/**
+ * Phase card. S10 acceptance: PhaseRow renders as LemonCard with
+ * elevation z1 and a yellow accent on the "highlight" variant (used
+ * for the active phase). The Card wrapper here is a thin adapter so
+ * every PhaseRow variant doesn't need to import LemonCard directly.
+ */
 function Card({
   children,
   highlight,
@@ -262,15 +269,13 @@ function Card({
   highlight?: boolean;
 }) {
   return (
-    <div
-      className={`border rounded-md p-3 ${
-        highlight
-          ? "border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2"
-          : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2"
-      }`}
+    <LemonCard
+      elevation="z1"
+      colour={highlight ? "sun" : "card"}
+      className="p-3"
     >
       {children}
-    </div>
+    </LemonCard>
   );
 }
 

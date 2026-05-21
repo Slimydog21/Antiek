@@ -27,6 +27,19 @@ import { FakeChat } from "./__fakes__/FakeChat";
 import { FakeNotebook } from "./__fakes__/FakeNotebook";
 import { FakeSidebar } from "./__fakes__/FakeSidebar";
 
+// Eager imports for renderers that ALSO appear as direct main-slot
+// children of routes (RW imports MasterMdViewer + TrajectoryView,
+// WrestleApp imports PdfViewer, App.tsx imports Notebook + Stats).
+// Marking these as `lazy()` here while they're statically imported
+// elsewhere defeats the code-split — vite warns "dynamic import will
+// not move module into another chunk." Make the registry match
+// reality: these renderers ship in the main bundle either way.
+import PdfViewer from "../components/PdfViewer";
+import NotebookPage from "../modes/Notebook";
+import MasterMdViewer from "../modes/ResearchWorkstation/MasterMdViewer";
+import TrajectoryView from "../modes/ResearchWorkstation/TrajectoryView";
+import Stats from "../modes/Stats";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Renderer = ComponentType<any> | LazyExoticComponent<ComponentType<any>>;
 
@@ -36,32 +49,40 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   FakeNotebook,
   FakeChat,
 
-  // S5 — real research-workstation surfaces
+  // S5 — real research-workstation surfaces. InvestigationSidebar +
+  // Chat + Chase are only referenced via the registry, so they stay
+  // lazy + ship in their own chunks. MasterMdViewer + Trajectory are
+  // direct main-slot children in RW/index.tsx — eager.
   InvestigationSidebar: lazy(() => import("../modes/ResearchWorkstation/InvestigationSidebar")),
-  Trajectory: lazy(() => import("../modes/ResearchWorkstation/TrajectoryView")),
-  MasterMdViewer: lazy(() => import("../modes/ResearchWorkstation/MasterMdViewer")),
+  Trajectory: TrajectoryView,
+  MasterMdViewer,
   Chat: lazy(() => import("../modes/ResearchWorkstation/ChatInputArea")),
   Chase: lazy(() => import("../modes/ResearchWorkstation/ChaseSlideOver")),
 
-  // S6 — wrestling-workstation surfaces
-  PdfViewer: lazy(() => import("../components/PdfViewer")),
+  // S6 — wrestling-workstation surfaces. PdfViewer is a direct child
+  // of WrestleApp's main slot → eager. Notes / CrossDocs /
+  // ClaimInspector are panel-only → lazy.
+  PdfViewer,
   Notes: lazy(() => import("../components/NotesPanel")),
   CrossDocs: lazy(() => import("../components/CrossDocSidebar")),
   ClaimInspector: lazy(() => import("../components/ClaimCard")),
 
-  // S7 — notebook surface
-  Notebook: lazy(() => import("../modes/Notebook")),
-  // S7-full — TipTap notebook editor (local-state autosave; substrate
-  // integration arrives once the SPR-08+ merge lands on main)
+  // S7 — Notebook is also rendered at /notebook/:id (static App.tsx
+  // import), so eager. NotebookEditor is panel-only → lazy (the TipTap
+  // chunk is the biggest in the app — preserving the split matters).
+  Notebook: NotebookPage,
   NotebookEditor: lazy(() => import("../modes/Notebook/EditorPanel")),
 
-  // S8 — ubiquitous AI + palette
+  // S8 — ubiquitous AI + palette. Both are mounted as top-level
+  // components in AppShell so they're effectively eager already; we
+  // keep them as panel kinds so the workspace can route ⌘/ + ⌘K
+  // through workspace.open/close.
   AISidecar: lazy(() => import("../components/AISidecar")),
   CommandPalette: lazy(() => import("../components/CommandPalette")),
 
   // S4 — project-tree side rail panel (NavRail is separate, not a panel)
   ProjectTree: lazy(() => import("../components/navigation/ProjectTree")),
 
-  // S10 — example route migrated as a panel
-  Stats: lazy(() => import("../modes/Stats")),
+  // S10 — Stats is also rendered as a route → eager.
+  Stats,
 };

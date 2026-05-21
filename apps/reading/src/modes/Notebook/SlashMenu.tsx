@@ -129,6 +129,74 @@ const ENTRIES: SlashEntry[] = [
         .run();
     },
   },
+  {
+    key: "question",
+    label: "Question card",
+    hint: "Emergent question · aurora bar",
+    run: (e) => {
+      const r = rangeOfSlash(e);
+      e.chain()
+        .focus()
+        .deleteRange(r)
+        .insertContent({
+          type: "questionCard",
+          attrs: { parked_question_id: null, text: "New question" },
+        })
+        .run();
+    },
+  },
+  {
+    key: "chat",
+    label: "Chat exchange",
+    hint: "Capture a Q+A from the chat panel",
+    run: (e) => {
+      const r = rangeOfSlash(e);
+      e.chain()
+        .focus()
+        .deleteRange(r)
+        .insertContent({
+          type: "chatExchange",
+          attrs: {
+            exchange_id: null,
+            user_text: null,
+            assistant_text: null,
+          },
+        })
+        .run();
+    },
+  },
+  {
+    key: "image",
+    label: "Image",
+    hint: "Figure / screenshot with caption",
+    run: (e) => {
+      const r = rangeOfSlash(e);
+      e.chain()
+        .focus()
+        .deleteRange(r)
+        .insertContent({
+          type: "imageBlock",
+          attrs: { src: null, alt: null, caption: null },
+        })
+        .run();
+    },
+  },
+  {
+    key: "latex",
+    label: "LaTeX",
+    hint: "Math source · raw / display-only",
+    run: (e) => {
+      const r = rangeOfSlash(e);
+      e.chain()
+        .focus()
+        .deleteRange(r)
+        .insertContent({
+          type: "latexBlock",
+          attrs: { source: "\\sum_{i=1}^{n} \\binom{n}{i}" },
+        })
+        .run();
+    },
+  },
 ];
 
 /** Compute the range of the leading "/<query>" we want to replace. */

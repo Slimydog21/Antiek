@@ -2,8 +2,9 @@ import { useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import { toast } from "../../components/lemon/LemonToast";
+import { getChunk } from "../../lib/api";
 import type { ParsedClaim, ParsedSynthesis, Recommendation } from "../../lib/synthesisParser";
-import { openNotebook } from "../../workspace/actions";
+import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
 /**
@@ -153,9 +154,40 @@ function ClaimBlock({
         {claim.chunkIds.map((cid) => (
           <button
             key={cid}
-            onClick={() => onChunkClick(cid)}
+            onClick={(e) => {
+              // S6 acceptance: ⌘-click (or Ctrl-click) opens the source
+              // PDF as a floating panel jumped to the chunk's page,
+              // bypassing the ChunkModal. Plain click keeps the modal
+              // path so the reader can preview the chunk inline first.
+              if (e.metaKey || e.ctrlKey) {
+                e.preventDefault();
+                void (async () => {
+                  try {
+                    const chunk = await getChunk(cid);
+                    // Section paths sometimes encode "p.NNN" or "page NNN".
+                    let page: number | undefined;
+                    const sp = chunk.section_path ?? "";
+                    const m = sp.match(/p\.?\s*(\d+)/i);
+                    if (m) page = parseInt(m[1], 10);
+                    openPdfPanel({
+                      documentId: chunk.document_id,
+                      page,
+                      title: `${chunk.document_id.slice(0, 12)}${page ? ` · p.${page}` : ""}`,
+                    });
+                  } catch (err) {
+                    toast.err(
+                      `Could not load chunk ${cid.slice(0, 8)}: ${
+                        err instanceof Error ? err.message : String(err)
+                      }`,
+                    );
+                  }
+                })();
+                return;
+              }
+              onChunkClick(cid);
+            }}
             className="text-[10px] font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
-            title="Click to view source chunk"
+            title="Click to preview · ⌘-click to open PDF floating"
           >
             {shortenChunkId(cid)}
           </button>
