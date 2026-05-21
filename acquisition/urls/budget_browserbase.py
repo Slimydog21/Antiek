@@ -27,7 +27,14 @@ from typing import Optional
 DEFAULT_DAILY_BUDGET_USD: float = 5.0
 
 
-class BrowserbaseBudgetExceeded(RuntimeError):
+# Local import of the common base class — lives in `client_browserbase`
+# alongside the other Browserbase-side errors. Importing here keeps the
+# budget module's `BrowserbaseBudgetExceeded` discoverable via
+# `except BrowserbaseProviderError` per Exa-spec §14.4.
+from .client_browserbase import BrowserbaseProviderError  # noqa: E402
+
+
+class BrowserbaseBudgetExceeded(BrowserbaseProviderError):
     """Raised when a `fetch_via_browserbase(...)` would push today's
     Browserbase spend past `BROWSERBASE_DAILY_BUDGET_USD`. Per spec
     §7.7 there is NO silent fallback. The operator either waits or

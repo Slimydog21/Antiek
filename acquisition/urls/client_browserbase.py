@@ -61,20 +61,36 @@ DEFAULT_SESSION_COST_USD = 0.30  # ~3 minutes at $0.10/minute
 _SESSION_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_SESSIONS)
 
 
-class BrowserbaseUnavailable(RuntimeError):
+class BrowserbaseProviderError(RuntimeError):
+    """Common base class for every Wedge-2 / Browserbase failure
+    the URL adapter should surface loudly.
+
+    Per Exa-spec §14.4: *"Failure is loud: ``BrowserbaseProviderError``
+    raises explicitly; no silent fallback to a different provider."*
+
+    Concrete subclasses below distinguish the failure mode (config
+    vs robots vs runtime vs budget) so callers can branch
+    informatively. ``except BrowserbaseProviderError`` catches all
+    four; ``except BrowserbaseRobotsDisallowed`` catches only the
+    one. The spec's "loud failure" semantic is preserved either
+    way.
+    """
+
+
+class BrowserbaseUnavailable(BrowserbaseProviderError):
     """Raised when the `browserbase` SDK is not installed and the
     caller asked for an escalation fetch. Loud, not silent — the
     fallback path is opt-in and a missing SDK is a config error."""
 
 
-class BrowserbaseRobotsDisallowed(RuntimeError):
+class BrowserbaseRobotsDisallowed(BrowserbaseProviderError):
     """Raised when the target host's robots.txt disallows the
     agent's User-Agent. The escalation does not proceed. Per spec
     §7.5: 'If a site disallows crawling, the fallback does not
     proceed.'"""
 
 
-class BrowserbaseFetchError(RuntimeError):
+class BrowserbaseFetchError(BrowserbaseProviderError):
     """Raised when the Browserbase session ran but returned an
     unrecoverable error (network exploded, page navigation timed
     out, captcha detection refused the page)."""

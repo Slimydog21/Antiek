@@ -89,9 +89,19 @@ class DiscoveryProposed:
     relevance_score: Optional[float]
     suggested_tier: int
     text_snippet_preview: Optional[str]
+    # Backward-compat read fallback. Per spec §14.7 the canonical
+    # location is `provider_specific["response_id"]`; the top-level
+    # mirror stays so callers reading v6-v8 events still see the
+    # value. New emitters write to `provider_specific`; read paths
+    # prefer it.
     provider_response_id: Optional[str]
     cost_usd_estimate: float
     proposed_event_id: Optional[str]
+    # Spec §14.7 overflow bag — provider-shaped fields live here.
+    # Defaults to {} on the runtime dataclass for ergonomic
+    # construction in tests; the underlying payload's
+    # `provider_specific` defaults the same.
+    provider_specific: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -151,9 +161,22 @@ def suggest_tier(url: str, category: Optional[str] = None) -> int:
 # ── Stable discovery id ───────────────────────────────────────────
 
 
-def _discovery_id(url: str, investigation_id: str) -> str:
+def _discovery_id(url: str, investigation_id: str, query: str = "") -> str:
+    """Stable handle for one proposal.
+
+    Per spec §6.5 cross-query behavior: the SAME URL discovered via
+    TWO different queries in the SAME investigation MUST produce
+    TWO different `discovery_id`s. The formula at §6.2 was
+    illustrative — the load-bearing semantic is "each gets its own
+    DiscoveryProposed event (different discovery_id)." Including
+    `query` in the hash satisfies that.
+
+    For backward compatibility, the `query` parameter defaults to
+    empty. Existing test callsites that compute discovery_id without
+    a query (verifying within-investigation stability) still pass.
+    """
     h = hashlib.sha256(
-        f"{url}\x1f{investigation_id}".encode("utf-8")
+        f"{url}\x1f{investigation_id}\x1f{query}".encode("utf-8")
     ).hexdigest()[:16]
     return f"{_DISCOVERY_ID_PREFIX}{h}"
 
@@ -311,7 +334,23 @@ def _default_db_path_or_none() -> Optional[str]:
 
 
 def _hydrate_proposed(d: dict) -> DiscoveryProposed:
-    """Rebuild a DiscoveryProposed dataclass from a cached dict."""
+    """Rebuild a DiscoveryProposed dataclass from a cached dict.
+
+    Spec §14.7 read precedence: prefer ``provider_specific["response_id"]``
+    over the top-level ``provider_response_id`` field. v6-v8 cached
+    rows that pre-date provider_specific still resolve via the
+    top-level fallback.
+    """
+    provider_specific = d.get("provider_specific") or {}
+    response_id = (
+        provider_specific.get("response_id")
+        if isinstance(provider_specific, dict)
+        else None
+    )
+    # Backward compat: if provider_specific didn't carry response_id,
+    # fall back to the top-level field.
+    if response_id is None:
+        response_id = d.get("provider_response_id")
     return DiscoveryProposed(
         discovery_id=d["discovery_id"],
         provider=d.get("provider", "exa"),
@@ -323,9 +362,12 @@ def _hydrate_proposed(d: dict) -> DiscoveryProposed:
         relevance_score=d.get("relevance_score"),
         suggested_tier=int(d.get("suggested_tier", 4)),
         text_snippet_preview=d.get("text_snippet_preview"),
-        provider_response_id=d.get("provider_response_id"),
+        provider_response_id=response_id,
         cost_usd_estimate=float(d.get("cost_usd_estimate") or 0.0),
         proposed_event_id=d.get("proposed_event_id"),
+        provider_specific=(
+            provider_specific if isinstance(provider_specific, dict) else {}
+        ),
     )
 
 
@@ -386,8 +428,17 @@ def _emit_proposed(
     category: Optional[str],
     events_dir: Optional[str],
 ) -> DiscoveryProposed:
-    discovery_id = _discovery_id(r.url, investigation_id)
+    discovery_id = _discovery_id(r.url, investigation_id, query)
     tier = suggest_tier(r.url, category=category)
+    # Spec §14.7 — Exa-specific provenance data lives in
+    # provider_specific rather than as top-level fields. Today we
+    # have one such field (response_id); future Exa-shaped data
+    # (autoprompt_string, subpages, exa_filter, etc.) joins here
+    # without bumping the schema. Top-level `provider_response_id`
+    # stays for backward-compat reads of v6-v8 events.
+    provider_specific: dict = {}
+    if r.provider_response_id is not None:
+        provider_specific["response_id"] = r.provider_response_id
     payload = DiscoveryProposedPayload(
         discovery_id=discovery_id,
         provider="exa",
@@ -399,8 +450,12 @@ def _emit_proposed(
         relevance_score=r.relevance_score,
         suggested_tier=tier,
         text_snippet_preview=r.text_snippet_preview,
-        provider_response_id=r.provider_response_id,
+        # Leave top-level None — the canonical write goes into
+        # provider_specific. Read paths consult both (provider_specific
+        # is preferred when present per `_hydrate_proposed`).
+        provider_response_id=None,
         cost_usd_estimate=r.cost_usd_estimate,
+        provider_specific=provider_specific,
     )
     event_id = emit_typed(
         investigation_id,
@@ -420,9 +475,14 @@ def _emit_proposed(
         relevance_score=r.relevance_score,
         suggested_tier=tier,
         text_snippet_preview=r.text_snippet_preview,
+        # Operator-facing dataclass exposes the response_id as a
+        # top-level convenience (read from provider_specific) AND
+        # carries the full bag for any caller that wants other
+        # Exa-shaped data.
         provider_response_id=r.provider_response_id,
         cost_usd_estimate=r.cost_usd_estimate,
         proposed_event_id=event_id,
+        provider_specific=provider_specific,
     )
 
 
