@@ -13,7 +13,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-import { apiFetch } from "./api";
+import { API_BASE, apiFetch } from "./api";
+
+// Every helper prepends API_BASE so the fetch goes to api.antiek.ai
+// (the FastAPI), not antiek.ai (the Pages bundle). In dev, API_BASE
+// is empty and Vite's /auth proxy handles the same-origin path.
+function authUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
 
 export interface AuthIdentity {
   user_id: string;
@@ -37,7 +44,7 @@ export interface AuthContextValue {
 const AuthCtx = createContext<AuthContextValue | null>(null);
 
 async function fetchIdentity(): Promise<AuthIdentity | null> {
-  const r = await apiFetch("/auth/me");
+  const r = await apiFetch(authUrl("/auth/me"));
   if (r.status === 401) return null;
   if (!r.ok) throw new Error(`auth/me HTTP ${r.status}`);
   const body = (await r.json()) as AuthIdentity;
@@ -66,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await apiFetch("/auth/logout", { method: "POST" });
+    await apiFetch(authUrl("/auth/logout"), { method: "POST" });
     setState({ status: "unauthenticated" });
   }, []);
 
@@ -93,7 +100,7 @@ export type AuthRequestResult =
 
 export async function requestMagicLink(email: string, nextPath: string = "/"): Promise<AuthRequestResult> {
   try {
-    const r = await apiFetch("/auth/request", {
+    const r = await apiFetch(authUrl("/auth/request"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, next: nextPath }),

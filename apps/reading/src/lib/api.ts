@@ -22,7 +22,7 @@ export interface EmittedEventResponse {
 // Set via VITE_API_BASE_URL at build time (Cloudflare Pages: configure
 // in the project's environment variables). Empty string falls back to
 // same-origin (dev-server proxy behavior).
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
 
 // Auth (H4.5): the web app does NOT carry a bearer token. The
 // substrate is gated by Cloudflare Access (configured on
