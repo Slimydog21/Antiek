@@ -132,7 +132,7 @@ describe("Gutter — hover preview (M3)", () => {
   });
 });
 
-describe("Gutter — behavior-event funnel (M6)", () => {
+describe("Gutter — behavior events funnel (M6)", () => {
   // Stub window.location.href so the click test doesn't navigate.
   let originalLocation: Location;
 
