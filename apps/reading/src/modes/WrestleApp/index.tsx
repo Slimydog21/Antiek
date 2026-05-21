@@ -10,6 +10,15 @@ import { sha256Hex } from "../../lib/hash";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import { recordLastOpenedDocument } from "../../settings/userSettings";
+import {
+  useUserSettings,
+} from "../../settings/useUserSettings";
+import {
+  BehaviorEventType,
+  emitBehaviorEvent,
+} from "../../lib/behaviorEvents";
+import ReadingModeToggle from "./ReadingModeToggle";
+import ShareWithAnnotations from "./ShareWithAnnotations";
 
 /**
  * Mode B — Document Wrestler (S6 redesign).
@@ -35,14 +44,76 @@ export default function WrestleApp() {
   const params = useParams<{ documentId?: string }>();
   const initialDocumentId = params.documentId ?? null;
 
-  // Read ?page= deep-link from Mode A's chunk-citation modal.
-  const initialPage = (() => {
+  // Read ?page= deep-link from Mode A's chunk-citation modal, plus the
+  // SPR-07 ?chunk= follow-up param so cite-jumps from the gutter land
+  // on the right chunk (not just the right page). The chunk-level
+  // scroll fires inside PdfViewer once the page mounts.
+  const { initialPage, initialChunkId } = (() => {
     const usp = new URLSearchParams(window.location.search);
-    const raw = usp.get("page");
-    if (!raw) return null;
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) && n > 0 ? n : null;
+    const rawPage = usp.get("page");
+    const rawChunk = usp.get("chunk");
+    let page: number | null = null;
+    if (rawPage) {
+      const n = parseInt(rawPage, 10);
+      if (Number.isFinite(n) && n > 0) page = n;
+    }
+    return {
+      initialPage: page,
+      initialChunkId: rawChunk && rawChunk.length > 0 ? rawChunk : null,
+    };
   })();
+
+  // Once the PDF has rendered (or the route has changed back into a
+  // doc already in DOM), scroll the named chunk into view. Polls
+  // scrollToChunkWhenReady for up to 3s so the call can fire before
+  // PdfViewer's effect has finished mounting.
+  useEffect(() => {
+    if (!initialChunkId) return;
+    // Lazy-import so the chunk-jump pathway doesn't pull scrollToChunk
+    // into routes that don't need it.
+    void import("./PdfViewer/scrollToChunk").then((mod) => {
+      void mod.scrollToChunkWhenReady(initialChunkId);
+    });
+  }, [initialChunkId]);
+
+  // SPR-04 reading-mode wiring — surfaces the toggle in the main-slot
+  // header (below) and emits reading_mode_toggled on every flip.
+  const [settings, updateSettings] = useUserSettings();
+  const readingMode = settings.reading_mode;
+  const onToggleReadingMode = useCallback(() => {
+    const from = readingMode;
+    const to: "researcher" | "reader" =
+      from === "researcher" ? "reader" : "researcher";
+    updateSettings({ reading_mode: to });
+    try {
+      emitBehaviorEvent({
+        eventType: BehaviorEventType.READING_MODE_TOGGLED,
+        state: { surface: "wrestle" },
+        action: { from, to },
+      });
+    } catch {
+      // Emit failure must not block the toggle.
+    }
+  }, [readingMode, updateSettings]);
+
+  // Cmd+R keyboard shortcut (capture-phase so the global CommandPalette's
+  // bubbling-phase Cmd+K handler isn't disturbed). Cmd+R would normally
+  // reload the page; we intercept within WrestleApp.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+      if (e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleReadingMode();
+      }
+    };
+    window.addEventListener("keydown", handler, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handler, { capture: true });
+    };
+  }, [onToggleReadingMode]);
 
   const [investigationId] = useState<string>(() => {
     const stored = window.sessionStorage.getItem("antiek.investigation_id");
@@ -141,7 +212,24 @@ export default function WrestleApp() {
   return (
     <PanelHost starters={starters}>
       {pdfBytes && documentId ? (
-        <div className="h-full overflow-hidden bg-ice-2 dark:bg-space-2">
+        <div className="h-full overflow-hidden bg-ice-2 dark:bg-space-2 relative">
+          {/* SPR-04 / SPR-10 integration follow-up: a thin in-main-slot
+              header carries the reading-mode toggle and the share-with-
+              annotations button. These were originally placed in the
+              old WrestleApp HeaderBar (removed by sprint-6's PanelHost
+              refactor). The proper port is into AppShell's topbar — see
+              workspace/README.md — but until that lands, the main-slot
+              header keeps the affordances visible. */}
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-2 pointer-events-auto">
+            <ReadingModeToggle
+              mode={readingMode}
+              onToggle={onToggleReadingMode}
+            />
+            <ShareWithAnnotations
+              documentId={documentId}
+              userId={investigationId}
+            />
+          </div>
           <PdfViewer
             pdfBytes={pdfBytes}
             investigationId={investigationId}
