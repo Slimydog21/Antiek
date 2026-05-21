@@ -51,6 +51,9 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
 
   // S7 — notebook surface
   Notebook: lazy(() => import("../modes/Notebook")),
+  // S7-full — TipTap notebook editor (local-state autosave; substrate
+  // integration arrives once the SPR-08+ merge lands on main)
+  NotebookEditor: lazy(() => import("../modes/Notebook/EditorPanel")),
 
   // S8 — ubiquitous AI + palette
   AISidecar: lazy(() => import("../components/AISidecar")),

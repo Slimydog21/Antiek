@@ -1,0 +1,56 @@
+import { Node, mergeAttributes } from "@tiptap/core";
+import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
+import type { NodeViewProps } from "@tiptap/react";
+
+/** Inline note block — a single note from the operator or the agent. */
+function NoteNodeView({ node, deleteNode }: NodeViewProps) {
+  const text = (node.attrs.text as string | null) ?? "";
+  return (
+    <NodeViewWrapper className="my-2" data-block="note">
+      <div className="border-l-edge border-sun bg-sun/10 pl-3 py-2 pr-4 rounded-r flex items-start gap-2">
+        <span className="text-sun-deep dark:text-sun font-mono text-[10px] uppercase tracking-wider shrink-0 mt-1">
+          note
+        </span>
+        <p className="flex-1 font-serif text-[15px] leading-relaxed text-ink dark:text-bright">
+          {text || (
+            <span className="italic text-ink-mute dark:text-moonlight">
+              (empty note — edit attributes via the substrate)
+            </span>
+          )}
+        </p>
+        <button
+          type="button"
+          onClick={() => deleteNode()}
+          aria-label="Remove note"
+          className="text-[11px] text-ink-mute dark:text-moonlight hover:text-emperor leading-none mt-1"
+        >
+          ✕
+        </button>
+      </div>
+    </NodeViewWrapper>
+  );
+}
+
+export const NoteBlock = Node.create({
+  name: "noteBlock",
+  group: "block",
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      note_id: { default: null },
+      text: { default: null },
+    };
+  },
+  parseHTML() {
+    return [{ tag: "antiek-note" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["antiek-note", mergeAttributes(HTMLAttributes)];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(NoteNodeView);
+  },
+});
+
+export default NoteBlock;

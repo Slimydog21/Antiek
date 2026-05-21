@@ -42,6 +42,7 @@ export type PanelKind =
   | "CrossDocs"
   | "ClaimInspector"
   | "Notebook"
+  | "NotebookEditor"
   | "AISidecar"
   | "CommandPalette"
   | "ProjectTree"

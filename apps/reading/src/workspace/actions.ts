@@ -21,20 +21,34 @@ import type { PanelMode } from "./panel.types";
 /** Open the notebook at `notebookId` (or create a new untitled
  *  notebook if absent). Default mode is "floating" so the operator can
  *  drag it aside while continuing to read. S5+ consumers wire this
- *  from MasterMdViewer claim chips, PdfViewer regions, and ClaimCard. */
+ *  from MasterMdViewer claim chips, PdfViewer regions, and ClaimCard.
+ *
+ *  Two notebook surfaces exist (see PanelRegistry):
+ *    - "Notebook"        substrate-backed block model (legacy on main)
+ *    - "NotebookEditor"  TipTap-based, local autosave (S7-full)
+ *  The `kind` opt picks which one. Default: NotebookEditor — the
+ *  redesign's preferred editor. */
 export function openNotebook(opts: {
   notebookId?: string | null;
   mode?: PanelMode;
   title?: string;
+  kind?: "Notebook" | "NotebookEditor";
 } = {}): string {
   const mode = opts.mode ?? "floating";
+  const kind = opts.kind ?? "NotebookEditor";
+  const prefix = kind === "NotebookEditor" ? "notebookeditor" : "notebook";
   const id = opts.notebookId
-    ? `notebook:${opts.notebookId}`
-    : "notebook:new";
+    ? `${prefix}:${opts.notebookId}`
+    : `${prefix}:new`;
   return useWorkspace.getState().open(
-    "Notebook",
+    kind,
     { notebookId: opts.notebookId ?? null },
-    { mode, title: opts.title ?? (opts.notebookId ? "Notebook" : "Untitled notebook"), id },
+    {
+      mode,
+      title:
+        opts.title ?? (opts.notebookId ? "Notebook" : "Untitled notebook"),
+      id,
+    },
   );
 }
 
