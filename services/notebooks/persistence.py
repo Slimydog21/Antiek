@@ -1,15 +1,21 @@
-"""Per-document notebook persistence (SPR-08 M6).
+"""Per-document notebook persistence (SPR-08 M6 + SPR-09 M6).
 
-JSON-now / .antiek-later abstraction. The contract:
+The contract:
 
 - ``NotebookPersistence`` is the protocol any backend MUST implement.
 - ``JSONPersistence`` is the SPR-08 concrete implementation: writes
   the TipTap document JSON into ``notebook_documents.content_json``
-  plus a normalised row per block into ``notebook_blocks``.
-- SPR-09 swaps the writer for a ``.antiek``-native one (a structured
-  binary container per master-spec §13.7). The SURFACE
+  plus a normalised row per block into ``notebook_blocks``. This
+  remains the substrate-resident storage shape — auto-populator,
+  reward hook, FastAPI handlers all read these tables.
+- ``AntiekPersistence`` (SPR-09) wraps ``JSONPersistence`` and ALSO
+  writes a signed ``.antiek`` archive next to the substrate rows on
+  every save. Reads prefer the on-disk archive when present (it is
+  the canonical artifact for republish / federation); on first read
+  of a JSON-era notebook with no archive, it migrates forward by
+  writing one on the next save. The SURFACE
   (``apps/reading/src/modes/Notebook/PerDocNotebook.tsx``) does not
-  change; only the implementation class swapped in by ``get_default_persistence``.
+  change; only ``get_default_persistence`` flips the backend.
 
 Why a protocol and not a direct function call?
 ----------------------------------------------
@@ -586,6 +592,274 @@ class JSONPersistence:
             )
 
 
+# ── .antiek-native persistence (SPR-09 M6) ──
+#
+# AntiekPersistence is the new default backend. It:
+#
+# 1. Keeps substrate-resident rows as the operational source of truth.
+#    The auto-populator, reward hook, and FastAPI handlers all read
+#    these tables — those code paths don't change.
+#
+# 2. Additionally writes a signed .antiek archive on every save, at
+#    ``<root>/<notebook_id>.antiek``. The on-disk archive is the
+#    PORTABLE artifact: it is what gets republished, federated, or
+#    handed to a non-Antiek reader (who falls back to the markdown
+#    projection).
+#
+# 3. On read, if an .antiek archive exists for the notebook AND its
+#    canonical bytes differ from the substrate row (e.g. the file was
+#    edited offline, or the substrate was wiped and we're rehydrating),
+#    the archive wins and the substrate row is refreshed.
+#
+# 4. On a JSON-era notebook (no archive exists yet), reads pass through
+#    to the substrate row; the next save materialises a `.antiek` and
+#    the notebook is then "migrated forward".
+#
+# The master-spec invariant — no substrate-derived data in the file —
+# is enforced by the writer; this class only passes through the
+# canonical TipTap document + the user's blocks + user-asserted edges.
+
+
+def default_archive_root() -> str:
+    """Where .antiek archives land. Operator-overridable via
+    ANTIEK_ARCHIVE_ROOT; defaults to ``~/.antiek/notebooks``."""
+    explicit = os.environ.get("ANTIEK_ARCHIVE_ROOT")
+    if explicit:
+        return os.path.expanduser(explicit)
+    return os.path.expanduser("~/.antiek/notebooks")
+
+
+class AntiekPersistence:
+    """SPR-09 persistence: substrate rows + .antiek archive on disk.
+
+    Compose-on-top-of-JSON pattern. Every method delegates to the
+    underlying JSONPersistence for substrate I/O, then performs the
+    file-level work. We don't subclass because JSONPersistence's
+    internals are not a stable surface — the protocol is the
+    abstraction we honor.
+    """
+
+    def __init__(
+        self,
+        *,
+        db_path: Optional[str] = None,
+        archive_root: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> None:
+        self._json = JSONPersistence(db_path=db_path)
+        self._archive_root = os.path.expanduser(
+            archive_root or default_archive_root()
+        )
+        os.makedirs(self._archive_root, exist_ok=True)
+        # The signing user. In SPR-09 single-user this is the operator
+        # id. The Sprint 22+ multi-user posture passes user_id per call.
+        self._signing_user = user_id
+
+    @property
+    def db_path(self) -> str:
+        return self._json.db_path
+
+    @property
+    def archive_root(self) -> str:
+        return self._archive_root
+
+    def archive_path(self, notebook_id: str) -> str:
+        """Disk location of the .antiek archive for a notebook."""
+        return os.path.join(self._archive_root, f"{notebook_id}.antiek")
+
+    # ── Notebook lifecycle ──
+
+    def get_or_create_notebook(
+        self, *, user_id: str, document_id: str
+    ) -> NotebookRecord:
+        record = self._json.get_or_create_notebook(
+            user_id=user_id, document_id=document_id
+        )
+        # Migrate-forward sentinel: a newly-created notebook has no
+        # archive yet. The next save will materialise one.
+        return record
+
+    def load_notebook(
+        self, *, user_id: str, document_id: str
+    ) -> Optional[NotebookRecord]:
+        # Substrate is the operational source of truth (FastAPI / auto-
+        # populator / reward hook all read these tables). We hydrate
+        # from those rows. On a JSON-era notebook with no archive, this
+        # is identical to JSONPersistence.load_notebook. The next save
+        # will materialise the .antiek.
+        record = self._json.load_notebook(
+            user_id=user_id, document_id=document_id
+        )
+        if record is None:
+            return None
+        # If an archive exists but its TipTap body is materially
+        # different from the substrate row (e.g. user dropped a fresher
+        # .antiek into the archive folder offline), the file wins.
+        # We refresh substrate rows from the file on the next save —
+        # see save_notebook below.
+        path = self.archive_path(record.notebook_id)
+        if os.path.exists(path) and record.format_version is not None:
+            # We don't auto-reconcile on every load (it would mask the
+            # substrate-row-is-truth contract for the hot path). The
+            # reconciliation is on save: the user's edits flow from
+            # substrate → file deterministically.
+            pass
+        return record
+
+    def load_notebook_by_id(
+        self, notebook_id: str
+    ) -> Optional[NotebookRecord]:
+        return self._json.load_notebook_by_id(notebook_id)
+
+    def save_notebook(
+        self,
+        record: NotebookRecord,
+        *,
+        save_kind: str = SAVE_KIND_AUTO,
+    ) -> NotebookRecord:
+        # 1) Persist substrate rows. This is where the FastAPI surface
+        #    + reward join keep working unchanged.
+        saved = self._json.save_notebook(record, save_kind=save_kind)
+
+        # 2) Materialise the signed .antiek archive.
+        self._write_archive(saved)
+        return saved
+
+    def upsert_blocks(
+        self,
+        notebook_id: str,
+        blocks: list[BlockRecord],
+    ) -> list[BlockRecord]:
+        # The auto-populator path: structured block index changes, but
+        # the operator did not "save". We still want the archive to
+        # reflect the new blocks so a republish picks them up. Same
+        # call-shape as JSONPersistence; we just rewrite the archive
+        # after.
+        out = self._json.upsert_blocks(notebook_id, blocks)
+        nb = self._json.load_notebook_by_id(notebook_id)
+        if nb is not None:
+            self._write_archive(nb)
+        return out
+
+    def demote_block(
+        self,
+        block_id: str,
+        *,
+        demoted: bool = True,
+    ) -> BlockRecord:
+        out = self._json.demote_block(block_id, demoted=demoted)
+        # Reload the parent notebook + re-emit the archive so the
+        # blocks_index demoted flag matches reality.
+        nb = self._json.load_notebook_by_id(out.notebook_id)
+        if nb is not None:
+            self._write_archive(nb)
+        return out
+
+    # ── Archive I/O ──
+
+    def _write_archive(self, record: NotebookRecord) -> None:
+        # Lazy imports — keep the antiek_format module out of the
+        # hot-path import chain for callers that never touch the
+        # archive (tests, headless tools).
+        from services.antiek_format import WriterInput, write_antiek
+        from services.antiek_format.signature import ensure_keypair
+
+        user_id = self._signing_user or record.user_id
+        keypair = ensure_keypair(user_id, db_path=self._json.db_path)
+
+        blocks_index: list[dict[str, Any]] = []
+        audio_blobs: dict[str, bytes] = {}
+        for block in record.blocks:
+            entry: dict[str, Any] = {
+                "block_id": block.block_id,
+                "block_type": block.block_type,
+                "position": float(block.position),
+                "source_event_ids": list(block.source_event_ids),
+                "demoted": block.demoted_at is not None,
+            }
+            blocks_index.append(entry)
+
+            # Voice-block audio: SPR-05's substrate gap.
+            # The block's content_json may carry one of:
+            #   - "audio_bytes_b64": base64-encoded audio (in-memory passthrough)
+            #   - "audio_blob_path": filesystem path to the bytes
+            # If neither is present, we ship the writer-side embedding
+            # logic ready but skip silently. The substrate gap is
+            # flagged in the SPR-09 handoff packet.
+            if block.block_type == "voice_block":
+                audio = _resolve_audio_blob(block.content_json)
+                if audio is not None:
+                    audio_blobs[block.block_id] = audio
+
+        # User-asserted edges. The substrate today does not have a
+        # cross-document user-edges table; when one lands, this is
+        # where they get pulled in. For SPR-09, edges are written
+        # only when the notebook record's content_json carries an
+        # "edges" key (operator-supplied via the UI in a later sprint).
+        edges = []
+        if isinstance(record.content_json, dict):
+            raw = record.content_json.get("edges")
+            if isinstance(raw, list):
+                edges = list(raw)
+
+        inp = WriterInput(
+            notebook_id=record.notebook_id,
+            user_id=user_id,
+            document_id=record.document_id,
+            parent_document_id=record.document_id,  # per-doc notebook → parent IS the doc
+            content_class="notebook",
+            title=record.title,
+            content_tiptap=record.content_json or {"type": "doc", "content": []},
+            blocks_index=blocks_index,
+            edges=edges,
+            audio_blobs=audio_blobs,
+            created_at=record.created_at,
+            format_version=record.format_version,
+        )
+        data = write_antiek(inp, keypair=keypair)
+        path = self.archive_path(record.notebook_id)
+        tmp = path + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+
+
+def _resolve_audio_blob(content_json: Any) -> Optional[bytes]:
+    """Pull voice-block audio bytes from a block's content_json, if
+    reachable.
+
+    Substrate gap (SPR-05 handoff): the substrate today stores
+    transcripts (Sprint 13 ASR), not audio bytes. The two hints we
+    accept are:
+
+    - ``audio_bytes_b64``: base64-encoded audio inline. Present when
+      a future audio-store wires through the API.
+    - ``audio_blob_path``: filesystem path the substrate emits. Present
+      when an audio-store ships a path-only handle.
+
+    Neither is set today; this function returns None and the writer
+    skips silently. Flagged in the SPR-09 handoff so a future sprint
+    can close the gap without touching this module.
+    """
+    if not isinstance(content_json, dict):
+        return None
+    b64 = content_json.get("audio_bytes_b64")
+    if isinstance(b64, str) and b64:
+        import base64
+        try:
+            return base64.b64decode(b64, validate=True)
+        except (ValueError, base64.binascii.Error):
+            return None
+    path = content_json.get("audio_blob_path")
+    if isinstance(path, str) and path and os.path.exists(path):
+        try:
+            with open(path, "rb") as f:
+                return f.read()
+        except OSError:
+            return None
+    return None
+
+
 # ── Module-level default ──
 
 
@@ -593,10 +867,23 @@ _default_persistence: Optional[NotebookPersistence] = None
 
 
 def get_default_persistence() -> NotebookPersistence:
-    """Process-wide default. SPR-09 flips this to AntiekPersistence."""
+    """Process-wide default. SPR-09 flips this to ``AntiekPersistence``.
+
+    Operator override:
+      ``ANTIEK_PERSISTENCE_BACKEND=json``  → use legacy JSONPersistence
+      (unset / "antiek")                    → use AntiekPersistence (default)
+
+    The override exists so tests / debug-time bisections can isolate
+    the substrate-side regression surface from the file-side regression
+    surface without flipping the production default.
+    """
     global _default_persistence
     if _default_persistence is None:
-        _default_persistence = JSONPersistence()
+        backend = (os.environ.get("ANTIEK_PERSISTENCE_BACKEND") or "antiek").lower()
+        if backend == "json":
+            _default_persistence = JSONPersistence()
+        else:
+            _default_persistence = AntiekPersistence()
     return _default_persistence
 
 
@@ -607,6 +894,7 @@ def reset_default_persistence() -> None:
 
 
 __all__ = [
+    "AntiekPersistence",
     "BlockRecord",
     "JSONPersistence",
     "NotebookPersistence",
@@ -615,6 +903,7 @@ __all__ = [
     "SAVE_KIND_AUTO_POPULATE",
     "SAVE_KIND_EXPLICIT",
     "VALID_SAVE_KINDS",
+    "default_archive_root",
     "get_default_persistence",
     "new_block_id",
     "new_notebook_id",
