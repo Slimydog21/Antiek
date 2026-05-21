@@ -216,30 +216,32 @@ export default function LibraryGrid() {
     (job: IngestJob) => {
       if (job.status === "succeeded") {
         // Taxonomy v2 (2026-05-22): document_imported is now in the
-        // closed taxonomy. Fire-and-forget per the sprint spec —
-        // emit failures are non-fatal. Metadata (paywalled,
-        // sidecar_applied, bytes_ingested) lives in the job's
-        // free-form `metadata` blob; we forward what's there.
+        // closed taxonomy. emitBehaviorEvent is synchronous; wrap in
+        // try/catch so emit failures are non-fatal per SPR-01 rigor.
+        // Metadata (paywalled, sidecar_applied, bytes_ingested) lives
+        // in the job's free-form `metadata` blob; we forward what's there.
         const md = job.metadata ?? {};
-        void emitBehaviorEvent({
-          eventType: BehaviorEventType.DOCUMENT_IMPORTED,
-          state: {
-            document_id: job.document_id ?? "unknown",
-            source_url: job.url ?? null,
-            content_type: job.content_type ?? null,
-            import_path: typeof md.import_path === "string" ? md.import_path : null,
-          },
-          action: {
-            outcome: "succeeded",
-            paywalled: typeof md.paywalled === "boolean" ? md.paywalled : null,
-            sidecar_applied:
-              typeof md.sidecar_applied === "boolean" ? md.sidecar_applied : null,
-            bytes_ingested:
-              typeof md.bytes_ingested === "number" ? md.bytes_ingested : null,
-          },
-        }).catch(() => {
+        try {
+          emitBehaviorEvent({
+            eventType: BehaviorEventType.DOCUMENT_IMPORTED,
+            state: {
+              document_id: job.document_id ?? "unknown",
+              source_url: job.url ?? null,
+              content_type: job.content_type ?? null,
+              import_path: typeof md.import_path === "string" ? md.import_path : null,
+            },
+            action: {
+              outcome: "succeeded",
+              paywalled: typeof md.paywalled === "boolean" ? md.paywalled : null,
+              sidecar_applied:
+                typeof md.sidecar_applied === "boolean" ? md.sidecar_applied : null,
+              bytes_ingested:
+                typeof md.bytes_ingested === "number" ? md.bytes_ingested : null,
+            },
+          });
+        } catch {
           // Swallow — per SPR-01 emit-failure-non-fatal rigor.
-        });
+        }
         void reload();
       }
     },

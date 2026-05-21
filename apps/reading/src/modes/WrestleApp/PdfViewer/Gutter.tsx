@@ -297,16 +297,16 @@ export default function Gutter({ highlights, fetchLinks }: GutterProps) {
                   // failure is non-fatal.
                   if (isHovered) {
                     try {
-                      void emitBehaviorEvent({
+                      emitBehaviorEvent({
                         eventType: BehaviorEventType.CROSS_DOC_LINK_PREVIEWED,
                         state: {
                           document_id: h.documentId,
                           reading_mode: null,
-                          trigger_chunk_id: h.chunkId ?? null,
+                          trigger_chunk_id: null,
                         },
                         action: {
                           link_id: `${link.chunk_id}-${idx}`,
-                          target_document_id: link.target_document_id,
+                          target_document_id: link.document_id,
                           target_chunk_id: link.chunk_id ?? null,
                           pill_position: idx,
                           hover_duration_ms: null,

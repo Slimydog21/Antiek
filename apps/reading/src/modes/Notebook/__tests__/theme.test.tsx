@@ -210,8 +210,11 @@ describe("M4 — ThemesIndex empty / unimplemented states", () => {
         <ThemesIndex />
       </MemoryRouter>,
     );
-    expect(
-      screen.getByRole("heading", { name: /themes/i }),
-    ).toBeTruthy();
+    // Use getAllByRole because AppShell may also render a "Themes"
+    // header in the topbar/breadcrumbs (post-sprint-6 PanelHost
+    // refactor); we only care that at least one Themes heading
+    // appears as a result of the ThemesIndex render.
+    const headings = screen.getAllByRole("heading", { name: /themes/i });
+    expect(headings.length).toBeGreaterThan(0);
   });
 });

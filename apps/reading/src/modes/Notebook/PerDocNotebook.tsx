@@ -412,28 +412,33 @@ export default function PerDocNotebook(): JSX.Element {
               return next;
             });
             // Taxonomy v2 (2026-05-22): notebook_block_promoted is
-            // now in the closed taxonomy. One emit per promoted
-            // block so the reward proxy can join per-block. Fire-and-
-            // forget; emit failures are non-fatal.
+            // now in the closed taxonomy. emitBehaviorEvent is sync;
+            // wrap in try/catch so emit failures are non-fatal.
+            // One emit per promoted block so the reward proxy can
+            // join per-block.
             for (const blockId of promoted) {
-              const sourceBlock = blocks.find((b) => b.block_id === blockId);
-              void emitBehaviorEvent({
-                eventType: BehaviorEventType.NOTEBOOK_BLOCK_PROMOTED,
-                state: {
-                  source_notebook_id: notebook?.notebook_id ?? "unknown",
-                  source_block_id: blockId,
-                  source_document_id: documentId ?? null,
-                  block_type: sourceBlock?.block_type ?? null,
-                },
-                action: {
-                  theme_id: themeId,
-                  theme_slug: null,
-                  theme_block_id: null,
-                  newly_created_theme: null,
-                },
-              }).catch(() => {
+              const sourceBlock = notebook?.blocks.find(
+                (b) => b.block_id === blockId,
+              );
+              try {
+                emitBehaviorEvent({
+                  eventType: BehaviorEventType.NOTEBOOK_BLOCK_PROMOTED,
+                  state: {
+                    source_notebook_id: notebook?.notebook_id ?? "unknown",
+                    source_block_id: blockId,
+                    source_document_id: documentId ?? null,
+                    block_type: sourceBlock?.block_type ?? null,
+                  },
+                  action: {
+                    theme_id: themeId,
+                    theme_slug: null,
+                    theme_block_id: null,
+                    newly_created_theme: null,
+                  },
+                });
+              } catch {
                 // Swallow — emit failure is non-fatal.
-              });
+              }
             }
             setSelectedBlockIds(new Set());
             setPromotePickerOpen(false);
@@ -487,8 +492,12 @@ function BlockWithPromote({
             <input
               type="checkbox"
               checked={selected}
-              onChange={(e) =>
-                onToggleSelect(block.block_id, e.shiftKey || true)
+              onChange={() =>
+                // Multi-select is always-on for the checkbox row; shift-
+                // click range-select is a deferred follow-up (the
+                // original `e.shiftKey || true` always evaluated to
+                // true because ChangeEvent has no shiftKey).
+                onToggleSelect(block.block_id, true)
               }
               data-testid={`promote-select-${block.block_id}`}
               className="cursor-pointer"

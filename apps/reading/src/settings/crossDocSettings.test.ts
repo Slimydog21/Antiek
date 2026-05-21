@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   _resetUserSettingsForTest,
   useUserSettings,
-} from "./userSettings";
+} from "./crossDocSettings";
 
 describe("userSettings — public-graph toggle (M7)", () => {
   beforeEach(() => {

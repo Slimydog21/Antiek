@@ -194,19 +194,16 @@ describe("resolvePostLoginDestination — dual-market routing (rigor #5)", () =>
 
 describe("emit document_opened — closed-taxonomy assertion", () => {
   it("DOCUMENT_OPENED is in the closed behavior taxonomy", async () => {
-    // Sanity check: the spec text claimed both document_imported and
-    // document_opened are in the closed taxonomy. Only document_opened
-    // actually is — this test guards the bit we CAN guarantee.
     const mod = await import("../../../lib/behaviorEvents");
     expect(mod.ALL_BEHAVIOR_EVENT_TYPES).toContain("document_opened");
   });
 
-  it("document_imported is NOT in the closed taxonomy at SPR-06 closeout", async () => {
-    // Honesty assertion (rigor #1): the sprint spec said it was;
-    // it isn't. If a future sprint adds it (via taxonomy migration +
-    // schema file), this test will flip and the LibraryGrid TODO
-    // call site should start emitting.
+  it("DOCUMENT_IMPORTED is in the closed behavior taxonomy (added in taxonomy v2)", async () => {
+    // Originally a negative guard at SPR-06 closeout. The integration
+    // follow-up (2026-05-22) added document_imported to the closed
+    // taxonomy and unwired the LibraryGrid TODO. Flipped to a positive
+    // assertion to lock the addition in place.
     const mod = await import("../../../lib/behaviorEvents");
-    expect(mod.ALL_BEHAVIOR_EVENT_TYPES).not.toContain("document_imported");
+    expect(mod.ALL_BEHAVIOR_EVENT_TYPES).toContain("document_imported");
   });
 });
