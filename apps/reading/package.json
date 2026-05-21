@@ -12,15 +12,19 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "visualtest": "npm run build-storybook && lost-pixel",
-    "visualtest:update": "npm run build-storybook && lost-pixel update"
+    "visualtest:update": "npm run build-storybook && lost-pixel update",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "framer-motion": "^12.40.0",
     "pdfjs-dist": "^4.7.76",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.1.0",
     "react-router-dom": "^6.30.3",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@storybook/addon-essentials": "^8.4.7",
@@ -28,16 +32,20 @@
     "@storybook/blocks": "^8.4.7",
     "@storybook/react": "^8.4.7",
     "@storybook/react-vite": "^8.4.7",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.19.19",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/ui": "^4.1.7",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^29.1.1",
     "lost-pixel": "^3.22.0",
     "postcss": "^8.4.49",
     "storybook": "^8.4.7",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^4.1.7"
   }
 }
