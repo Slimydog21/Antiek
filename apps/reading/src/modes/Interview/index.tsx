@@ -120,41 +120,41 @@ export default function InterviewMode() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Interview
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Loop 4 informant interview surface. Per master-spec
               §11.5: consent must be recorded before any turn lands;
               the substrate enforces this at the orchestrator level.
             </p>
-            <p className="text-xs font-mono text-stone-500">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               interview_id = {interviewId ?? "—"}
             </p>
           </header>
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading interview…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading interview…</p>
           )}
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {detail && (
             <>
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="text-base font-serif text-stone-900 truncate">
+                    <h2 className="text-base font-serif text-ink dark:text-bright truncate">
                       {detail.project_title}
                     </h2>
                     {detail.topic_description && (
-                      <p className="text-xs text-stone-600 truncate">
+                      <p className="text-xs text-ink-soft dark:text-starlight truncate">
                         {detail.topic_description}
                       </p>
                     )}
@@ -163,23 +163,23 @@ export default function InterviewMode() {
                     className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
                       detail.status === "completed"
                         ? "bg-emerald-100 text-emerald-700"
-                        : "bg-stone-100 text-stone-600"
+                        : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight"
                     }`}
                   >
                     {detail.status}
                   </span>
                 </div>
-                <p className="text-xs text-stone-500 font-mono">
+                <p className="text-xs text-shadow-1 dark:text-moonlight font-mono">
                   consent_recorded ={" "}
                   {detail.consent_recorded ? "true" : "false"}
                   {" · "}must_cover = {detail.must_cover.length}
                 </p>
               </section>
 
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
-                <h3 className="text-sm font-serif text-stone-900">Transcript</h3>
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+                <h3 className="text-sm font-serif text-ink dark:text-bright">Transcript</h3>
                 {detail.transcript.length === 0 ? (
-                  <p className="text-xs italic text-stone-500">
+                  <p className="text-xs italic text-shadow-1 dark:text-moonlight">
                     No turns recorded yet.
                   </p>
                 ) : (
@@ -189,15 +189,15 @@ export default function InterviewMode() {
                         key={idx}
                         className={`p-3 rounded ${
                           t.role === "interviewer"
-                            ? "bg-stone-50 border-l-2 border-stone-400"
+                            ? "bg-ice-1 dark:bg-charcoal-2 border-l-2 border-glacial-1 dark:border-slate-1"
                             : "bg-emerald-50 border-l-2 border-emerald-600"
                         }`}
                       >
-                        <p className="text-[10px] uppercase tracking-wider font-mono text-stone-500 mb-1">
+                        <p className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight mb-1">
                           {t.role}
                           {t.ts ? ` · ${t.ts}` : ""}
                         </p>
-                        <p className="text-sm text-stone-900 whitespace-pre-wrap">
+                        <p className="text-sm text-ink dark:text-bright whitespace-pre-wrap">
                           {t.text}
                         </p>
                       </li>
@@ -208,8 +208,8 @@ export default function InterviewMode() {
 
               {detail.status !== "completed" && (
                 <section className="grid md:grid-cols-2 gap-4">
-                  <div className="border border-stone-200 rounded-md p-4 space-y-2">
-                    <p className="text-xs font-mono uppercase tracking-wider text-stone-500">
+                  <div className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2">
+                    <p className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                       Interviewer turn
                     </p>
                     <textarea
@@ -217,7 +217,7 @@ export default function InterviewMode() {
                       onChange={(e) => setDraftInterviewer(e.target.value)}
                       rows={3}
                       placeholder="What's the next question?"
-                      className="w-full text-sm font-serif text-stone-900 border border-stone-200 rounded p-2 resize-y"
+                      className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y"
                     />
                     <button
                       type="button"
@@ -225,14 +225,14 @@ export default function InterviewMode() {
                         void postTurn("interviewer", draftInterviewer)
                       }
                       disabled={submitting || !draftInterviewer.trim()}
-                      className="w-full px-3 py-1.5 rounded-md bg-stone-900 text-white text-xs font-medium hover:bg-stone-800 transition-colors disabled:opacity-50"
+                      className="w-full px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
                     >
                       Record interviewer turn
                     </button>
                   </div>
 
-                  <div className="border border-stone-200 rounded-md p-4 space-y-2">
-                    <p className="text-xs font-mono uppercase tracking-wider text-stone-500">
+                  <div className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2">
+                    <p className="text-xs font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
                       Informant turn
                     </p>
                     <textarea
@@ -240,7 +240,7 @@ export default function InterviewMode() {
                       onChange={(e) => setDraftInformant(e.target.value)}
                       rows={3}
                       placeholder="Informant's response…"
-                      className="w-full text-sm font-serif text-stone-900 border border-stone-200 rounded p-2 resize-y"
+                      className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y"
                     />
                     <button
                       type="button"
@@ -263,7 +263,7 @@ export default function InterviewMode() {
                     type="button"
                     onClick={() => void completeInterview()}
                     disabled={submitting}
-                    className="px-3 py-1.5 rounded-md border border-stone-300 text-stone-700 text-xs font-medium hover:bg-stone-50 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-md border border-rule dark:border-charcoal-1 text-ink dark:text-bright text-xs font-medium hover:bg-ice-1 dark:bg-charcoal-2 transition-colors disabled:opacity-50"
                   >
                     Mark interview complete
                   </button>

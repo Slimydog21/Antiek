@@ -26,21 +26,21 @@ export default function WatchForLaterFolder({
 }: Props) {
   if (loading) {
     return (
-      <div className="p-4 text-xs text-stone-500 italic">
+      <div className="p-4 text-xs text-shadow-1 dark:text-moonlight italic">
         Loading parked questions…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="p-4 text-xs text-red-700">
+      <div className="p-4 text-xs text-emperor">
         Couldn't load the folder: {error}
       </div>
     );
   }
   if (questions.length === 0) {
     return (
-      <div className="p-4 text-xs text-stone-500 italic leading-relaxed">
+      <div className="p-4 text-xs text-shadow-1 dark:text-moonlight italic leading-relaxed">
         Empty. Open questions from your investigations and document
         wrestling sessions will park themselves here automatically.
       </div>
@@ -49,7 +49,7 @@ export default function WatchForLaterFolder({
 
   return (
     <div className="py-2">
-      <div className="px-4 py-2 text-xs font-semibold text-stone-700 uppercase tracking-wide">
+      <div className="px-4 py-2 text-xs font-semibold text-ink dark:text-bright uppercase tracking-wide">
         Watch for later
       </div>
       <ul className="space-y-px">
@@ -62,18 +62,18 @@ export default function WatchForLaterFolder({
                 onClick={() => onSelect(q)}
                 className={`w-full text-left px-4 py-2 transition-colors ${
                   isSelected
-                    ? "bg-white shadow-sm border-l-2 border-stone-900"
-                    : "hover:bg-stone-100 border-l-2 border-transparent"
+                    ? "bg-ice-0 dark:bg-charcoal-2 shadow-sm border-l-2 border-ink dark:border-bright"
+                    : "hover:bg-ice-3 dark:bg-charcoal-1 border-l-2 border-transparent"
                 }`}
               >
-                <p className="text-sm text-stone-900 leading-snug font-serif">
+                <p className="text-sm text-ink dark:text-bright leading-snug font-serif">
                   {q.question_text || (
-                    <em className="text-stone-500">(no text)</em>
+                    <em className="text-shadow-1 dark:text-moonlight">(no text)</em>
                   )}
                 </p>
-                <p className="mt-1 text-xs text-stone-500 font-mono">
+                <p className="mt-1 text-xs text-shadow-1 dark:text-moonlight font-mono">
                   {relativeTime(q.parked_at)} ·{" "}
-                  <span className="text-stone-400">
+                  <span className="text-ink-mute dark:text-moonlight">
                     {q.source_investigation_id}
                   </span>
                 </p>

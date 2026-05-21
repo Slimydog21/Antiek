@@ -67,42 +67,42 @@ export default function Backtest() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Backtest report
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               How has the substrate changed under this synthesis since
               it landed? Per master-spec §13.8 — replay first, then
               grade outcomes against the current substrate.
             </p>
-            <p className="text-xs font-mono text-stone-500">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               synthesis_id = {synthesisId ?? "—"}
             </p>
           </header>
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {report && (
             <>
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-stone-900">
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+                <h2 className="text-base font-serif text-ink dark:text-bright">
                   Synthesis
                 </h2>
-                <p className="text-sm text-stone-900">
+                <p className="text-sm text-ink dark:text-bright">
                   {report.target_question}
                 </p>
-                <p className="text-[11px] font-mono text-stone-500">
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
                   {report.synthesis_timestamp} · status={report.status}
                   {report.implicit_recommendation
                     ? ` · ${report.implicit_recommendation}`
@@ -158,10 +158,10 @@ export default function Backtest() {
                 rows={report.outcomes}
               />
 
-              <p className="text-xs font-mono text-stone-500">
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 <Link
                   to={`/outcomes/${encodeURIComponent(report.synthesis_id)}`}
-                  className="text-stone-700 hover:underline"
+                  className="text-ink dark:text-bright hover:underline"
                 >
                   Open outcomes grading view →
                 </Link>
@@ -186,17 +186,17 @@ function Metric({
   return (
     <div
       className={`border rounded-md px-3 py-2 ${
-        highlight ? "border-amber-300 bg-amber-50" : "border-stone-200"
+        highlight ? "border-amber-300 bg-sun/10" : "border-rule dark:border-charcoal-1"
       }`}
     >
       <p
         className={`text-2xl font-serif ${
-          highlight ? "text-amber-800" : "text-stone-900"
+          highlight ? "text-amber-800" : "text-ink dark:text-bright"
         }`}
       >
         {value}
       </p>
-      <p className="text-[10px] font-mono text-stone-500 uppercase">
+      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
         {label}
       </p>
     </div>
@@ -213,28 +213,28 @@ function DetailList({
   rows: Record<string, unknown>[];
 }) {
   return (
-    <section className="border border-stone-200 rounded-md p-4 space-y-2">
+    <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-serif text-stone-900">{title}</h3>
-        <span className="text-[10px] uppercase font-mono text-stone-500">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">{title}</h3>
+        <span className="text-[10px] uppercase font-mono text-shadow-1 dark:text-moonlight">
           {rows.length}
         </span>
       </div>
-      <p className="text-xs text-stone-600">{description}</p>
+      <p className="text-xs text-ink-soft dark:text-starlight">{description}</p>
       {rows.length === 0 ? (
-        <p className="text-xs italic text-stone-500">None.</p>
+        <p className="text-xs italic text-shadow-1 dark:text-moonlight">None.</p>
       ) : (
-        <ul className="space-y-1 text-[11px] font-mono text-stone-700">
+        <ul className="space-y-1 text-[11px] font-mono text-ink dark:text-bright">
           {rows.slice(0, 50).map((r, i) => (
             <li
               key={i}
-              className="truncate border-b border-stone-100 py-1"
+              className="truncate border-b border-rule dark:border-charcoal-1 py-1"
             >
               {JSON.stringify(r)}
             </li>
           ))}
           {rows.length > 50 && (
-            <li className="text-xs italic text-stone-500">
+            <li className="text-xs italic text-shadow-1 dark:text-moonlight">
               … and {rows.length - 50} more not shown
             </li>
           )}

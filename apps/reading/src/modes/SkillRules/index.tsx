@@ -76,13 +76,13 @@ export default function SkillRules() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Shared substrate skill rules
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Cross-user discovered rules that cleared the §13.9
               promotion gate. Each rule is content-addressed —
               independent users producing the same rule land in the
@@ -96,22 +96,22 @@ export default function SkillRules() {
             {CONFIDENCE_ORDER.map((c) => (
               <div
                 key={c}
-                className="border border-stone-200 rounded-md px-4 py-3 text-center"
+                className="border border-rule dark:border-charcoal-1 rounded-md px-4 py-3 text-center"
               >
-                <p className="text-2xl font-serif text-stone-900">
+                <p className="text-2xl font-serif text-ink dark:text-bright">
                   {counts[c] ?? 0}
                 </p>
-                <p className="text-[10px] font-mono text-stone-500 uppercase">
+                <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
                   {c} confidence
                 </p>
               </div>
             ))}
           </section>
 
-          <section className="border border-stone-200 rounded-md p-4 space-y-3">
-            <h2 className="text-sm font-serif text-stone-900">Filter</h2>
+          <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
+            <h2 className="text-sm font-serif text-ink dark:text-bright">Filter</h2>
             <div className="space-y-1">
-              <label className="text-[10px] font-mono uppercase text-stone-500">
+              <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
                 Search rule text
               </label>
               <input
@@ -119,12 +119,12 @@ export default function SkillRules() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="case-insensitive substring match…"
-                className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2"
+                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-stone-500">
+                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
                   Domain
                 </label>
                 <input
@@ -132,17 +132,17 @@ export default function SkillRules() {
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
                   placeholder="quantum, defense, …"
-                  className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2"
+                  className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-stone-500">
+                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
                   Confidence
                 </label>
                 <select
                   value={confidence}
                   onChange={(e) => setConfidence(e.target.value)}
-                  className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2 bg-white"
+                  className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 bg-ice-0 dark:bg-charcoal-2"
                 >
                   <option value="">any</option>
                   <option value="high">high</option>
@@ -154,17 +154,17 @@ export default function SkillRules() {
           </section>
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
           {!loading && rules.length === 0 && (
-            <p className="text-sm text-stone-500 italic">
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No promoted rules yet. The accumulator needs at least
               3 distinct contributors before a rule clears the
               §13.9 gate.
@@ -176,10 +176,10 @@ export default function SkillRules() {
               <Link
                 key={r.rule_id}
                 to={`/skill-rules/${encodeURIComponent(r.rule_id)}`}
-                className="block border border-stone-200 rounded-md p-4 space-y-2 hover:bg-stone-50 transition-colors"
+                className="block border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <h3 className="text-sm font-serif text-stone-900 truncate">
+                  <h3 className="text-sm font-serif text-ink dark:text-bright truncate">
                     {r.rule_text}
                   </h3>
                   <span
@@ -187,19 +187,19 @@ export default function SkillRules() {
                       r.confidence === "high"
                         ? "bg-emerald-100 text-emerald-700"
                         : r.confidence === "moderate"
-                        ? "bg-stone-100 text-stone-700"
-                        : "bg-stone-50 text-stone-500"
+                        ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
+                        : "bg-ice-1 dark:bg-charcoal-2 text-shadow-1 dark:text-moonlight"
                     }`}
                   >
                     {r.confidence}
                   </span>
                 </div>
-                <p className="text-[11px] font-mono text-stone-500">
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
                   {r.domain} · {r.rule_kind} · users={r.source_user_count}
                   {" · "}ε={r.epsilon_budget_consumed.toFixed(4)}
                   {r.extracted_at ? ` · ${r.extracted_at}` : ""}
                 </p>
-                <p className="text-[10px] font-mono text-stone-400">
+                <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
                   {r.rule_id}
                 </p>
               </Link>

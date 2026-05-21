@@ -128,20 +128,20 @@ export default function PrivacyDashboard() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Privacy dashboard
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Every telemetry signal Antiek collects from your private
               graph is listed below with its live ε budget pulled from
               the substrate's published trust posture. The substrate
               is architecturally incapable of crossing these boundaries.
             </p>
             {data && (
-              <p className="text-xs font-mono text-stone-500">
+              <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                 substrate-wide daily ε total: {totalEpsilon.toFixed(2)}{" "}
                 (master-spec §16.2 cap: 10.00)
               </p>
@@ -149,7 +149,7 @@ export default function PrivacyDashboard() {
           </header>
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
@@ -201,35 +201,35 @@ function TelemetrySection({
 }) {
   const isForbidden = sensitivity === "forbidden";
   return (
-    <section className="border border-stone-200 rounded-md px-5 py-4 space-y-3">
+    <section className="border border-rule dark:border-charcoal-1 rounded-md px-5 py-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-base font-serif text-stone-900 capitalize">
+        <h3 className="text-base font-serif text-ink dark:text-bright capitalize">
           {title}
         </h3>
-        <span className="text-xs font-mono text-stone-500">
+        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           ε = {epsilon}/day
         </span>
       </div>
-      <p className="text-sm text-stone-700 leading-relaxed">{description}</p>
+      <p className="text-sm text-ink dark:text-bright leading-relaxed">{description}</p>
       <div className="flex items-center gap-3 pt-1">
         {isForbidden ? (
           <span className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
             never collected (architectural)
           </span>
         ) : (
-          <span className="text-xs font-mono text-stone-700 bg-stone-100 px-2 py-1 rounded">
+          <span className="text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded">
             collected · noisy aggregate · ε-bounded
           </span>
         )}
         <span
           className={`text-xs font-mono px-2 py-1 rounded ${
             sensitivity === "low"
-              ? "bg-stone-100 text-stone-700"
+              ? "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
               : sensitivity === "medium"
-                ? "bg-amber-50 text-amber-800"
+                ? "bg-sun/10 text-amber-800"
                 : sensitivity === "high"
                   ? "bg-red-50 text-red-800"
-                  : "bg-stone-100 text-stone-700"
+                  : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
           }`}
         >
           sensitivity: {sensitivity}
@@ -242,15 +242,15 @@ function TelemetrySection({
 function ArchitecturalGuarantees({ data }: { data: TrustCenterData }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-lg font-serif text-stone-900">
+      <h2 className="text-lg font-serif text-ink dark:text-bright">
         Architectural guarantees
       </h2>
-      <ul className="text-sm text-stone-700 leading-relaxed space-y-2 list-disc pl-5">
+      <ul className="text-sm text-ink dark:text-bright leading-relaxed space-y-2 list-disc pl-5">
         {data.substrate_controls.map((c) => (
           <li key={c}>{c}</li>
         ))}
       </ul>
-      <p className="text-xs text-stone-500 font-mono leading-relaxed pt-2">
+      <p className="text-xs text-shadow-1 dark:text-moonlight font-mono leading-relaxed pt-2">
         Compliance posture: {data.compliance_frameworks.join(" · ")}
       </p>
     </section>
@@ -295,7 +295,7 @@ function DeleteEverything({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 rounded-md border border-red-300 text-red-900 text-xs font-medium hover:bg-red-100 transition-colors"
+            className="px-3 py-1.5 rounded-md border border-red-300 text-red-900 text-xs font-medium hover:bg-emperor/20 transition-colors"
           >
             Cancel deletion request
           </button>

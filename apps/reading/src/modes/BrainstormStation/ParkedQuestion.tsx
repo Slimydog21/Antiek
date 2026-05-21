@@ -26,21 +26,21 @@ export default function ParkedQuestion({
   return (
     <div className="max-w-2xl mx-auto px-8 py-10 space-y-6">
       <section>
-        <h2 className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">
+        <h2 className="text-xs font-semibold text-shadow-1 dark:text-moonlight uppercase tracking-wide mb-3">
           Parked question
         </h2>
-        <p className="text-xl font-serif text-stone-900 leading-relaxed">
+        <p className="text-xl font-serif text-ink dark:text-bright leading-relaxed">
           {question.question_text || (
-            <em className="text-stone-500">(no text)</em>
+            <em className="text-shadow-1 dark:text-moonlight">(no text)</em>
           )}
         </p>
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-xs font-semibold text-stone-500 uppercase tracking-wide">
+        <h3 className="text-xs font-semibold text-shadow-1 dark:text-moonlight uppercase tracking-wide">
           Context
         </h3>
-        <dl className="text-sm text-stone-700 space-y-1 font-mono">
+        <dl className="text-sm text-ink dark:text-bright space-y-1 font-mono">
           <Row k="question_id" v={question.question_id} />
           <Row
             k="source investigation"
@@ -61,11 +61,11 @@ export default function ParkedQuestion({
           type="button"
           onClick={onLaunch}
           disabled={launching}
-          className="px-4 py-2 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="px-4 py-2 rounded-md bg-ink text-white text-sm font-medium hover:bg-shadow-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {launching ? "Launching…" : "Launch investigation"}
         </button>
-        <p className="mt-2 text-xs text-stone-500 leading-relaxed">
+        <p className="mt-2 text-xs text-shadow-1 dark:text-moonlight leading-relaxed">
           Spawns a child investigation seeded by this question and
           marks it sharpened in the source trajectory. You'll be
           taken to the new investigation in the Research Workstation.
@@ -78,8 +78,8 @@ export default function ParkedQuestion({
 function Row({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex gap-3">
-      <dt className="text-stone-500 shrink-0 w-40">{k}</dt>
-      <dd className="text-stone-900 break-all">{v}</dd>
+      <dt className="text-shadow-1 dark:text-moonlight shrink-0 w-40">{k}</dt>
+      <dd className="text-ink dark:text-bright break-all">{v}</dd>
     </div>
   );
 }

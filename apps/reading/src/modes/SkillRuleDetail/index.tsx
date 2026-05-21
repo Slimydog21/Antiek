@@ -62,40 +62,40 @@ export default function SkillRuleDetail() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
             <Link
               to="/skill-rules"
-              className="text-xs font-mono text-stone-500 hover:text-stone-900"
+              className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright"
             >
               ← Back to skill rules
             </Link>
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Skill rule detail
             </h1>
-            <p className="text-xs font-mono text-stone-500">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
               {ruleId ?? "—"}
             </p>
           </header>
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {rule && (
             <>
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-stone-900">
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+                <h2 className="text-base font-serif text-ink dark:text-bright">
                   Rule text
                 </h2>
-                <p className="text-sm text-stone-800 leading-relaxed">
+                <p className="text-sm text-ink dark:text-bright leading-relaxed">
                   {rule.rule_text}
                 </p>
               </section>
@@ -118,7 +118,7 @@ export default function SkillRuleDetail() {
                 />
               </section>
 
-              <section className="text-xs font-mono text-stone-500 leading-relaxed">
+              <section className="text-xs font-mono text-shadow-1 dark:text-moonlight leading-relaxed">
                 <p>
                   Per master-spec §13.2: this rule is the substrate's
                   cross-user discovery; no individual contributor's
@@ -137,11 +137,11 @@ export default function SkillRuleDetail() {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border border-stone-200 rounded-md px-3 py-2">
-      <p className="text-[10px] font-mono text-stone-500 uppercase">
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
+      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
         {label}
       </p>
-      <p className="text-sm font-mono text-stone-900 truncate">
+      <p className="text-sm font-mono text-ink dark:text-bright truncate">
         {value}
       </p>
     </div>

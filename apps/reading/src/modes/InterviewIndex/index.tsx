@@ -109,13 +109,13 @@ export default function InterviewIndex() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Interviews
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Operator-facing index of interview projects + invited
               informants. Per master-spec §11.5: every Loop 4 interview
               is scoped to a project that defines the must-cover
@@ -124,13 +124,13 @@ export default function InterviewIndex() {
           </header>
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
-          <section className="border border-stone-200 rounded-md p-5 space-y-3">
-            <h2 className="text-base font-serif text-stone-900">
+          <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+            <h2 className="text-base font-serif text-ink dark:text-bright">
               New project
             </h2>
             <div className="space-y-2">
@@ -139,34 +139,34 @@ export default function InterviewIndex() {
                 value={draftTitle}
                 onChange={(e) => setDraftTitle(e.target.value)}
                 placeholder="Title (e.g. 'Karen on the 2008 housing crash')"
-                className="w-full text-sm font-serif text-stone-900 border border-stone-200 rounded p-2"
+                className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
               />
               <textarea
                 value={draftTopic}
                 onChange={(e) => setDraftTopic(e.target.value)}
                 rows={2}
                 placeholder="Topic description"
-                className="w-full text-sm font-serif text-stone-900 border border-stone-200 rounded p-2 resize-y"
+                className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y"
               />
               <textarea
                 value={draftMustCover}
                 onChange={(e) => setDraftMustCover(e.target.value)}
                 rows={3}
                 placeholder="Must-cover questions (one per line)"
-                className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2 resize-y"
+                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y"
               />
               <textarea
                 value={draftFraming}
                 onChange={(e) => setDraftFraming(e.target.value)}
                 rows={2}
                 placeholder="Framing — what's the point of this project?"
-                className="w-full text-sm font-serif text-stone-900 border border-stone-200 rounded p-2 resize-y"
+                className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y"
               />
               <button
                 type="button"
                 onClick={() => void createProject()}
                 disabled={submitting || !draftTitle.trim()}
-                className="px-3 py-1.5 rounded-md bg-stone-900 text-white text-xs font-medium hover:bg-stone-800 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
               >
                 Create project
               </button>
@@ -174,13 +174,13 @@ export default function InterviewIndex() {
           </section>
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               Loading projects…
             </p>
           )}
 
           {!loading && projects.length === 0 && (
-            <p className="text-sm text-stone-500 italic">
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No projects yet. Create one above.
             </p>
           )}
@@ -261,35 +261,35 @@ function ProjectRow({
   };
 
   return (
-    <article className="border border-stone-200 rounded-md p-4 space-y-2">
+    <article className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className="w-full text-left flex items-baseline justify-between gap-3"
       >
         <div className="min-w-0">
-          <h3 className="text-sm font-serif text-stone-900 truncate">
+          <h3 className="text-sm font-serif text-ink dark:text-bright truncate">
             {project.title}
           </h3>
           {project.topic_description && (
-            <p className="text-xs text-stone-600 truncate">
+            <p className="text-xs text-ink-soft dark:text-starlight truncate">
               {project.topic_description}
             </p>
           )}
         </div>
-        <span className="text-[10px] uppercase tracking-wider font-mono text-stone-500 shrink-0">
+        <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight shrink-0">
           {project.completed_count}/{project.interview_count} done
         </span>
       </button>
 
       {expanded && (
-        <div className="pt-2 space-y-3 border-t border-stone-100">
+        <div className="pt-2 space-y-3 border-t border-rule dark:border-charcoal-1">
           {project.must_cover.length > 0 && (
             <div className="space-y-1">
-              <p className="text-[10px] font-mono uppercase text-stone-500">
+              <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
                 Must-cover
               </p>
-              <ul className="text-xs text-stone-700 list-disc pl-5 space-y-0.5">
+              <ul className="text-xs text-ink dark:text-bright list-disc pl-5 space-y-0.5">
                 {project.must_cover.map((q, i) => (
                   <li key={i}>{q}</li>
                 ))}
@@ -298,15 +298,15 @@ function ProjectRow({
           )}
 
           <div className="space-y-1">
-            <p className="text-[10px] font-mono uppercase text-stone-500">
+            <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
               Invited informants
             </p>
             {interviews.length === 0 ? (
-              <p className="text-xs italic text-stone-500">
+              <p className="text-xs italic text-shadow-1 dark:text-moonlight">
                 No interviews invited yet.
               </p>
             ) : (
-              <ul className="divide-y divide-stone-100">
+              <ul className="divide-y divide-rule dark:divide-charcoal-1">
                 {interviews.map((i) => (
                   <li
                     key={i.interview_id}
@@ -314,13 +314,13 @@ function ProjectRow({
                   >
                     <Link
                       to={`/interview/${i.interview_id}`}
-                      className="text-xs font-mono text-stone-700 hover:underline truncate"
+                      className="text-xs font-mono text-ink dark:text-bright hover:underline truncate"
                     >
                       {i.informant_handle ||
                         i.informant_email ||
                         i.interview_id}
                     </Link>
-                    <span className="text-[10px] uppercase tracking-wider font-mono text-stone-500 shrink-0">
+                    <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight shrink-0">
                       {i.status} · {i.turn_count} turns
                     </span>
                   </li>
@@ -329,8 +329,8 @@ function ProjectRow({
             )}
           </div>
 
-          <div className="space-y-2 pt-2 border-t border-stone-100">
-            <p className="text-[10px] font-mono uppercase text-stone-500">
+          <div className="space-y-2 pt-2 border-t border-rule dark:border-charcoal-1">
+            <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
               Invite informant
             </p>
             <div className="grid grid-cols-2 gap-2">
@@ -339,14 +339,14 @@ function ProjectRow({
                 value={inviteHandle}
                 onChange={(e) => setInviteHandle(e.target.value)}
                 placeholder="Handle (optional)"
-                className="text-xs font-mono text-stone-900 border border-stone-200 rounded p-1.5"
+                className="text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-1.5"
               />
               <input
                 type="email"
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="Email (optional)"
-                className="text-xs font-mono text-stone-900 border border-stone-200 rounded p-1.5"
+                className="text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-1.5"
               />
             </div>
             <button

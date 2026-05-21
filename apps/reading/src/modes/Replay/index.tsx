@@ -121,24 +121,24 @@ export default function Replay() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Trajectory replay
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Re-read this investigation event-by-event. Per master-spec
               §14.1: replay is the substrate of operator-graded
               outcomes — replay first, grade second.
             </p>
-            <p className="text-xs font-mono text-stone-500 flex items-center gap-2">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center gap-2">
               <span>investigation_id = {investigationId ?? "—"}</span>
               <span
                 className={`px-1.5 py-0.5 rounded ${
                   wsConnected
                     ? "bg-emerald-100 text-emerald-700"
-                    : "bg-stone-100 text-stone-500"
+                    : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
                 }`}
               >
                 {wsConnected ? "live" : "offline"}
@@ -148,15 +148,15 @@ export default function Replay() {
           </header>
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading trajectory…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading trajectory…</p>
           )}
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
           {!loading && !error && events.length === 0 && (
-            <p className="text-sm text-stone-500 italic">
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No events recorded for this investigation yet. The live
               tail will populate as events arrive.
             </p>

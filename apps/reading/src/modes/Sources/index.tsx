@@ -36,14 +36,14 @@ function detectKindLabel(url: string): SourceKind {
 function StatusBadge({ row }: { row: IngestRow }) {
   if (row.error) {
     return (
-      <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+      <span className="px-2 py-0.5 rounded text-xs font-medium bg-emperor/20 text-emperor">
         error
       </span>
     );
   }
   if (!row.result) {
     return (
-      <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+      <span className="px-2 py-0.5 rounded text-xs font-medium bg-sun/20 text-sun-deep dark:text-sun">
         ingesting…
       </span>
     );
@@ -58,13 +58,13 @@ function StatusBadge({ row }: { row: IngestRow }) {
   }
   if (s === "skipped") {
     return (
-      <span className="px-2 py-0.5 rounded text-xs font-medium bg-stone-200 text-stone-700">
+      <span className="px-2 py-0.5 rounded text-xs font-medium bg-ice-4 dark:bg-charcoal-1 text-ink dark:text-bright">
         skipped
       </span>
     );
   }
   return (
-    <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+    <span className="px-2 py-0.5 rounded text-xs font-medium bg-emperor/20 text-emperor">
       error
     </span>
   );
@@ -142,14 +142,14 @@ export default function Sources() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-stone-50">
+    <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
       <HeaderBar />
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
             Sources
           </h1>
-          <p className="mt-1 text-sm text-stone-600">
+          <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
             Add arXiv papers, YouTube transcripts, podcast feeds, or any
             URL into the substrate graph. Auto-detects source kind from
             the URL.
@@ -157,10 +157,10 @@ export default function Sources() {
 
           <form
             onSubmit={handleSubmit}
-            className="mt-6 bg-white border border-stone-200 rounded-lg p-5 space-y-4"
+            className="mt-6 bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg p-5 space-y-4"
           >
             <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1.5">
+              <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
                 URLs (one per line)
               </label>
               <textarea
@@ -172,11 +172,11 @@ export default function Sources() {
                   "https://feeds.example.com/podcast.rss"
                 }
                 rows={4}
-                className="w-full px-3 py-2 border border-stone-300 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-stone-400 focus:border-transparent"
+                className="w-full px-3 py-2 border border-rule dark:border-charcoal-1 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sun focus:border-transparent"
                 spellCheck={false}
               />
               {urlInput.trim() && (
-                <p className="mt-1.5 text-xs text-stone-500">
+                <p className="mt-1.5 text-xs text-shadow-1 dark:text-moonlight">
                   Detected:{" "}
                   {Array.from(
                     new Set(
@@ -193,7 +193,7 @@ export default function Sources() {
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-stone-700 mb-1.5">
+                <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
                   Kind
                 </label>
                 <select
@@ -201,7 +201,7 @@ export default function Sources() {
                   onChange={(e) =>
                     setKindOverride(e.target.value as SourceKind | "auto")
                   }
-                  className="w-full px-3 py-1.5 border border-stone-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  className="w-full px-3 py-1.5 border border-rule dark:border-charcoal-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-sun"
                 >
                   <option value="auto">Auto-detect</option>
                   <option value="arxiv">arXiv</option>
@@ -211,19 +211,19 @@ export default function Sources() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-stone-700 mb-1.5">
+                <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
                   Investigation id
                 </label>
                 <input
                   type="text"
                   value={investigationId}
                   onChange={(e) => setInvestigationId(e.target.value)}
-                  className="w-full px-3 py-1.5 border border-stone-300 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  className="w-full px-3 py-1.5 border border-rule dark:border-charcoal-1 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sun"
                   spellCheck={false}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-stone-700 mb-1.5">
+                <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
                   Max episodes (podcast)
                 </label>
                 <input
@@ -234,7 +234,7 @@ export default function Sources() {
                   }
                   min={1}
                   max={50}
-                  className="w-full px-3 py-1.5 border border-stone-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  className="w-full px-3 py-1.5 border border-rule dark:border-charcoal-1 rounded text-sm focus:outline-none focus:ring-2 focus:ring-sun"
                 />
               </div>
             </div>
@@ -243,7 +243,7 @@ export default function Sources() {
               <button
                 type="submit"
                 disabled={status === "ingesting" || !urlInput.trim()}
-                className="px-4 py-1.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
+                className="px-4 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 disabled:cursor-not-allowed text-white text-sm font-medium rounded transition-colors"
               >
                 {status === "ingesting" ? "Ingesting…" : "Ingest"}
               </button>
@@ -252,49 +252,49 @@ export default function Sources() {
 
           {rows.length > 0 && (
             <section className="mt-8">
-              <h2 className="text-sm font-semibold text-stone-700 mb-3">
+              <h2 className="text-sm font-semibold text-ink dark:text-bright mb-3">
                 Recent ingests
               </h2>
               <ul className="space-y-2">
                 {rows.map((row, idx) => (
                   <li
                     key={`${row.url}-${row.startedAt}-${idx}`}
-                    className="bg-white border border-stone-200 rounded p-3 flex items-start justify-between gap-3"
+                    className="bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded p-3 flex items-start justify-between gap-3"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <StatusBadge row={row} />
                         {row.result && (
-                          <span className="text-xs text-stone-500 font-mono">
+                          <span className="text-xs text-shadow-1 dark:text-moonlight font-mono">
                             {row.result.detected_kind}
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-sm text-stone-900 truncate font-mono">
+                      <p className="mt-1 text-sm text-ink dark:text-bright truncate font-mono">
                         {row.url}
                       </p>
                       {row.result?.title && (
-                        <p className="mt-0.5 text-xs text-stone-600 truncate">
+                        <p className="mt-0.5 text-xs text-ink-soft dark:text-starlight truncate">
                           {row.result.title}
                         </p>
                       )}
                       {row.result?.skipped_reason && (
-                        <p className="mt-0.5 text-xs text-amber-700">
+                        <p className="mt-0.5 text-xs text-sun-deep dark:text-sun">
                           Skipped: {row.result.skipped_reason}
                         </p>
                       )}
                       {row.error && (
-                        <p className="mt-0.5 text-xs text-red-700 break-all">
+                        <p className="mt-0.5 text-xs text-emperor break-all">
                           {row.error}
                         </p>
                       )}
                       {row.result?.error_message && (
-                        <p className="mt-0.5 text-xs text-red-700 break-all">
+                        <p className="mt-0.5 text-xs text-emperor break-all">
                           {row.result.error_message}
                         </p>
                       )}
                     </div>
-                    <div className="text-right text-xs text-stone-500 shrink-0 min-w-[80px]">
+                    <div className="text-right text-xs text-shadow-1 dark:text-moonlight shrink-0 min-w-[80px]">
                       {row.result && (
                         <>
                           <div>{row.result.chunks_written} chunks</div>

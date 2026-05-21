@@ -70,13 +70,13 @@ export default function Map() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Application map
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Every operator-facing surface in the substrate.
               Routes route through the same auth middleware; the
               left-side categories group by intent (workstation
@@ -87,7 +87,7 @@ export default function Map() {
               {KEYBOARD_HINTS.map((h) => (
                 <span
                   key={h.label}
-                  className="text-[11px] font-mono text-stone-500 bg-stone-100 px-2 py-1 rounded"
+                  className="text-[11px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded"
                 >
                   {h.label}: <kbd className="font-mono">{h.key}</kbd>
                 </span>
@@ -100,7 +100,7 @@ export default function Map() {
               key={group.title}
               className="space-y-3"
             >
-              <h2 className="text-base font-serif text-stone-900 border-b border-stone-200 pb-1">
+              <h2 className="text-base font-serif text-ink dark:text-bright border-b border-rule dark:border-charcoal-1 pb-1">
                 {group.title}
               </h2>
               <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -108,15 +108,15 @@ export default function Map() {
                   <li key={r.path}>
                     <Link
                       to={r.path}
-                      className="block border border-stone-200 rounded-md px-3 py-2 hover:bg-stone-50 transition-colors"
+                      className="block border border-rule dark:border-charcoal-1 rounded-md px-3 py-2 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
                     >
-                      <p className="text-sm font-serif text-stone-900">
+                      <p className="text-sm font-serif text-ink dark:text-bright">
                         {r.title}
                       </p>
-                      <p className="text-[11px] font-mono text-stone-500 truncate">
+                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
                         {r.path}
                       </p>
-                      <p className="text-xs text-stone-600 mt-1">
+                      <p className="text-xs text-ink-soft dark:text-starlight mt-1">
                         {r.description}
                       </p>
                     </Link>

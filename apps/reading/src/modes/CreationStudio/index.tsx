@@ -58,7 +58,7 @@ const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
  */
 export default function CreationStudio() {
   return (
-    <div className="flex flex-col h-screen bg-stone-50">
+    <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
       <HeaderBar />
       <main className="flex-1 overflow-hidden">
         <div className="h-full max-w-7xl mx-auto px-6 py-6 grid grid-cols-[260px_1fr_280px] gap-6">
@@ -110,23 +110,23 @@ function DeliverableSidebar() {
 
   return (
     <aside className="flex flex-col gap-4 min-h-0">
-      <h2 className="text-sm font-semibold text-stone-700">
+      <h2 className="text-sm font-semibold text-ink dark:text-bright">
         Deliverables
       </h2>
       <form
         onSubmit={handleCreate}
-        className="bg-white border border-stone-200 rounded-md p-3 space-y-2"
+        className="bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-md p-3 space-y-2"
       >
         <input
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
           placeholder="New deliverable title…"
-          className="w-full px-2 py-1.5 text-sm border border-stone-300 rounded focus:outline-none focus:ring-2 focus:ring-stone-400"
+          className="w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
         />
         <select
           value={newKind}
           onChange={(e) => setNewKind(e.target.value as DeliverableKind)}
-          className="w-full px-2 py-1.5 text-xs border border-stone-300 rounded focus:outline-none focus:ring-2 focus:ring-stone-400"
+          className="w-full px-2 py-1.5 text-xs border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
         >
           {(Object.keys(DELIVERABLE_KIND_LABELS) as DeliverableKind[]).map(
             (k) => (
@@ -139,7 +139,7 @@ function DeliverableSidebar() {
         <button
           type="submit"
           disabled={creating || !newTitle.trim()}
-          className="w-full px-3 py-1.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white text-xs font-medium rounded transition-colors"
+          className="w-full px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs font-medium rounded transition-colors"
         >
           {creating ? "Creating…" : "New deliverable"}
         </button>
@@ -149,10 +149,10 @@ function DeliverableSidebar() {
           <li key={d.deliverable_id}>
             <button
               onClick={() => navigate(`/create/${d.deliverable_id}`)}
-              className="w-full text-left px-3 py-2 bg-white hover:bg-stone-100 border border-stone-200 rounded text-sm"
+              className="w-full text-left px-3 py-2 bg-ice-0 dark:bg-charcoal-2 hover:bg-ice-3 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-sm"
             >
               <div className="font-medium truncate">{d.title}</div>
-              <div className="text-xs text-stone-500 flex justify-between">
+              <div className="text-xs text-shadow-1 dark:text-moonlight flex justify-between">
                 <span>{DELIVERABLE_KIND_LABELS[d.deliverable_kind] ?? d.deliverable_kind}</span>
                 <span>{d.section_count} §</span>
               </div>
@@ -192,19 +192,19 @@ function DeliverableDetail() {
 
   if (!deliverableId) {
     return (
-      <section className="flex items-center justify-center h-full text-stone-500 text-sm">
+      <section className="flex items-center justify-center h-full text-shadow-1 dark:text-moonlight text-sm">
         Select or create a deliverable to begin.
       </section>
     );
   }
   if (loading && !detail) {
     return (
-      <section className="text-stone-500 text-sm">Loading deliverable…</section>
+      <section className="text-shadow-1 dark:text-moonlight text-sm">Loading deliverable…</section>
     );
   }
   if (!detail) {
     return (
-      <section className="text-stone-500 text-sm">
+      <section className="text-shadow-1 dark:text-moonlight text-sm">
         Deliverable not found.
       </section>
     );
@@ -214,10 +214,10 @@ function DeliverableDetail() {
     <section className="overflow-y-auto pr-2">
       <header className="mb-6 flex items-baseline justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-wide text-stone-500">
+          <p className="text-xs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
             {DELIVERABLE_KIND_LABELS[detail.deliverable_kind] ?? detail.deliverable_kind}
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
             {detail.title}
           </h1>
         </div>
@@ -272,18 +272,18 @@ function ExportButton({ deliverableId }: { deliverableId: string }) {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="px-3 py-1.5 bg-stone-200 hover:bg-stone-300 text-stone-900 text-sm rounded"
+        className="px-3 py-1.5 bg-ice-4 dark:bg-charcoal-1 hover:bg-glacial-1 dark:bg-slate-1 text-ink dark:text-bright text-sm rounded"
       >
         Export
       </button>
       {open && (
-        <div className="absolute right-0 mt-1 bg-white border border-stone-200 rounded shadow-md text-xs z-10 min-w-[140px]">
+        <div className="absolute right-0 mt-1 bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded shadow-md text-xs z-10 min-w-[140px]">
           {(["markdown", "html", "json"] as ExportFormatName[]).map((f) => (
             <button
               key={f}
               onClick={() => void doExport(f)}
               disabled={busy}
-              className="block w-full text-left px-3 py-1.5 hover:bg-stone-100 disabled:text-stone-400"
+              className="block w-full text-left px-3 py-1.5 hover:bg-ice-3 dark:bg-charcoal-1 disabled:text-ink-mute dark:text-moonlight"
             >
               {f === "markdown" ? "Markdown (.md)" : f === "html" ? "HTML (.html)" : "JSON bundle (.json)"}
             </button>
@@ -376,22 +376,22 @@ function SectionCard({
       }}
       onDragLeave={() => setDropHover(false)}
       onDrop={handleDrop}
-      className={`bg-white border rounded-md p-4 transition-colors ${
+      className={`bg-ice-0 dark:bg-charcoal-2 border rounded-md p-4 transition-colors ${
         dropHover
           ? "border-emerald-500 ring-2 ring-emerald-300"
-          : "border-stone-200"
+          : "border-rule dark:border-charcoal-1"
       }`}
     >
       <div className="flex items-baseline justify-between gap-3">
         <div>
-          <p className="text-xs text-stone-500">
+          <p className="text-xs text-shadow-1 dark:text-moonlight">
             Section {section.section_index + 1}
           </p>
-          <h2 className="text-base font-semibold text-stone-900">
+          <h2 className="text-base font-semibold text-ink dark:text-bright">
             {section.title || "(untitled)"}
           </h2>
         </div>
-        <span className="text-xs text-stone-500">
+        <span className="text-xs text-shadow-1 dark:text-moonlight">
           {section.block_count} blocks
         </span>
       </div>
@@ -402,14 +402,14 @@ function SectionCard({
       <div className="mt-3 flex items-center gap-2">
         <button
           onClick={() => setShowAttach((v) => !v)}
-          className="text-xs text-stone-600 hover:text-stone-900 underline"
+          className="text-xs text-ink-soft dark:text-starlight hover:text-ink dark:text-bright underline"
         >
           {showAttach ? "Cancel" : "Attach by id"}
         </button>
-        <span className="text-xs text-stone-400">
+        <span className="text-xs text-ink-mute dark:text-moonlight">
           · or drag from the palette →
         </span>
-        {busy && <span className="text-xs text-stone-400">working…</span>}
+        {busy && <span className="text-xs text-ink-mute dark:text-moonlight">working…</span>}
       </div>
 
       {showAttach && (
@@ -420,7 +420,7 @@ function SectionCard({
           <select
             value={blockKind}
             onChange={(e) => setBlockKind(e.target.value as BlockKind)}
-            className="px-2 py-1 text-xs border border-stone-300 rounded"
+            className="px-2 py-1 text-xs border border-rule dark:border-charcoal-1 rounded"
           >
             <option value="insight">insight</option>
             <option value="open_question">open_question</option>
@@ -431,12 +431,12 @@ function SectionCard({
             value={blockId}
             onChange={(e) => setBlockId(e.target.value)}
             placeholder="block_id (e.g. node-…)"
-            className="flex-1 px-2 py-1 text-xs font-mono border border-stone-300 rounded"
+            className="flex-1 px-2 py-1 text-xs font-mono border border-rule dark:border-charcoal-1 rounded"
           />
           <button
             type="submit"
             disabled={busy || !blockId.trim()}
-            className="px-3 py-1 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white text-xs rounded"
+            className="px-3 py-1 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs rounded"
           >
             Attach
           </button>
@@ -485,11 +485,11 @@ function ProseEditor({
     return (
       <div className="mt-3">
         {section.prose_text ? (
-          <p className="text-sm text-stone-700 whitespace-pre-line">
+          <p className="text-sm text-ink dark:text-bright whitespace-pre-line">
             {section.prose_text}
           </p>
         ) : (
-          <p className="text-xs text-stone-400 italic">
+          <p className="text-xs text-ink-mute dark:text-moonlight italic">
             No prose yet. Drag blocks from the palette →, then click
             Edit to add prose. (Sprint 14+ wires the creative_writer
             role to generate from attached blocks.)
@@ -498,7 +498,7 @@ function ProseEditor({
         <div className="mt-2 flex items-center gap-3">
           <button
             onClick={() => setEditing(true)}
-            className="text-xs text-stone-600 hover:text-stone-900 underline"
+            className="text-xs text-ink-soft dark:text-starlight hover:text-ink dark:text-bright underline"
           >
             Edit prose
           </button>
@@ -507,7 +507,7 @@ function ProseEditor({
               className={`text-xs ${
                 lastStatus === "saved_and_promoted"
                   ? "text-emerald-700"
-                  : "text-stone-500"
+                  : "text-shadow-1 dark:text-moonlight"
               }`}
             >
               {lastStatus === "saved_and_promoted"
@@ -526,10 +526,10 @@ function ProseEditor({
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={Math.max(6, Math.min(20, text.split("\n").length + 1))}
-        className="w-full px-3 py-2 text-sm border border-stone-300 rounded font-serif focus:outline-none focus:ring-2 focus:ring-stone-400"
+        className="w-full px-3 py-2 text-sm border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-sun"
       />
       <div className="mt-2 flex items-center justify-between gap-3">
-        <label className="flex items-center gap-1.5 text-xs text-stone-700">
+        <label className="flex items-center gap-1.5 text-xs text-ink dark:text-bright">
           <input
             type="checkbox"
             checked={promote}
@@ -544,14 +544,14 @@ function ProseEditor({
               setText(section.prose_text || "");
             }}
             disabled={busy}
-            className="px-3 py-1 text-xs text-stone-600 hover:text-stone-900"
+            className="px-3 py-1 text-xs text-ink-soft dark:text-starlight hover:text-ink dark:text-bright"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={busy || !text.trim()}
-            className="px-3 py-1 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white text-xs rounded"
+            className="px-3 py-1 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs rounded"
           >
             {busy ? "Saving…" : promote ? "Save & promote" : "Save"}
           </button>
@@ -593,18 +593,18 @@ function NewSectionForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className="mt-6 bg-white border border-dashed border-stone-300 rounded-md p-3 flex items-center gap-2"
+      className="mt-6 bg-ice-0 dark:bg-charcoal-2 border border-dashed border-rule dark:border-charcoal-1 rounded-md p-3 flex items-center gap-2"
     >
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder={`New section title (will be #${nextIndex + 1})…`}
-        className="flex-1 px-2 py-1.5 text-sm border border-stone-300 rounded focus:outline-none focus:ring-2 focus:ring-stone-400"
+        className="flex-1 px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
       />
       <button
         type="submit"
         disabled={busy || !title.trim()}
-        className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white text-sm rounded"
+        className="px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-sm rounded"
       >
         Add section
       </button>
@@ -631,11 +631,11 @@ function VoiceNoteCapture() {
   }
 
   return (
-    <div className="bg-white border border-stone-200 rounded-md p-3">
-      <p className="text-xs font-semibold text-stone-700 uppercase tracking-wide">
+    <div className="bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-md p-3">
+      <p className="text-xs font-semibold text-ink dark:text-bright uppercase tracking-wide">
         Quick voice note
       </p>
-      <p className="mt-1 text-xs text-stone-500">
+      <p className="mt-1 text-xs text-shadow-1 dark:text-moonlight">
         Paste a transcript (or use the browser dictation button on iOS /
         macOS) to add a voice note straight into the graph.
       </p>
@@ -644,13 +644,13 @@ function VoiceNoteCapture() {
         onChange={(e) => setTranscript(e.target.value)}
         rows={3}
         placeholder="Transcript…"
-        className="mt-2 w-full px-2 py-1.5 text-sm border border-stone-300 rounded focus:outline-none focus:ring-2 focus:ring-stone-400"
+        className="mt-2 w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
       />
       <div className="mt-2 flex items-center justify-between gap-2">
         <button
           onClick={handleIngest}
           disabled={state === "transcribing" || !transcript.trim()}
-          className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white text-xs rounded"
+          className="px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs rounded"
         >
           {state === "transcribing" ? "Ingesting…" : "Add voice note"}
         </button>

@@ -59,21 +59,21 @@ export default function OutcomesIndex() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Outcomes audit
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Cross-investigation grading history. Per master-spec
               §13.8: outcomes are first-class signals that feed the
               Phase 8 skill-growth gate — replay first, grade second.
             </p>
           </header>
 
-          <section className="border border-stone-200 rounded-md p-4">
-            <label className="text-[10px] font-mono uppercase text-stone-500 block mb-1">
+          <section className="border border-rule dark:border-charcoal-1 rounded-md p-4">
+            <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight block mb-1">
               Filter by observer
             </label>
             <input
@@ -81,22 +81,22 @@ export default function OutcomesIndex() {
               value={observerFilter}
               onChange={(e) => setObserverFilter(e.target.value)}
               placeholder="__operator__ — leave blank for all"
-              className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2"
+              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
             />
           </section>
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
           {!loading && rows.length === 0 && !error && (
-            <p className="text-sm text-stone-500 italic">
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
               No outcomes recorded yet for this filter. Grade a
               synthesis at /outcomes/&lt;synthesis_id&gt; to populate
               this view.
@@ -104,22 +104,22 @@ export default function OutcomesIndex() {
           )}
 
           {rows.length > 0 && (
-            <section className="border border-stone-200 rounded-md divide-y divide-stone-100">
+            <section className="border border-rule dark:border-charcoal-1 rounded-md divide-y divide-rule dark:divide-charcoal-1">
               {rows.map((r) => (
                 <Link
                   key={r.outcome_id}
                   to={`/outcomes/${encodeURIComponent(r.synthesis_id)}`}
-                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-stone-50 transition-colors"
+                  className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-mono text-stone-900 truncate">
+                    <p className="text-sm font-mono text-ink dark:text-bright truncate">
                       {r.synthesis_id}
                     </p>
-                    <p className="text-[11px] font-mono text-stone-500">
+                    <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
                       {r.observed_at} · {r.observer}
                     </p>
                   </div>
-                  <span className="text-[10px] uppercase tracking-wider font-mono text-stone-400 shrink-0">
+                  <span className="text-[10px] uppercase tracking-wider font-mono text-ink-mute dark:text-moonlight shrink-0">
                     {r.outcome_id.slice(0, 12)}
                   </span>
                 </Link>

@@ -40,11 +40,11 @@ export default function PricingPage() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
           <header className="space-y-3">
-            <h1 className="text-3xl font-serif text-stone-900">Pricing</h1>
-            <p className="text-base text-stone-700 leading-relaxed">
+            <h1 className="text-3xl font-serif text-ink dark:text-bright">Pricing</h1>
+            <p className="text-base text-ink dark:text-bright leading-relaxed">
               Antiek prices like OpenRouter. You set a token budget;
               we bill against actual usage with a transparent margin
               per tier. No flat subscription. No seat fees. No card
@@ -53,7 +53,7 @@ export default function PricingPage() {
           </header>
 
           <section className="space-y-4">
-            <h2 className="text-xl font-serif text-stone-900">The three tiers</h2>
+            <h2 className="text-xl font-serif text-ink dark:text-bright">The three tiers</h2>
             <TierCard
               title="Free public tier"
               caption="Up to 5M tokens / month on DeepSeek-Flash."
@@ -90,8 +90,8 @@ export default function PricingPage() {
           </section>
 
           <section className="space-y-4">
-            <h2 className="text-xl font-serif text-stone-900">Calculator</h2>
-            <p className="text-sm text-stone-700 leading-relaxed">
+            <h2 className="text-xl font-serif text-ink dark:text-bright">Calculator</h2>
+            <p className="text-sm text-ink dark:text-bright leading-relaxed">
               Estimate your monthly cost. Sliders are token volumes
               per month; the underlying model price tunes the raw
               cost. Margins apply per master-spec §13.5.
@@ -138,22 +138,22 @@ export default function PricingPage() {
               />
             </CalculatorRow>
 
-            <div className="border-t border-stone-200 pt-4 space-y-2">
+            <div className="border-t border-rule dark:border-charcoal-1 pt-4 space-y-2">
               <CostRow label="Private raw" value={rawPrivateUsd} />
               <CostRow label="Private 50% margin" value={privateMargin} />
               <CostRow label="Public above-cap raw" value={rawPublicAboveCapUsd} />
               <CostRow label="Public 10% margin" value={publicMargin} />
-              <div className="border-t border-stone-200 pt-2">
+              <div className="border-t border-rule dark:border-charcoal-1 pt-2">
                 <CostRow label="Estimated total / month" value={totalUsd} bold />
               </div>
             </div>
           </section>
 
-          <section className="space-y-3 border-t border-stone-200 pt-6">
-            <h2 className="text-lg font-serif text-stone-900">
+          <section className="space-y-3 border-t border-rule dark:border-charcoal-1 pt-6">
+            <h2 className="text-lg font-serif text-ink dark:text-bright">
               Becoming a creator
             </h2>
-            <p className="text-sm text-stone-700 leading-relaxed">
+            <p className="text-sm text-ink dark:text-bright leading-relaxed">
               Public notes you contribute become first-class IP. When
               another user's session attributes attention to your
               content, you earn 70% of the ad revenue from that
@@ -179,15 +179,15 @@ function TierCard({
   points: string[];
 }) {
   return (
-    <div className="border border-stone-200 rounded-md px-5 py-4 space-y-3">
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-5 py-4 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-base font-serif text-stone-900">{title}</h3>
-        <span className="text-xs font-mono text-stone-700 bg-stone-100 px-2 py-0.5 rounded">
+        <h3 className="text-base font-serif text-ink dark:text-bright">{title}</h3>
+        <span className="text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-0.5 rounded">
           {margin}
         </span>
       </div>
-      <p className="text-sm text-stone-600">{caption}</p>
-      <ul className="text-sm text-stone-700 space-y-1 list-disc pl-5">
+      <p className="text-sm text-ink-soft dark:text-starlight">{caption}</p>
+      <ul className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5">
         {points.map((p) => (
           <li key={p}>{p}</li>
         ))}
@@ -202,7 +202,7 @@ function CalculatorRow({
 }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <p className="text-xs font-mono text-stone-700">{label}</p>
+      <p className="text-xs font-mono text-ink dark:text-bright">{label}</p>
       {children}
     </div>
   );
@@ -216,7 +216,7 @@ function CostRow({
   return (
     <div
       className={`flex items-center justify-between text-sm ${
-        bold ? "font-semibold text-stone-900" : "text-stone-700"
+        bold ? "font-semibold text-ink dark:text-bright" : "text-ink dark:text-bright"
       }`}
     >
       <span>{label}</span>

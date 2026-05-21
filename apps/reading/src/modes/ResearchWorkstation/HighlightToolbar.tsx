@@ -76,18 +76,18 @@ export default function HighlightToolbar({
         transform: "translateX(-50%)",
         zIndex: 40,
       }}
-      className="bg-stone-900 text-white text-xs font-mono rounded-md shadow-lg flex items-center divide-x divide-stone-700"
+      className="bg-ink text-white text-xs font-mono rounded-md shadow-lg flex items-center divide-x divide-charcoal-2"
       onMouseDown={(e) => e.preventDefault()} /* don't blur selection */
     >
       <button
         onClick={() => onChaseThis(state.selectedText)}
-        className="px-3 py-1.5 hover:bg-stone-800 transition-colors rounded-l-md"
+        className="px-3 py-1.5 hover:bg-shadow-2 transition-colors rounded-l-md"
       >
         Chase this
       </button>
       <button
         disabled
-        className="px-3 py-1.5 text-stone-500 cursor-not-allowed rounded-r-md"
+        className="px-3 py-1.5 text-shadow-1 dark:text-moonlight cursor-not-allowed rounded-r-md"
         title="Coming Sprint 12: mark this as a confirmed insight, attaches metadata + pushes new questions to chase"
       >
         Mark golden

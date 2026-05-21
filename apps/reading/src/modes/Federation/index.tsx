@@ -112,13 +112,13 @@ export default function Federation() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Federation config
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Substrate-wide cross-graph federation policy (master-spec
               §13.9 Phase 3). Default is strict: no partners, opt-in
               and attribution required. Adding a partner here authorizes
@@ -129,7 +129,7 @@ export default function Federation() {
           </header>
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
@@ -142,18 +142,18 @@ export default function Federation() {
 
           {draft && (
             <>
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-stone-900">
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+                <h2 className="text-base font-serif text-ink dark:text-bright">
                   Allowed partner substrates
                 </h2>
-                <p className="text-xs text-stone-600">
+                <p className="text-xs text-ink-soft dark:text-starlight">
                   Each id must match{" "}
                   <code className="font-mono">[a-zA-Z0-9_-]+</code>{" "}
                   (path-safe). Server validates on PUT.
                 </p>
 
                 {draft.allowed_partner_substrates.length === 0 ? (
-                  <p className="text-sm italic text-stone-500">
+                  <p className="text-sm italic text-shadow-1 dark:text-moonlight">
                     No partners yet. Adding the first one transitions
                     the substrate out of strict-default mode.
                   </p>
@@ -162,15 +162,15 @@ export default function Federation() {
                     {draft.allowed_partner_substrates.map((p) => (
                       <li
                         key={p}
-                        className="flex items-center justify-between gap-2 py-1 border-b border-stone-100"
+                        className="flex items-center justify-between gap-2 py-1 border-b border-rule dark:border-charcoal-1"
                       >
-                        <code className="text-sm font-mono text-stone-700">
+                        <code className="text-sm font-mono text-ink dark:text-bright">
                           {p}
                         </code>
                         <button
                           type="button"
                           onClick={() => removePartner(p)}
-                          className="text-[10px] uppercase tracking-wider font-mono text-red-700 hover:bg-red-50 px-1.5 py-0.5 rounded"
+                          className="text-[10px] uppercase tracking-wider font-mono text-emperor hover:bg-red-50 px-1.5 py-0.5 rounded"
                         >
                           remove
                         </button>
@@ -191,24 +191,24 @@ export default function Federation() {
                       }
                     }}
                     placeholder="e.g. partner-research-coop"
-                    className="flex-1 text-sm font-mono text-stone-900 border border-stone-200 rounded p-2"
+                    className="flex-1 text-sm font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
                   />
                   <button
                     type="button"
                     onClick={addPartner}
                     disabled={!partnerInput.trim()}
-                    className="px-3 py-1.5 rounded-md bg-stone-900 text-white text-xs font-medium hover:bg-stone-800 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
                   >
                     Add
                   </button>
                 </div>
               </section>
 
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-stone-900">
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+                <h2 className="text-base font-serif text-ink dark:text-bright">
                   Cross-graph discipline
                 </h2>
-                <label className="flex items-start gap-3 text-sm text-stone-700">
+                <label className="flex items-start gap-3 text-sm text-ink dark:text-bright">
                   <input
                     type="checkbox"
                     checked={draft.require_opt_in_for_outbound_citations}
@@ -218,7 +218,7 @@ export default function Federation() {
                         require_opt_in_for_outbound_citations: e.target.checked,
                       })
                     }
-                    className="mt-0.5 accent-stone-900"
+                    className="mt-0.5 accent-ink dark:accent-bright"
                   />
                   <span>
                     <strong>Require opt-in for outbound citations.</strong>{" "}
@@ -227,7 +227,7 @@ export default function Federation() {
                     flip after explicit policy review.
                   </span>
                 </label>
-                <label className="flex items-start gap-3 text-sm text-stone-700">
+                <label className="flex items-start gap-3 text-sm text-ink dark:text-bright">
                   <input
                     type="checkbox"
                     checked={draft.require_attribution_for_outbound_citations}
@@ -238,7 +238,7 @@ export default function Federation() {
                           e.target.checked,
                       })
                     }
-                    className="mt-0.5 accent-stone-900"
+                    className="mt-0.5 accent-ink dark:accent-bright"
                   />
                   <span>
                     <strong>Require attribution for outbound citations.</strong>{" "}
@@ -250,7 +250,7 @@ export default function Federation() {
               </section>
 
               <section className="flex items-center justify-between">
-                <p className="text-xs font-mono text-stone-500">
+                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
                   {isDirty ? "unsaved changes" : "in sync with substrate"}
                 </p>
                 <div className="flex gap-2">
@@ -258,7 +258,7 @@ export default function Federation() {
                     type="button"
                     onClick={() => void reload()}
                     disabled={submitting}
-                    className="px-3 py-1.5 rounded-md border border-stone-300 text-stone-700 text-xs font-medium hover:bg-stone-50 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-md border border-rule dark:border-charcoal-1 text-ink dark:text-bright text-xs font-medium hover:bg-ice-1 dark:bg-charcoal-2 transition-colors disabled:opacity-50"
                   >
                     Discard
                   </button>
@@ -266,7 +266,7 @@ export default function Federation() {
                     type="button"
                     onClick={() => void save()}
                     disabled={submitting || !isDirty}
-                    className="px-3 py-1.5 rounded-md bg-stone-900 text-white text-xs font-medium hover:bg-stone-800 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
                   >
                     {submitting ? "Saving…" : "Save"}
                   </button>

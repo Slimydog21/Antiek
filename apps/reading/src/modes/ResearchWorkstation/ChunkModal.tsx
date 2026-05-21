@@ -63,20 +63,20 @@ export default function ChunkModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-stone-900/40 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col"
+        className="bg-ice-0 dark:bg-charcoal-2 rounded-lg shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
-          <div className="font-mono text-xs text-stone-500">
+        <div className="px-5 py-3 border-b border-rule dark:border-charcoal-1 flex items-center justify-between">
+          <div className="font-mono text-xs text-shadow-1 dark:text-moonlight">
             <code>{chunkId}</code>
           </div>
           <button
             onClick={onClose}
-            className="text-stone-400 hover:text-stone-900 transition-colors text-lg leading-none"
+            className="text-ink-mute dark:text-moonlight hover:text-ink dark:text-bright transition-colors text-lg leading-none"
             aria-label="Close"
           >
             ×
@@ -84,12 +84,12 @@ export default function ChunkModal({
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading && (
-            <div className="text-sm text-stone-400 italic font-serif">
+            <div className="text-sm text-ink-mute dark:text-moonlight italic font-serif">
               Loading chunk…
             </div>
           )}
           {error && (
-            <div className="text-sm font-mono text-red-700 bg-red-50 p-3 rounded">
+            <div className="text-sm font-mono text-emperor bg-red-50 p-3 rounded">
               {error}
             </div>
           )}
@@ -97,26 +97,26 @@ export default function ChunkModal({
             <>
               <div className="mb-3 flex items-center gap-2 flex-wrap text-xs">
                 {chunk.document_title && (
-                  <span className="font-mono text-stone-700">
+                  <span className="font-mono text-ink dark:text-bright">
                     {chunk.document_title}
                   </span>
                 )}
                 {chunk.section_path && (
-                  <span className="font-mono text-stone-500">
+                  <span className="font-mono text-shadow-1 dark:text-moonlight">
                     · {chunk.section_path}
                   </span>
                 )}
                 <TierChip tier={chunk.source_tier} />
               </div>
-              <p className="text-sm text-stone-900 font-serif leading-relaxed whitespace-pre-wrap">
+              <p className="text-sm text-ink dark:text-bright font-serif leading-relaxed whitespace-pre-wrap">
                 {chunk.text}
               </p>
             </>
           )}
         </div>
         {chunk && (
-          <div className="px-5 py-3 border-t border-stone-200 flex items-center justify-between">
-            <div className="text-[10px] font-mono text-stone-400">
+          <div className="px-5 py-3 border-t border-rule dark:border-charcoal-1 flex items-center justify-between">
+            <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
               {chunk.token_count} tokens
             </div>
             <OpenInDocumentButton chunk={chunk} />
@@ -134,8 +134,8 @@ function TierChip({ tier }: { tier: number }) {
       : tier === 2
         ? "bg-emerald-50 text-emerald-700"
         : tier === 3
-          ? "bg-amber-50 text-amber-700"
-          : "bg-stone-100 text-stone-600";
+          ? "bg-sun/10 text-sun-deep dark:text-sun"
+          : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
       className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
@@ -166,7 +166,7 @@ function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
   return (
     <a
       href={href}
-      className="text-xs font-mono text-stone-700 hover:text-stone-900 px-2 py-1 bg-stone-100 hover:bg-stone-200 rounded transition-colors"
+      className="text-xs font-mono text-ink dark:text-bright hover:text-ink dark:text-bright px-2 py-1 bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 rounded transition-colors"
     >
       {label} →
     </a>

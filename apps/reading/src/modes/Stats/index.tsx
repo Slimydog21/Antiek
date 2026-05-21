@@ -72,14 +72,14 @@ export default function Stats() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="flex items-baseline justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-serif text-stone-900">
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
                 Substrate stats
               </h1>
-              <p className="text-sm text-stone-600 leading-relaxed">
+              <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
                 Cardinality across every load-bearing table. Per
                 master-spec §13.7: this is the 'what does the
                 substrate look like right now' surface before grading
@@ -89,24 +89,24 @@ export default function Stats() {
             <button
               type="button"
               onClick={() => void reload()}
-              className="text-xs font-mono text-stone-700 border border-stone-300 px-2 py-1 rounded hover:bg-stone-50"
+              className="text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 px-2 py-1 rounded hover:bg-ice-1 dark:bg-charcoal-2"
             >
               Refresh
             </button>
           </header>
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
           {data && data.warnings.length > 0 && (
-            <section className="border border-amber-200 bg-amber-50 rounded-md p-4 space-y-1">
+            <section className="border border-amber-200 bg-sun/10 rounded-md p-4 space-y-1">
               <p className="text-xs font-mono uppercase text-amber-900">
                 Warnings
               </p>
@@ -122,21 +122,21 @@ export default function Stats() {
             TABLE_GROUPS.map((group) => (
               <section
                 key={group.title}
-                className="border border-stone-200 rounded-md p-4 space-y-3"
+                className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3"
               >
-                <h2 className="text-sm font-serif text-stone-900">
+                <h2 className="text-sm font-serif text-ink dark:text-bright">
                   {group.title}
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {group.tables.map((t) => (
                     <div
                       key={t}
-                      className="border border-stone-100 rounded-md px-3 py-2 text-center"
+                      className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2 text-center"
                     >
-                      <p className="text-2xl font-serif text-stone-900">
+                      <p className="text-2xl font-serif text-ink dark:text-bright">
                         {(data.counts[t] ?? 0).toLocaleString()}
                       </p>
-                      <p className="text-[10px] font-mono text-stone-500 uppercase">
+                      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
                         {t.replace(/_/g, " ")}
                       </p>
                     </div>

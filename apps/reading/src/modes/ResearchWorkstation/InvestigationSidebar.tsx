@@ -73,7 +73,7 @@ function TreeRow({
         {node.children.length > 0 ? (
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="text-stone-400 hover:text-stone-700 transition-colors w-3 text-center text-[10px] mt-1 shrink-0"
+            className="text-ink-mute dark:text-moonlight hover:text-ink dark:text-bright transition-colors w-3 text-center text-[10px] mt-1 shrink-0"
             aria-label={expanded ? "Collapse" : "Expand"}
           >
             {expanded ? "▾" : "▸"}

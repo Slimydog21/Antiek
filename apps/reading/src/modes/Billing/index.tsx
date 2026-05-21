@@ -74,13 +74,13 @@ export default function Billing() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-stone-900">
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
               Billing summary
             </h1>
-            <p className="text-sm text-stone-600 leading-relaxed">
+            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Per master-spec §13.5: pay-as-you-go pricing. Free-tier
               cap is {FREE_TIER_CAP.toLocaleString()} tokens/month on
               DeepSeek-Flash; paid-public margin is 10%; paid-private
@@ -88,62 +88,62 @@ export default function Billing() {
             </p>
           </header>
 
-          <section className="border border-stone-200 rounded-md p-4 grid grid-cols-2 gap-3">
+          <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] font-mono uppercase text-stone-500">
+              <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
                 User
               </label>
               <input
                 type="text"
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
-                className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2"
+                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] font-mono uppercase text-stone-500">
+              <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
                 Period (YYYY-MM)
               </label>
               <input
                 type="text"
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
-                className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2"
+                className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
               />
             </div>
           </section>
 
           {error && (
-            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {loading && (
-            <p className="text-sm text-stone-500 italic">Loading…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
           {data && (
             <>
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-stone-900">
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+                <h2 className="text-base font-serif text-ink dark:text-bright">
                   Free-tier usage
                 </h2>
-                <div className="h-3 bg-stone-100 rounded overflow-hidden">
+                <div className="h-3 bg-ice-3 dark:bg-charcoal-1 rounded overflow-hidden">
                   <div
                     className={`h-full transition-all ${
                       pctConsumed >= 90
-                        ? "bg-amber-500"
-                        : "bg-stone-700"
+                        ? "bg-sun/100"
+                        : "bg-shadow-2"
                     }`}
                     style={{ width: `${pctConsumed}%` }}
                   />
                 </div>
-                <p className="text-xs font-mono text-stone-600">
+                <p className="text-xs font-mono text-ink-soft dark:text-starlight">
                   {data.free_tokens_consumed.toLocaleString()} /{" "}
                   {FREE_TIER_CAP.toLocaleString()} tokens · {pctConsumed}%
                 </p>
-                <p className="text-[11px] font-mono text-stone-500">
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
                   remaining: {data.free_tokens_remaining.toLocaleString()}
                 </p>
               </section>
@@ -163,8 +163,8 @@ export default function Billing() {
                 />
               </section>
 
-              <section className="border border-stone-200 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-stone-900">
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
+                <h2 className="text-base font-serif text-ink dark:text-bright">
                   Totals
                 </h2>
                 <Row label="Total raw provider cost" value={data.total_raw_usd} />
@@ -174,7 +174,7 @@ export default function Billing() {
                   value={data.total_billable_usd}
                   emphasize
                 />
-                <p className="text-[11px] font-mono text-stone-500">
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
                   {data.record_count} usage records aggregated this period
                 </p>
               </section>
@@ -193,10 +193,10 @@ function CostCard({
   marginValue,
 }: { title: string; margin: string; raw: string; marginValue: string }) {
   return (
-    <div className="border border-stone-200 rounded-md p-4 space-y-2">
+    <div className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2">
       <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-serif text-stone-900">{title}</h3>
-        <span className="text-[10px] font-mono text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">{title}</h3>
+        <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
           {margin} margin
         </span>
       </div>
@@ -221,7 +221,7 @@ function Row({
     <div
       className={`flex items-center justify-between ${
         small ? "text-xs" : "text-sm"
-      } ${emphasize ? "font-semibold text-stone-900" : "text-stone-700"}`}
+      } ${emphasize ? "font-semibold text-ink dark:text-bright" : "text-ink dark:text-bright"}`}
     >
       <span>{label}</span>
       <span className="font-mono">{value}</span>

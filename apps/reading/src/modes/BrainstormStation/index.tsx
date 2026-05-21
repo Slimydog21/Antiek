@@ -77,14 +77,14 @@ export default function BrainstormStation() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar>
-        <span className="text-xs text-stone-500">
+        <span className="text-xs text-shadow-1 dark:text-moonlight">
           {loading
             ? "loading…"
             : `${parked.length} parked ${parked.length === 1 ? "question" : "questions"}`}
         </span>
       </HeaderBar>
       <div className="grid grid-cols-[340px_1fr_320px] flex-1 min-h-0">
-        <aside className="border-r border-stone-200 bg-stone-50 overflow-y-auto">
+        <aside className="border-r border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 overflow-y-auto">
           <WatchForLaterFolder
             questions={parked}
             loading={loading}
@@ -93,7 +93,7 @@ export default function BrainstormStation() {
             onSelect={setSelected}
           />
         </aside>
-        <main className="flex flex-col min-h-0 bg-white overflow-y-auto">
+        <main className="flex flex-col min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
           {selected ? (
             <ParkedQuestion
               question={selected}
@@ -104,7 +104,7 @@ export default function BrainstormStation() {
             <EmptyState parkedCount={parked.length} />
           )}
         </main>
-        <aside className="border-l border-stone-200 bg-stone-50 overflow-y-auto">
+        <aside className="border-l border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 overflow-y-auto">
           <ThoughtPartnerPlaceholder />
         </aside>
       </div>
@@ -116,23 +116,23 @@ function EmptyState({ parkedCount }: { parkedCount: number }) {
   return (
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="max-w-md text-center space-y-3">
-        <h2 className="text-lg font-serif text-stone-900">
+        <h2 className="text-lg font-serif text-ink dark:text-bright">
           The watch-for-later folder
         </h2>
-        <p className="text-sm text-stone-600 leading-relaxed">
+        <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
           Research is gated by curiosity, not by tooling. Curiosity
           surfaces in fragments throughout the day. This folder is
           where unsharpened questions live until you decide to chase
           them.
         </p>
         {parkedCount === 0 ? (
-          <p className="text-xs text-stone-500 italic">
+          <p className="text-xs text-shadow-1 dark:text-moonlight italic">
             No parked questions yet. As you wrestle with documents
             and run investigations, the substrate identifies open
             questions and parks them here.
           </p>
         ) : (
-          <p className="text-xs text-stone-500">
+          <p className="text-xs text-shadow-1 dark:text-moonlight">
             Select a question on the left to see its context and
             launch an investigation.
           </p>
@@ -145,17 +145,17 @@ function EmptyState({ parkedCount }: { parkedCount: number }) {
 function ThoughtPartnerPlaceholder() {
   return (
     <div className="p-4 space-y-3">
-      <h3 className="text-sm font-semibold text-stone-900">
+      <h3 className="text-sm font-semibold text-ink dark:text-bright">
         Thought partner
       </h3>
-      <p className="text-xs text-stone-500 leading-relaxed">
+      <p className="text-xs text-shadow-1 dark:text-moonlight leading-relaxed">
         Talk to your notes. Slot insights like Legos. Challenge them.
       </p>
-      <div className="border border-dashed border-stone-300 rounded-md p-4 text-xs text-stone-400 italic">
+      <div className="border border-dashed border-rule dark:border-charcoal-1 rounded-md p-4 text-xs text-ink-mute dark:text-moonlight italic">
         Sprint 18 — the `thought_partner` role and Lego-block
         insight slotting from your private graph ship here.
       </div>
-      <div className="border border-dashed border-stone-300 rounded-md p-4 text-xs text-stone-400 italic">
+      <div className="border border-dashed border-rule dark:border-charcoal-1 rounded-md p-4 text-xs text-ink-mute dark:text-moonlight italic">
         Sprint 18 — voice-note input: talk through a thought, the
         system transcribes, extracts insights + open questions,
         parks the questions in this folder by default.
