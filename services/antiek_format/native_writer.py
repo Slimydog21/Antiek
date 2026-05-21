@@ -83,8 +83,11 @@ ENTRY_SIGNATURE: str = "signature.bin"
 BLOCKS_PREFIX: str = "blocks/"
 
 # Closed set of content classes. Mirrors manifest.schema.json.
+# ``pdf_sidecar`` (SPR-10) shares the zip envelope + signing scheme
+# but writes user data into highlights.jsonl + anchors.jsonl rather
+# than the TipTap body — see SPEC.md §11.
 CONTENT_CLASSES: frozenset[str] = frozenset(
-    {"notebook", "theme_notebook", "deliverable"}
+    {"notebook", "theme_notebook", "deliverable", "pdf_sidecar"}
 )
 
 # Fixed zip-entry timestamp. 1980-01-01 is zip's minimum representable
