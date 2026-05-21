@@ -12,6 +12,7 @@ import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
+import LibraryGrid from "./modes/Library/LibraryGrid";
 import InterviewMode from "./modes/Interview";
 import InterviewIndex from "./modes/InterviewIndex";
 import InvestigationsIndex from "./modes/InvestigationsIndex";
@@ -85,6 +86,7 @@ function AuthenticatedRoutes() {
         <Route path="/notebooks" element={<NotebooksIndex />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
+        <Route path="/library" element={<LibraryGrid />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/map" element={<Map />} />
