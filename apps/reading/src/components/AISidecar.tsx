@@ -250,12 +250,10 @@ export default function AISidecar() {
     }
   }, [open, promptId, rejectReply]);
 
-  // Hook for visible accept controls (used by the existing reply
-  // surface — keeping the JSX patch tiny so the accept call lands
-  // when the operator dismisses the SYNTHESIS reply via the OK button
-  // if it exists; otherwise the sidecar-closed path covers the funnel).
-  void acceptReply;
-  void rejectReply;
+  // acceptReply / rejectReply are now bound to explicit Useful /
+  // Not-useful buttons rendered alongside the reply (see JSX below).
+  // The sidecar-closed path still covers the soft-reject case when
+  // the operator dismisses without clicking either.
 
   const freePct = usage
     ? Math.min(
@@ -334,6 +332,35 @@ export default function AISidecar() {
                 <p className="text-xs text-stone-800 whitespace-pre-wrap">
                   {reply.text}
                 </p>
+                {/* Taxonomy v2 — explicit accept/reject affordance.
+                    Accept fires ai_response_accepted; reject fires the
+                    explicit-reject variant. Closing the sidecar without
+                    clicking either still emits the soft reject
+                    (sidecar_closed) per the existing dismissal effect. */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      acceptReply("explicit");
+                      setReply(null);
+                    }}
+                    className="text-[10px] font-mono px-2 py-0.5 border border-stone-300 rounded hover:bg-stone-100"
+                    data-testid="ai-response-accept"
+                  >
+                    Useful
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      rejectReply("explicit");
+                      setReply(null);
+                    }}
+                    className="text-[10px] font-mono px-2 py-0.5 border border-stone-300 rounded hover:bg-stone-100"
+                    data-testid="ai-response-reject"
+                  >
+                    Not useful
+                  </button>
+                </div>
               </div>
             )}
           </section>

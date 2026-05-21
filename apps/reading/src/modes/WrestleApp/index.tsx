@@ -9,6 +9,7 @@ import { postTypedEvent } from "../../lib/api";
 import { sha256Hex } from "../../lib/hash";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
+import { useWorkspace as useWorkspaceStore } from "../../workspace/WorkspaceStore";
 import { recordLastOpenedDocument } from "../../settings/userSettings";
 import {
   useUserSettings,
@@ -19,6 +20,7 @@ import {
 } from "../../lib/behaviorEvents";
 import ReadingModeToggle from "./ReadingModeToggle";
 import ShareWithAnnotations from "./ShareWithAnnotations";
+import AiCommandPalette from "./AiCommandPalette";
 
 /**
  * Mode B — Document Wrestler (S6 redesign).
@@ -96,24 +98,10 @@ export default function WrestleApp() {
     }
   }, [readingMode, updateSettings]);
 
-  // Cmd+R keyboard shortcut (capture-phase so the global CommandPalette's
-  // bubbling-phase Cmd+K handler isn't disturbed). Cmd+R would normally
-  // reload the page; we intercept within WrestleApp.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isMod = e.metaKey || e.ctrlKey;
-      if (!isMod) return;
-      if (e.key.toLowerCase() === "r") {
-        e.preventDefault();
-        e.stopPropagation();
-        onToggleReadingMode();
-      }
-    };
-    window.addEventListener("keydown", handler, { capture: true });
-    return () => {
-      window.removeEventListener("keydown", handler, { capture: true });
-    };
-  }, [onToggleReadingMode]);
+  // SPR-04 Cmd+K AI command palette state.
+  const [aiPaletteOpen, setAiPaletteOpen] = useState(false);
+  const [aiContext, setAiContext] = useState<string | undefined>(undefined);
+  const closeAiPalette = useCallback(() => setAiPaletteOpen(false), []);
 
   const [investigationId] = useState<string>(() => {
     const stored = window.sessionStorage.getItem("antiek.investigation_id");
@@ -128,6 +116,75 @@ export default function WrestleApp() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const { events, status, reconnects } = useEventStream(investigationId);
+
+  // Keyboard shortcuts (capture-phase so the global CommandPalette's
+  // bubbling-phase Cmd+K handler isn't disturbed). SPR-04 binds Cmd+R
+  // (reading mode toggle) + Cmd+K (AI palette); SPR-07 binds Cmd+Shift+J
+  // (CrossDocSidebar slide-out, since SPR-07 M5 removed it from default
+  // panel starters).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+      const key = e.key.toLowerCase();
+      if (key === "r" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggleReadingMode();
+      } else if (key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const sel = window.getSelection?.()?.toString().trim() ?? "";
+        setAiContext(sel.length > 0 ? sel : undefined);
+        setAiPaletteOpen((v) => !v);
+      } else if (key === "j" && e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        const store = useWorkspaceStore.getState();
+        const id = `wrestle:crossdocs:${investigationId}`;
+        if (store.panels[id]) {
+          store.close(id);
+        } else {
+          store.open("CrossDocs", { events }, {
+            mode: "docked-right",
+            title: "Cross-doc",
+            id,
+          });
+        }
+      }
+    };
+    window.addEventListener("keydown", handler, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", handler, { capture: true });
+    };
+  }, [onToggleReadingMode, investigationId, events]);
+
+  // SPR-04 M3 — close/open Notes panel on reading-mode flip. PanelHost
+  // captures starters on mount only; mid-session flips have to operate
+  // imperatively against the workspace store. Reader mode closes Notes
+  // (it's not a starter in reader mode anyway, but on a flip from
+  // researcher→reader we need to close the already-open panel).
+  useEffect(() => {
+    if (!documentId) return;
+    const store = useWorkspaceStore.getState();
+    const notesId = `wrestle:notes:${investigationId}`;
+    const isOpen = !!store.panels[notesId];
+    if (readingMode === "reader" && isOpen) {
+      store.close(notesId);
+    } else if (readingMode === "researcher" && !isOpen) {
+      store.open("Notes", {
+        events,
+        status,
+        reconnects,
+        investigationId,
+        documentId,
+      }, {
+        mode: "docked-left",
+        title: "Notes · trajectory",
+        id: notesId,
+      });
+    }
+  }, [readingMode, documentId, investigationId, events, status, reconnects]);
 
   const onFileSelected = useCallback(
     async (file: File) => {
@@ -184,7 +241,18 @@ export default function WrestleApp() {
 
   // Side panels start only when a document is loaded. Until then the
   // PanelHost shows just the upload-prompting EmptyState in the main slot.
-  const starters: StarterPanel[] = documentId
+  //
+  // SPR-07 M5: CrossDocSidebar is intentionally NOT in default starters
+  // — the gutter pills (rendered in-PdfViewer) are the primary cross-doc
+  // surface now. CrossDocs is reachable via Cmd+Shift+J (bound below).
+  //
+  // SPR-04 M3: in 'reader' mode, even the Notes panel is closed to give
+  // the cozy reader an undistracted view. The toggle effect below
+  // imperatively closes/opens panels when readingMode flips.
+  const notesPanelId = `wrestle:notes:${investigationId}`;
+  // crossdocsPanelId is generated inside the Cmd+Shift+J handler
+  // (above) where it's actually used; no module-level binding needed.
+  const starters: StarterPanel[] = documentId && readingMode === "researcher"
     ? ([
         {
           kind: "Notes",
@@ -197,14 +265,7 @@ export default function WrestleApp() {
             documentId,
           },
           title: "Notes · trajectory",
-          id: `wrestle:notes:${investigationId}`,
-        },
-        {
-          kind: "CrossDocs",
-          mode: "docked-right",
-          props: { events },
-          title: "Cross-doc",
-          id: `wrestle:crossdocs:${investigationId}`,
+          id: notesPanelId,
         },
       ] as StarterPanel[])
     : [];
@@ -230,6 +291,15 @@ export default function WrestleApp() {
               userId={investigationId}
             />
           </div>
+          {/* SPR-04 M4 — Cmd+K AI command palette overlay. Modal +
+              dismissable; response renders inside, never in a side
+              panel. */}
+          <AiCommandPalette
+            open={aiPaletteOpen}
+            onClose={closeAiPalette}
+            initialContext={aiContext}
+            investigationId={investigationId}
+          />
           <PdfViewer
             pdfBytes={pdfBytes}
             investigationId={investigationId}

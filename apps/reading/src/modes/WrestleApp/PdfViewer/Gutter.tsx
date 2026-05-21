@@ -230,6 +230,13 @@ export default function Gutter({ highlights, fetchLinks }: GutterProps) {
       const elapsedSec = slot
         ? (Date.now() - slot.surfacedAt) / 1000
         : null;
+      // Source document for the cite_jump emit. The Gutter is keyed on
+      // a per-highlight basis; every highlight references the document
+      // it was created on, so we can pull source_document_id off the
+      // active highlight rather than threading a prop.
+      const sourceDocId =
+        highlights.find((h) => h.highlightId === highlightId)?.documentId ?? null;
+
       emitBehaviorEvent({
         eventType: BehaviorEventType.CROSS_DOC_LINK_CLICKED,
         state: {
@@ -243,16 +250,41 @@ export default function Gutter({ highlights, fetchLinks }: GutterProps) {
           target_chunk_id: link.chunk_id,
         },
       });
-      // Cite-jump: route through the existing /wrestle/<id>?page=
-      // pattern, extended with ?chunk= per M4. The receiving
-      // WrestleApp reads both params on mount.
+
+      // cite_jump — taxonomy v2 emit. The Gutter is one of the natural
+      // call sites with full source/target document context, so the
+      // schema's required (document_id, target_document_id, direction)
+      // fields are all available here. Swallow on failure per SPR-01
+      // rigor.
+      if (sourceDocId) {
+        try {
+          emitBehaviorEvent({
+            eventType: BehaviorEventType.CITE_JUMP,
+            state: {
+              document_id: sourceDocId,
+              reading_mode: "wrestle",
+            },
+            action: {
+              target_document_id: link.document_id,
+              target_chunk_id: link.chunk_id,
+              direction: "forward",
+            },
+          });
+        } catch {
+          // non-fatal
+        }
+      }
+
+      // Cite-jump navigation: route through the existing /wrestle/<id>?page=
+      // pattern, extended with ?chunk= per M4. The receiving WrestleApp
+      // reads both params on mount.
       const params = new URLSearchParams({
         page: String(link.page),
         chunk: link.chunk_id,
       });
       window.location.href = `/wrestle/${link.document_id}?${params.toString()}`;
     },
-    [],
+    [highlights],
   );
 
   // useMemo-able snapshot for render — derived from highlights +
