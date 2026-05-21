@@ -5,6 +5,7 @@ import type { RefObject } from "react";
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
 import { useWorkspace } from "./WorkspaceStore";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 
 /**
  * Hook: subscribe to a panel's actual rendered size, debounced so it
@@ -66,6 +67,7 @@ export function PanelLayoutPanel({ id }: Props) {
   const panel = useWorkspace((s) => s.panels[id]);
   const isFocused = useWorkspace((s) => s.focusedPanelId === id);
   const bringToFront = useWorkspace((s) => s.bringToFront);
+  const reduceMotion = usePrefersReducedMotion();
 
   const onMouseDownRaise = useCallback(() => {
     if (panel && panel.mode === "floating") bringToFront(id);
@@ -74,7 +76,7 @@ export function PanelLayoutPanel({ id }: Props) {
   if (!panel) return null;
   const Renderer = PanelRegistry[panel.kind];
 
-  // popout — S3 stub: rendering is owned by the popout window (S9).
+  // popout — rendering is owned by the popout window (S9).
   if (panel.mode === "popout") return null;
 
   // floating
@@ -82,10 +84,14 @@ export function PanelLayoutPanel({ id }: Props) {
     return (
       <motion.div
         layout={false}
-        initial={{ scale: 0.96, opacity: 0 }}
+        initial={reduceMotion ? false : { scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        exit={reduceMotion ? undefined : { scale: 0.96, opacity: 0 }}
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { type: "spring", stiffness: 320, damping: 28 }
+        }
         style={{
           position: "absolute",
           top: panel.rect.y,
@@ -99,7 +105,7 @@ export function PanelLayoutPanel({ id }: Props) {
           "border-edge border-sun rounded-hog " +
           "flex flex-col overflow-hidden " +
           (isFocused
-            ? "shadow-z3 dark:shadow-z3-night"
+            ? "shadow-z3 dark:shadow-z3-night outline outline-2 outline-offset-[3px] outline-ink dark:outline-bright"
             : "shadow-z2 dark:shadow-z2-night opacity-95")
         }
         onMouseDownCapture={onMouseDownRaise}

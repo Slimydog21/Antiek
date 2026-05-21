@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 
 import { PanelLayoutPanel } from "./PanelLayoutPanel";
 import { useWorkspace } from "./WorkspaceStore";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import { useViewportTier } from "./useViewportTier";
 
 /**
  * PanelLayout — the orchestrator.
@@ -39,6 +41,27 @@ export function PanelLayout({ mainSlot }: Props) {
   const floatingIds = useWorkspace((s) => s.floatingIds);
   const dockBottomHeight = useWorkspace((s) => s.dockBottomHeight);
   const setDockBottomHeight = useWorkspace((s) => s.setDockBottomHeight);
+  const reduceMotion = usePrefersReducedMotion();
+  const tier = useViewportTier();
+
+  // S11 — at tier "lg" the two side docks can't both be visible; if both
+  // have panels we collapse the right one (operator can flip via kebab).
+  // At tier "md" docks disappear entirely — the panels would still render
+  // but the dock widths drop to 0 so they collapse out of view.
+  const dockSide = (side: "left" | "right", count: number): number => {
+    if (count === 0) return 0;
+    if (tier === "sm" || tier === "md") return 0;
+    if (tier === "lg") {
+      if (side === "right" && dockLeftIds.length > 0 && dockRightIds.length > 0) {
+        return 0;
+      }
+    }
+    return DOCK_WIDTH;
+  };
+
+  const dockTransition = reduceMotion
+    ? "transition-none"
+    : "transition-[width] duration-150 ease-out";
 
   // Pointer-event-based vertical resize of the bottom dock.
   const startRef = useRef<{ y: number; h: number } | null>(null);
@@ -65,8 +88,8 @@ export function PanelLayout({ mainSlot }: Props) {
     <div className="relative h-full w-full flex bg-ice-2 dark:bg-space-2 overflow-hidden">
       {/* LEFT DOCK */}
       <aside
-        className="flex flex-col shrink-0 border-r-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 transition-[width] duration-150 ease-out"
-        style={{ width: dockLeftIds.length ? DOCK_WIDTH : 0 }}
+        className={`flex flex-col shrink-0 border-r-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
+        style={{ width: dockSide("left", dockLeftIds.length) }}
         aria-label="Left dock"
       >
         {dockLeftIds.map((id) => (
@@ -119,8 +142,8 @@ export function PanelLayout({ mainSlot }: Props) {
 
       {/* RIGHT DOCK */}
       <aside
-        className="flex flex-col shrink-0 border-l-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 transition-[width] duration-150 ease-out"
-        style={{ width: dockRightIds.length ? DOCK_WIDTH : 0 }}
+        className={`flex flex-col shrink-0 border-l-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}
+        style={{ width: dockSide("right", dockRightIds.length) }}
         aria-label="Right dock"
       >
         {dockRightIds.map((id) => (

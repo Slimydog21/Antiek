@@ -20,6 +20,8 @@ const config: StorybookConfig = {
   addons: [
     "@storybook/addon-links",
     "@storybook/addon-essentials",
+    // S11 — axe-core a11y violation reporter, one panel per story.
+    "@storybook/addon-a11y",
   ],
   framework: {
     name: "@storybook/react-vite",
