@@ -78,6 +78,18 @@ export default function PanelWindowApp() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [panelId, descriptor]);
 
+  // S9 acceptance polish — popout's OS title bar reads
+  // "antiek · popout · <panel.title>" so the operator can identify
+  // the popped-out panel from the OS window switcher.
+  useEffect(() => {
+    if (!descriptor) return;
+    const prev = document.title;
+    document.title = `antiek · popout · ${descriptor.title}`;
+    return () => {
+      document.title = prev;
+    };
+  }, [descriptor]);
+
   if (error) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-ink dark:text-bright p-8">

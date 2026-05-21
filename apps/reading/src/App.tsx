@@ -28,6 +28,7 @@ import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import Replay from "./modes/Replay";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
+import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
 import SkillRules from "./modes/SkillRules";
 import Sources from "./modes/Sources";
@@ -93,6 +94,7 @@ function AuthenticatedRoutes() {
         <Route path="/backtest/:synthesisId" element={<Backtest />} />
         <Route path="/privacy" element={<PrivacyDashboard />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/operator" element={<OperatorDashboard />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />

@@ -14,8 +14,28 @@
   line-height: 1;
   user-select: text;
 }
+/* Brand spec § 8 — the operator's highlighter uses `--sun` at the
+ * day/night opacity rather than the pre-redesign blue. Day uses
+ * 0.45 alpha; the night-mode token automatically swaps via the
+ * media query in design/tokens.css. */
 .pdf-text-layer ::selection {
-  background: rgba(59, 130, 246, 0.35);  /* tailwind blue-500 alpha */
+  background: var(--sun-hl-day);
+}
+@media (prefers-color-scheme: dark) {
+  .pdf-text-layer ::selection {
+    background: var(--sun-hl-night);
+  }
+}
+/* Also apply to prose surfaces: MasterMdViewer, notebook editor. */
+.tiptap ::selection,
+article ::selection {
+  background: var(--sun-hl-day);
+}
+@media (prefers-color-scheme: dark) {
+  .tiptap ::selection,
+  article ::selection {
+    background: var(--sun-hl-night);
+  }
 }
 .pdf-text-layer span {
   position: absolute;

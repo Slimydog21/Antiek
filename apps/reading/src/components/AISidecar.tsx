@@ -44,7 +44,11 @@ interface ThoughtPartnerReply {
 }
 
 export default function AISidecar() {
-  const [open, setOpen] = useState(false);
+  // S8 refactor: when AISidecar is mounted as a PanelKind, the
+  // workspace mounts/unmounts it directly — being mounted IS "open".
+  // The legacy toggle paths (⌘J shortcut + custom event) now route
+  // through workspace.open / workspace.close via the shortcut module
+  // rather than flipping a local boolean. So no `open` state here.
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [recentCalls, setRecentCalls] = useState<DispatchEvent[]>([]);
   const [draft, setDraft] = useState<string>("");
@@ -98,46 +102,30 @@ export default function AISidecar() {
     }
   }, [period]);
 
+  // S8 refactor: ⌘J as a legacy shortcut now closes the panel (since
+  // mounting === open, "toggling" while mounted means closing). The
+  // workspace store handles open via the shortcut module's ⌘/ binding.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const toggle =
-        (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j";
-      if (toggle) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
         e.preventDefault();
-        setOpen((v) => !v);
+        // Defer to shortcuts.ts via the custom-event channel; the
+        // shortcut module knows the panel id + routes through workspace.
+        window.dispatchEvent(new CustomEvent("antiek:aisidecar:toggle"));
         return;
       }
-      if (e.key === "Escape" && open) {
-        e.preventDefault();
-        setOpen(false);
-      }
     };
-    // S8: the workspace shortcuts module dispatches this when ⌘/ fires.
-    // Until AISidecar is refactored into a real panel kind, we listen
-    // for the event here and flip our own state.
-    const onExternalToggle = () => setOpen((v) => !v);
     window.addEventListener("keydown", handler);
-    window.addEventListener(
-      "antiek:aisidecar:toggle" as keyof WindowEventMap,
-      onExternalToggle as EventListener,
-    );
-    return () => {
-      window.removeEventListener("keydown", handler);
-      window.removeEventListener(
-        "antiek:aisidecar:toggle" as keyof WindowEventMap,
-        onExternalToggle as EventListener,
-      );
-    };
-  }, [open]);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
+  // Mount-load: fetch usage + dispatch context immediately + focus the
+  // textarea. Refresh on each mount (the panel system unmounts + remounts
+  // when the operator closes + reopens, so this is fresh-on-open).
   useEffect(() => {
-    if (open) {
-      void reloadContext();
-      setTimeout(() => inputRef.current?.focus(), 0);
-    } else {
-      setReply(null);
-    }
-  }, [open, reloadContext]);
+    void reloadContext();
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }, [reloadContext]);
 
   const sendThoughtPartner = async () => {
     if (!draft.trim() || pending) return;
@@ -199,7 +187,6 @@ export default function AISidecar() {
       aria-label="AI sidecar"
     >
       <div className="px-3 py-3 flex flex-col h-full gap-4 overflow-y-auto">
-        <div className="hidden">{open ? "" : ""}{/* placeholder so the existing useEffect deps remain satisfied */}</div>
           <header className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">AI sidecar</p>
             <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">

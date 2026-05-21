@@ -137,6 +137,25 @@ export default function ClaimCard({
         >
           add to notebook
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            // S6 WP-6.3 acceptance — "Clicking a claim chip opens it
+            // as a floating panel near the cursor. Two claims can be
+            // inspected at once — the operator drags one aside."
+            import("../workspace/actions").then(({ openClaimInspector }) => {
+              openClaimInspector({
+                claimId: claim.claim_id,
+                investigationId,
+                documentId,
+              });
+            });
+          }}
+          className="text-[11px] px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
+          title="Open as floating inspector panel"
+        >
+          inspect
+        </button>
         {error && (
           <span className="text-[10px] font-mono text-emperor">{error}</span>
         )}
