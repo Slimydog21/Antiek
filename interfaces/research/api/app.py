@@ -785,21 +785,27 @@ def create_app(
             allow_headers=["*"],
         )
 
-    # ── H4 + H4.5: operator auth middleware ──
-    # TWO complementary auth paths, both opt-in via env vars:
+    # ── H4 + H4.5 + H6: operator auth middleware ──
+    # FOUR complementary auth paths, all opt-in via env vars:
     #
-    # (1) Cloudflare Access (browser users) — when
-    #     ANTIEK_OPERATOR_EMAIL is set, requests carrying a
-    #     ``Cf-Access-Authenticated-User-Email`` header that matches
-    #     the env value pass. Cloudflare Access injects this header
-    #     on requests originating from the operator's authenticated
-    #     browser session.
+    # (1) Antiek-issued session cookie (PostHog-style owned auth) —
+    #     ANTIEK_SESSION cookie minted at /auth/callback after a
+    #     magic-link click. Replaces Cloudflare Access at the auth
+    #     layer; CF Tunnel still handles TLS + DNS.
     #
-    # (2) Bearer token (machine callers) — when
+    # (2) Cloudflare Access (browser users, legacy/cutover path) —
+    #     ANTIEK_OPERATOR_EMAIL set; CF injects
+    #     ``Cf-Access-Authenticated-User-Email``. Kept active during
+    #     the cutover window; retired per the magic-link runbook.
+    #
+    # (3) Cloudflare Access service token (machine via CF) —
+    #     CF-Access-Client-Id matches env.
+    #
+    # (4) Bearer token (machine callers) — when
     #     ANTIEK_OPERATOR_TOKEN is set, requests carrying
     #     ``Authorization: Bearer <token>`` matching the env pass.
-    #     This is for probes (smoke runs, health checks), ops
-    #     scripts, and any non-browser client.
+    #     For probes (smoke runs, health checks), ops scripts, any
+    #     non-browser client.
     #
     # When BOTH env vars are unset, enforcement is bypassed and the
     # API is open (existing tests + local dev unchanged). When one
@@ -830,12 +836,21 @@ def create_app(
     #     can't be spoofed by header injection.
     # Until (a) lands, treat this as defense-in-depth, not the
     # sole gate.
-    _OPERATOR_AUTH_OPEN_PATHS: set[str] = {"/health"}
+    # Paths the auth middleware never blocks. /health is the
+    # ops probe; /auth/request + /auth/callback are the magic-link
+    # endpoints that MUST be reachable by a logged-out browser
+    # (otherwise the user can never log in to log in).
+    _OPERATOR_AUTH_OPEN_PATHS: set[str] = {
+        "/health",
+        "/auth/request",
+        "/auth/callback",
+    }
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
     _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV = "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID"
     _CF_ACCESS_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
     _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
+    _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
     @app.middleware("http")
     async def _operator_auth_middleware(request, call_next):
@@ -867,14 +882,38 @@ def create_app(
         # request.state. (Endpoint-side calls back into operator_claims()
         # are still safe; they fall through to the static operator
         # identity when state is absent.)
-        def _attach_operator(req, *, method: str):
+        def _attach_operator(req, *, method: str, email: str | None = None):
             from substrate.multi_user.auth import operator_claims as _oc
             claims = _oc()
             req.state.user_id = claims.user_id
             req.state.scopes = frozenset(claims.scopes)
             req.state.auth_method = method
+            req.state.user_email = email
 
-        # Path 1: Cloudflare Access — browser SSO (email header)
+        # Path 1: Antiek-issued session cookie (magic-link login).
+        # PostHog-style owned-auth path. Checked BEFORE Cloudflare
+        # Access so a cookie-bearing request always takes our path.
+        # Allowlist enforcement against the expected email blocks
+        # stale cookies after an allowlist change.
+        if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
+            session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
+            if session_value:
+                try:
+                    from substrate.auth import verify_session_cookie
+                    claims = verify_session_cookie(session_value)
+                except Exception:  # noqa: BLE001 — invalid cookie falls through
+                    claims = None
+                if claims is not None:
+                    expected = expected_email.strip().lower()
+                    if not expected or claims.email.lower() == expected:
+                        _attach_operator(
+                            request,
+                            method="antiek_session_cookie",
+                            email=claims.email,
+                        )
+                        return await call_next(request)
+
+        # Path 2: Cloudflare Access — browser SSO (email header)
         if expected_email:
             cf_email = request.headers.get(
                 _CF_ACCESS_EMAIL_HEADER, "",
@@ -883,7 +922,7 @@ def create_app(
                 _attach_operator(request, method="cloudflare_access_email")
                 return await call_next(request)
 
-        # Path 2: Cloudflare Access — Service Token (machine callers)
+        # Path 3: Cloudflare Access — Service Token (machine callers)
         # Cloudflare validates the CF-Access-Client-Id +
         # CF-Access-Client-Secret pair at the edge before forwarding;
         # the substrate trusts the Client Id's arrival as
@@ -905,7 +944,7 @@ def create_app(
                 _attach_operator(request, method="cloudflare_service_token")
                 return await call_next(request)
 
-        # Path 3: Bearer token (legacy + backstop for direct-to-origin
+        # Path 4: Bearer token (legacy + backstop for direct-to-origin
         # callers that aren't going through Cloudflare Access)
         if expected_token:
             auth = request.headers.get("Authorization", "")
@@ -922,16 +961,22 @@ def create_app(
             content={
                 "error": {
                     "message": (
-                        "Authentication required. One of: Cloudflare "
-                        "Access browser session (Cf-Access-Authenticated-"
-                        "User-Email), Cloudflare Access service token "
-                        "(Cf-Access-Client-Id + Cf-Access-Client-Secret), "
-                        "or Authorization: Bearer <operator-token>."
+                        "Authentication required. One of: Antiek session "
+                        "cookie (sign in via /login), Cloudflare Access "
+                        "browser session, Cloudflare Access service "
+                        "token, or Authorization: Bearer <operator-token>."
                     ),
                     "code": "operator_auth_required",
                 }
             },
         )
+
+    # ── Magic-link auth routes (PostHog-style owned login surface) ──
+    # Mounted unconditionally so /auth/request + /auth/callback are
+    # reachable; the routes themselves no-op when the operator email
+    # allowlist is empty, so this is safe on local dev too.
+    from .auth import register_auth_routes
+    register_auth_routes(app)
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
     # Expose for tests and admin endpoints.

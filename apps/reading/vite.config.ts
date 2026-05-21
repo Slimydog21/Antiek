@@ -19,6 +19,10 @@ export default defineConfig({
       "/health": "http://localhost:8000",
       "/events": "http://localhost:8000",
       "/trajectory": "http://localhost:8000",
+      // Magic-link auth (H6): both /auth/request/me and the
+      // /auth/callback redirect need to be same-origin with the
+      // page or the browser drops Set-Cookie.
+      "/auth": "http://localhost:8000",
       "/ws": {
         target: "ws://localhost:8000",
         ws: true,

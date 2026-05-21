@@ -1,7 +1,9 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import type { ReactNode } from "react";
 
 import AISidecar from "./components/AISidecar";
 import CommandPalette from "./components/CommandPalette";
+import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
 import BrainstormStation from "./modes/BrainstormStation";
@@ -12,6 +14,7 @@ import Federation from "./modes/Federation";
 import InterviewMode from "./modes/Interview";
 import InterviewIndex from "./modes/InterviewIndex";
 import InvestigationsIndex from "./modes/InvestigationsIndex";
+import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
 import Notebook from "./modes/Notebook";
@@ -34,60 +37,93 @@ import WrestleApp from "./modes/WrestleApp";
 /**
  * Top-level route registry.
  *
- * `/`             → Mode A (Research Workstation — chat-first research)
- * `/inv/:id`      → Mode A scoped to a specific investigation
- * `/wrestle`      → Mode B (Document Wrestler — existing PDF surface)
- * `/wrestle/:id`  → Mode B scoped to a specific document, optionally
- *                   with ?page=N for cross-mode deep-link from Mode A's
- *                   chunk-citation modal
- * `/sources`      → Sources tab (acquisition adapters)
- * `/create`       → Mode C (Creation Workstation — Lego-block writing)
- * `/brainstorm`   → Mode E (Brainstorming Workstation — watch-for-later
- *                   folder + thought-partner; operator's stated preferred
- *                   product direction, master-spec §4.5)
+ * `/login`        → Antiek's owned login page (master-spec §13.8 +
+ *                   the 2026-05-21 PostHog-style auth decision)
+ * `/trust`        → public Trust Center (also reachable when logged out)
+ * Everything else → wrapped by RequireAuth; redirects to /login when
+ *                   /auth/me returns 401.
  *
  * The actual layout + state lives inside each mode's component. This
- * file is route mapping only.
+ * file is route mapping + auth gating only.
  */
-export default function App() {
+
+/** Auth gate. Children render only when authenticated; otherwise we
+ * redirect to /login with the original path preserved in ?next= so the
+ * post-callback redirect lands the user where they tried to go. */
+function RequireAuth({ children }: { children: ReactNode }) {
+  const { state } = useAuth();
+  const location = useLocation();
+  if (state.status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-ice-2 dark:bg-space-2 text-shadow-1 dark:text-moonlight text-[12px] tracking-[0.18em] uppercase font-sans">
+        Loading…
+      </div>
+    );
+  }
+  if (state.status === "unauthenticated") {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
+  }
+  return <>{children}</>;
+}
+
+function AuthenticatedRoutes() {
   return (
     <>
       <CommandPalette />
       <AISidecar />
-    <Routes>
-      <Route path="/" element={<ResearchWorkstation />} />
-      <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
-      <Route path="/wrestle" element={<WrestleApp />} />
-      <Route path="/wrestle/:documentId" element={<WrestleApp />} />
-      <Route path="/sources" element={<Sources />} />
-      <Route path="/create" element={<CreationStudio />} />
-      <Route path="/create/:deliverableId" element={<CreationStudio />} />
-      <Route path="/brainstorm" element={<BrainstormStation />} />
-      <Route path="/notebooks" element={<NotebooksIndex />} />
-      <Route path="/notebook/:notebookId" element={<Notebook />} />
-      <Route path="/documents" element={<DocumentsIndex />} />
-      <Route path="/billing" element={<Billing />} />
-      <Route path="/stats" element={<Stats />} />
-      <Route path="/map" element={<Map />} />
-      <Route path="/backtest/:synthesisId" element={<Backtest />} />
-      <Route path="/privacy" element={<PrivacyDashboard />} />
-      <Route path="/pricing" element={<PricingPage />} />
-      <Route path="/operator" element={<OperatorDashboard />} />
-      <Route path="/outcomes" element={<OutcomesIndex />} />
-      <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
-      <Route path="/replay/:investigationId" element={<Replay />} />
-      <Route path="/interview/:interviewId" element={<InterviewMode />} />
-      <Route path="/interviews" element={<InterviewIndex />} />
-      <Route path="/loop-3" element={<Loop3 />} />
-      <Route path="/skill-rules" element={<SkillRules />} />
-      <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
-      <Route path="/federation" element={<Federation />} />
-      <Route path="/cross-graph/citations" element={<CrossGraphCitations />} />
-      <Route path="/investigations" element={<InvestigationsIndex />} />
-      <Route path="/payouts" element={<PayoutsAudit />} />
-      <Route path="/trust" element={<TrustCenter />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      <Routes>
+        <Route path="/" element={<ResearchWorkstation />} />
+        <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
+        <Route path="/wrestle" element={<WrestleApp />} />
+        <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+        <Route path="/sources" element={<Sources />} />
+        <Route path="/create" element={<CreationStudio />} />
+        <Route path="/create/:deliverableId" element={<CreationStudio />} />
+        <Route path="/brainstorm" element={<BrainstormStation />} />
+        <Route path="/notebooks" element={<NotebooksIndex />} />
+        <Route path="/notebook/:notebookId" element={<Notebook />} />
+        <Route path="/documents" element={<DocumentsIndex />} />
+        <Route path="/billing" element={<Billing />} />
+        <Route path="/stats" element={<Stats />} />
+        <Route path="/map" element={<Map />} />
+        <Route path="/backtest/:synthesisId" element={<Backtest />} />
+        <Route path="/privacy" element={<PrivacyDashboard />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/operator" element={<OperatorDashboard />} />
+        <Route path="/outcomes" element={<OutcomesIndex />} />
+        <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
+        <Route path="/replay/:investigationId" element={<Replay />} />
+        <Route path="/interview/:interviewId" element={<InterviewMode />} />
+        <Route path="/interviews" element={<InterviewIndex />} />
+        <Route path="/loop-3" element={<Loop3 />} />
+        <Route path="/skill-rules" element={<SkillRules />} />
+        <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
+        <Route path="/federation" element={<Federation />} />
+        <Route path="/cross-graph/citations" element={<CrossGraphCitations />} />
+        <Route path="/investigations" element={<InvestigationsIndex />} />
+        <Route path="/payouts" element={<PayoutsAudit />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/trust" element={<TrustCenter />} />
+        <Route
+          path="*"
+          element={
+            <RequireAuth>
+              <AuthenticatedRoutes />
+            </RequireAuth>
+          }
+        />
+      </Routes>
+    </AuthProvider>
   );
 }
