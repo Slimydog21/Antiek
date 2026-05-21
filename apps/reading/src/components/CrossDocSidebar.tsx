@@ -57,16 +57,16 @@ export default function CrossDocSidebar({
   );
 
   return (
-    <div className="flex flex-col h-full bg-white border-l border-stone-200">
-      <div className="px-4 py-2 text-xs font-mono bg-stone-100 border-b border-stone-200 flex items-center justify-between">
-        <span className="text-stone-600">cross-doc</span>
-        <span className="text-stone-500">
+    <div className="flex flex-col h-full bg-ice-0 dark:bg-charcoal-2 border-l border-rule dark:border-charcoal-1">
+      <div className="px-4 py-2 text-xs font-mono bg-ice-3 dark:bg-charcoal-1 border-b border-rule dark:border-charcoal-1 flex items-center justify-between">
+        <span className="text-ink-soft dark:text-starlight">cross-doc</span>
+        <span className="text-shadow-1 dark:text-moonlight">
           {links.length} link{links.length === 1 ? "" : "s"}
         </span>
       </div>
       <div className="flex-1 overflow-auto px-3 py-3">
         {links.length === 0 ? (
-          <div className="text-sm text-stone-400 font-mono leading-relaxed">
+          <div className="text-sm text-ink-mute dark:text-moonlight font-mono leading-relaxed">
             <p>no cross-doc links yet.</p>
             <p className="mt-1">
               when a note that emerges on one document answers an open
@@ -106,28 +106,28 @@ function CrossDocCard({
         cross-document resolution
       </div>
       {questionText ? (
-        <p className="text-sm text-stone-900 leading-snug italic">
+        <p className="text-sm text-ink dark:text-bright leading-snug italic">
           "{questionText}"
         </p>
       ) : (
-        <p className="text-xs font-mono text-stone-500 italic">
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight italic">
           (question text not captured — id: {shortenId(p.question_id)})
         </p>
       )}
-      <div className="text-[11px] font-mono text-stone-700 flex items-center gap-1.5 flex-wrap">
-        <span className="px-1.5 py-0.5 rounded bg-stone-100" title={p.question_document_id}>
+      <div className="text-[11px] font-mono text-ink dark:text-bright flex items-center gap-1.5 flex-wrap">
+        <span className="px-1.5 py-0.5 rounded bg-ice-3 dark:bg-charcoal-1" title={p.question_document_id}>
           {shortenDocId(p.question_document_id)}
         </span>
         <span className="text-violet-600">→</span>
-        <span className="px-1.5 py-0.5 rounded bg-stone-100" title={p.answer_document_id}>
+        <span className="px-1.5 py-0.5 rounded bg-ice-3 dark:bg-charcoal-1" title={p.answer_document_id}>
           {shortenDocId(p.answer_document_id)}
         </span>
       </div>
-      <div className="text-[10px] font-mono text-stone-500 pt-0.5 flex items-center gap-1.5">
+      <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight pt-0.5 flex items-center gap-1.5">
         <span>bridged by:</span>
         <button
           onClick={() => onCiteJump?.(p.answer_note_id)}
-          className="text-stone-600 bg-stone-100 hover:bg-stone-200 px-1.5 py-0.5 rounded transition-colors"
+          className="text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
           title={`jump to note ${p.answer_note_id}`}
         >
           ↩ {shortenId(p.answer_note_id)}

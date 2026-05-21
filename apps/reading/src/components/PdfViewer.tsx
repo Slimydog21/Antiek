@@ -197,8 +197,8 @@ export default function PdfViewer({
 
   return (
     <div className="flex flex-col items-stretch h-full">
-      <div className="px-4 py-2 text-xs font-mono bg-stone-100 border-b border-stone-200 text-stone-600 flex items-center justify-between">
-        <span>document_id: <span className="text-stone-900">{documentId}</span></span>
+      <div className="px-4 py-2 text-xs font-mono bg-ice-3 dark:bg-charcoal-1 border-b border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight flex items-center justify-between">
+        <span>document_id: <span className="text-ink dark:text-bright">{documentId}</span></span>
         <span>page: {renderState?.pageNum ?? "—"}</span>
       </div>
       {postError && (
@@ -210,7 +210,7 @@ export default function PdfViewer({
         className="flex-1 overflow-auto p-6 flex justify-center"
         onMouseUp={onMouseUp}
       >
-        <div className="relative shadow-md ring-1 ring-stone-200 bg-white">
+        <div className="relative shadow-md ring-1 ring-rule dark:ring-charcoal-1 bg-ice-0 dark:bg-charcoal-2">
           <canvas ref={canvasRef} />
           <div ref={textLayerRef} className="pdf-text-layer" />
         </div>
