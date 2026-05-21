@@ -359,9 +359,6 @@ right move is to **not** carry it — it is recomputable.
 
 ## 10. Out of scope for SPR-09
 
-- Sidecar variant for imported PDFs (SPR-10 — uses the same manifest
-  schema, but `content_class` is `imported_pdf` and the body is the PDF
-  bytes' SHA-256 + the user's notebook on top).
 - Round-trip Markdown ↔ `.antiek` (projection is one-way).
 - Federated handshake between Antiek instances (Sprint 30+).
 - Schema migration tooling for future format versions (handle inline
@@ -371,3 +368,283 @@ right move is to **not** carry it — it is recomputable.
 - Embedding chunks / embeddings / graph edges — explicitly forbidden
   (see §9).
 - Multi-author signatures.
+
+---
+
+## 11. Sidecar Variant (SPR-10)
+
+A **`.antiek` sidecar** carries user-derived data for an imported PDF
+that the substrate does NOT own (the PDF is the source of truth; the
+sidecar travels alongside on share / re-import). The PDF stays a plain
+PDF — any reader on any platform handles it natively. The sidecar
+restores the user's annotations when re-imported into Antiek.
+
+Same zip envelope as §2, same signing scheme as §3, same determinism
+rules as §6 — only the content shifts. The discriminator is
+`manifest.content_class == "pdf_sidecar"`.
+
+### 11.1 Manifest delta
+
+Sidecar manifests share the §2.1 required keys (schema_version,
+content_class, document_id, parent_document_id, created_at,
+creator_user_id, creator_pubkey) and add THREE required keys when
+`content_class == "pdf_sidecar"`:
+
+| Key                         | Type             | Notes                                                                                       |
+| --------------------------- | ---------------- | ------------------------------------------------------------------------------------------- |
+| `parent_pdf_sha256`         | lowercase hex 64 | SHA-256 of the parent PDF bytes. The reader refuses to apply the sidecar if this does not match the imported PDF's hash. |
+| `parent_pdf_size_bytes`     | non-negative int | Byte length of the PDF at write time. Surfaces a faster "this is the wrong PDF" warning before the full hash compute. |
+| `parent_pdf_filename_hint`  | string \| null   | Original basename. INFORMATIONAL — never used for matching; only shown to the user when the hash check fails so they can recognise the intended PDF. |
+
+`content_class` enum is extended: `notebook` | `theme_notebook` |
+`deliverable` | `pdf_sidecar`. `document_id` for a sidecar is the
+imported-PDF document_id (matches the substrate's `documents.document_id`
+of the parent PDF; SPR-03's pipeline derives this as
+`doc-pdf-<sha256_prefix>`). `parent_document_id` is the same value
+(a sidecar IS its parent; the field is preserved for shape symmetry
+with notebooks).
+
+`blocks_index` is NOT used by sidecars — the data lives in
+`highlights.jsonl` and `anchors.jsonl` (see §11.2). A sidecar SHOULD
+omit `blocks_index` or set it to `[]`.
+
+Optional sidecar-only manifest keys:
+
+| Key                       | Type           | Notes                                                                |
+| ------------------------- | -------------- | -------------------------------------------------------------------- |
+| `highlights_present`      | bool           | Hint flag — does `highlights.jsonl` exist?                          |
+| `anchors_present`         | bool           | Hint flag — does `anchors.jsonl` exist?                             |
+| `chunker_version_at_write`| string \| null | Substrate's `CHUNKER_VERSION` at write time. **Informational only** — the receiving substrate re-resolves each `(page, bbox)` under its own chunker; see §11.3. |
+
+### 11.2 Zip layout
+
+```
+<basename>.antiek                ← zip archive (sidecar)
+├── manifest.json                ← REQUIRED — content_class: "pdf_sidecar"
+├── content.tiptap.json          ← REQUIRED — empty {"type":"doc","content":[]}
+├── edges.jsonl                  ← OPTIONAL — user-asserted edges (same shape as §2.3)
+├── highlights.jsonl             ← OPTIONAL — one user highlight per line
+├── anchors.jsonl                ← OPTIONAL — voice-anchor rows (one per line)
+├── blocks/                      ← OPTIONAL — voice-block audio bytes
+│   └── <voice_note_id>.audio
+└── signature.bin                ← REQUIRED — detached Ed25519 signature
+```
+
+Rationale for the empty `content.tiptap.json`: keeping it required
+across both variants lets the reader use one zip-validation path and
+keeps the signing input shape stable (manifest + content + edges are
+always the first three signed sections). The sidecar's user data
+lives in two **additional** signed sections (highlights.jsonl,
+anchors.jsonl); see §11.4.
+
+#### highlights.jsonl
+
+One JSON object per line. Each row:
+
+```json
+{"highlight_id":"hl-...","document_id":"doc-pdf-<hex>","page":3,
+ "bbox":{"x0":40.5,"y0":120.0,"x1":480.0,"y1":160.0},
+ "passage_text":"selected text","color":"yellow","tag":null,
+ "created_at":"2026-05-21T12:30:00+00:00","operator_note":null}
+```
+
+`bbox` mirrors the SPR-02 `BBox` shape (PDF user-space, origin
+bottom-left). `passage_text` is the canonical text the user selected
+(carried so a hash-mismatch sidecar still surfaces the user's words —
+even if coordinates land elsewhere on a different PDF, the operator
+note remains legible).
+
+Substrate landing point: highlights restore as `behavior_events` of
+type `highlight_created` (the substrate has no `highlights` table —
+it persists them as events; see `substrate/behavior/schemas/
+highlight_created.json`). Lines are sorted by `highlight_id` for
+deterministic signing.
+
+#### anchors.jsonl
+
+One JSON object per line. Each row is the carrier for one voice
+note + its anchor:
+
+```json
+{"anchor_id":"vna-...","voice_note_id":"doc-vn-<hex>","document_id":"doc-pdf-<hex>",
+ "page":3,"bbox":{"x0":50.0,"y0":80.0,"x1":300.0,"y1":140.0},
+ "chunk_id":"chk-...","chunker_version":"v1.0.0",
+ "transcript":"voice transcript text",
+ "audio_path":"blocks/doc-vn-<hex>.audio",
+ "created_at":"2026-05-21T12:32:00+00:00"}
+```
+
+`chunk_id` and `chunker_version` are **informational only on read**.
+The receiving substrate re-resolves the chunk_id by calling
+`substrate.voice.anchor_api.resolve_chunk_for_bbox(con, document_id,
+page, bbox)` against the LOCAL chunker (see §11.3). The
+chunker_version field is carried so the reader can surface a "writer
+used chunker v1.2; this substrate is on v1.0; some anchors may move"
+warning if a delta is detected.
+
+Lines are sorted by `anchor_id` for deterministic signing. The
+`voice_note_id` field is the document_id of the voice-note row in
+the receiving substrate's `documents` table (voice notes live as
+`documents` with `document_type='voice_note'` — there is NO
+`voice_notes` table; the SPR-02 spec page mis-stated this and the
+authoritative location is `substrate.voice.anchor_schema`).
+
+#### blocks/<voice_note_id>.audio
+
+Same as §2.4. Audio bytes for a voice note, when reachable.
+SHA-256 hashes for integrity are stamped into the manifest's
+`audio_blobs_index` (sidecar-only field analogous to `blocks_index`'s
+audio_sha256 — see §11.4). When the substrate audio-store gap (SPR-05
+/ SPR-09) closes, audio rides along; until then the writer skips
+silently. The reader extracts to substrate-managed storage.
+
+### 11.3 Re-resolving anchors under the receiving chunker (rigor #3)
+
+The writer records `chunker_version` for each anchor row. The reader
+**does NOT trust it**. For each (page, bbox) the reader calls
+`resolve_chunk_for_bbox(con, document_id=<imported PDF doc_id>,
+page=row.page, bbox=row.bbox)` against the receiving substrate's
+chunker. The returned `chunk_id` is what gets written into
+`voice_note_anchor.chunk_id`; the writer's value is discarded.
+
+Why this design: chunkers evolve. Freezing chunk_ids inside the file
+would put the receiving substrate in an impossible position when its
+chunker version differs from the writer's — either trust a stale id
+(wrong) or refuse to import (worse). The coordinate is the durable
+key; the chunk_id is a derived join column that re-derives cleanly.
+
+The current substrate's `resolve_chunk_for_bbox` returns `None`
+(geometry gap — chunks don't carry per-chunk page+bbox columns yet;
+see `substrate/voice/anchor_api.py` docstring). That doesn't break
+the contract: the anchor row still writes (chunk_id=NULL is valid
+per SPR-02 schema), and the re-chunk worker will populate chunk_id
+when chunks gain geometry.
+
+### 11.4 Signing input for sidecars
+
+Same scheme as §3, extended with two trailing sections:
+
+```
+canonical(manifest.json)
+0x1F
+content.tiptap.json bytes  (typically the empty-doc bytes)
+0x1F
+edges.jsonl bytes          (b"" when absent)
+0x1F                       ← sidecar-only separator
+highlights.jsonl bytes     (b"" when absent)
+0x1F                       ← sidecar-only separator
+anchors.jsonl bytes        (b"" when absent)
+```
+
+For non-sidecar variants the signing input ends after the edges
+section (no trailing separators). The reader chooses signing-input
+shape by the manifest's `content_class`: `pdf_sidecar` → 5-section
+input; everything else → 3-section input. This is the one place the
+reader uses `content_class` as a control variable rather than a
+data field.
+
+Canonical bytes for `highlights.jsonl` and `anchors.jsonl` follow
+the same rules as `edges.jsonl` (per-line sorted-key JSON, lines
+sorted by their primary id — `highlight_id` and `anchor_id`
+respectively — trailing LF, ASCII-safe).
+
+Audio integrity for sidecars uses the same per-file SHA-256 stamped
+into manifest pattern as §3 rule 5. The manifest field is
+`audio_blobs_index` (sidecar-only): an array of
+`{voice_note_id, audio_path, audio_sha256}` rows. The hashes are
+inside the signed manifest, so audio tampering is caught without
+streaming the bytes into the top-level signature scope.
+
+### 11.5 Reading + restore
+
+`read_sidecar(data: bytes, *, imported_pdf_sha256: str | None) ->
+RestoredSidecar` parses the bytes, validates manifest, verifies
+signature, then:
+
+1. If `imported_pdf_sha256` is supplied and differs from
+   `manifest.parent_pdf_sha256` → return `RestoredSidecar` with
+   `hash_mismatch=True` and `applied=False`. The caller decides
+   whether to surface as a warning or hard refusal; the
+   substrate-write helper (`apply_sidecar`) refuses by default.
+2. Else, the caller invokes `apply_sidecar(restored, con=..., user_id=...)`
+   which:
+   - Re-resolves each anchor's `chunk_id` under the receiving
+     substrate's chunker (rigor #3).
+   - Inserts highlights as `behavior_events` of type
+     `highlight_created` (idempotent on `highlight_id` via the
+     event's action payload — see `_apply_highlights_idempotent`).
+   - Inserts voice-note documents + anchor rows (idempotent on
+     `voice_note_id`).
+   - Inserts user-asserted edges (idempotent on `edge_id`).
+   - Extracts audio bytes to substrate-managed storage (idempotent
+     on path).
+3. If signature verification failed, the caller still proceeds with
+   `apply_sidecar` but every inserted row is flagged with
+   `imported_from_unsigned_sidecar: true` in its event payload /
+   metadata. See §11.6 for the rationale.
+
+### 11.6 Signature-invalid restore proceeds (rigor #5)
+
+A "friend sends a sidecar over WhatsApp" flow is the canonical share
+path. The friend's signing pubkey is not in the receiving user's
+known-key set. The conservative choice — refuse — would break the
+share flow that motivates the sidecar in the first place. The chosen
+behavior: **restore proceeds, rows are flagged**. The user can
+inspect the imported state under a clearly-marked "unsigned import"
+ribbon. Future hardening (if friend-pubkey-authorisation becomes a
+product surface) replaces the flag with a per-key trust decision
+inside `apply_sidecar`; the trail of which rows came from which
+sidecar is preserved on the inserted rows' metadata.
+
+The integrity-of-bytes layer (per-audio SHA-256 inside the signed
+manifest) does NOT change. A sidecar whose audio bytes are tampered
+fails the per-blob hash check and is treated as tampered for that
+blob; the rest of the sidecar still restores.
+
+### 11.7 Hash-mismatch UX (rigor #1)
+
+If `imported_pdf_sha256 != manifest.parent_pdf_sha256`, the sidecar
+was made for a different PDF. Coordinates will likely land on the
+wrong text. The UI text MUST be honest about the failure mode:
+
+> "This `.antiek` sidecar was made for a different version of the
+> PDF you imported (file hash differs). Restoring would place
+> annotations at coordinates from the original PDF; on this PDF
+> they may land on the wrong text. The sidecar was NOT applied."
+
+Optional refinement (when surfaced): if both PDFs share at least one
+page (which is trivially true for any non-empty PDFs), the reader
+can report `len(sidecar_pages_used) - len(receiving_pdf_pages)` so
+the user knows whether the sidecar is "close" (one revision later)
+or "wildly off". For SPR-10 we surface the boolean only — page-
+count delta is documented as a follow-up.
+
+### 11.8 What MUST NOT appear in a sidecar
+
+Same invariant as §9. The forbidden substrate-derived field list
+applies identically to a sidecar. A sidecar carries USER data — the
+substrate-derived chunk_ids it references in `anchors.jsonl` are
+informational only (the reader re-derives them under its own
+chunker). Per the master-spec invariant, the byte-grep over
+forbidden field names from `_FORBIDDEN_SUBSTRATE_FIELDS` is run on
+every sidecar write; the test for it is the same M6 test path that
+guards notebooks.
+
+### 11.9 Idempotency
+
+A sidecar may be applied multiple times. The reader's `apply_sidecar`
+is idempotent:
+
+- Highlights: keyed on `highlight_id`. Repeated apply → no new
+  `behavior_events` row (the event's action.highlight_id is the
+  idempotency key).
+- Voice anchors: keyed on `voice_note_id` (the SPR-02 UNIQUE
+  constraint).
+- User-asserted edges: deduped on `edge_id` against any prior import
+  trail. (Substrate today has no user-edges table; the dedupe is
+  against the same-process metadata trail per restore — when an
+  edges table lands, the dedupe joins that table.)
+- Audio bytes: written to `<storage_root>/<voice_note_id>.audio`;
+  pre-existing files with matching sha256 are left alone.
+
+Mechanically tested by M6 (`test_idempotent_apply`).

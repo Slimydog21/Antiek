@@ -96,21 +96,38 @@ def build_signing_input(
     manifest_bytes: bytes,
     content_bytes: bytes,
     edges_bytes: bytes,
+    extra_sections: Optional[list[bytes]] = None,
 ) -> bytes:
     """Concatenate canonical sections with 0x1F separators.
 
-    All three sections are bytes. ``edges_bytes`` may be ``b""``; the
-    separator is still emitted so the absence-of-edges state is part
-    of the signed content (otherwise a forger could append an edges
-    file without changing the signature).
+    Notebook variants (SPR-09): three sections (manifest, content,
+    edges). ``edges_bytes`` may be ``b""``; the separator is still
+    emitted so the absence-of-edges state is part of the signed
+    content (otherwise a forger could append an edges file without
+    changing the signature).
+
+    Sidecar variant (SPR-10, SPEC.md §11.4): five sections — the
+    three above PLUS ``highlights.jsonl`` bytes PLUS ``anchors.jsonl``
+    bytes. Callers supply these as ``extra_sections``; each extra
+    section is preceded by a 0x1F separator regardless of emptiness,
+    so signing-input shape is determined by the **count** of extra
+    sections, not the content. The reader keys this off
+    ``manifest.content_class`` (``pdf_sidecar`` → 2 extras;
+    everything else → 0 extras). Mismatched section count between
+    writer and reader → signature verification fails, which is the
+    correct failure mode.
     """
-    return (
+    out = (
         manifest_bytes
         + UNIT_SEPARATOR
         + content_bytes
         + UNIT_SEPARATOR
         + edges_bytes
     )
+    if extra_sections:
+        for section in extra_sections:
+            out += UNIT_SEPARATOR + section
+    return out
 
 
 # ── Sign / verify ──
