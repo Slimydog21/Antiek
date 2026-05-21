@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "notebook_block_edited",
+  "description": "Operator edited a notebook block. Each edit is a discrete event; bulk edits emit one event per block.",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["notebook_id", "block_id"],
+    "properties": {
+      "notebook_id": { "type": "string" },
+      "block_id": { "type": "string" },
+      "tier": { "type": ["integer", "null"] },
+      "document_id": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["edit_kind"],
+    "properties": {
+      "edit_kind": { "type": "string" },
+      "chars_added": { "type": ["integer", "null"] },
+      "chars_removed": { "type": ["integer", "null"] }
+    }
+  }
+}

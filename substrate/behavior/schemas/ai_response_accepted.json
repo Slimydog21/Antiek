@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai_response_accepted",
+  "description": "Operator marked an AI response as useful (kept, pinned, or applied).",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id", "prompt_id"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "prompt_id": { "type": "string" },
+      "reading_mode": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["response_id", "accept_kind"],
+    "properties": {
+      "response_id": { "type": "string" },
+      "accept_kind": { "type": "string" },
+      "elapsed_since_prompt_s": { "type": ["number", "null"] }
+    }
+  }
+}

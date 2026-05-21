@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cross_doc_link_clicked",
+  "description": "Operator clicked a previously-surfaced cross-document link. Paired with cross_doc_link_surfaced via link_id; immediate-reward worker keys on the time delta.",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id", "link_id"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "link_id": { "type": "string" },
+      "reading_mode": { "type": ["string", "null"] },
+      "elapsed_since_surfaced_s": { "type": ["number", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["target_document_id"],
+    "properties": {
+      "target_document_id": { "type": "string" },
+      "target_chunk_id": { "type": ["string", "null"] }
+    }
+  }
+}

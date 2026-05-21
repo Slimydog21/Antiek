@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "voice_note_played",
+  "description": "Operator played back a previously-recorded voice note.",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "reading_mode": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["voice_note_id"],
+    "properties": {
+      "voice_note_id": { "type": "string" },
+      "played_to_completion": { "type": ["boolean", "null"] },
+      "played_fraction": { "type": ["number", "null"] }
+    }
+  }
+}

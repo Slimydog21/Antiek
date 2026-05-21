@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "voice_note_recorded",
+  "description": "Operator captured a voice note anchored to a passage.",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "reading_mode": { "type": ["string", "null"] },
+      "chunk_id": { "type": ["string", "null"] },
+      "anchored_to_highlight_id": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["voice_note_id", "duration_s"],
+    "properties": {
+      "voice_note_id": { "type": "string" },
+      "duration_s": { "type": "number" },
+      "transcript_present": { "type": ["boolean", "null"] }
+    }
+  }
+}

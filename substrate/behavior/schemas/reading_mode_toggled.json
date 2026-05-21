@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "reading_mode_toggled",
+  "description": "Operator switched reading mode (researcher / cozy / focus / etc.).",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id", "from_mode"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "from_mode": { "type": "string" },
+      "session_elapsed_s": { "type": ["number", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["to_mode"],
+    "properties": {
+      "to_mode": { "type": "string" },
+      "trigger": { "type": ["string", "null"] }
+    }
+  }
+}
