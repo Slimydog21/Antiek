@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 6;
+export const EVENT_SCHEMA_VERSION = 7;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -105,6 +105,7 @@ export const ActionType = {
   DISCOVERY_PROPOSED: "discovery.proposed",
   DISCOVERY_SELECTED: "discovery.selected",
   FETCH_FALLBACK_ESCALATED: "fetch.fallback.escalated",
+  VERIFIER_LOOKUP: "verifier.lookup",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -466,6 +467,21 @@ export interface ReasoningPathUsed {
   path_node_ids: string[];
   path_edge_ids?: string[];
   support_summary: string;
+}
+
+/**
+ * One row of a `VerifierLookupPayload.results`. Mirrors the
+ * cleaned-snippet shape Exa returns for `/search?text=true` (or
+ * a `/contents` call). NOT promoted to substrate evidence — the
+ * snippet is verifier-tier context only.
+ */
+export interface ExaLookupResult {
+  url: string;
+  title?: string | null;
+  published_date?: string | null;
+  text_snippet?: string | null;
+  relevance_score?: number | null;
+  provider_response_id?: string | null;
 }
 
 /**
@@ -1601,6 +1617,21 @@ export interface FetchFallbackEscalatedPayload {
 }
 
 /**
+ * The verifier tier (or any caller) consulted Exa for external
+ * claim corroboration. Spec §8. The snippets stay out of the
+ * graph (spec §8.3).
+ */
+export interface VerifierLookupPayload {
+  action_type: "verifier.lookup";
+  tool?: "exa.search_contents";
+  query: string;
+  claim_text?: string | null;
+  k_requested: number;
+  results?: ExaLookupResult[];
+  cost_usd_estimate: number;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1678,7 +1709,8 @@ export type TypedPayload =
   | SkillRulePromotedPayload
   | DiscoveryProposedPayload
   | DiscoverySelectedPayload
-  | FetchFallbackEscalatedPayload;
+  | FetchFallbackEscalatedPayload
+  | VerifierLookupPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1780,6 +1812,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "user.accept_distillation",
   "user.edit_distillation",
   "user.reject_distillation",
+  "verifier.lookup",
 ]);
 
 export const WRESTLING_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([

@@ -17,6 +17,7 @@ from .adapter import (
 )
 from .budget import DEFAULT_DAILY_BUDGET_USD, BudgetState
 from .client import ExaClient, ExaClientError, ExaSearchCategory, ExaSearchResult
+from .lookup import MAX_K as VERIFIER_LOOKUP_MAX_K, exa_lookup_claim
 
 __all__ = [
     "BudgetState",
@@ -28,7 +29,9 @@ __all__ = [
     "ExaClientError",
     "ExaSearchCategory",
     "ExaSearchResult",
+    "VERIFIER_LOOKUP_MAX_K",
     "discover",
+    "exa_lookup_claim",
     "find_similar",
     "promote_discovery",
     "reject_discovery",

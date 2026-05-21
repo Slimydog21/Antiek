@@ -238,6 +238,14 @@ class ActionType(str, Enum):
     # caller opted into a heavier fetcher (currently Browserbase).
     FETCH_FALLBACK_ESCALATED = "fetch.fallback.escalated"
 
+    # ── Wedge 3 (Exa /contents corroboration, PHASE 2 client-side
+    #    primitive). Recorded when the verifier tier (or any caller)
+    #    consulted Exa for claim corroboration. NOT a graph-write
+    #    event — the substrate-grounding invariant still requires
+    #    every claim to trace to a chunk in an ingested document.
+    #    Spec docs/integration_exa_browserbase.md §8.
+    VERIFIER_LOOKUP = "verifier.lookup"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -261,7 +269,10 @@ class ActionType(str, Enum):
 #     re-fetched via Browserbase. The wedges themselves (Sprint 18-19) emit
 #     these; this precursor only types them.
 #     docs/integration_exa_browserbase.md §18.3. 2026-05-21.
-EVENT_SCHEMA_VERSION: int = 6
+# v7: Wedge 3 (Exa /contents verifier-tier corroboration) client-side
+#     primitive — VERIFIER_LOOKUP event + ExaLookupResult + VerifierLookupPayload.
+#     docs/integration_exa_browserbase.md §8. 2026-05-21.
+EVENT_SCHEMA_VERSION: int = 7
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2196,6 +2207,39 @@ class FetchFallbackEscalatedPayload(_PayloadBase):
     estimated_cost_usd: float = Field(ge=0.0)
 
 
+# ── Wedge 3 — Exa /contents verifier-tier corroboration (PHASE 2 primitive) ──
+
+
+class ExaLookupResult(BaseModel):
+    """One row of a `VerifierLookupPayload.results`. Mirrors the
+    cleaned-snippet shape Exa returns for `/search?text=true` (or
+    a `/contents` call). NOT promoted to substrate evidence — the
+    snippet is verifier-tier context only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    title: Optional[str] = None
+    published_date: Optional[str] = None
+    text_snippet: Optional[str] = Field(default=None, max_length=2000)
+    relevance_score: Optional[float] = None
+    provider_response_id: Optional[str] = None
+
+
+class VerifierLookupPayload(_PayloadBase):
+    """The verifier tier (or any caller) consulted Exa for external
+    claim corroboration. Spec §8. The snippets stay out of the
+    graph (spec §8.3)."""
+
+    action_type: Literal[ActionType.VERIFIER_LOOKUP] = ActionType.VERIFIER_LOOKUP
+    tool: Literal["exa.search_contents"] = "exa.search_contents"
+    query: str
+    claim_text: Optional[str] = None
+    k_requested: int = Field(ge=1, le=20)
+    results: list[ExaLookupResult] = Field(default_factory=list)
+    cost_usd_estimate: float = Field(ge=0.0)
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -2277,6 +2321,7 @@ TypedPayload = Annotated[
         DiscoveryProposedPayload,
         DiscoverySelectedPayload,
         FetchFallbackEscalatedPayload,
+        VerifierLookupPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -2360,6 +2405,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.DISCOVERY_PROPOSED.value,
     ActionType.DISCOVERY_SELECTED.value,
     ActionType.FETCH_FALLBACK_ESCALATED.value,
+    # Wedge 3 — verifier-tier external corroboration primitive.
+    ActionType.VERIFIER_LOOKUP.value,
 })
 
 
@@ -2616,4 +2663,7 @@ __all__ = [
     "DiscoveryProposedPayload",
     "DiscoverySelectedPayload",
     "FetchFallbackEscalatedPayload",
+    # Wedge 3 — verifier-tier corroboration primitive (v7 schema bump)
+    "ExaLookupResult",
+    "VerifierLookupPayload",
 ]
