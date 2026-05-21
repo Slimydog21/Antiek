@@ -346,6 +346,8 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "interview_projects", "interviews",
     "ip_holders", "notebooks", "notebook_blocks",
     "discovery_cache",
+    "url_alias",
+    "discovery_summary",
 )
 
 
@@ -550,6 +552,65 @@ CREATE INDEX IF NOT EXISTS idx_discovery_cache_expires
     ON discovery_cache(expires_at);
 CREATE INDEX IF NOT EXISTS idx_discovery_cache_investigation
     ON discovery_cache(investigation_id);
+
+-- ============================================================
+-- url_alias — requested_url → canonical document_id (Exa-spec §14.2)
+-- ============================================================
+-- Doc-id collision risk: `final_url` after redirects varies across
+-- fetches when sites change canonical slugs. The same logical
+-- content can produce two different `url_doc_id` hashes via two
+-- different `final_url` values. This alias table records every
+-- `requested_url → document_id` we've ingested so the next time
+-- the same `requested_url` is encountered, the caller can short-
+-- circuit to the canonical doc_id rather than re-ingesting.
+--
+-- The PRIMARY KEY is on requested_url; document_id can repeat
+-- (one document can have many aliases — every URL that redirected
+-- to it).
+CREATE TABLE IF NOT EXISTS url_alias (
+    requested_url   TEXT PRIMARY KEY,
+    document_id     TEXT NOT NULL REFERENCES documents(document_id),
+    first_seen_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    seen_count      INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_url_alias_document
+    ON url_alias(document_id);
+
+-- ============================================================
+-- discovery_summary — 30-day rollup of DiscoveryProposed events
+-- ============================================================
+-- Per Exa-spec §14.1, discovery events are retained for 30 days as
+-- raw JSONL then rolled up into this summary table. The summary
+-- preserves per-(provider, day, query_hash) aggregates so an
+-- operator looking at long-term discovery activity can see what
+-- queries the agent ran without keeping every individual proposal.
+--
+-- Source-of-truth boundary: while a day's JSONL is live, raw events
+-- are authoritative. Once rolled up (and JSONL truncated), the
+-- summary row is authoritative for that day. The rollup function
+-- is responsible for not double-counting if it runs twice.
+CREATE TABLE IF NOT EXISTS discovery_summary (
+    summary_id        TEXT PRIMARY KEY,  -- sha256(provider+day+query_hash)
+    provider          TEXT NOT NULL,
+    day_utc           DATE NOT NULL,
+    query_hash        TEXT NOT NULL,
+    query_preview     TEXT,              -- first 200 chars of one query (audit)
+    proposal_count    INTEGER NOT NULL DEFAULT 0,
+    selected_count    INTEGER NOT NULL DEFAULT 0,
+    rejected_by_gate  INTEGER NOT NULL DEFAULT 0,
+    rejected_by_op    INTEGER NOT NULL DEFAULT 0,
+    fetch_failed      INTEGER NOT NULL DEFAULT 0,
+    distinct_urls     INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd    DOUBLE NOT NULL DEFAULT 0.0,
+    summarized_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_summary_day
+    ON discovery_summary(day_utc);
+CREATE INDEX IF NOT EXISTS idx_discovery_summary_provider
+    ON discovery_summary(provider);
 """
 
 

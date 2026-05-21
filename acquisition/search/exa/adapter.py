@@ -54,32 +54,14 @@ from .cache import DEFAULT_TTL_SECONDS, cache_key, lookup, store  # noqa: E402
 from .client import ExaClient, ExaSearchCategory, ExaSearchResult  # noqa: E402
 
 
-# Tier-3 known-good news allowlist (spec §6.6). Operator-edited; the
-# Sprint 17 seed list is the major English-language financial /
-# general-news outlets the operator typically cites. Add domains here
-# directly — automatic learning is explicitly rejected.
-_CURATED_NEWS_TIER_3: frozenset[str] = frozenset({
-    "nytimes.com",
-    "wsj.com",
-    "ft.com",
-    "bloomberg.com",
-    "reuters.com",
-    "economist.com",
-    "theatlantic.com",
-    "newyorker.com",
-    "washingtonpost.com",
-    "apnews.com",
-})
-
-# Tier-2 known-good research hosts. ``.gov``, ``.edu``, ``doi.org`` are
-# matched by suffix in ``suggest_tier`` below; this set is for the
-# named non-suffix hosts we want at tier 2.
-_RESEARCH_HOSTS_TIER_2: frozenset[str] = frozenset({
-    "arxiv.org",
-    "ssrn.com",
-    "biorxiv.org",
-    "medrxiv.org",
-})
+# Tier allowlists live in substrate/constants.py per spec §6.6 —
+# tier assignment is a substrate decision, not a search-API one.
+# Import here so the adapter can consult them; never define them
+# here.
+from substrate.constants import (  # noqa: E402
+    CURATED_NEWS_TIER_3 as _CURATED_NEWS_TIER_3,
+    RESEARCH_HOSTS_TIER_2 as _RESEARCH_HOSTS_TIER_2,
+)
 
 _DISCOVERY_ID_PREFIX = "disc-exa-"
 
@@ -221,6 +203,13 @@ def discover(
         raise ValueError("discover: empty query")
     if not investigation_id.strip():
         raise ValueError("discover: empty investigation_id")
+    # Spec §14.1 — discovery events live in a separate JSONL dir from
+    # substrate events. Lazy-import to avoid the
+    # acquisition.search.__init__ → acquisition.search.exa.adapter
+    # circular import.
+    if events_dir is None:
+        from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+        events_dir = default_discovery_events_dir()
 
     # Per spec §6.5 cache check — runs BEFORE the budget reservation
     # so cache hits don't consume budget.
@@ -360,6 +349,10 @@ def find_similar(
         raise ValueError("find_similar: empty url")
     if not investigation_id.strip():
         raise ValueError("find_similar: empty investigation_id")
+    # Spec §14.1 — separate discovery events dir.
+    if events_dir is None:
+        from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+        events_dir = default_discovery_events_dir()
 
     from .client import COST_PER_FIND_SIMILAR_USD
 
@@ -465,6 +458,11 @@ def promote_discovery(
     Per spec §6.8: this is the only function that takes a discovery
     from proposed-state to ingestion. There is no auto-promote path.
     """
+    # Spec §14.1 — separate discovery events dir.
+    if events_dir is None:
+        from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+        events_dir = default_discovery_events_dir()
+
     gate = legal_gate or default_legal_gate()
     verdict = gate.check_url(discovery.url)
 
@@ -568,6 +566,11 @@ def reject_discovery(
     the proposal. The trajectory log shows the full review history
     even when nothing was ingested.
     """
+    # Spec §14.1 — separate discovery events dir.
+    if events_dir is None:
+        from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+        events_dir = default_discovery_events_dir()
+
     selected = DiscoverySelectedPayload(
         discovery_id=discovery.discovery_id,
         document_id=None,

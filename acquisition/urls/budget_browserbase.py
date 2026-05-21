@@ -114,10 +114,13 @@ def check_and_reserve(
     cost_estimate_usd: float,
     *,
     cap_override: Optional[float] = None,
+    skip_combined_cap: bool = False,
 ) -> BudgetState:
     """Pre-session check. Raises `BrowserbaseBudgetExceeded` if the
-    cap would be exceeded by this session's estimated cost.
-    Otherwise records the reservation and returns the post-state.
+    per-provider cap would be exceeded, or
+    `DailyAcquisitionBudgetExceeded` if the combined acquisition
+    cap (spec §13.2) would be exceeded. The combined cap fires
+    first.
 
     Browserbase per-session cost is harder to estimate up-front
     than Exa (Exa is per-call; Browserbase is per-minute and the
@@ -126,6 +129,10 @@ def check_and_reserve(
     that callers can override when they know the wait_for shape
     will cap session length lower.
     """
+    if not skip_combined_cap:
+        from acquisition.search import assert_total_budget_ok  # noqa: PLC0415
+        assert_total_budget_ok(cost_estimate_usd)
+
     cap_usd = _resolve_cap_usd(cap_override)
     state = read_state()
     state.cap_usd = cap_usd

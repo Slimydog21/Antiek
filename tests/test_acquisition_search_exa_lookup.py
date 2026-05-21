@@ -51,11 +51,20 @@ from substrate.schemas.events import (
 def isolated_env(tmp_path, monkeypatch):
     events_dir = tmp_path / "events"
     events_dir.mkdir()
+    # Per spec §14.1, verifier_lookup events route to the
+    # discovery_events dir, not the substrate events dir.
+    # `ANTIEK_HOME` controls both sidecar paths AND the discovery
+    # events dir default, so the test looks under both locations.
+    discovery_events_dir = tmp_path / "discovery_events"
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "graph.duckdb"))
     monkeypatch.setenv("EXA_API_KEY", "test-key-not-used")
-    yield {"events_dir": str(events_dir), "tmpdir": str(tmp_path)}
+    yield {
+        "events_dir": str(events_dir),
+        "discovery_events_dir": str(discovery_events_dir),
+        "tmpdir": str(tmp_path),
+    }
 
 
 def _mock_exa_client(responses: List[dict], *, status: int = 200) -> ExaClient:
@@ -201,7 +210,7 @@ def test_lookup_emits_exactly_one_event(isolated_env):
         k=1,
         client=cli,
     )
-    events = _find_events(isolated_env["events_dir"], "verifier.lookup")
+    events = _find_events(isolated_env["discovery_events_dir"], "verifier.lookup")
     assert len(events) == 1
     p = events[0]["payload"]
     assert p["tool"] == "exa.search_contents"
@@ -221,7 +230,7 @@ def test_lookup_emits_event_even_on_empty_results(isolated_env):
         client=cli,
     )
     assert out == []
-    events = _find_events(isolated_env["events_dir"], "verifier.lookup")
+    events = _find_events(isolated_env["discovery_events_dir"], "verifier.lookup")
     assert len(events) == 1
     assert events[0]["payload"]["results"] == []
 
@@ -354,6 +363,6 @@ def test_lookup_returns_fewer_when_exa_returns_fewer(isolated_env):
         claim_text="x", investigation_id="i", k=5, client=cli,
     )
     assert len(out) == 2
-    events = _find_events(isolated_env["events_dir"], "verifier.lookup")
+    events = _find_events(isolated_env["discovery_events_dir"], "verifier.lookup")
     assert events[0]["payload"]["k_requested"] == 5
     assert len(events[0]["payload"]["results"]) == 2

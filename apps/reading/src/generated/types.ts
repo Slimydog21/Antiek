@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 8;
+export const EVENT_SCHEMA_VERSION = 9;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -1568,6 +1568,7 @@ export interface DiscoveryProposedPayload {
   text_snippet_preview?: string | null;
   provider_response_id?: string | null;
   cost_usd_estimate?: number | null;
+  provider_specific?: Record<string, unknown>;
 }
 
 /**
@@ -1618,7 +1619,7 @@ export interface FetchFallbackEscalatedPayload {
   primary_word_count: number;
   fallback_fetcher: "browserbase";
   fallback_word_count: number;
-  escalation_reason: "low_word_count" | "operator_override" | "js_detect";
+  escalation_reason: "low_word_count" | "operator_override" | "JS-detect";
   estimated_cost_usd: number;
 }
 

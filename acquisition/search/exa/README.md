@@ -41,7 +41,7 @@ Until the real gate lands, **don't promote URLs from banned-corpus domains.** Th
 |---|---|---|
 | 1 | Primary | NEVER auto-assigned. Operator-only via `source_tier=1` override. |
 | 2 | Research | arXiv, `*.gov`, `*.edu`, `*.ac.uk`, doi.org, ssrn.com, biorxiv.org. Also `category="research paper"`. |
-| 3 | Curated news | NYT, WSJ, FT, Bloomberg, Reuters, Economist, Atlantic, New Yorker, WaPo, AP. Edit `_CURATED_NEWS_TIER_3` in `adapter.py` directly. |
+| 3 | Curated news | NYT, WSJ, FT, Bloomberg, Reuters, Economist, Atlantic, New Yorker, WaPo, AP. Edit `CURATED_NEWS_TIER_3` in `substrate/constants.py` (substrate-level decision per spec §6.6). |
 | 4 | General web | Default for everything else. |
 
 No automatic learning of "what's a good source." Tier assignments are substrate decisions, not search-API decisions.
@@ -79,7 +79,7 @@ There is no silent fallback to a different provider. The operator sees the failu
 - Does NOT call Exa's `/answer`. That endpoint is REJECTED per spec §12.5 (collapses the trajectory).
 - Does NOT auto-ingest. Every promotion is operator-mediated via `promote_discovery(...)`.
 - Does NOT bypass the legal gate. The placeholder allows everything; the real Sprint 18 gate refuses.
-- Does NOT learn the curated news list. Operator edits `_CURATED_NEWS_TIER_3` directly.
+- Does NOT learn the curated news list. Operator edits `substrate.constants.CURATED_NEWS_TIER_3` directly.
 - Does NOT support multi-provider fan-out (one Exa-only adapter today). Spec §17.5 defers this until a second provider lands.
 
 ## Testing

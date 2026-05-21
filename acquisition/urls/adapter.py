@@ -85,6 +85,46 @@ def url_doc_id(url: str) -> str:
     return f"doc-url-{h}"
 
 
+def lookup_url_alias(
+    requested_url: str, *, db_path: Optional[str] = None,
+) -> Optional[str]:
+    """Consult the `url_alias` table for a prior ingestion of this
+    URL. Returns the canonical `document_id` if found, None
+    otherwise.
+
+    Spec §14.2 mitigation — guards against doc-id collision via
+    final-url drift: when the same `requested_url` resolves to two
+    different `final_url` values across fetches (because the site
+    changed its canonical slug), we'd otherwise mint two doc_ids
+    for the same logical content. The alias table records every
+    URL we've ever ingested under so the next encounter can
+    short-circuit to the canonical doc.
+
+    Safe to call against a missing DB file (returns None — the
+    cache fails open per the discovery_cache convention).
+    """
+    import duckdb
+
+    resolved = db_path or default_db_path()
+    try:
+        con = duckdb.connect(resolved, read_only=True)
+    except Exception:
+        return None
+    try:
+        rows = con.execute(
+            "SELECT document_id FROM url_alias WHERE requested_url = ?",
+            [requested_url],
+        ).fetchall()
+    except Exception:
+        # url_alias table not yet created (schema older than v3-with-aliases).
+        return None
+    finally:
+        con.close()
+    if not rows:
+        return None
+    return rows[0][0]
+
+
 # ---------------------------------------------------------------------------
 # Result shape
 # ---------------------------------------------------------------------------
@@ -189,6 +229,24 @@ def ingest_url(
     the httpx primary fetch returns low_word_count. Per spec §7.4
     Browserbase is 1000-5000× more expensive than httpx; default off.
     """
+    # Spec §14.2 — alias short-circuit. When the caller passes a
+    # bare URL (no pre-fetched bytes), consult url_alias first; if
+    # we've ingested this requested_url before, return the canonical
+    # doc_id without paying the fetch cost OR forking a new doc_id.
+    # Skipped when `fetched=` is passed (caller has bytes and is
+    # intentionally re-ingesting).
+    if fetched is None:
+        canonical = lookup_url_alias(url, db_path=db_path)
+        if canonical is not None:
+            return IngestUrlResult(
+                document_id=canonical,
+                final_url=url,
+                document_loaded_event_id=None,
+                skipped_reason="alias_resolved_to_existing_document",
+                title=None,
+                author=None,
+            )
+
     page: FetchedHtml = fetched or fetch(url, client=http_client)  # type: ignore[arg-type]
     md_doc: MarkdownDoc = html_to_markdown(page.body, base_url=page.final_url)
 
@@ -277,6 +335,33 @@ def ingest_url(
             },
             on_conflict="ignore",
         )
+        # Spec §14.2 — record the requested_url→document_id alias so
+        # future fetches that resolve to a different final_url for
+        # the same logical content can find their canonical doc_id
+        # via the alias table. Two aliases written: requested_url
+        # (the input) and final_url (the redirect target). Both row
+        # writes are upserts that increment seen_count when present.
+        #
+        # `now_ts` is passed as a parameter (rather than using the
+        # SQL CURRENT_TIMESTAMP keyword) because DuckDB's ON CONFLICT
+        # parser interprets CURRENT_TIMESTAMP in the UPDATE SET clause
+        # as a column reference, which fails binding.
+        now_ts = datetime.now(timezone.utc).replace(tzinfo=None)
+        for alias in {page.requested_url, page.final_url}:
+            if not alias:
+                continue
+            con.execute(
+                """
+                INSERT INTO url_alias (
+                    requested_url, document_id, first_seen_at,
+                    last_seen_at, seen_count
+                ) VALUES (?, ?, ?, ?, 1)
+                ON CONFLICT (requested_url) DO UPDATE SET
+                    last_seen_at = EXCLUDED.last_seen_at,
+                    seen_count = url_alias.seen_count + 1
+                """,
+                [alias, document_id, now_ts, now_ts],
+            )
         for i, chunk in enumerate(chunks):
             chunk_id = insert_chunk(
                 con,

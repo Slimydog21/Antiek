@@ -102,6 +102,13 @@ def exa_lookup_claim(
         raise ValueError("exa_lookup_claim: empty investigation_id")
     if k < 1 or k > MAX_K:
         raise ValueError(f"exa_lookup_claim: k must be 1..{MAX_K}")
+    # Spec §14.1 — verifier-lookup events route to the discovery
+    # events dir alongside DiscoveryProposed/Selected (it's a
+    # discovery-layer event in the trajectory sense, not a substrate
+    # write).
+    if events_dir is None:
+        from acquisition.search import default_discovery_events_dir  # noqa: PLC0415
+        events_dir = default_discovery_events_dir()
 
     # Per spec §6.7 — optimistic budget reservation BEFORE the
     # Exa call. Same per-search cost as discover(); the call

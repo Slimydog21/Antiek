@@ -118,11 +118,19 @@ def check_and_reserve(
     cost_estimate_usd: float,
     *,
     cap_override: Optional[float] = None,
+    skip_combined_cap: bool = False,
 ) -> BudgetState:
     """Pre-call check. Raises `DiscoveryBudgetExceeded` (defined in
     `adapter.py`) if the cap would be exceeded by this call's
     estimated cost. Otherwise records the reservation and returns
     the post-state.
+
+    Per spec §13.2 the **combined** acquisition cap is consulted
+    BEFORE the per-provider Exa cap. This catches the
+    Exa-spend-fine-but-combined-with-Browserbase-over case the
+    per-provider cap can't see. Pass ``skip_combined_cap=True``
+    only from test paths that have already monkeypatched the
+    total-cap behavior.
 
     Idempotency note: the reservation is "optimistic" — if the
     actual cost diverges, the caller can `record_actual(...)` to
@@ -131,6 +139,14 @@ def check_and_reserve(
     """
     # Local import to avoid a circular module dependency.
     from .adapter import DiscoveryBudgetExceeded  # noqa: PLC0415
+
+    if not skip_combined_cap:
+        # Combined acquisition cap consulted first; raises
+        # DailyAcquisitionBudgetExceeded (which is a separate
+        # exception type so the caller can distinguish per-provider
+        # vs combined exhaustion).
+        from acquisition.search import assert_total_budget_ok  # noqa: PLC0415
+        assert_total_budget_ok(cost_estimate_usd)
 
     cap_usd = _resolve_cap_usd(cap_override)
     state = read_state()

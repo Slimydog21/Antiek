@@ -288,7 +288,12 @@ class ActionType(str, Enum):
 # v8: Sprint 30+ thread 1 — federation audit trail. 6 typed events for
 #     partner state transitions + cross-instance citation flow.
 #     master-spec §13.9 + §13.7 audit. 2026-05-21.
-EVENT_SCHEMA_VERSION: int = 8
+# v9: Exa-spec §14.7 forward-compat — DiscoveryProposedPayload gains a
+#     `provider_specific: dict[str, Any]` overflow bag so SerpAPI /
+#     Tavily / Perplexity can add provider-shaped fields without
+#     bumping the schema again. The top-level fields stay provider-
+#     agnostic. 2026-05-22.
+EVENT_SCHEMA_VERSION: int = 9
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2258,11 +2263,21 @@ class DiscoveryProposedPayload(_PayloadBase):
     # via acquisition/urls/adapter.ingest_url.
     text_snippet_preview: Optional[str] = Field(default=None, max_length=300)
     # Provider's own request id, for audit cross-reference.
+    # **Deprecated as a top-level field per spec §14.7** — kept for
+    # backward compat with v6-v8 events; new emitters should write
+    # this under ``provider_specific["response_id"]`` instead. Read
+    # paths consult both (top-level shadows the dict if both present).
     provider_response_id: Optional[str] = None
     # Per-call cost estimate in USD. Captured per spec §6.7 so
     # weekly_report.py can aggregate discovery-layer spend separately
     # from dispatch spend.
     cost_usd_estimate: Optional[float] = Field(default=None, ge=0.0)
+    # Provider-specific overflow bag per spec §14.7. Each provider
+    # writes its provider-shaped fields here (Exa's `autopromptString`,
+    # SerpAPI's `position`, Tavily's `score_components`, etc.). The
+    # top-level fields above stay provider-agnostic — adding a new
+    # provider doesn't require a schema bump.
+    provider_specific: dict[str, Any] = Field(default_factory=dict)
 
 
 class DiscoverySelectedPayload(_PayloadBase):
@@ -2321,7 +2336,7 @@ class FetchFallbackEscalatedPayload(_PayloadBase):
     escalation_reason: Literal[
         "low_word_count",
         "operator_override",
-        "js_detect",
+        "JS-detect",
     ]
     # Per-session cost estimate in USD. Captured so the weekly report
     # can flag runaway escalation early (the per-page cost is 50-5000×

@@ -101,6 +101,47 @@ TIER_HEDGING_POLICY: Final[dict[int, str]] = {
 }
 
 
+# C.5 Curated tier-3 news allowlist. Per Exa-spec §6.6 this lives
+# at the substrate level (not in the Exa adapter) because tier
+# assignment is a substrate decision, not a search-API decision.
+# Adding entries is operator-edited; no automatic learning. Edit
+# this tuple directly to allow a new outlet at tier 3 instead of
+# the default tier 4.
+CURATED_NEWS_TIER_3: Final[frozenset[str]] = frozenset({
+    "nytimes.com",
+    "wsj.com",
+    "ft.com",
+    "bloomberg.com",
+    "reuters.com",
+    "economist.com",
+    "theatlantic.com",
+    "newyorker.com",
+    "washingtonpost.com",
+    "apnews.com",
+})
+
+# C.6 Tier-2 known-good research host allowlist. Suffix-matched
+# host families (".gov", ".edu", ".ac.uk") + the explicit `doi.org`
+# are handled at the predicate site; this set is for named non-
+# suffix hosts that should still resolve to tier 2.
+RESEARCH_HOSTS_TIER_2: Final[frozenset[str]] = frozenset({
+    "arxiv.org",
+    "ssrn.com",
+    "biorxiv.org",
+    "medrxiv.org",
+})
+
+
+# C.7 Acquisition-layer daily budget caps. Per the Exa-spec §13.2 the
+# **total** acquisition spend across all providers is bounded at this
+# combined cap, enforced before any per-provider cap takes effect. The
+# combined cap defends against "Exa $5 + Browserbase $5 + future
+# provider $5 = $15 silent drift" — when a new provider lands, the
+# operator must consciously lift this total or the spend stays
+# bounded.
+TOTAL_ACQUISITION_BUDGET_USD: Final[float] = 10.0
+
+
 # ============================================================
 # Section D — Temporal layer
 # ============================================================
