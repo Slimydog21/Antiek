@@ -345,6 +345,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "deliverables", "deliverable_sections", "section_blocks",
     "interview_projects", "interviews",
     "ip_holders", "notebooks", "notebook_blocks",
+    "discovery_cache",
 )
 
 
@@ -526,6 +527,32 @@ CREATE INDEX IF NOT EXISTS idx_deletion_requests_user
 """
 
 
+# Sprint 18 — Exa & Browserbase Wedge 1 — discovery cache (§6.5).
+# 24h dedup on the (query, investigation_id, provider, params) tuple
+# so the operator doesn't pay twice for an identical search. Hit on
+# cache short-circuits the Exa call and returns the prior proposal
+# list AS-IS — no re-emission of DiscoveryProposed events (the audit
+# trail already recorded what was considered on the first run).
+ANTIEK_GRAPH_SCHEMA_V3_DISCOVERY_CACHE_SQL = """
+CREATE TABLE IF NOT EXISTS discovery_cache (
+    cache_key       TEXT PRIMARY KEY,
+    provider        TEXT NOT NULL,
+    query           TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    proposals_json  TEXT NOT NULL,
+    cached_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at      TIMESTAMP NOT NULL,
+    result_count    INTEGER NOT NULL DEFAULT 0,
+    cost_usd        DOUBLE NOT NULL DEFAULT 0.0
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovery_cache_expires
+    ON discovery_cache(expires_at);
+CREATE INDEX IF NOT EXISTS idx_discovery_cache_investigation
+    ON discovery_cache(investigation_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -543,6 +570,9 @@ def init_database(con: LockedConnection) -> None:
     # Sprint 18 additions are idempotent (CREATE IF NOT EXISTS,
     # ALTER TABLE ADD COLUMN IF NOT EXISTS).
     con.execute(ANTIEK_GRAPH_SCHEMA_V2_SPRINT18_SQL)
+    # Sprint 18 — Exa & Browserbase Wedge 1 discovery_cache.
+    # docs/integration_exa_browserbase.md §6.5.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V3_DISCOVERY_CACHE_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:

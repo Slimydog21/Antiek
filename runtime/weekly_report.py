@@ -507,6 +507,7 @@ class WeeklyReport:
     phase_8_signal: dict[str, Any]
     dispatch_cost: dict[str, Any]
     cross_doc: dict[str, Any]
+    acquisition_cost: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -518,7 +519,84 @@ class WeeklyReport:
             "phase_8_signal": self.phase_8_signal,
             "dispatch_cost": self.dispatch_cost,
             "cross_doc": self.cross_doc,
+            "acquisition_cost": self.acquisition_cost,
         }
+
+
+def collect_acquisition_cost(
+    start: datetime, end: datetime,
+    *,
+    budget_dir: Optional[str] = None,
+) -> dict[str, Any]:
+    """Sum discovery-layer spend from the Exa budget sidecars
+    (`~/.antiek/budgets/exa_<utc-date>.json`).
+
+    Per `docs/integration_exa_browserbase.md` §6.7: the operator
+    needs to see Exa spend alongside dispatch spend. The sidecars
+    are the source of truth — the events carry per-call cost but
+    the sidecars carry the realized daily totals.
+    """
+    if budget_dir:
+        budget_path = Path(budget_dir)
+    elif os.environ.get("ANTIEK_HOME"):
+        budget_path = Path(os.environ["ANTIEK_HOME"]) / "budgets"
+    else:
+        budget_path = Path.home() / ".antiek" / "budgets"
+
+    by_day: list[dict[str, Any]] = []
+    total_usd = 0.0
+    total_calls = 0
+
+    if not budget_path.exists():
+        return {
+            "budget_dir": str(budget_path),
+            "budget_dir_exists": False,
+            "total_usd": 0.0,
+            "total_calls": 0,
+            "days_in_window": 0,
+            "by_day": [],
+            "top_day": None,
+        }
+
+    # Walk each provider sidecar in the date window. Format:
+    #   exa_<YYYY-MM-DD>.json
+    # Future providers extend by glob pattern.
+    for f in sorted(budget_path.glob("exa_*.json")):
+        try:
+            stem_date = f.stem.replace("exa_", "")
+            day = datetime.strptime(stem_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if day < start.replace(hour=0, minute=0, second=0, microsecond=0):
+            continue
+        if day > end:
+            continue
+        try:
+            data = json.loads(f.read_text())
+        except (ValueError, OSError):
+            continue
+        spent = float(data.get("spent_usd", 0.0))
+        calls = int(data.get("call_count", 0))
+        by_day.append({
+            "date": stem_date,
+            "provider": "exa",
+            "spent_usd": spent,
+            "call_count": calls,
+            "cap_usd": float(data.get("cap_usd", 0.0)),
+        })
+        total_usd += spent
+        total_calls += calls
+
+    top_day = max(by_day, key=lambda r: r["spent_usd"], default=None)
+    return {
+        "budget_dir": str(budget_path),
+        "budget_dir_exists": True,
+        "total_usd": total_usd,
+        "total_calls": total_calls,
+        "days_in_window": len(by_day),
+        "by_day": by_day,
+        "top_day": top_day,
+    }
 
 
 def build_report(
@@ -526,8 +604,9 @@ def build_report(
     *,
     events_dir: Optional[str] = None,
     log_dir: Optional[str] = None,
+    budget_dir: Optional[str] = None,
 ) -> WeeklyReport:
-    """Aggregate all six sections. Reads the entire window's event
+    """Aggregate all sections. Reads the entire window's event
     history into memory once and partitions it across the section
     aggregators — keeps each event read once."""
     events = list(iter_window_events(start, end, events_dir=events_dir))
@@ -537,6 +616,7 @@ def build_report(
     p8 = collect_phase_8_signal(events, completed_count=lifecycle["completed"])
     cost = collect_dispatch_cost(events)
     crossdoc = collect_cross_doc_link_rate(events)
+    acq = collect_acquisition_cost(start, end, budget_dir=budget_dir)
     return WeeklyReport(
         window={"since": _iso(start), "until": _iso(end)},
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
@@ -546,6 +626,7 @@ def build_report(
         phase_8_signal=p8,
         dispatch_cost=cost,
         cross_doc=crossdoc,
+        acquisition_cost=acq,
     )
 
 
@@ -673,6 +754,37 @@ def _md_dispatch_section(D: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _md_acquisition_section(A: dict[str, Any]) -> list[str]:
+    lines = ["## 7. Acquisition cost (discovery layer)"]
+    if not A or not A.get("budget_dir_exists"):
+        lines.append(f"_Budget dir does not exist: `{A.get('budget_dir')}`_")
+        return lines
+    if A["days_in_window"] == 0:
+        lines.append(_NO_EVENTS)
+        return lines
+    lines.append(
+        f"Total Exa spend in window: **${A['total_usd']:.4f}** "
+        f"across **{A['total_calls']}** calls "
+        f"over **{A['days_in_window']}** day(s)."
+    )
+    if A.get("top_day"):
+        td = A["top_day"]
+        lines.append(
+            f"Top-spending day: **{td['date']}** "
+            f"(${td['spent_usd']:.4f} / {td['call_count']} calls, "
+            f"cap ${td['cap_usd']:.2f})."
+        )
+    lines.append("")
+    lines.append("| date | provider | calls | spent_usd | cap_usd |")
+    lines.append("|------|----------|------:|----------:|--------:|")
+    for r in A["by_day"]:
+        lines.append(
+            f"| {r['date']} | {r['provider']} | {r['call_count']} | "
+            f"${r['spent_usd']:.4f} | ${r['cap_usd']:.2f} |"
+        )
+    return lines
+
+
 def _md_cross_doc_section(X: dict[str, Any]) -> list[str]:
     lines = ["## 6. Cross-doc link rate"]
     if X["questions_identified"] == 0:
@@ -708,6 +820,8 @@ def report_to_markdown(r: WeeklyReport) -> str:
     lines.extend(_md_dispatch_section(r.dispatch_cost))
     lines.append("")
     lines.extend(_md_cross_doc_section(r.cross_doc))
+    lines.append("")
+    lines.extend(_md_acquisition_section(r.acquisition_cost))
     lines.append("")
     return "\n".join(lines)
 
