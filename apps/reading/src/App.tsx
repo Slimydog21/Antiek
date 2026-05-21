@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
+import AppShell from "./AppShell";
 import AISidecar from "./components/AISidecar";
 import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
@@ -69,7 +70,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 function AuthenticatedRoutes() {
   return (
-    <>
+    <AppShell>
       <CommandPalette />
       <AISidecar />
       <Routes>
@@ -105,7 +106,7 @@ function AuthenticatedRoutes() {
         <Route path="/payouts" element={<PayoutsAudit />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </AppShell>
   );
 }
 
