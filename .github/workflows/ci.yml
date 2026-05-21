@@ -21,6 +21,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Opt into Node 24 for JS-based actions (actions/checkout,
+  # setup-node, setup-python). Node 20 was deprecated 2025-09-19;
+  # forced removal 2026-09-16. This env var is GitHub's blessed
+  # forward-compat path until each action's manifest is updated.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   pytest:
     name: pytest
