@@ -19,6 +19,7 @@ import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
 import Notebook from "./modes/Notebook";
+import PerDocNotebook from "./modes/Notebook/PerDocNotebook";
 import NotebooksIndex from "./modes/NotebooksIndex";
 import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
@@ -78,6 +79,10 @@ function AuthenticatedRoutes() {
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
+        <Route
+          path="/wrestle/:documentId/notebook"
+          element={<PerDocNotebook />}
+        />
         <Route path="/sources" element={<Sources />} />
         <Route path="/create" element={<CreationStudio />} />
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
