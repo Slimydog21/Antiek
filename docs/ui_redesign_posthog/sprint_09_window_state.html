@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 9 — Workspace state persistence + deep-linking · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S9</span>Workspace state persistence + deep-linking + popout</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~4 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S3, S5, S6, S7, S8</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S10 (migration relies on persistence working)</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">5</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Make the workspace durable across reloads, navigations, and OS-level
+  popout windows. Three deliverables: (a) localStorage persistence keyed
+  by route + investigation, (b) shareable URL params encoding panel
+  layout, (c) <code>window.open</code>-backed popout that renders a real
+  panel into a separate OS window with a live React tree sharing state
+  via BroadcastChannel.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  Through S8, every reload nukes the operator's panel layout. That's
+  fine while we're proving the model; intolerable as a daily-driver
+  experience. Popout was stubbed in S3 to keep S3 finite; this sprint
+  cashes the IOU. The deep-link is the social affordance — operator
+  hands a teammate a URL that opens "trajectory + PDF page 12 side by
+  side", and it just works.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No server-side sync. State stays local. Multi-device sync is a multi-user concern (Sprint 22+).</li>
+  <li>No undo of layout actions. (Drag a panel by accident → use the kebab to put it back. Layout history is a S22+ topic if at all.)</li>
+  <li>No automatic layout templates ("research mode preset" etc.). Operator builds their own.</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<h3>4.1 · Persistence layers</h3>
+
+<table>
+  <thead><tr><th>Scope</th><th>Storage</th><th>Key</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Global panel layout (NavRail, ProjectTree)</td><td>localStorage</td><td><code>antiek.workspace.global</code></td><td>Persists across routes</td></tr>
+    <tr><td>Per-route layout (RW, Wrestle, Notebook…)</td><td>localStorage</td><td><code>antiek.workspace.route.&lt;route&gt;</code></td><td>Each surface has its own preferred layout</td></tr>
+    <tr><td>Per-investigation overrides</td><td>localStorage</td><td><code>antiek.workspace.inv.&lt;id&gt;</code></td><td>Operator pins a layout to a specific investigation</td></tr>
+    <tr><td>URL shareable snapshot</td><td>URL query param</td><td><code>?ws=&lt;base64-json&gt;</code></td><td>Send links that open a configured workspace</td></tr>
+    <tr><td>Popout window state</td><td>BroadcastChannel "antiek-workspace"</td><td>—</td><td>Cross-window sync of focused panel state</td></tr>
+  </tbody>
+</table>
+
+<h3>4.2 · Reconciliation order</h3>
+
+<ol>
+  <li>On AppShell mount: read <code>antiek.workspace.global</code>.</li>
+  <li>When a route component (e.g. RW) mounts: read <code>antiek.workspace.route.&lt;route&gt;</code>, layer over global.</li>
+  <li>If <code>investigationId</code> is present and an investigation-specific snapshot exists: layer that over the route default.</li>
+  <li>If <code>?ws=…</code> is present in the URL: layer that over everything; clear after applying.</li>
+</ol>
+
+<p>
+  Conflicts: "layer over" means union of panel sets, latest-wins on
+  position/size. Snapshots include a <code>schemaVersion</code>;
+  mismatched versions skip the layer with a debug log.
+</p>
+
+<h3>4.3 · Popout</h3>
+
+<div class="diagram">
+   main window                                 popout window
+   ┌──────────────────────┐                    ┌──────────────────────┐
+   │ ⌘K palette → popout  │   window.open ──▶  │ /_panel/&lt;panelId&gt;    │
+   │   Notebook panel     │                    │ &lt;PanelHost mainSlot= │
+   │                      │ ◀── BroadcastChan ─│   {&lt;PanelRenderer/&gt;}│
+   │                      │   "antiek-workspace" │ /&gt;                  │
+   │ panel removed from   │                    │ panel id stays      │
+   │ floatingIds          │                    │ "owned" by popout   │
+   └──────────────────────┘                    └──────────────────────┘
+</div>
+
+<p>
+  Single source of truth: the popout window mounts its own
+  <code>useWorkspace</code> store but subscribes via BroadcastChannel
+  to the main window's store. The popout is told <em>only its own
+  panel</em>; closing the popout fires a message and the main window
+  re-adds the panel to its floating layer.
+</p>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-9.1 -->
+<div class="wp">
+  <div class="wp-id">WP-9.1</div>
+  <h3>Persistence middleware on WorkspaceStore</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/persistence.ts</code></span>
+    <span><strong>Effort:</strong> 0.7 d</span>
+  </div>
+  <p>
+    Zustand has a <code>persist</code> middleware; we use it but with a
+    custom storage adapter that writes to multiple keys based on
+    current route + investigation id + a debounce (250 ms).
+  </p>
+
+  <pre><code>// src/workspace/persistence.ts
+type PersistKey = "global" | { route: string } | { investigationId: string };
+
+export function snapshotFor(key: PersistKey, snapshot: WorkspaceSnapshot): Partial&lt;WorkspaceSnapshot&gt; {
+  // strip transient state (focusedPanelId, zCounter), keep panels + dock arrays
+  return {
+    panels: snapshot.panels,
+    dockLeftIds: snapshot.dockLeftIds,
+    dockRightIds: snapshot.dockRightIds,
+    dockBottomIds: snapshot.dockBottomIds,
+    schemaVersion: snapshot.schemaVersion,
+  };
+}
+
+export function applySnapshot(s: WorkspaceSnapshot, snap: Partial&lt;WorkspaceSnapshot&gt;) {
+  if (snap.schemaVersion !== 1) return s;  // version mismatch: ignore
+  return { ...s, ...snap };
+}
+</code></pre>
+</div>
+
+<!-- WP-9.2 -->
+<div class="wp">
+  <div class="wp-id">WP-9.2</div>
+  <h3>Route-scoped + investigation-scoped layering</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/useWorkspaceHydration.ts</code></span>
+    <span><strong>Effort:</strong> 0.8 d</span>
+  </div>
+  <p>
+    A hook called from AppShell that watches route + investigation id
+    and reconciles snapshots in the order listed in §4.2. Includes a
+    "reset" action exposed in the command palette ("Reset workspace
+    layout" — clears localStorage scope).
+  </p>
+</div>
+
+<!-- WP-9.3 -->
+<div class="wp">
+  <div class="wp-id">WP-9.3</div>
+  <h3>URL shareable snapshot</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/urlSnapshot.ts</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    Encode the current layout as a base64 JSON in <code>?ws=…</code>.
+    Decode on load, apply, then strip the param from the URL via
+    <code>history.replaceState</code>. A new palette action "Copy
+    shareable layout link" emits this URL into the clipboard.
+  </p>
+
+  <pre><code>// src/workspace/urlSnapshot.ts
+export function encodeWs(s: WorkspaceSnapshot): string {
+  const minimal = snapshotFor("global", s);
+  return btoa(unescape(encodeURIComponent(JSON.stringify(minimal))));
+}
+export function decodeWs(raw: string): Partial&lt;WorkspaceSnapshot&gt; | null {
+  try { return JSON.parse(decodeURIComponent(escape(atob(raw)))); }
+  catch { return null; }
+}
+</code></pre>
+
+  <p>
+    Size budget: real layouts encode to ≤ 1.2 KB. URL caps are 2 KB on
+    most servers and 8 KB on browsers; we're well under both.
+  </p>
+</div>
+
+<!-- WP-9.4 -->
+<div class="wp">
+  <div class="wp-id">WP-9.4</div>
+  <h3>Popout via window.open + BroadcastChannel</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>src/workspace/popout.ts</code>, new route <code>/_panel/:id</code>, <code>src/PanelWindowApp.tsx</code></span>
+    <span><strong>Effort:</strong> 1.4 d</span>
+  </div>
+
+  <p>
+    Setting a panel's mode to <code>"popout"</code>:
+  </p>
+  <ol>
+    <li>Opens <code>window.open("/_panel/&lt;panelId&gt;", "popout_&lt;id&gt;", "popup,width=720,height=560")</code>.</li>
+    <li>Removes the panel from main-window <code>floatingIds</code> + adds it to a <code>popoutIds</code> array.</li>
+    <li>The popout window mounts <code>&lt;PanelWindowApp /&gt;</code>: a minimal AppShell-like layout that renders just the one panel.</li>
+    <li>Both windows open the BroadcastChannel <code>"antiek-workspace"</code>. Main window posts the panel descriptor to popout on open; popout posts size/position changes back; main window posts close intent.</li>
+    <li>When popout window closes (operator clicks X), <code>beforeunload</code> fires a "popout closed" message → main window re-adds the panel to <code>floatingIds</code> at the position the popout window had.</li>
+  </ol>
+
+  <p>
+    Browser support: BroadcastChannel works in every modern browser.
+    Fallback: if BroadcastChannel is undefined, popout opens but
+    cannot sync — main window shows a toast "popout sync unavailable
+    in this browser; layout will not roundtrip."
+  </p>
+
+  <pre><code>// src/workspace/popout.ts
+export function openPopout(panelId: string, ws: WorkspaceSnapshot) {
+  const panel = ws.panels[panelId]; if (!panel) return;
+  const win = window.open(
+    `/_panel/${panelId}`,
+    `popout_${panelId}`,
+    `popup,width=${panel.rect.width|0+40},height=${panel.rect.height|0+80}`
+  );
+  if (!win) {
+    toast.err("Popup blocked. Allow popups for this site.");
+    return;
+  }
+  const ch = new BroadcastChannel("antiek-workspace");
+  ch.postMessage({ kind: "popout-init", panelId, descriptor: panel });
+}
+</code></pre>
+
+  <p>
+    <strong>Security:</strong> popout windows are same-origin and pass
+    no opaque tokens; they identify their panel by id only. Substrate
+    auth (when it lands) flows through the same cookies as the main
+    window.
+  </p>
+</div>
+
+<!-- WP-9.5 -->
+<div class="wp">
+  <div class="wp-id">WP-9.5</div>
+  <h3>Layout reset + presets</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/presets.ts</code></span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Three palette commands:
+  </p>
+  <ul>
+    <li><strong>Reset layout (this route)</strong> — clears the per-route snapshot.</li>
+    <li><strong>Reset layout (this investigation)</strong> — clears the per-investigation snapshot.</li>
+    <li><strong>Reset all layouts</strong> — clears all <code>antiek.workspace.*</code> keys; confirms with LemonModal.</li>
+  </ul>
+  <p>
+    Built-in presets are explicitly out-of-scope; operators build their
+    own and share via URL.
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>Reload preserves docked + floating panels for the current route.</li>
+  <li>Navigating between investigations and back restores per-investigation layouts.</li>
+  <li>Cmd+K → "Copy shareable layout link" → paste in another browser tab → same workspace renders.</li>
+  <li>Popout a panel via kebab → "Pop out". A second OS window opens containing only that panel; main window's floating layer no longer shows it.</li>
+  <li>Drag the popout window to a second monitor; it stays open + responsive.</li>
+  <li>Close popout window → main window re-adds the panel to floating layer at the popout's last position.</li>
+  <li>Reset commands clear the right scope without affecting others.</li>
+  <li>Schema-version mismatch in localStorage logs once and falls back to defaults; no crash.</li>
+  <li>Bundle delta ≤ 6 KB gzipped.</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Popup blocked by browser.</strong> Mitigation: popout action triggered only from user-initiated event (click); show toast on null window return.</li>
+  <li><strong>BroadcastChannel message ordering racing with React effects.</strong> Mitigation: popout window queues incoming messages until React has hydrated; small ready handshake.</li>
+  <li><strong>localStorage quota exceeded with many investigation snapshots.</strong> Mitigation: per-investigation snapshots cap at 50 entries (LRU); global state always under 4 KB.</li>
+  <li><strong>Schema-evolution: changing PanelDescriptor shape later breaks saved snapshots.</strong> Mitigation: <code>schemaVersion</code> bump triggers ignore; a tiny migration step can be added per version when needed.</li>
+  <li><strong>Popout window depends on substrate APIs (e.g. fetching investigation data) that may have CORS issues.</strong> Mitigation: same-origin window.open; substrate calls work identically.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li>Default behaviour on first visit per investigation: blank workspace or inherit route default? Default: inherit route default (already familiar layout).</li>
+  <li>Should the URL snapshot include the current investigation id, or only layout? Default: layout only — the URL stays general; the investigation id is the path segment.</li>
+  <li>Should a popout window also persist its own state? Default: no — popouts are transient; main window owns persistence.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+
+<ol>
+  <li>Build a panel layout in /; reload; verify it survives.</li>
+  <li>Switch to /inv/X; build a different layout; back to /; verify route default returns. Back to /inv/X; verify the investigation-specific layout returns.</li>
+  <li>Copy shareable link; open in fresh tab; verify same layout.</li>
+  <li>Popout the Notebook panel; drag the popout to a second monitor; type into it; verify changes save.</li>
+  <li>Close popout; verify Notebook re-docks/floats in main window with its last popout position.</li>
+  <li>Manually corrupt <code>antiek.workspace.global</code> in DevTools; reload; verify graceful fallback + console log.</li>
+  <li>Run Cmd+K → "Reset all layouts"; confirm modal; everything resets.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  Persistence is a Zustand middleware. Disabling it = removing the
+  middleware call site (one line). Popout = one new route + a couple
+  of files; deletable in isolation. URL snapshot = optional read at
+  bootstrap; if removed, links with <code>?ws=</code> harmlessly ignored.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_08_command_palette_ai.html"><span class="label">← Prev</span>S8 · Palette + AI</a>
+  <a class="next" href="sprint_10_migration.html"><span class="label">Next →</span>S10 · Bulk migration</a>
+</div>
+
+</div>
+</body>
+</html>

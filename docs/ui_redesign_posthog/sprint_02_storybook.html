@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 2 — Storybook coverage + visual regression · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S2</span>Storybook coverage + visual regression</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~2 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S0 (S1 can run in parallel)</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S12 (release gate)</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">4</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Bring every Antiek component (existing + new lemon primitives + future
+  panel-system pieces) under Storybook coverage, and wire visual-regression
+  via Lost-Pixel so structural drift fails CI rather than slipping in
+  invisibly during S5–S10's bulk migration.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+
+<p>
+  Storybook is already in <code>devDependencies</code> (<code>storybook ^8.4.7</code>)
+  and 8 stories exist. But coverage is partial (no stories for many panels,
+  none for the new primitives, no visual-regression). During S5–S10 we
+  will rebuild every mode; without a screenshot-diff signal we will
+  unknowingly regress visuals on the modes we touch later in the run.
+  Sprint 2 closes the gap, before the riskiest sprints start.
+</p>
+
+<p>
+  This sprint executes the <code>integration_posthog.md §5.1a</code>
+  commitment that was always "pure-upside hygiene, no reason to defer".
+  It is short, low-risk, and high-leverage.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>Not running Chromatic. Lost-Pixel is local + self-hosted; we don't bring on a paid SaaS.</li>
+  <li>Not building MDX docs pages for every component. Stories are the doc; one MDX overview page only.</li>
+  <li>Not blocking new feature work on screenshot diffs. Diffs are advisory in S2 → become CI-blocking only in S12.</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<div class="diagram">
+apps/reading/
+├── .storybook/
+│   ├── main.ts          ◀ already present; extend addons list
+│   ├── preview.tsx      ◀ wrap stories in shared paper background + token CSS
+│   └── manager.ts       ◀ new: brand the Storybook UI in Antiek wordmark
+├── lostpixel.config.ts  ◀ new — screenshot diff config
+├── src/
+│   ├── design/moodboard.stories.tsx     (from S0)
+│   ├── components/lemon/*.stories.tsx   (from S1)
+│   ├── components/&lt;existing&gt;.stories.tsx  (extend coverage)
+│   └── modes/**/*.stories.tsx           (NEW for each mode, where useful)
+└── package.json scripts: + visualtest, + visualtest:update
+</div>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-2.1 -->
+<div class="wp">
+  <div class="wp-id">WP-2.1</div>
+  <h3>Storybook preview + brand polish</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>.storybook/preview.tsx</code>, <code>.storybook/manager.ts</code></span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    Wrap every story in a paper-coloured background + Inter/JetBrains-Mono
+    font load, so stories render the same as in production. Brand the
+    Storybook chrome with the Antiek wordmark + yellow accent.
+  </p>
+  <pre><code>// .storybook/preview.tsx
+import type { Preview } from "@storybook/react";
+import "../src/index.css";
+import "../src/design/tokens.css";
+
+const preview: Preview = {
+  parameters: {
+    backgrounds: {
+      default: "paper",
+      values: [
+        { name: "paper",      value: "#FBFBFA" },
+        { name: "paper-soft", value: "#F2F2EE" },
+        { name: "ink",        value: "#1D1F27" },
+      ],
+    },
+    layout: "padded",
+  },
+  decorators: [
+    (Story) =&gt; (
+      &lt;div className="font-sans text-ink"&gt;
+        &lt;Story /&gt;
+      &lt;/div&gt;
+    ),
+  ],
+};
+export default preview;
+</code></pre>
+</div>
+
+<!-- WP-2.2 -->
+<div class="wp">
+  <div class="wp-id">WP-2.2</div>
+  <h3>Fill the legacy-component coverage gap</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> add stories for components that don't have one yet</span>
+    <span><strong>Effort:</strong> 0.8 d</span>
+  </div>
+  <p>
+    Current Storybook has 8 stories. After this WP, every component in
+    <code>src/components/</code> must have at least one story. Modes get
+    a story only when they have a meaningful "isolated" render — i.e., a
+    pure-presentational sub-component (<code>InvestigationSidebar</code>,
+    <code>TrajectoryView</code> with mock data, etc).
+  </p>
+
+  <p><strong>Coverage gap to close (initial pass):</strong></p>
+
+  <table>
+    <thead><tr><th>Component</th><th>Has story?</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><code>AISidecar</code></td><td>Yes</td><td>extend with two more states</td></tr>
+      <tr><td><code>ChatInput</code></td><td>Yes</td><td>add before/after-S0 variant pinned</td></tr>
+      <tr><td><code>ClaimCard</code></td><td>Yes</td><td>keep</td></tr>
+      <tr><td><code>CommandPalette</code></td><td>Yes</td><td>add empty + filtered states</td></tr>
+      <tr><td><code>CrossDocSidebar</code></td><td>Yes</td><td>keep</td></tr>
+      <tr><td><code>InterviewVoiceCapture</code></td><td>No</td><td><strong>ADD</strong> — 3 states (idle, recording, processing)</td></tr>
+      <tr><td><code>NotesFeed</code></td><td>Yes</td><td>keep</td></tr>
+      <tr><td><code>NotesPanel</code></td><td>Yes</td><td>keep</td></tr>
+      <tr><td><code>PdfViewer</code></td><td>Yes</td><td>keep</td></tr>
+      <tr><td><code>TrajectoryReplay</code></td><td>No</td><td><strong>ADD</strong> — mocked event stream</td></tr>
+      <tr><td><code>ResearchWorkstation/MasterMdViewer</code></td><td>Yes</td><td>keep</td></tr>
+      <tr><td><code>ResearchWorkstation/InvestigationSidebar</code></td><td>No</td><td><strong>ADD</strong> — mock investigation tree</td></tr>
+      <tr><td><code>ResearchWorkstation/TrajectoryView</code></td><td>No</td><td><strong>ADD</strong> — mock events</td></tr>
+      <tr><td><code>ResearchWorkstation/HighlightToolbar</code></td><td>No</td><td><strong>ADD</strong></td></tr>
+      <tr><td><code>ResearchWorkstation/ChaseSlideOver</code></td><td>No</td><td><strong>ADD</strong> — open/closed</td></tr>
+      <tr><td><code>ResearchWorkstation/PhaseRow</code></td><td>No</td><td><strong>ADD</strong></td></tr>
+      <tr><td><code>modes/shared/HeaderBar</code></td><td>No</td><td><strong>ADD</strong> — current vs S4 redesign</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Mock data lives in a small new <code>src/components/__fixtures__/</code>
+    directory so stories don't reach into hooks that touch the live API.
+  </p>
+</div>
+
+<!-- WP-2.3 -->
+<div class="wp">
+  <div class="wp-id">WP-2.3</div>
+  <h3>Lost-Pixel visual regression</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>lostpixel.config.ts</code>, <code>.github/workflows/visual.yml</code> (if CI exists)</span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    Lost-Pixel uses a Playwright runner to screenshot every Storybook
+    story and diff against committed baselines. Run locally with
+    <code>npm run visualtest</code>; baselines update with
+    <code>npm run visualtest:update</code>.
+  </p>
+  <pre><code>// lostpixel.config.ts
+import { CustomProjectConfig } from "lost-pixel";
+
+export const config: CustomProjectConfig = {
+  storybookShots: {
+    storybookUrl: "./storybook-static",
+  },
+  imagePathBaseline:  ".lostpixel/baseline",
+  imagePathCurrent:   ".lostpixel/current",
+  imagePathDifference: ".lostpixel/diff",
+  generateOnly: false,
+  threshold: 0.01, // 1% delta tolerance (typography anti-aliasing slop)
+};
+</code></pre>
+
+  <p><strong>package.json additions:</strong></p>
+  <pre><code>"scripts": {
+  "visualtest":         "storybook build &amp;&amp; lost-pixel",
+  "visualtest:update":  "storybook build &amp;&amp; lost-pixel update",
+}
+</code></pre>
+
+  <p>
+    <em>Advisory in S2, blocking in S12.</em> S2 commits the initial
+    baselines after a sign-off pass. From then on, any PR that wants to
+    change baselines must include an explicit <code>visualtest:update</code>
+    commit — making accidental drift visible in code review.
+  </p>
+</div>
+
+<!-- WP-2.4 -->
+<div class="wp">
+  <div class="wp-id">WP-2.4</div>
+  <h3>Storybook discipline doc</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>apps/reading/STORYBOOK.md</code></span>
+    <span><strong>Effort:</strong> 0.2 d</span>
+  </div>
+  <p>
+    A one-page contributor's note: every new component must ship with a
+    story; "ChromaticPlay" interactions documented; how to update
+    Lost-Pixel baselines; what gets stories at the mode level vs panel
+    level vs component level.
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>Storybook builds clean (<code>npm run build-storybook</code>).</li>
+  <li>Every component in <code>src/components/</code> has ≥ 1 story.</li>
+  <li>Every primitive in <code>src/components/lemon/</code> has ≥ 1 story (from S1).</li>
+  <li><code>npm run visualtest</code> runs end-to-end and produces a diff report. Baseline committed under <code>.lostpixel/baseline/</code>.</li>
+  <li><code>STORYBOOK.md</code> exists.</li>
+  <li>The <em>Design / Primitives Showcase</em> story (S1) renders correctly through Lost-Pixel without flakes (run twice, no diff).</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+<ul class="risk-list">
+  <li><strong>Lost-Pixel flakes on font load.</strong> Mitigation: preview wrapper preloads Inter + JetBrains Mono synchronously; Lost-Pixel waits for fonts via Playwright's <code>document.fonts.ready</code>.</li>
+  <li><strong>Mode-level stories balloon in scope.</strong> Mitigation: this sprint ONLY adds stories for the sub-components listed in WP-2.2. Full-mode "page" stories arrive sprint by sprint as modes are ported.</li>
+  <li><strong>CI cost.</strong> Mitigation: Lost-Pixel runs only on PRs that touch <code>src/</code> or stories; not on docs-only PRs.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+<ol>
+  <li>Should Storybook ship at <code>app.antiek.ai/storybook</code> in production? Default: no — local-only artifact. (Revisit in S12 if the operator wants a "design system" public page.)</li>
+  <li>Lost-Pixel threshold: 1% tolerance is generous. Should we go to 0.5%? Default: 1% in S2, ratchet down in S12.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+<ol>
+  <li><code>npm run storybook</code> → side-bar shows every legacy + primitive component grouped under Components / Modes / Design.</li>
+  <li><code>npm run visualtest</code> → produces <code>.lostpixel/current/</code> screenshots, no diffs against baseline.</li>
+  <li>Manually break one component (change a colour); rerun visualtest; confirm the diff is flagged.</li>
+  <li>Revert the change; confirm clean run.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  Stories are pure additions. Lost-Pixel config can be deleted without
+  side effects. Rollback = <code>git revert</code>. No consumers depend on
+  S2 artifacts; S2 is a safety-net for later sprints, not a build dependency.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_01_design_system.html"><span class="label">← Prev</span>S1 · Primitives</a>
+  <a class="next" href="sprint_03_panel_layout.html"><span class="label">Next →</span>S3 · Panel layout shell</a>
+</div>
+
+</div>
+</body>
+</html>

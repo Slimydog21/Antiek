@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 6 — WrestleApp (PDF) on PanelLayout · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S6</span>WrestleApp (PDF) on PanelLayout</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~5 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S3, S4</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S7, S10</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">6</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED · HEAVY-EMBED STRESS TEST</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Port <code>WrestleApp</code> (the PDF wrestling surface) onto the panel
+  system. Critically, prove the panel-layout shell <strong>does not
+  degrade pdf.js performance</strong>. A 1200×900 floating PDF panel
+  must scroll at ≥ 45 fps on M1 with a 200-page PDF loaded. If it
+  cannot, the panel system's animation strategy needs adjustment before
+  S7 builds the notebook on top.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  PDF rendering is the worst-case workload for any layout primitive
+  that animates or re-parents children. Validating pdf.js inside the
+  panel system here, before S7 builds the notebook with embedded PDF
+  regions, prevents a late-stage discovery that the abstraction can't
+  hold the heaviest tenant.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No new PDF features (annotations, OCR, etc.). Pure port.</li>
+  <li>No PDF library swap. pdf.js stays. The 2.2 MB <code>pdf.worker</code> bundle is not in the main-chunk budget.</li>
+  <li>No region-embed → notebook integration. That's S7.</li>
+  <li>No mobile PDF surface (mobile fallback is S11).</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<h3>4.1 · Current shape (pre-S6)</h3>
+<div class="diagram">
+&lt;WrestleApp&gt;
+  &lt;HeaderBar/&gt;                     ← S4 retired
+  &lt;grid cols=[300_1fr_360]&gt;
+    &lt;NotesPanel/&gt;                  ← left fixed
+    &lt;PdfViewer/&gt;                   ← center
+    &lt;CrossDocSidebar/&gt;             ← right fixed
+  &lt;/grid&gt;
+  &lt;ClaimCard inspector overlay/&gt;
+  &lt;HighlightToolbar/&gt;
+&lt;/WrestleApp&gt;
+</div>
+
+<h3>4.2 · Target shape (post-S6)</h3>
+<div class="diagram">
+&lt;WrestleApp&gt;
+  └─ &lt;PanelHost starters=[
+       { kind: "Notes",     mode: "docked-left",  props: { documentId } },
+       { kind: "CrossDocs", mode: "docked-right", props: { documentId } },
+     ]&gt;
+       &lt;PdfViewer documentId .../&gt;    ← MAIN SLOT — the PDF takes center
+     &lt;/PanelHost&gt;
+  └─ HighlightToolbar (selection-anchored DOM overlay, same as RW)
+  └─ ClaimInspector → opens as floating panel on highlight (kind: "ClaimInspector")
+</div>
+
+<p>
+  The pivotal interaction: highlighting a span in the PDF and clicking
+  "Inspect claim" no longer pushes a modal — it opens a floating
+  <code>ClaimInspector</code> panel that the operator can drag aside
+  while continuing to scroll the PDF.
+</p>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-6.1 -->
+<div class="wp">
+  <div class="wp-id">WP-6.1</div>
+  <h3>PDF render stability inside floating panels</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/PdfViewer.tsx</code>, <code>src/workspace/PanelLayoutPanel.tsx</code></span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    pdf.js renders pages into <code>&lt;canvas&gt;</code> at a viewport-scale
+    derived from CSS pixel dimensions. When a panel resizes, the canvas
+    needs to re-render at the new resolution. The animation hand-off is
+    the risk zone — naively, every frame of a Framer Motion resize
+    triggers a re-render.
+  </p>
+  <p><strong>Implementation:</strong></p>
+  <ul>
+    <li>Add a debounced (<code>120 ms</code>) "size settled" hook to <code>PanelLayoutPanel</code> that fires only after a resize gesture ends.</li>
+    <li><code>PdfViewer</code> subscribes to that hook and re-renders at the new pixel ratio after the gesture, not during.</li>
+    <li>During the gesture, the canvas keeps the previous rasterisation; CSS scales it (slightly blurry mid-resize, sharp again after). This is the standard pdf.js handover strategy.</li>
+  </ul>
+
+  <pre><code>// in PanelLayoutPanel.tsx — new ResizeObserver+debounce
+export function usePanelSizeStable(id: string) {
+  const ref = useRef&lt;HTMLDivElement&gt;(null);
+  const [stableSize, setStableSize] = useState&lt;{ w: number; h: number } | null&gt;(null);
+  useEffect(() =&gt; {
+    const el = ref.current; if (!el) return;
+    let t: ReturnType&lt;typeof setTimeout&gt; | null = null;
+    const ro = new ResizeObserver((entries) =&gt; {
+      const r = entries[0].contentRect;
+      if (t) clearTimeout(t);
+      t = setTimeout(() =&gt; setStableSize({ w: r.width, h: r.height }), 120);
+    });
+    ro.observe(el);
+    return () =&gt; { ro.disconnect(); if (t) clearTimeout(t); };
+  }, []);
+  return [ref, stableSize] as const;
+}
+</code></pre>
+</div>
+
+<!-- WP-6.2 -->
+<div class="wp">
+  <div class="wp-id">WP-6.2</div>
+  <h3>Notes + CrossDocs as docked-left/right panels</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/NotesPanel.tsx</code>, <code>src/components/CrossDocSidebar.tsx</code></span>
+    <span><strong>Effort:</strong> 0.6 d</span>
+  </div>
+  <p>
+    Visual rewrite to Lemon. NotesPanel becomes a vertical stack of
+    LemonCards (z1) where each note row has a yellow accent if it's
+    flagged. CrossDocSidebar gets the same treatment. Both keep their
+    existing data sources unchanged.
+  </p>
+  <p>
+    Registered as <code>PanelKind = "Notes"</code> and <code>"CrossDocs"</code>.
+    The kebab menu surfaces "Pin", "Float", "Popout" — operator can pin
+    Notes so it survives switching between documents.
+  </p>
+</div>
+
+<!-- WP-6.3 -->
+<div class="wp">
+  <div class="wp-id">WP-6.3</div>
+  <h3>ClaimInspector as a floating panel</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/ClaimCard.tsx</code></span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Today: ClaimCard is rendered inline in NotesPanel or as a modal.
+    After S6: <code>PanelKind = "ClaimInspector"</code>. Clicking a claim
+    chip opens it as a floating panel near the cursor. Two claims can be
+    inspected at once — the operator drags one aside.
+  </p>
+</div>
+
+<!-- WP-6.4 -->
+<div class="wp">
+  <div class="wp-id">WP-6.4</div>
+  <h3>WrestleApp/index.tsx — orchestration shrink</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/WrestleApp/index.tsx</code></span>
+    <span><strong>Effort:</strong> 0.6 d</span>
+  </div>
+  <p>
+    Same shape as <code>ResearchWorkstation/index.tsx</code> after S5:
+    PanelHost with starters, main-slot PDF, action callbacks.
+  </p>
+
+  <pre><code>export default function WrestleApp() {
+  const { documentId } = useParams&lt;{ documentId?: string }&gt;();
+  const open = useWorkspace(s =&gt; s.open);
+
+  const onInspectClaim = useCallback((claimId: string) =&gt; {
+    open("ClaimInspector", { claimId }, { mode: "floating", title: "Claim" });
+  }, [open]);
+
+  return (
+    &lt;PanelHost starters={ documentId ? [
+      { kind: "Notes",     mode: "docked-left",  props: { documentId }, title: "Notes" },
+      { kind: "CrossDocs", mode: "docked-right", props: { documentId }, title: "Cross-doc" },
+    ] : [] }&gt;
+      {documentId
+        ? &lt;PdfViewer documentId={documentId} onInspectClaim={onInspectClaim} /&gt;
+        : &lt;EmptyDocumentState /&gt;}
+    &lt;/PanelHost&gt;
+  );
+}
+</code></pre>
+</div>
+
+<!-- WP-6.5 -->
+<div class="wp">
+  <div class="wp-id">WP-6.5</div>
+  <h3>Floating PDF panel mode (operator opens PDF in a free-floating window)</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/PanelRegistry.tsx</code>, <code>src/components/PdfViewer.tsx</code></span>
+    <span><strong>Effort:</strong> 0.7 d</span>
+  </div>
+  <p>
+    Register <code>PanelKind = "PdfViewer"</code> so the operator can
+    open a PDF from any route (e.g. clicking a chunk citation in
+    MasterMdViewer) as a floating panel. The route stays as is; the PDF
+    appears as a draggable window over whatever the operator was doing.
+  </p>
+  <p>
+    This is the headline UX win of S6 and the largest reason the
+    redesign exists. Today the operator must navigate to /wrestle to see
+    a PDF; after S6 the PDF is a window that appears next to the
+    trajectory.
+  </p>
+</div>
+
+<!-- WP-6.6 -->
+<div class="wp">
+  <div class="wp-id">WP-6.6</div>
+  <h3>Performance benchmark</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>scripts/bench_pdf_panel.ts</code> (new)</span>
+    <span><strong>Effort:</strong> 0.7 d</span>
+  </div>
+  <p>
+    A Playwright-driven benchmark that opens a 200-page PDF in a
+    floating panel sized 1200×900, scrolls programmatically at a fixed
+    velocity, and measures frame rate via the Performance Timeline. Run
+    on M1 baseline. Acceptance: ≥ 45 fps p50, ≥ 30 fps p10.
+  </p>
+  <p>
+    Output committed at <code>docs/perf/pdf_panel.md</code> so regression
+    is visible in PR diffs.
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>Visiting <code>/wrestle/&lt;id&gt;</code> renders PDF in main slot with Notes + CrossDocs docked.</li>
+  <li>Floating panel mode works for PdfViewer: cmd-click a chunk citation in MasterMdViewer → PDF opens floating over the trajectory.</li>
+  <li>PDF text selection still works; HighlightToolbar still anchors correctly.</li>
+  <li>Resizing the floating PDF panel does not crash pdf.js (the debounce hook works).</li>
+  <li>Performance benchmark passes: ≥ 45 fps p50 on M1, 1200×900 floating panel, 200-page PDF.</li>
+  <li>Bundle main chunk grows ≤ 10 KB gzipped (PDF code stays code-split).</li>
+  <li>Lost-Pixel: WrestleApp screenshots updated.</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>pdf.js canvas blanks mid-resize.</strong> Mitigation: the previous canvas stays mounted until the new one renders; CSS scales it as a placeholder.</li>
+  <li><strong>Floating PDF panel loses focus on click, dropping text selection.</strong> Mitigation: <code>PanelLayoutPanel</code> only calls <code>bringToFront</code> on mousedown — selection state inside the panel is preserved.</li>
+  <li><strong>Two floating PDF panels open simultaneously double the pdf.worker memory.</strong> Mitigation: pdf.js worker is a singleton (already is in current code); each viewer creates its own document but shares the worker. Document for future: ≥ 4 simultaneous PDFs may force a multi-worker upgrade.</li>
+  <li><strong>Bench is flaky on CI.</strong> Mitigation: bench runs locally only; CI runs a smoke version (≥ 30 fps p50). Real perf gate is the manual bench.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li>Should the PDF route auto-pin Notes + CrossDocs across documents? Default: yes (pin survives across <code>:documentId</code> changes).</li>
+  <li>When opening a PDF from a chunk citation, should it open floating (workspace) or in the existing <code>/wrestle/:id?page=N</code> URL (route navigation)? Default: <strong>floating, because that's the headline UX</strong>; if the operator wants full-page, the kebab → "Open as route" navigates.</li>
+  <li>Multi-PDF popout (S9): is 2 simultaneous popouts the max? Default: soft cap at 4 via toast warning, hard cap at 8.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+
+<ol>
+  <li>Load a real 200-page PDF; verify rendering inside main slot.</li>
+  <li>Cmd-click a chunk citation in another route's MasterMdViewer; verify floating PDF panel opens at the right page.</li>
+  <li>Drag the floating PDF panel; verify text rendering remains sharp after gesture ends.</li>
+  <li>Open NotesPanel kebab → Float → drag aside → re-dock-left. Confirm state preserved.</li>
+  <li>Open two ClaimInspector panels for two different claims; arrange side-by-side; both responsive.</li>
+  <li>Run <code>node scripts/bench_pdf_panel.ts</code>; confirm fps numbers.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  WrestleApp port is independent of RW port (S5). Rollback flips the
+  <code>ANTIEK_UI=v2</code> flag at the route level. PDF code is
+  unchanged from substrate's perspective; only its container changed.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_05_research_workstation.html"><span class="label">← Prev</span>S5 · ResearchWorkstation</a>
+  <a class="next" href="sprint_07_notebook.html"><span class="label">Next →</span>S7 · Notebook surface</a>
+</div>
+
+</div>
+</body>
+</html>

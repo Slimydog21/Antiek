@@ -1,5 +1,17 @@
 # Antiek × PostHog — UI, Design, Product & Website Integration Spec
 
+> **SUPERSEDED 2026-05-21** — §5.3's "load-bearing serif notebook" verdict was
+> reversed by the operator. The new direction is a layered Antarctic workspace
+> with the **Werner the penguin** mascot and sun-yellow outlining (`#F5DF24`)
+> as the constant brand mark, day + night both first-class. See the full
+> programme spec at `docs/ui_redesign_posthog/index.html` and the brand bible
+> at `docs/ui_redesign_posthog/brand_werner.html`. The reasoning below is
+> preserved for context — most of it still holds (Storybook, Notebook surface,
+> Lemon-style discipline). The §5.3 "adopt yellow accent anyway would hurt
+> the product" verdict is the specific finding that no longer applies; we now
+> adopt a different, sharper yellow (`#F5DF24`, not PostHog's `#FFD329`) and
+> a different mascot (Werner the penguin, not PostHog's Max hedgehog).
+
 **Status**: Draft v1, 2026-05-18.
 **Scope**: Decide which UI primitives, design patterns, product patterns, and
 website/marketing patterns from PostHog (MIT-licensed core, separate `ee`

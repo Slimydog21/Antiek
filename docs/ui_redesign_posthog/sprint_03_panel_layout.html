@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 3 — Panel layout shell · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S3</span>Panel-layout shell &mdash; the 3D layered window manager</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~7 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S0, S1</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S4, S5, S6, S7, S8, S9, S10</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">9</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED · HIGHEST-RISK</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Build the layered-window manager: a workspace store + a panel
+  orchestrator + an individual panel primitive that can render in four
+  modes — <strong>docked-left</strong>, <strong>docked-right</strong>,
+  <strong>floating (z-stacked, draggable)</strong>, and
+  <strong>popout (separate OS window)</strong> — with chunky offset
+  shadows that scale with z-depth and a hover-lift micro-interaction.
+  At the end of S3, a Storybook-only demo scene contains three independent
+  panels that can be docked, undocked, dragged, resized, z-shuffled, and
+  closed. No production route uses it yet (that's S5).
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  This is the central technical bet of the entire redesign. Every later
+  sprint either feeds <em>into</em> the panel system (S5 ports a mode
+  onto it, S7 builds the notebook as a panel) or feeds <em>off of</em> it
+  (S9 persists its state, S11 makes its keyboard story accessible). If
+  the panel primitive is wrong, ten sprints downstream are wrong with it.
+</p>
+<p>
+  S3 is deliberately budgeted longer than its neighbours. The day-budget
+  spent here is recovered five times in S5–S10.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No URL or localStorage persistence in S3. The workspace is in-memory only; S9 bolts persistence on top.</li>
+  <li>No keyboard shortcuts in S3 beyond ESC-to-close-focused-panel. Cmd+B (rail), Cmd+Shift+P (palette), Cmd+/ (AI) all land in S8.</li>
+  <li>No animation library other than Framer Motion. We do not bring in <code>react-spring</code>, <code>react-rnd</code>, or <code>react-grid-layout</code>.</li>
+  <li>No real consumer migration in S3. The exit artefact is a Storybook story, not a route.</li>
+  <li>No tab-bar inside a panel. A panel = one surface; multi-tab inside a panel is a S10 stretch only if migration requires it.</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<h3>4.1 · The mental model</h3>
+
+<p>
+  A <strong>panel</strong> is the smallest independently-positioned piece
+  of UI: an InvestigationSidebar instance, a PDF viewer instance, a
+  notebook instance, a Max chat. The <strong>workspace</strong> is the
+  set of currently-open panels plus their positions, sizes, z-orders, and
+  pinned/floating status. The <strong>PanelLayout</strong> is the
+  orchestrator that reads the workspace and renders the panels in three
+  zones: the left dock, the right dock, and the floating layer.
+</p>
+
+<div class="diagram">
+                <span class="y">┌──────── PanelLayout (orchestrator) ──────────┐</span>
+                <span class="y">│</span>                                              <span class="y">│</span>
+   reads ───▶   <span class="y">│</span>   WorkspaceStore     ◀── actions from         <span class="y">│</span>
+                <span class="y">│</span>     panels[]              dropdowns / dragging<span class="y">│</span>
+                <span class="y">│</span>     zOrder              / drag handles          <span class="y">│</span>
+                <span class="y">│</span>     focusedPanelId                            <span class="y">│</span>
+                <span class="y">│</span>     dockLeftIds / dockRightIds                <span class="y">│</span>
+                <span class="y">│</span>     floatingIds                               <span class="y">│</span>
+                <span class="y">└──────────────────────────────────────────────┘</span>
+                                                   │
+                  ┌────────────────────────────────┼──────────────────────────────┐
+                  ▼                                ▼                              ▼
+       <span class="b">┌── dock-left ──┐</span>              <span class="b">┌── main slot ──┐</span>           <span class="b">┌── dock-right ──┐</span>
+       <span class="b">│ PanelHandle   │</span>              <span class="b">│ rendered if   │</span>           <span class="b">│ PanelHandle    │</span>
+       <span class="b">│   Panel A     │</span>              <span class="b">│ no panel      │</span>           <span class="b">│   Panel C      │</span>
+       <span class="b">│ ────────────  │</span>              <span class="b">│ owns center,  │</span>           <span class="b">│ ─────────────  │</span>
+       <span class="b">│   Panel B     │</span>              <span class="b">│ shows route   │</span>           <span class="b">│   Panel D      │</span>
+       <span class="b">└───────────────┘</span>              <span class="b">└───────────────┘</span>           <span class="b">└────────────────┘</span>
+
+           floating layer (absolutely positioned over everything):
+              <span class="r">┌─ Panel E (z=5) ─┐</span>     <span class="r">┌─ Panel F (z=7) ─┐</span>
+              <span class="r">│ drag handle      │</span>     <span class="r">│ drag handle      │</span>
+              <span class="r">│ ────────────────│</span>     <span class="r">│ ────────────────│</span>
+              <span class="r">│   content        │</span>     <span class="r">│   content        │</span>
+              <span class="r">└──────────────────┘</span>     <span class="r">└──────────────────┘</span>
+
+           popout layer (rendered into window.open() targets via portal): off-screen.
+</div>
+
+<h3>4.2 · State model</h3>
+
+<pre><code>// src/workspace/panel.types.ts
+
+export type PanelMode = "docked-left" | "docked-right" | "floating" | "popout";
+
+export type PanelDescriptor = {
+  /** stable id. e.g. "inv-sidebar:default", "chat:investigationId:1234" */
+  id: string;
+
+  /** what to render — a key into the PanelRegistry */
+  kind: PanelKind;          // "InvestigationSidebar" | "Trajectory" | "Chat" | …
+
+  /** props passed to the renderer */
+  props: Record&lt;string, unknown&gt;;
+
+  /** layout state */
+  mode: PanelMode;
+  zIndex: number;            // floating: real z; docked: order within dock; popout: ignored
+  rect:   { x: number; y: number; width: number; height: number };  // floating only
+  size:   { width: number; height: number };                        // docked only
+  pinned: boolean;
+  title:  string;
+};
+
+export type WorkspaceSnapshot = {
+  panels: Record&lt;PanelDescriptor["id"], PanelDescriptor&gt;;
+  dockLeftIds:  string[];    // top-to-bottom order
+  dockRightIds: string[];
+  floatingIds:  string[];    // bottom-to-top z order (last = highest z)
+  focusedPanelId: string | null;
+  /** monotonic counter so a new floating panel sits on top */
+  zCounter: number;
+  /** layout snapshot version; bumped when persistence schema changes */
+  schemaVersion: 1;
+};
+
+export type PanelKind =
+  | "InvestigationSidebar"
+  | "Trajectory"
+  | "MasterMdViewer"
+  | "Chat"
+  | "Chase"
+  | "PdfViewer"
+  | "Notes"
+  | "CrossDocs"
+  | "ClaimInspector"
+  | "Notebook"
+  | "AISidecar"
+  | "CommandPalette"
+  | "Stats"           // etc.; one entry per consumer added later
+  ;
+</code></pre>
+
+<h3>4.3 · Why Zustand, not Kea</h3>
+<p>
+  PostHog uses Kea. Antiek does not, and we don't want to. Zustand is
+  ~1 KB gzipped, has zero dependencies, plays well with React 18, and
+  is trivially debuggable. Trade-off: no auto-generated route-side-effects
+  layer like Kea's, but we don't have a router-tied state machine to
+  encode here — workspace state is local UI state, not domain state.
+</p>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-3.1 -->
+<div class="wp">
+  <div class="wp-id">WP-3.1</div>
+  <h3>Workspace store</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/WorkspaceStore.ts</code></span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    Zustand store holding the <code>WorkspaceSnapshot</code> shape +
+    actions: <code>open</code>, <code>close</code>, <code>focus</code>,
+    <code>setMode</code>, <code>setRect</code>, <code>setSize</code>,
+    <code>reorderDock</code>, <code>bringToFront</code>,
+    <code>pin / unpin</code>, <code>popout / undock-popout</code>.
+  </p>
+
+  <pre><code>// src/workspace/WorkspaceStore.ts
+import { create } from "zustand";
+import type { PanelDescriptor, PanelKind, WorkspaceSnapshot } from "./panel.types";
+
+type Actions = {
+  open: (kind: PanelKind, props?: Record&lt;string, unknown&gt;, opts?: { mode?: PanelMode; title?: string }) =&gt; string;
+  close: (id: string) =&gt; void;
+  focus: (id: string) =&gt; void;
+  setMode: (id: string, mode: PanelMode) =&gt; void;
+  setRect: (id: string, rect: Partial&lt;PanelDescriptor["rect"]&gt;) =&gt; void;
+  setSize: (id: string, size: Partial&lt;PanelDescriptor["size"]&gt;) =&gt; void;
+  reorderDock: (side: "left" | "right", fromId: string, toId: string) =&gt; void;
+  bringToFront: (id: string) =&gt; void;
+  pin: (id: string) =&gt; void;
+  unpin: (id: string) =&gt; void;
+  reset: () =&gt; void;
+};
+
+const initial: WorkspaceSnapshot = {
+  panels: {},
+  dockLeftIds: [], dockRightIds: [], floatingIds: [],
+  focusedPanelId: null, zCounter: 1, schemaVersion: 1,
+};
+
+export const useWorkspace = create&lt;WorkspaceSnapshot &amp; Actions&gt;((set, get) =&gt; ({
+  ...initial,
+
+  open: (kind, props = {}, opts = {}) =&gt; {
+    const id = `${kind}:${cryptoRandomId()}`;
+    const mode = opts.mode ?? "floating";
+    set((s) =&gt; {
+      const z = s.zCounter + 1;
+      const desc: PanelDescriptor = {
+        id, kind, props, mode, zIndex: z,
+        rect: { x: 120 + (z*22)%200, y: 120 + (z*22)%200, width: 560, height: 420 },
+        size: { width: 320, height: 0 },
+        pinned: false, title: opts.title ?? kind,
+      };
+      return {
+        ...s,
+        panels: { ...s.panels, [id]: desc },
+        floatingIds:  mode === "floating"     ? [...s.floatingIds, id]  : s.floatingIds,
+        dockLeftIds:  mode === "docked-left"  ? [...s.dockLeftIds, id]  : s.dockLeftIds,
+        dockRightIds: mode === "docked-right" ? [...s.dockRightIds, id] : s.dockRightIds,
+        focusedPanelId: id,
+        zCounter: z,
+      };
+    });
+    return id;
+  },
+
+  close: (id) =&gt; set((s) =&gt; {
+    const { [id]: _gone, ...rest } = s.panels;
+    return {
+      ...s,
+      panels: rest,
+      dockLeftIds:  s.dockLeftIds.filter(x =&gt; x !== id),
+      dockRightIds: s.dockRightIds.filter(x =&gt; x !== id),
+      floatingIds:  s.floatingIds.filter(x =&gt; x !== id),
+      focusedPanelId: s.focusedPanelId === id ? null : s.focusedPanelId,
+    };
+  }),
+
+  focus: (id) =&gt; {
+    const s = get();
+    if (s.panels[id]?.mode === "floating") get().bringToFront(id);
+    else set({ focusedPanelId: id });
+  },
+
+  bringToFront: (id) =&gt; set((s) =&gt; {
+    if (!(id in s.panels)) return s;
+    const z = s.zCounter + 1;
+    return {
+      ...s,
+      zCounter: z,
+      focusedPanelId: id,
+      panels: { ...s.panels, [id]: { ...s.panels[id], zIndex: z } },
+      floatingIds: [...s.floatingIds.filter(x =&gt; x !== id), id],
+    };
+  }),
+
+  setMode: (id, mode) =&gt; { /* … move id between docks/floating arrays … */ },
+  setRect: (id, rect) =&gt; { /* … merge rect, only if mode==="floating" … */ },
+  setSize: (id, size) =&gt; { /* … merge size, only if mode in "docked-…" … */ },
+  reorderDock: (side, fromId, toId) =&gt; { /* … swap inside dockLeftIds/dockRightIds … */ },
+  pin:   (id) =&gt; set(s =&gt; ({ panels: { ...s.panels, [id]: { ...s.panels[id], pinned: true } } })),
+  unpin: (id) =&gt; set(s =&gt; ({ panels: { ...s.panels, [id]: { ...s.panels[id], pinned: false } } })),
+  reset: () =&gt; set(initial),
+}));
+
+function cryptoRandomId() {
+  return Math.random().toString(36).slice(2, 9);
+}
+</code></pre>
+
+  <p><strong>Tests:</strong> 12+ Vitest cases covering every action, including reorderDock edge cases (drag a panel onto itself, drag past list bounds), bringToFront idempotency, popout-from-floating, undock-back-to-floating.</p>
+</div>
+
+<!-- WP-3.2 -->
+<div class="wp">
+  <div class="wp-id">WP-3.2</div>
+  <h3>Panel registry</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/PanelRegistry.tsx</code></span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    Map from <code>PanelKind</code> to a React component. Adding a new
+    panel kind in S5+ means adding one entry here and importing the
+    renderer. Centralised so a future code-search for "what's the panel
+    surface" finds one file.
+  </p>
+  <pre><code>// src/workspace/PanelRegistry.tsx
+import type { ComponentType } from "react";
+import type { PanelKind } from "./panel.types";
+
+// renderers are filled in S5+
+export const PanelRegistry: Record&lt;PanelKind, ComponentType&lt;any&gt;&gt; = {
+  // S5:
+  InvestigationSidebar: lazy(() =&gt; import("../modes/ResearchWorkstation/InvestigationSidebar")),
+  Trajectory:           lazy(() =&gt; import("../modes/ResearchWorkstation/TrajectoryView")),
+  MasterMdViewer:       lazy(() =&gt; import("../modes/ResearchWorkstation/MasterMdViewer")),
+  Chat:                 lazy(() =&gt; import("../modes/ResearchWorkstation/ChatInputArea")),
+  Chase:                lazy(() =&gt; import("../modes/ResearchWorkstation/ChaseSlideOver")),
+  // S6:
+  PdfViewer:            lazy(() =&gt; import("../components/PdfViewer")),
+  Notes:                lazy(() =&gt; import("../components/NotesPanel")),
+  CrossDocs:            lazy(() =&gt; import("../components/CrossDocSidebar")),
+  ClaimInspector:       lazy(() =&gt; import("../components/ClaimCard")),
+  // S7:
+  Notebook:             lazy(() =&gt; import("../modes/Notebook")),
+  // S8:
+  AISidecar:            lazy(() =&gt; import("../components/AISidecar")),
+  CommandPalette:       lazy(() =&gt; import("../components/CommandPalette")),
+  // S10:
+  Stats:                lazy(() =&gt; import("../modes/Stats")),
+  // … one per panel surface added over the migration.
+};
+</code></pre>
+  <p>
+    Lazy import so panels are code-split: the bundle only loads
+    <code>Notes</code> when a Notes panel is opened. Important for the
+    700 KB main-chunk budget.
+  </p>
+</div>
+
+<!-- WP-3.3 -->
+<div class="wp">
+  <div class="wp-id">WP-3.3</div>
+  <h3>PanelLayout orchestrator</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/PanelLayout.tsx</code></span>
+    <span><strong>Effort:</strong> 1.2 d</span>
+  </div>
+  <p>
+    The shell. Reads <code>useWorkspace</code>, lays out three zones:
+    left dock, main slot, right dock. The floating layer is a sibling
+    portal absolutely positioned over the dock row. Receives an optional
+    <code>mainSlot</code> child — that's where the React Router
+    <code>&lt;Outlet /&gt;</code> renders when no panel occupies the main slot.
+  </p>
+
+  <pre><code>// src/workspace/PanelLayout.tsx
+import { Suspense } from "react";
+import { useWorkspace } from "./WorkspaceStore";
+import { PanelLayoutPanel } from "./PanelLayoutPanel";
+
+type Props = { mainSlot: React.ReactNode };
+
+export function PanelLayout({ mainSlot }: Props) {
+  const dockLeftIds  = useWorkspace(s =&gt; s.dockLeftIds);
+  const dockRightIds = useWorkspace(s =&gt; s.dockRightIds);
+  const floatingIds  = useWorkspace(s =&gt; s.floatingIds);
+  const panels       = useWorkspace(s =&gt; s.panels);
+
+  return (
+    &lt;div className="relative h-screen w-screen flex bg-paper overflow-hidden"&gt;
+      {/* left dock */}
+      &lt;div className="flex flex-col border-r-2 border-ink bg-paper-soft min-w-0
+                       transition-[width] duration-150"
+           style={{ width: dockLeftIds.length ? 320 : 0 }}&gt;
+        {dockLeftIds.map(id =&gt; (
+          &lt;Suspense key={id} fallback={null}&gt;
+            &lt;PanelLayoutPanel id={id} /&gt;
+          &lt;/Suspense&gt;
+        ))}
+      &lt;/div&gt;
+
+      {/* main */}
+      &lt;main className="flex-1 min-w-0 relative overflow-hidden"&gt;
+        {mainSlot}
+
+        {/* floating layer is a sibling, absolutely over main + docks */}
+        &lt;div className="absolute inset-0 pointer-events-none"&gt;
+          {floatingIds.map(id =&gt; (
+            &lt;div key={id} className="pointer-events-auto"&gt;
+              &lt;Suspense fallback={null}&gt;
+                &lt;PanelLayoutPanel id={id} /&gt;
+              &lt;/Suspense&gt;
+            &lt;/div&gt;
+          ))}
+        &lt;/div&gt;
+      &lt;/main&gt;
+
+      {/* right dock */}
+      &lt;div className="flex flex-col border-l-2 border-ink bg-paper-soft min-w-0
+                       transition-[width] duration-150"
+           style={{ width: dockRightIds.length ? 320 : 0 }}&gt;
+        {dockRightIds.map(id =&gt; (
+          &lt;Suspense key={id} fallback={null}&gt;
+            &lt;PanelLayoutPanel id={id} /&gt;
+          &lt;/Suspense&gt;
+        ))}
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+</div>
+
+<!-- WP-3.4 -->
+<div class="wp">
+  <div class="wp-id">WP-3.4</div>
+  <h3>PanelLayoutPanel — individual panel</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/PanelLayoutPanel.tsx</code></span>
+    <span><strong>Effort:</strong> 1.5 d</span>
+  </div>
+  <p>
+    The panel primitive: header bar (drag handle in floating mode, kebab
+    menu always), body slot rendered via <code>PanelRegistry[kind]</code>,
+    edge handles for resize in floating + docked modes. Renders one of
+    three z-class chrome treatments by panel mode:
+  </p>
+  <ul>
+    <li><strong>docked-left / docked-right:</strong> flat — no shadow, no border-radius (the dock is the frame).</li>
+    <li><strong>floating:</strong> <code>border-2 border-ink rounded-hog shadow-z3</code>, lifted to z2 + reduced shadow when not focused.</li>
+    <li><strong>popout:</strong> rendered into a portal that targets a <code>window.open()</code> document; chrome reduced (the OS window is the frame).</li>
+  </ul>
+
+  <pre><code>// src/workspace/PanelLayoutPanel.tsx
+import { useRef } from "react";
+import { useWorkspace } from "./WorkspaceStore";
+import { PanelRegistry } from "./PanelRegistry";
+import { PanelHandle } from "./PanelHandle";
+import { motion } from "framer-motion";
+import { LemonDropdown } from "../components/lemon/LemonDropdown";
+import { LemonButton } from "../components/lemon/LemonButton";
+
+export function PanelLayoutPanel({ id }: { id: string }) {
+  const panel = useWorkspace(s =&gt; s.panels[id]);
+  const isFocused = useWorkspace(s =&gt; s.focusedPanelId === id);
+  const actions = useWorkspace.getState;
+  const ref = useRef&lt;HTMLDivElement&gt;(null);
+
+  if (!panel) return null;
+  const Renderer = PanelRegistry[panel.kind];
+
+  if (panel.mode === "floating") {
+    return (
+      &lt;motion.div
+        ref={ref}
+        layout
+        initial={{ scale: 0.96, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1, x: panel.rect.x, y: panel.rect.y }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        style={{
+          width: panel.rect.width, height: panel.rect.height,
+          zIndex: panel.zIndex,
+          position: "absolute", top: 0, left: 0,
+        }}
+        className={`bg-card border-2 border-ink rounded-hog
+                    ${isFocused ? "shadow-z3" : "shadow-z2 opacity-95"}
+                    flex flex-col overflow-hidden`}
+        onMouseDownCapture={() =&gt; actions().bringToFront(id)}&gt;
+        &lt;PanelHandle id={id} draggable resizable /&gt;
+        &lt;div className="flex-1 min-h-0 overflow-auto"&gt;
+          &lt;Renderer {...panel.props} /&gt;
+        &lt;/div&gt;
+      &lt;/motion.div&gt;
+    );
+  }
+
+  // docked-left / docked-right
+  return (
+    &lt;div ref={ref}
+         className="flex flex-col bg-card border-b-2 border-ink min-h-0"
+         style={{ flex: "1 1 0" }}&gt;
+      &lt;PanelHandle id={id} draggable={false} resizable /&gt;
+      &lt;div className="flex-1 min-h-0 overflow-auto"&gt;
+        &lt;Renderer {...panel.props} /&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+</div>
+
+<!-- WP-3.5 -->
+<div class="wp">
+  <div class="wp-id">WP-3.5</div>
+  <h3>PanelHandle — drag + resize + actions menu</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/PanelHandle.tsx</code></span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    Top strip of every panel. Holds title, drag-grip (floating only),
+    pin toggle, kebab → actions menu (dock-left / dock-right / float /
+    popout / close), and an X close button. Implements pointer-event
+    drag (no library) writing to <code>setRect</code>. Edge resize is a
+    1-px hit area on bottom + right (floating) or right only (docked).
+  </p>
+
+  <pre><code>function useDrag(id: string, onDrag: (dx: number, dy: number) =&gt; void) {
+  const start = useRef&lt;{ x: number; y: number } | null&gt;(null);
+  return {
+    onPointerDown: (e: React.PointerEvent) =&gt; {
+      (e.target as Element).setPointerCapture(e.pointerId);
+      start.current = { x: e.clientX, y: e.clientY };
+    },
+    onPointerMove: (e: React.PointerEvent) =&gt; {
+      if (!start.current) return;
+      const dx = e.clientX - start.current.x;
+      const dy = e.clientY - start.current.y;
+      start.current = { x: e.clientX, y: e.clientY };
+      onDrag(dx, dy);
+    },
+    onPointerUp: () =&gt; { start.current = null; },
+  };
+}
+</code></pre>
+
+  <p>
+    The kebab uses <code>LemonDropdown</code> (S1) and emits
+    <code>setMode</code> / <code>close</code> / <code>pin</code> /
+    <code>popout</code> actions. Popout opens a new window pointing at
+    <code>/_panel/&lt;id&gt;</code>; S9 implements the portal-into-popout
+    side. In S3, popout is stubbed (toast: "popout lands in S9").
+  </p>
+</div>
+
+<!-- WP-3.6 -->
+<div class="wp">
+  <div class="wp-id">WP-3.6</div>
+  <h3>PanelHost — opt-in wrapper for routes</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/PanelHost.tsx</code></span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    A tiny wrapper a route component renders to live inside the panel
+    shell. The route says "I want to be the main slot; open these
+    starter panels"; PanelHost handles the open-on-mount, close-on-unmount.
+  </p>
+  <pre><code>type Props = {
+  starters?: Array&lt;{ kind: PanelKind; props?: any; mode?: PanelMode; title?: string }&gt;;
+  children: React.ReactNode;
+};
+
+export function PanelHost({ starters = [], children }: Props) {
+  const open = useWorkspace(s =&gt; s.open);
+  const close = useWorkspace(s =&gt; s.close);
+  useEffect(() =&gt; {
+    const ids = starters.map(s =&gt; open(s.kind, s.props ?? {}, { mode: s.mode, title: s.title }));
+    return () =&gt; ids.forEach(close);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return &lt;PanelLayout mainSlot={children} /&gt;;
+}
+</code></pre>
+</div>
+
+<!-- WP-3.7 -->
+<div class="wp">
+  <div class="wp-id">WP-3.7</div>
+  <h3>Pure layout helpers</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/panelLayoutLogic.ts</code></span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Side-effect-free helpers: <code>clampRectToViewport</code>,
+    <code>snapToDock</code> (returns "left" | "right" | null when a
+    floating panel is dragged within 24 px of an edge),
+    <code>nextZ</code>, <code>reorderArray</code>. Each gets a Vitest unit.
+  </p>
+</div>
+
+<!-- WP-3.8 -->
+<div class="wp">
+  <div class="wp-id">WP-3.8</div>
+  <h3>Storybook demo scene</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/WorkspaceDemo.stories.tsx</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    A Storybook story that boots the workspace with three fake panels
+    (a <em>FakeSidebar</em>, a <em>FakeNotebook</em>, a <em>FakeChat</em>)
+    docked + floating. The operator drags them around, docks one to the
+    right, floats one to z3, closes one. This is the S3 acceptance
+    artefact: the operator interacts with the story and signs off the
+    feel.
+  </p>
+  <p>
+    The fakes live in <code>src/workspace/__fakes__/</code>; they
+    intentionally do not depend on the real Investigation or PDF hooks
+    (so a story can run without the substrate).
+  </p>
+</div>
+
+<!-- WP-3.9 -->
+<div class="wp">
+  <div class="wp-id">WP-3.9</div>
+  <h3>Dependency installs</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>package.json</code></span>
+    <span><strong>Effort:</strong> 0.1 d</span>
+  </div>
+  <pre><code>npm i zustand framer-motion</code></pre>
+  <p>
+    Both lightweight. Zustand ~1 KB gzipped; Framer Motion ~32 KB
+    gzipped, well within the 700 KB main-chunk budget.
+  </p>
+  <p>
+    <strong>No</strong> install: <code>react-rnd</code>, <code>react-resizable-panels</code>,
+    <code>@floating-ui/react</code>, <code>react-spring</code>,
+    <code>react-grid-layout</code>. Drag + resize hand-rolled (~80 LoC
+    total in WP-3.5).
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>The <em>Workspace / Demo</em> Storybook story renders three independent fake panels.</li>
+  <li>Each panel can be dragged when floating; viewport edges clamp the position.</li>
+  <li>Each panel can be docked to the left or right via its kebab; the dock width animates open/close.</li>
+  <li>Clicking a floating panel raises it above the others (z increment); the focused panel renders with the deeper shadow.</li>
+  <li>ESC closes the focused floating panel.</li>
+  <li>The popout menu entry shows a toast "popout lands in S9" — confirming the action is wired but stubbed.</li>
+  <li>Vitest suite for <code>WorkspaceStore</code> + <code>panelLayoutLogic</code> passes (≥ 25 cases).</li>
+  <li>Bundle delta from S3 ≤ 50 KB gzipped (Zustand + Framer Motion + workspace code).</li>
+  <li>Strict TS clean.</li>
+  <li>Lost-Pixel runs without crashing on the new stories (baselines added).</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Pointer-event capture is browser-flaky.</strong> Mitigation: WP-3.5 ships a 5-browser manual test matrix (Chrome / Safari / Firefox / iPad Safari / Edge) before signing off. Known quirk: Safari sometimes loses pointer capture on iframe load; we ship a re-attach on <code>visibilitychange</code>.</li>
+  <li><strong>Framer Motion's <code>layout</code> animation fights with our <code>animate={{x,y}}</code> drive.</strong> Mitigation: only use <code>layout</code> on mode transitions; drag animations are direct <code>animate</code>.</li>
+  <li><strong>Memory leak from lazy-loaded panel renderers.</strong> Mitigation: registry uses React.lazy + Suspense; unmount on close.</li>
+  <li><strong>Z-index war with existing modals.</strong> Mitigation: <code>LemonModal</code> (S1) lives at <code>z-[100]</code>; panels use <code>1..50</code>; the dock chrome uses <code>z-0</code>. Documented at the top of <code>WorkspaceStore.ts</code>.</li>
+  <li><strong>Operator hates the chunky-shadow lift micro-interaction.</strong> Mitigation: the lift is a single CSS class (<code>hover:shadow-z3</code>); easy to tune down to <code>shadow-z2</code> if the feel is too cartoony.</li>
+  <li><strong>Scope creep: someone tries to add tabs-in-a-panel.</strong> Mitigation: tabs-in-panel explicitly out-of-scope in §3. Reopen in S10 if a real mode demands it.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li><strong>Floating snap-to-grid?</strong> When dragging, snap rects to a 16-px grid for a tidier feel? Default: no in S3; revisit if drags feel sloppy.</li>
+  <li><strong>Dock max-width?</strong> Currently fixed 320 px. Should the operator be able to resize the dock? Default: yes — the resize handle on the inner edge of each dock lets the operator widen up to 50% of viewport. Implementation lands in this sprint.</li>
+  <li><strong>Multiple panels stacked in one dock side?</strong> Yes — that's the design (dock-left contains a vertical stack of panels). Open: should the stack be reorderable by drag? Default: yes; implemented in <code>reorderDock</code>.</li>
+  <li><strong>What renders in the main slot when no panel claims it?</strong> The current React Router <code>&lt;Outlet /&gt;</code>. So routes that have <em>not</em> been migrated to PanelHost still render in the main slot as today, surrounded by the panel chrome. Smooth migration story.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+
+<ol>
+  <li><code>npm run storybook</code> → open <em>Workspace / Demo</em>.</li>
+  <li>Drag the FakeNotebook floating panel around; release; verify it stays where dropped.</li>
+  <li>Resize its bottom-right corner; verify content reflows.</li>
+  <li>Open the kebab → "Dock right"; verify the panel slides into the right dock and the floating instance disappears.</li>
+  <li>Click the still-floating FakeChat panel; verify shadow deepens and it sits above FakeSidebar.</li>
+  <li>Hit ESC; FakeChat closes.</li>
+  <li>Open the kebab on FakeSidebar → "Popout"; verify toast appears.</li>
+  <li><code>npm run typecheck</code> + <code>npm run test</code> + <code>npm run build</code> all clean.</li>
+  <li>Operator signs off the demo. Without sign-off, S5 does not start.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+
+<p>
+  S3 is additive: a new <code>src/workspace/</code> directory and two new
+  dependencies. No existing component or route references the workspace
+  in S3 (that's S5+). Rollback = <code>git revert</code> + <code>npm
+  uninstall zustand framer-motion</code>. The legacy shell is untouched.
+</p>
+
+<h2>11 · S3 → S4/S5 contract</h2>
+
+<p>
+  The S3 deliverable that S5 consumes: <code>PanelHost</code>,
+  <code>useWorkspace</code>, <code>PanelRegistry</code> entries for the
+  ResearchWorkstation panels. S4 consumes <code>PanelLayout</code> by
+  embedding the new nav rail inside it. Both contracts are
+  forward-compatible: panels can be added by extending
+  <code>PanelKind</code> and registering one component, with no change to
+  the orchestrator.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_02_storybook.html"><span class="label">← Prev</span>S2 · Storybook</a>
+  <a class="next" href="sprint_04_navigation.html"><span class="label">Next →</span>S4 · Navigation re-shell</a>
+</div>
+
+</div>
+</body>
+</html>

@@ -9,9 +9,21 @@
 <body>
 
 <header class="topbar">
-  <div class="wordmark">ANTIEK / UI-REDESIGN-POSTHOG</div>
+  <div class="wordmark">
+    <svg class="werner-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <ellipse cx="16" cy="17" rx="9" ry="11" fill="var(--werner-coat)"/>
+      <ellipse cx="16" cy="19" rx="5.5" ry="8" fill="var(--werner-belly)"/>
+      <circle cx="13" cy="13" r="1.2" fill="var(--werner-eye)"/>
+      <circle cx="19" cy="13" r="1.2" fill="var(--werner-eye)"/>
+      <path d="M14.5 16 L16 18 L17.5 16 Z" fill="var(--werner-bill)"/>
+      <ellipse cx="12.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)"/>
+      <ellipse cx="19.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)"/>
+    </svg>
+    ANTIEK / UI-REDESIGN
+  </div>
   <nav>
     <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
     <a href="sprint_00_foundations.html">S0</a>
     <a href="sprint_01_design_system.html">S1</a>
     <a href="sprint_02_storybook.html">S2</a>
@@ -161,46 +173,86 @@ tailwind.config.js     — extend with tokens imported from design/tokens.ts
   </p>
 
   <pre><code>// apps/reading/src/design/tokens.ts
-export const palette = {
-  yellow:      "#FFD329",
-  yellowSoft:  "#FFE680",
-  blue:        "#1D4AFF",
-  blueSoft:    "#E0E7FF",
-  red:         "#F54E00",
-  redSoft:     "#FFDDD0",
-  teal:        "#29DBBB",
-  purple:      "#B62AD9",
+// Sun-yellow outlining is the brand constant. Day = layered off-whites +
+// glacials. Night = ten-layer off-black night sky. Werner's bill + feet
+// match `sun`. See brand_werner.html §5 (sun), §6 (day), §7 (night).
 
-  paper:       "#FBFBFA",
-  paperSoft:   "#F2F2EE",
-  card:        "#FFFFFF",
-  ink:         "#1D1F27",
-  inkSoft:     "#4B4F5C",
-  inkMute:     "#8B8FA0",
-  rule:        "#E5E5E0",
+type Mode = "day" | "night";
+
+/** The single brand colour — invariant across modes. */
+export const sun = {
+  base:       "#F5DF24",                            // sharp esoteric lemon
+  deep:       { day: "#B89A00", night: "#8A7300" }, // hover / depth / dark-shadow
+  glow:       { day: "#FCE85E", night: "#FFEC5F" }, // highlight peaks
+  highlight:  {
+    faint:    "rgba(245,223,36,0.18)",  // model-suggested highlights
+    day:      "rgba(245,223,36,0.45)",  // operator highlighter, day
+    night:    "rgba(252,232,94,0.30)",  // operator highlighter, night
+  },
 } as const;
 
+/** 10-step surface ramps. Used as background, fill, border-rule. */
+export const surface: Record&lt;Mode, [string, string, string, string, string, string, string, string, string, string]&gt; = {
+  // day: off-whites + glacials → ink
+  day:   ["#FFFFFF", "#FBFCFD", "#F4F7FA", "#EAEFF4", "#DCE5ED",
+          "#C2D1DD", "#9AB0C0", "#64778A", "#384858", "#0F1419"],
+  // night: void → starlight (majestic night sky)
+  night: ["#040508", "#080A10", "#0D1019", "#13171F", "#1B202A",
+          "#252B36", "#323845", "#6B7585", "#C4CCD7", "#EEF1F6"],
+};
+
+/** Named aliases over the ramp for readability. */
+export const aliasFor = (m: Mode) =&gt; ({
+  page:        surface[m][2],   // page bg
+  card:        m === "day" ? surface[m][0] : surface[m][4],
+  cardSoft:    m === "day" ? surface[m][1] : surface[m][3],
+  inset:       m === "day" ? surface[m][3] : surface[m][2],
+  divider:     m === "day" ? surface[m][4] : surface[m][3],
+  muted:       m === "day" ? surface[m][6] : surface[m][7],
+  textMuted:   m === "day" ? surface[m][7] : surface[m][7],
+  text:        m === "day" ? surface[m][9] : surface[m][9],
+  border:      sun.base,        // THE brand outline — always sun
+});
+
+/** Shadows: ink-cast on day, sun-deep-glowing on night. */
 export const shadow = {
-  z1:   "3px 3px 0 0 #1D1F27",
-  z2:   "5px 5px 0 0 #1D1F27",
-  z3:   "8px 8px 0 0 #1D1F27",
-  lift: "12px 12px 0 0 #1D1F27",
+  day: {
+    z1:   "3px 3px 0 0 #0F1419",
+    z2:   "5px 5px 0 0 #0F1419",
+    z3:   "8px 8px 0 0 #0F1419",
+    lift: "12px 12px 0 0 #0F1419",
+  },
+  night: {
+    z1:   "3px 3px 0 0 #8A7300",
+    z2:   "5px 5px 0 0 #8A7300",
+    z3:   "8px 8px 0 0 #8A7300",
+    lift: "12px 12px 0 0 #8A7300",
+  },
 } as const;
 
-export const radius = {
-  sm: "4px",
-  md: "6px",
-  lg: "10px",
+/** Werner mascot palette. Bill + feet ARE the brand. */
+export const werner = {
+  day:   { coat: "#0F1419", belly: "#FBFCFD", bill: sun.base, foot: sun.base, eye: "#0F1419" },
+  night: { coat: "#0A0D14", belly: "#DCE2EA", bill: sun.base, foot: sun.base, eye: "#DCE2EA" },
 } as const;
+
+/** Reserved-use accents. Use sparingly; never substitute for sun. */
+export const accent = {
+  aurora:  { day: "#16C2C2", night: "#3FE0DC" },  // secondary, AI-thinking states
+  emperor: { day: "#E33C2D", night: "#FF6155" },  // danger only
+};
+
+export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;
+export const edgeWidth = "2.5px" as const;        // brand outline thickness
 
 export const type = {
-  sans: '"Inter", system-ui, -apple-system, sans-serif',
-  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
+  sans:  '"Inter", system-ui, -apple-system, sans-serif',
+  mono:  '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
   serif: '"Charter", "Iowan Old Style", Georgia, serif',  // reading prose only
 } as const;
 
-export type Palette = typeof palette;
-export type ShadowKey = keyof typeof shadow;
+export type Mode = Mode;
+export type Surface = (typeof surface)["day"];
 </code></pre>
 
   <p><strong>Tests:</strong></p>
@@ -225,35 +277,65 @@ export type ShadowKey = keyof typeof shadow;
     <code>shadow-z2</code>, etc.). Keep the existing JetBrains Mono entry.
   </p>
 
-  <pre><code>// tailwind.config.js  (CJS-compatible re-import of tokens)
+  <pre><code>// tailwind.config.js
+// Yellow outlining is the brand constant. 10-step surface ramps for both modes.
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  darkMode: "media",   // honours prefers-color-scheme
   theme: {
     extend: {
       colors: {
-        "hog-yellow":      "#FFD329",
-        "hog-yellow-soft": "#FFE680",
-        "hog-blue":        "#1D4AFF",
-        "hog-blue-soft":   "#E0E7FF",
-        "hog-red":         "#F54E00",
-        "hog-red-soft":    "#FFDDD0",
-        "hog-teal":        "#29DBBB",
-        "hog-purple":      "#B62AD9",
+        // THE brand — invariant
+        sun:            "#F5DF24",
+        "sun-deep":     "#B89A00",
+        "sun-glow":     "#FCE85E",
 
-        paper:        "#FBFBFA",
-        "paper-soft": "#F2F2EE",
-        card:         "#FFFFFF",
-        ink:          "#1D1F27",
-        "ink-soft":   "#4B4F5C",
-        "ink-mute":   "#8B8FA0",
-        rule:         "#E5E5E0",
+        // Day surface ramp (off-whites + glacials)
+        "ice-0":        "#FFFFFF",
+        "ice-1":        "#FBFCFD",
+        "ice-2":        "#F4F7FA",
+        "ice-3":        "#EAEFF4",
+        "ice-4":        "#DCE5ED",
+        "glacial-1":    "#C2D1DD",
+        "glacial-2":    "#9AB0C0",
+        "shadow-1":     "#64778A",
+        "shadow-2":     "#384858",
+        ink:            "#0F1419",
+
+        // Night surface ramp (off-blacks + dark greys, majestic night sky)
+        void:           "#040508",
+        "space-1":      "#080A10",
+        "space-2":      "#0D1019",
+        "charcoal-1":   "#13171F",
+        "charcoal-2":   "#1B202A",
+        "slate-1":      "#252B36",
+        "slate-2":      "#323845",
+        moonlight:      "#6B7585",
+        starlight:      "#C4CCD7",
+        bright:         "#EEF1F6",
+
+        // Reserved-use accents
+        aurora:         "#16C2C2",
+        emperor:        "#E33C2D",
       },
       boxShadow: {
-        z1:    "3px 3px 0 0 #1D1F27",
-        z2:    "5px 5px 0 0 #1D1F27",
-        z3:    "8px 8px 0 0 #1D1F27",
-        lift:  "12px 12px 0 0 #1D1F27",
+        // Day: ink-cast chunky offset
+        z1:    "3px 3px 0 0 #0F1419",
+        z2:    "5px 5px 0 0 #0F1419",
+        z3:    "8px 8px 0 0 #0F1419",
+        lift:  "12px 12px 0 0 #0F1419",
+        // Night: sun-deep-cast glow
+        "z1-night":   "3px 3px 0 0 #8A7300",
+        "z2-night":   "5px 5px 0 0 #8A7300",
+        "z3-night":   "8px 8px 0 0 #8A7300",
+        "lift-night": "12px 12px 0 0 #8A7300",
+      },
+      borderColor: {
+        DEFAULT: "#F5DF24",     // the brand outline is the default border colour
+      },
+      borderWidth: {
+        edge: "2.5px",
       },
       borderRadius: { hog: "6px", "hog-lg": "10px" },
       fontFamily: {
@@ -266,6 +348,16 @@ export default {
   plugins: [],
 };
 </code></pre>
+
+  <p>
+    Class examples after this lands. Default card:
+    <code>bg-ice-0 text-ink border-edge border-sun shadow-z2 rounded-hog</code>.
+    Same card at night via OS pref:
+    <code>dark:bg-charcoal-2 dark:text-bright dark:shadow-z2-night</code>.
+    Highlighted text in MasterMdViewer:
+    <code>bg-[rgba(245,223,36,0.45)] dark:bg-[rgba(252,232,94,0.30)]</code>.
+    S1 primitives generate both branches.
+  </p>
 
   <p>
     <em>Note on the colour sync:</em> the same six-pair palette lives in

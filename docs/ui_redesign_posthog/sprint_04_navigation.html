@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 4 — Navigation re-shell · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S4</span>Navigation re-shell</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~4 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S1, S3</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S5, S10</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">6</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Replace <code>modes/shared/HeaderBar.tsx</code> with a PostHog-style
+  composite navigation: a slim left rail (icon-only, always visible), a
+  collapsible <em>Project Tree</em> panel (recent investigations, pinned
+  items, "everything else"), and a topbar showing breadcrumbs +
+  command-palette trigger + account. The rail sits <em>outside</em> the
+  PanelLayout dock zones so it stays present even when both docks are empty.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  The current HeaderBar is a horizontal strip of NavLinks ("Research /
+  Wrestle / Sources / Create / Brainstorm" + "Privacy / Pricing /
+  Operator / Trust") plus a "investigation id" chip. It is the visual
+  origin of the "this UI is lame" complaint: zero hierarchy, no recents,
+  no project tree, no surface for the operator's open investigations.
+  S4 builds the structure that S5–S10 plug their nav surfaces into.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No URL/router changes. The same React Router paths still resolve; only the chrome around them changes.</li>
+  <li>No new auth UI. Account avatar is a placeholder until auth lands (Sprint 22+ per master spec).</li>
+  <li>No mobile drawer in S4. That's S11.</li>
+  <li>No "global search" yet. Cmd+K lands in S8.</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<div class="diagram">
+                ┌──────────────────────────────────────────────────────┐
+   <span class="y">topbar</span>  ┌▶ <span class="y">ANTIEK</span>   crumbs: <span class="g">research › NVDA Q4 › trajectory</span>   <span class="m">⌘K</span>  <span class="m">👤</span>│
+           └──────────────────────────────────────────────────────────┘
+   ┌──┬─────────────────┬──────────────────────────────────────────┬──┐
+   │<span class="y">⌂</span> │ <span class="b">ProjectTree</span>     │                                          │  │
+   │<span class="y">⏍</span> │ ▾ Pinned        │                                          │<span class="r">D</span>│
+   │<span class="y">❒</span> │   • NVDA Q4     │                                          │<span class="r">O</span>│
+   │<span class="y">🜘</span>│   • Web gaming  │       Panel main slot                    │<span class="r">C</span>│
+   │<span class="y">⚑</span> │ ▾ Recent        │       (where modes render today)         │<span class="r">K</span>│
+   │  │   • Kalshi      │                                          │  │
+   │<span class="y">⚙</span> │   • Antiek-RLM  │                                          │  │
+   │  │ ▾ All           │                                          │  │
+   │  │   • Investigations                                                  │  │
+   │  │   • Documents   │                                          │  │
+   │  │   • Notebooks   │                                          │  │
+   │  │   • Sources     │                                          │  │
+   └──┴─────────────────┴──────────────────────────────────────────┴──┘
+    rail      ProjectTree panel             main slot                 right dock
+   (always)   (collapsible, panel-system)   (PanelLayout main slot)   (S3 dock)
+</div>
+
+<h3>4.1 · Two-tier nav</h3>
+<p>
+  The <strong>rail</strong> is a fixed 60-px column of icons on the left,
+  outside the dock system. The <strong>ProjectTree panel</strong> is a
+  standard <code>PanelLayoutPanel</code> docked-left that the operator can
+  pin or hide. This means the panel-system pattern <em>is</em> the
+  navigation pattern — the same primitives that hold the InvestigationSidebar
+  hold the ProjectTree. Consistency by construction.
+</p>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-4.1 -->
+<div class="wp">
+  <div class="wp-id">WP-4.1</div>
+  <h3>NavRail (the always-visible icon column)</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/navigation/NavRail.tsx</code></span>
+    <span><strong>Effort:</strong> 0.8 d</span>
+  </div>
+  <p>
+    60-px wide vertical strip with icon buttons. Top half: mode entries
+    (Research, Wrestle, Create, Brainstorm). Middle: ProjectTree toggle.
+    Bottom half: Privacy, Pricing, Operator, Trust, Settings. Active
+    route highlights with the yellow accent + ink left-edge bar (PostHog
+    convention).
+  </p>
+
+  <pre><code>// src/components/navigation/NavRail.tsx
+import { NavLink } from "react-router-dom";
+
+const items = [
+  { to: "/",            icon: "⌂", label: "Research"   },
+  { to: "/wrestle",     icon: "⏍", label: "Wrestle"    },
+  { to: "/create",      icon: "❒", label: "Create"     },
+  { to: "/brainstorm",  icon: "🜘",label: "Brainstorm" },
+  { to: "/sources",     icon: "⚑", label: "Sources"    },
+  // …
+  { to: "/operator",    icon: "⚙", label: "Operator", group: "footer" },
+];
+
+export function NavRail() {
+  return (
+    &lt;aside className="w-[60px] shrink-0 h-screen bg-ink text-white border-r-2 border-ink flex flex-col"&gt;
+      &lt;div className="h-12 flex items-center justify-center font-mono font-bold bg-hog-yellow text-ink border-b-2 border-ink"&gt;
+        A
+      &lt;/div&gt;
+      &lt;nav className="flex-1 py-2 flex flex-col gap-1"&gt;
+        {items.filter(i =&gt; i.group !== "footer").map(i =&gt; (
+          &lt;NavLink key={i.to} to={i.to} end={i.to === "/"} title={i.label}
+            className={({ isActive }) =&gt;
+              `h-10 mx-1.5 flex items-center justify-center rounded
+               ${isActive
+                 ? "bg-hog-yellow text-ink border-l-4 border-ink"
+                 : "text-white/70 hover:text-white hover:bg-white/10"}`}&gt;
+            &lt;span className="text-xl"&gt;{i.icon}&lt;/span&gt;
+          &lt;/NavLink&gt;
+        ))}
+      &lt;/nav&gt;
+      &lt;nav className="border-t border-white/10 py-2 flex flex-col gap-1"&gt;
+        {items.filter(i =&gt; i.group === "footer").map(i =&gt; /* … */)}
+      &lt;/nav&gt;
+    &lt;/aside&gt;
+  );
+}
+</code></pre>
+</div>
+
+<!-- WP-4.2 -->
+<div class="wp">
+  <div class="wp-id">WP-4.2</div>
+  <h3>Topbar (breadcrumbs + ⌘K + account)</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/navigation/Topbar.tsx</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    A slim (44 px) horizontal bar above the dock row. Renders breadcrumbs
+    derived from the route + a <code>useBreadcrumbs</code> hook that
+    modes can extend. Right side: <code>LemonInput</code> with
+    placeholder "search · ⌘K" (clicking opens command palette in S8),
+    account avatar (placeholder).
+  </p>
+
+  <pre><code>type Crumb = { label: string; to?: string };
+
+export function useBreadcrumbs(): Crumb[] {
+  // S4 ships a default that reads route segments;
+  // modes call useBreadcrumbsOverride([...]) to add specific crumbs (S5).
+  const { pathname } = useLocation();
+  return defaultBreadcrumbs(pathname);
+}
+</code></pre>
+</div>
+
+<!-- WP-4.3 -->
+<div class="wp">
+  <div class="wp-id">WP-4.3</div>
+  <h3>ProjectTree panel</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/navigation/ProjectTree.tsx</code></span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    A panel-system panel (registered as
+    <code>PanelKind = "ProjectTree"</code>) that renders three sections:
+    <strong>Pinned</strong>, <strong>Recent</strong>, <strong>All</strong>.
+    Backed by a new tiny store <code>useProjectTreeStore</code> + reads
+    from existing <code>useInvestigation</code>/<code>useDocuments</code>
+    hooks.
+  </p>
+
+  <p>Each tree node:</p>
+  <ul>
+    <li>Click → opens the corresponding mode in the main slot (router.navigate).</li>
+    <li>Cmd+Click → opens it as a floating panel (panel-system action).</li>
+    <li>Right-click → context menu: Pin, Open in popout, Copy link, Delete.</li>
+  </ul>
+
+  <pre><code>type ProjectNode =
+  | { kind: "investigation"; id: string; title: string; status: "running"|"done"|"failed" }
+  | { kind: "document";       id: string; title: string; pages: number }
+  | { kind: "notebook";       id: string; title: string }
+  | { kind: "section";        id: string; label: string; children: ProjectNode[] };
+
+export function ProjectTree() {
+  const pinned = useProjectTreeStore(s =&gt; s.pinned);
+  const recent = useRecentInvestigations(15);
+  // ...
+}
+</code></pre>
+</div>
+
+<!-- WP-4.4 -->
+<div class="wp">
+  <div class="wp-id">WP-4.4</div>
+  <h3>PinnedFolder store</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/navigation/pinnedStore.ts</code></span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Tiny Zustand store holding the pinned set. Persists to localStorage
+    in S9 (S4 keeps it in-memory; the pin action works in-session and
+    survives a navigation but resets on reload — intentional staging).
+  </p>
+</div>
+
+<!-- WP-4.5 -->
+<div class="wp">
+  <div class="wp-id">WP-4.5</div>
+  <h3>AppShell — top-level layout</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/AppShell.tsx</code> (new)</span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    A new top-level layout component that renders <code>NavRail</code> +
+    <code>Topbar</code> + <code>PanelLayout</code> with the route Outlet
+    as the main slot. <code>App.tsx</code> wraps its <code>Routes</code>
+    inside <code>&lt;AppShell&gt;</code>.
+  </p>
+
+  <pre><code>// src/AppShell.tsx
+import { Outlet } from "react-router-dom";
+import { NavRail } from "./components/navigation/NavRail";
+import { Topbar } from "./components/navigation/Topbar";
+import { PanelLayout } from "./workspace/PanelLayout";
+
+export function AppShell() {
+  return (
+    &lt;div className="h-screen w-screen flex flex-col bg-paper text-ink"&gt;
+      &lt;div className="flex flex-1 min-h-0"&gt;
+        &lt;NavRail /&gt;
+        &lt;div className="flex-1 min-w-0 flex flex-col"&gt;
+          &lt;Topbar /&gt;
+          &lt;div className="flex-1 min-h-0"&gt;
+            &lt;PanelLayout mainSlot={&lt;Outlet /&gt;} /&gt;
+          &lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+
+  <p>And in <code>App.tsx</code>:</p>
+  <pre><code>&lt;Routes&gt;
+  &lt;Route element={&lt;AppShell /&gt;}&gt;
+    &lt;Route path="/"            element={&lt;ResearchWorkstation /&gt;} /&gt;
+    &lt;Route path="/wrestle"     element={&lt;WrestleApp /&gt;} /&gt;
+    {/* … all other routes nested inside AppShell … */}
+  &lt;/Route&gt;
+&lt;/Routes&gt;
+</code></pre>
+</div>
+
+<!-- WP-4.6 -->
+<div class="wp">
+  <div class="wp-id">WP-4.6</div>
+  <h3>HeaderBar deprecation</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/shared/HeaderBar.tsx</code></span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    HeaderBar stays in the tree but is unused after S4. Marked with a
+    <code>// DEPRECATED — superseded by AppShell + NavRail (S4)</code>
+    banner at the top. Removed in S12 when the old shell retires.
+  </p>
+  <p>
+    Why leave it: a mid-migration mode (S5–S10) may temporarily render
+    HeaderBar inside its own slot if PanelHost adoption regresses. It's
+    cheap insurance.
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>Visiting <code>/</code> shows the NavRail + Topbar + main slot (current ResearchWorkstation content still renders).</li>
+  <li>Active route highlights in the rail with the yellow accent + ink left bar.</li>
+  <li>Topbar renders breadcrumbs for the current route; LemonInput shows the placeholder "search · ⌘K" (no behaviour wired yet).</li>
+  <li>ProjectTree opens as a docked-left panel on Cmd+B (placeholder shortcut binding; S8 finalises shortcuts).</li>
+  <li>The legacy HeaderBar is no longer rendered anywhere.</li>
+  <li>Strict TS clean.</li>
+  <li>Existing modes still render their content (S4 is chrome-only).</li>
+  <li>Lost-Pixel baselines updated; intentional diff committed.</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Modes break when their pages re-render inside AppShell.</strong> Mitigation: AppShell renders a plain Outlet in the main slot — no new wrappers. Any mode that depended on full <code>h-screen</code> rendering may need to drop the wrapper; tracked per-route in S10.</li>
+  <li><strong>Breadcrumb extension API gets noisy.</strong> Mitigation: <code>useBreadcrumbsOverride</code> takes a plain array; only modes that want custom crumbs call it.</li>
+  <li><strong>NavRail icons are illegible to new users.</strong> Mitigation: every icon has a tooltip via the native <code>title</code> attribute in S4; switch to a styled tooltip in S11.</li>
+  <li><strong>Two scrollbars (Topbar + Page).</strong> Mitigation: AppShell uses <code>min-h-0</code> + <code>overflow-hidden</code> at every flex parent; scrolls only inside the main slot.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li>Icons — emoji placeholders or a Lucide-react import? Default: emoji in S4, swap to a tiny custom SVG set in S11. Avoids the dependency.</li>
+  <li>NavRail width: 60 px vs 72 px? PostHog uses 60. Default: 60.</li>
+  <li>Should the ProjectTree be open by default for first-time visitors? Default: yes; auto-collapses if the operator closes it once (state from S9).</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+<ol>
+  <li>Run dev server, visit each top-level route, confirm NavRail highlights correctly.</li>
+  <li>Open ProjectTree, click a recent investigation: route navigates, breadcrumb updates.</li>
+  <li>Resize the browser to 1280×800: confirm nothing clips.</li>
+  <li>Lost-Pixel: confirm the only diffs are the new chrome on existing route screenshots (intentional).</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  Revert <code>App.tsx</code> to the pre-S4 form (un-wrap routes). The
+  PanelLayout, NavRail, Topbar, ProjectTree files can stay; they become
+  orphan code until S5 re-adopts. Substrate untouched.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_03_panel_layout.html"><span class="label">← Prev</span>S3 · Panel layout</a>
+  <a class="next" href="sprint_05_research_workstation.html"><span class="label">Next →</span>S5 · ResearchWorkstation</a>
+</div>
+
+</div>
+</body>
+</html>

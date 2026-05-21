@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 8 — Command palette + AI sidecar · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S8</span>Command palette + AI sidecar</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~4 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S3, S5</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S10 (palette actions for unmigrated routes)</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">5</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Two things: (1) a universal Cmd+K command palette that drives every
+  panel-system action (open panel, dock, float, popout, close, switch
+  route, recent investigations) — Linear/PostHog-style; (2) the AISidecar
+  becomes a Max-style ubiquitous chat that lives as a workspace panel
+  the operator can dock-right, float, or popout from any route. Plus the
+  full keyboard-shortcut map.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  After S5/S6/S7, the operator has powerful panels but limited ways to
+  invoke actions on them. The kebab menu works but is mouse-heavy. The
+  palette is the keyboard surface for everything the panel system can
+  do. AISidecar as a docked panel matches the operator's mental model
+  ("ask my agent anywhere") and was Wedge 4 of the prior PostHog spec
+  (<code>integration_posthog.md §8</code>).
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No new AI capabilities. AISidecar consumes the existing AI hook; this sprint only re-shells it.</li>
+  <li>No "fuzzy memory" search across investigations in the palette. Palette searches the static action list + open panels + recent items; full-text is S10 stretch.</li>
+  <li>No voice / mascot character for the AI. Per <code>integration_posthog.md §2.5</code>, Antiek does not copy PostHog's "Max" personality.</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<h3>4.1 · Command palette</h3>
+<div class="diagram">
+                    ┌───────────────────────────────────────────┐
+   ⌘K opens ──▶    │  > <span class="y">type to search…</span>                          │
+                    │ ─────────────────────────────────────────│
+                    │  <span class="g">RECENT</span>                                   │
+                    │    Investigation: NVDA Q4 risk model      │
+                    │    Document: kalshi-liquidity-paper.pdf   │
+                    │  <span class="g">ACTIONS</span>                                  │
+                    │    ↪ Open Notes panel                     │
+                    │    ↪ Dock Chat right                      │
+                    │    ↪ Pop out PDF                          │
+                    │    ↪ Switch to Wrestle                    │
+                    │  <span class="g">PANELS OPEN</span>                              │
+                    │    Notes (docked-left)         dock right │
+                    │    Chase (floating)            popout     │
+                    └───────────────────────────────────────────┘
+</div>
+
+<h3>4.2 · AI sidecar as a panel</h3>
+<p>
+  Current <code>AISidecar.tsx</code> is a floating div. After S8:
+  <code>PanelKind = "AISidecar"</code>, default mode docked-right,
+  default width 360 px, pinned. The operator can drag it to floating,
+  pop it out, or close it; Cmd+/ toggles its visibility.
+</p>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-8.1 -->
+<div class="wp">
+  <div class="wp-id">WP-8.1</div>
+  <h3>Command palette rebuild on LemonModal</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/CommandPalette.tsx</code></span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    Rebuild on <code>LemonModal size="md"</code> with a
+    <code>LemonInput</code> + grouped results. Search algorithm:
+    case-insensitive substring match with simple ranking (exact prefix →
+    full match → contains). No external fuse.js dependency — &lt;30 LoC
+    matcher is enough at this scale.
+  </p>
+
+  <pre><code>type CommandAction = {
+  id: string;
+  group: "Actions" | "Recent" | "Panels open" | "Routes";
+  label: string;
+  hint?: string;             // right-side hint, e.g. "G then I"
+  perform: () =&gt; void;
+};
+
+export function CommandPalette() {
+  const open = useCommandPaletteOpen();    // tiny zustand store
+  const actions = useCommandActions();     // see WP-8.2
+  const [query, setQuery] = useState("");
+  const results = useMemo(() =&gt; rankCommands(actions, query), [actions, query]);
+  // …keyboard nav: ↑ ↓ Enter Esc
+  return open
+    ? (
+      &lt;LemonModal open onClose={closePalette} size="md" title="Command palette"&gt;
+        &lt;LemonInput value={query} onChange={...} iconLeft={...} autoFocus /&gt;
+        &lt;CommandList results={results} /&gt;
+      &lt;/LemonModal&gt;
+    )
+    : null;
+}
+</code></pre>
+</div>
+
+<!-- WP-8.2 -->
+<div class="wp">
+  <div class="wp-id">WP-8.2</div>
+  <h3>Command-action registry</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/commandActions.ts</code></span>
+    <span><strong>Effort:</strong> 0.8 d</span>
+  </div>
+  <p>
+    A composable hook <code>useCommandActions()</code> that aggregates:
+  </p>
+  <ul>
+    <li><strong>Static actions:</strong> all route-switches, panel-system actions, "New investigation", "New notebook", etc.</li>
+    <li><strong>Open panels:</strong> derived from <code>useWorkspace</code>; each open panel exposes its actions (dock-left, dock-right, float, popout, close, pin).</li>
+    <li><strong>Recent items:</strong> last 10 investigations + 10 documents + 5 notebooks (from existing hooks).</li>
+  </ul>
+
+  <pre><code>export function useCommandActions(): CommandAction[] {
+  const navigate = useNavigate();
+  const ws = useWorkspace();
+  const recents = useRecents();
+  return useMemo(() =&gt; [
+    // routes
+    { id: "go-research",   group: "Routes", label: "Go to Research",   perform: () =&gt; navigate("/") },
+    { id: "go-wrestle",    group: "Routes", label: "Go to Wrestle",    perform: () =&gt; navigate("/wrestle") },
+    // … one entry per top-level route
+
+    // panels (static actions)
+    { id: "open-aisidecar", group: "Actions",
+      label: "Open AI sidecar",
+      perform: () =&gt; ws.open("AISidecar", {}, { mode: "docked-right" }) },
+    { id: "open-projecttree", group: "Actions",
+      label: "Open Project tree",
+      perform: () =&gt; ws.open("ProjectTree", {}, { mode: "docked-left" }) },
+    // …
+
+    // open panels — dynamically generated per current workspace
+    ...Object.values(ws.panels).flatMap(p =&gt; [
+      { id: `${p.id}.dock-l`, group: "Panels open",
+        label: `${p.title} → Dock left`,
+        perform: () =&gt; ws.setMode(p.id, "docked-left") },
+      { id: `${p.id}.dock-r`, group: "Panels open",
+        label: `${p.title} → Dock right`,
+        perform: () =&gt; ws.setMode(p.id, "docked-right") },
+      { id: `${p.id}.float`,  group: "Panels open",
+        label: `${p.title} → Float`,
+        perform: () =&gt; ws.setMode(p.id, "floating") },
+      { id: `${p.id}.popout`, group: "Panels open",
+        label: `${p.title} → Pop out`,
+        perform: () =&gt; ws.setMode(p.id, "popout") },
+      { id: `${p.id}.close`,  group: "Panels open",
+        label: `${p.title} → Close`,
+        perform: () =&gt; ws.close(p.id) },
+    ]),
+
+    // recents
+    ...recents.investigations.map(inv =&gt; ({
+      id: `recent-inv-${inv.id}`,
+      group: "Recent" as const,
+      label: `Investigation: ${inv.title}`,
+      perform: () =&gt; navigate(`/inv/${inv.id}`),
+    })),
+    // …
+  ], [navigate, ws, recents]);
+}
+</code></pre>
+</div>
+
+<!-- WP-8.3 -->
+<div class="wp">
+  <div class="wp-id">WP-8.3</div>
+  <h3>Keyboard-shortcut map</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/shortcuts.ts</code> (new)</span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    A single keymap module + a <code>useShortcuts</code> hook bound at
+    AppShell level. No external library; ~30 LoC. Per-shortcut owner is
+    documented inline.
+  </p>
+
+  <table>
+    <thead><tr><th>Combo</th><th>Action</th><th>Owner</th></tr></thead>
+    <tbody>
+      <tr><td><kbd>⌘K</kbd></td><td>Toggle command palette</td><td>WP-8.1</td></tr>
+      <tr><td><kbd>⌘B</kbd></td><td>Toggle left-rail panel (ProjectTree)</td><td>S4</td></tr>
+      <tr><td><kbd>⌘/</kbd></td><td>Toggle AI sidecar</td><td>WP-8.4</td></tr>
+      <tr><td><kbd>⌘⇧P</kbd></td><td>Same as ⌘K (Linear muscle-memory)</td><td>WP-8.1</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Close focused floating panel; if none, close palette</td><td>S3 + WP-8.1</td></tr>
+      <tr><td><kbd>⌘W</kbd></td><td>Close focused panel (only when a panel has focus)</td><td>WP-8.3</td></tr>
+      <tr><td><kbd>⌘⏎</kbd></td><td>Submit (inside Chat / Notebook prose)</td><td>S5/S7</td></tr>
+      <tr><td><kbd>⌘[</kbd> / <kbd>⌘]</kbd></td><td>Cycle focus across docked panels</td><td>WP-8.3</td></tr>
+      <tr><td><kbd>G I</kbd></td><td>Go to Investigations (chord)</td><td>WP-8.3</td></tr>
+      <tr><td><kbd>G W</kbd></td><td>Go to Wrestle</td><td>WP-8.3</td></tr>
+      <tr><td><kbd>G N</kbd></td><td>Go to Notebooks</td><td>WP-8.3</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Chords use a 800 ms second-key window. If the operator hits
+    <kbd>G</kbd> then nothing, the chord state resets after the window.
+  </p>
+</div>
+
+<!-- WP-8.4 -->
+<div class="wp">
+  <div class="wp-id">WP-8.4</div>
+  <h3>AISidecar → panel</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/AISidecar.tsx</code></span>
+    <span><strong>Effort:</strong> 0.7 d</span>
+  </div>
+  <p>
+    Current shape: a fixed-position absolutely-positioned div toggled by
+    a top-bar button. After: a regular renderer registered as
+    <code>PanelKind = "AISidecar"</code>. Default starter for every
+    route: <code>{ kind: "AISidecar", mode: "docked-right", title: "AI" }</code>
+    but only if the operator opted in (default off; toggle via Cmd+/).
+  </p>
+  <p>
+    The chat surface inherits the workspace's <em>focusedPanelId</em>:
+    when the AI asks "open this PDF", it dispatches a workspace
+    <code>open("PdfViewer", {documentId, page}, {mode:"floating"})</code> action.
+    The AI is now first-class panel-system citizen, not an overlay.
+  </p>
+</div>
+
+<!-- WP-8.5 -->
+<div class="wp">
+  <div class="wp-id">WP-8.5</div>
+  <h3>Shortcut hint chips throughout</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> small additions across Topbar, panel-handle kebab, AISidecar</span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    Every place a shortcut applies, render a <code>&lt;kbd&gt;</code> hint
+    using the LemonInput <code>kbdHint</code> slot or a small inline
+    <code>kbd</code>. The Topbar search shows <kbd>⌘K</kbd>; the kebab
+    menu items show their shortcuts; the AISidecar header shows
+    <kbd>⌘/</kbd>.
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>Cmd+K opens the palette; ↑/↓/Enter/Esc work; clicking outside closes.</li>
+  <li>Palette searches static actions + open panels + recents; ranks reasonably.</li>
+  <li>Every panel-system action (dock-l/r, float, popout, close) is invokable from the palette.</li>
+  <li>Cmd+/ opens AISidecar docked-right (if closed) or focuses it (if already open).</li>
+  <li>Cmd+B toggles ProjectTree.</li>
+  <li>Chord shortcuts G+I, G+W, G+N navigate correctly with the 800 ms window; ignoring nonsense follow-ups.</li>
+  <li>Every panel header kebab + Topbar search shows the relevant kbd hint.</li>
+  <li>No new dependencies (no fuse.js, no cmdk, no mousetrap).</li>
+  <li>Bundle delta: ≤ 8 KB gzipped.</li>
+  <li>Strict TS clean.</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Chord shortcuts conflict with text input.</strong> Mitigation: shortcut handler ignores events when the active element is an <code>&lt;input&gt;</code>, <code>&lt;textarea&gt;</code>, or has <code>[contenteditable]</code>.</li>
+  <li><strong>Palette grows too long with many open panels.</strong> Mitigation: "Panels open" group caps at 12 actions; rest accessible via scroll.</li>
+  <li><strong>Operator hits Cmd+W and closes the browser tab instead of a panel.</strong> Mitigation: Cmd+W only intercepts when a workspace panel has explicit focus state; otherwise default browser behaviour passes through. Or — safer default — skip Cmd+W and rely on the kebab close + Esc.</li>
+  <li><strong>Cmd+/ conflicts with Find on some non-Mac browsers (Cmd+/ is unbound on most).</strong> Mitigation: Linux/Win use Ctrl+/ default; Mac uses Cmd+/. Documented.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li>Should the palette have an "Ask AI" mode toggle? I.e., press Tab inside the input → palette switches to AI-prompt mode. Default: no in S8; explore in a later sprint.</li>
+  <li>Default AISidecar location: docked-right or floating? Default: docked-right (matches PostHog's Max).</li>
+  <li>Should there be a "?" shortcut that opens a cheat-sheet of all shortcuts? Default: yes — a static page rendered via LemonModal; small effort.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+
+<ol>
+  <li>Hit Cmd+K from each route; verify palette opens; type "wrestle" → "Go to Wrestle" highlighted; Enter navigates.</li>
+  <li>Open three panels; Cmd+K → type panel title → choose "Dock right"; verify panel moves.</li>
+  <li>Cmd+/ from /; AISidecar appears docked-right. Cmd+/ again; it closes. Cmd+/ again; reopens with same content.</li>
+  <li>G then I within 800 ms → /investigations. G alone, wait → no nav.</li>
+  <li>Inside ChatInputArea, hit Cmd+K → palette opens, Chat input does not capture the keystroke.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  Each WP is independent. WP-8.4 (AISidecar → panel) can revert to the
+  pre-S8 floating-div implementation without affecting the palette.
+  WP-8.1 + WP-8.2 (palette) is a self-contained rewrite of an existing
+  component; rollback restores the pre-S8 CommandPalette.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_07_notebook.html"><span class="label">← Prev</span>S7 · Notebook</a>
+  <a class="next" href="sprint_09_window_state.html"><span class="label">Next →</span>S9 · Window state</a>
+</div>
+
+</div>
+</body>
+</html>

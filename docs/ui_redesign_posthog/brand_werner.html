@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Brand · Werner the penguin + Antarctic palette · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+
+<style>
+  /* Werner mascot images — replace inline SVGs */
+  .pose-img-hero { width: 100%; max-width: 880px; height: auto; display: block; margin: 0 auto; }
+  .pose-img      { width: 100%; height: auto; max-height: 220px; object-fit: contain; }
+  .lockup-mark   { width: 80%; max-width: 160px; height: auto; }
+  .lockup-mark-sm{ width: 56px; height: 56px; }
+  .lockup-row    { display: flex; align-items: center; gap: 14px; padding: 16px;
+                   background: var(--ice-0); border: var(--edge-width) solid var(--sun);
+                   border-radius: var(--edge-radius); box-shadow: var(--shadow-z2); }
+  .lockup-row.night { background: var(--ink); }
+  .lockup-row.night .lockup-text { color: var(--ice-1); }
+  .lockup-text   { font-family: var(--display); font-weight: 800; font-size: 32px;
+                   letter-spacing: -0.5px; color: var(--ink); }
+  @media (prefers-color-scheme: dark) {
+    .lockup-row { background: var(--charcoal-2, #1B202A); }
+    .lockup-row.night { background: #060810; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">
+    <svg class="werner-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <!-- mini Werner mark in topbar -->
+      <ellipse cx="16" cy="17" rx="9" ry="11" fill="var(--werner-coat)"/>
+      <ellipse cx="16" cy="19" rx="5.5" ry="8" fill="var(--werner-belly)"/>
+      <circle cx="13" cy="13" r="1.2" fill="var(--werner-eye)"/>
+      <circle cx="19" cy="13" r="1.2" fill="var(--werner-eye)"/>
+      <path d="M14.5 16 L16 18 L17.5 16 Z" fill="var(--werner-bill)"/>
+      <ellipse cx="12.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)"/>
+      <ellipse cx="19.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)"/>
+    </svg>
+    ANTIEK / BRAND
+  </div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1>Werner the penguin<br/><span style="font-size:24px; font-weight:500; color:var(--ink-soft);">brand · mascot · Antarctic palette · day &amp; night</span></h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Authored</div><div class="value">2026-05-21</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED — DAY 1</div></div>
+  <div class="cell"><div class="label">Scope</div><div class="value">brand bible + asset spec</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S0 palette + S1 primitives</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+</div>
+
+<div class="callout decision">
+  <strong>Decision · brand identity in one sentence</strong>
+  A single emperor penguin named <strong>Werner</strong> — the Herzog homage from <em>Encounters at the End of the World</em> (2007) — walking into the unknown, outlined throughout the product in a single <strong>sharp esoteric yellow</strong> (<code>#F5DF24</code>) that doubles as the reading-product highlighter, against layered <strong>off-white + glacial</strong> day surfaces or a layered <strong>off-black + dark-grey night sky</strong>. The yellow IS the brand — every card, panel, button, chip, and tag is outlined in it; Werner's bill and feet are the same colour; the highlighter used in the reading product is the same colour. One constant across two moods.
+</div>
+
+<h2>1 · The reference, in one paragraph</h2>
+
+<p>
+  Herzog filmed a single emperor penguin breaking off from the colony,
+  ignoring food and shelter, and walking determinedly toward the interior
+  of the continent — toward certain death. The other penguins waddled
+  back to the sea; this one waddled inland. Herzog narrated:
+  <em>"He's heading for the mountains, some 70 kilometres away. Even if
+  we caught him and brought him back to the colony, he would immediately
+  turn around and head back for the mountains."</em>
+</p>
+
+<p>
+  That penguin is Antiek's mascot. A research workstation is a tool for
+  people who can't help walking into the interior of a question — knowing
+  full well it doesn't repay, knowing full well there's no reward at the
+  end, only more interior. Werner is that. He's the friend who, instead
+  of going back to the colony, decides today is the day for the
+  mountains. The product helps him survive the trip.
+</p>
+
+<h2>2 · The hero pose — Werner heading into the unknown</h2>
+
+<div class="pose-hero">
+  <img class="pose-img-hero" src="../../apps/reading/src/brand/werner/poses/anchor/werner_hero_v5_nano_corrected.png" alt="Werner walking alone into the Antarctic horizon — Werner Herzog homage" />
+  <p class="caption">
+    "He's heading for the mountains, some 70 kilometres away. Even if we
+    caught him and brought him back to the colony, he would immediately
+    turn around and head back for the mountains."
+    <br/>— Werner Herzog, <em>Encounters at the End of the World</em>, 2007
+  </p>
+</div>
+
+<p>
+  This is the canonical Antiek hero image. Used in: landing page hero,
+  README header, splash screen on first launch, the back of the
+  Storybook cover page. It is <em>never</em> cropped or recoloured. The
+  whitespace to Werner's right is load-bearing — the unknown he's
+  walking into.
+</p>
+
+<h2>3 · Pose library</h2>
+
+<p>
+  Seven canonical poses. Each has a context it belongs in; using a pose
+  outside its context flattens the brand (cf. PostHog's discipline with
+  Max). All poses share the same drawing language: solid ink coat
+  (<code>--werner-coat</code>), white belly (<code>--werner-belly</code>),
+  ember-orange bill + feet (<code>--werner-bill</code> / <code>--werner-foot</code>),
+  a single dot eye.
+</p>
+
+<div class="pose-grid">
+
+  <!-- POSE 1 — Default avatar -->
+  <div class="pose">
+    <img class="pose-img" src="../../apps/reading/src/brand/werner/poses/anchor/werner_default_v5_nano_corrected.png" alt="Werner — default pose, front-facing" />
+    <div class="label">Werner · Default</div>
+    <div class="ctx">Avatar in account menu. Loading screens. About page.</div>
+  </div>
+
+  <!-- POSE 2 — Tobogganing (working / busy) -->
+  <div class="pose">
+    <img class="pose-img" src="../../apps/reading/src/brand/werner/poses/werner_tobogganing_v1_corrected.png" alt="Werner tobogganing" />
+    <div class="label">Werner · Tobogganing</div>
+    <div class="ctx">Loading spinner. Streaming investigation. "Working…" surfaces.</div>
+  </div>
+
+  <!-- POSE 3 — Head-tilt (curious / empty state) -->
+  <div class="pose">
+    <img class="pose-img" src="../../apps/reading/src/brand/werner/poses/werner_head_tilt_v1_corrected.png" alt="Werner head-tilt" />
+    <div class="label">Werner · Head-tilt</div>
+    <div class="ctx">Empty states. No-results-found. "I don't know yet."</div>
+  </div>
+
+  <!-- POSE 4 — Lost (very small in space) -->
+  <div class="pose">
+    <img class="pose-img" src="../../apps/reading/src/brand/werner/poses/werner_lost_v1_corrected.png" alt="Werner lost in vast space" />
+    <div class="label">Werner · Lost</div>
+    <div class="ctx">404. Genuine errors. The "this is going wrong" moment.</div>
+  </div>
+
+  <!-- POSE 5 — Holding a fish (success) -->
+  <div class="pose">
+    <img class="pose-img" src="../../apps/reading/src/brand/werner/poses/werner_caught_a_fish_v1_corrected.png" alt="Werner with a fish" />
+    <div class="label">Werner · Caught a fish</div>
+    <div class="ctx">Investigation completed. Save success. Synthesis ready.</div>
+  </div>
+
+  <!-- POSE 6 — Sleeping (idle) -->
+  <div class="pose">
+    <img class="pose-img" src="../../apps/reading/src/brand/werner/poses/werner_sleeping_v1_corrected.png" alt="Werner asleep" />
+    <div class="label">Werner · Asleep</div>
+    <div class="ctx">Idle state (5+ min). Locked screen. After-hours splash.</div>
+  </div>
+
+  <!-- POSE 7 — Thinking (AI processing) -->
+  <div class="pose dark">
+    <img class="pose-img" src="../../apps/reading/src/brand/werner/poses/werner_thinking_v1_corrected.png" alt="Werner thinking" />
+    <div class="label">Werner · Thinking</div>
+    <div class="ctx">AI sidecar processing. Long-running task. "Hold on…"</div>
+  </div>
+
+</div>
+
+<h2>4 · Personality bible</h2>
+
+<table>
+  <thead><tr><th style="width:25%">Trait</th><th>What it means</th><th>What it isn't</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Determined</strong></td>
+      <td>Werner walks toward the mountains. He doesn't give up, even when nobody asked him to keep going.</td>
+      <td>Not aggressive. Not "10× hustle". Not a startup-bro penguin.</td>
+    </tr>
+    <tr>
+      <td><strong>Quietly funny</strong></td>
+      <td>Visual humour comes from his small body in vast spaces, from his comic waddle, from his expressions. Never from puns or wordplay in copy.</td>
+      <td>Not a wisecracker. Werner does not deliver one-liners. PostHog's Max is chatty; Werner is not.</td>
+    </tr>
+    <tr>
+      <td><strong>A little melancholy</strong></td>
+      <td>The Herzog reference is bittersweet. Werner walks into the interior because he has to. There's awe in the unknown, not just delight.</td>
+      <td>Not depressing, not nihilistic. The product is hopeful — the journey is what's heavy.</td>
+    </tr>
+    <tr>
+      <td><strong>Reverent of the unknown</strong></td>
+      <td>The "abyss" in night mode is sublime, not scary. Antarctica is the framing — a beautiful, indifferent, vast continent. The product helps you survive in it.</td>
+      <td>Not gothic, not horror, not edgy. No skulls, no flames, no "darkness" as aesthetic.</td>
+    </tr>
+    <tr>
+      <td><strong>Single, not a colony</strong></td>
+      <td>Werner is one penguin. Antiek shows one Werner at a time. There are no Werner-with-friends scenes (the whole point is that he left the colony).</td>
+      <td>Not a mascot family. No baby Werners, no Mrs. Werner, no Werner-jokes-with-the-team.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5 · The sun · the one constant</h2>
+
+<p>
+  Every card, panel, table, button, chip, tag, and badge across the
+  entire app is outlined in this yellow. Werner's bill and feet are
+  this yellow. The highlighter in the reading product is this yellow.
+  Hover a hyperlink and the underline becomes this yellow. The
+  topbar's bottom rule and every <code>h2</code> divider use this
+  yellow. One colour, everywhere — that's the whole brand mark.
+</p>
+
+<div class="swatch-grid">
+  <div class="swatch" style="background:var(--sun);">
+    <div class="hex">#F5DF24</div>
+    <div class="name">sun · the brand</div>
+  </div>
+  <div class="swatch inkbg" style="background:var(--sun-deep);">
+    <div class="hex">#B89A00</div>
+    <div class="name">sun-deep · hover / depth</div>
+  </div>
+  <div class="swatch" style="background:var(--sun-glow);">
+    <div class="hex">#FCE85E</div>
+    <div class="name">sun-glow · highlight / night-lift</div>
+  </div>
+  <div class="swatch" style="background:var(--sun-hl-day);">
+    <div class="hex">rgba(245,223,36,0.45)</div>
+    <div class="name">sun-hl · reading highlighter</div>
+  </div>
+</div>
+
+<p>
+  Why <em>this</em> yellow and not PostHog's <code>#FFD329</code>: the
+  sun has a touch more green and a touch less orange than PostHog's
+  amber-yellow. The result is sharper, slightly esoteric — closer to
+  sodium-vapor or hazard-tape than to honey or sunflower. It reads as
+  precise and modern next to white, and glows with a faint chemical
+  warmth next to black. Memorable on both sides.
+</p>
+
+<p>
+  <strong>Demo of the highlighter, used inline:</strong>
+  Werner is heading <mark>toward the mountains, some seventy kilometres
+  away</mark>, and although he could be returned to the colony, he
+  <mark>would immediately turn around and head back for the mountains</mark>.
+</p>
+
+<h2>6 · Day mode · layered off-whites + glacials</h2>
+
+<p>
+  The day surface is built from ten gradations of off-white going from
+  pure paper down through cool ice tones into deep ink. Almost every
+  background you see is one of these — flat fills are rare; subtle
+  drift between layers is the rule. Antarctica at solar noon: lots of
+  white, lots of cold blue undertone, very little saturation. The
+  yellow outline lands on this like a stitched border on a quilt.
+</p>
+
+<div class="ramp" aria-label="Day surface ramp, light to dark">
+  <div style="background:#FFFFFF;">ice-0</div>
+  <div style="background:#FBFCFD;">ice-1</div>
+  <div style="background:#F4F7FA;">ice-2</div>
+  <div style="background:#EAEFF4;">ice-3</div>
+  <div style="background:#DCE5ED;">ice-4</div>
+  <div style="background:#C2D1DD;">glacial-1</div>
+  <div style="background:#9AB0C0;">glacial-2</div>
+  <div style="background:#64778A;" class="dark-text">shadow-1</div>
+  <div style="background:#384858;" class="dark-text">shadow-2</div>
+  <div style="background:#0F1419;" class="dark-text">ink</div>
+</div>
+
+<div class="swatch-grid">
+  <div class="swatch" style="background:#FFFFFF;">
+    <div class="hex">#FFFFFF</div><div class="name">ice-0 · top card face (rare)</div>
+  </div>
+  <div class="swatch" style="background:#FBFCFD;">
+    <div class="hex">#FBFCFD</div><div class="name">ice-1 · default card</div>
+  </div>
+  <div class="swatch" style="background:#F4F7FA;">
+    <div class="hex">#F4F7FA</div><div class="name">ice-2 · page bg</div>
+  </div>
+  <div class="swatch" style="background:#EAEFF4;">
+    <div class="hex">#EAEFF4</div><div class="name">ice-3 · trough / inset</div>
+  </div>
+  <div class="swatch" style="background:#DCE5ED;">
+    <div class="hex">#DCE5ED</div><div class="name">ice-4 · divider band</div>
+  </div>
+  <div class="swatch" style="background:#C2D1DD;">
+    <div class="hex">#C2D1DD</div><div class="name">glacial-1 · subdued surface</div>
+  </div>
+  <div class="swatch" style="background:#9AB0C0;">
+    <div class="hex">#9AB0C0</div><div class="name">glacial-2 · disabled / muted</div>
+  </div>
+  <div class="swatch inkbg" style="background:#64778A;">
+    <div class="hex">#64778A</div><div class="name">shadow-1 · secondary text</div>
+  </div>
+  <div class="swatch inkbg" style="background:#384858;">
+    <div class="hex">#384858</div><div class="name">shadow-2 · low-emphasis ink</div>
+  </div>
+  <div class="swatch inkbg" style="background:#0F1419;">
+    <div class="hex">#0F1419</div><div class="name">ink · primary text</div>
+  </div>
+</div>
+
+<h2>7 · Night mode · majestic night sky</h2>
+
+<p>
+  Toggle your OS appearance to Dark and watch this page transform.
+  Night mode is not a colour-inverted day; it's its own surface — ten
+  gradations of off-black and dark grey, like a night sky observed
+  carefully. Tiny CSS-only stars sprinkle the background; the sun
+  outline starts to glow because shadows now cast in
+  <code>sun-deep</code> instead of ink. Werner's coat blends slightly
+  into the sky; his belly still catches starlight; his bill still
+  burns with the brand yellow.
+</p>
+
+<div class="ramp" aria-label="Night surface ramp, void to starlight">
+  <div style="background:#040508;" class="dark-text">void</div>
+  <div style="background:#080A10;" class="dark-text">space-1</div>
+  <div style="background:#0D1019;" class="dark-text">space-2</div>
+  <div style="background:#13171F;" class="dark-text">charcoal-1</div>
+  <div style="background:#1B202A;" class="dark-text">charcoal-2</div>
+  <div style="background:#252B36;" class="dark-text">slate-1</div>
+  <div style="background:#323845;" class="dark-text">slate-2</div>
+  <div style="background:#6B7585;" class="dark-text">moonlight</div>
+  <div style="background:#C4CCD7;">starlight</div>
+  <div style="background:#EEF1F6;">bright</div>
+</div>
+
+<div class="swatch-grid">
+  <div class="swatch inkbg" style="background:#040508;">
+    <div class="hex">#040508</div><div class="name">void · deepest layer</div>
+  </div>
+  <div class="swatch inkbg" style="background:#080A10;">
+    <div class="hex">#080A10</div><div class="name">space-1 · sub-page</div>
+  </div>
+  <div class="swatch inkbg" style="background:#0D1019;">
+    <div class="hex">#0D1019</div><div class="name">space-2 · page bg</div>
+  </div>
+  <div class="swatch inkbg" style="background:#13171F;">
+    <div class="hex">#13171F</div><div class="name">charcoal-1 · trough</div>
+  </div>
+  <div class="swatch inkbg" style="background:#1B202A;">
+    <div class="hex">#1B202A</div><div class="name">charcoal-2 · card</div>
+  </div>
+  <div class="swatch inkbg" style="background:#252B36;">
+    <div class="hex">#252B36</div><div class="name">slate-1 · elevated</div>
+  </div>
+  <div class="swatch inkbg" style="background:#323845;">
+    <div class="hex">#323845</div><div class="name">slate-2 · top plane</div>
+  </div>
+  <div class="swatch inkbg" style="background:#6B7585;">
+    <div class="hex">#6B7585</div><div class="name">moonlight · muted text</div>
+  </div>
+  <div class="swatch" style="background:#C4CCD7;">
+    <div class="hex">#C4CCD7</div><div class="name">starlight · body text</div>
+  </div>
+  <div class="swatch" style="background:#EEF1F6;">
+    <div class="hex">#EEF1F6</div><div class="name">bright · headlines</div>
+  </div>
+</div>
+
+<table>
+  <thead><tr><th>Token</th><th>Day</th><th>Night</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>--sun</code></td><td>#F5DF24</td><td>#F5DF24</td><td><strong>brand outline — invariant across modes</strong></td></tr>
+    <tr><td><code>--sun-deep</code></td><td>#B89A00</td><td>#8A7300</td><td>hover / depth / shadow at night</td></tr>
+    <tr><td><code>--sun-glow</code></td><td>#FCE85E</td><td>#FFEC5F</td><td>highlight peaks; brighter at night</td></tr>
+    <tr><td><code>--ice-0 / --snow-tier</code></td><td>#FFFFFF</td><td>#1B202A</td><td>top card face / elevated plane</td></tr>
+    <tr><td><code>--ice-2</code></td><td>#F4F7FA</td><td>#0D1019</td><td>page background</td></tr>
+    <tr><td><code>--ink</code></td><td>#0F1419</td><td>#EEF1F6</td><td>primary text</td></tr>
+    <tr><td>shadow colour</td><td>ink</td><td>sun-deep</td><td>at night, shadows GLOW</td></tr>
+    <tr><td>Werner's bill + feet</td><td>#F5DF24</td><td>#F5DF24</td><td>same yellow as the outline — the visual hook</td></tr>
+  </tbody>
+</table>
+
+<h2>8 · Yellow as the reading-product highlighter</h2>
+
+<p>
+  In the reading product (MasterMdViewer prose, notebook prose blocks,
+  PDF text-layer selections), the operator's manual highlighter uses
+  the same <code>--sun</code>. Three layered opacities:
+</p>
+
+<table>
+  <thead><tr><th>Token</th><th>Value</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td><code>--sun-hl-faint</code></td><td><code>rgba(245,223,36,0.18)</code></td><td>auto-suggested phrases (model "I'd notice this")</td></tr>
+    <tr><td><code>--sun-hl-day</code></td><td><code>rgba(245,223,36,0.45)</code></td><td>operator's manual highlight, day mode</td></tr>
+    <tr><td><code>--sun-hl-night</code></td><td><code>rgba(252,232,94,0.30)</code></td><td>same, night mode (uses sun-glow so it stays luminous)</td></tr>
+    <tr><td><code>--sun-hl-active</code></td><td><code>var(--sun)</code> solid</td><td>currently-selected highlight (the one the toolbar acts on)</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Implementation rule: highlights are <em>backgrounds + bottom-stroke</em>,
+  never replacements of text colour. Inline:
+  <mark>highlighted text keeps its ink colour</mark>; the operator's eye
+  still reads the text as-text, while the yellow signals "marked."
+</p>
+
+<p>
+  Why one yellow for everything: the operator never has to learn what
+  the yellow means in different contexts. <em>Outline = brand. Bill =
+  brand. Highlight = brand.</em> Each reinforces the other; the
+  product feels coherent without effort.
+</p>
+
+<div class="callout decision">
+  <strong>Decision · dark mode is first-class from S0</strong>
+  Day and night both ship from the first sprint. The night surface
+  carries 10 distinct gradations of off-black/grey, layered like a
+  night sky. Every primitive in S1 ships in both modes. Lost-Pixel
+  snapshots cover both. S11 verifies both as a single pass — not one
+  patched on top of the other.
+</div>
+
+<h2>9 · Logo lockups</h2>
+
+<h3>9.1 · Mark only</h3>
+
+<p>Used in the favicon, the topbar of the in-app shell, social-card avatars, the keychain icon.</p>
+
+<div class="pose-grid">
+  <div class="pose">
+    <img class="lockup-mark" src="../../apps/reading/src/brand/werner/marks/mark-180.png" alt="Antiek mark" />
+    <div class="label">MARK · framed</div>
+    <div class="ctx">Topbar 22×22, favicon 32×32, social avatar 400×400.</div>
+  </div>
+
+  <div class="pose">
+    <div class="lockup-row"><img class="lockup-mark-sm" src="../../apps/reading/src/brand/werner/marks/avatar-400.png" alt="Antiek wordmark" /><span class="lockup-text">ANTIEK</span></div>
+    <div class="label">WORDMARK · horizontal</div>
+    <div class="ctx">Marketing site header, README hero, signed emails.</div>
+  </div>
+
+  <div class="pose dark">
+    <div class="lockup-row night"><img class="lockup-mark-sm" src="../../apps/reading/src/brand/werner/marks/avatar-400.png" alt="Antiek wordmark (night)" /><span class="lockup-text">ANTIEK</span></div>
+    <div class="label">WORDMARK · night</div>
+    <div class="ctx">Same lockup, abyss background.</div>
+  </div>
+</div>
+
+<h3>9.2 · Clear-space + don'ts</h3>
+
+<ul>
+  <li><strong>Clear space:</strong> Werner's head height on all sides of any mark.</li>
+  <li><strong>Never recolour</strong> the coat or belly. Bill + feet may shift between day-ember and night-ember; nothing else moves.</li>
+  <li><strong>Never compose</strong> Werner with other characters, mascots, brands, or "team photos". He is alone. That is the entire point.</li>
+  <li><strong>Never rotate</strong> the hero pose. The horizon is sacred.</li>
+  <li><strong>Never animate</strong> Werner blinking, hopping, or dancing. Werner waddles. Werner toboggans. Werner does not party.</li>
+</ul>
+
+<h2>10 · Animation principles</h2>
+
+<table>
+  <thead><tr><th>Pose</th><th>Animation</th><th>Where</th></tr></thead>
+  <tbody>
+    <tr><td>Tobogganing</td><td>~6 fps wobble: rotate -3° / +3° at 200 ms intervals; speed lines opacity flicker.</td><td>Loading spinner, streaming-investigation banner.</td></tr>
+    <tr><td>Waddle cycle</td><td>3-frame loop (left-foot, both-feet, right-foot), 300 ms total. Slight body rotation -2° / +2° for waddle bob.</td><td>Walking-in transitions, navigation between routes.</td></tr>
+    <tr><td>Sleeping</td><td>Belly breathes: scale 1.0 ↔ 1.04 on Y over 2.4 s. zZz letters drift upward and fade.</td><td>Idle screen.</td></tr>
+    <tr><td>Thinking</td><td>Aurora thought-dots pulse opacity 0.5 ↔ 1.0 in sequence (right-to-left), 1.2 s cycle.</td><td>AI sidecar "thinking…" state.</td></tr>
+    <tr><td>Caught a fish</td><td>One-shot: flipper raise + sparkle scale 0 → 1 → 0 over 800 ms. No loop.</td><td>Completion toast for investigations.</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Always honours <code>prefers-reduced-motion: reduce</code> — every
+  Werner animation becomes a static pose. The product's accessibility
+  contract (S11) applies to mascot animations too.
+</p>
+
+<h2>11 · Asset structure</h2>
+
+<div class="tree">
+apps/reading/src/brand/
+├── <span style="color:var(--sun-deep)">werner/</span>
+│   ├── <span style="color:var(--sun-deep)">poses/</span>           — one TSX component per pose; pure SVG; props for colour overrides
+│   │   ├── WernerDefault.tsx
+│   │   ├── WernerWalking.tsx           ◀ hero pose (Herzog homage)
+│   │   ├── WernerTobogganing.tsx
+│   │   ├── WernerHeadTilt.tsx
+│   │   ├── WernerLost.tsx
+│   │   ├── WernerCaughtAFish.tsx
+│   │   ├── WernerSleeping.tsx
+│   │   └── WernerThinking.tsx
+│   ├── <span style="color:var(--sun-deep)">animations/</span>      — framer-motion variants per pose
+│   │   ├── waddle.ts
+│   │   ├── toboggan.ts
+│   │   ├── breathe.ts
+│   │   └── thought-pulse.ts
+│   ├── <span style="color:var(--sun-deep)">marks/</span>           — favicons, social cards, generated assets
+│   │   ├── mark-32.svg
+│   │   ├── mark-180.svg              ◀ apple-touch-icon
+│   │   ├── social-card.svg           ◀ 1200×630, twitter/og:image
+│   │   └── wordmark-horizontal.svg
+│   └── Werner.stories.tsx           ◀ Storybook book of all poses + animations
+└── <span style="color:var(--sun-deep)">tokens.ts</span>           — palette + shadow + werner colours
+</div>
+
+<h2>12 · Voice guidance (short)</h2>
+
+<p>
+  The mascot is silent. <strong>Werner himself never speaks.</strong> No
+  text bubbles, no captions, no Werner-said-X copy. Antiek's product
+  copy is the voice; Werner is the visual cue. This is the discipline
+  that keeps him from sliding into a corporate-cartoon-friend.
+</p>
+
+<p>
+  Where copy <em>does</em> appear next to Werner, it follows the
+  master-product-spec voice rules: terse, accurate, no exclamation
+  marks unless something genuinely surprising happened. "Investigation
+  complete." not "🎉 Yay we found something!".
+</p>
+
+<h2>13 · What we explicitly reject</h2>
+
+<ul>
+  <li>A penguin family / cast. One Werner. Always.</li>
+  <li>Penguin puns ("Antiek-ly observed," "ice to meet you," etc.).</li>
+  <li>Animated dance loops, costume changes, holiday outfits.</li>
+  <li>Werner with a laptop / wearing glasses / wearing headphones. He is in Antarctica, not San Francisco.</li>
+  <li>Stylised "logo penguin" variants (gradient, neon, low-poly). The drawing language is fixed.</li>
+  <li>A second, "premium" penguin for paid tiers. There is no economy/business Werner.</li>
+  <li>Any "AI assistant character" name for the chat. The AI sidecar is "AI" — Werner is the brand mascot, not the chatbot persona.</li>
+</ul>
+
+<h2>14 · Open questions</h2>
+
+<ol>
+  <li><strong>Werner's name</strong> — operator ratifies, swaps, or removes. Default if no change: Werner.</li>
+  <li><strong>Eighth pose: "guard"</strong> (Werner standing in front of a "private" / locked surface, like permissions). Default: defer; the existing seven cover known states.</li>
+  <li><strong>Illustration handoff</strong> — these inline SVGs are draft-quality. Production poses should go through a designer (Studio / Figma source-of-truth) before S1 ships. Operator: pick the route — keep code-only SVGs, or commission a designer pass first?</li>
+  <li><strong>Marketing-site hero</strong> — the Herzog-homage pose belongs on the public landing page once auth + marketing land. Tracked separately.</li>
+</ol>
+
+<h2>15 · Sprint integration</h2>
+
+<table>
+  <thead><tr><th>Sprint</th><th>What changes because of this page</th></tr></thead>
+  <tbody>
+    <tr><td><a href="sprint_00_foundations.html">S0</a></td><td>Palette tokens replaced with glacier / aurora / ember / ice / frost / snow / ink. Dark-mode tokens added (no longer S12 stretch).</td></tr>
+    <tr><td><a href="sprint_01_design_system.html">S1</a></td><td>Lemon primitives ship in both day and night by default. Storybook stories preview both modes.</td></tr>
+    <tr><td><a href="sprint_02_storybook.html">S2</a></td><td>Werner.stories.tsx joins the coverage list. Lost-Pixel covers all poses in both modes.</td></tr>
+    <tr><td><a href="sprint_04_navigation.html">S4</a></td><td>NavRail top mark uses the framed Werner mark; AppShell wordmark uses the horizontal lockup.</td></tr>
+    <tr><td><a href="sprint_07_notebook.html">S7</a></td><td>Empty notebook = WernerHeadTilt. Save success toast = brief WernerCaughtAFish animation.</td></tr>
+    <tr><td><a href="sprint_08_command_palette_ai.html">S8</a></td><td>AISidecar "thinking" state = WernerThinking. Cmd+K palette icon = mark.</td></tr>
+    <tr><td><a href="sprint_11_a11y_responsive.html">S11</a></td><td>Both modes verified together. Reduced-motion respect for all Werner animations.</td></tr>
+    <tr><td><a href="sprint_12_visual_regression_release.html">S12</a></td><td>Dark mode no longer "stretch" — first-class deliverable, gated like the rest.</td></tr>
+  </tbody>
+</table>
+
+<div class="sprint-nav">
+  <a href="index.html"><span class="label">↩ Back</span>Master plan</a>
+  <a class="next" href="sprint_00_foundations.html"><span class="label">Next →</span>S0 · Foundations</a>
+</div>
+
+</div>
+</body>
+</html>

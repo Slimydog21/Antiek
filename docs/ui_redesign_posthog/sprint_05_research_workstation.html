@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 5 — ResearchWorkstation on PanelLayout · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S5</span>ResearchWorkstation on PanelLayout</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~5 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S3, S4</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S8 (palette wiring), S10</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">6</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED · PILOT MODE PORT</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Port <code>modes/ResearchWorkstation/</code> — the operator's
+  highest-traffic route — onto the panel system. After S5 the operator
+  sees the same investigation flow as today, but each piece
+  (InvestigationSidebar, Trajectory, MasterMdViewer, ChatInputArea,
+  ChaseSlideOver, HighlightToolbar) is an independently dockable,
+  floatable, popoutable panel.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  ResearchWorkstation is the route the operator lives in. Porting it
+  first does three things: (a) proves the panel system holds up under a
+  real consumer; (b) gives the operator immediate visceral payoff for
+  the entire S0–S4 investment; (c) surfaces missing primitives or store
+  actions before the bulk migration of S10. If S5 trips, S6/S7 are
+  cheaper to defer; S10 is cheaper to plan around.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No changes to investigation domain logic (<code>useInvestigation</code>, <code>parseSynthesis</code>, the streaming hook). They stay byte-identical.</li>
+  <li>No new investigation feature in S5. Pure UI port.</li>
+  <li>No window-state persistence. Resetting the browser clears panel positions; S9 fixes this.</li>
+  <li>No popout-into-OS-window for any RW panel; popout is still stubbed until S9.</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<h3>4.1 · Current shape (pre-S5)</h3>
+<div class="diagram">
+&lt;ResearchWorkstation&gt;
+  &lt;HeaderBar/&gt;                       ← S4 retired
+  &lt;div grid cols=[280px_1fr]&gt;
+    &lt;InvestigationSidebar/&gt;          ← left aside
+    &lt;main&gt;
+      &lt;CenterContent/&gt;               ← TrajectoryView | MasterMdViewer
+      &lt;HighlightToolbar/&gt;            ← floating overlay
+      &lt;ChatInputArea/&gt;               ← pinned bottom
+    &lt;/main&gt;
+  &lt;/div&gt;
+  &lt;ChaseSlideOver/&gt;                  ← right slide-over
+&lt;/ResearchWorkstation&gt;
+</div>
+
+<h3>4.2 · Target shape (post-S5)</h3>
+<div class="diagram">
+&lt;ResearchWorkstation&gt; (the route component)
+  └─ &lt;PanelHost
+        starters=[
+          { kind: "InvestigationSidebar", mode: "docked-left",  title: "Investigations" },
+          { kind: "Chat",                 mode: "docked-bottom", title: "Chat" },
+          // Trajectory / MasterMdViewer render in the MAIN SLOT, not a panel
+        ]&gt;
+        &lt;CenterContent /&gt;     ← main slot content: TrajectoryView | MasterMdViewer
+     &lt;/PanelHost&gt;
+  └─ HighlightToolbar stays a floating DOM overlay (anchored to selection),
+     not a workspace panel; selections are anchored to text, not workspace coords.
+  └─ ChaseSlideOver becomes a workspace panel opened on demand
+     (action: openChase(text)) — mode: "floating".
+</div>
+
+<p>
+  <strong>Note:</strong> S5 introduces a fifth panel mode value:
+  <code>"docked-bottom"</code> for the Chat surface. S3's PanelLayout
+  ships dock-left + dock-right; this WP adds the bottom dock.
+</p>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-5.1 -->
+<div class="wp">
+  <div class="wp-id">WP-5.1</div>
+  <h3>Extend PanelLayout with dock-bottom</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/workspace/PanelLayout.tsx</code>, <code>panel.types.ts</code>, <code>WorkspaceStore.ts</code></span>
+    <span><strong>Effort:</strong> 0.6 d</span>
+  </div>
+  <p>
+    Add <code>"docked-bottom"</code> to <code>PanelMode</code>, a
+    <code>dockBottomIds</code> array to the snapshot, and a flex-row
+    sibling under the main+rightdock row. Used in S5 by Chat and (later)
+    by terminal-style surfaces.
+  </p>
+  <pre><code>// in PanelLayout.tsx, the main column becomes:
+&lt;div className="flex-1 flex flex-col min-w-0"&gt;
+  &lt;main className="flex-1 min-h-0 relative overflow-hidden"&gt;{mainSlot}{/* floating layer */}&lt;/main&gt;
+  &lt;div className="border-t-2 border-ink bg-paper-soft min-h-0
+                   transition-[height] duration-150"
+       style={{ height: dockBottomIds.length ? 220 : 0 }}&gt;
+    {dockBottomIds.map(id =&gt; &lt;PanelLayoutPanel key={id} id={id} /&gt;)}
+  &lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+  <p>The dock height is operator-resizable via a top-edge handle (uses the same drag helper from S3 WP-3.5).</p>
+</div>
+
+<!-- WP-5.2 -->
+<div class="wp">
+  <div class="wp-id">WP-5.2</div>
+  <h3>InvestigationSidebar as a panel</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/ResearchWorkstation/InvestigationSidebar.tsx</code></span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Visual rewrite to the Lemon primitives: tree nodes become
+    <code>LemonTag</code> rows; selected investigation gets the yellow
+    accent + ink-left-edge bar. No domain logic change.
+  </p>
+  <p>
+    Already pre-wired in <code>PanelRegistry</code> (S3 WP-3.2). S5 only
+    edits the component file.
+  </p>
+</div>
+
+<!-- WP-5.3 -->
+<div class="wp">
+  <div class="wp-id">WP-5.3</div>
+  <h3>ChatInputArea as the docked-bottom Max-style panel</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/ResearchWorkstation/ChatInputArea.tsx</code></span>
+    <span><strong>Effort:</strong> 0.8 d</span>
+  </div>
+  <p>
+    Becomes a self-contained panel: <code>LemonTextarea</code> on top, a
+    transcript scroll above (last ~6 exchanges), <code>LemonButton
+    variant=primary</code> for submit. Pinned by default to dock-bottom
+    so the operator always has a place to type. Dragging the top edge of
+    the bottom dock resizes the chat surface vertically.
+  </p>
+
+  <p>
+    <strong>Cross-cut with S8:</strong> S8 adds the Max-style ubiquitous
+    chat. S5 ships <em>investigation-scoped</em> chat — same surface,
+    pre-wired to the active investigation context. S8 generalises to a
+    workspace-wide chat that follows the operator across routes.
+  </p>
+</div>
+
+<!-- WP-5.4 -->
+<div class="wp">
+  <div class="wp-id">WP-5.4</div>
+  <h3>ChaseSlideOver becomes a floating panel</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/ResearchWorkstation/ChaseSlideOver.tsx</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    Today: a right-side slide-over controlled by <code>open + text</code>
+    props. After: a <code>PanelKind="Chase"</code> registered in
+    <code>PanelRegistry</code>. Opening the chase flow becomes
+    <code>open("Chase", { spawnContext, parentInvestigationId }, { mode: "floating", title: "Chase" })</code>.
+  </p>
+  <p>
+    Bonus: the operator can now open multiple Chase panels simultaneously
+    (different highlight selections from the same trajectory). Today
+    only one chase can be open at a time.
+  </p>
+</div>
+
+<!-- WP-5.5 -->
+<div class="wp">
+  <div class="wp-id">WP-5.5</div>
+  <h3>Trajectory + MasterMdViewer visual refresh</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/ResearchWorkstation/TrajectoryView.tsx</code>, <code>MasterMdViewer.tsx</code>, <code>PhaseRow.tsx</code></span>
+    <span><strong>Effort:</strong> 1.2 d</span>
+  </div>
+  <p>
+    Apply the Lemon look: each PhaseRow becomes a LemonCard with elevation
+    z1 + yellow accent on the active phase. MasterMdViewer prose font
+    becomes Charter (serif), preserving the reading-as-prose feel that
+    §5.3 of the prior spec held to be load-bearing — relocated from the
+    chrome to the reading surface.
+  </p>
+
+  <p>
+    These two components render in the <strong>main slot</strong> of
+    PanelHost, not as panels. They are the "page content"; the
+    investigation flow has one and only one center surface.
+  </p>
+</div>
+
+<!-- WP-5.6 -->
+<div class="wp">
+  <div class="wp-id">WP-5.6</div>
+  <h3>ResearchWorkstation/index.tsx — orchestration only</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/ResearchWorkstation/index.tsx</code></span>
+    <span><strong>Effort:</strong> 0.7 d</span>
+  </div>
+  <p>
+    The route component shrinks dramatically. Its job is:
+  </p>
+  <ol>
+    <li>Read the route param (<code>investigationId</code>).</li>
+    <li>Open the right starter panels in <code>PanelHost</code>.</li>
+    <li>Render <code>&lt;CenterContent /&gt;</code> in the main slot.</li>
+    <li>Expose an action (<code>onChaseThis</code>) that opens a Chase panel.</li>
+  </ol>
+
+  <pre><code>// src/modes/ResearchWorkstation/index.tsx (post-S5)
+export default function ResearchWorkstation() {
+  const { investigationId } = useParams&lt;{ investigationId?: string }&gt;();
+  const open = useWorkspace(s =&gt; s.open);
+
+  const onChaseThis = useCallback((text: string) =&gt; {
+    open("Chase",
+         { spawnContext: text, parentInvestigationId: investigationId },
+         { mode: "floating", title: "Chase" });
+  }, [open, investigationId]);
+
+  return (
+    &lt;PanelHost starters={[
+      { kind: "InvestigationSidebar", mode: "docked-left",   title: "Investigations" },
+      ...(investigationId
+          ? [{ kind: "Chat", mode: "docked-bottom",
+               props: { investigationId },                   title: "Chat" }]
+          : []),
+    ]}&gt;
+      {investigationId
+        ? &lt;CenterContent investigationId={investigationId} onChaseThis={onChaseThis} /&gt;
+        : &lt;EmptyState /&gt;}
+    &lt;/PanelHost&gt;
+  );
+}
+</code></pre>
+
+  <p>
+    HighlightToolbar continues to live inside the main-slot DOM (it is
+    anchored to text selection, which is in the main slot's scroll
+    container). Its <code>onChaseThis</code> callback now goes through
+    the workspace action above.
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>Visiting <code>/</code> with no investigationId renders the EmptyState in the main slot, InvestigationSidebar docked-left.</li>
+  <li>Visiting <code>/inv/&lt;id&gt;</code> additionally docks the Chat panel at the bottom.</li>
+  <li>The operator can pin Investigations to remain when navigating away (pin button on its panel header).</li>
+  <li>Highlighting text in MasterMdViewer + clicking "Chase this" opens a floating Chase panel anchored over the main slot.</li>
+  <li>Opening a second Chase panel works — both render side-by-side with independent state.</li>
+  <li>Dragging the top edge of the bottom dock resizes the Chat surface.</li>
+  <li>All existing investigation streaming behaviour is unchanged: same events shown, same MASTER.md renders.</li>
+  <li>Bundle delta: main chunk grows by &lt; 25 KB gzipped (mainly the new Chase + Sidebar lazy imports that load on demand).</li>
+  <li>Lost-Pixel: ResearchWorkstation screenshots updated; intentional diff committed.</li>
+  <li>Operator daily-driver sign-off: spends one workday in the rebuilt RW with a live investigation, no regressions, "this is the UI I wanted".</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>HighlightToolbar positions wrong when the Chase panel covers the trajectory.</strong> Mitigation: toolbar positions are computed against the selection's <code>getBoundingClientRect</code> + main slot scroll position; the floating Chase panel is in a sibling DOM subtree, so toolbar positions don't shift when Chase opens. Verified manually.</li>
+  <li><strong>Investigation streaming UI flickers when Chat re-renders.</strong> Mitigation: <code>ChatInputArea</code> uses a <code>memo</code>'d transcript; messages are append-only.</li>
+  <li><strong>Operator confused by "where did the chat go" when no investigation is loaded.</strong> Mitigation: EmptyState includes an explicit "Start a question" composer that calls the same submit, then auto-opens the bottom-docked Chat once an investigation id exists.</li>
+  <li><strong>Chase panel content depends on a parent investigation context that disappears on navigation.</strong> Mitigation: Chase panel snapshots <code>parentInvestigationId</code> + <code>spawnContext</code> at open time; surviving navigation is intentional (operator can navigate away while chase runs).</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li>Should pin-on-navigation persist InvestigationSidebar across <em>routes</em> (e.g. visiting /wrestle keeps it docked)? Default: yes. The pinned panel is workspace-global, not route-scoped.</li>
+  <li>Default bottom-dock height: 220 px or 280 px? Default: 220 px; operator can drag.</li>
+  <li>Should MasterMdViewer also be popoutable (so the operator reads it on a second monitor)? Default: yes — registered with <code>kind: "MasterMdViewer"</code> so an explicit "Open in popout" action exists from S9.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+
+<ol>
+  <li>Start a fresh investigation; watch trajectory stream; confirm InvestigationSidebar updates, Chat scrolls, no flicker.</li>
+  <li>Highlight a chunk in MasterMdViewer → Chase this → confirm a floating Chase panel opens with the right context.</li>
+  <li>Open a second Chase from a different highlight → both render independently.</li>
+  <li>Drag InvestigationSidebar's kebab → Float → confirm it pops out as a floating panel, then dock-right → confirm it lands in the right dock.</li>
+  <li>Reload the page → investigation state reloads (it always did); panel layout resets (S5 has no persistence — expected; S9 fixes).</li>
+  <li>Run Lost-Pixel; review the intentional diffs.</li>
+  <li>Operator works a full day inside the new RW. Sign-off is a checkbox in the S5 PR description.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  S5 changes: <code>App.tsx</code> wraps RW in PanelHost (line-level
+  change); the RW components are visually refreshed but still
+  byte-compatible with their pre-S5 callers. Rollback = revert the RW
+  route's PanelHost wrap; visual refreshes can ship anyway because they
+  do not depend on the panel system to render.
+</p>
+<p>
+  In practical terms: S5 lands behind <code>ANTIEK_UI=v2</code> env
+  flag from S12, so partial rollback is a flag flip.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_04_navigation.html"><span class="label">← Prev</span>S4 · Navigation</a>
+  <a class="next" href="sprint_06_wrestle.html"><span class="label">Next →</span>S6 · WrestleApp (PDF)</a>
+</div>
+
+</div>
+</body>
+</html>

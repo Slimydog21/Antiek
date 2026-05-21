@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 10 — Bulk route migration · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S10</span>Bulk route migration</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~10 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S5, S6, S7, S8, S9</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S12 (release)</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">28 (one per route) — grouped into 4 tiers</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED · LONGEST SPRINT</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Convert every remaining route onto <code>PanelHost</code> with
+  Lemon-styled internals. By end of S10, the legacy HeaderBar is removed
+  and zero route uses its own bespoke chrome. The 25+ pages catalogued
+  below are each their own work package; we sequence in 4 tiers by
+  operator-visibility and risk.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  After S5–S7 the redesign exists on three highest-traffic routes. The
+  remaining ~25 routes are still flat. Without S10 the app feels
+  inconsistent: the operator's daily-driver routes are PostHog-shaped,
+  but operator-dashboard / trust / payouts / loop-3 are still 2025-era
+  grey-on-white. S10 closes the gap.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No new functionality. Pure visual + layout port.</li>
+  <li>No deep refactoring of any route's domain logic. If a route has poor logic, fix it elsewhere.</li>
+  <li>Not migrating internal admin routes that were never operator-visible (none currently).</li>
+</ul>
+
+<h2>4 · Migration template</h2>
+
+<p>
+  Every route migration follows the same pattern. We codify it once so
+  the 25+ migrations are mechanical work, not 25 individual designs.
+</p>
+
+<div class="diagram">
+For each route in apps/reading/src/modes/&lt;Mode&gt;/index.tsx:
+
+  1. Identify the mode's surfaces:
+       - the "main" surface (the central content)
+       - "side" surfaces (lists, filters, details that today live in sidebars or modals)
+       - "ephemeral" surfaces (modals, slide-overs)
+
+  2. Wrap the route component in &lt;PanelHost starters={...}&gt;:
+       - Side surfaces become docked-left or docked-right starter panels
+       - Main surface goes inside the children (main slot)
+
+  3. Convert ephemeral surfaces to floating panels:
+       - openPanel("ClaimInspector", { claimId }, { mode: "floating" }) instead of setState({modalOpen: true})
+
+  4. Restyle internals to Lemon primitives:
+       - &lt;button&gt; → &lt;LemonButton&gt;
+       - tables → &lt;LemonTable&gt;
+       - &lt;input&gt; → &lt;LemonInput&gt;
+       - cards/panels → &lt;LemonCard&gt;
+
+  5. Add the route to the navigation rail (S4) if not already.
+
+  6. Add screenshots to the Storybook story for the route.
+
+  7. Update Lost-Pixel baseline.
+
+  Each route is its own WP; estimated 0.3 - 0.5 day per route depending on complexity.
+</div>
+
+<h2>5 · The route catalogue, by tier</h2>
+
+<h3>5.1 · Tier 1 — operator-facing dashboards (priority)</h3>
+<p>
+  Routes the operator opens at least weekly. These get the most polish
+  effort.
+</p>
+
+<table>
+  <thead><tr><th>WP</th><th>Route</th><th>File</th><th>Effort</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>10.1</td><td>/operator</td><td><code>modes/OperatorDashboard/</code></td><td>0.6 d</td><td>multi-section dashboard; each section becomes a docked panel</td></tr>
+    <tr><td>10.2</td><td>/stats</td><td><code>modes/Stats/</code></td><td>0.4 d</td><td>charts → LemonCards with z2 shadow</td></tr>
+    <tr><td>10.3</td><td>/investigations</td><td><code>modes/InvestigationsIndex/</code></td><td>0.4 d</td><td>LemonTable; row click opens RW</td></tr>
+    <tr><td>10.4</td><td>/notebooks</td><td><code>modes/NotebooksIndex/</code></td><td>0.3 d</td><td>LemonTable; row click opens Notebook panel</td></tr>
+    <tr><td>10.5</td><td>/documents</td><td><code>modes/DocumentsIndex/</code></td><td>0.4 d</td><td>LemonTable + upload affordance</td></tr>
+    <tr><td>10.6</td><td>/sources</td><td><code>modes/Sources/</code></td><td>0.5 d</td><td>each adapter card → LemonCard; status pills via LemonTag</td></tr>
+  </tbody>
+</table>
+
+<h3>5.2 · Tier 2 — workflow surfaces</h3>
+<table>
+  <thead><tr><th>WP</th><th>Route</th><th>File</th><th>Effort</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>10.7</td><td>/create</td><td><code>modes/CreationStudio/</code></td><td>0.5 d</td><td>Lego-block create UI; left = block palette panel; right = preview panel</td></tr>
+    <tr><td>10.8</td><td>/brainstorm</td><td><code>modes/BrainstormStation/</code></td><td>0.5 d</td><td>watch-for-later folder + thought-partner; analogous to RW with different starters</td></tr>
+    <tr><td>10.9</td><td>/interviews</td><td><code>modes/InterviewIndex/</code></td><td>0.3 d</td><td>LemonTable</td></tr>
+    <tr><td>10.10</td><td>/interview/:id</td><td><code>modes/Interview/</code></td><td>0.5 d</td><td>recording panel + transcript panel + notes panel</td></tr>
+    <tr><td>10.11</td><td>/backtest/:synthesisId</td><td><code>modes/Backtest/</code></td><td>0.4 d</td><td>charts + tables; LemonCard treatment</td></tr>
+    <tr><td>10.12</td><td>/outcomes</td><td><code>modes/OutcomesIndex/</code></td><td>0.3 d</td><td>LemonTable</td></tr>
+    <tr><td>10.13</td><td>/outcomes/:synthesisId</td><td><code>modes/Outcomes/</code></td><td>0.4 d</td><td>detail view; left = sources, right = trace</td></tr>
+    <tr><td>10.14</td><td>/replay/:investigationId</td><td><code>modes/Replay/</code></td><td>0.5 d</td><td>step timeline → docked-left; viewer → main slot</td></tr>
+  </tbody>
+</table>
+
+<h3>5.3 · Tier 3 — governance + meta routes</h3>
+<table>
+  <thead><tr><th>WP</th><th>Route</th><th>File</th><th>Effort</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>10.15</td><td>/trust</td><td><code>modes/TrustCenter/</code></td><td>0.3 d</td><td>compliance cards; calm-paper look</td></tr>
+    <tr><td>10.16</td><td>/privacy</td><td><code>modes/PrivacyDashboard/</code></td><td>0.3 d</td><td>—</td></tr>
+    <tr><td>10.17</td><td>/pricing</td><td><code>modes/Pricing/</code></td><td>0.3 d</td><td>plan cards; LemonCard with yellow accent on recommended tier</td></tr>
+    <tr><td>10.18</td><td>/billing</td><td><code>modes/Billing/</code></td><td>0.3 d</td><td>LemonTable of invoices + plan card</td></tr>
+    <tr><td>10.19</td><td>/payouts</td><td><code>modes/PayoutsAudit/</code></td><td>0.3 d</td><td>LemonTable</td></tr>
+    <tr><td>10.20</td><td>/federation</td><td><code>modes/Federation/</code></td><td>0.4 d</td><td>node graph viewer (existing) + panel for node details</td></tr>
+    <tr><td>10.21</td><td>/cross-graph/citations</td><td><code>modes/CrossGraphCitations/</code></td><td>0.4 d</td><td>graph + LemonTable of citations</td></tr>
+  </tbody>
+</table>
+
+<h3>5.4 · Tier 4 — system + experimental</h3>
+<table>
+  <thead><tr><th>WP</th><th>Route</th><th>File</th><th>Effort</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>10.22</td><td>/loop-3</td><td><code>modes/Loop3/</code></td><td>0.4 d</td><td>loop dashboard; KPI cards</td></tr>
+    <tr><td>10.23</td><td>/skill-rules</td><td><code>modes/SkillRules/</code></td><td>0.3 d</td><td>LemonTable</td></tr>
+    <tr><td>10.24</td><td>/skill-rules/:id</td><td><code>modes/SkillRuleDetail/</code></td><td>0.3 d</td><td>—</td></tr>
+    <tr><td>10.25</td><td>/map</td><td><code>modes/Map/</code></td><td>0.4 d</td><td>graph visualisation already in canvas/svg; chrome only</td></tr>
+    <tr><td>10.26</td><td>/wrestle (index, no doc loaded)</td><td><code>modes/WrestleApp/</code> empty state</td><td>0.2 d</td><td>refreshes empty state to LemonCard</td></tr>
+    <tr><td>10.27</td><td>/_panel/:id</td><td><code>PanelWindowApp.tsx</code></td><td>0.2 d</td><td>polish popout chrome (S9 created the route)</td></tr>
+    <tr><td>10.28</td><td>404 / catch-all</td><td><code>App.tsx Navigate</code></td><td>0.1 d</td><td>route catalog page on unknown URLs, instead of silent redirect</td></tr>
+  </tbody>
+</table>
+
+<h2>6 · Sequencing</h2>
+
+<p>
+  Within S10's 10-day budget:
+</p>
+
+<table>
+  <thead><tr><th>Day</th><th>Tier</th><th>Route count</th></tr></thead>
+  <tbody>
+    <tr><td>1–3</td><td>Tier 1 (operator-facing)</td><td>6</td></tr>
+    <tr><td>4–6</td><td>Tier 2 (workflow)</td><td>8</td></tr>
+    <tr><td>7–8</td><td>Tier 3 (governance + meta)</td><td>7</td></tr>
+    <tr><td>9–10</td><td>Tier 4 + polish + Lost-Pixel rebaseline</td><td>7</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Each tier ends with a Lost-Pixel rebaseline commit; a tier completes
+  only when all of its routes lint, typecheck, build, and visually pass.
+</p>
+
+<h2>7 · Common patterns &amp; gotchas</h2>
+
+<ul>
+  <li><strong>List → Detail flows</strong> (e.g. <code>/investigations</code> → <code>/inv/:id</code>): the list can become a docked-left panel that survives the navigation, so clicking a row updates the main slot without unmounting the list. Implement by registering the list itself as <code>PanelKind = "InvestigationsList"</code> and starting it docked-left in both the list route <em>and</em> the detail route.</li>
+  <li><strong>Existing modals</strong>: every existing modal becomes either a <code>LemonModal</code> (truly transient) or a floating panel (operator may want to keep it open while doing other things). Default the rule: if the modal blocks other interaction (delete confirm), use LemonModal; if it's content (claim detail, region zoom), make it a floating panel.</li>
+  <li><strong>Empty states</strong>: every route gets a real empty state. Today many routes render whitespace. After S10, the empty state is a LemonCard with a clear CTA — operator action affordance, not silence.</li>
+  <li><strong>Page-level scroll</strong>: PanelHost's main slot has its own scroll. Make sure each migrated route does not set <code>h-screen</code> on its own root; the AppShell already owns that.</li>
+  <li><strong>Routes inside routes</strong>: <code>/skill-rules</code> and <code>/skill-rules/:id</code> share a starter (the rules list). Share by extracting starter spec into the route file's module scope; both render <code>PanelHost</code> with the same starter array.</li>
+</ul>
+
+<h2>8 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>All 28 routes render under the new shell.</li>
+  <li>HeaderBar.tsx is no longer imported anywhere in the codebase.</li>
+  <li>Strict TS clean across the whole app.</li>
+  <li>Bundle main chunk ≤ 700 KB gzipped (the explicit programme-wide budget).</li>
+  <li>Lost-Pixel baseline complete: every route has at least one story or page-level screenshot committed.</li>
+  <li>Operator daily-driver sign-off across at least 6 routes per tier.</li>
+  <li>No regressions in existing route behaviour (manual smoke pass per tier).</li>
+</ul>
+
+<h2>9 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Some routes have inherited domain logic that breaks when wrapped in PanelHost.</strong> Mitigation: each WP starts by mounting the route inside PanelHost <em>without any starters</em> as a smoke test; if that breaks, fix container-side first.</li>
+  <li><strong>Stamina: 10 days of similar visual work is fatiguing; aesthetic consistency drifts late in the sprint.</strong> Mitigation: each tier closes with a 30-min review of all migrated routes against the moodboard; the boundary between tiers is the polish + review checkpoint.</li>
+  <li><strong>Forgetting a route.</strong> Mitigation: this catalogue is the canonical list; CI grep at the end of S10 fails the build if any <code>modes/*/index.tsx</code> imports the old HeaderBar.</li>
+  <li><strong>Substrate adds a new route during S10.</strong> Mitigation: substrate-track convention: new routes wrap in PanelHost from day one. PanelHost is documented in <code>src/workspace/README.md</code> as the required wrapper.</li>
+</ul>
+
+<h2>10 · Open questions</h2>
+
+<ol>
+  <li>Should the <code>/_panel/:id</code> popout route surface a top-bar at all? Default: minimal — just panel title + close. The OS window chrome carries the rest.</li>
+  <li>Should index routes (<code>/investigations</code>, <code>/notebooks</code>, etc) share a common "list page" template? Default: no — too restrictive; the template exists implicitly via LemonTable usage.</li>
+  <li>Per-route layouts that are saved by S9 — does S10 ship default presets? Default: no, the route's <em>starter</em> array is the default; persisted state overrides it.</li>
+</ol>
+
+<h2>11 · Verification protocol</h2>
+
+<ol>
+  <li>Per tier: walk every route in the catalogue; confirm header shows breadcrumbs, NavRail highlight, no HeaderBar, Lemon styling.</li>
+  <li>Run the cross-route smoke test: navigate from / → /wrestle → /notebooks → /create → /operator → /trust → /. Confirm no console errors.</li>
+  <li>Bundle audit: <code>npm run build -- --report</code>; main chunk ≤ 700 KB.</li>
+  <li>Lost-Pixel: zero unintentional diffs.</li>
+  <li>Operator sign-off: use the app for one workday end-to-end; report any inconsistency.</li>
+</ol>
+
+<h2>12 · Rollback plan</h2>
+<p>
+  Each WP is independent. Reverting one route returns it to the old
+  shell while leaving others migrated. The flag <code>ANTIEK_UI=v2</code>
+  introduced in S12 can be route-scoped if needed during cutover.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_09_window_state.html"><span class="label">← Prev</span>S9 · Window state</a>
+  <a class="next" href="sprint_11_a11y_responsive.html"><span class="label">Next →</span>S11 · A11y + responsive</a>
+</div>
+
+</div>
+</body>
+</html>

@@ -9,9 +9,21 @@
 <body>
 
 <header class="topbar">
-  <div class="wordmark">ANTIEK / UI-REDESIGN-POSTHOG</div>
+  <div class="wordmark">
+    <svg class="werner-mark" viewBox="0 0 32 32" aria-hidden="true">
+      <ellipse cx="16" cy="17" rx="9" ry="11" fill="var(--werner-coat)"/>
+      <ellipse cx="16" cy="19" rx="5.5" ry="8" fill="var(--werner-belly)"/>
+      <circle cx="13" cy="13" r="1.2" fill="var(--werner-eye)"/>
+      <circle cx="19" cy="13" r="1.2" fill="var(--werner-eye)"/>
+      <path d="M14.5 16 L16 18 L17.5 16 Z" fill="var(--werner-bill)"/>
+      <ellipse cx="12.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)"/>
+      <ellipse cx="19.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)"/>
+    </svg>
+    ANTIEK / UI-REDESIGN
+  </div>
   <nav>
     <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
     <a href="sprint_00_foundations.html">S0</a>
     <a href="sprint_01_design_system.html">S1</a>
     <a href="sprint_02_storybook.html">S2</a>
@@ -30,7 +42,7 @@
 
 <div class="shell">
 
-<h1>Antiek UI redesign<br/><span style="font-size:24px; font-weight:500; color:var(--ink-soft);">PostHog-style layered workspace · master plan</span></h1>
+<h1>Antiek UI redesign<br/><span style="font-size:24px; font-weight:500; color:var(--ink-soft);">layered Antarctic workspace · Werner the penguin · day &amp; night · master plan</span></h1>
 
 <div class="meta-strip">
   <div class="cell"><div class="label">Spec version</div><div class="value">v1.0 — DRAFT</div></div>
@@ -51,6 +63,21 @@
   exactly what changes, and what assumptions from the prior spec still hold.
 </div>
 
+<div class="callout decision">
+  <strong>Decision · brand is Werner the penguin + sun-yellow outlining (not PostHog yellow / hedgehog)</strong>
+  PostHog supplies the <em>interaction pattern</em> (layered panels, chunky offset
+  shadows); Antiek supplies the <em>identity</em>. Mascot: Werner, a single emperor
+  penguin walking into the interior of Antarctica — the homage to Herzog's
+  <em>Encounters at the End of the World</em> (2007). Single constant brand colour:
+  <strong>sun-yellow <code>#F5DF24</code></strong> — sharp, esoteric, slightly green-leaning —
+  used as the outline on every card / panel / tag, as the colour of Werner's
+  bill + feet, and as the reading-product highlighter. Day mode is layered
+  off-whites + glacials (Antarctica at noon); night mode is layered off-blacks
+  + dark greys, ten gradations deep (a majestic night sky in which the yellow
+  outline glows). Both first-class. Toggle your OS appearance to see this spec
+  page flip. Full bible: <a href="brand_werner.html">brand_werner.html</a>.
+</div>
+
 <h2>1 · What we're building</h2>
 
 <p>
@@ -66,10 +93,12 @@
 <p>
   Panels live in a 2.5D layout: docked left or right, free-floating with
   z-index depth + offset shadow, or popped out into an OS-level window.
-  Visual language: <strong>chunky offset shadows, retro yellow + red
-  accents on cream paper, JetBrains Mono for system text, Inter for
-  reading.</strong> The aesthetic of this document is the aesthetic of
-  the target build.
+  Visual language: <strong>sharp sun-yellow outlining on every surface,
+  chunky offset shadows (ink in day / glowing sun-deep in night),
+  layered off-white + glacial paper in day, layered off-black + dark-grey
+  night sky after dark, JetBrains Mono for system text, Inter for UI,
+  Charter for reading prose, sun-yellow as the in-product highlighter.</strong>
+  The aesthetic of this document is the aesthetic of the target build.
 </p>
 
 <div class="diagram">
@@ -160,7 +189,7 @@
   <tbody>
     <tr>
       <td>"Antiek's serif / researcher's-notebook aesthetic is load-bearing for the product proposition."</td>
-      <td><strong>REVERSED.</strong> The reading body of synthesis output stays serif (Inter / Charter for prose); the <em>shell</em> goes PostHog-flavored (Inter UI, JetBrains Mono for system, chunky shadows, yellow accent). The notebook feel survives inside the panel that renders prose, not at the chrome level.</td>
+      <td><strong>REVERSED.</strong> The reading body of synthesis output stays serif (Charter for prose); the <em>shell</em> goes layered-panel + Antarctic (Inter UI, JetBrains Mono for system, chunky offset shadows, sun-yellow outline on every surface, ten-layer night sky after dark). The notebook feel survives inside the panel that renders prose, not at the chrome level. The brand yellow doubles as the reading highlighter, so the mark "follows" the operator from the chrome into the text.</td>
     </tr>
     <tr>
       <td>"If Lemon UI fails the visual-fit criterion, the evaluation is the defensible answer — adopting it anyway would hurt the product."</td>
@@ -172,6 +201,13 @@
 <h2>5 · Sprint list</h2>
 
 <div class="sprint-grid">
+
+  <a class="sprint-tile brand" href="brand_werner.html">
+    <div class="num">BRAND · DAY ZERO</div>
+    <div class="title">Werner the penguin · Antarctic palette</div>
+    <p class="blurb">Mascot bible · 7 inline-SVG poses · Herzog-homage hero pose · day / night palettes · animation principles · asset spec.</p>
+    <span class="duration">prereq for S0</span>
+  </a>
 
   <a class="sprint-tile" href="sprint_00_foundations.html">
     <div class="num">SPRINT 0</div>
@@ -315,7 +351,6 @@
   <li>Mobile-native apps. We ship a responsive web fallback in S11, not a separate mobile app.</li>
   <li>Multi-tenant / multi-user. Antiek is single-operator pre-launch (per master spec).</li>
   <li>Auth / login flows. The shell is layout, not identity.</li>
-  <li>Theming &gt; light. Dark mode is queued as a S12 stretch; not in the v1.0 cut.</li>
   <li>Replacing pdf.js or react-markdown. Engines stay; only chrome changes.</li>
   <li>Replacing <code>react-router-dom</code> with PostHog's Kea-routed scenes. Router stays; the shell renders inside it.</li>
 </ul>
@@ -347,9 +382,11 @@
 <h2>10 · Operator decisions still required</h2>
 
 <div class="callout warn">
-  <strong>BLOCKERS · ratify before S1 starts</strong>
+  <strong>BLOCKERS · ratify before S0 starts</strong>
   <ol>
-    <li><strong>Palette ratification</strong> — accept the yellow/red/teal palette demonstrated by this document, OR specify substitutions. Default if no decision: ship as shown.</li>
+    <li><strong>Mascot ratification</strong> — accept "Werner" the Herzog-homage penguin as drawn in <a href="brand_werner.html">brand_werner.html</a>, OR specify variants. Default if no decision: ship as drawn.</li>
+    <li><strong>Antarctic palette</strong> — glacier-blue accent, ember warm note, ice/abyss paper. Day + night both first-class from S0. Operator ratifies the swatches in §5–§6 of the brand page.</li>
+    <li><strong>Illustration source</strong> — keep code-only SVG poses (current), or commission a designer pass on Figma source-of-truth before S1 ships? Default: code-only SVGs through S5; designer pass scheduled before S10 marketing-visible surfaces.</li>
     <li><strong>Lemon UI: custom-build, install package, or fork-and-paste?</strong> S0 recommends custom-build; needs operator sign-off so S1 can start.</li>
     <li><strong>Cutover style</strong> — flag-gated overlap (recommended), or hard cutover at S12 end. Default: flag-gated.</li>
   </ol>

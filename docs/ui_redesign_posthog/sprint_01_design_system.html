@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 1 — Design-system primitives · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S1</span>Design-system primitives</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~5 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S0</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S3, S4, S5, S6, S7, S8, S10</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">10 (one per primitive)</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+
+<p>
+  Ship ten PostHog-Lemon-style primitive components — Button, Card, Modal,
+  Input, Textarea, Tag, Select, Dropdown, Table, Toast — living in
+  <code>apps/reading/src/components/lemon/</code>, each with a
+  <code>*.stories.tsx</code> and strict-TS clean. No mode or route uses
+  them yet; that's S5+.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+
+<p>
+  Every later sprint reaches for buttons, cards, modals, dropdowns. If S3
+  (panel layout) starts before primitives exist, it inlines its own button
+  styles and we end up with two flavours of LemonButton. S1 ships the
+  primitives <em>before</em> consumers, so consumers compose, never
+  re-invent.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>Not migrating existing components. <code>ChatInput</code>, <code>ClaimCard</code>, <code>NotesPanel</code> stay untouched in S1. Their migration is S5/S6/S10.</li>
+  <li>Not building complex composites: no <code>LemonDataTable</code>, no <code>LemonForm</code>. Just the ten primitives.</li>
+  <li>No light/dark mode toggle in components. Tokens permit it; S1 only ships light.</li>
+  <li>No animation library yet. Hover-lift uses Tailwind <code>transition-transform</code> + CSS. Framer Motion enters in S3.</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<div class="diagram">
+src/components/lemon/
+├── LemonButton.tsx     ──┐
+├── LemonButton.stories.tsx │
+├── LemonCard.tsx        │
+├── LemonCard.stories.tsx│  every primitive is:
+├── LemonModal.tsx       │   • pure presentational
+├── LemonModal.stories.tsx  • token-only (no inline hex)
+├── LemonInput.tsx       │   • strict-TS clean
+├── LemonInput.stories.tsx  • a Storybook story alongside
+├── LemonTextarea.tsx    │   • &lt; 120 LoC where reasonable
+├── LemonTextarea.stories.tsx
+├── LemonTag.tsx         │
+├── LemonTag.stories.tsx │
+├── LemonSelect.tsx      │
+├── LemonSelect.stories.tsx
+├── LemonDropdown.tsx    │
+├── LemonDropdown.stories.tsx
+├── LemonTable.tsx       │
+├── LemonTable.stories.tsx
+├── LemonToast.tsx       ──┘
+└── LemonToast.stories.tsx
+
+src/components/lemon/index.ts   barrel: re-exports everything
+</div>
+
+<h2>5 · The primitives, one work package each</h2>
+
+<!-- ============ WP-1.1 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.1</div>
+  <h3>LemonButton</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonButton.tsx</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    Four variants: <code>primary</code> (yellow + ink border + z1 shadow),
+    <code>secondary</code> (white + ink border + z1 shadow),
+    <code>tertiary</code> (no border, hover-tints),
+    <code>danger</code> (red + ink border).
+    Three sizes: sm / md / lg. Two states: idle, hover-lifted. Disabled state
+    drops shadow + reduces opacity. Hover lifts by 2px and goes to z3 shadow.
+  </p>
+  <pre><code>// src/components/lemon/LemonButton.tsx
+import { forwardRef } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+
+type Variant = "primary" | "secondary" | "tertiary" | "danger";
+type Size    = "sm" | "md" | "lg";
+
+type Props = ButtonHTMLAttributes&lt;HTMLButtonElement&gt; &amp; {
+  variant?: Variant;
+  size?: Size;
+  icon?: ReactNode;
+  iconRight?: ReactNode;
+  fullWidth?: boolean;
+};
+
+const base =
+  "inline-flex items-center justify-center gap-2 font-mono font-semibold " +
+  "border-2 border-ink rounded-hog transition-transform duration-75 " +
+  "active:translate-x-[2px] active:translate-y-[2px] active:shadow-none " +
+  "disabled:opacity-50 disabled:pointer-events-none";
+
+const variants: Record&lt;Variant, string&gt; = {
+  primary:   "bg-hog-yellow text-ink shadow-z1 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3",
+  secondary: "bg-card text-ink shadow-z1 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3",
+  tertiary:  "border-transparent shadow-none hover:bg-paper-soft",
+  danger:    "bg-hog-red text-white shadow-z1 hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3",
+};
+
+const sizes: Record&lt;Size, string&gt; = {
+  sm: "h-7  px-2.5 text-[12px]",
+  md: "h-9  px-3.5 text-[13px]",
+  lg: "h-11 px-5   text-[14px]",
+};
+
+export const LemonButton = forwardRef&lt;HTMLButtonElement, Props&gt;(
+  ({ variant = "secondary", size = "md", icon, iconRight, fullWidth,
+     className = "", children, ...rest }, ref) =&gt; (
+    &lt;button ref={ref}
+      className={`${base} ${variants[variant]} ${sizes[size]} ${fullWidth ? "w-full" : ""} ${className}`}
+      {...rest}&gt;
+      {icon &amp;&amp; &lt;span className="shrink-0"&gt;{icon}&lt;/span&gt;}
+      {children}
+      {iconRight &amp;&amp; &lt;span className="shrink-0"&gt;{iconRight}&lt;/span&gt;}
+    &lt;/button&gt;
+  )
+);
+LemonButton.displayName = "LemonButton";
+</code></pre>
+  <p><strong>Stories:</strong> all variants × sizes grid, disabled state, icon + label combinations, fullWidth.</p>
+  <p><strong>Tests:</strong> RTL — primary onClick fires; disabled prevents click; <code>icon</code> renders before children.</p>
+</div>
+
+<!-- ============ WP-1.2 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.2</div>
+  <h3>LemonCard</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonCard.tsx</code></span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Container card with optional title row + footer slot. Elevation prop
+    selects shadow (<code>z1</code> | <code>z2</code> | <code>z3</code>);
+    colour prop selects background (<code>card</code> | <code>yellow</code>
+    | <code>blue</code> | <code>red</code> | <code>teal</code>). Wrapper for
+    all panel content in S3 + S5+.
+  </p>
+  <pre><code>type Props = {
+  title?: ReactNode;
+  footer?: ReactNode;
+  elevation?: "z1" | "z2" | "z3";
+  colour?: "card" | "yellow" | "blue" | "red" | "teal";
+  className?: string;
+  children: ReactNode;
+};
+
+const bg: Record&lt;NonNullable&lt;Props["colour"]&gt;, string&gt; = {
+  card:   "bg-card",
+  yellow: "bg-hog-yellow",
+  blue:   "bg-hog-blue text-white",
+  red:    "bg-hog-red-soft",
+  teal:   "bg-[#DDFAF3]",
+};
+
+const elev = { z1: "shadow-z1", z2: "shadow-z2", z3: "shadow-z3" } as const;
+
+export function LemonCard({ title, footer, elevation = "z2", colour = "card",
+                           className = "", children }: Props) {
+  return (
+    &lt;section className={`border-2 border-ink rounded-hog ${bg[colour]} ${elev[elevation]} ${className}`}&gt;
+      {title &amp;&amp; (
+        &lt;header className="px-4 py-2.5 border-b-2 border-ink font-mono text-xs uppercase tracking-wider"&gt;
+          {title}
+        &lt;/header&gt;
+      )}
+      &lt;div className="px-4 py-3"&gt;{children}&lt;/div&gt;
+      {footer &amp;&amp; (
+        &lt;footer className="px-4 py-2.5 border-t-2 border-ink"&gt;{footer}&lt;/footer&gt;
+      )}
+    &lt;/section&gt;
+  );
+}
+</code></pre>
+</div>
+
+<!-- ============ WP-1.3 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.3</div>
+  <h3>LemonModal</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonModal.tsx</code></span>
+    <span><strong>Effort:</strong> 0.7 d</span>
+  </div>
+  <p>
+    Centered modal with backdrop, ESC + outside-click close, focus trap,
+    optional sizes (<code>sm</code> / <code>md</code> / <code>lg</code> /
+    <code>full</code>). Slots: header, body, footer. Uses React portal to
+    <code>document.body</code> so it floats above any panel z-stack
+    introduced in S3.
+  </p>
+  <p>
+    Implementation notes: no external focus-trap library; use a small
+    hand-rolled trap (~20 LoC) inside the component. <code>aria-modal=true</code>,
+    <code>role="dialog"</code>. ESC handler attached on open, detached on close.
+  </p>
+  <pre><code>type Props = {
+  open: boolean;
+  onClose: () =&gt; void;
+  title?: ReactNode;
+  footer?: ReactNode;
+  size?: "sm" | "md" | "lg" | "full";
+  children: ReactNode;
+};
+
+const widths = { sm: "max-w-md", md: "max-w-2xl", lg: "max-w-4xl", full: "max-w-[96vw]" };
+
+export function LemonModal({ open, onClose, title, footer, size = "md", children }: Props) {
+  useEffect(() =&gt; {
+    if (!open) return;
+    const h = (e: KeyboardEvent) =&gt; e.key === "Escape" &amp;&amp; onClose();
+    window.addEventListener("keydown", h);
+    return () =&gt; window.removeEventListener("keydown", h);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return createPortal(
+    &lt;div className="fixed inset-0 z-[100] flex items-center justify-center"
+         onMouseDown={onClose}&gt;
+      &lt;div className="absolute inset-0 bg-ink/30" /&gt;
+      &lt;div role="dialog" aria-modal="true"
+           onMouseDown={(e) =&gt; e.stopPropagation()}
+           className={`relative w-full ${widths[size]} mx-4 bg-card border-2 border-ink rounded-hog-lg shadow-lift`}&gt;
+        {title &amp;&amp; (
+          &lt;header className="px-5 py-3 border-b-2 border-ink flex items-center justify-between"&gt;
+            &lt;h2 className="font-mono text-sm uppercase tracking-wider"&gt;{title}&lt;/h2&gt;
+            &lt;button onClick={onClose} aria-label="Close" className="text-ink-soft hover:text-ink"&gt;✕&lt;/button&gt;
+          &lt;/header&gt;
+        )}
+        &lt;div className="px-5 py-4"&gt;{children}&lt;/div&gt;
+        {footer &amp;&amp; &lt;footer className="px-5 py-3 border-t-2 border-ink"&gt;{footer}&lt;/footer&gt;}
+      &lt;/div&gt;
+    &lt;/div&gt;,
+    document.body
+  );
+}
+</code></pre>
+</div>
+
+<!-- ============ WP-1.4 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.4</div>
+  <h3>LemonInput</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonInput.tsx</code></span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Single-line text input. Slots for left icon, right icon, and a
+    <code>kbd</code> hint (e.g. <kbd>⌘K</kbd> badge on the right) used by
+    the command palette. Focus state: thicker border + z1 shadow.
+  </p>
+  <pre><code>type Props = InputHTMLAttributes&lt;HTMLInputElement&gt; &amp; {
+  iconLeft?: ReactNode;
+  iconRight?: ReactNode;
+  kbdHint?: string;
+  sizing?: "sm" | "md" | "lg";
+};
+
+export const LemonInput = forwardRef&lt;HTMLInputElement, Props&gt;(
+  ({ iconLeft, iconRight, kbdHint, sizing = "md", className = "", ...rest }, ref) =&gt; {
+    const h = { sm: "h-7", md: "h-9", lg: "h-11" }[sizing];
+    return (
+      &lt;label className={`inline-flex items-center gap-2 px-3 ${h} bg-card border-2 border-ink rounded-hog
+                         shadow-none focus-within:shadow-z1 transition-shadow ${className}`}&gt;
+        {iconLeft}
+        &lt;input ref={ref}
+          className="flex-1 bg-transparent outline-none font-sans text-[13px] placeholder:text-ink-mute"
+          {...rest} /&gt;
+        {iconRight}
+        {kbdHint &amp;&amp; (
+          &lt;kbd className="border border-ink rounded px-1.5 text-[10.5px] font-mono shadow-[2px_2px_0_0_#1D1F27] bg-card"&gt;
+            {kbdHint}
+          &lt;/kbd&gt;
+        )}
+      &lt;/label&gt;
+    );
+  }
+);
+</code></pre>
+</div>
+
+<!-- ============ WP-1.5 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.5</div>
+  <h3>LemonTextarea</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonTextarea.tsx</code></span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    Multi-line input, auto-grow with a <code>maxRows</code> clamp. Used by
+    <code>ChatInputArea</code> when migrated (S5). Renders the same border
+    + focus shadow as <code>LemonInput</code>. Cmd+Enter submit prop:
+    <code>onSubmit?</code>.
+  </p>
+</div>
+
+<!-- ============ WP-1.6 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.6</div>
+  <h3>LemonTag</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonTag.tsx</code></span>
+    <span><strong>Effort:</strong> 0.2 d</span>
+  </div>
+  <p>
+    Pill chip with optional colour, dot prefix, removable X. Used in
+    <code>ClaimCard</code> + investigation list + filter bars throughout.
+  </p>
+  <pre><code>type Props = {
+  colour?: "default" | "yellow" | "blue" | "red" | "green" | "muted";
+  dot?: boolean;
+  onRemove?: () =&gt; void;
+  children: ReactNode;
+};
+</code></pre>
+</div>
+
+<!-- ============ WP-1.7 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.7</div>
+  <h3>LemonSelect</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonSelect.tsx</code></span>
+    <span><strong>Effort:</strong> 0.6 d</span>
+  </div>
+  <p>
+    Custom-styled select with options popover. Generic over option value
+    type. No native <code>&lt;select&gt;</code> — a button + floating menu so the
+    visual language matches the rest.
+  </p>
+  <pre><code>type Option&lt;V&gt; = { value: V; label: ReactNode; disabled?: boolean };
+
+type Props&lt;V&gt; = {
+  value: V;
+  onChange: (v: V) =&gt; void;
+  options: Option&lt;V&gt;[];
+  placeholder?: string;
+  sizing?: "sm" | "md" | "lg";
+  fullWidth?: boolean;
+};
+</code></pre>
+  <p>
+    Popover uses <code>position:absolute</code> with a small floating-UI helper
+    (no <code>@floating-ui/react</code> dep — hand-rolled placement, 30 LoC).
+    Keyboard: ↑/↓ navigate, Enter select, Esc close.
+  </p>
+</div>
+
+<!-- ============ WP-1.8 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.8</div>
+  <h3>LemonDropdown</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonDropdown.tsx</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    Renderless trigger + popover. Children render-prop:
+    <code>{({close}) =&gt; ReactNode}</code>. Used by the workspace
+    "panel actions" menu (dock-left, dock-right, float, popout, close) and
+    by every kebab-menu in mode pages.
+  </p>
+</div>
+
+<!-- ============ WP-1.9 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.9</div>
+  <h3>LemonTable</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonTable.tsx</code></span>
+    <span><strong>Effort:</strong> 0.6 d</span>
+  </div>
+  <p>
+    Tabular list with sticky header, optional row click handler, optional
+    selection state. Generic over row type. Replaces hand-rolled tables in
+    Sources, PayoutsAudit, OutcomesIndex, NotebooksIndex, etc.
+  </p>
+  <pre><code>type Column&lt;Row&gt; = {
+  key: string;
+  header: ReactNode;
+  render: (row: Row, i: number) =&gt; ReactNode;
+  width?: string;
+  align?: "left" | "right" | "center";
+};
+
+type Props&lt;Row&gt; = {
+  rows: Row[];
+  columns: Column&lt;Row&gt;[];
+  rowKey: (row: Row, i: number) =&gt; string;
+  onRowClick?: (row: Row) =&gt; void;
+  emptyState?: ReactNode;
+  stickyHeader?: boolean;
+};
+</code></pre>
+</div>
+
+<!-- ============ WP-1.10 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-1.10</div>
+  <h3>LemonToast</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/components/lemon/LemonToast.tsx</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    Top-right anchored toast queue with success / warn / error / info
+    variants. Tiny store (10 LoC) holds the queue.
+    Used by panel-system actions ("panel pinned", "popout opened in new
+    window"), by save flows, by errors.
+  </p>
+  <pre><code>export const toast = {
+  ok:    (msg: string) =&gt; emit({ kind: "ok",   msg }),
+  warn:  (msg: string) =&gt; emit({ kind: "warn", msg }),
+  err:   (msg: string) =&gt; emit({ kind: "err",  msg }),
+  info:  (msg: string) =&gt; emit({ kind: "info", msg }),
+};
+// Renderer:  &lt;LemonToastViewport /&gt;  mounted once at app root.
+</code></pre>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+<ul class="ac-list">
+  <li>All ten files exist under <code>src/components/lemon/</code> with paired <code>*.stories.tsx</code>.</li>
+  <li><code>src/components/lemon/index.ts</code> barrel exports every primitive.</li>
+  <li><code>npm run typecheck</code> passes with strict TS.</li>
+  <li><code>npm run storybook</code> renders all 10 stories without error.</li>
+  <li>Bundle size of <code>lemon/</code> chunk &lt; 12 KB gzipped (verified by <code>vite build --report</code>).</li>
+  <li>No primitive imports a colour hex directly; every reference goes through <code>design/tokens.ts</code> or a Tailwind class.</li>
+  <li>RTL unit tests for the four primitives with non-trivial behaviour: Button (click), Modal (ESC + outside-click), Select (keyboard nav), Toast (queue ordering).</li>
+  <li>A second moodboard story <em>Design / Primitives Showcase</em> renders one of each component on a single page, for visual review.</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+<ul class="risk-list">
+  <li><strong>Hand-rolled focus trap in LemonModal misses an edge case.</strong> Mitigation: keep it small + covered by a Vitest that tabs through a sample modal and asserts focus does not escape.</li>
+  <li><strong>LemonSelect popover positioning bugs.</strong> Mitigation: ship a basic position-below implementation in S1; reposition logic in S11 if it surfaces.</li>
+  <li><strong>10 components in 5 days is tight.</strong> Mitigation: the four large ones (Modal / Select / Dropdown / Table) are sequenced first; if S1 overruns, Toast (smallest) slips to S2 and is non-blocking.</li>
+  <li><strong>Operator sign-off fails after the showcase.</strong> Mitigation: gate is the <em>Primitives Showcase</em> story; revisions touch one component file at a time.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+<ol>
+  <li>Should <code>LemonButton</code>'s default variant be <code>primary</code> or <code>secondary</code>? Default proposal: <code>secondary</code> (matches PostHog; "primary" reserved for the one main action per page).</li>
+  <li>Should <code>LemonInput</code> ship a built-in label-above? PostHog's does. Proposal: no — Antiek's existing forms wrap labels explicitly. Add later if a real consumer needs it.</li>
+  <li>Should <code>LemonTable</code> support row drag-reorder? Proposal: no in S1 (not needed). Add in S10 if migration requires it.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+<ol>
+  <li><code>npm run typecheck</code> — must be clean.</li>
+  <li><code>npm run storybook</code> — open every primitive story, confirm hover-lift / focus-shadow / disabled / colour variants all render.</li>
+  <li><code>npm run test</code> — RTL suite passes.</li>
+  <li><code>npm run build</code> — bundle report shows <code>lemon</code> chunk &lt; 12 KB gzipped.</li>
+  <li>Operator opens the <em>Primitives Showcase</em> story and signs off.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  S1 is additive. Rollback is <code>git revert</code> of the S1 PRs. No
+  consumer touches these yet, so no broken imports cascade.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_00_foundations.html"><span class="label">← Prev</span>S0 · Foundations</a>
+  <a class="next" href="sprint_02_storybook.html"><span class="label">Next →</span>S2 · Storybook coverage</a>
+</div>
+
+</div>
+</body>
+</html>

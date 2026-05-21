@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 7 — Notebook surface as windowed panel · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S7</span>Notebook surface as windowed panel</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~7 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S3, S4 (S6 strongly recommended)</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S9 (popout for notebook), S10</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">7</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">+1 DuckDB table (<code>notebooks</code>)</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED · OPERATOR-DESIRED HEADLINE</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Build the literate-analysis notebook surface specified in
+  <code>integration_posthog.md §6</code>, but as a first-class panel
+  instead of a route. TipTap-based block editor; block types are
+  prose + region-embed + claim-card + note + question + cross-doc-link +
+  chat-exchange + MASTER.md-fragment + image + LaTeX; backed by a new
+  <code>notebooks</code> table. Substrate-references are stored as IDs
+  (not denormalised) per the prior spec's architectural rule.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  Operator-stated highest-leverage product upgrade
+  (<code>master-product-spec §4.2</code>; <code>integration_posthog.md §6.3</code>).
+  The prior spec sequenced this as Wedge 2; this sprint executes it.
+  Doing it after the panel system exists is what unlocks the notebook
+  living alongside the PDF + trajectory rather than replacing them.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No multi-author / multiplayer. Single-operator only; conflict detection in S22+.</li>
+  <li>No external sharing / publishing.</li>
+  <li>No PDF region snipping tool itself — that already exists in <code>PdfViewer</code>'s selection layer. S7 only consumes it.</li>
+  <li>No LaTeX engine ship (KaTeX import is in S7 but rendering correctness for arbitrary math is out of scope; basic equations only).</li>
+</ul>
+
+<h2>4 · Architecture</h2>
+
+<h3>4.1 · Storage</h3>
+
+<p>
+  New DuckDB table <code>notebooks</code>:
+</p>
+
+<pre><code>CREATE TABLE notebooks (
+  id              TEXT PRIMARY KEY,        -- ulid
+  title           TEXT NOT NULL,
+  investigation_id TEXT,                   -- nullable: notebook can be standalone
+  document_id     TEXT,                    -- nullable: ditto
+  content_json    JSON NOT NULL,           -- TipTap document JSON
+  schema_version  INTEGER NOT NULL DEFAULT 1,
+  created_at      TIMESTAMP NOT NULL,
+  updated_at      TIMESTAMP NOT NULL,
+  archived        BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX idx_notebooks_inv ON notebooks(investigation_id);
+CREATE INDEX idx_notebooks_doc ON notebooks(document_id);
+</code></pre>
+
+<p>
+  Substrate-references inside <code>content_json</code> blocks are
+  stored as <code>{ kind: "claim-card", claim_id: "..." }</code> not
+  denormalised claim payloads — substrate stays the source of truth
+  (<code>architecture_notes §13</code>).
+</p>
+
+<h3>4.2 · Block types</h3>
+
+<table>
+  <thead><tr><th>Block kind</th><th>Stored shape</th><th>Render</th></tr></thead>
+  <tbody>
+    <tr><td><code>prose</code></td><td>TipTap default — ProseMirror schema</td><td>Charter serif, normal line height</td></tr>
+    <tr><td><code>heading</code></td><td>level 1–3</td><td>Inter, hierarchical</td></tr>
+    <tr><td><code>region-embed</code></td><td><code>{ document_id, page, rect, caption? }</code></td><td>thumbnail + click → opens floating PDF panel at that page</td></tr>
+    <tr><td><code>claim-card</code></td><td><code>{ claim_id }</code></td><td>LemonCard render of the claim, click → ClaimInspector panel</td></tr>
+    <tr><td><code>note</code></td><td><code>{ note_id }</code></td><td>compact note row</td></tr>
+    <tr><td><code>question-card</code></td><td><code>{ question_id, answer_ids?: string[] }</code></td><td>Q with linked answers</td></tr>
+    <tr><td><code>cross-doc-link</code></td><td><code>{ bridge_id }</code></td><td>two source thumbnails + the bridge note</td></tr>
+    <tr><td><code>chat-exchange</code></td><td><code>{ exchange_id }</code></td><td>operator Q + claims returned</td></tr>
+    <tr><td><code>master-section</code></td><td><code>{ synthesis_id, section: "..." }</code></td><td>renders a MASTER.md fragment inline</td></tr>
+    <tr><td><code>image</code></td><td><code>{ artifact_hash }</code></td><td>fetched from <code>~/.antiek/artifacts/&lt;hash&gt;.png</code></td></tr>
+    <tr><td><code>latex</code></td><td><code>{ tex: string }</code></td><td>KaTeX render</td></tr>
+  </tbody>
+</table>
+
+<h2>5 · Work packages</h2>
+
+<!-- WP-7.1 -->
+<div class="wp">
+  <div class="wp-id">WP-7.1</div>
+  <h3>Substrate: <code>notebooks</code> table + REST endpoints</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>substrate/db_lock.py</code>, <code>interfaces/rest/notebooks.py</code> (new)</span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    The one substrate touch in this whole redesign. Adds the table via
+    <code>db_lock</code>'s migration registry. Adds CRUD REST endpoints
+    (GET list, GET one, POST create, PATCH content, DELETE archive).
+    Conforms to the existing REST shape that <code>interfaces/rest/</code>
+    already establishes.
+  </p>
+  <p>
+    Per the Researchmaxx DuckDB verdict
+    (<code>integration_posthog.md §6.2</code>), substrate-refs are stored
+    by ID. The renderer pulls live state at render time.
+  </p>
+</div>
+
+<!-- WP-7.2 -->
+<div class="wp">
+  <div class="wp-id">WP-7.2</div>
+  <h3>TipTap install + base editor</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>package.json</code>, <code>src/modes/Notebook/Editor.tsx</code></span>
+    <span><strong>Effort:</strong> 1.2 d</span>
+  </div>
+  <pre><code>npm i @tiptap/react @tiptap/starter-kit @tiptap/extension-placeholder</code></pre>
+  <p>
+    Wrap TipTap in a thin <code>Editor</code> component. Custom node
+    extensions for each Antiek block kind live in
+    <code>src/modes/Notebook/blocks/</code>.
+  </p>
+  <p>
+    Bundle: TipTap + StarterKit ≈ 95 KB gzipped. Code-split via lazy
+    import — the editor only loads when a Notebook panel mounts.
+  </p>
+</div>
+
+<!-- WP-7.3 -->
+<div class="wp">
+  <div class="wp-id">WP-7.3</div>
+  <h3>Block extensions</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>src/modes/Notebook/blocks/{ClaimCardBlock, RegionEmbedBlock, NoteBlock, …}.tsx</code></span>
+    <span><strong>Effort:</strong> 2.0 d</span>
+  </div>
+  <p>
+    One TipTap NodeView per Antiek block kind. Each NodeView:
+  </p>
+  <ul>
+    <li>Renders the block from the stored substrate-ref (fetches via hook).</li>
+    <li>Provides a contextual "open as panel" button.</li>
+    <li>Provides a "remove" affordance.</li>
+  </ul>
+
+  <pre><code>// src/modes/Notebook/blocks/ClaimCardBlock.tsx
+import { Node, mergeAttributes } from "@tiptap/core";
+import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
+
+export const ClaimCardBlock = Node.create({
+  name: "claimCard",
+  group: "block",
+  atom: true,
+  addAttributes: () =&gt; ({ claim_id: { default: null } }),
+  parseHTML: () =&gt; [{ tag: "antiek-claim-card" }],
+  renderHTML: ({ HTMLAttributes }) =&gt; ["antiek-claim-card", mergeAttributes(HTMLAttributes)],
+  addNodeView: () =&gt; ReactNodeViewRenderer(ClaimCardNodeView),
+});
+
+function ClaimCardNodeView({ node }: any) {
+  const claim = useClaim(node.attrs.claim_id);
+  return (
+    &lt;NodeViewWrapper&gt;
+      &lt;LemonCard elevation="z1" title={`Claim · ${node.attrs.claim_id.slice(0,8)}`}&gt;
+        {claim ? &lt;ClaimCard claim={claim} /&gt; : &lt;Skeleton /&gt;}
+      &lt;/LemonCard&gt;
+    &lt;/NodeViewWrapper&gt;
+  );
+}
+</code></pre>
+</div>
+
+<!-- WP-7.4 -->
+<div class="wp">
+  <div class="wp-id">WP-7.4</div>
+  <h3>Slash-command block menu</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/Notebook/SlashMenu.tsx</code></span>
+    <span><strong>Effort:</strong> 0.7 d</span>
+  </div>
+  <p>
+    Typing <code>/</code> at the start of a block opens a slash menu
+    listing all block kinds with keyboard navigation (↑/↓, Enter,
+    Esc). Familiar pattern from Notion / Linear / PostHog notebooks.
+  </p>
+</div>
+
+<!-- WP-7.5 -->
+<div class="wp">
+  <div class="wp-id">WP-7.5</div>
+  <h3>Notebook panel + index route</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>src/modes/Notebook/index.tsx</code>, <code>src/modes/NotebooksIndex/index.tsx</code></span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    <code>kind = "Notebook"</code> registered in PanelRegistry. The
+    notebook can be opened as a floating panel, docked-right, or as the
+    main-slot content of route <code>/notebook/:id</code>. The
+    NotebooksIndex route gets a LemonTable refresh.
+  </p>
+</div>
+
+<!-- WP-7.6 -->
+<div class="wp">
+  <div class="wp-id">WP-7.6</div>
+  <h3>Save / autosave / conflict</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>src/modes/Notebook/persistence.ts</code></span>
+    <span><strong>Effort:</strong> 0.6 d</span>
+  </div>
+  <p>
+    Autosave at 2-second idle; explicit "saved" indicator in panel
+    header. Single-author conflict detection: load returns an
+    <code>etag</code>; save with stale etag → toast "newer version
+    exists; reload?" (per <code>integration_posthog.md §6.4</code>).
+  </p>
+</div>
+
+<!-- WP-7.7 -->
+<div class="wp">
+  <div class="wp-id">WP-7.7</div>
+  <h3>Cross-mode opening</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> hooks added across MasterMdViewer + ClaimCard contexts</span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    Every claim chip, region selection, and note row gets an "Add to
+    notebook" action that opens a notebook picker (last 5 active +
+    "New notebook…"). Action inserts a block referencing the substrate
+    object at the bottom of the chosen notebook.
+  </p>
+</div>
+
+<h2>6 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>The <code>notebooks</code> table exists; REST CRUD works.</li>
+  <li>A new notebook opens as a floating panel; typing prose persists across reloads.</li>
+  <li>Slash menu inserts every block kind; each renders correctly.</li>
+  <li>Region-embed block, when clicked, opens a floating PDF panel at the right page (uses S6 plumbing).</li>
+  <li>Claim-card block, when clicked, opens ClaimInspector floating panel.</li>
+  <li>"Add to notebook" works from MasterMdViewer + PdfViewer selections + ClaimCard contexts.</li>
+  <li>Substrate-ref freshness: editing a referenced claim in another panel updates the rendered claim block on the next read (no denormalised data anywhere).</li>
+  <li>Single-author conflict detection trips (test by opening the same notebook in two browser tabs, editing both, saving).</li>
+  <li>Notebook editor lazy-loads: visiting any other route does not pull TipTap into the main chunk.</li>
+  <li>Lost-Pixel: notebook stories committed.</li>
+</ul>
+
+<h2>7 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>TipTap node-view re-renders are heavy for long notebooks (50+ blocks).</strong> Mitigation: every NodeView is <code>memo</code>'d on attrs; substrate-ref fetches use React Query (already in tree) with stable keys.</li>
+  <li><strong>Region-embed thumbnail generation is slow.</strong> Mitigation: thumbnails are rendered once into the artifact store and cached by hash; absent → falls back to "click to load".</li>
+  <li><strong>Substrate-ref to deleted entity (claim removed after embed).</strong> Mitigation: NodeView shows a "removed (was a claim from {timestamp})" tombstone — never blank.</li>
+  <li><strong>KaTeX bundle bloat.</strong> Mitigation: lazy-load on first <code>/latex</code> block insertion.</li>
+  <li><strong>Save loop infinite recursion.</strong> Mitigation: autosave compares the serialised JSON to last-saved; no diff = no PATCH.</li>
+</ul>
+
+<h2>8 · Open questions</h2>
+
+<ol>
+  <li>Should every investigation auto-create a notebook? Default: no — operator creates one explicitly. (Auto-create reopens in a S22+ "templates" pass.)</li>
+  <li>Notebook search: full-text across <code>content_json</code>? Default: out of scope for S7; tracked as a S10 stretch.</li>
+  <li>Export formats: only Markdown for v1, or also PDF / HTML? Default: Markdown only in S7.</li>
+</ol>
+
+<h2>9 · Verification protocol</h2>
+
+<ol>
+  <li>Create a new notebook from NotebooksIndex; verify it opens in a floating panel.</li>
+  <li>Insert every block type via slash menu; verify each renders sensibly.</li>
+  <li>Insert a region-embed → click → floating PDF panel opens at the right page.</li>
+  <li>Insert a claim-card; modify the claim elsewhere in another panel; reload the claim-card block; verify the update flows through (substrate-ref freshness).</li>
+  <li>Open same notebook in two browser tabs; edit both; second save → toast conflict.</li>
+  <li>Hard-reload during edit; autosave recovers within 2 seconds of typing pause.</li>
+</ol>
+
+<h2>10 · Rollback plan</h2>
+<p>
+  Notebook is additive. REST endpoints can stay (no consumers without the
+  UI). Table can stay empty. Rolling back the UI means hiding the route +
+  block menu. The DuckDB migration adds a table only; no migrations
+  modify existing tables, so rollback is safe.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_06_wrestle.html"><span class="label">← Prev</span>S6 · Wrestle</a>
+  <a class="next" href="sprint_08_command_palette_ai.html"><span class="label">Next →</span>S8 · Command palette + AI</a>
+</div>
+
+</div>
+</body>
+</html>

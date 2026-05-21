@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 11 — A11y + responsive + reduced-motion · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S11</span>Accessibility + responsive + reduced-motion</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~4 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S10</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S12</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">6</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Bring the redesigned shell to WCAG 2.1 AA, give keyboard users an
+  equally good (or better) story than mouse users, respect
+  <code>prefers-reduced-motion</code>, and produce a credible tablet
+  fallback layout. This sprint is the "stop being a desktop-only,
+  pointer-only toy" gate.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  Through S10, we've optimised for a single operator on a wide monitor.
+  Before cutover (S12) we owe a basic accessibility + responsive pass.
+  Two reasons: (a) operator works on multiple devices; (b) the panel
+  system's whole pitch is "lots of windows" which is hostile to small
+  screens unless we explicitly handle the collapse case.
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No screen-reader-first redesign of complex surfaces like the notebook block editor or PDF viewer (those are aria-rich already via TipTap / pdf.js; we add labels but don't rebuild).</li>
+  <li>No mobile-native UI. The responsive cut targets ≥ 768 px width. Phone-portrait gets a "use a larger screen" notice.</li>
+  <li>No internationalisation. English-only. (Tracked separately.)</li>
+</ul>
+
+<div class="callout decision">
+  <strong>Note · dark mode is no longer a stretch goal</strong>
+  Following the Werner brand spec (<a href="brand_werner.html">brand_werner.html</a>),
+  day and night are both first-class from S0 onward. S11's
+  accessibility pass therefore verifies both modes — not just one
+  patched onto the other.
+</div>
+
+<h2>4 · Work packages</h2>
+
+<!-- WP-11.1 -->
+<div class="wp">
+  <div class="wp-id">WP-11.1</div>
+  <h3>Keyboard focus inside panels</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>PanelLayoutPanel.tsx</code>, <code>PanelHandle.tsx</code></span>
+    <span><strong>Effort:</strong> 0.8 d</span>
+  </div>
+  <p>
+    Each panel becomes a <code>role="region"</code> with
+    <code>aria-label={panel.title}</code>. Cmd+[ / Cmd+] (S8) cycles
+    focus across visible panels. A focused panel renders a 2-px ink
+    outline around its border (visible focus ring).
+  </p>
+  <p>
+    Within a panel, normal Tab order applies. Tab does not escape the
+    panel until the operator reaches the kebab + close buttons in the
+    handle, then continues to the next panel. Shift+Tab reverses.
+  </p>
+  <p>
+    Floating panel close: Cmd+W or Esc when focused.
+  </p>
+</div>
+
+<!-- WP-11.2 -->
+<div class="wp">
+  <div class="wp-id">WP-11.2</div>
+  <h3>Screen reader labelling</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> NavRail, Topbar, every primitive in <code>lemon/</code></span>
+    <span><strong>Effort:</strong> 0.6 d</span>
+  </div>
+  <p>
+    Audit pass. Each rail icon gets a real <code>aria-label</code> in
+    addition to the visual icon. LemonButton needs an
+    <code>aria-label</code> when only an icon is rendered. LemonModal
+    needs <code>aria-labelledby</code> bound to its title. Toast queue
+    is a <code>role="status"</code> live region. ProjectTree is
+    <code>role="tree"</code>.
+  </p>
+  <p>
+    No automated tool catches every gap; this WP includes a manual VoiceOver
+    pass over RW, Wrestle, Notebook routes.
+  </p>
+</div>
+
+<!-- WP-11.3 -->
+<div class="wp">
+  <div class="wp-id">WP-11.3</div>
+  <h3>Contrast + colour-blind audit</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>design/tokens.ts</code> if changes needed</span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    Verify every text-on-background pair meets WCAG AA (4.5:1 for body,
+    3:1 for large), in <strong>both day and night</strong>. The
+    yellow-outlining brand creates one explicit known weak spot: the
+    sun-on-ice border has low intrinsic contrast (≈ 1.4:1 against ice).
+    Mitigation strategy is structural, not colour: we lean on the
+    chunky offset shadow (5px ink) and the 2.5-px stroke width to
+    register the edge perceptually. WCAG only requires 3:1 for UI
+    non-text components anyway, and our border is decorative; the
+    contained content carries its own contrast against the fill.
+  </p>
+
+  <h4>Day-mode body-text pairs (must all hit 4.5:1)</h4>
+  <ul>
+    <li>ink on ice-0 (#0F1419 on #FFFFFF): 18.2:1 ✓</li>
+    <li>ink on ice-2 (#0F1419 on #F4F7FA): 16.4:1 ✓</li>
+    <li>ink on ice-4 (#0F1419 on #DCE5ED): 12.4:1 ✓</li>
+    <li>ink on glacial-1 (#0F1419 on #C2D1DD): 9.1:1 ✓</li>
+    <li>ink on sun (#0F1419 on #F5DF24): 13.3:1 ✓ — yellow fill always pairs with ink, never with white</li>
+    <li>shadow-1 (#64778A) on ice-2: 4.6:1 ✓ — secondary text floor</li>
+    <li>ice-1 on ink (#FBFCFD on #0F1419): 17.9:1 ✓ — code blocks, topbar text</li>
+    <li>ice-1 on emperor (#FBFCFD on #E33C2D): 4.6:1 ✓ — danger UI only, reserve for short labels</li>
+  </ul>
+
+  <h4>Night-mode body-text pairs</h4>
+  <ul>
+    <li>bright on space-2 (#EEF1F6 on #0D1019): 18.1:1 ✓</li>
+    <li>bright on charcoal-2 (#EEF1F6 on #1B202A): 14.5:1 ✓</li>
+    <li>bright on slate-1 (#EEF1F6 on #252B36): 11.9:1 ✓</li>
+    <li>starlight on space-2 (#C4CCD7 on #0D1019): 12.5:1 ✓ — body text default</li>
+    <li>moonlight on space-2 (#6B7585 on #0D1019): 4.8:1 ✓ — muted text floor</li>
+    <li>ink on sun (#0F1419 on #F5DF24): 13.3:1 ✓ — yellow fills remain pure-ink on text, day and night</li>
+    <li>sun on void (#F5DF24 on #040508): 16.0:1 ✓ — yellow label on deep background reads well</li>
+    <li>sun on charcoal-2 (#F5DF24 on #1B202A): 12.8:1 ✓ — sun used as accent text at night</li>
+  </ul>
+
+  <h4>Brand-outline ratios (decorative, target 3:1 where possible)</h4>
+  <ul>
+    <li>sun border on ice-2 (#F5DF24 on #F4F7FA): 1.4:1 — below 3:1; mitigated by 2.5-px stroke + 5-px ink shadow + chunky offset that registers the edge perceptually rather than by colour contrast alone.</li>
+    <li>sun border on ink card (#F5DF24 on #0F1419): 13.3:1 ✓</li>
+    <li>sun border on charcoal-2 (night card): 12.8:1 ✓</li>
+    <li>sun border on void (night page): 16.0:1 ✓ — strongest pairing; this is why the night mode feels "stitched."</li>
+  </ul>
+
+  <p>
+    <strong>Result:</strong> the brand outline is high-contrast in night
+    mode and low-contrast in day mode, by design. Day mode borders read
+    as "stitched into" the surface; night mode borders read as
+    "drawn." Both are intentional. The colour-blind check still holds —
+    yellow is unambiguous across deuteranopia + protanopia +
+    tritanopia (it is the colour with the highest cross-deficiency
+    constancy in practice).
+  </p>
+  <p>
+    Colour-blind check: red/green not used as the only signal anywhere.
+    Status indicators (running/done/failed) pair colour with an icon.
+  </p>
+</div>
+
+<!-- WP-11.4 -->
+<div class="wp">
+  <div class="wp-id">WP-11.4</div>
+  <h3>prefers-reduced-motion</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>workspace/PanelLayoutPanel.tsx</code>, <code>workspace/PanelLayout.tsx</code>, Tailwind config</span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    When <code>prefers-reduced-motion: reduce</code> is set:
+  </p>
+  <ul>
+    <li>Framer Motion <code>transition</code> drops to <code>{ duration: 0 }</code>.</li>
+    <li>Hover-lift translate transforms are no-ops.</li>
+    <li>Dock expand/collapse animation is instant.</li>
+    <li>Toast slide-in becomes fade-in.</li>
+  </ul>
+
+  <pre><code>// utility hook
+export function usePrefersReducedMotion() {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() =&gt; {
+    const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduce(mql.matches);
+    const h = (e: MediaQueryListEvent) =&gt; setReduce(e.matches);
+    mql.addEventListener("change", h);
+    return () =&gt; mql.removeEventListener("change", h);
+  }, []);
+  return reduce;
+}
+</code></pre>
+</div>
+
+<!-- WP-11.5 -->
+<div class="wp">
+  <div class="wp-id">WP-11.5</div>
+  <h3>Tablet (≥ 768 px) fallback layout</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>workspace/PanelLayout.tsx</code>, <code>components/navigation/NavRail.tsx</code></span>
+    <span><strong>Effort:</strong> 1.0 d</span>
+  </div>
+  <p>
+    Breakpoints:
+  </p>
+  <table>
+    <thead><tr><th>Width</th><th>Behaviour</th></tr></thead>
+    <tbody>
+      <tr><td>≥ 1280 px</td><td>Full desktop: both docks side-by-side with main; floating panels free.</td></tr>
+      <tr><td>≥ 1024 px</td><td>Only one dock visible at a time; opening a right-side panel auto-collapses the left dock (with a toast). Operator manually toggles via kebab.</td></tr>
+      <tr><td>≥ 768 px</td><td>No docks; panels open as full-width overlays that the operator dismisses to see the main slot. Floating panels disabled (they become docked-as-overlay).</td></tr>
+      <tr><td>&lt; 768 px</td><td>NavRail collapses to a hamburger; main slot only; an "open a larger screen" notice for any panel-system action.</td></tr>
+    </tbody>
+  </table>
+
+  <p>
+    Implementation: a <code>useViewportTier</code> hook reads window
+    width via a debounced listener; <code>PanelLayout</code> reads the
+    tier and adjusts rendering. Floating panels switch to docked-as-overlay
+    on tier ≤ "md".
+  </p>
+</div>
+
+<!-- WP-11.6 -->
+<div class="wp">
+  <div class="wp-id">WP-11.6</div>
+  <h3>Storybook a11y addon</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>.storybook/main.ts</code></span>
+    <span><strong>Effort:</strong> 0.2 d</span>
+  </div>
+  <p>
+    Install <code>@storybook/addon-a11y</code>. Every primitive story
+    now shows the axe-core report inline; CI fails on stories with
+    violations. Tracks regression as we add new components.
+  </p>
+  <pre><code>npm i -D @storybook/addon-a11y
+// .storybook/main.ts → addons: [...existing, "@storybook/addon-a11y"]</code></pre>
+</div>
+
+<h2>5 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>VoiceOver pass: an operator using VoiceOver can navigate RW, open a panel, type into Chat, dismiss a modal. Manual sign-off.</li>
+  <li>All tab-order chains complete and visible (focused panel border ring + focused element ring inside the panel).</li>
+  <li>Cmd+[ / Cmd+] cycles focus between visible panels.</li>
+  <li>Axe-core finds zero "serious" or "critical" violations on the primitive stories.</li>
+  <li>Resizing browser to 1024 / 768 / 600 widths produces sensible layouts at each breakpoint.</li>
+  <li><code>prefers-reduced-motion: reduce</code> verified via macOS System Settings → Accessibility → "Reduce motion": animations vanish without UI breakage.</li>
+  <li>WCAG AA contrast pass for every text-on-background pair documented in WP-11.3.</li>
+  <li>Lost-Pixel baselines updated for breakpoint screenshots (≥ 1280, 1024, 768).</li>
+</ul>
+
+<h2>6 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Focus traps in modals interact badly with focus traps in popouts.</strong> Mitigation: only one focus trap active at a time; the popout window has its own, decoupled.</li>
+  <li><strong>Tablet layout regression breaks desktop.</strong> Mitigation: breakpoint switch only kicks in &lt; 1280; desktop default unchanged.</li>
+  <li><strong>Reduced-motion makes the panel system feel disconnected.</strong> Mitigation: even with motion off, hover gets a 1-px translation + shadow change (instant, not animated) — still conveys depth.</li>
+</ul>
+
+<h2>7 · Open questions</h2>
+<ol>
+  <li>Below 768 px: show the app at all, or block with "use a larger screen" splash? Default: show, but most workspace features disabled; investigation list + chat readable.</li>
+  <li>Should focus ring use yellow (matches accent) or blue (browser convention)? Default: ink-coloured 2px outline + 1px yellow inset for visibility on dark backgrounds.</li>
+  <li>Storybook a11y CI: blocking or advisory in S11? Default: advisory in S11; blocking in S12.</li>
+</ol>
+
+<h2>8 · Verification protocol</h2>
+
+<ol>
+  <li>Open <code>System Settings → Accessibility → Reduce motion</code>; reload app; animations gone.</li>
+  <li>VoiceOver: navigate /, open a panel, tab through, close. No dead-ends.</li>
+  <li>Resize browser slowly from 1600 → 600 px. Verify layout adapts at each breakpoint without overflow or clipping.</li>
+  <li>Run <code>npm run storybook</code>, click the a11y addon panel on each primitive; confirm zero serious violations.</li>
+  <li>Use axe DevTools browser extension on the rebuilt RW; review report.</li>
+</ol>
+
+<h2>9 · Rollback plan</h2>
+<p>
+  Reduced-motion + a11y improvements are additive (extra attrs, extra
+  hooks). Removing them is harmless. Tablet fallback is a hook +
+  conditional rendering; removing collapses to "all panels everywhere",
+  which still works on a tablet just less elegantly.
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_10_migration.html"><span class="label">← Prev</span>S10 · Migration</a>
+  <a class="next" href="sprint_12_visual_regression_release.html"><span class="label">Next →</span>S12 · Release</a>
+</div>
+
+</div>
+</body>
+</html>

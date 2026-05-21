@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 12 — Visual regression + release · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="brand_werner.html">Brand</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S12</span>Visual regression + release</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~3 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S2, S10, S11</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">programme exit</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">6</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED · CLOSE-OUT</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Promote Lost-Pixel to a CI blocker, enforce the bundle-size budget,
+  cut over the operator's daily-driver UI from <code>v1</code> to
+  <code>v2</code> behind a flag with a one-sprint overlap window,
+  retire the dead code paths (HeaderBar, legacy AISidecar style), and
+  archive the design moodboard at a versioned URL.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+<p>
+  Through S11 the redesign exists and works. S12 makes it the default,
+  measures it, and tightens the screws so it cannot silently regress.
+  This is the sprint where "build it" becomes "we live in it".
+</p>
+
+<h2>3 · Non-goals</h2>
+<ul>
+  <li>No new features. No new components. No deferred polish.</li>
+  <li>No deletion of legacy substrate code paths. Substrate is frontend-untouched.</li>
+  <li>No public design-system marketing page (intentionally kept internal until SOC 2 + auth land, per master spec).</li>
+</ul>
+
+<h2>4 · Work packages</h2>
+
+<!-- WP-12.1 -->
+<div class="wp">
+  <div class="wp-id">WP-12.1</div>
+  <h3>Lost-Pixel CI blocker</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>.github/workflows/visual.yml</code> or equivalent CI config</span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    Lost-Pixel runs on every PR that touches <code>apps/reading/</code>;
+    diffs failing the 1% threshold fail the PR. Baseline updates require
+    an explicit commit titled <code>chore(visual): update baseline</code>
+    by the operator or designated reviewer.
+  </p>
+  <p>
+    The 1% threshold (from S2) ratchets to <strong>0.4%</strong> in S12.
+    Tighter than typography slop, but loose enough to absorb sub-pixel
+    rendering differences between Chromium runs.
+  </p>
+</div>
+
+<!-- WP-12.2 -->
+<div class="wp">
+  <div class="wp-id">WP-12.2</div>
+  <h3>Bundle-size budget enforcement</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>vite.config.ts</code>, <code>scripts/check_bundle.ts</code> (new), CI</span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+  <p>
+    A post-build script that asserts main-chunk gzipped size ≤ 700 KB
+    (programme-wide commitment). Per-chunk budgets:
+  </p>
+  <ul>
+    <li><code>main.js</code> ≤ 700 KB gzipped</li>
+    <li><code>workspace.js</code> ≤ 60 KB gzipped (lazy chunk)</li>
+    <li><code>lemon.js</code> ≤ 14 KB gzipped (lazy chunk)</li>
+    <li><code>notebook.js</code> ≤ 120 KB gzipped (lazy chunk, includes TipTap)</li>
+    <li><code>pdfviewer.js</code> ≤ 40 KB gzipped (lazy chunk; <code>pdf.worker</code> separate)</li>
+  </ul>
+
+  <pre><code>// scripts/check_bundle.ts
+import { gzipSync } from "node:zlib";
+import { readFileSync, readdirSync } from "node:fs";
+
+const budgets: Record&lt;string, number&gt; = {
+  "main": 700_000,
+  "workspace": 60_000,
+  "lemon": 14_000,
+  "notebook": 120_000,
+  "pdfviewer": 40_000,
+};
+
+const dist = "dist/assets";
+const files = readdirSync(dist).filter(f =&gt; f.endsWith(".js"));
+let fail = false;
+for (const [name, budget] of Object.entries(budgets)) {
+  const f = files.find(x =&gt; x.startsWith(name + "-"));
+  if (!f) { console.warn(`No file for chunk ${name}`); continue; }
+  const gz = gzipSync(readFileSync(`${dist}/${f}`)).length;
+  const over = gz &gt; budget;
+  console.log(`${name}: ${(gz/1024).toFixed(1)} KB ${over ? "✗ OVER" : "✓"}`);
+  if (over) fail = true;
+}
+process.exit(fail ? 1 : 0);
+</code></pre>
+</div>
+
+<!-- WP-12.3 -->
+<div class="wp">
+  <div class="wp-id">WP-12.3</div>
+  <h3>Cutover flag + rollout</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>src/main.tsx</code>, <code>.env.example</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+
+  <p>
+    Cutover strategy:
+  </p>
+  <ol>
+    <li>The new shell ships under env flag <code>VITE_ANTIEK_UI=v2</code>.</li>
+    <li>The flag defaults to <code>v2</code> in development, and (after the operator's daily-driver sign-off) in production.</li>
+    <li>The old shell (<code>HeaderBar</code> + legacy ResearchWorkstation/WrestleApp wrappers) is kept in the tree for one sprint after cutover, gated by <code>VITE_ANTIEK_UI=v1</code>. Rollback is a single env-var flip.</li>
+    <li>After one sprint of zero rollbacks, the legacy code is deleted (S13 — out of this programme, but tracked).</li>
+  </ol>
+
+  <pre><code>// src/main.tsx
+const uiVersion = (import.meta.env.VITE_ANTIEK_UI ?? "v2") as "v1" | "v2";
+const root = createRoot(document.getElementById("root")!);
+root.render(
+  &lt;StrictMode&gt;
+    &lt;BrowserRouter&gt;
+      {uiVersion === "v2" ? &lt;AppV2 /&gt; : &lt;AppLegacy /&gt;}
+    &lt;/BrowserRouter&gt;
+  &lt;/StrictMode&gt;
+);
+</code></pre>
+
+  <p>
+    <code>AppLegacy</code> is the pre-S4 <code>App.tsx</code>, kept as a
+    sibling file (<code>src/AppLegacy.tsx</code>) so the diff is
+    auditable.
+  </p>
+</div>
+
+<!-- WP-12.4 -->
+<div class="wp">
+  <div class="wp-id">WP-12.4</div>
+  <h3>Legacy code retirement (deferred to S13, but plan committed here)</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> doc only in S12; deletion follows in S13</span>
+    <span><strong>Effort:</strong> 0.1 d (planning)</span>
+  </div>
+  <p>
+    After one sprint of zero rollbacks (i.e., starting the sprint after
+    S12 ships), the following are deleted:
+  </p>
+  <ul>
+    <li><code>src/modes/shared/HeaderBar.tsx</code></li>
+    <li><code>src/AppLegacy.tsx</code></li>
+    <li>Pre-S5 versions of <code>ChatInputArea</code>, <code>ChaseSlideOver</code> internal layout</li>
+    <li>Any "DEPRECATED" tags in source that refer to the legacy shell</li>
+  </ul>
+  <p>
+    This isn't S12 work — it's the close-out commitment. Tracked as a
+    one-line task in the master spec.
+  </p>
+</div>
+
+<!-- WP-12.5 -->
+<div class="wp">
+  <div class="wp-id">WP-12.5</div>
+  <h3>Moodboard archive + onboarding doc</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>docs/ui_redesign_posthog/ARCHIVE.md</code>, <code>apps/reading/README.md</code></span>
+    <span><strong>Effort:</strong> 0.3 d</span>
+  </div>
+  <p>
+    A short closing document summarising: what shipped, where each
+    primitive lives, where the panel system lives, how to add a new
+    panel kind, how to update Lost-Pixel baselines, how to flip the env
+    flag for rollback. This is the one-page onboarding for the next
+    developer.
+  </p>
+  <p>
+    The 14-page programme spec stays in
+    <code>docs/ui_redesign_posthog/</code> as the canonical reference;
+    the README links to it.
+  </p>
+</div>
+
+<!-- WP-12.6 -->
+<div class="wp">
+  <div class="wp-id">WP-12.6</div>
+  <h3>Marketing-site asset export</h3>
+  <div class="meta">
+    <span><strong>Files:</strong> <code>src/brand/werner/marks/social-card.svg</code>, README hero</span>
+    <span><strong>Effort:</strong> 0.4 d</span>
+  </div>
+  <p>
+    Final Werner asset export from <a href="brand_werner.html">brand_werner.html</a>'s
+    code-only SVG poses into a polished social card (1200×630),
+    Apple-touch-icon (180×180), favicon (32×32), README hero image, and
+    the splash screen used by the v2 cutover.
+  </p>
+  <p>
+    Dark mode is <strong>not</strong> a S12 stretch — it landed as
+    first-class in S0/S1 and was verified in S11 (see the day/night
+    decision in <a href="brand_werner.html">brand_werner.html §6</a>).
+  </p>
+</div>
+
+<h2>5 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li>Lost-Pixel runs as a CI blocker at 0.4% threshold; PR with intentional change must include the baseline-update commit.</li>
+  <li><code>npm run build</code> followed by <code>node scripts/check_bundle.ts</code> passes; all chunks under budget.</li>
+  <li>Production build with <code>VITE_ANTIEK_UI=v2</code> renders the new shell.</li>
+  <li>Production build with <code>VITE_ANTIEK_UI=v1</code> renders the old shell (smoke test only).</li>
+  <li>Operator daily-driver sign-off after one workday on v2 with no rollback needed.</li>
+  <li><code>apps/reading/README.md</code> documents the new architecture in &lt; 200 lines and links to this spec directory.</li>
+  <li>The programme-level exit criteria (<a href="index.html#exit">index §8</a>) all hold.</li>
+</ul>
+
+<h2>6 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Production cutover surfaces a bug invisible in dev.</strong> Mitigation: env flag + 1-sprint overlap. Rollback is one var flip; no migration to undo.</li>
+  <li><strong>Lost-Pixel flakes on CI breaking unrelated PRs.</strong> Mitigation: pre-flight pass in S12 — run on 10 unrelated branches; if &gt; 1 false-fail, raise threshold to 0.6% or rebaseline.</li>
+  <li><strong>Bundle budget breached late by a careless import.</strong> Mitigation: <code>check_bundle.ts</code> is CI-blocking; offenders are visible in the PR.</li>
+  <li><strong>Dark-mode stretch drags the sprint.</strong> Mitigation: WP-12.6 is explicitly scoped as drop-if-late; sprint exit doesn't depend on it.</li>
+</ul>
+
+<h2>7 · Open questions</h2>
+
+<ol>
+  <li>Should the flag flip be staged? E.g., dev → operator's personal env → production. Default: yes — already implied; codify in <code>.env.example</code> comments.</li>
+  <li>How do we measure "the UI is cool now"? Default: this is operator-judgment, no metric. The programme exit criterion is intentionally subjective.</li>
+  <li>Public design-system marketing page (à la posthog.com/design): post-SOC 2, post-auth, post-multi-user. Not S12.</li>
+</ol>
+
+<h2>8 · Verification protocol</h2>
+
+<ol>
+  <li>Run the full test suite + Storybook + Lost-Pixel + bundle check locally — all green.</li>
+  <li>Build with <code>VITE_ANTIEK_UI=v2</code> and serve via <code>vite preview</code>; spend 30 minutes clicking around.</li>
+  <li>Flip env to <code>v1</code>; build and confirm legacy shell renders.</li>
+  <li>Submit a PR with a 10-px shift to a primitive; confirm Lost-Pixel blocks until baseline updated.</li>
+  <li>Operator spends a full workday on v2 — final sign-off captured as a checkbox in the S12 close-out commit.</li>
+</ol>
+
+<h2>9 · Rollback plan</h2>
+<p>
+  Set <code>VITE_ANTIEK_UI=v1</code> in the deployment environment.
+  Service redeploys with the legacy shell. No data migration, no state
+  reset, no API change. Reversal of the flag flip restores v2 instantly
+  with all S0–S11 code intact.
+</p>
+
+<h2>10 · Programme-level retrospective (for the post-S12 commit message)</h2>
+
+<p>
+  At the end of S12 the operator commits a retrospective at
+  <code>docs/ui_redesign_posthog/RETRO.md</code> covering:
+</p>
+<ul>
+  <li>What shipped on the original 13-sprint plan vs what slipped.</li>
+  <li>Which design decisions held up; which would be reversed if rebuilding.</li>
+  <li>Per-sprint actual-vs-estimated effort.</li>
+  <li>Net change: bundle size, route count, time-to-feature for new modes after the panel system existed.</li>
+  <li>Operator subjective verdict: <em>"is the UI cool now?"</em></li>
+</ul>
+
+<p>
+  The retro feeds into the next UX-track planning (notebook v2,
+  workspace presets, dark mode, multi-user shell).
+</p>
+
+<div class="sprint-nav">
+  <a href="sprint_11_a11y_responsive.html"><span class="label">← Prev</span>S11 · A11y</a>
+  <a class="next" href="index.html"><span class="label">Done →</span>Master plan</a>
+</div>
+
+</div>
+</body>
+</html>
