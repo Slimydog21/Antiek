@@ -1,60 +1,49 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import LemonButton from "../../components/lemon/LemonButton";
+import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation } from "../../lib/api";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
 import TrajectoryView from "./TrajectoryView";
 
 /**
- * Right-side slide-over panel for the chase-this flow.
+ * Chase-this flow — pre-fills a textarea with a highlighted passage,
+ * lets the operator refine it, spawns a child investigation, then
+ * transitions to the child's live trajectory.
  *
- * Pre-fills a textarea with the highlighted text. Operator edits to
- * formulate the actual question they want chased, hits Spawn. POSTs
- * `/investigations` with parent metadata. After spawn the panel
- * transitions to a live mini TrajectoryView for the child investigation.
+ * S5 conversion: this is now a workspace floating PANEL (PanelKind = "Chase"),
+ * not a controlled slide-over. The operator opens it via
  *
- * Dismissing the slide-over does NOT cancel the spawned investigation —
- * it keeps running on the substrate and appears in the sidebar tree.
- * "Open in main view" navigates to /inv/<child-id> in the center pane.
+ *   useWorkspace.getState().open("Chase",
+ *     { spawnContext, parentInvestigationId },
+ *     { mode: "floating", title: "Chase" })
+ *
+ * and the panel reads its props from the workspace descriptor.
+ * Dismissal goes through the panel's normal close action — no
+ * `open` / `onClose` props from the parent.
  */
-export default function ChaseSlideOver({
-  open,
-  spawnContext,
-  parentInvestigationId,
-  onClose,
-}: {
-  open: boolean;
+type Props = {
   spawnContext: string;
   parentInvestigationId: string;
-  onClose: () => void;
-}) {
+};
+
+export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: Props) {
   const [question, setQuestion] = useState(spawnContext);
   const [busy, setBusy] = useState(false);
   const [spawnedId, setSpawnedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Reset to fresh state when reopened with a new selection.
+  // If the spawnContext changes mid-life (operator reopens with a new
+  // selection), reset the form.
   useEffect(() => {
-    if (open) {
-      setQuestion(spawnContext);
-      setSpawnedId(null);
-      setError(null);
-    }
-  }, [open, spawnContext]);
-
-  // ESC to close.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
+    setQuestion(spawnContext);
+    setSpawnedId(null);
+    setError(null);
+  }, [spawnContext]);
 
   async function spawn() {
     const q = question.trim();
@@ -80,82 +69,54 @@ export default function ChaseSlideOver({
     }
   }
 
+  if (spawnedId) {
+    return (
+      <SpawnedTrajectory
+        childId={spawnedId}
+        onOpenInMain={() => navigate(`/inv/${spawnedId}`)}
+      />
+    );
+  }
+
   return (
-    <div
-      className="fixed inset-0 z-30 bg-stone-900/30 flex justify-end"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white w-full max-w-[480px] h-full shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="px-5 py-3 border-b border-stone-200 flex items-center justify-between">
-          <h2 className="font-mono text-xs uppercase tracking-wider text-stone-700">
-            {spawnedId ? "Child investigation" : "Chase this"}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-stone-400 hover:text-stone-900 text-lg leading-none"
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </header>
+    <div className="flex flex-col p-4 gap-4 h-full text-ink dark:text-bright">
+      <div>
+        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+          Highlighted from parent
+        </label>
+        <blockquote className="text-sm font-serif text-ink-soft dark:text-starlight italic border-l-edge border-sun pl-3 py-1 leading-relaxed">
+          "{spawnContext}"
+        </blockquote>
+      </div>
 
-        {!spawnedId && (
-          <div className="flex-1 flex flex-col p-5 gap-4 overflow-y-auto">
-            <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-stone-500 block mb-1.5">
-                Highlighted from parent
-              </label>
-              <blockquote className="text-sm text-stone-600 italic font-serif border-l-2 border-stone-300 pl-3 py-1">
-                "{spawnContext}"
-              </blockquote>
-            </div>
-            <div className="flex-1 flex flex-col">
-              <label className="text-[10px] font-mono uppercase tracking-wider text-stone-500 block mb-1.5">
-                Question to chase
-              </label>
-              <textarea
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                rows={6}
-                disabled={busy}
-                autoFocus
-                className="flex-1 border border-stone-300 rounded-md px-3 py-2 text-sm font-serif leading-relaxed focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-400 disabled:opacity-50 resize-none"
-              />
-            </div>
-            {error && (
-              <div className="text-xs font-mono text-red-700">{error}</div>
-            )}
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={onClose}
-                disabled={busy}
-                className="px-3 py-1.5 text-sm text-stone-600 hover:text-stone-900 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void spawn()}
-                disabled={busy || question.trim().length < 3}
-                className="px-4 py-1.5 bg-stone-900 text-white text-sm rounded-md hover:bg-stone-700 disabled:bg-stone-400 transition-colors"
-              >
-                {busy ? "Spawning…" : "Spawn investigation"}
-              </button>
-            </div>
-          </div>
-        )}
+      <div className="flex-1 flex flex-col min-h-0">
+        <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
+          Question to chase
+        </label>
+        <LemonTextarea
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          disabled={busy}
+          autoFocus
+          minRows={5}
+          maxRows={12}
+          onSubmit={() => void spawn()}
+          className="font-serif"
+        />
+      </div>
 
-        {spawnedId && (
-          <SpawnedTrajectory
-            childId={spawnedId}
-            onOpenInMain={() => {
-              onClose();
-              navigate(`/inv/${spawnedId}`);
-            }}
-          />
-        )}
+      {error && (
+        <div className="text-xs font-mono text-emperor">{error}</div>
+      )}
+
+      <div className="flex items-center justify-end gap-2">
+        <LemonButton
+          variant="primary"
+          onClick={() => void spawn()}
+          disabled={busy || question.trim().length < 3}
+        >
+          {busy ? "Spawning…" : "Spawn investigation"}
+        </LemonButton>
       </div>
     </div>
   );
@@ -169,13 +130,23 @@ function SpawnedTrajectory({
   onOpenInMain: () => void;
 }) {
   const inv = useInvestigation(childId);
+  const close = useWorkspace.getState;
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="px-5 py-2 border-b border-stone-200 flex items-center justify-between text-xs">
-        <span className="font-mono text-stone-500">{childId}</span>
+    <div className="flex flex-col h-full text-ink dark:text-bright">
+      <div className="px-3 py-2 border-b border-rule dark:border-charcoal-1 flex items-center justify-between text-xs font-mono">
+        <span className="text-shadow-1 dark:text-moonlight truncate">{childId}</span>
         <button
-          onClick={onOpenInMain}
-          className="font-mono text-stone-700 hover:text-stone-900 transition-colors"
+          type="button"
+          onClick={() => {
+            onOpenInMain();
+            // Close THIS chase panel after navigating away — find by props match
+            const ws = close();
+            const me = Object.values(ws.panels).find(
+              (p) => p.kind === "Chase" && (p.props as { parentInvestigationId?: string }).parentInvestigationId,
+            );
+            if (me) close().close(me.id);
+          }}
+          className="text-ink dark:text-bright hover:underline shrink-0 ml-2"
         >
           open in main view →
         </button>

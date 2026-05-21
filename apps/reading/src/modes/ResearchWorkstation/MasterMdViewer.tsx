@@ -24,22 +24,22 @@ export default function MasterMdViewer({
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
   return (
-    <div className="bg-white">
-      <article className="max-w-3xl mx-auto px-6 py-10 font-serif text-stone-900">
+    <div className="bg-ice-0 dark:bg-charcoal-2">
+      <article className="max-w-3xl mx-auto px-6 py-10 font-serif text-ink dark:text-bright">
         {/* Header band */}
-        <header className="mb-8 pb-6 border-b border-stone-200">
+        <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
           {synthesis.question && (
             <h1 className="text-2xl leading-tight mb-3">
               {synthesis.question}
             </h1>
           )}
-          <div className="flex items-center gap-3 text-xs font-mono text-stone-500">
+          <div className="flex items-center gap-3 text-xs font-mono text-shadow-1 dark:text-moonlight">
             <RecommendationBadge rec={synthesis.recommendation} />
-            <span className="text-stone-400">·</span>
+            <span className="text-ink-mute dark:text-moonlight">·</span>
             <span>${synthesis.totalCostUsd.toFixed(4)} spent</span>
             {synthesis.domainsPatched.length > 0 && (
               <>
-                <span className="text-stone-400">·</span>
+                <span className="text-ink-mute dark:text-moonlight">·</span>
                 <span>
                   patched {synthesis.domainsPatched.length} domain skill
                   {synthesis.domainsPatched.length === 1 ? "" : "s"}
@@ -52,7 +52,7 @@ export default function MasterMdViewer({
         {/* Thesis summary — flowing prose */}
         {synthesis.thesisSummary && (
           <section className="mb-8">
-            <h2 className="text-sm font-mono uppercase tracking-wider text-stone-500 mb-3">
+            <h2 className="text-sm font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-3">
               Thesis
             </h2>
             <p className="text-base leading-relaxed">
@@ -64,7 +64,7 @@ export default function MasterMdViewer({
         {/* Thesis components — each with hoverable citations */}
         {synthesis.components.length > 0 && (
           <section className="mb-8">
-            <h2 className="text-sm font-mono uppercase tracking-wider text-stone-500 mb-3">
+            <h2 className="text-sm font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-3">
               Components ({synthesis.components.length})
             </h2>
             <div className="space-y-6">
@@ -102,12 +102,12 @@ function ClaimBlock({
 }) {
   return (
     <div className="text-base leading-relaxed">
-      <span className="font-mono text-xs text-stone-400 mr-2">
+      <span className="font-mono text-xs text-ink-mute dark:text-moonlight mr-2">
         {claim.index}.
       </span>
       <span data-claim-id={String(claim.index)}>{claim.claim}</span>
       {claim.rationale && (
-        <p className="text-sm text-stone-600 mt-2 leading-relaxed pl-6 border-l-2 border-stone-200 ml-1">
+        <p className="text-sm text-ink-soft dark:text-starlight mt-2 leading-relaxed pl-6 border-l-2 border-rule dark:border-charcoal-1 ml-1">
           {claim.rationale}
         </p>
       )}
@@ -120,14 +120,14 @@ function ClaimBlock({
           <button
             key={cid}
             onClick={() => onChunkClick(cid)}
-            className="text-[10px] font-mono text-stone-600 bg-stone-100 hover:bg-stone-200 px-1.5 py-0.5 rounded transition-colors"
+            className="text-[10px] font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
             title="Click to view source chunk"
           >
             {shortenChunkId(cid)}
           </button>
         ))}
         {claim.supportingPathIndices.length > 0 && (
-          <span className="text-[10px] font-mono text-stone-500">
+          <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
             + {claim.supportingPathIndices.length} cross-domain path
             {claim.supportingPathIndices.length === 1 ? "" : "s"}
           </span>
@@ -148,10 +148,10 @@ function ConfidenceChip({
     confidence === "high"
       ? "bg-emerald-100 text-emerald-800"
       : confidence === "moderate"
-        ? "bg-amber-100 text-amber-800"
+        ? "bg-sun/20 text-amber-800"
         : confidence === "low"
           ? "bg-orange-100 text-orange-800"
-          : "bg-stone-100 text-stone-600";
+          : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
       className={`text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded ${colorClass}`}
@@ -169,8 +169,8 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
       : rec === "pass"
         ? "bg-red-100 text-red-800"
         : rec === "conditional"
-          ? "bg-amber-100 text-amber-800"
-          : "bg-stone-100 text-stone-600";
+          ? "bg-sun/20 text-amber-800"
+          : "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight";
   return (
     <span
       className={`text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded ${color}`}
@@ -187,22 +187,22 @@ function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
     synthesis.hardConstraintsSatisfied !== null;
   if (!hasContent) return null;
   return (
-    <details className="border-t border-stone-200 pt-6 mt-8">
-      <summary className="text-sm font-mono uppercase tracking-wider text-stone-500 cursor-pointer hover:text-stone-900 transition-colors">
+    <details className="border-t border-rule dark:border-charcoal-1 pt-6 mt-8">
+      <summary className="text-sm font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight cursor-pointer hover:text-ink dark:text-bright transition-colors">
         Appendix — falsification, risks, constraints
       </summary>
       <div className="mt-4 space-y-6 text-sm">
         {synthesis.falsificationConditions.length > 0 && (
           <section>
-            <h3 className="text-xs font-mono uppercase text-stone-600 mb-2">
+            <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
               Falsification conditions
             </h3>
-            <ol className="list-decimal list-inside space-y-2 text-stone-700">
+            <ol className="list-decimal list-inside space-y-2 text-ink dark:text-bright">
               {synthesis.falsificationConditions.map((f, i) => (
                 <li key={i}>
                   <span>{f.condition}</span>
                   {f.specificObservable && (
-                    <div className="text-xs text-stone-500 mt-0.5 pl-6 italic">
+                    <div className="text-xs text-shadow-1 dark:text-moonlight mt-0.5 pl-6 italic">
                       Observable: {f.specificObservable}
                     </div>
                   )}
@@ -213,15 +213,15 @@ function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
         )}
         {synthesis.executionRisks.length > 0 && (
           <section>
-            <h3 className="text-xs font-mono uppercase text-stone-600 mb-2">
+            <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
               Execution risks
             </h3>
-            <ul className="list-disc list-inside space-y-2 text-stone-700">
+            <ul className="list-disc list-inside space-y-2 text-ink dark:text-bright">
               {synthesis.executionRisks.map((r, i) => (
                 <li key={i}>
                   <span>{r.risk}</span>
                   {r.mitigation && (
-                    <div className="text-xs text-stone-500 mt-0.5 pl-6 italic">
+                    <div className="text-xs text-shadow-1 dark:text-moonlight mt-0.5 pl-6 italic">
                       Mitigation: {r.mitigation}
                     </div>
                   )}
@@ -232,15 +232,15 @@ function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
         )}
         {synthesis.hardConstraintsSatisfied !== null && (
           <section>
-            <h3 className="text-xs font-mono uppercase text-stone-600 mb-2">
+            <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
               Constraint compliance
             </h3>
-            <p className="text-stone-700">
+            <p className="text-ink dark:text-bright">
               Hard constraints:{" "}
               {synthesis.hardConstraintsSatisfied ? (
                 <span className="text-emerald-700">satisfied</span>
               ) : (
-                <span className="text-red-700">violated</span>
+                <span className="text-emperor">violated</span>
               )}
             </p>
           </section>

@@ -51,13 +51,13 @@ export default function TrajectoryView({
         className="flex-1 overflow-y-auto px-4 py-3 space-y-4"
       >
         {groups.length === 0 && (
-          <div className="text-sm text-stone-400 italic font-serif">
+          <div className="text-sm text-ink-mute dark:text-moonlight italic font-serif">
             Waiting for first phase to begin…
           </div>
         )}
         {groups.map((g) => (
           <div key={g.phase} className="space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-stone-500 border-b border-stone-200 pb-1">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight border-b border-rule dark:border-charcoal-1 pb-1">
               Phase {g.phase}{g.label ? ` · ${g.label}` : ""}
             </div>
             {g.events.map((e) => (
@@ -80,33 +80,33 @@ function TrajectoryHeader({
   onToggleDispatches: () => void;
 }) {
   return (
-    <div className="px-4 py-2 border-b border-stone-200 bg-stone-50 flex items-center justify-between text-xs font-mono">
+    <div className="px-4 py-2 border-b border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 flex items-center justify-between text-xs font-mono">
       <div className="flex items-center gap-3">
         <span
           className={`uppercase tracking-wider ${
             investigation.status === "in_progress"
-              ? "text-amber-700"
+              ? "text-sun-deep dark:text-sun"
               : investigation.status === "completed"
                 ? "text-emerald-700"
                 : investigation.status === "failed"
-                  ? "text-red-700"
-                  : "text-stone-500"
+                  ? "text-emperor"
+                  : "text-shadow-1 dark:text-moonlight"
           }`}
         >
           {investigation.status === "loading" ? "loading…" : investigation.status}
         </span>
-        <span className="text-stone-400">·</span>
-        <span className="text-stone-600">
+        <span className="text-ink-mute dark:text-moonlight">·</span>
+        <span className="text-ink-soft dark:text-starlight">
           ${investigation.costTotal.toFixed(4)}
         </span>
-        <span className="text-stone-400">·</span>
-        <span className="text-stone-500">
+        <span className="text-ink-mute dark:text-moonlight">·</span>
+        <span className="text-shadow-1 dark:text-moonlight">
           {investigation.events.length} events
         </span>
       </div>
       <button
         onClick={onToggleDispatches}
-        className="text-stone-500 hover:text-stone-900 transition-colors"
+        className="text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright transition-colors"
       >
         {showDispatches ? "hide LLM calls" : "show LLM calls"}
       </button>

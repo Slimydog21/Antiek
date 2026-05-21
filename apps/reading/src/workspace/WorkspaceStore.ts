@@ -57,10 +57,12 @@ export type WorkspaceActions = {
   setMode: (id: string, mode: PanelMode) => void;
   setRect: (id: string, rect: Partial<PanelDescriptor["rect"]>) => void;
   setSize: (id: string, size: Partial<PanelDescriptor["size"]>) => void;
-  reorderDock: (side: "left" | "right", fromIndex: number, toIndex: number) => void;
+  reorderDock: (side: "left" | "right" | "bottom", fromIndex: number, toIndex: number) => void;
   bringToFront: (id: string) => void;
   pin: (id: string) => void;
   unpin: (id: string) => void;
+  /** Resize the bottom dock (px). Min 120, max 60% of viewport. */
+  setDockBottomHeight: (height: number) => void;
   reset: () => void;
 };
 
@@ -75,6 +77,7 @@ function removeFromAllArrays(s: WorkspaceSnapshot, id: string): Partial<Workspac
   return {
     dockLeftIds: s.dockLeftIds.filter((x) => x !== id),
     dockRightIds: s.dockRightIds.filter((x) => x !== id),
+    dockBottomIds: s.dockBottomIds.filter((x) => x !== id),
     floatingIds: s.floatingIds.filter((x) => x !== id),
   };
 }
@@ -91,6 +94,8 @@ function insertForMode(
       return { ...cleaned, dockLeftIds: [...cleaned.dockLeftIds!, id] };
     case "docked-right":
       return { ...cleaned, dockRightIds: [...cleaned.dockRightIds!, id] };
+    case "docked-bottom":
+      return { ...cleaned, dockBottomIds: [...cleaned.dockBottomIds!, id] };
     case "floating":
       return { ...cleaned, floatingIds: [...cleaned.floatingIds!, id] };
     case "popout":
@@ -131,6 +136,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         panels: { ...s.panels, [id]: desc },
         dockLeftIds: inserted.dockLeftIds ?? s.dockLeftIds,
         dockRightIds: inserted.dockRightIds ?? s.dockRightIds,
+        dockBottomIds: inserted.dockBottomIds ?? s.dockBottomIds,
         floatingIds: inserted.floatingIds ?? s.floatingIds,
         zCounter: z,
         focusedPanelId: id,
@@ -156,6 +162,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         panels: rest,
         dockLeftIds: cleaned.dockLeftIds!,
         dockRightIds: cleaned.dockRightIds!,
+        dockBottomIds: cleaned.dockBottomIds!,
         floatingIds: cleaned.floatingIds!,
         focusedPanelId: s.focusedPanelId === id ? null : s.focusedPanelId,
       };
@@ -184,6 +191,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         panels: { ...s.panels, [id]: { ...p, mode, zIndex: z } },
         dockLeftIds: inserted.dockLeftIds ?? s.dockLeftIds,
         dockRightIds: inserted.dockRightIds ?? s.dockRightIds,
+        dockBottomIds: inserted.dockBottomIds ?? s.dockBottomIds,
         floatingIds: inserted.floatingIds ?? s.floatingIds,
         zCounter: mode === "floating" ? z : s.zCounter,
         focusedPanelId: id,
@@ -215,7 +223,10 @@ export const useWorkspace = create<Store>()((set, get) => ({
       if (side === "left") {
         return { ...s, dockLeftIds: reorderArray(s.dockLeftIds, fromIndex, toIndex) };
       }
-      return { ...s, dockRightIds: reorderArray(s.dockRightIds, fromIndex, toIndex) };
+      if (side === "right") {
+        return { ...s, dockRightIds: reorderArray(s.dockRightIds, fromIndex, toIndex) };
+      }
+      return { ...s, dockBottomIds: reorderArray(s.dockBottomIds, fromIndex, toIndex) };
     }),
 
   bringToFront: (id) =>
@@ -243,6 +254,13 @@ export const useWorkspace = create<Store>()((set, get) => ({
       const p = s.panels[id];
       if (!p) return s;
       return { ...s, panels: { ...s.panels, [id]: { ...p, pinned: false } } };
+    }),
+
+  setDockBottomHeight: (height) =>
+    set(() => {
+      const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+      const clamped = Math.max(120, Math.min(Math.floor(vh * 0.6), height));
+      return { dockBottomHeight: clamped };
     }),
 
   reset: () => set({ ...EMPTY_SNAPSHOT }),

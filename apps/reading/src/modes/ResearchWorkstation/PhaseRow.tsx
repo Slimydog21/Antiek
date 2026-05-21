@@ -61,17 +61,17 @@ function DecomposeRow({ event }: { event: Event }) {
   return (
     <Card>
       <CardHeader label="Decomposed" detail={`${subQs.length} sub-question${subQs.length === 1 ? "" : "s"}`} />
-      <ol className="list-decimal list-inside space-y-1.5 text-sm text-stone-700 font-serif">
+      <ol className="list-decimal list-inside space-y-1.5 text-sm text-ink dark:text-bright font-serif">
         {subQs.map((s, i) => (
           <li key={i}>
-            <span className="text-stone-900">{s.sub_question}</span>{" "}
+            <span className="text-ink dark:text-bright">{s.sub_question}</span>{" "}
             {s.category && (
-              <span className="text-[10px] font-mono text-stone-400 ml-1">
+              <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1">
                 · {s.category}
               </span>
             )}
             {s.evidence_type_required && (
-              <span className="text-[10px] font-mono text-stone-400 ml-1">
+              <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1">
                 · need: {s.evidence_type_required}
               </span>
             )}
@@ -105,7 +105,7 @@ function EvidenceRow({ event }: { event: Event }) {
         detail={`${claims.length} claim${claims.length === 1 ? "" : "s"} · ${gaps.length} gap${gaps.length === 1 ? "" : "s"}`}
       />
       {p.sub_question && (
-        <div className="text-xs text-stone-500 mb-2 font-serif italic">
+        <div className="text-xs text-shadow-1 dark:text-moonlight mb-2 font-serif italic">
           For: "{p.sub_question}"
         </div>
       )}
@@ -114,15 +114,15 @@ function EvidenceRow({ event }: { event: Event }) {
           <div className="text-[10px] font-mono uppercase text-emerald-700 mb-1">
             insights ({claims.length})
           </div>
-          <ul className="space-y-1.5 text-sm text-stone-700 font-serif">
+          <ul className="space-y-1.5 text-sm text-ink dark:text-bright font-serif">
             {claims.length === 0 && (
-              <li className="text-stone-400 italic">(none)</li>
+              <li className="text-ink-mute dark:text-moonlight italic">(none)</li>
             )}
             {claims.map((c, i) => (
               <li key={i}>
-                <span className="text-stone-900">{c.claim}</span>
+                <span className="text-ink dark:text-bright">{c.claim}</span>
                 {c.chunk_ids && c.chunk_ids.length > 0 && (
-                  <span className="text-[10px] font-mono text-stone-400 ml-1.5">
+                  <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1.5">
                     [{c.chunk_ids.length} chunk{c.chunk_ids.length === 1 ? "" : "s"}]
                   </span>
                 )}
@@ -131,12 +131,12 @@ function EvidenceRow({ event }: { event: Event }) {
           </ul>
         </div>
         <div>
-          <div className="text-[10px] font-mono uppercase text-amber-700 mb-1">
+          <div className="text-[10px] font-mono uppercase text-sun-deep dark:text-sun mb-1">
             open questions ({gaps.length})
           </div>
-          <ul className="space-y-1.5 text-sm text-stone-700 font-serif">
+          <ul className="space-y-1.5 text-sm text-ink dark:text-bright font-serif">
             {gaps.length === 0 && (
-              <li className="text-stone-400 italic">(none)</li>
+              <li className="text-ink-mute dark:text-moonlight italic">(none)</li>
             )}
             {gaps.map((g, i) => (
               <li key={i}>{g.gap ?? g.description ?? "(empty)"}</li>
@@ -194,11 +194,11 @@ function SynthesizeRow({ event }: { event: Event }) {
         label="Thesis synthesized"
         detail={p.implicit_recommendation ?? ""}
       />
-      <p className="text-sm text-stone-800 leading-relaxed font-serif">
+      <p className="text-sm text-ink dark:text-bright leading-relaxed font-serif">
         {summary.length > 280 ? summary.slice(0, 280) + "…" : summary}
       </p>
       {summary.length > 280 && (
-        <div className="text-xs text-stone-500 mt-2 italic font-serif">
+        <div className="text-xs text-shadow-1 dark:text-moonlight mt-2 italic font-serif">
           Full thesis renders below when investigation completes.
         </div>
       )}
@@ -217,7 +217,7 @@ function DispatchRow({ event }: { event: Event }) {
     latency_ms?: number;
   };
   return (
-    <div className="text-[11px] font-mono text-stone-400 flex gap-2 flex-wrap">
+    <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight flex gap-2 flex-wrap">
       <span>→</span>
       <span>{p.target_role}</span>
       <span>·</span>
@@ -236,7 +236,7 @@ function SkillPatchRow({ event }: { event: Event }) {
   const p = event.payload as { domains_patched?: string[] };
   const ds = p.domains_patched ?? [];
   return (
-    <div className="text-[11px] font-mono text-stone-500 italic">
+    <div className="text-[11px] font-mono text-shadow-1 dark:text-moonlight italic">
       ✦ Phase 8: patched {ds.length === 0 ? "no" : ds.length} domain skill
       {ds.length === 1 ? "" : "s"}
       {ds.length > 0 && ` (${ds.join(", ")})`}
@@ -246,7 +246,7 @@ function SkillPatchRow({ event }: { event: Event }) {
 
 function GenericRow({ event }: { event: Event }) {
   return (
-    <div className="text-[10px] font-mono text-stone-400 truncate">
+    <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight truncate">
       · {event.action_type}
     </div>
   );
@@ -265,8 +265,8 @@ function Card({
     <div
       className={`border rounded-md p-3 ${
         highlight
-          ? "border-stone-300 bg-stone-50"
-          : "border-stone-200 bg-white"
+          ? "border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2"
+          : "border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2"
       }`}
     >
       {children}
@@ -277,9 +277,9 @@ function Card({
 function CardHeader({ label, detail }: { label: string; detail?: string }) {
   return (
     <div className="flex items-baseline justify-between mb-2">
-      <div className="text-xs font-semibold text-stone-700">{label}</div>
+      <div className="text-xs font-semibold text-ink dark:text-bright">{label}</div>
       {detail && (
-        <div className="text-[10px] font-mono text-stone-500">{detail}</div>
+        <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">{detail}</div>
       )}
     </div>
   );

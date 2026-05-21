@@ -147,6 +147,48 @@ describe("WorkspaceStore — setRect, setSize, reorderDock", () => {
   });
 });
 
+describe("WorkspaceStore — docked-bottom (S5)", () => {
+  it("opens a panel directly into the bottom dock", () => {
+    const id = s().open("FakeChat", {}, { mode: "docked-bottom" });
+    expect(s().panels[id].mode).toBe("docked-bottom");
+    expect(s().dockBottomIds).toContain(id);
+    expect(s().floatingIds).not.toContain(id);
+  });
+
+  it("setMode moves a floating panel to docked-bottom and back", () => {
+    const id = s().open("FakeChat", {});
+    s().setMode(id, "docked-bottom");
+    expect(s().dockBottomIds).toContain(id);
+    expect(s().floatingIds).not.toContain(id);
+    s().setMode(id, "floating");
+    expect(s().floatingIds).toContain(id);
+    expect(s().dockBottomIds).not.toContain(id);
+  });
+
+  it("close removes a docked-bottom panel from the array", () => {
+    const id = s().open("FakeChat", {}, { mode: "docked-bottom" });
+    s().close(id);
+    expect(s().dockBottomIds).not.toContain(id);
+  });
+
+  it("reorderDock('bottom', …) reorders bottom dock entries", () => {
+    s().open("FakeChat", {}, { mode: "docked-bottom", id: "x" });
+    s().open("FakeChat", {}, { mode: "docked-bottom", id: "y" });
+    s().reorderDock("bottom", 0, 1);
+    expect(s().dockBottomIds).toEqual(["y", "x"]);
+  });
+
+  it("setDockBottomHeight clamps to 120..60% viewport", () => {
+    s().setDockBottomHeight(50);
+    expect(s().dockBottomHeight).toBe(120);
+    s().setDockBottomHeight(100_000);
+    // 60% of jsdom default 768 = 460
+    expect(s().dockBottomHeight).toBeLessThanOrEqual(800);
+    s().setDockBottomHeight(260);
+    expect(s().dockBottomHeight).toBe(260);
+  });
+});
+
 describe("WorkspaceStore — pin + unpin + reset", () => {
   it("pin marks the panel as pinned", () => {
     const id = s().open("FakeChat", {});
@@ -158,14 +200,16 @@ describe("WorkspaceStore — pin + unpin + reset", () => {
   });
 
   it("reset clears every panel + arrays + counters", () => {
-    s().open("FakeChat", {});
+    s().open("FakeChat", {}, { mode: "docked-bottom" });
     s().open("FakeSidebar", {}, { mode: "docked-left" });
     s().reset();
     expect(Object.keys(s().panels)).toHaveLength(0);
     expect(s().floatingIds).toEqual([]);
     expect(s().dockLeftIds).toEqual([]);
     expect(s().dockRightIds).toEqual([]);
+    expect(s().dockBottomIds).toEqual([]);
     expect(s().focusedPanelId).toBeNull();
     expect(s().zCounter).toBe(1);
+    expect(s().dockBottomHeight).toBe(220);
   });
 });

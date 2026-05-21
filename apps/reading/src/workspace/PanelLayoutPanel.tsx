@@ -80,13 +80,15 @@ export function PanelLayoutPanel({ id }: Props) {
     );
   }
 
-  // docked-left / docked-right — flat, sit in the dock column
+  // docked-left / docked-right / docked-bottom — flat, sit in the dock column
   return (
     <div
       className={
         "flex flex-col bg-ice-0 dark:bg-charcoal-2 " +
-        "border-b border-rule dark:border-charcoal-1 " +
-        "min-h-[140px] flex-1 overflow-hidden " +
+        (panel.mode === "docked-bottom"
+          ? "h-full"
+          : "border-b border-rule dark:border-charcoal-1 min-h-[140px] flex-1 ") +
+        "overflow-hidden " +
         (isFocused ? "" : "opacity-95")
       }
       onMouseDownCapture={() => useWorkspace.getState().focus(id)}

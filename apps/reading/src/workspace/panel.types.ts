@@ -13,6 +13,7 @@
 export type PanelMode =
   | "docked-left"
   | "docked-right"
+  | "docked-bottom"
   | "floating"
   | "popout";
 
@@ -76,12 +77,17 @@ export type WorkspaceSnapshot = {
   dockLeftIds: string[];
   /** Top-to-bottom order inside the right dock. */
   dockRightIds: string[];
+  /** Left-to-right order inside the bottom dock. Used by Chat-style
+   *  panels that want to live under the main slot. */
+  dockBottomIds: string[];
   /** Bottom-to-top z order in the floating layer (last entry = highest). */
   floatingIds: string[];
   /** The currently-focused panel (for keyboard focus + bring-to-front). */
   focusedPanelId: string | null;
   /** Monotonic counter so newly-focused floats sit above existing ones. */
   zCounter: number;
+  /** Operator-resizable bottom-dock height (px). Default 220. */
+  dockBottomHeight: number;
   /**
    * Bumped when the persistence schema changes (S9). A mismatched
    * version is ignored at hydration time with a debug log.
@@ -94,8 +100,10 @@ export const EMPTY_SNAPSHOT: WorkspaceSnapshot = {
   panels: {},
   dockLeftIds: [],
   dockRightIds: [],
+  dockBottomIds: [],
   floatingIds: [],
   focusedPanelId: null,
   zCounter: 1,
+  dockBottomHeight: 220,
   schemaVersion: 1,
 };

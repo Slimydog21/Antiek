@@ -1,16 +1,25 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import LemonButton from "../../components/lemon/LemonButton";
+import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { startInvestigation } from "../../lib/api";
 
 /**
- * Bottom-of-center chat input. Submit on Cmd/Ctrl+Enter; click submit
- * via the button at the right. POST /investigations + navigate to
- * `/inv/<id>`.
+ * Bottom-of-center chat input. Submit on Cmd/Ctrl+Enter; click "Ask"
+ * via the button at the right. POST /investigations + (by default)
+ * navigate to `/inv/<id>`.
  *
- * Optional `parentInvestigationId` + `spawnContext` props let this
- * component be reused inside the `<ChaseSlideOver>` (Sprint 11 day 7)
- * for chase-this child spawning.
+ *   parentInvestigationId   if present, child-of-parent context is set
+ *   spawnContext            the original highlight (chase-this)
+ *   placeholder             override the placeholder text
+ *   autoFocus               steal focus on mount
+ *   onSubmitted             called with the new investigation_id;
+ *                           when omitted, the component navigates itself
+ *
+ * S5 redesign: now a Lemon-styled docked-bottom panel surface. The
+ * surrounding chrome (sun-yellow border, ink offset shadow) is provided
+ * by PanelLayoutPanel; this component renders only the inner controls.
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -23,8 +32,6 @@ export default function ChatInputArea({
   spawnContext?: string;
   placeholder?: string;
   autoFocus?: boolean;
-  /** Called with the new investigation_id after a successful submit.
-   *  When omitted, the component navigates to /inv/<id> itself. */
   onSubmitted?: (investigationId: string) => void;
 }) {
   const [question, setQuestion] = useState(spawnContext ?? "");
@@ -60,45 +67,36 @@ export default function ChatInputArea({
     }
   }, [question, parentInvestigationId, spawnContext, navigate, onSubmitted]);
 
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        void submit();
-      }
-    },
-    [submit],
-  );
-
   return (
-    <div className="border-t border-stone-200 bg-white p-3">
-      <div className="flex gap-2 items-end max-w-3xl mx-auto">
-        <textarea
+    <div className="h-full flex flex-col p-3 bg-ice-1 dark:bg-charcoal-2 text-ink dark:text-bright">
+      <div className="flex-1 min-h-0 flex flex-col">
+        <LemonTextarea
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={onKeyDown}
+          onSubmit={() => void submit()}
           placeholder={placeholder ?? "What do you want to research?"}
           autoFocus={autoFocus}
-          rows={2}
           disabled={busy}
-          className="flex-1 resize-none border border-stone-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-400 disabled:opacity-50 font-serif leading-relaxed"
+          minRows={2}
+          maxRows={10}
+          className="font-serif text-[15px] leading-relaxed"
         />
-        <button
+        {error && (
+          <div className="text-xs font-mono text-emperor mt-2">{error}</div>
+        )}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
+          <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-[2px_2px_0_0_#0F1419] dark:shadow-[2px_2px_0_0_#8A7300] mr-1.5">⌘ ↵</kbd>
+          to submit · ~$0.08-$0.16 / investigation
+        </div>
+        <LemonButton
+          variant="primary"
           onClick={() => void submit()}
           disabled={busy || question.trim().length < 3}
-          className="px-4 py-2 bg-stone-900 text-white text-sm rounded-md hover:bg-stone-700 disabled:bg-stone-400 transition-colors shrink-0"
         >
           {busy ? "…" : "Ask"}
-        </button>
-      </div>
-      {error && (
-        <div className="text-xs font-mono text-red-700 max-w-3xl mx-auto mt-2">
-          {error}
-        </div>
-      )}
-      <div className="text-[10px] font-mono text-stone-400 max-w-3xl mx-auto mt-1.5">
-        ⌘+Enter to submit. Investigations cost ~$0.08-$0.16 each (per
-        Sprint 10 validation).
+        </LemonButton>
       </div>
     </div>
   );

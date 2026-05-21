@@ -22,27 +22,27 @@ export default function InvestigationSidebar() {
   const activeId = params.investigationId ?? null;
 
   return (
-    <div className="p-3 text-xs">
+    <div className="p-3 text-xs text-ink dark:text-bright">
       <div className="flex items-center justify-between mb-3">
-        <div className="font-mono text-stone-700 font-semibold uppercase tracking-wider">
+        <div className="font-mono text-shadow-1 dark:text-moonlight font-semibold uppercase tracking-wider">
           Investigations
         </div>
         <button
           onClick={refetch}
-          className="text-stone-400 hover:text-stone-900 transition-colors"
+          className="text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors"
           aria-label="Refresh"
         >
           ⟳
         </button>
       </div>
       {loading && investigations.length === 0 && (
-        <div className="text-stone-400 italic font-mono">Loading…</div>
+        <div className="text-ink-mute dark:text-moonlight italic font-mono">Loading…</div>
       )}
       {error && (
-        <div className="text-red-700 font-mono text-[10px]">{error}</div>
+        <div className="text-emperor font-mono text-[10px]">{error}</div>
       )}
       {!loading && investigations.length === 0 && !error && (
-        <div className="text-stone-400 italic font-serif">
+        <div className="text-ink-mute dark:text-moonlight italic font-serif">
           No investigations yet. Ask a question to start.
         </div>
       )}
@@ -83,20 +83,23 @@ function TreeRow({
         )}
         <NavLink
           to={`/inv/${node.investigationId}`}
-          className={`flex-1 min-w-0 py-1 px-1.5 rounded transition-colors ${
+          className={`flex-1 min-w-0 py-1 px-1.5 rounded transition-colors relative ${
             isActive
-              ? "bg-stone-200 text-stone-900"
-              : "hover:bg-stone-100 text-stone-700"
+              ? "bg-sun text-ink"
+              : "hover:bg-sun/20 dark:hover:bg-sun/15 text-ink dark:text-bright"
           }`}
           style={{ marginLeft: depth * 8 }}
         >
+          {isActive && (
+            <span aria-hidden="true" className="absolute left-0 top-1 bottom-1 w-0.5 bg-ink" />
+          )}
           <div className="flex items-start gap-1.5">
             <StatusDot status={summary?.status ?? "in_progress"} />
             <div className="flex-1 min-w-0">
               <div className="font-serif leading-snug truncate">
                 {truncate(summary?.question ?? node.investigationId, 60)}
               </div>
-              <div className="font-mono text-[9px] text-stone-400 mt-0.5">
+              <div className="font-mono text-[9px] text-ink-mute dark:text-moonlight mt-0.5">
                 {summary?.cost_usd_total
                   ? `$${summary.cost_usd_total.toFixed(4)}`
                   : "$0"}
@@ -125,12 +128,12 @@ function TreeRow({
 function StatusDot({ status }: { status: InvestigationSummary["status"] }) {
   const color =
     status === "in_progress"
-      ? "bg-amber-400 animate-pulse"
+      ? "bg-sun animate-pulse"
       : status === "completed"
-        ? "bg-emerald-500"
+        ? "bg-aurora"
         : status === "failed"
-          ? "bg-red-500"
-          : "bg-stone-400";
+          ? "bg-emperor"
+          : "bg-ink-mute dark:bg-moonlight";
   return (
     <span
       className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${color}`}

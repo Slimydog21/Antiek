@@ -192,6 +192,15 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                   Dock right
                 </LemonMenuItem>
                 <LemonMenuItem
+                  icon="◯"
+                  onClick={() => {
+                    setMode("docked-bottom");
+                    close();
+                  }}
+                >
+                  Dock bottom
+                </LemonMenuItem>
+                <LemonMenuItem
                   icon="▢"
                   onClick={() => {
                     setMode("floating");

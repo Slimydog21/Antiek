@@ -1,58 +1,65 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { parseSynthesis } from "../../lib/synthesisParser";
-import HeaderBar from "../shared/HeaderBar";
-import ChaseSlideOver from "./ChaseSlideOver";
-import ChatInputArea from "./ChatInputArea";
+import { PanelHost } from "../../workspace/PanelHost";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
+import type { StarterPanel } from "../../workspace/PanelHost";
 import HighlightToolbar from "./HighlightToolbar";
-import InvestigationSidebar from "./InvestigationSidebar";
 import MasterMdViewer from "./MasterMdViewer";
 import TrajectoryView from "./TrajectoryView";
 
 /**
- * Mode A — Research Workstation.
+ * Mode A — Research Workstation (S5 redesign).
  *
- * Layout:
- *   Left  — InvestigationSidebar (past investigations tree)
- *   Center — TrajectoryView (live) → MasterMdViewer (post-completion)
- *   Bottom of center — ChatInputArea
- *   Floating — HighlightToolbar (anchored to selection)
- *   Slide-over — ChaseSlideOver (chase-this child investigation flow)
+ * Layout shift from the legacy version:
+ *   - InvestigationSidebar → docked-left panel (via PanelHost starter)
+ *   - ChatInputArea       → docked-bottom panel (when an investigation
+ *                            is loaded; the empty state shows an inline
+ *                            composer because there's no investigation
+ *                            context for the docked Chat panel yet)
+ *   - ChaseSlideOver      → floating panel opened via workspace action
+ *   - Trajectory / MasterMdViewer → main slot (unchanged surface)
+ *
+ * The PanelHost wraps a starter list; AppShell (S4) provides the
+ * surrounding NavRail + Topbar + dock zones. HighlightToolbar still
+ * lives as a selection-anchored DOM overlay because it's positioned
+ * against text, not workspace coordinates.
  */
 export default function ResearchWorkstation() {
   const params = useParams<{ investigationId?: string }>();
   const investigationId = params.investigationId ?? null;
 
+  const starters: StarterPanel[] = [
+    {
+      kind: "InvestigationSidebar",
+      mode: "docked-left",
+      title: "Investigations",
+      id: "rw:investigation-sidebar",
+    },
+    ...(investigationId
+      ? ([
+          {
+            kind: "Chat",
+            mode: "docked-bottom",
+            props: { parentInvestigationId: investigationId },
+            title: "Chat · this investigation",
+            id: `rw:chat:${investigationId}`,
+          },
+        ] as StarterPanel[])
+      : []),
+  ];
+
   return (
-    <div className="flex flex-col h-screen">
-      <HeaderBar>
-        {investigationId && (
-          <span className="text-xs font-mono text-stone-500">
-            inv: <span className="text-stone-900">{investigationId}</span>
-          </span>
-        )}
-      </HeaderBar>
-      <div className="grid grid-cols-[280px_1fr] flex-1 min-h-0">
-        <aside className="border-r border-stone-200 bg-stone-50 overflow-y-auto">
-          <InvestigationSidebar />
-        </aside>
-        <main className="flex flex-col min-h-0 bg-white">
-          {investigationId ? (
-            <InvestigationCenter investigationId={investigationId} />
-          ) : (
-            <>
-              <div className="flex-1 overflow-y-auto">
-                <EmptyState />
-              </div>
-              <ChatInputArea autoFocus />
-            </>
-          )}
-        </main>
-      </div>
-    </div>
+    <PanelHost starters={starters}>
+      {investigationId ? (
+        <InvestigationCenter investigationId={investigationId} />
+      ) : (
+        <EmptyState />
+      )}
+    </PanelHost>
   );
 }
 
@@ -60,14 +67,18 @@ function EmptyState() {
   return (
     <div className="h-full flex items-center justify-center">
       <div className="max-w-md text-center px-6">
-        <h1 className="text-2xl font-serif text-stone-900 mb-3">
+        <h1 className="text-2xl font-serif text-ink dark:text-bright mb-3">
           What do you want to research?
         </h1>
-        <p className="text-sm text-stone-500 leading-relaxed font-serif">
-          Paste a question. The substrate runs a recursive note-taking
+        <p className="text-sm text-shadow-1 dark:text-moonlight leading-relaxed font-serif">
+          Type a question. The substrate runs a recursive note-taking
           chain across the corpus, distills insights and open questions,
           and renders a cited thesis. Highlight anything in the result
           to chase it further.
+        </p>
+        <p className="text-xs font-mono text-ink-mute dark:text-moonlight mt-6 leading-relaxed">
+          Open the Chat panel from the bottom dock once an investigation
+          is loaded, or pick a recent investigation from the left rail.
         </p>
       </div>
     </div>
@@ -77,46 +88,39 @@ function EmptyState() {
 function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const investigation = useInvestigation(investigationId);
   const centerRef = useRef<HTMLDivElement>(null);
-  const [chase, setChase] = useState<{ open: boolean; text: string }>({
-    open: false,
-    text: "",
-  });
+  const openPanel = useWorkspace((s) => s.open);
+
+  const onChaseThis = useCallback(
+    (text: string) => {
+      openPanel(
+        "Chase",
+        { spawnContext: text, parentInvestigationId: investigationId },
+        { mode: "floating", title: "Chase" },
+      );
+    },
+    [openPanel, investigationId],
+  );
 
   if (investigation.status === "loading") {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-stone-400 font-serif italic">
+      <div className="h-full flex items-center justify-center text-sm text-ink-mute dark:text-moonlight font-serif italic">
         Loading investigation…
       </div>
     );
   }
   if (investigation.status === "not_found") {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-stone-500 font-serif">
+      <div className="h-full flex items-center justify-center text-sm text-shadow-1 dark:text-moonlight font-serif">
         No investigation with id <code className="font-mono">{investigationId}</code>.
       </div>
     );
   }
 
-  // Render trajectory or synthesis viewer; either way, ChatInputArea
-  // is pinned at the bottom (lets operator ask a follow-up question
-  // without leaving the current investigation's context).
   return (
-    <>
-      <div ref={centerRef} className="flex-1 overflow-y-auto relative">
-        <CenterContent investigation={investigation} />
-        <HighlightToolbar
-          scopeRef={centerRef}
-          onChaseThis={(text) => setChase({ open: true, text })}
-        />
-      </div>
-      <ChatInputArea />
-      <ChaseSlideOver
-        open={chase.open}
-        spawnContext={chase.text}
-        parentInvestigationId={investigationId}
-        onClose={() => setChase((c) => ({ ...c, open: false }))}
-      />
-    </>
+    <div ref={centerRef} className="h-full overflow-y-auto relative">
+      <CenterContent investigation={investigation} />
+      <HighlightToolbar scopeRef={centerRef} onChaseThis={onChaseThis} />
+    </div>
   );
 }
 
