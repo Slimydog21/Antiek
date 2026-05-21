@@ -9,6 +9,7 @@ import { postTypedEvent } from "../../lib/api";
 import { sha256Hex } from "../../lib/hash";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
+import { recordLastOpenedDocument } from "../../settings/userSettings";
 
 /**
  * Mode B — Document Wrestler (S6 redesign).
@@ -101,6 +102,13 @@ export default function WrestleApp() {
       "initialPage:",
       initialPage,
     );
+    // SPR-06 M4 — record last-opened so post-login routing
+    // (src/routing/postLogin.ts) lands the user back here on next
+    // session. Tracked per-device in localStorage; the substrate
+    // has no last_session_at field yet.
+    if (documentId) {
+      recordLastOpenedDocument(documentId);
+    }
   }, [investigationId, documentId, initialPage]);
 
   // Side panels start only when a document is loaded. Until then the
