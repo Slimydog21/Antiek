@@ -4660,6 +4660,31 @@ def create_app(
             loop_3_unlock_status=loop_3_status,
         )
 
+    # ─────────────────────────────────────────────────────────────
+    # Wrestle Evolution routes (integration follow-up 2026-05-22)
+    # Five SPR-handoff-flagged gaps in one block. Each route module's
+    # register_X_routes function attaches handlers to ``app`` against
+    # the SPR-tested Python services. Mounted unconditionally — the
+    # routes degrade gracefully when their substrate dependencies are
+    # absent (404 / 409 / 501 with actionable errors per module).
+    # ─────────────────────────────────────────────────────────────
+    from .library import register_library_routes as _register_library
+    from .voice import register_voice_routes as _register_voice
+    from .cross_doc_links import (
+        register_cross_doc_links_routes as _register_cross_doc_links,
+    )
+    from .notebooks import register_notebook_routes as _register_notebooks
+    from .themes import register_theme_routes as _register_themes
+    from .share_bundle import (
+        register_share_bundle_routes as _register_share_bundle,
+    )
+    _register_library(app)
+    _register_voice(app)
+    _register_cross_doc_links(app, embedder=wrestling_embedder)
+    _register_notebooks(app)
+    _register_themes(app)
+    _register_share_bundle(app)
+
     return app
 
 
