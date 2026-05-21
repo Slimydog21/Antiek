@@ -9,6 +9,7 @@ import PdfViewer from "../../components/PdfViewer";
 import { useEventStream } from "../../hooks/useEventStream";
 import { postTypedEvent } from "../../lib/api";
 import { sha256Hex } from "../../lib/hash";
+import { recordLastOpenedDocument } from "../../settings/userSettings";
 import HeaderBar from "../shared/HeaderBar";
 
 /**
@@ -92,6 +93,13 @@ export default function WrestleApp() {
       "[antiek/wrestle] investigation_id:", investigationId,
       "documentId:", documentId, "initialPage:", initialPage,
     );
+    // SPR-06 M4 — record last-opened so post-login routing
+    // (src/routing/postLogin.ts) lands the user back here on next
+    // session. Tracked per-device in localStorage; the substrate
+    // has no last_session_at field yet.
+    if (documentId) {
+      recordLastOpenedDocument(documentId);
+    }
   }, [investigationId, documentId, initialPage]);
 
   // Cite-jump: a NotesFeed chip click resolves to a chat-feed row by

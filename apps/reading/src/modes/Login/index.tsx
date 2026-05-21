@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import wernerDefault from "../../brand/werner/poses/anchor/werner_default_v5_nano_corrected.png";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import { requestMagicLink, useAuth } from "../../lib/auth";
+import { resolvePostLoginDestination } from "../../routing/postLogin";
 
 /**
  * Login surface — Antiek's owned login page (H6 ship, 2026-05-21
@@ -34,10 +35,15 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const { state } = useAuth();
 
-  // Already signed in? Bounce to the destination.
+  // Already signed in? Resolve the post-login destination through
+  // the dual-market routing logic (SPR-06 M4). New users → /library
+  // (consumer wedge landing); existing users → last-opened doc. See
+  // src/routing/postLogin.ts for the full rationale.
   if (state.status === "authenticated") {
-    const dest = searchParams.get("next") ?? "/";
-    navigate(dest, { replace: true });
+    const dest = resolvePostLoginDestination({
+      nextParam: searchParams.get("next"),
+    });
+    navigate(dest.path, { replace: true });
   }
 
   const nextPath =
