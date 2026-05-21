@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "visualtest": "npm run build-storybook && lost-pixel",
+    "visualtest:update": "npm run build-storybook && lost-pixel update"
   },
   "dependencies": {
     "pdfjs-dist": "^4.7.76",
@@ -31,6 +33,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "lost-pixel": "^3.22.0",
     "postcss": "^8.4.49",
     "storybook": "^8.4.7",
     "tailwindcss": "^3.4.15",

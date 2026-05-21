@@ -4,15 +4,18 @@ import { MemoryRouter } from "react-router-dom";
 // Pull in the Tailwind base styles so Storybook renders components
 // with the same typography + spacing scale as the production app.
 import "../src/index.css";
+// Werner brand tokens — sun-yellow outlining, day/night surface ramps.
+// Loaded here so every story has --sun, --ink, --ice-2 etc. available.
+import "../src/design/tokens.css";
 
 /**
  * Global Storybook preview config. Wraps every story in a
  * MemoryRouter (several components use react-router hooks like
  * useNavigate / NavLink) and applies the global Tailwind CSS layer.
  *
- * Background defaults to white because Antiek's researcher's-notebook
- * aesthetic per master-spec §5.5 is serif on white, not the
- * SaaS-dashboard dark-mode default.
+ * Backgrounds expose the Werner brand surface ramp so authors can
+ * preview a story on a card, on the page, on a trough, or on the
+ * deep ink. Default is `ice-2` (day page bg).
  */
 const preview: Preview = {
   parameters: {
@@ -24,10 +27,15 @@ const preview: Preview = {
       },
     },
     backgrounds: {
-      default: "white",
+      default: "ice-2",
       values: [
-        { name: "white", value: "#ffffff" },
-        { name: "stone-50", value: "#fafaf9" },
+        { name: "ice-0", value: "#FFFFFF" },
+        { name: "ice-1", value: "#FBFCFD" },
+        { name: "ice-2", value: "#F4F7FA" },
+        { name: "ice-3", value: "#EAEFF4" },
+        { name: "ink", value: "#0F1419" },
+        { name: "space-2 (night)", value: "#0D1019" },
+        { name: "charcoal-2 (night card)", value: "#1B202A" },
       ],
     },
     layout: "fullscreen",

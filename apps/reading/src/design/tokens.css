@@ -1,0 +1,110 @@
+/* ============================================================
+   Antiek design tokens — CSS variable sibling of tokens.ts.
+   Imported by .storybook/preview.tsx so stories render
+   with the brand vars available. Day mode by default; night mode
+   under prefers-color-scheme.
+
+   Source of truth: src/design/tokens.ts
+   ============================================================ */
+
+:root {
+  --sun:        #F5DF24;
+  --sun-deep:   #B89A00;
+  --sun-glow:   #FCE85E;
+  --sun-hl-faint: rgba(245,223,36,0.18);
+  --sun-hl-day:   rgba(245,223,36,0.45);
+  --sun-hl-night: rgba(252,232,94,0.30);
+
+  /* day surface ramp */
+  --ice-0:      #FFFFFF;
+  --ice-1:      #FBFCFD;
+  --ice-2:      #F4F7FA;
+  --ice-3:      #EAEFF4;
+  --ice-4:      #DCE5ED;
+  --glacial-1:  #C2D1DD;
+  --glacial-2:  #9AB0C0;
+  --shadow-1:   #64778A;
+  --shadow-2:   #384858;
+  --ink:        #0F1419;
+
+  /* aliases for readability */
+  --page:       var(--ice-2);
+  --card:       var(--ice-0);
+  --card-soft:  var(--ice-1);
+  --inset:      var(--ice-3);
+  --divider:    var(--ice-4);
+  --muted:      var(--glacial-2);
+  --text:       var(--ink);
+  --text-muted: var(--shadow-1);
+  --border:     var(--sun);
+
+  /* werner */
+  --werner-coat:  #0F1419;
+  --werner-belly: #FBFCFD;
+  --werner-bill:  var(--sun);
+  --werner-foot:  var(--sun);
+  --werner-eye:   #0F1419;
+
+  /* accent (reserved) */
+  --aurora:  #16C2C2;
+  --emperor: #E33C2D;
+
+  /* chunky offset shadows */
+  --shadow-z1:   3px 3px 0 0 var(--ink);
+  --shadow-z2:   5px 5px 0 0 var(--ink);
+  --shadow-z3:   8px 8px 0 0 var(--ink);
+  --shadow-lift: 12px 12px 0 0 var(--ink);
+
+  /* geometry */
+  --radius-sm: 4px;
+  --radius:    6px;
+  --radius-lg: 10px;
+  --edge:      2.5px;
+
+  /* type */
+  --sans:  "Inter", system-ui, -apple-system, sans-serif;
+  --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --serif: "Charter", "Iowan Old Style", Georgia, serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* night surface ramp */
+    --ice-0:      #1B202A;  /* (re-mapped at night: card surface) */
+    --ice-1:      #161B24;
+    --ice-2:      #0D1019;
+    --ice-3:      #0A0D14;
+    --ice-4:      #080A10;
+    --glacial-1:  #252B36;
+    --glacial-2:  #323845;
+    --shadow-1:   #6B7585;
+    --shadow-2:   #A0AAB8;
+    --ink:        #EEF1F6;
+
+    --page:       #0D1019;
+    --card:       #1B202A;
+    --card-soft:  #13171F;
+    --inset:      #0D1019;
+    --divider:    #13171F;
+    --muted:      #6B7585;
+    --text:       #EEF1F6;
+    --text-muted: #6B7585;
+    --border:     var(--sun);
+
+    --sun-deep:   #8A7300;
+    --sun-glow:   #FFEC5F;
+
+    --werner-coat:  #0A0D14;
+    --werner-belly: #DCE2EA;
+    --werner-eye:   #DCE2EA;
+
+    --aurora:  #3FE0DC;
+    --emperor: #FF6155;
+
+    /* shadows glow at night */
+    --shadow-z1:   3px 3px 0 0 var(--sun-deep);
+    --shadow-z2:   5px 5px 0 0 var(--sun-deep);
+    --shadow-z3:   8px 8px 0 0 var(--sun-deep);
+    --shadow-lift: 12px 12px 0 0 var(--sun-deep);
+  }
+}

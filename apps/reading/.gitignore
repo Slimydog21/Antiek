@@ -4,3 +4,7 @@ dist/
 storybook-static/
 *.log
 .DS_Store
+
+# Lost-Pixel — baseline IS checked in; current + diff are not.
+.lostpixel/current/
+.lostpixel/diff/
