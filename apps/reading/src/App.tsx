@@ -20,6 +20,8 @@ import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
 import Notebook from "./modes/Notebook";
 import PerDocNotebook from "./modes/Notebook/PerDocNotebook";
+import PerThemeNotebook from "./modes/Notebook/PerThemeNotebook";
+import ThemesIndex from "./modes/Notebook/ThemesIndex";
 import NotebooksIndex from "./modes/NotebooksIndex";
 import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
@@ -82,6 +84,16 @@ function AuthenticatedRoutes() {
         <Route
           path="/wrestle/:documentId/notebook"
           element={<PerDocNotebook />}
+        />
+        {/* SPR-11 — Tier-3 per-theme notebook surfaces.
+            The standalone /wrestle/themes route is the current home;
+            Sprint 19 Brainstorming Workstation may host the index in
+            a panel once that spec lands (Sprint 19 spec has NOT
+            shipped as of 2026-05-21). */}
+        <Route path="/wrestle/themes" element={<ThemesIndex />} />
+        <Route
+          path="/wrestle/themes/:slug"
+          element={<PerThemeNotebook />}
         />
         <Route path="/sources" element={<Sources />} />
         <Route path="/create" element={<CreationStudio />} />
