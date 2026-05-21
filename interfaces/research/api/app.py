@@ -597,6 +597,18 @@ class NotebookReorderBlocksRequest(BaseModel):
     ordered_block_ids: list[str]
 
 
+class NotebookPutContentRequest(BaseModel):
+    """Atomic-replace endpoint for the TipTap editor (§4.2 Wedge 2
+    notebook surface). Takes the full TipTap ProseMirror document
+    JSON; the substrate decomposes it into ``notebook_blocks`` rows.
+
+    Used by the autosave path in the editor; replaces the prior
+    localStorage-only persistence.
+    """
+
+    doc: dict
+
+
 class NotebookUpdateBlockRequest(BaseModel):
     """Edit one block in place. ``block_type`` is intentionally
     immutable here; the UI re-creates blocks rather than re-typing.
@@ -982,6 +994,18 @@ def create_app(
     # allowlist is empty, so this is safe on local dev too.
     from .auth import register_auth_routes
     register_auth_routes(app)
+
+    # Phase 3 substrate surfaces — Sprint 23-24 advertiser onboarding +
+    # Sprint 30+ thread 1 federation. Substrate primitives live in
+    # substrate/ad_inventory/ and substrate/cross_graph/; these routers
+    # are the thin HTTP adapters that make them reachable from the
+    # AdvertiserConsole + CreatorPayouts UI surfaces and from operator
+    # CLIs. Per master-spec §13.7 audit: every state transition is
+    # persisted as an append-only row in the substrate's DuckDB.
+    from .advertisers import register_advertiser_routes
+    register_advertiser_routes(app)
+    from .federation import register_federation_routes
+    register_federation_routes(app)
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
     # Expose for tests and admin endpoints.
@@ -3141,6 +3165,71 @@ def create_app(
                 nb = get_notebook(con, notebook_id)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return _notebook_to_response(nb)
+
+    @app.put(
+        "/notebooks/{notebook_id}/content",
+        response_model=NotebookResponse,
+    )
+    async def put_notebook_content(
+        notebook_id: str,
+        req: NotebookPutContentRequest = Body(...),
+    ) -> NotebookResponse:
+        """Atomic-replace a notebook's content from a TipTap document.
+
+        The autosave path in ``apps/reading/src/modes/Notebook/Editor.tsx``
+        POSTs here every ~1.5 s of idle. The substrate decomposes the
+        TipTap doc into ``notebook_blocks`` rows under a single write
+        lock — substrate-citation block ``ref_id`` columns are
+        populated from the corresponding node attrs so the
+        renderer's fetch-at-render-time path stays intact.
+        """
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import (
+            append_block,
+            get_notebook,
+        )
+        from substrate.notebooks.tiptap_codec import decompose
+
+        try:
+            decomposed = decompose(req.doc)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        db_path = default_db_path()
+        with connect_write(
+            db_path, purpose="api:put_notebook_content",
+        ) as con:
+            existing = get_notebook(con, notebook_id)
+            if existing is None:
+                raise HTTPException(
+                    status_code=404, detail="notebook not found",
+                )
+            # Atomic replace: drop all existing blocks, then re-insert
+            # in order. Both operations sit inside the single
+            # connect_write lock so a concurrent read never sees a
+            # partial state.
+            con.execute(
+                "DELETE FROM notebook_blocks WHERE notebook_id = ?",
+                [notebook_id],
+            )
+            for block in decomposed:
+                append_block(
+                    con,
+                    notebook_id=notebook_id,
+                    block_type=block.block_type,
+                    ref_id=block.ref_id,
+                    content=block.content_json,
+                )
+            con.execute(
+                "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
+                "WHERE notebook_id = ?",
+                [notebook_id],
+            )
+            nb = get_notebook(con, notebook_id)
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)

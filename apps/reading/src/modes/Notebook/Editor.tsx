@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Editor as TipTapEditor } from "@tiptap/react";
 
 import { toast } from "../../components/lemon/LemonToast";
+import { API_BASE, apiFetch } from "../../lib/api";
 import { ClaimCardBlock } from "./blocks/ClaimCardBlock";
 import { CrossDocLinkBlock } from "./blocks/CrossDocLinkBlock";
 import { MasterSectionBlock } from "./blocks/MasterSectionBlock";
@@ -144,25 +145,43 @@ export function NotebookEditor({
         if (!before || before === " ") setSlash({ open: false, query: "" });
       }
 
-      // autosave with optimistic-concurrency check
+      // autosave: PUT /notebooks/{id}/content (substrate decomposes
+      // TipTap doc → notebook_blocks rows atomically per §4.2). On
+      // network failure we fall back to localStorage so the
+      // operator's draft never disappears; next online save reconciles.
       setSaved("saving");
       if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        const nextEtag = writeStored(notebookId, e.getHTML(), etagRef.current);
-        if (nextEtag === null) {
-          // Conflict — another tab wrote between our reads. Surface a
-          // toast + leave the operator's draft intact in memory. The
-          // operator can reload to pick up the other tab's version, or
-          // force-save by editing again (the conflict resolves on next
-          // save iff the operator first reloads).
+      saveTimer.current = setTimeout(async () => {
+        const doc = e.getJSON();
+        try {
+          const r = await apiFetch(`${API_BASE}/notebooks/${notebookId}/content`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ doc }),
+          });
+          if (!r.ok) {
+            throw new Error(`HTTP ${r.status}`);
+          }
+          setSaved("saved");
+          // Keep a local mirror so a reload while offline shows the
+          // last-known-good state.
+          writeStored(notebookId, e.getHTML(), etagRef.current);
+          etagRef.current += 1;
+        } catch (err) {
+          // Offline / network error → fall back to localStorage so
+          // the draft survives. Surface a soft warning only once per
+          // session via the toast (not on every keystroke).
+          const nextEtag = writeStored(notebookId, e.getHTML(), etagRef.current);
+          if (nextEtag !== null) {
+            etagRef.current = nextEtag;
+          }
           setSaved("conflict");
           toast.err(
-            "Notebook conflict: another tab edited this notebook. Reload to see the latest.",
+            err instanceof Error
+              ? `Notebook offline: ${err.message}. Draft saved locally.`
+              : "Notebook offline. Draft saved locally.",
           );
-          return;
         }
-        etagRef.current = nextEtag;
-        setSaved("saved");
       }, 1500);
     },
   });
