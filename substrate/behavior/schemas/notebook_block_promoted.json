@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "notebook_block_promoted",
+  "description": "Notebook block was promoted from Tier-2 (per-doc) to Tier-3 (per-theme). Distinct from `notebook_block_edited` / `_demoted` because promotion is cross-tier curation — the strongest positive operator signal in the notebook funnel. Added in taxonomy v2 (2026-05-22).",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["source_notebook_id", "source_block_id"],
+    "properties": {
+      "source_notebook_id": { "type": "string" },
+      "source_block_id": { "type": "string" },
+      "source_document_id": { "type": ["string", "null"] },
+      "block_type": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["theme_id"],
+    "properties": {
+      "theme_id": { "type": "string" },
+      "theme_slug": { "type": ["string", "null"] },
+      "theme_block_id": { "type": ["string", "null"] },
+      "newly_created_theme": { "type": ["boolean", "null"] }
+    }
+  }
+}

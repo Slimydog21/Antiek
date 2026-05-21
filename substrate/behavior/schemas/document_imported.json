@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "document_imported",
+  "description": "Operator imported a new document into the library via the SPR-06 universal-library flow (paste-URL, upload-PDF, or share-bundle re-import). Distinct from `document_opened` — import is first-touch, open is every subsequent traversal. Added in taxonomy v2 (2026-05-22).",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "source_url": { "type": ["string", "null"] },
+      "content_type": { "type": ["string", "null"] },
+      "import_path": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["outcome"],
+    "properties": {
+      "outcome": { "type": "string" },
+      "paywalled": { "type": ["boolean", "null"] },
+      "sidecar_applied": { "type": ["boolean", "null"] },
+      "bytes_ingested": { "type": ["integer", "null"] }
+    }
+  }
+}

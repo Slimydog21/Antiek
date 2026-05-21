@@ -215,13 +215,31 @@ export default function LibraryGrid() {
   const onImportTerminal = useCallback(
     (job: IngestJob) => {
       if (job.status === "succeeded") {
-        // TODO(taxonomy): emit `document_imported` here once the
-        // closed taxonomy in substrate/behavior/taxonomy.py is
-        // extended (M5 in the sprint HTML page referenced this
-        // event type but it's not yet a member of BehaviorEventType).
-        // For SPR-06 we re-fetch the document list so the card
-        // appears; the behavior event for the import itself is the
-        // taxonomy-extension's job.
+        // Taxonomy v2 (2026-05-22): document_imported is now in the
+        // closed taxonomy. Fire-and-forget per the sprint spec —
+        // emit failures are non-fatal. Metadata (paywalled,
+        // sidecar_applied, bytes_ingested) lives in the job's
+        // free-form `metadata` blob; we forward what's there.
+        const md = job.metadata ?? {};
+        void emitBehaviorEvent({
+          eventType: BehaviorEventType.DOCUMENT_IMPORTED,
+          state: {
+            document_id: job.document_id ?? "unknown",
+            source_url: job.url ?? null,
+            content_type: job.content_type ?? null,
+            import_path: typeof md.import_path === "string" ? md.import_path : null,
+          },
+          action: {
+            outcome: "succeeded",
+            paywalled: typeof md.paywalled === "boolean" ? md.paywalled : null,
+            sidecar_applied:
+              typeof md.sidecar_applied === "boolean" ? md.sidecar_applied : null,
+            bytes_ingested:
+              typeof md.bytes_ingested === "number" ? md.bytes_ingested : null,
+          },
+        }).catch(() => {
+          // Swallow — per SPR-01 emit-failure-non-fatal rigor.
+        });
         void reload();
       }
     },

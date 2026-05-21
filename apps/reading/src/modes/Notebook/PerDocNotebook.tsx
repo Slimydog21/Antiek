@@ -411,18 +411,30 @@ export default function PerDocNotebook(): JSX.Element {
               }
               return next;
             });
-            // TODO[SPR-11 → taxonomy]: emit
-            // ``notebook_block_promoted`` Tier-1 behavior event so
-            // the reward proxy sees Tier-2 → Tier-3 promotion. The
-            // closed taxonomy in substrate/behavior/taxonomy.py does
-            // NOT currently include this event type; emitting it
-            // through emitBehaviorEvent would throw
-            // InvalidEventTypeError. A future sprint must (a) add
-            // NOTEBOOK_BLOCK_PROMOTED to BehaviorEventType, (b) add
-            // a schemas/notebook_block_promoted.json, (c) wire this
-            // emit. State shape: {notebook_id, block_id, from_tier:
-            // 2, document_id}. Action: {to_tier: 3, theme_id}.
-            void promoted; // referenced for grep, no-op until taxonomy lands
+            // Taxonomy v2 (2026-05-22): notebook_block_promoted is
+            // now in the closed taxonomy. One emit per promoted
+            // block so the reward proxy can join per-block. Fire-and-
+            // forget; emit failures are non-fatal.
+            for (const blockId of promoted) {
+              const sourceBlock = blocks.find((b) => b.block_id === blockId);
+              void emitBehaviorEvent({
+                eventType: BehaviorEventType.NOTEBOOK_BLOCK_PROMOTED,
+                state: {
+                  source_notebook_id: notebook?.notebook_id ?? "unknown",
+                  source_block_id: blockId,
+                  source_document_id: documentId ?? null,
+                  block_type: sourceBlock?.block_type ?? null,
+                },
+                action: {
+                  theme_id: themeId,
+                  theme_slug: null,
+                  theme_block_id: null,
+                  newly_created_theme: null,
+                },
+              }).catch(() => {
+                // Swallow — emit failure is non-fatal.
+              });
+            }
             setSelectedBlockIds(new Set());
             setPromotePickerOpen(false);
           }}

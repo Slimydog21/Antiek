@@ -14,16 +14,17 @@
 //        - cross_doc_link_dismissed on highlight clear without click
 //   3. Wire pill hover → preview popover (CitePreview).
 //
-// The spec page mentions a fourth "previewed" event on hover. That
-// event type is NOT in the SPR-01 closed taxonomy (verified via
-// substrate/behavior/taxonomy.py:BehaviorEventType). Per the harness
-// instructions we emit surfaced ONCE per highlight (not per pill);
-// preview is a UI-only state. The spec's M6 acceptance criterion
-// for "1 surfaced + 1 previewed + 1 clicked" is interpreted as:
-// surfaced=1, clicked=1, dismissed=0 — and the hover behavior is
-// visually exercised by the same test (the preview must show on
-// hover) but does not emit its own substrate event. Surface change
-// only; the funnel's negative signal is dismissal.
+// The spec page mentions a fourth "previewed" event on hover. As of
+// taxonomy v2 (2026-05-22) `cross_doc_link_previewed` IS in the
+// closed taxonomy at substrate/behavior/taxonomy.py:BehaviorEventType.
+// We emit:
+//   - surfaced  once per highlight (system-initiated, fires when the
+//                fetcher returns ≥1 link)
+//   - previewed once per hover-enter on any pill (per-pill granular)
+//   - clicked   when the operator hits Open
+//   - dismissed when the highlight is cleared without any click
+// The funnel is surfaced → previewed → clicked / dismissed, matching
+// the SPR-07 M6 acceptance scenario.
 //
 // Why pill-count is 3 (rigor #5 — defensibility):
 //   The brainstorm identified eyeball-distance as the cross-doc UX
@@ -289,6 +290,32 @@ export default function Gutter({ highlights, fetchLinks }: GutterProps) {
                       ? { highlightId: h.highlightId, linkIndex: idx }
                       : null,
                   );
+                  // Taxonomy v2 (2026-05-22): cross_doc_link_previewed
+                  // is now in the closed taxonomy. Emit once per
+                  // hover-enter (not hover-exit) so the funnel sees
+                  // surfaced → previewed → clicked / dismissed. Emit
+                  // failure is non-fatal.
+                  if (isHovered) {
+                    try {
+                      void emitBehaviorEvent({
+                        eventType: BehaviorEventType.CROSS_DOC_LINK_PREVIEWED,
+                        state: {
+                          document_id: h.documentId,
+                          reading_mode: null,
+                          trigger_chunk_id: h.chunkId ?? null,
+                        },
+                        action: {
+                          link_id: `${link.chunk_id}-${idx}`,
+                          target_document_id: link.target_document_id,
+                          target_chunk_id: link.chunk_id ?? null,
+                          pill_position: idx,
+                          hover_duration_ms: null,
+                        },
+                      });
+                    } catch {
+                      // swallow
+                    }
+                  }
                 }}
               />
             ))}

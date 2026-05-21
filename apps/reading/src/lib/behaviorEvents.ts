@@ -28,11 +28,14 @@ export const BehaviorEventType = {
   CROSS_DOC_LINK_SURFACED: "cross_doc_link_surfaced",
   CROSS_DOC_LINK_CLICKED: "cross_doc_link_clicked",
   CROSS_DOC_LINK_DISMISSED: "cross_doc_link_dismissed",
+  CROSS_DOC_LINK_PREVIEWED: "cross_doc_link_previewed", // v2 — SPR-07 hover funnel
   READING_MODE_TOGGLED: "reading_mode_toggled",
   DOCUMENT_OPENED: "document_opened",
   DOCUMENT_CLOSED: "document_closed",
+  DOCUMENT_IMPORTED: "document_imported", // v2 — SPR-06 universal-library import
   NOTEBOOK_BLOCK_DEMOTED: "notebook_block_demoted",
   NOTEBOOK_BLOCK_EDITED: "notebook_block_edited",
+  NOTEBOOK_BLOCK_PROMOTED: "notebook_block_promoted", // v2 — SPR-11 Tier-2 → Tier-3 promote
 } as const;
 
 export type BehaviorEventTypeValue =

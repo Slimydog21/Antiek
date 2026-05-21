@@ -33,18 +33,42 @@ Schemas referenced (one file per type, value = filename stem):
 - cross_doc_link_surfaced
 - cross_doc_link_clicked
 - cross_doc_link_dismissed
+- cross_doc_link_previewed  (added v2 — SPR-07 hover-preview signal)
 - reading_mode_toggled
 - document_opened
 - document_closed
+- document_imported  (added v2 — SPR-06 universal-library import success)
 - notebook_block_demoted
 - notebook_block_edited
+- notebook_block_promoted  (added v2 — SPR-11 Tier-2 → Tier-3 promote)
 
 Lineage
 -------
-The 16 types are exactly the closed set enumerated in
-``specs/wrestle-evolution/sprint-01-behavior-store.html`` M1. No
-deviations; rationale for any future addition lives in the handoff
-of the sprint that adds it.
+The original 16 types are the closed set enumerated in
+``specs/wrestle-evolution/sprint-01-behavior-store.html`` M1.
+
+Integration follow-up (taxonomy v2, 2026-05-22): three additional
+types were surfaced as cross-page references by SPR-06, SPR-07,
+SPR-11 spec pages but were not in SPR-01's original M1 list. Rather
+than have the surface call-sites leave TODOs at every emit point,
+we add the types here and bump ``BEHAVIOR_TAXONOMY_VERSION`` to 2.
+Each new type has a matching JSON Schema file in ``schemas/``.
+
+Rationale per addition:
+- ``document_imported``: SPR-06 M5. Distinct from ``document_opened``
+  because import is the first-touch event (substrate writes the row);
+  open is every subsequent traversal. The RL pipeline wants to
+  distinguish "user added this to their library" from "user opened
+  the doc they already had" — different reward-proxy implications.
+- ``cross_doc_link_previewed``: SPR-07 spec referenced this as the
+  hover-on-pill signal. SPR-07's agent emitted only surfaced/clicked/
+  dismissed and noted the absence honestly. Adding here closes the
+  funnel: surfaced (1 per highlight) → previewed (per pill hover) →
+  clicked / dismissed (terminal).
+- ``notebook_block_promoted``: SPR-11 M2. Distinct from any existing
+  block-lifecycle event because promotion is cross-tier (Tier-2 →
+  Tier-3) and signals operator-curated theme membership — a far
+  stronger reward signal than demote/edit.
 """
 
 from __future__ import annotations
@@ -56,10 +80,14 @@ from functools import lru_cache
 from typing import Any, Final
 
 
-BEHAVIOR_TAXONOMY_VERSION: Final[int] = 1
+BEHAVIOR_TAXONOMY_VERSION: Final[int] = 2
 """Bump when the taxonomy expands or a schema file changes shape.
 Stamped into ``consent_version`` defaults and into per-row metadata
-so downstream replays know which vocabulary applied."""
+so downstream replays know which vocabulary applied.
+
+v2 (2026-05-22, integration follow-up): added ``document_imported``,
+``cross_doc_link_previewed``, ``notebook_block_promoted``. See module
+docstring for rationale."""
 
 
 class BehaviorEventType(str, Enum):
@@ -89,15 +117,18 @@ class BehaviorEventType(str, Enum):
     CROSS_DOC_LINK_SURFACED = "cross_doc_link_surfaced"
     CROSS_DOC_LINK_CLICKED = "cross_doc_link_clicked"
     CROSS_DOC_LINK_DISMISSED = "cross_doc_link_dismissed"
+    CROSS_DOC_LINK_PREVIEWED = "cross_doc_link_previewed"  # v2
 
-    # ── Reading-mode + document lifecycle (SPR-04 / SPR-08) ──
+    # ── Reading-mode + document lifecycle (SPR-04 / SPR-06 / SPR-08) ──
     READING_MODE_TOGGLED = "reading_mode_toggled"
     DOCUMENT_OPENED = "document_opened"
     DOCUMENT_CLOSED = "document_closed"
+    DOCUMENT_IMPORTED = "document_imported"  # v2
 
-    # ── Notebook block lifecycle (SPR-08) ──
+    # ── Notebook block lifecycle (SPR-08 / SPR-11) ──
     NOTEBOOK_BLOCK_DEMOTED = "notebook_block_demoted"
     NOTEBOOK_BLOCK_EDITED = "notebook_block_edited"
+    NOTEBOOK_BLOCK_PROMOTED = "notebook_block_promoted"  # v2
 
 
 # Public alias used by callers that need to declare "any taxonomy
