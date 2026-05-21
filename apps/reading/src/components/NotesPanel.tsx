@@ -68,14 +68,14 @@ export default function NotesPanel({
   );
 
   return (
-    <div className="flex flex-col h-full bg-white border-l border-stone-200">
-      <div className="px-4 py-2 text-xs font-mono bg-stone-100 border-b border-stone-200 flex items-center justify-between">
-        <span className="text-stone-600">trajectory</span>
+    <div className="flex flex-col h-full bg-ice-0 dark:bg-charcoal-2 border-l border-rule dark:border-charcoal-1">
+      <div className="px-4 py-2 text-xs font-mono bg-ice-3 dark:bg-charcoal-1 border-b border-rule dark:border-charcoal-1 flex items-center justify-between">
+        <span className="text-ink-soft dark:text-starlight">trajectory</span>
         <StatusBadge status={status} reconnects={reconnects} />
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto px-3 py-3">
         {events.length === 0 ? (
-          <div className="text-sm text-stone-400 font-mono">
+          <div className="text-sm text-ink-mute dark:text-moonlight font-mono">
             no events yet — load a PDF, then ask or highlight.
           </div>
         ) : (
@@ -257,14 +257,14 @@ function UserBubble({
     >
       <div className="max-w-[85%] bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
         <div className="text-[10px] font-mono text-blue-700 mb-0.5">{label}</div>
-        <p className="text-sm text-stone-900 whitespace-pre-wrap">{text}</p>
+        <p className="text-sm text-ink dark:text-bright whitespace-pre-wrap">{text}</p>
         {subline && (
-          <div className="mt-1 text-[10px] font-mono text-stone-500 italic">
+          <div className="mt-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight italic">
             {subline}
           </div>
         )}
         {isPending && (
-          <div className="mt-1 text-[10px] font-mono text-amber-700">
+          <div className="mt-1 text-[10px] font-mono text-sun-deep dark:text-sun">
             ⏳ waiting for synthesizer…
           </div>
         )}
@@ -294,12 +294,12 @@ function AssistantClaimsBubble({
       id={`event-row-${eventId}`}
       className="flex flex-col items-start gap-1 scroll-mt-4 transition-shadow rounded-md"
     >
-      <div className="text-[10px] font-mono text-stone-500">
+      <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
         synthesizer · {payload.claims.length} claim
         {payload.claims.length === 1 ? "" : "s"} · {payload.token_count} tok
       </div>
       {payload.rendered_text && (
-        <div className="max-w-[90%] text-sm text-stone-700 italic bg-stone-50 border border-stone-200 rounded-md px-3 py-2">
+        <div className="max-w-[90%] text-sm text-ink dark:text-bright italic bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
           {payload.rendered_text}
         </div>
       )}
@@ -332,7 +332,7 @@ function SystemRow({
   text: string;
   tone?: "muted";
 }) {
-  const color = tone === "muted" ? "text-stone-400" : "text-stone-600";
+  const color = tone === "muted" ? "text-ink-mute dark:text-moonlight" : "text-ink-soft dark:text-starlight";
   return (
     <li
       id={`event-row-${eventId}`}
@@ -360,7 +360,7 @@ function EventMeta({
 }) {
   return (
     <div
-      className={`text-[9px] font-mono text-stone-400 ${
+      className={`text-[9px] font-mono text-ink-mute dark:text-moonlight ${
         inline ? "ml-5" : ""
       } ${align === "right" ? "self-end" : "self-start"}`}
     >
@@ -385,14 +385,14 @@ function StatusBadge({
     status === "open"
       ? "bg-emerald-500"
       : status === "connecting"
-      ? "bg-amber-500"
+      ? "bg-sun/100"
       : "bg-red-500";
   return (
-    <span className="inline-flex items-center gap-1.5 text-stone-700">
+    <span className="inline-flex items-center gap-1.5 text-ink dark:text-bright">
       <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
       <span>{status}</span>
       {reconnects > 0 && (
-        <span className="text-stone-400">
+        <span className="text-ink-mute dark:text-moonlight">
           · {reconnects} reconnect{reconnects === 1 ? "" : "s"}
         </span>
       )}

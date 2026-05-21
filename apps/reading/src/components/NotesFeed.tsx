@@ -49,16 +49,16 @@ export default function NotesFeed({ events, onCiteJump }: NotesFeedProps) {
   }, [notes.length]);
 
   return (
-    <div className="flex flex-col h-full bg-white border-l border-stone-200">
-      <div className="px-4 py-2 text-xs font-mono bg-stone-100 border-b border-stone-200 flex items-center justify-between">
-        <span className="text-stone-600">notes</span>
-        <span className="text-stone-500">
+    <div className="flex flex-col h-full bg-ice-0 dark:bg-charcoal-2 border-l border-rule dark:border-charcoal-1">
+      <div className="px-4 py-2 text-xs font-mono bg-ice-3 dark:bg-charcoal-1 border-b border-rule dark:border-charcoal-1 flex items-center justify-between">
+        <span className="text-ink-soft dark:text-starlight">notes</span>
+        <span className="text-shadow-1 dark:text-moonlight">
           {notes.length} insight{notes.length === 1 ? "" : "s"}
         </span>
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto px-3 py-3">
         {notes.length === 0 ? (
-          <div className="text-sm text-stone-400 font-mono leading-relaxed">
+          <div className="text-sm text-ink-mute dark:text-moonlight font-mono leading-relaxed">
             <p>no notes yet.</p>
             <p className="mt-1">
               the background note-taker fires every few wrestling events;
@@ -90,9 +90,9 @@ function NoteCard({
 }) {
   const p = event.payload;
   return (
-    <li className="border border-amber-200 rounded-md bg-amber-50/30 px-3 py-2.5 flex flex-col gap-1.5">
+    <li className="border border-amber-200 rounded-md bg-sun/10/30 px-3 py-2.5 flex flex-col gap-1.5">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm text-stone-900 leading-snug flex-1">
+        <p className="text-sm text-ink dark:text-bright leading-snug flex-1">
           {p.note_text}
         </p>
         {/* Server-side default is "unknown"; the TS field type is
@@ -103,14 +103,14 @@ function NoteCard({
       </div>
       {p.source_event_ids.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-0.5">
-          <span className="text-[10px] font-mono text-stone-500 mr-0.5">
+          <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight mr-0.5">
             from:
           </span>
           {p.source_event_ids.map((eid) => (
             <button
               key={eid}
               onClick={() => onCiteJump?.(eid)}
-              className="text-[10px] font-mono text-stone-600 bg-stone-100 hover:bg-stone-200 px-1.5 py-0.5 rounded transition-colors"
+              className="text-[10px] font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
               title={`jump to ${eid}`}
             >
               ↩ {shortenEventId(eid)}
@@ -118,7 +118,7 @@ function NoteCard({
           ))}
         </div>
       )}
-      <div className="text-[9px] font-mono text-stone-400 pt-0.5">
+      <div className="text-[9px] font-mono text-ink-mute dark:text-moonlight pt-0.5">
         {shortenEventId(event.event_id)}
         {event.document_id && (
           <>
@@ -134,9 +134,9 @@ function NoteCard({
 function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   const styles: Record<ConfidenceLevel, string> = {
     high: "bg-emerald-100 text-emerald-800",
-    moderate: "bg-amber-100 text-amber-800",
+    moderate: "bg-sun/20 text-amber-800",
     low: "bg-orange-100 text-orange-800",
-    unknown: "bg-stone-200 text-stone-600",
+    unknown: "bg-ice-4 dark:bg-charcoal-1 text-ink-soft dark:text-starlight",
   };
   return (
     <span

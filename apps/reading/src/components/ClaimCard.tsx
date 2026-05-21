@@ -90,9 +90,9 @@ export default function ClaimCard({
   }
 
   return (
-    <div className="border border-stone-200 rounded-md bg-white px-3 py-2.5 flex flex-col gap-1.5">
+    <div className="border border-rule dark:border-charcoal-1 rounded-md bg-ice-0 dark:bg-charcoal-2 px-3 py-2.5 flex flex-col gap-1.5">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm text-stone-900 leading-snug flex-1">
+        <p className="text-sm text-ink dark:text-bright leading-snug flex-1">
           {claim.text}
         </p>
         <ConfidenceBadge level={claim.confidence} />
@@ -102,7 +102,7 @@ export default function ClaimCard({
           {claim.attribution_region_ids.map((rid) => (
             <span
               key={rid}
-              className="text-[10px] font-mono text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded"
+              className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded"
               title={rid}
             >
               ↳ {shortenRegionId(rid)}
@@ -114,12 +114,12 @@ export default function ClaimCard({
         <button
           onClick={onChallenge}
           disabled={busy || challenged}
-          className="text-[11px] px-2 py-0.5 rounded border border-stone-300 text-stone-700 hover:bg-stone-100 disabled:text-stone-400 disabled:cursor-not-allowed transition-colors"
+          className="text-[11px] px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-ice-3 dark:bg-charcoal-1 disabled:text-ink-mute dark:text-moonlight disabled:cursor-not-allowed transition-colors"
         >
           {challenged ? "challenged" : busy ? "…" : "challenge this claim"}
         </button>
         {error && (
-          <span className="text-[10px] font-mono text-red-700">{error}</span>
+          <span className="text-[10px] font-mono text-emperor">{error}</span>
         )}
       </div>
       {grounding && (
@@ -148,7 +148,7 @@ function GroundingBadge({
 }) {
   if (grounding.result === "pending") {
     return (
-      <div className="text-[11px] font-mono text-stone-500 italic flex items-center gap-1.5 mt-0.5">
+      <div className="text-[11px] font-mono text-shadow-1 dark:text-moonlight italic flex items-center gap-1.5 mt-0.5">
         <span className="inline-block h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
         grounding check in flight…
       </div>
@@ -160,7 +160,7 @@ function GroundingBadge({
     return (
       <div className="text-[11px] font-mono flex items-center gap-1.5 mt-0.5 text-emerald-700">
         <span>✓ grounded</span>
-        <span className="text-stone-500">·</span>
+        <span className="text-shadow-1 dark:text-moonlight">·</span>
         <button
           onClick={() => onLocateRegion?.(grounding.located_region_id)}
           className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 transition-colors text-emerald-800"
@@ -168,7 +168,7 @@ function GroundingBadge({
         >
           ↪ {shortenRegionId(grounding.located_region_id)}
         </button>
-        <span className="text-stone-400">· {conf}%</span>
+        <span className="text-ink-mute dark:text-moonlight">· {conf}%</span>
       </div>
     );
   }
@@ -176,8 +176,8 @@ function GroundingBadge({
   // result === "failed"
   const tone = grounding.reason === "ambiguous" ? "amber" : "red";
   const reasonStyles: Record<typeof tone, string> = {
-    red: "text-red-700 bg-red-50 border-red-200",
-    amber: "text-amber-700 bg-amber-50 border-amber-200",
+    red: "text-emperor bg-red-50 border-red-200",
+    amber: "text-sun-deep dark:text-sun bg-sun/10 border-amber-200",
   };
   const reasonLabels: Record<typeof grounding.reason, string> = {
     absent_from_source: "not in source",
@@ -187,12 +187,12 @@ function GroundingBadge({
   };
   return (
     <div className="text-[11px] font-mono flex items-center gap-1.5 mt-0.5">
-      <span className={tone === "red" ? "text-red-700" : "text-amber-700"}>⚠ not located</span>
-      <span className="text-stone-500">·</span>
+      <span className={tone === "red" ? "text-emperor" : "text-sun-deep dark:text-sun"}>⚠ not located</span>
+      <span className="text-shadow-1 dark:text-moonlight">·</span>
       <span className={`px-1.5 py-0.5 rounded border ${reasonStyles[tone]}`}>
         {reasonLabels[grounding.reason]}
       </span>
-      <span className="text-stone-400">
+      <span className="text-ink-mute dark:text-moonlight">
         · searched {grounding.searched_regions.length} region
         {grounding.searched_regions.length === 1 ? "" : "s"}
       </span>
@@ -203,9 +203,9 @@ function GroundingBadge({
 function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
   const styles: Record<ConfidenceLevel, string> = {
     high: "bg-emerald-100 text-emerald-800",
-    moderate: "bg-amber-100 text-amber-800",
+    moderate: "bg-sun/20 text-amber-800",
     low: "bg-orange-100 text-orange-800",
-    unknown: "bg-stone-200 text-stone-600",
+    unknown: "bg-ice-4 dark:bg-charcoal-1 text-ink-soft dark:text-starlight",
   };
   return (
     <span

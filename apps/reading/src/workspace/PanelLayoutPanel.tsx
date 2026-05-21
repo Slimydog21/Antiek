@@ -1,9 +1,45 @@
 import { motion } from "framer-motion";
-import { Suspense, useCallback } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
 import { useWorkspace } from "./WorkspaceStore";
+
+/**
+ * Hook: subscribe to a panel's actual rendered size, debounced so it
+ * only emits after the operator stops resizing for `debounceMs`.
+ *
+ * Used by heavy-embed children (pdf.js, canvas-renderers) that thrash
+ * if they re-rasterise on every animation frame of a resize gesture.
+ * During the gesture they keep their previous render; a single
+ * re-render fires once size settles.
+ *
+ *   const [ref, size] = usePanelSizeStable();
+ *   // attach `ref` to a stable outer container; rerender on `size`.
+ */
+export function usePanelSizeStable<T extends HTMLElement = HTMLDivElement>(
+  debounceMs = 120,
+): [RefObject<T | null>, { w: number; h: number } | null] {
+  const ref = useRef<T | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setSize({ w: r.width, h: r.height }), debounceMs);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (timer) clearTimeout(timer);
+    };
+  }, [debounceMs]);
+  return [ref, size];
+}
 
 /**
  * PanelLayoutPanel — renders one panel descriptor.
