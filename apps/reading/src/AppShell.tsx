@@ -6,6 +6,7 @@ import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
+import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
 
 /**
  * AppShell — the top-level chrome for the redesigned UI.
@@ -51,6 +52,12 @@ export function AppShell({ children }: Props) {
   // is editable, so the operator can still type freely.
   const navigate = useNavigate();
   useWorkspaceShortcuts(navigate);
+
+  // S9 — hydrate the workspace from localStorage + URL ?ws= on every
+  // route + investigation change. Layering order: global → route →
+  // investigation → URL (one-shot). Writes the per-route /
+  // per-investigation snapshot back to localStorage debounced at 250 ms.
+  useWorkspaceHydration();
 
   return (
     <div className="h-screen w-screen flex bg-ice-2 dark:bg-space-2 text-ink dark:text-bright overflow-hidden">

@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import AppShell from "./AppShell";
+import PanelWindowApp from "./PanelWindowApp";
 import AISidecar from "./components/AISidecar";
 import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
@@ -116,6 +117,10 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/trust" element={<TrustCenter />} />
+        {/* S9 — popout panel windows render outside AppShell. The
+            popout app handles its own chrome; no NavRail/Topbar/
+            PanelLayout wrapping. */}
+        <Route path="/_panel/:panelId" element={<PanelWindowApp />} />
         <Route
           path="*"
           element={

@@ -2,9 +2,9 @@ import { useCallback, useRef } from "react";
 
 import LemonButton from "../components/lemon/LemonButton";
 import { LemonDropdown, LemonMenuItem } from "../components/lemon/LemonDropdown";
-import { toast } from "../components/lemon/LemonToast";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { openPopoutFor } from "./popout";
 import type { PanelMode } from "./panel.types";
 
 /**
@@ -106,7 +106,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
 
   const setMode = (mode: PanelMode) => {
     if (mode === "popout") {
-      toast.info("Popout lands in S9 — stubbed for now.");
+      openPopoutFor(id);
       return;
     }
     actions().setMode(id, mode);
@@ -216,7 +216,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                     close();
                   }}
                 >
-                  Pop out (S9)
+                  Pop out window
                 </LemonMenuItem>
                 <div className="my-1 border-t border-rule dark:border-charcoal-1" />
                 <LemonMenuItem
