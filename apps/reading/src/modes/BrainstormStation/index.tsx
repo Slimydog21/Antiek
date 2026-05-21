@@ -6,7 +6,6 @@ import {
   listWatchForLater,
   type ParkedQuestionEntry,
 } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 
@@ -76,13 +75,6 @@ export default function BrainstormStation() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar>
-        <span className="text-xs text-shadow-1 dark:text-moonlight">
-          {loading
-            ? "loading…"
-            : `${parked.length} parked ${parked.length === 1 ? "question" : "questions"}`}
-        </span>
-      </HeaderBar>
       <div className="grid grid-cols-[340px_1fr_320px] flex-1 min-h-0">
         <aside className="border-r border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 overflow-y-auto">
           <WatchForLaterFolder

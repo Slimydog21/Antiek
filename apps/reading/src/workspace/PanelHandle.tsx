@@ -4,6 +4,7 @@ import LemonButton from "../components/lemon/LemonButton";
 import { LemonDropdown, LemonMenuItem } from "../components/lemon/LemonDropdown";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { clampRectToViewport } from "./panelLayoutLogic";
 import { openPopoutFor } from "./popout";
 import type { PanelMode } from "./panel.types";
 
@@ -57,7 +58,19 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
       const s = actions();
       const p = s.panels[id];
       if (!p) return;
-      s.setRect(id, { x: p.rect.x + dx, y: p.rect.y + dy });
+      // Clamp the new position to the viewport so the panel can't be
+      // dragged completely off-screen. `panelLayoutLogic.clampRectToViewport`
+      // keeps at least 80px of the panel reachable on every side
+      // (S3 acceptance criterion).
+      const viewport = {
+        width: typeof window !== "undefined" ? window.innerWidth : 1440,
+        height: typeof window !== "undefined" ? window.innerHeight : 900,
+      };
+      const clamped = clampRectToViewport(
+        { ...p.rect, x: p.rect.x + dx, y: p.rect.y + dy },
+        viewport,
+      );
+      s.setRect(id, { x: clamped.x, y: clamped.y });
     },
     [id, actions],
   );
@@ -175,6 +188,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
               <>
                 <LemonMenuItem
                   icon="◧"
+                  hint="⌘B"
                   onClick={() => {
                     setMode("docked-left");
                     close();
@@ -221,6 +235,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 <div className="my-1 border-t border-rule dark:border-charcoal-1" />
                 <LemonMenuItem
                   icon="✕"
+                  hint="⌘W"
                   onClick={() => {
                     actions().close(id);
                     close();

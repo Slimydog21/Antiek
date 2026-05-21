@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 
 /**
  * Outcomes surface (master-spec §13.8 + Phase 8 input).
@@ -119,7 +118,6 @@ export default function Outcomes() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">

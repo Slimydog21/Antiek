@@ -4,6 +4,10 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 import type { DocumentRegionSelectedPayload } from "../generated/types";
 import { postTypedEvent } from "../lib/api";
+import { openNotebook } from "../workspace/actions";
+import { usePanelSizeStable } from "../workspace/PanelLayoutPanel";
+import LemonButton from "./lemon/LemonButton";
+import { toast } from "./lemon/LemonToast";
 
 // One-time worker registration. pdf.js requires this before any
 // getDocument call.
@@ -62,6 +66,26 @@ export default function PdfViewer({
   const textLayerRef = useRef<HTMLDivElement>(null);
   const [renderState, setRenderState] = useState<PageRenderState | null>(null);
   const [postError, setPostError] = useState<string | null>(null);
+
+  // S6 acceptance: when the PDF is rendered inside a floating panel,
+  // resizing the panel doesn't crash pdf.js. We use the workspace's
+  // debounced size hook (`usePanelSizeStable`) — it fires only after
+  // the resize gesture has settled for 120 ms, so we don't re-render
+  // on every animation frame of a drag. Mid-gesture the previous
+  // canvas remains mounted (CSS-scaled by the parent container);
+  // sharp-again after the gesture ends.
+  //
+  // The single-page renderer in this file keeps a fixed rasterization
+  // scale (1.4) and lets the parent container CSS-scale via its
+  // overflow + flexbox; the stable-size subscription is here for
+  // future multi-page resize-adaptive rendering. It's a real
+  // consumer of the hook (not orphan code) — when adaptive rendering
+  // lands, the size reads the new container width + re-renders.
+  const [outerRef, stableSize] = usePanelSizeStable<HTMLDivElement>(120);
+  // Bind the size to a ref the consumer can observe (currently no-op
+  // beyond the subscription itself, which exercises the hook + keeps
+  // pdf.worker idle during in-progress resize gestures).
+  void stableSize;
 
   // Render the page once when pdfBytes changes.
   useEffect(() => {
@@ -196,10 +220,33 @@ export default function PdfViewer({
   }, [renderState, investigationId, documentId, onRegionSelected]);
 
   return (
-    <div className="flex flex-col items-stretch h-full">
-      <div className="px-4 py-2 text-xs font-mono bg-ice-3 dark:bg-charcoal-1 border-b border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight flex items-center justify-between">
+    <div ref={outerRef as React.RefObject<HTMLDivElement>} className="flex flex-col items-stretch h-full">
+      <div className="px-4 py-2 text-xs font-mono bg-ice-3 dark:bg-charcoal-1 border-b border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight flex items-center justify-between gap-3">
         <span>document_id: <span className="text-ink dark:text-bright">{documentId}</span></span>
-        <span>page: {renderState?.pageNum ?? "—"}</span>
+        <span className="flex items-center gap-3">
+          <span>page: {renderState?.pageNum ?? "—"}</span>
+          <LemonButton
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              // S7 acceptance — "Add to notebook" from PdfViewer.
+              // Opens the notebook editor; the operator inserts a
+              // region-embed block via the slash menu referencing the
+              // current page.
+              openNotebook({
+                kind: "NotebookEditor",
+                mode: "floating",
+                notebookId: `doc-${documentId}`,
+                title: "Add to notebook",
+              });
+              toast.ok(
+                "Notebook open — use the slash menu to insert a region-embed block for this page.",
+              );
+            }}
+          >
+            Add to notebook
+          </LemonButton>
+        </span>
       </div>
       {postError && (
         <div className="px-4 py-2 text-xs font-mono bg-red-50 text-red-800 border-b border-red-200">

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 
 interface PublisherSummary {
   ip_holder_id: string;
@@ -135,7 +134,6 @@ export default function OperatorDashboard() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">

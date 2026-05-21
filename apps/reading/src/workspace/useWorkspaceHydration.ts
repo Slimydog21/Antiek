@@ -58,6 +58,16 @@ export function useWorkspaceHydration() {
     // the partially-applied state to localStorage.
     disablePersistence();
 
+    // S5 acceptance: pinned panels survive cross-route navigation.
+    // Capture pinned panels from the prior scope BEFORE we overwrite.
+    // Their descriptors carry forward into the new scope's snapshot
+    // (with mode/zIndex preserved); the persistence subscriber writes
+    // them back into the new scope on next tick.
+    const priorState = useWorkspace.getState();
+    const pinnedCarry = Object.values(priorState.panels).filter(
+      (p) => p.pinned,
+    );
+
     let next = { ...EMPTY_SNAPSHOT };
 
     // 1. global
@@ -79,6 +89,34 @@ export function useWorkspaceHydration() {
     if (urlSnap) {
       next = applyOver(next, urlSnap);
       clearWsFromUrl();
+    }
+
+    // 5. Pinned-carry: any pinned panel from the prior scope that
+    // isn't already in `next.panels` rides along into the new scope.
+    // Pinned panels with the same id in the new scope keep the new
+    // scope's descriptor (operator's most recent positioning wins).
+    for (const p of pinnedCarry) {
+      if (!next.panels[p.id]) {
+        next.panels[p.id] = p;
+        if (p.mode === "docked-left") {
+          if (!next.dockLeftIds.includes(p.id)) {
+            next.dockLeftIds = [...next.dockLeftIds, p.id];
+          }
+        } else if (p.mode === "docked-right") {
+          if (!next.dockRightIds.includes(p.id)) {
+            next.dockRightIds = [...next.dockRightIds, p.id];
+          }
+        } else if (p.mode === "docked-bottom") {
+          if (!next.dockBottomIds.includes(p.id)) {
+            next.dockBottomIds = [...next.dockBottomIds, p.id];
+          }
+        } else if (p.mode === "floating") {
+          if (!next.floatingIds.includes(p.id)) {
+            next.floatingIds = [...next.floatingIds, p.id];
+          }
+          next.zCounter = Math.max(next.zCounter, p.zIndex);
+        }
+      }
     }
 
     // Apply everything in one set

@@ -5,7 +5,6 @@ import {
   type IngestSourceResponse,
   type SourceKind,
 } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 
 type Status = "idle" | "ingesting" | "done";
 
@@ -143,7 +142,6 @@ export default function Sources() {
 
   return (
     <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
           <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">

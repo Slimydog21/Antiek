@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 
 /**
  * Operator-facing outcomes audit surface (master-spec §13.8).
@@ -58,7 +57,6 @@ export default function OutcomesIndex() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">

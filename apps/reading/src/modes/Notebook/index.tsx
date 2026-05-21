@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-
-import HeaderBar from "../shared/HeaderBar";
 import {
   appendNotebookBlock,
   deleteNotebookBlock,
@@ -126,18 +124,6 @@ export default function Notebook() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar>
-        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          notebook: <span className="text-ink dark:text-bright">{notebookId}</span>
-          {notebook && (
-            <span className="ml-3 text-ink-mute dark:text-moonlight">
-              {notebook.content_class === "user_public_contribution"
-                ? "public"
-                : "private"}
-            </span>
-          )}
-        </span>
-      </HeaderBar>
       <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {loading && (
           <div className="px-8 py-6 text-sm text-shadow-1 dark:text-moonlight">Loading notebook…</div>
@@ -162,7 +148,6 @@ export default function Notebook() {
 function NotebookEmpty() {
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 flex items-center justify-center bg-ice-0 dark:bg-charcoal-2 px-8 py-12">
         <div className="max-w-md text-center space-y-3">
           <h2 className="text-lg font-serif text-ink dark:text-bright">Notebook</h2>

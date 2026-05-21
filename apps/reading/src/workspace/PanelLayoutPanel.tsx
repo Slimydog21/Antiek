@@ -73,6 +73,27 @@ export function PanelLayoutPanel({ id }: Props) {
     if (panel && panel.mode === "floating") bringToFront(id);
   }, [panel, id, bringToFront]);
 
+  // S3 acceptance: ESC closes the focused floating panel.
+  // Only listens when this panel is the focused-floating one. Ignores
+  // ESC while focus is inside an editable element so the operator can
+  // still use Escape to cancel inline edits.
+  useEffect(() => {
+    if (!panel || panel.mode !== "floating" || !isFocused) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return;
+        if (t.isContentEditable) return;
+      }
+      e.preventDefault();
+      useWorkspace.getState().close(id);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panel, isFocused, id]);
+
   if (!panel) return null;
   const Renderer = PanelRegistry[panel.kind];
 

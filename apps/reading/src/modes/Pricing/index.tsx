@@ -1,7 +1,5 @@
 import { useMemo, useState } from "react";
 
-import HeaderBar from "../shared/HeaderBar";
-
 /**
  * Pricing surface (master-spec §13.5 + PostHog Wedge 6 template,
  * §5.6 PostHog design philosophy).
@@ -39,7 +37,6 @@ export default function PricingPage() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
           <header className="space-y-3">

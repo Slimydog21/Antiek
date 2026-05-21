@@ -1,6 +1,9 @@
 import { useState } from "react";
 
+import LemonButton from "../../components/lemon/LemonButton";
+import { toast } from "../../components/lemon/LemonToast";
 import type { ParsedClaim, ParsedSynthesis, Recommendation } from "../../lib/synthesisParser";
+import { openNotebook } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
 /**
@@ -46,6 +49,37 @@ export default function MasterMdViewer({
                 </span>
               </>
             )}
+            <span className="ml-auto">
+              <LemonButton
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  // S7 acceptance — "Add to notebook" from MasterMdViewer.
+                  // Opens the TipTap notebook editor as a floating panel
+                  // pre-seeded with a master-section block referencing
+                  // this synthesis. The block resolves the live synthesis
+                  // at render time per architecture_notes §13.
+                  // Derive a stable notebook id from the question so
+                  // re-opening from the same synthesis focuses the
+                  // existing notebook rather than creating a duplicate.
+                  const nbId =
+                    "synthesis-" +
+                    (synthesis.question ?? "untitled")
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]+/g, "-")
+                      .slice(0, 32);
+                  openNotebook({
+                    kind: "NotebookEditor",
+                    mode: "floating",
+                    notebookId: nbId,
+                    title: "Add to notebook",
+                  });
+                  toast.ok("Notebook open — paste the synthesis-section block via the slash menu.");
+                }}
+              >
+                Add to notebook
+              </LemonButton>
+            </span>
           </div>
         </header>
 

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 
 /**
  * Creator Payouts — Sprint 23-24 user-facing self-service view.
@@ -80,7 +79,6 @@ export default function CreatorPayouts() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-10 space-y-10">
           <header className="space-y-3">

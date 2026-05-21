@@ -118,6 +118,25 @@ export default function ClaimCard({
         >
           {challenged ? "challenged" : busy ? "…" : "challenge this claim"}
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            // S7 acceptance — "Add to notebook" from ClaimCard.
+            // Lazy-import the workspace action so the bundle doesn't
+            // bring TipTap into the main chunk via ClaimCard.
+            import("../workspace/actions").then(({ openNotebook }) => {
+              openNotebook({
+                kind: "NotebookEditor",
+                mode: "floating",
+                notebookId: `claim-${claim.claim_id}`,
+                title: "Add to notebook",
+              });
+            });
+          }}
+          className="text-[11px] px-2 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
+        >
+          add to notebook
+        </button>
         {error && (
           <span className="text-[10px] font-mono text-emperor">{error}</span>
         )}

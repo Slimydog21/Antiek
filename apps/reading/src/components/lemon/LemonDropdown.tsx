@@ -79,16 +79,23 @@ export function LemonDropdown({
   );
 }
 
-/** Convenience component for menu items — matches the visual language. */
+/** Convenience component for menu items — matches the visual language.
+ *
+ * S8 acceptance: every panel-system action should show its keyboard
+ * shortcut. The optional `hint` prop renders a kbd chip on the right
+ * (matching the LemonInput `kbdHint` styling), used by PanelHandle's
+ * Dock left / Dock right / Float / Close items. */
 export function LemonMenuItem({
   onClick,
   disabled,
   icon,
+  hint,
   children,
 }: {
   onClick: () => void;
   disabled?: boolean;
   icon?: ReactNode;
+  hint?: string;
   children: ReactNode;
 }) {
   return (
@@ -106,6 +113,11 @@ export function LemonMenuItem({
     >
       {icon && <span className="shrink-0 w-4 text-center">{icon}</span>}
       <span className="flex-1">{children}</span>
+      {hint && (
+        <kbd className="shrink-0 border border-ink dark:border-bright rounded px-1 text-[10px] font-mono leading-tight bg-ice-1 dark:bg-charcoal-1 text-ink dark:text-bright">
+          {hint}
+        </kbd>
+      )}
     </button>
   );
 }

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 
 /**
  * Marketplace Metrics — Sprint 25+ §2 dashboard.
@@ -109,7 +108,6 @@ export default function MarketplaceMetrics() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-10">
           <header className="space-y-3">

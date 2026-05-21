@@ -49,7 +49,7 @@ export const LemonInput = forwardRef<HTMLInputElement, LemonInputProps>(
           className={
             "border-2 border-ink dark:border-bright rounded px-1.5 text-[10.5px] font-mono " +
             "bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright " +
-            "shadow-[2px_2px_0_0_#0F1419] dark:shadow-[2px_2px_0_0_#8A7300]"
+            "shadow-z1 dark:shadow-z1-night"
           }
         >
           {kbdHint}

@@ -3,7 +3,6 @@ import { useParams } from "react-router-dom";
 
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
 import { apiFetch } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 
 /**
  * Loop 4 interview surface (master-spec §11.5 + integration_autoresearch §B).
@@ -119,7 +118,6 @@ export default function InterviewMode() {
 
   return (
     <div className="flex flex-col h-screen">
-      <HeaderBar />
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">

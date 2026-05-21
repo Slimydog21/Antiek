@@ -31,8 +31,7 @@ export function LemonTag({
       className={
         "inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full " +
         "font-mono text-[11.5px] font-semibold " +
-        "border-edge border-sun shadow-[2px_2px_0_0_#0F1419] " +
-        "dark:shadow-[2px_2px_0_0_#8A7300] " +
+        "border-edge border-sun shadow-z1 dark:shadow-z1-night " +
         `${colourMap[colour]} ${className}`
       }
     >

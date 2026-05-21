@@ -1,0 +1,66 @@
+name: visualtest
+
+# S12 — Lost-Pixel as a CI blocker on the reading-app Storybook.
+#
+# Triggers when reading-app source or stories change. Blocks merge
+# until either:
+#   (a) every shot is within the 0.4 % per-shot threshold, OR
+#   (b) the PR commits the new baselines under
+#       apps/reading/.lostpixel/baseline/
+#
+# Local workflow: run `npm run visualtest:update` after a deliberate
+# visual change; commit the .png updates with the source diff.
+
+on:
+  pull_request:
+    paths:
+      - apps/reading/src/**
+      - apps/reading/.storybook/**
+      - apps/reading/lostpixel.config.ts
+      - apps/reading/tailwind.config.js
+      - apps/reading/.lostpixel/baseline/**
+      - .github/workflows/visualtest.yml
+  workflow_dispatch:
+
+concurrency:
+  group: visualtest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lostpixel:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/reading
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install reading-app deps
+        run: npm ci
+
+      - name: Install Playwright chromium (Lost-Pixel uses it)
+        run: node node_modules/playwright-core/cli.js install chromium --with-deps
+
+      - name: Build Storybook
+        run: npm run build-storybook
+
+      - name: Run Lost-Pixel against committed baselines
+        run: npx lost-pixel
+        # If the threshold fires, lost-pixel exits non-zero → job fails →
+        # PR cannot merge until baselines are updated.
+
+      - name: Upload diff artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lostpixel-diffs
+          path: |
+            apps/reading/.lostpixel/diff
+            apps/reading/.lostpixel/current
+          retention-days: 7

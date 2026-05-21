@@ -18,7 +18,6 @@ import {
   type ExportFormatName,
   type SectionResponse,
 } from "../../lib/api";
-import HeaderBar from "../shared/HeaderBar";
 import BlockPalette, {
   DRAG_MIME,
   type PaletteDragPayload,
@@ -59,7 +58,6 @@ const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
 export default function CreationStudio() {
   return (
     <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
-      <HeaderBar />
       <main className="flex-1 overflow-hidden">
         <div className="h-full max-w-7xl mx-auto px-6 py-6 grid grid-cols-[260px_1fr_280px] gap-6">
           <DeliverableSidebar />
