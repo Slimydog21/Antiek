@@ -4,6 +4,9 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 import type { DocumentRegionSelectedPayload } from "../generated/types";
 import { postTypedEvent } from "../lib/api";
+import Gutter, {
+  type ActiveHighlight,
+} from "../modes/WrestleApp/PdfViewer/Gutter";
 
 // One-time worker registration. pdf.js requires this before any
 // getDocument call.
@@ -60,8 +63,21 @@ export default function PdfViewer({
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
+  // SPR-07 M2: the relative-positioned container holds the canvas, the
+  // text layer, AND the gutter overlay. We use this ref to compute
+  // selection-rect coordinates in container-local space (the gutter
+  // sits absolutely positioned inside this container).
+  const pageContainerRef = useRef<HTMLDivElement>(null);
   const [renderState, setRenderState] = useState<PageRenderState | null>(null);
   const [postError, setPostError] = useState<string | null>(null);
+
+  // SPR-07 M2: active highlights — drives the gutter pill stack. We
+  // keep at most ONE active highlight at a time today (one selection
+  // per finalize); the Gutter is built to accept many, in case a
+  // future iteration tracks multiple selections (one per saved note).
+  const [activeHighlights, setActiveHighlights] = useState<ActiveHighlight[]>(
+    [],
+  );
 
   // Render the page once when pdfBytes changes.
   useEffect(() => {
@@ -193,7 +209,54 @@ export default function PdfViewer({
       const msg = err instanceof Error ? err.message : String(err);
       setPostError(msg);
     }
+
+    // SPR-07 M2: register the highlight with the Gutter overlay. The
+    // topPx is the selection's vertical position relative to the
+    // page container (which is the gutter's positioning parent). We
+    // replace the entire active set rather than append — selections
+    // are typically one-at-a-time and accumulating stale highlights
+    // creates visual clutter. The Gutter's dismiss-on-removal logic
+    // fires for the previously-active highlight via the rerender,
+    // so the funnel event lands honestly.
+    const container = pageContainerRef.current;
+    if (container) {
+      const containerRect = container.getBoundingClientRect();
+      const topPx = selRect.top - containerRect.top;
+      const newHighlight: ActiveHighlight = {
+        highlightId: regionId,
+        documentId,
+        page: renderState.pageNum,
+        bbox,
+        topPx,
+        selectedText: text,
+      };
+      setActiveHighlights([newHighlight]);
+    }
   }, [renderState, investigationId, documentId, onRegionSelected]);
+
+  // SPR-07 M2 acceptance: pills disappear on highlight clear.
+  // Document-level selectionchange triggers when the operator
+  // dismisses their selection (click elsewhere, escape, etc.).
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        // Defer the clear by a tick — the onMouseUp handler often
+        // fires AFTER a selection-collapse on a fresh click, so
+        // synchronous clearing would race the new highlight.
+        // The 50ms delay gives the new selection time to land.
+        window.setTimeout(() => {
+          const s = window.getSelection();
+          if (!s || s.isCollapsed) {
+            setActiveHighlights([]);
+          }
+        }, 50);
+      }
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () =>
+      document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
 
   return (
     <div className="flex flex-col items-stretch h-full">
@@ -210,9 +273,17 @@ export default function PdfViewer({
         className="flex-1 overflow-auto p-6 flex justify-center"
         onMouseUp={onMouseUp}
       >
-        <div className="relative shadow-md ring-1 ring-stone-200 bg-white">
+        <div
+          ref={pageContainerRef}
+          className="relative shadow-md ring-1 ring-stone-200 bg-white"
+        >
           <canvas ref={canvasRef} />
           <div ref={textLayerRef} className="pdf-text-layer" />
+          {/* SPR-07 M2: gutter overlay — pill stacks for any active
+              highlight. Positioned absolutely against this container,
+              so the topPx coordinates from getBoundingClientRect map
+              directly. */}
+          <Gutter highlights={activeHighlights} />
         </div>
       </div>
     </div>

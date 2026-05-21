@@ -61,11 +61,6 @@ from dataclasses import dataclass
 from typing import Any, Final, Literal, Optional, Sequence
 
 try:
-    from ..._reserved import _  # noqa: F401 — package-import placeholder
-except ImportError:
-    pass
-
-try:
     from substrate.graph.search import (
         EmbeddingModel,
         PRIVILEGED_POLICY_TAGS,
