@@ -127,10 +127,10 @@ export default function Notebook() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar>
-        <span className="text-xs font-mono text-stone-500">
-          notebook: <span className="text-stone-900">{notebookId}</span>
+        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+          notebook: <span className="text-ink dark:text-bright">{notebookId}</span>
           {notebook && (
-            <span className="ml-3 text-stone-400">
+            <span className="ml-3 text-ink-mute dark:text-moonlight">
               {notebook.content_class === "user_public_contribution"
                 ? "public"
                 : "private"}
@@ -138,12 +138,12 @@ export default function Notebook() {
           )}
         </span>
       </HeaderBar>
-      <main className="flex-1 min-h-0 bg-white overflow-y-auto">
+      <main className="flex-1 min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
         {loading && (
-          <div className="px-8 py-6 text-sm text-stone-500">Loading notebook…</div>
+          <div className="px-8 py-6 text-sm text-shadow-1 dark:text-moonlight">Loading notebook…</div>
         )}
         {error && (
-          <div className="px-8 py-6 text-sm text-red-700">{error}</div>
+          <div className="px-8 py-6 text-sm text-emperor">{error}</div>
         )}
         {notebook && (
           <NotebookCanvas
@@ -163,15 +163,15 @@ function NotebookEmpty() {
   return (
     <div className="flex flex-col h-screen">
       <HeaderBar />
-      <main className="flex-1 flex items-center justify-center bg-white px-8 py-12">
+      <main className="flex-1 flex items-center justify-center bg-ice-0 dark:bg-charcoal-2 px-8 py-12">
         <div className="max-w-md text-center space-y-3">
-          <h2 className="text-lg font-serif text-stone-900">Notebook</h2>
-          <p className="text-sm text-stone-600 leading-relaxed">
+          <h2 className="text-lg font-serif text-ink dark:text-bright">Notebook</h2>
+          <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
             Literate-analysis surface combining region selections,
             claim cards, emergent notes, cross-doc links, prose, and
             LaTeX. Per master-spec §4.2 Sprint 18-19 upgrade.
           </p>
-          <p className="text-xs text-stone-500 italic">
+          <p className="text-xs text-shadow-1 dark:text-moonlight italic">
             Notebook needs a notebook_id. Create one via
             POST /notebooks or open one at /notebook/&lt;id&gt;.
           </p>

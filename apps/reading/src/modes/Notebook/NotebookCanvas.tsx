@@ -36,10 +36,10 @@ export default function NotebookCanvas({
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-serif text-stone-900 leading-tight">
+        <h1 className="text-2xl font-serif text-ink dark:text-bright leading-tight">
           {notebook.title}
         </h1>
-        <p className="text-xs font-mono text-stone-500">
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           {blockCount} {blockCount === 1 ? "block" : "blocks"} ·{" "}
           updated {notebook.updated_at}
         </p>
@@ -90,7 +90,7 @@ function BlockOrEditor({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={Math.max(3, Math.min(12, draft.split("\n").length + 1))}
-          className="w-full text-base font-serif text-stone-900 border border-stone-200 rounded p-2 leading-relaxed"
+          className="w-full text-base font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 leading-relaxed"
         />
         <div className="flex gap-2 text-xs font-mono">
           <button
@@ -99,7 +99,7 @@ function BlockOrEditor({
               await onEditBlock(block.block_id, { text: draft });
               setEditing(false);
             }}
-            className="px-2 py-1 rounded-md bg-stone-900 text-white hover:bg-stone-800"
+            className="px-2 py-1 rounded-md bg-ink text-white hover:bg-shadow-2"
           >
             Save
           </button>
@@ -109,7 +109,7 @@ function BlockOrEditor({
               setDraft(String(block.content_json.text ?? ""));
               setEditing(false);
             }}
-            className="px-2 py-1 rounded-md border border-stone-200 text-stone-700 hover:bg-stone-50"
+            className="px-2 py-1 rounded-md border border-rule dark:border-charcoal-1 text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2"
           >
             Cancel
           </button>
@@ -159,7 +159,7 @@ function BlockControls({
             disabled={isFirst}
             title="Move up"
             onClick={() => void onMoveBlock(blockId, "up")}
-            className="w-6 h-6 rounded bg-white border border-stone-200 text-xs font-mono text-stone-700 hover:bg-stone-50 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ↑
           </button>
@@ -168,7 +168,7 @@ function BlockControls({
             disabled={isLast}
             title="Move down"
             onClick={() => void onMoveBlock(blockId, "down")}
-            className="w-6 h-6 rounded bg-white border border-stone-200 text-xs font-mono text-stone-700 hover:bg-stone-50 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ↓
           </button>
@@ -187,7 +187,7 @@ function BlockControls({
               void onDeleteBlock(blockId);
             }
           }}
-          className="w-6 h-6 rounded bg-white border border-stone-200 text-xs font-mono text-red-700 hover:bg-red-50"
+          className="w-6 h-6 rounded bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 text-xs font-mono text-emperor hover:bg-red-50"
         >
           ×
         </button>
@@ -200,7 +200,7 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
   switch (block.block_type) {
     case "prose":
       return (
-        <p className="text-base font-serif text-stone-900 leading-relaxed">
+        <p className="text-base font-serif text-ink dark:text-bright leading-relaxed">
           {String(block.content_json.text ?? "")}
         </p>
       );
@@ -241,13 +241,13 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
       );
     case "latex":
       return (
-        <pre className="text-sm font-mono bg-stone-50 border border-stone-200 rounded-md p-3 text-stone-700">
+        <pre className="text-sm font-mono bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-md p-3 text-ink dark:text-bright">
           {String(block.content_json.latex ?? "")}
         </pre>
       );
     case "image":
       return (
-        <figure className="border border-stone-200 rounded-md overflow-hidden">
+        <figure className="border border-rule dark:border-charcoal-1 rounded-md overflow-hidden">
           {block.content_json.url ? (
             <img
               src={String(block.content_json.url)}
@@ -259,7 +259,7 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
       );
     case "chat_exchange":
       return (
-        <blockquote className="border-l-4 border-stone-200 pl-4 py-1 text-sm text-stone-700">
+        <blockquote className="border-l-4 border-rule dark:border-charcoal-1 pl-4 py-1 text-sm text-ink dark:text-bright">
           {String(block.content_json.exchange ?? "")}
         </blockquote>
       );
@@ -273,7 +273,7 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
       );
     default:
       return (
-        <div className="text-xs font-mono text-stone-500 italic">
+        <div className="text-xs font-mono text-shadow-1 dark:text-moonlight italic">
           [unknown block_type: {block.block_type}]
         </div>
       );
@@ -283,15 +283,15 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
 function ClaimReferenceBlock({ claimId, text }: { claimId: string | null; text: string }) {
   if (!claimId) {
     return (
-      <div className="text-xs italic text-stone-500">
+      <div className="text-xs italic text-shadow-1 dark:text-moonlight">
         [tombstone: claim deleted; prior text: {text}]
       </div>
     );
   }
   return (
     <div className="border-l-2 border-emerald-300 pl-3 py-1">
-      <p className="text-sm text-stone-900 font-serif">{text || `(claim ${claimId})`}</p>
-      <p className="mt-1 text-xs font-mono text-stone-500">claim: {claimId}</p>
+      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(claim ${claimId})`}</p>
+      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">claim: {claimId}</p>
     </div>
   );
 }
@@ -299,26 +299,26 @@ function ClaimReferenceBlock({ claimId, text }: { claimId: string | null; text: 
 function NoteReferenceBlock({ noteId, text }: { noteId: string | null; text: string }) {
   if (!noteId) {
     return (
-      <div className="text-xs italic text-stone-500">
+      <div className="text-xs italic text-shadow-1 dark:text-moonlight">
         [tombstone: note deleted; prior text: {text}]
       </div>
     );
   }
   return (
     <div className="border-l-2 border-amber-300 pl-3 py-1">
-      <p className="text-sm text-stone-900 font-serif">{text || `(note ${noteId})`}</p>
-      <p className="mt-1 text-xs font-mono text-stone-500">note: {noteId}</p>
+      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(note ${noteId})`}</p>
+      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">note: {noteId}</p>
     </div>
   );
 }
 
 function RegionEmbedBlock({ regionId, excerpt }: { regionId: string | null; excerpt: string }) {
   return (
-    <div className="rounded-md bg-stone-50 border border-stone-200 px-3 py-2">
-      <p className="text-xs font-mono text-stone-500 mb-1">
+    <div className="rounded-md bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 px-3 py-2">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-1">
         region: {regionId ?? "(no ref)"}
       </p>
-      <p className="text-sm text-stone-800 font-serif italic">
+      <p className="text-sm text-ink dark:text-bright font-serif italic">
         {excerpt || "(no excerpt cached)"}
       </p>
     </div>
@@ -328,19 +328,19 @@ function RegionEmbedBlock({ regionId, excerpt }: { regionId: string | null; exce
 function QuestionCardBlock({ questionId, text }: { questionId: string | null; text: string }) {
   return (
     <div className="border-l-2 border-blue-300 pl-3 py-1">
-      <p className="text-sm text-stone-900 font-serif">{text || `(question ${questionId})`}</p>
-      <p className="mt-1 text-xs font-mono text-stone-500">open: {questionId}</p>
+      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(question ${questionId})`}</p>
+      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">open: {questionId}</p>
     </div>
   );
 }
 
 function MasterMdSectionBlock({ sectionId, heading }: { sectionId: string | null; heading: string }) {
   return (
-    <div className="border border-dashed border-stone-300 rounded-md px-3 py-2">
-      <p className="text-xs font-mono text-stone-500 mb-1">
+    <div className="border border-dashed border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-1">
         master.md section: {sectionId ?? "(no ref)"}
       </p>
-      <h3 className="text-base font-serif text-stone-900">
+      <h3 className="text-base font-serif text-ink dark:text-bright">
         {heading || "(section heading)"}
       </h3>
     </div>
@@ -353,8 +353,8 @@ function CrossDocLinkBlock({
   questionId,
 }: { fromDoc: string; toDoc: string; questionId: string }) {
   return (
-    <div className="rounded-md bg-stone-50 border border-stone-200 px-3 py-2">
-      <p className="text-xs font-mono text-stone-500">
+    <div className="rounded-md bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 px-3 py-2">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
         {fromDoc} → {toDoc} · question: {questionId}
       </p>
     </div>
@@ -430,12 +430,12 @@ function AppendProseAffordance({
       <button
         type="button"
         onClick={() => setPickerOpen((v) => !v)}
-        className="text-xs font-mono text-stone-500 hover:text-stone-900 underline-offset-2 hover:underline transition-colors"
+        className="text-xs font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright underline-offset-2 hover:underline transition-colors"
       >
         {pickerOpen ? "× close block picker" : "+ add block"}
       </button>
       {pickerOpen && (
-        <div className="border border-stone-200 rounded-md p-3 grid grid-cols-2 gap-2">
+        <div className="border border-rule dark:border-charcoal-1 rounded-md p-3 grid grid-cols-2 gap-2">
           <PickerButton label="Prose" onClick={appendProse} />
           <PickerButton label="Question card" onClick={appendQuestion} />
           <PickerButton label="LaTeX" onClick={appendLatex} />
@@ -455,7 +455,7 @@ function PickerButton({
     <button
       type="button"
       onClick={onClick}
-      className="px-3 py-1.5 rounded-md border border-stone-200 bg-white text-xs font-mono text-stone-700 hover:bg-stone-50 transition-colors text-left"
+      className="px-3 py-1.5 rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 text-xs font-mono text-ink dark:text-bright hover:bg-ice-1 dark:bg-charcoal-2 transition-colors text-left"
     >
       {label}
     </button>
