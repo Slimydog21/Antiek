@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { NavRail } from "./components/navigation/NavRail";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
 import { PanelLayout } from "./workspace/PanelLayout";
+import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 
 /**
  * AppShell — the top-level chrome for the redesigned UI.
@@ -43,6 +45,13 @@ type Props = {
 };
 
 export function AppShell({ children }: Props) {
+  // S8 — mount the keyboard shortcut handler once at the shell level.
+  // Lives here (not lower) so ⌘K, ⌘B, ⌘/, ⌘[, ⌘], G+I etc. fire from
+  // any route. The handler ignores key events when the active element
+  // is editable, so the operator can still type freely.
+  const navigate = useNavigate();
+  useWorkspaceShortcuts(navigate);
+
   return (
     <div className="h-screen w-screen flex bg-ice-2 dark:bg-space-2 text-ink dark:text-bright overflow-hidden">
       {/* Always-visible icon rail */}

@@ -347,6 +347,18 @@ export default function CommandPalette() {
   }, []);
 
   useEffect(() => {
+    // S8: the workspace shortcuts module (src/workspace/shortcuts.ts)
+    // owns the ⌘K binding now and dispatches "antiek:palette:toggle"
+    // so the Topbar search input click + the keyboard handler both
+    // reach the same code path. We also keep an in-component ⌘K
+    // fallback so the palette still works when AppShell isn't the
+    // ancestor (e.g. in Storybook stories rendered without AppShell).
+    const onToggle = () => setOpen((v) => !v);
+    window.addEventListener(
+      "antiek:palette:toggle" as keyof WindowEventMap,
+      onToggle as EventListener,
+    );
+
     const handler = (e: KeyboardEvent) => {
       const isToggle =
         (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
@@ -361,7 +373,14 @@ export default function CommandPalette() {
       }
     };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+
+    return () => {
+      window.removeEventListener(
+        "antiek:palette:toggle" as keyof WindowEventMap,
+        onToggle as EventListener,
+      );
+      window.removeEventListener("keydown", handler);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -413,14 +432,14 @@ export default function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-stone-900/40 flex items-start justify-center pt-24"
+      className="fixed inset-0 z-50 bg-ink/40 flex items-start justify-center pt-24"
       onClick={() => setOpen(false)}
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
     >
       <div
-        className="w-[640px] max-w-[90vw] bg-white border border-stone-200 rounded-lg shadow-2xl overflow-hidden"
+        className="w-[640px] max-w-[90vw] bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <input
@@ -433,11 +452,11 @@ export default function CommandPalette() {
           }}
           onKeyDown={onKeyDown}
           placeholder="Type a route, investigation, document, or notebook…"
-          className="w-full px-4 py-3 text-base font-serif text-stone-900 placeholder:text-stone-400 outline-none border-b border-stone-200"
+          className="w-full px-4 py-3 text-base font-serif text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none border-b border-rule dark:border-charcoal-1"
         />
         <ul className="max-h-[400px] overflow-y-auto">
           {ranked.length === 0 ? (
-            <li className="px-4 py-6 text-sm text-stone-500 italic">
+            <li className="px-4 py-6 text-sm text-shadow-1 dark:text-moonlight italic">
               No matches.
             </li>
           ) : (
@@ -447,25 +466,25 @@ export default function CommandPalette() {
                 onMouseEnter={() => setActiveIdx(idx)}
                 onClick={() => choose(e)}
                 className={`px-4 py-2.5 cursor-pointer flex items-center justify-between gap-3 ${
-                  idx === activeIdx ? "bg-stone-100" : ""
+                  idx === activeIdx ? "bg-ice-3 dark:bg-charcoal-1" : ""
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="text-sm text-stone-900 truncate font-serif">
+                  <p className="text-sm text-ink dark:text-bright truncate font-serif">
                     {e.title}
                   </p>
-                  <p className="text-xs text-stone-500 truncate">
+                  <p className="text-xs text-shadow-1 dark:text-moonlight truncate">
                     {e.subtitle}
                   </p>
                 </div>
-                <span className="text-[10px] uppercase tracking-wider font-mono text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded">
+                <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
                   {e.kind.replace("_", " ")}
                 </span>
               </li>
             ))
           )}
         </ul>
-        <footer className="px-4 py-2 border-t border-stone-200 bg-stone-50 text-[11px] font-mono text-stone-500 flex items-center justify-between">
+        <footer className="px-4 py-2 border-t border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight flex items-center justify-between">
           <span>↑↓ navigate · Enter select · Esc close</span>
           <span>⌘K toggle</span>
         </footer>

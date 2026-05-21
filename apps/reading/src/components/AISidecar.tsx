@@ -112,8 +112,22 @@ export default function AISidecar() {
         setOpen(false);
       }
     };
+    // S8: the workspace shortcuts module dispatches this when ⌘/ fires.
+    // Until AISidecar is refactored into a real panel kind, we listen
+    // for the event here and flip our own state.
+    const onExternalToggle = () => setOpen((v) => !v);
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener(
+      "antiek:aisidecar:toggle" as keyof WindowEventMap,
+      onExternalToggle as EventListener,
+    );
+    return () => {
+      window.removeEventListener("keydown", handler);
+      window.removeEventListener(
+        "antiek:aisidecar:toggle" as keyof WindowEventMap,
+        onExternalToggle as EventListener,
+      );
+    };
   }, [open]);
 
   useEffect(() => {
@@ -171,7 +185,7 @@ export default function AISidecar() {
 
   return (
     <aside
-      className={`fixed top-14 right-0 h-[calc(100vh-3.5rem)] z-30 border-l border-stone-200 bg-white transition-all ${
+      className={`fixed top-14 right-0 h-[calc(100vh-3.5rem)] z-30 border-l border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 transition-all ${
         open ? "w-[320px]" : "w-8"
       } overflow-hidden`}
       aria-label="AI sidecar"
@@ -179,7 +193,7 @@ export default function AISidecar() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-8 h-12 flex items-center justify-center text-stone-600 hover:bg-stone-100 absolute top-2 left-0"
+        className="w-8 h-12 flex items-center justify-center text-ink-soft dark:text-starlight hover:bg-ice-3 dark:bg-charcoal-1 absolute top-2 left-0"
         title="Toggle AI sidecar (⌘J)"
       >
         {open ? "›" : "‹"}
@@ -188,23 +202,23 @@ export default function AISidecar() {
       {open && (
         <div className="pl-8 pr-3 py-3 flex flex-col h-full gap-4 overflow-y-auto">
           <header className="space-y-1">
-            <p className="text-sm font-serif text-stone-900">AI sidecar</p>
-            <p className="text-[11px] font-mono text-stone-500">
+            <p className="text-sm font-serif text-ink dark:text-bright">AI sidecar</p>
+            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
               transparent · scoped to your session
             </p>
           </header>
 
           <section className="space-y-1">
-            <p className="text-xs font-mono text-stone-500 uppercase">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">
               Free-tier usage ({period})
             </p>
-            <div className="h-2 bg-stone-100 rounded overflow-hidden">
+            <div className="h-2 bg-ice-3 dark:bg-charcoal-1 rounded overflow-hidden">
               <div
-                className="h-full bg-stone-700"
+                className="h-full bg-ink dark:bg-bright"
                 style={{ width: `${freePct}%` }}
               />
             </div>
-            <p className="text-[11px] font-mono text-stone-500">
+            <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
               {usage
                 ? `${usage.free_tokens_consumed.toLocaleString()} / 5,000,000 tokens`
                 : "–"}
@@ -212,7 +226,7 @@ export default function AISidecar() {
           </section>
 
           <section className="space-y-2">
-            <p className="text-xs font-mono text-stone-500 uppercase">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">
               Thought partner
             </p>
             <textarea
@@ -221,22 +235,22 @@ export default function AISidecar() {
               onChange={(e) => setDraft(e.target.value)}
               placeholder="What's the question?"
               rows={3}
-              className="w-full text-sm font-serif text-stone-900 border border-stone-200 rounded p-2 resize-y"
+              className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y"
             />
             <button
               type="button"
               onClick={sendThoughtPartner}
               disabled={pending || !draft.trim()}
-              className="w-full px-3 py-1.5 rounded-md bg-stone-900 text-white text-xs font-medium hover:bg-stone-800 transition-colors disabled:opacity-50"
+              className="w-full px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
             >
               {pending ? "Thinking…" : "Send"}
             </button>
             {reply && (
-              <div className="border border-stone-200 rounded p-2 space-y-1 bg-stone-50">
-                <p className="text-[10px] font-mono uppercase tracking-wide text-stone-500">
+              <div className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1 bg-ice-1 dark:bg-charcoal-2">
+                <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
                   {reply.shape}
                 </p>
-                <p className="text-xs text-stone-800 whitespace-pre-wrap">
+                <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap">
                   {reply.text}
                 </p>
               </div>
@@ -244,11 +258,11 @@ export default function AISidecar() {
           </section>
 
           <section className="space-y-2">
-            <p className="text-xs font-mono text-stone-500 uppercase">
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">
               Recent dispatch
             </p>
             {recentCalls.length === 0 ? (
-              <p className="text-[11px] italic text-stone-500">
+              <p className="text-[11px] italic text-shadow-1 dark:text-moonlight">
                 No recent calls in this session.
               </p>
             ) : (
@@ -256,12 +270,12 @@ export default function AISidecar() {
                 {recentCalls.map((c) => (
                   <li
                     key={c.call_id}
-                    className="text-[11px] font-mono text-stone-700 flex items-center justify-between gap-2"
+                    className="text-[11px] font-mono text-ink dark:text-bright flex items-center justify-between gap-2"
                   >
                     <span className="truncate">
                       {c.tier} · {c.provider}/{c.model}
                     </span>
-                    <span className="text-stone-500 shrink-0">
+                    <span className="text-shadow-1 dark:text-moonlight shrink-0">
                       {c.latency_ms}ms
                       {c.fallback_reason ? " ⚠" : ""}
                     </span>
@@ -271,7 +285,7 @@ export default function AISidecar() {
             )}
           </section>
 
-          <footer className="mt-auto pt-3 border-t border-stone-200 text-[10px] font-mono text-stone-500">
+          <footer className="mt-auto pt-3 border-t border-rule dark:border-charcoal-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight">
             ⌘J toggle · Esc close
           </footer>
         </div>

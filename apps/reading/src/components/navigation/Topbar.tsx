@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { LemonInput } from "../lemon/LemonInput";
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
+import { SHORTCUT_EVENTS } from "../../workspace/shortcuts";
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -104,13 +105,13 @@ export function Topbar() {
       {/* search · palette trigger */}
       <LemonInput
         sizing="sm"
-        wrapperClassName="w-[260px]"
+        wrapperClassName="w-[260px] cursor-pointer"
         placeholder="search · ⌘K"
         kbdHint="⌘K"
         iconLeft={<span aria-hidden="true">⌕</span>}
         readOnly
         onClick={() => {
-          // S8 wires this to the actual palette open. For now: noop.
+          window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
         }}
       />
 
