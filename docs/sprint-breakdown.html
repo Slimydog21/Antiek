@@ -353,9 +353,9 @@
 
   <div class="group-title">Phase 1 — In flight (uncommitted)</div>
   <ul>
-    <li><a href="#sprint-17" data-page="sprint-17"><span class="num">S17</span>Voice mode + tier measurement<span class="dot scaffold"></span></a></li>
-    <li><a href="#sprint-18" data-page="sprint-18"><span class="num">S18</span>Publisher dashboard + gating<span class="dot scaffold"></span></a></li>
-    <li><a href="#sprint-19" data-page="sprint-19"><span class="num">S19</span>Pricing + Surface E + MCP<span class="dot scaffold"></span></a></li>
+    <li><a href="#sprint-17" data-page="sprint-17"><span class="num">S17</span>Voice mode + tier measurement<span class="dot pending"></span></a></li>
+    <li><a href="#sprint-18" data-page="sprint-18"><span class="num">S18</span>Publisher dashboard + gating<span class="dot pending"></span></a></li>
+    <li><a href="#sprint-19" data-page="sprint-19"><span class="num">S19</span>Pricing + Surface E + MCP<span class="dot pending"></span></a></li>
     <li><a href="#sprint-20" data-page="sprint-20"><span class="num">S20</span>Growth motion + verdicts<span class="dot pending"></span></a></li>
     <li><a href="#sprint-21" data-page="sprint-21"><span class="num">S21</span>Synquery + Phase 8 enforcing<span class="dot pending"></span></a></li>
   </ul>
@@ -403,10 +403,13 @@
 
   <p>
     Sprints 11–16 are shipped and committed. Sprint 17 through Sprint 21 substrate
-    is written and tested locally, but as of the most recent audit it remains
-    <strong>uncommitted</strong> in the operator's working tree — no GitHub push,
-    no Cloudflare Pages auto-deploy, no Hetzner Ansible run. Sprints 22 and
-    beyond are future work. Parallel tracks (RLM, Loop 3 unlock, autoresearch,
+    landed on <code>origin/main</code> as commit <code>3f95b22</code> on 2026-05-21
+    (241 files, 1867 tests passing, CI green); the breakdown's
+    <strong>14 binding closure gates</strong> remain open and are operator-only
+    (Lemon UI verdict, lawyer review of Kalshi notification template,
+    publisher opt-in, 2-week dispatch measurement window, autoresearch Wedge 1
+    ratification, operator publication, Phase 8 enforcing flip, Synquery PMF,
+    etc.). Sprints 22 and beyond are future work. Parallel tracks (RLM, Loop 3 unlock, autoresearch,
     Prime Intellect) sit off the mainline critical path and gate on explicit
     ratification criteria.
   </p>
@@ -937,7 +940,7 @@
 <!-- =================== SPRINT 17 =================== -->
 <section class="page" id="sprint-17">
   <header>
-    <div class="crumb">Phase 1 · Scaffold landed locally · Sprint 17</div>
+    <div class="crumb">Phase 1 · Substrate landed, gates pending · Sprint 17</div>
     <h2>Sprint 17 — Interview Voice Mode + Dispatch Tier Measurement</h2>
     <div class="theme">Closing Loop 4 with voice; pinning the synthesizer to Opus for a measurement window; lighting up the operator's preferred Surface E scaffold</div>
     <div class="badges">
@@ -1046,7 +1049,7 @@
 <!-- =================== SPRINT 18 =================== -->
 <section class="page" id="sprint-18">
   <header>
-    <div class="crumb">Phase 1 · Scaffold landed locally · Sprint 18</div>
+    <div class="crumb">Phase 1 · Substrate landed, gates pending · Sprint 18</div>
     <h2>Sprint 18 — Publisher Dashboard, Retrieval-Time Gating, Notebook Surface</h2>
     <div class="theme">The legal gate becomes binding; the linchpin notebook surface lights up; pre-onboarded escrow architecture lands</div>
     <div class="badges">
@@ -1171,7 +1174,7 @@
 <!-- =================== SPRINT 19 =================== -->
 <section class="page" id="sprint-19">
   <header>
-    <div class="crumb">Phase 1 · Scaffold landed locally · Sprint 19</div>
+    <div class="crumb">Phase 1 · Substrate landed, gates pending · Sprint 19</div>
     <h2>Sprint 19 — Pay-as-You-Go Pricing, First-Cohort Outreach, Surface E Production, MCP-First Developer Surface</h2>
     <div class="theme">Phase 1 monetisation goes live; the brainstorming workstation becomes load-bearing; "Antiek Memory" exposes the personal graph to external LLMs</div>
     <div class="badges">
