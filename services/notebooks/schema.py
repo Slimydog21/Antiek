@@ -1,12 +1,14 @@
 """DDL + idempotent migrate for ``services.notebooks`` (SPR-08).
 
-Two migrations:
+Migrations (applied in order):
 
 - ``0001_per_doc_notebook.sql`` — ``notebook_documents`` +
-  ``notebook_blocks`` tables (M1, M6).
-- ``0002_notebook_blocks.sql`` — provenance + save log (M6, M7).
+  ``notebook_blocks`` tables (SPR-08 M1, M6).
+- ``0002_notebook_blocks.sql`` — provenance + save log (SPR-08 M6, M7).
+- ``0003_themes.sql`` — Tier-3 per-theme notebook (SPR-11 M1):
+  ``themes`` + ``theme_blocks`` tables.
 
-Both go through ``runtime.db_lock.connect_write`` so the
+All go through ``runtime.db_lock.connect_write`` so the
 single-writer invariant from ``architecture_notes.md`` §2.3 holds
 during DDL.
 
@@ -42,6 +44,7 @@ _MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), "migrations")
 MIGRATION_FILES: tuple[str, ...] = (
     "0001_per_doc_notebook.sql",
     "0002_notebook_blocks.sql",
+    "0003_themes.sql",
 )
 
 
@@ -104,7 +107,9 @@ def list_notebook_tables(con: "duckdb.DuckDBPyConnection") -> list[str]:
         "  AND table_name IN ('notebook_documents', "
         "                     'notebook_blocks', "
         "                     'notebook_block_events', "
-        "                     'notebook_save_log') "
+        "                     'notebook_save_log', "
+        "                     'themes', "
+        "                     'theme_blocks') "
         "ORDER BY table_name"
     ).fetchall()
     return [r[0] for r in rows]

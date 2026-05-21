@@ -47,6 +47,7 @@ import {
 } from "../../../api/notebooks/by-doc";
 import { renderBlock } from "./blocks";
 import DemoteZone from "./DemoteZone";
+import PromoteToTheme from "./PromoteToTheme";
 import {
   BehaviorEventType,
   emitBehaviorEvent,
@@ -64,6 +65,28 @@ export default function PerDocNotebook(): JSX.Element {
   );
   const [error, setError] = useState<string | null>(null);
   const [pendingSave, setPendingSave] = useState<number>(0);
+
+  // SPR-11 / M2 — promote-to-theme selection state.
+  //
+  // ``selectedBlockIds`` is the multi-select set the operator builds
+  // by Shift-clicking the promote affordance on multiple blocks; it
+  // is also the single-element case when the operator clicks one
+  // block's affordance directly. ``promotePickerOpen`` flips when
+  // the operator confirms; the picker modal opens with the current
+  // selection.
+  //
+  // ``promotedIndicator`` records the last theme each block landed
+  // in so the "in theme: <title>" indicator appears immediately
+  // post-promote without a full reload. The persistence-backed
+  // version of this lookup is GET /api/themes/by-source-block/<id>;
+  // this in-memory cache is the optimistic mirror.
+  const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [promotePickerOpen, setPromotePickerOpen] = useState(false);
+  const [promotedIndicator, setPromotedIndicator] = useState<
+    Record<string, { themeId: string; themeTitle: string }>
+  >({});
 
   // ── Load on mount + when documentId changes ──
 
@@ -304,15 +327,66 @@ export default function PerDocNotebook(): JSX.Element {
           Empty notebook — no events on this document yet.
         </p>
       )}
+      {/* SPR-11 / M2 — promote toolbar visible whenever there's a
+        selection. The single-block path goes through onPromoteOne;
+        the multi-block path uses this batch toolbar. */}
+      {selectedBlockIds.size > 0 && (
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between mb-3 px-3 py-2 bg-stone-900 text-white rounded-md shadow-md"
+          data-testid="promote-toolbar"
+        >
+          <span className="text-xs font-mono">
+            {selectedBlockIds.size} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="text-xs font-mono px-2 py-1 rounded bg-white text-stone-900 hover:bg-stone-100"
+              onClick={() => setPromotePickerOpen(true)}
+              data-testid="promote-toolbar-submit"
+            >
+              Promote to theme…
+            </button>
+            <button
+              type="button"
+              className="text-xs font-mono px-2 py-1 rounded text-stone-300 hover:text-white"
+              onClick={() => setSelectedBlockIds(new Set())}
+              data-testid="promote-toolbar-clear"
+            >
+              clear
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
-        {visibleBlocks.map((block) =>
-          renderBlock({
-            block,
-            onCiteJump,
-            onDemote,
-            onEditFraming,
-          }),
-        )}
+        {visibleBlocks.map((block) => (
+          <BlockWithPromote
+            key={block.block_id}
+            block={block}
+            selected={selectedBlockIds.has(block.block_id)}
+            inTheme={promotedIndicator[block.block_id] ?? null}
+            onToggleSelect={(id, additive) =>
+              setSelectedBlockIds((prev) => {
+                const next = new Set(additive ? prev : []);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              })
+            }
+            onPromoteOne={(id) => {
+              setSelectedBlockIds(new Set([id]));
+              setPromotePickerOpen(true);
+            }}
+          >
+            {renderBlock({
+              block,
+              onCiteJump,
+              onDemote,
+              onEditFraming,
+            })}
+          </BlockWithPromote>
+        ))}
       </div>
       <DemoteZone
         blocks={demotedBlocks}
@@ -320,7 +394,106 @@ export default function PerDocNotebook(): JSX.Element {
         onCiteJump={onCiteJump}
         onEditFraming={onEditFraming}
       />
+
+      {/* SPR-11 / M2 — picker modal. Mounts only when needed. */}
+      {promotePickerOpen && (
+        <PromoteToTheme
+          sourceBlockIds={Array.from(selectedBlockIds)}
+          onClose={() => setPromotePickerOpen(false)}
+          onPromoted={(themeId, themeTitle) => {
+            // Stamp the "in theme: <title>" indicator on each
+            // promoted block immediately.
+            const promoted = Array.from(selectedBlockIds);
+            setPromotedIndicator((prev) => {
+              const next = { ...prev };
+              for (const id of promoted) {
+                next[id] = { themeId, themeTitle };
+              }
+              return next;
+            });
+            // TODO[SPR-11 → taxonomy]: emit
+            // ``notebook_block_promoted`` Tier-1 behavior event so
+            // the reward proxy sees Tier-2 → Tier-3 promotion. The
+            // closed taxonomy in substrate/behavior/taxonomy.py does
+            // NOT currently include this event type; emitting it
+            // through emitBehaviorEvent would throw
+            // InvalidEventTypeError. A future sprint must (a) add
+            // NOTEBOOK_BLOCK_PROMOTED to BehaviorEventType, (b) add
+            // a schemas/notebook_block_promoted.json, (c) wire this
+            // emit. State shape: {notebook_id, block_id, from_tier:
+            // 2, document_id}. Action: {to_tier: 3, theme_id}.
+            void promoted; // referenced for grep, no-op until taxonomy lands
+            setSelectedBlockIds(new Set());
+            setPromotePickerOpen(false);
+          }}
+        />
+      )}
     </Shell>
+  );
+}
+
+/** Wraps a Tier-2 block render with the SPR-11 promote affordance
+ *  and the "in theme: <title>" indicator. The wrapper is its own
+ *  component so the existing renderBlock dispatch (used by both
+ *  Tier-2 and Tier-3 surfaces) stays untouched.
+ */
+function BlockWithPromote({
+  block,
+  selected,
+  inTheme,
+  onToggleSelect,
+  onPromoteOne,
+  children,
+}: {
+  block: PerDocNotebookBlock;
+  selected: boolean;
+  inTheme: { themeId: string; themeTitle: string } | null;
+  onToggleSelect: (id: string, additive: boolean) => void;
+  onPromoteOne: (id: string) => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <div
+      className={
+        "relative " + (selected ? "ring-2 ring-blue-400 rounded-md" : "")
+      }
+      data-promote-host={block.block_id}
+    >
+      {children}
+      <div className="mt-1 flex items-center justify-between text-[11px] font-mono text-stone-500">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onPromoteOne(block.block_id)}
+            className="hover:text-stone-900 underline-offset-2 hover:underline"
+            data-testid={`promote-button-${block.block_id}`}
+            title="Promote this block to a theme"
+          >
+            ↗ Promote to theme…
+          </button>
+          <label className="inline-flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={(e) =>
+                onToggleSelect(block.block_id, e.shiftKey || true)
+              }
+              data-testid={`promote-select-${block.block_id}`}
+              className="cursor-pointer"
+            />
+            <span className="text-stone-400">multi-select</span>
+          </label>
+        </div>
+        {inTheme && (
+          <span
+            className="text-stone-600"
+            data-testid={`in-theme-indicator-${block.block_id}`}
+          >
+            in theme: <strong>{inTheme.themeTitle}</strong>
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 
