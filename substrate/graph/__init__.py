@@ -38,6 +38,13 @@ def ensure_initialized(db_path: _Optional[str] = None) -> str:
     """Make sure the schema is present at ``db_path``. Returns the
     resolved path. Idempotent — CREATE IF NOT EXISTS is the workhorse.
 
+    Also runs the 2026-05-22 integration follow-up migrations under
+    substrate/graph/migrations/ (chunks.page + chunks.bbox columns,
+    documents.raw_bytes_path column). These were ALTER-TABLE additions
+    rather than CREATE-TABLE-IF-NOT-EXISTS because the tables already
+    existed; folding them into ensure_initialized means every caller
+    (tests + bridge + CLI) gets the new columns automatically.
+
     Used by the wrestling bridge before the first DB-touching event
     in a given process. Cheap (~1ms after first call) so we don't
     bother with a "has-this-been-called" memo.
@@ -45,6 +52,10 @@ def ensure_initialized(db_path: _Optional[str] = None) -> str:
     resolved = db_path or default_db_path()
     from .schema import init_database_at_path
     init_database_at_path(resolved)
+    # Apply post-v1 migrations. Idempotent (ADD COLUMN IF NOT EXISTS +
+    # the runner tolerates already-exists errors).
+    from .migrate import apply as _apply_migrations
+    _apply_migrations(db_path=resolved)
     return resolved
 
 

@@ -377,18 +377,14 @@ def _collect_candidates(
         ORDER BY similarity DESC
         LIMIT ?
     """
-    # NB: ``_page_from_section`` is a wishful UDF we don't actually
-    # register — fall back to page 1 if section_path doesn't encode a
-    # page. For Sprint 7 the substrate doesn't yet emit per-chunk page
-    # numbers in chunks rows; we report ``1`` and a follow-up sprint
-    # adds a real ``chunks.page`` column. The TS layer treats page as
-    # an integer ≥1 and the cite-jump uses ``?page=`` which falls
-    # back to the first page when N=1.
-    #
-    # To avoid a UDF dependency right now we inline ``1`` in the SQL.
+    # Use the real ``chunks.page`` column added by substrate/graph/
+    # migrations/0001 (2026-05-22 follow-up). Rows whose page is NULL
+    # (legacy chunks ingested before the migration, or extractors that
+    # didn't compute page) fall back to 1 so the TS cite-jump still
+    # lands somewhere reasonable.
     sim_sql = sim_sql.replace(
         "COALESCE(_page_from_section(c.section_path), 1) AS page",
-        "1 AS page",
+        "COALESCE(c.page, 1) AS page",
     )
 
     sim_params: list[Any] = [highlight.document_id, *policy_params, LEG_CANDIDATE_POOL]

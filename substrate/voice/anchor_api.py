@@ -184,22 +184,44 @@ def _candidate_chunks_for_overlap(
 ) -> list[tuple[str, BBox]]:
     """Return ``(chunk_id, chunk_bbox)`` for chunks on the given page.
 
-    GEOMETRY GAP: the live chunks schema (substrate.graph.schema
-    v1) has no page or bbox columns. Until per-chunk page+bbox
-    metadata is added, this function returns an empty list, and
-    callers therefore get NULL from ``resolve_chunk_for_bbox``.
+    Reads ``chunks.page`` and ``chunks.bbox`` (both added by the
+    2026-05-22 substrate/graph/migrations/0001 follow-up). Rows whose
+    ``bbox`` is NULL (legacy chunks ingested before the migration,
+    or chunkers that don't compute geometry) are skipped — they
+    contribute no candidate so the threshold rejects them.
 
-    The empty-list path is intentionally explicit: surfacing the
-    gap rather than silently degrading. When chunks gain
-    page+bbox columns, replace the body with the SELECT that
-    reads them and project into ``BBox.from_json`` / a dedicated
-    columns-to-BBox converter.
+    GEOMETRY CAVEAT: an ingestion pipeline must populate ``page`` +
+    ``bbox`` for chunks to participate in voice-anchor resolution.
+    The current chunker (processing/chunking/chunker.py) doesn't
+    set these; until a PDF-aware chunker lands or a backfill worker
+    populates the columns, this function returns an empty list for
+    most documents and callers get NULL — which is correct, not a
+    bug.
     """
-    # Intentional no-op until chunks expose per-chunk geometry.
-    # Touching the args so future maintainers don't drop them in a
-    # signature-cleanup pass.
-    _ = (con, document_id, page)
-    return []
+    try:
+        rows = con.execute(
+            "SELECT chunk_id, bbox FROM chunks WHERE document_id = ? AND page = ?",
+            [document_id, page],
+        ).fetchall()
+    except Exception:
+        # Older schema (pre-2026-05-22 migration) — no page/bbox columns.
+        # Surface honestly: the function is a no-op until the migration
+        # has been applied to this connection's DB.
+        return []
+
+    candidates: list[tuple[str, BBox]] = []
+    for chunk_id, bbox_text in rows:
+        if not bbox_text:
+            continue
+        try:
+            bb = BBox.from_json(bbox_text)
+        except Exception:
+            # A row with malformed bbox is a data issue, not a runtime
+            # failure of resolution. Skip it; the threshold rejects
+            # any chunk we can't measure.
+            continue
+        candidates.append((chunk_id, bb))
+    return candidates
 
 
 def resolve_chunk_for_bbox(
