@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai_response_rejected",
+  "description": "Operator dismissed or thumbs-downed an AI response.",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id", "prompt_id"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "prompt_id": { "type": "string" },
+      "reading_mode": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["response_id", "reject_kind"],
+    "properties": {
+      "response_id": { "type": "string" },
+      "reject_kind": { "type": "string" },
+      "elapsed_since_prompt_s": { "type": ["number", "null"] }
+    }
+  }
+}

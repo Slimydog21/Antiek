@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "notebook_block_demoted",
+  "description": "Notebook block was demoted from Tier 3 (publishable) to Tier 2 (per-doc) or from Tier 2 to discarded. Negative quality signal.",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["notebook_id", "block_id", "from_tier"],
+    "properties": {
+      "notebook_id": { "type": "string" },
+      "block_id": { "type": "string" },
+      "from_tier": { "type": "integer" },
+      "document_id": { "type": ["string", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["to_tier"],
+    "properties": {
+      "to_tier": { "type": "integer" },
+      "reason": { "type": ["string", "null"] }
+    }
+  }
+}

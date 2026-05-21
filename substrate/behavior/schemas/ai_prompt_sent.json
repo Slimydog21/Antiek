@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ai_prompt_sent",
+  "description": "Operator sent an inline prompt to the AI thought-partner.",
+  "state": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["document_id"],
+    "properties": {
+      "document_id": { "type": "string" },
+      "reading_mode": { "type": ["string", "null"] },
+      "context_pack_id": { "type": ["string", "null"] },
+      "selection_present": { "type": ["boolean", "null"] }
+    }
+  },
+  "action": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["prompt_id"],
+    "properties": {
+      "prompt_id": { "type": "string" },
+      "prompt_token_count": { "type": ["integer", "null"] },
+      "dispatch_tier": { "type": ["string", "null"] }
+    }
+  }
+}
