@@ -553,6 +553,75 @@ CREATE INDEX IF NOT EXISTS idx_discovery_cache_investigation
 """
 
 
+# Sprint 23-24 + 30+ — Phase 3 persistence. Three append-only state
+# stores: federation_partners (cross-instance identity records),
+# advertisers (lead-gen advertiser registry), federation_nonces
+# (replay-defense ledger). The application-layer registries are
+# in-memory mirrors that round-trip against these tables via per-
+# module CRUD helpers.
+#
+# Append-only audit posture: every state change appends a new row
+# keyed by an attempt_id (UUID). ``latest()`` queries select the most
+# recent record per logical_id. Mirrors the AdvertiserRecord /
+# PartnerSubstrate frozen-dataclass design — historical state is
+# preserved by construction.
+ANTIEK_GRAPH_SCHEMA_V4_PHASE3_SQL = """
+CREATE TABLE IF NOT EXISTS federation_partners (
+    attempt_id              TEXT PRIMARY KEY,
+    partner_id              TEXT NOT NULL,
+    display_name            TEXT NOT NULL,
+    substrate_url           TEXT NOT NULL,
+    shared_secret_hex       TEXT NOT NULL,
+    state                   TEXT NOT NULL CHECK (state IN (
+        'pending_handshake', 'trusted', 'revoked'
+    )),
+    registered_at           TIMESTAMP NOT NULL,
+    last_state_change_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    operator_notes          TEXT NOT NULL DEFAULT '',
+    revocation_reason       TEXT,
+    row_inserted_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_federation_partners_partner_id
+    ON federation_partners(partner_id, row_inserted_at);
+CREATE INDEX IF NOT EXISTS idx_federation_partners_state
+    ON federation_partners(state);
+
+CREATE TABLE IF NOT EXISTS advertisers (
+    attempt_id              TEXT PRIMARY KEY,
+    advertiser_id           TEXT NOT NULL,
+    display_name            TEXT NOT NULL,
+    contact_email           TEXT NOT NULL,
+    verticals               TEXT NOT NULL DEFAULT '',
+    audience_intents        TEXT NOT NULL DEFAULT '',
+    status                  TEXT NOT NULL CHECK (status IN (
+        'pending_review', 'approved', 'active',
+        'rejected', 'suspended', 'churned'
+    )),
+    submitted_at            TIMESTAMP NOT NULL,
+    last_status_change_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    operator_notes          TEXT NOT NULL DEFAULT '',
+    rejection_reason        TEXT,
+    monthly_budget_usd_cents INTEGER,
+    row_inserted_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_advertisers_advertiser_id
+    ON advertisers(advertiser_id, row_inserted_at);
+CREATE INDEX IF NOT EXISTS idx_advertisers_status
+    ON advertisers(status);
+
+CREATE TABLE IF NOT EXISTS federation_nonces (
+    nonce            TEXT PRIMARY KEY,
+    partner_id       TEXT NOT NULL,
+    accepted_at_unix BIGINT NOT NULL,
+    expires_at_unix  BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_federation_nonces_expires
+    ON federation_nonces(expires_at_unix);
+CREATE INDEX IF NOT EXISTS idx_federation_nonces_partner
+    ON federation_nonces(partner_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -573,6 +642,9 @@ def init_database(con: LockedConnection) -> None:
     # Sprint 18 — Exa & Browserbase Wedge 1 discovery_cache.
     # docs/integration_exa_browserbase.md §6.5.
     con.execute(ANTIEK_GRAPH_SCHEMA_V3_DISCOVERY_CACHE_SQL)
+    # Sprint 23-24 + 30+ Phase 3 persistence — federation partners,
+    # advertisers, nonce ledger. Append-only state logs.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V4_PHASE3_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:

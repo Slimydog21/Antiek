@@ -215,6 +215,13 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.FetchFallbackEscalatedPayload,
     # Wedge 3 — verifier-tier corroboration primitive.
     schema_module.VerifierLookupPayload,
+    # Sprint 30+ thread 1 — federation audit trail.
+    schema_module.FederationPartnerRegisteredPayload,
+    schema_module.FederationPartnerTrustedPayload,
+    schema_module.FederationPartnerRevokedPayload,
+    schema_module.FederationOutboundCitationEmittedPayload,
+    schema_module.FederationInboundCitationAcceptedPayload,
+    schema_module.FederationInboundCitationRefusedPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.

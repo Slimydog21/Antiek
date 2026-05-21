@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 7;
+export const EVENT_SCHEMA_VERSION = 8;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -106,6 +106,12 @@ export const ActionType = {
   DISCOVERY_SELECTED: "discovery.selected",
   FETCH_FALLBACK_ESCALATED: "fetch.fallback.escalated",
   VERIFIER_LOOKUP: "verifier.lookup",
+  FEDERATION_PARTNER_REGISTERED: "federation.partner.registered",
+  FEDERATION_PARTNER_TRUSTED: "federation.partner.trusted",
+  FEDERATION_PARTNER_REVOKED: "federation.partner.revoked",
+  FEDERATION_OUTBOUND_CITATION_EMITTED: "federation.outbound_citation.emitted",
+  FEDERATION_INBOUND_CITATION_ACCEPTED: "federation.inbound_citation.accepted",
+  FEDERATION_INBOUND_CITATION_REFUSED: "federation.inbound_citation.refused",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -1632,6 +1638,96 @@ export interface VerifierLookupPayload {
 }
 
 /**
+ * Emitted when an operator registers a partner substrate. State
+ * lands at PENDING_HANDSHAKE; promotion to TRUSTED emits a separate
+ * event. NEVER carries the shared_secret_hex — that field is excluded
+ * from the audit surface by construction. The audit trail records
+ * WHO can federate, not the secrets used.
+ */
+export interface FederationPartnerRegisteredPayload {
+  action_type: "federation.partner.registered";
+  partner_id: string;
+  display_name: string;
+  substrate_url: string;
+  registered_at: string;
+}
+
+/**
+ * Emitted when the operator promotes PENDING_HANDSHAKE → TRUSTED.
+ * The transition is operator-driven; the event records the moment
+ * cross-instance federation becomes possible for this partner.
+ */
+export interface FederationPartnerTrustedPayload {
+  action_type: "federation.partner.trusted";
+  partner_id: string;
+  last_state_change_at: string;
+  operator_notes?: string;
+}
+
+/**
+ * Emitted when the operator revokes a partner. REVOKED is
+ * terminal; subsequent federation operations refuse at the substrate
+ * gate. The revocation_reason rides for operator triage.
+ */
+export interface FederationPartnerRevokedPayload {
+  action_type: "federation.partner.revoked";
+  partner_id: string;
+  last_state_change_at: string;
+  revocation_reason: string;
+}
+
+/**
+ * Emitted when this substrate hands a citation to a partner
+ * instance via ``federate_outbound_citation``. The audit shape
+ * NEVER includes the signed_token (replay-attack surface) — the
+ * reference_id and partner_id are sufficient for joining against
+ * later inbound-accept events on the partner side.
+ */
+export interface FederationOutboundCitationEmittedPayload {
+  action_type: "federation.outbound_citation.emitted";
+  reference_id: string;
+  partner_id: string;
+  partner_substrate_url: string;
+  referencing_user_id: string;
+  referencing_investigation_id: string;
+  referenced_user_id: string;
+  referenced_note_id: string;
+  revenue_routing_handle: string;
+}
+
+/**
+ * Emitted when this substrate accepts an inbound citation from
+ * a partner instance. The ``receiver_reference_id`` is this side's
+ * locally-minted reference (distinct from the sender's).
+ */
+export interface FederationInboundCitationAcceptedPayload {
+  action_type: "federation.inbound_citation.accepted";
+  receiver_reference_id: string;
+  partner_id: string;
+  referencing_user_id: string;
+  referencing_investigation_id: string;
+  referenced_user_id: string;
+  referenced_note_id: string;
+  revenue_routing_handle: string;
+  received_at: string;
+}
+
+/**
+ * Emitted when this substrate refuses an inbound citation. The
+ * typed ``rejection`` reason is one of the ``InboundRejection`` enum
+ * values. ``detail`` is a short operator-readable string and MUST
+ * NOT include the raw token or shared secret per the inbound
+ * handler's no-leak contract.
+ */
+export interface FederationInboundCitationRefusedPayload {
+  action_type: "federation.inbound_citation.refused";
+  partner_id: string;
+  rejection: "partner_not_allowed" | "partner_not_registered" | "partner_not_trusted" | "token_invalid" | "payload_malformed" | "replay_detected";
+  detail?: string;
+  received_at: string;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1710,7 +1806,13 @@ export type TypedPayload =
   | DiscoveryProposedPayload
   | DiscoverySelectedPayload
   | FetchFallbackEscalatedPayload
-  | VerifierLookupPayload;
+  | VerifierLookupPayload
+  | FederationPartnerRegisteredPayload
+  | FederationPartnerTrustedPayload
+  | FederationPartnerRevokedPayload
+  | FederationOutboundCitationEmittedPayload
+  | FederationInboundCitationAcceptedPayload
+  | FederationInboundCitationRefusedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1766,6 +1868,12 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "document.region_selected",
   "evidence.retrieve.delivered",
   "evidence.retrieve.requested",
+  "federation.inbound_citation.accepted",
+  "federation.inbound_citation.refused",
+  "federation.outbound_citation.emitted",
+  "federation.partner.registered",
+  "federation.partner.revoked",
+  "federation.partner.trusted",
   "fetch.fallback.escalated",
   "graph.edge.inserted",
   "graph.node.inserted",

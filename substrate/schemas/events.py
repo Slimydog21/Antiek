@@ -246,6 +246,19 @@ class ActionType(str, Enum):
     #    Spec docs/integration_exa_browserbase.md §8.
     VERIFIER_LOOKUP = "verifier.lookup"
 
+    # ── Sprint 30+ thread 1 — Federation audit trail (master-spec §13.9 +
+    #    §13.7). Every partner-state transition + every cross-instance
+    #    citation flow lands in the event log so the operator can audit
+    #    federation posture from the trajectory alone. Inbound refusals
+    #    are first-class events with a typed reason — silent drops are
+    #    impossible.
+    FEDERATION_PARTNER_REGISTERED = "federation.partner.registered"
+    FEDERATION_PARTNER_TRUSTED = "federation.partner.trusted"
+    FEDERATION_PARTNER_REVOKED = "federation.partner.revoked"
+    FEDERATION_OUTBOUND_CITATION_EMITTED = "federation.outbound_citation.emitted"
+    FEDERATION_INBOUND_CITATION_ACCEPTED = "federation.inbound_citation.accepted"
+    FEDERATION_INBOUND_CITATION_REFUSED = "federation.inbound_citation.refused"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -272,7 +285,10 @@ class ActionType(str, Enum):
 # v7: Wedge 3 (Exa /contents verifier-tier corroboration) client-side
 #     primitive — VERIFIER_LOOKUP event + ExaLookupResult + VerifierLookupPayload.
 #     docs/integration_exa_browserbase.md §8. 2026-05-21.
-EVENT_SCHEMA_VERSION: int = 7
+# v8: Sprint 30+ thread 1 — federation audit trail. 6 typed events for
+#     partner state transitions + cross-instance citation flow.
+#     master-spec §13.9 + §13.7 audit. 2026-05-21.
+EVENT_SCHEMA_VERSION: int = 8
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2024,6 +2040,112 @@ class RevShareDecidedPayload(_PayloadBase):
     capped_to_daily_limit: bool = False
 
 
+# ── Sprint 30+ thread 1 federation events (master-spec §13.7 audit) ──
+
+
+class FederationPartnerRegisteredPayload(_PayloadBase):
+    """Emitted when an operator registers a partner substrate. State
+    lands at PENDING_HANDSHAKE; promotion to TRUSTED emits a separate
+    event. NEVER carries the shared_secret_hex — that field is excluded
+    from the audit surface by construction. The audit trail records
+    WHO can federate, not the secrets used."""
+
+    action_type: Literal[ActionType.FEDERATION_PARTNER_REGISTERED] = (
+        ActionType.FEDERATION_PARTNER_REGISTERED
+    )
+    partner_id: str
+    display_name: str
+    substrate_url: str
+    registered_at: str
+
+
+class FederationPartnerTrustedPayload(_PayloadBase):
+    """Emitted when the operator promotes PENDING_HANDSHAKE → TRUSTED.
+    The transition is operator-driven; the event records the moment
+    cross-instance federation becomes possible for this partner."""
+
+    action_type: Literal[ActionType.FEDERATION_PARTNER_TRUSTED] = (
+        ActionType.FEDERATION_PARTNER_TRUSTED
+    )
+    partner_id: str
+    last_state_change_at: str
+    operator_notes: str = ""
+
+
+class FederationPartnerRevokedPayload(_PayloadBase):
+    """Emitted when the operator revokes a partner. REVOKED is
+    terminal; subsequent federation operations refuse at the substrate
+    gate. The revocation_reason rides for operator triage."""
+
+    action_type: Literal[ActionType.FEDERATION_PARTNER_REVOKED] = (
+        ActionType.FEDERATION_PARTNER_REVOKED
+    )
+    partner_id: str
+    last_state_change_at: str
+    revocation_reason: str
+
+
+class FederationOutboundCitationEmittedPayload(_PayloadBase):
+    """Emitted when this substrate hands a citation to a partner
+    instance via ``federate_outbound_citation``. The audit shape
+    NEVER includes the signed_token (replay-attack surface) — the
+    reference_id and partner_id are sufficient for joining against
+    later inbound-accept events on the partner side."""
+
+    action_type: Literal[ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED] = (
+        ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED
+    )
+    reference_id: str
+    partner_id: str
+    partner_substrate_url: str
+    referencing_user_id: str
+    referencing_investigation_id: str
+    referenced_user_id: str
+    referenced_note_id: str
+    revenue_routing_handle: str
+
+
+class FederationInboundCitationAcceptedPayload(_PayloadBase):
+    """Emitted when this substrate accepts an inbound citation from
+    a partner instance. The ``receiver_reference_id`` is this side's
+    locally-minted reference (distinct from the sender's)."""
+
+    action_type: Literal[ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED] = (
+        ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED
+    )
+    receiver_reference_id: str
+    partner_id: str
+    referencing_user_id: str
+    referencing_investigation_id: str
+    referenced_user_id: str
+    referenced_note_id: str
+    revenue_routing_handle: str
+    received_at: str
+
+
+class FederationInboundCitationRefusedPayload(_PayloadBase):
+    """Emitted when this substrate refuses an inbound citation. The
+    typed ``rejection`` reason is one of the ``InboundRejection`` enum
+    values. ``detail`` is a short operator-readable string and MUST
+    NOT include the raw token or shared secret per the inbound
+    handler's no-leak contract."""
+
+    action_type: Literal[ActionType.FEDERATION_INBOUND_CITATION_REFUSED] = (
+        ActionType.FEDERATION_INBOUND_CITATION_REFUSED
+    )
+    partner_id: str
+    rejection: Literal[
+        "partner_not_allowed",
+        "partner_not_registered",
+        "partner_not_trusted",
+        "token_invalid",
+        "payload_malformed",
+        "replay_detected",
+    ]
+    detail: str = ""
+    received_at: str
+
+
 class SkillRulePromotedPayload(_PayloadBase):
     """Emitted by ``substrate/multi_user/skill_writer.py`` when a
     discovered skill rule clears the ``SkillRuleAccumulator`` promotion
@@ -2322,6 +2444,12 @@ TypedPayload = Annotated[
         DiscoverySelectedPayload,
         FetchFallbackEscalatedPayload,
         VerifierLookupPayload,
+        FederationPartnerRegisteredPayload,
+        FederationPartnerTrustedPayload,
+        FederationPartnerRevokedPayload,
+        FederationOutboundCitationEmittedPayload,
+        FederationInboundCitationAcceptedPayload,
+        FederationInboundCitationRefusedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -2407,6 +2535,13 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.FETCH_FALLBACK_ESCALATED.value,
     # Wedge 3 — verifier-tier external corroboration primitive.
     ActionType.VERIFIER_LOOKUP.value,
+    # Sprint 30+ thread 1 — federation audit trail.
+    ActionType.FEDERATION_PARTNER_REGISTERED.value,
+    ActionType.FEDERATION_PARTNER_TRUSTED.value,
+    ActionType.FEDERATION_PARTNER_REVOKED.value,
+    ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED.value,
+    ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED.value,
+    ActionType.FEDERATION_INBOUND_CITATION_REFUSED.value,
 })
 
 
@@ -2666,4 +2801,11 @@ __all__ = [
     # Wedge 3 — verifier-tier corroboration primitive (v7 schema bump)
     "ExaLookupResult",
     "VerifierLookupPayload",
+    # Sprint 30+ thread 1 — federation audit trail (v8 schema bump)
+    "FederationPartnerRegisteredPayload",
+    "FederationPartnerTrustedPayload",
+    "FederationPartnerRevokedPayload",
+    "FederationOutboundCitationEmittedPayload",
+    "FederationInboundCitationAcceptedPayload",
+    "FederationInboundCitationRefusedPayload",
 ]
