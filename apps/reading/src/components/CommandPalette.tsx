@@ -11,6 +11,8 @@ import {
 } from "../workspace/persistence";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import LemonButton from "./lemon/LemonButton";
+import { LemonModal } from "./lemon/LemonModal";
 import { toast } from "./lemon/LemonToast";
 
 /**
@@ -281,6 +283,13 @@ export default function CommandPalette() {
   const [notebooks, setNotebooks] = useState<PaletteNotebook[]>([]);
   const [parked, setParked] = useState<PaletteParkedQuestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
+  // S9 acceptance: destructive layout-reset commands confirm via a
+  // LemonModal before clearing. The palette stores the pending
+  // destructive action; the modal renders alongside the palette.
+  const [pendingDestructive, setPendingDestructive] = useState<
+    | { kind: "reset-all"; count: number }
+    | null
+  >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
 
@@ -487,14 +496,45 @@ export default function CommandPalette() {
         },
       },
       {
+        // S9 acceptance: "Reset layout (this investigation)" — the
+        // third palette reset command. Pulled the investigation id
+        // from the current URL via a /inv/:id pathname match.
+        kind: "action",
+        id: "ws:reset-layout-investigation",
+        title: "Reset workspace layout (this investigation)",
+        subtitle: "Workspace · clears the per-investigation saved layout",
+        run: () => {
+          const path =
+            typeof window !== "undefined" ? window.location.pathname : "/";
+          const m = path.match(/\/inv\/([^/]+)/);
+          if (!m) {
+            toast.warn("No investigation in URL — nothing to reset.");
+            return;
+          }
+          clearScope({ kind: "investigation", id: m[1] });
+          useWorkspace.getState().reset();
+          toast.ok(`Layout reset for investigation ${m[1].slice(0, 8)}.`);
+        },
+      },
+      {
         kind: "action",
         id: "ws:reset-layouts-all",
         title: "Reset ALL workspace layouts",
         subtitle: "Workspace · wipes every antiek.workspace.* key",
         run: () => {
-          const n = clearAll();
-          useWorkspace.getState().reset();
-          toast.warn(`Wiped ${n} saved layout(s).`);
+          // S9 acceptance: confirm-via-LemonModal before clearing.
+          // Stash the pending action; the modal below confirms.
+          // We do a dry-count for the modal copy.
+          let count = 0;
+          try {
+            for (let i = 0; i < window.localStorage.length; i++) {
+              const k = window.localStorage.key(i);
+              if (k && k.startsWith("antiek.workspace.")) count++;
+            }
+          } catch {
+            // ignore
+          }
+          setPendingDestructive({ kind: "reset-all", count });
         },
       },
     ];
@@ -636,6 +676,50 @@ export default function CommandPalette() {
           <span>⌘K toggle</span>
         </footer>
       </div>
+
+      {/* S9 acceptance: confirm-via-LemonModal before the destructive
+          all-layouts reset. The modal sits in the palette's portal so
+          it overlays even when the palette itself is open. */}
+      <LemonModal
+        open={pendingDestructive?.kind === "reset-all"}
+        onClose={() => setPendingDestructive(null)}
+        title="Reset ALL workspace layouts?"
+        forceUserAction
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <LemonButton
+              variant="secondary"
+              onClick={() => setPendingDestructive(null)}
+            >
+              Cancel
+            </LemonButton>
+            <LemonButton
+              variant="danger"
+              onClick={() => {
+                const n = clearAll();
+                useWorkspace.getState().reset();
+                setPendingDestructive(null);
+                toast.warn(`Wiped ${n} saved layout(s).`);
+              }}
+            >
+              Wipe all layouts
+            </LemonButton>
+          </div>
+        }
+      >
+        <p className="text-sm text-ink dark:text-bright">
+          This deletes every <code>antiek.workspace.*</code> key in
+          localStorage —{" "}
+          <strong>{pendingDestructive?.count ?? 0}</strong> stored layout
+          {(pendingDestructive?.count ?? 0) === 1 ? "" : "s"}. Per-route
+          and per-investigation snapshots are gone; the operator falls
+          back to default starters.
+        </p>
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mt-3">
+          Use "Reset workspace layout (this route)" or "(this
+          investigation)" if you only want to clear a single scope.
+        </p>
+      </LemonModal>
     </div>
   );
 }

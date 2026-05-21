@@ -60,12 +60,25 @@ function toggleProjectTree() {
   }
 }
 
-/** Toggle the AISidecar via its own internal state. AISidecar owns
- *  its own open/close state machine (it pre-dates the panel system);
- *  we dispatch a custom event its keydown handler also subscribes to.
- *  When AISidecar is later refactored into a real panel kind, this
- *  function flips to using workspace.open/close like ProjectTree does. */
+/** Toggle the AISidecar panel via the workspace store. S8-full
+ *  refactored AISidecar into a real PanelKind; ⌘/ opens it docked-
+ *  right or closes it via `workspace.open` / `workspace.close`
+ *  exactly like ⌘B does for ProjectTree.
+ *
+ *  The custom-event dispatch is kept for backward-compat with any
+ *  Storybook stories that listen for the event directly. */
+const AISIDECAR_PANEL_ID = "shortcuts:aisidecar";
 function toggleAISidecar() {
+  const ws = useWorkspace.getState();
+  if (ws.panels[AISIDECAR_PANEL_ID]) {
+    ws.close(AISIDECAR_PANEL_ID);
+  } else {
+    ws.open(
+      "AISidecar",
+      {},
+      { mode: "docked-right", title: "AI", id: AISIDECAR_PANEL_ID },
+    );
+  }
   window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE));
 }
 

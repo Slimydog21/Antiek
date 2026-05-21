@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 
 import AppShell from "./AppShell";
 import PanelWindowApp from "./PanelWindowApp";
-import AISidecar from "./components/AISidecar";
 import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
@@ -73,7 +72,9 @@ function AuthenticatedRoutes() {
   return (
     <AppShell>
       <CommandPalette />
-      <AISidecar />
+      {/* AISidecar is no longer mounted directly here — it lives as
+          PanelKind="AISidecar" and is mounted by the panel system
+          when the operator opens it via ⌘/ (S8-full refactor). */}
       <Routes>
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />

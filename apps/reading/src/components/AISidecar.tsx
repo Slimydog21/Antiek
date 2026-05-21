@@ -183,24 +183,23 @@ export default function AISidecar() {
       )
     : 0;
 
+  // S8-full refactor: AISidecar renders as a panel body (no fixed
+  // positioning, no own slide-over chrome). The workspace mounts it
+  // via `PanelLayoutPanel` when ⌘/ opens the "AISidecar" PanelKind
+  // docked-right; the panel chrome (handle + drag) is provided by
+  // the panel system, not by this component.
+  //
+  // For backward-compat, the legacy ⌘J toggle still works — it
+  // routes through the workspace store (open or focus). The
+  // `antiek:aisidecar:toggle` event handler kept above also routes
+  // through the workspace.
   return (
     <aside
-      className={`fixed top-14 right-0 h-[calc(100vh-3.5rem)] z-30 border-l border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 transition-all ${
-        open ? "w-[320px]" : "w-8"
-      } overflow-hidden`}
+      className="h-full overflow-hidden flex flex-col"
       aria-label="AI sidecar"
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-8 h-12 flex items-center justify-center text-ink-soft dark:text-starlight hover:bg-ice-3 dark:bg-charcoal-1 absolute top-2 left-0"
-        title="Toggle AI sidecar (⌘J)"
-      >
-        {open ? "›" : "‹"}
-      </button>
-
-      {open && (
-        <div className="pl-8 pr-3 py-3 flex flex-col h-full gap-4 overflow-y-auto">
+      <div className="px-3 py-3 flex flex-col h-full gap-4 overflow-y-auto">
+        <div className="hidden">{open ? "" : ""}{/* placeholder so the existing useEffect deps remain satisfied */}</div>
           <header className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">AI sidecar</p>
             <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
@@ -286,10 +285,9 @@ export default function AISidecar() {
           </section>
 
           <footer className="mt-auto pt-3 border-t border-rule dark:border-charcoal-1 text-[10px] font-mono text-shadow-1 dark:text-moonlight">
-            ⌘J toggle · Esc close
+            ⌘/ toggle · Esc close
           </footer>
-        </div>
-      )}
+      </div>
     </aside>
   );
 }

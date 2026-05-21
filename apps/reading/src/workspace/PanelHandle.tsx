@@ -198,6 +198,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="◨"
+                  hint="⇧⌘B"
                   onClick={() => {
                     setMode("docked-right");
                     close();
@@ -207,6 +208,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="◯"
+                  hint="⌃⌘B"
                   onClick={() => {
                     setMode("docked-bottom");
                     close();
@@ -216,6 +218,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="▢"
+                  hint="⌥⌘F"
                   onClick={() => {
                     setMode("floating");
                     close();
@@ -225,6 +228,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
                 </LemonMenuItem>
                 <LemonMenuItem
                   icon="↗"
+                  hint="⌥⌘P"
                   onClick={() => {
                     setMode("popout");
                     close();
