@@ -64,3 +64,43 @@ jobs:
             apps/reading/.lostpixel/diff
             apps/reading/.lostpixel/current
           retention-days: 7
+
+  axe-core:
+    # S11 acceptance: axe-core finds zero serious/critical violations on
+    # the primitive stories. Runs axe-core against the rendered
+    # Storybook over http-server, gated to the Lemon primitives folder.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/reading
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install reading-app deps
+        run: npm ci
+
+      - name: Install Playwright chromium
+        run: node node_modules/playwright-core/cli.js install chromium --with-deps
+
+      - name: Build Storybook
+        run: npm run build-storybook
+
+      - name: Run axe-core against primitive stories
+        run: |
+          npx -y http-server -p 6006 -s storybook-static &
+          SERVER_PID=$!
+          sleep 3
+          # @storybook/test-runner runs axe via the addon-a11y test hook.
+          # We scope to the Design/Primitives Showcase + each Lemon story.
+          npx -y @storybook/test-runner@latest \
+            --url http://localhost:6006 \
+            --include "Design/Primitives Showcase" \
+            --include "Components/Lemon/**" \
+            || (kill $SERVER_PID; exit 1)
+          kill $SERVER_PID || true

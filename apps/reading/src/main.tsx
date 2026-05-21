@@ -4,20 +4,22 @@ import { BrowserRouter } from "react-router-dom";
 import "./index.css";
 import "./design/tokens.css";
 import App from "./App";
+import AppLegacy from "./AppLegacy";
 
 /**
  * S12 cutover flag.
  *
- * `VITE_ANTIEK_UI` chooses between the redesigned shell (`v2`,
- * default) and a hypothetical legacy fallback (`v1`). Today the
- * legacy shell is no longer present in the tree — its components
- * were retired in S4 + S5 + S6 + S10-light. Setting the flag to
- * "v1" currently still renders the v2 shell; the env var exists so
- * that a follow-up branch can re-introduce a legacy fallback if
- * rollback is needed during the cutover window per spec WP-12.3.
+ * `VITE_ANTIEK_UI` chooses between the redesigned shell (`v2`, default,
+ * renders <App />) and the legacy rollback (`v1`, renders <AppLegacy />
+ * — the pre-S4 chrome). The legacy build is intentionally minimal: it
+ * routes only the critical-path operator flows (Research + Wrestle +
+ * Login) so the rollback is a tiny target if the new shell breaks in
+ * production.
  *
- * The variable is logged once on mount so the operator can confirm
- * which build they're running.
+ * To roll back: set `VITE_ANTIEK_UI=v1` in the production env, redeploy.
+ * See `apps/reading/.env.example` and
+ * `docs/ui_redesign_posthog/sprint_12_visual_regression_release.html`
+ * §WP-12.3.
  */
 const uiVersion = (import.meta.env.VITE_ANTIEK_UI ?? "v2") as "v1" | "v2";
 if (import.meta.env.DEV) {
@@ -28,7 +30,7 @@ if (import.meta.env.DEV) {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      {uiVersion === "v1" ? <AppLegacy /> : <App />}
     </BrowserRouter>
   </React.StrictMode>,
 );
