@@ -71,12 +71,12 @@ export default function ChatInput({
   return (
     <form
       onSubmit={onSubmit}
-      className="border-t border-stone-200 bg-white px-3 py-2 flex flex-col gap-1.5"
+      className="border-t border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-3 py-2 flex flex-col gap-1.5"
     >
       {region ? (
         <RegionContextChip region={region} />
       ) : disabled ? null : (
-        <div className="text-[10px] font-mono text-stone-400 px-1">
+        <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight px-1">
           no region selected — whole-document scope
         </div>
       )}
@@ -87,7 +87,7 @@ export default function ChatInput({
           placeholder={placeholder}
           disabled={disabled || busy}
           rows={2}
-          className="flex-1 resize-none rounded-md border border-stone-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-stone-700 disabled:bg-stone-100 disabled:text-stone-400"
+          className="flex-1 resize-none rounded-md border border-rule dark:border-charcoal-1 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-sun disabled:bg-ice-3 dark:bg-charcoal-1 disabled:text-ink-mute dark:text-moonlight"
           onKeyDown={(e) => {
             // Cmd/Ctrl+Enter submits — matches Cursor's chat ergonomics.
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -98,13 +98,13 @@ export default function ChatInput({
         <button
           type="submit"
           disabled={disabled || busy || !text.trim()}
-          className="self-stretch px-3 text-xs font-medium bg-stone-900 text-white rounded-md hover:bg-stone-700 disabled:bg-stone-300 disabled:text-stone-500 transition-colors"
+          className="self-stretch px-3 text-xs font-medium bg-ink text-white rounded-md hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 disabled:text-shadow-1 dark:text-moonlight transition-colors"
         >
           {busy ? "…" : "ask"}
         </button>
       </div>
       {error && (
-        <div className="text-[11px] font-mono text-red-700 px-1">{error}</div>
+        <div className="text-[11px] font-mono text-emperor px-1">{error}</div>
       )}
     </form>
   );
@@ -120,7 +120,7 @@ function RegionContextChip({
       ? region.text_excerpt.slice(0, 90) + "…"
       : region.text_excerpt;
   return (
-    <div className="text-[10px] font-mono text-stone-500 px-1 flex items-center gap-1.5 truncate">
+    <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight px-1 flex items-center gap-1.5 truncate">
       <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
         region
         {region.page != null && <span className="ml-1">p{region.page}</span>}

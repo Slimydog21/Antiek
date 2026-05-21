@@ -64,7 +64,7 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
 
   if (total === 0) {
     return (
-      <div className="px-4 py-3 text-xs text-stone-500 italic">
+      <div className="px-4 py-3 text-xs text-shadow-1 dark:text-moonlight italic">
         No events in this trajectory yet.
       </div>
     );
@@ -76,18 +76,18 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
         <button
           type="button"
           onClick={() => setPlaying((p) => !p)}
-          className="px-2.5 py-1 rounded-md bg-stone-900 text-white text-xs font-medium hover:bg-stone-800 transition-colors"
+          className="px-2.5 py-1 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors"
         >
           {playing ? "Pause" : "Play"}
         </button>
         <button
           type="button"
           onClick={() => setCurrentIndex(0)}
-          className="text-xs text-stone-500 hover:text-stone-900"
+          className="text-xs text-shadow-1 dark:text-moonlight hover:text-ink dark:text-bright"
         >
           ⏮ Restart
         </button>
-        <span className="text-xs font-mono text-stone-500">
+        <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
           {currentIndex + 1} / {total}
         </span>
       </div>
@@ -111,14 +111,14 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
 
 function EventFrame({ event }: { event: Event }) {
   return (
-    <div className="border border-stone-200 rounded-md px-3 py-2 bg-white">
-      <p className="text-xs font-mono text-stone-500 mb-1">
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-2 bg-ice-0 dark:bg-charcoal-2">
+      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight mb-1">
         {event.emitted_at} · {event.role ?? "?"} · {event.action_type}
       </p>
-      <p className="text-xs font-mono text-stone-400 mb-2">
+      <p className="text-xs font-mono text-ink-mute dark:text-moonlight mb-2">
         event_id: {event.event_id}
       </p>
-      <pre className="text-xs font-mono text-stone-800 whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+      <pre className="text-xs font-mono text-ink dark:text-bright whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
         {JSON.stringify(event.payload, null, 2)}
       </pre>
     </div>

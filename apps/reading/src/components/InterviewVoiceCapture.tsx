@@ -173,10 +173,10 @@ export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) 
   };
 
   return (
-    <div className="border border-stone-200 rounded-md p-4 space-y-3">
+    <div className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-serif text-stone-900">Voice capture</p>
-        <span className="text-[11px] font-mono text-stone-500 uppercase">
+        <p className="text-sm font-serif text-ink dark:text-bright">Voice capture</p>
+        <span className="text-[11px] font-mono text-shadow-1 dark:text-moonlight uppercase">
           {state.replace(/_/g, " ")}
         </span>
       </div>
@@ -185,7 +185,7 @@ export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) 
         <button
           type="button"
           onClick={requestConsent}
-          className="px-3 py-1.5 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition-colors"
+          className="px-3 py-1.5 rounded-md bg-ink text-white text-sm font-medium hover:bg-shadow-2 transition-colors"
         >
           Grant mic access
         </button>
@@ -203,13 +203,13 @@ export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) 
 
       {state === "recording" && (
         <div className="space-y-2">
-          <p className="text-xs font-mono text-stone-500">
+          <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
             Recording · {durationSeconds}s
           </p>
           <button
             type="button"
             onClick={stopAndUpload}
-            className="px-3 py-1.5 rounded-md bg-stone-700 text-white text-sm font-medium hover:bg-stone-600 transition-colors"
+            className="px-3 py-1.5 rounded-md bg-shadow-2 text-white text-sm font-medium hover:bg-shadow-1 transition-colors"
           >
             Stop &amp; upload
           </button>
@@ -217,7 +217,7 @@ export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) 
       )}
 
       {state === "uploading" && (
-        <p className="text-xs font-mono text-stone-500">Uploading…</p>
+        <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">Uploading…</p>
       )}
 
       {state === "uploaded" && (
@@ -227,7 +227,7 @@ export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) 
       )}
 
       {state === "error" && (
-        <p className="text-xs font-mono text-red-700">{error ?? "Unknown error."}</p>
+        <p className="text-xs font-mono text-emperor">{error ?? "Unknown error."}</p>
       )}
     </div>
   );
