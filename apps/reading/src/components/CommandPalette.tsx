@@ -2,6 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../lib/api";
+import { openNotebook } from "../workspace/actions";
+import {
+  buildShareableUrl,
+  clearAll,
+  clearScope,
+  project,
+} from "../workspace/persistence";
+import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
+import { useWorkspace } from "../workspace/WorkspaceStore";
+import { toast } from "./lemon/LemonToast";
 
 /**
  * Command Palette (PostHog Wedge 3, master-spec §5.6 + §4.5).
@@ -64,12 +74,24 @@ interface PaletteParkedQuestion {
   path: string;
 }
 
+/** S8-full extension — workspace-system action (open panel, reset
+ *  layout, copy shareable link, etc.). Actions have no path; instead
+ *  they expose a `run` callback the palette invokes on select. */
+interface PaletteAction {
+  kind: "action";
+  id: string;
+  title: string;
+  subtitle: string;
+  run: () => void;
+}
+
 export type PaletteEntry =
   | PaletteRoute
   | PaletteInvestigation
   | PaletteDocument
   | PaletteNotebook
-  | PaletteParkedQuestion;
+  | PaletteParkedQuestion
+  | PaletteAction;
 
 const ROUTE_INDEX: PaletteRoute[] = [
   {
@@ -394,15 +416,136 @@ export default function CommandPalette() {
     }
   }, [open, loadIndex]);
 
+  // S8-full — workspace actions over the active store. Built per-render
+  // so the action set reflects whatever panels are currently open.
+  const wsPanels = useWorkspace((s) => s.panels);
+  const workspaceActions = useMemo<PaletteAction[]>(() => {
+    const actions: PaletteAction[] = [
+      {
+        kind: "action",
+        id: "ws:open-project-tree",
+        title: "Open Project tree",
+        subtitle: "Workspace · dock left (⌘B)",
+        run: () => {
+          const ws = useWorkspace.getState();
+          if (ws.panels["shortcuts:projecttree"]) return;
+          ws.open("ProjectTree", {}, {
+            mode: "docked-left",
+            title: "Project",
+            id: "shortcuts:projecttree",
+          });
+        },
+      },
+      {
+        kind: "action",
+        id: "ws:open-notebook-editor",
+        title: "Open new notebook (editor)",
+        subtitle: "Workspace · floating · TipTap editor",
+        run: () => {
+          openNotebook({ kind: "NotebookEditor", mode: "floating" });
+        },
+      },
+      {
+        kind: "action",
+        id: "ws:toggle-aisidecar",
+        title: "Toggle AI sidecar",
+        subtitle: "Workspace · ⌘/",
+        run: () => {
+          window.dispatchEvent(
+            new CustomEvent(SHORTCUT_EVENTS.AISIDECAR_TOGGLE),
+          );
+        },
+      },
+      {
+        kind: "action",
+        id: "ws:copy-shareable-layout",
+        title: "Copy shareable layout link",
+        subtitle: "Workspace · ?ws=… URL",
+        run: () => {
+          const url = buildShareableUrl(project(useWorkspace.getState()));
+          if (url && navigator.clipboard) {
+            void navigator.clipboard.writeText(url);
+            toast.ok("Shareable layout link copied.");
+          } else {
+            toast.warn("Could not copy — clipboard unavailable.");
+          }
+        },
+      },
+      {
+        kind: "action",
+        id: "ws:reset-layout-route",
+        title: "Reset workspace layout (this route)",
+        subtitle: "Workspace · clears the per-route saved layout",
+        run: () => {
+          // Compute the route key the same way useWorkspaceHydration does;
+          // we conservatively use the current pathname.
+          const path =
+            typeof window !== "undefined" ? window.location.pathname : "/";
+          clearScope({ kind: "route", route: path });
+          useWorkspace.getState().reset();
+          toast.ok("Layout reset for this route.");
+        },
+      },
+      {
+        kind: "action",
+        id: "ws:reset-layouts-all",
+        title: "Reset ALL workspace layouts",
+        subtitle: "Workspace · wipes every antiek.workspace.* key",
+        run: () => {
+          const n = clearAll();
+          useWorkspace.getState().reset();
+          toast.warn(`Wiped ${n} saved layout(s).`);
+        },
+      },
+    ];
+
+    // Per-panel actions (dock-l/r/bottom, float, popout, close).
+    const visiblePanelEntries: PaletteAction[] = Object.values(wsPanels)
+      .slice(0, 20) // cap so the palette doesn't bloat
+      .flatMap((p) => [
+        {
+          kind: "action" as const,
+          id: `ws:${p.id}:dock-left`,
+          title: `${p.title} → Dock left`,
+          subtitle: "Panel · move",
+          run: () => useWorkspace.getState().setMode(p.id, "docked-left"),
+        },
+        {
+          kind: "action" as const,
+          id: `ws:${p.id}:dock-right`,
+          title: `${p.title} → Dock right`,
+          subtitle: "Panel · move",
+          run: () => useWorkspace.getState().setMode(p.id, "docked-right"),
+        },
+        {
+          kind: "action" as const,
+          id: `ws:${p.id}:float`,
+          title: `${p.title} → Float`,
+          subtitle: "Panel · move",
+          run: () => useWorkspace.getState().setMode(p.id, "floating"),
+        },
+        {
+          kind: "action" as const,
+          id: `ws:${p.id}:close`,
+          title: `${p.title} → Close`,
+          subtitle: "Panel · close",
+          run: () => useWorkspace.getState().close(p.id),
+        },
+      ]);
+
+    return [...actions, ...visiblePanelEntries];
+  }, [wsPanels]);
+
   const entries = useMemo<PaletteEntry[]>(
     () => [
+      ...workspaceActions,
       ...ROUTE_INDEX,
       ...investigations,
       ...documents,
       ...notebooks,
       ...parked,
     ],
-    [investigations, documents, notebooks, parked],
+    [workspaceActions, investigations, documents, notebooks, parked],
   );
 
   const ranked = useMemo(
@@ -411,7 +554,11 @@ export default function CommandPalette() {
   );
 
   const choose = (entry: PaletteEntry) => {
-    navigate(entry.path);
+    if (entry.kind === "action") {
+      entry.run();
+    } else {
+      navigate(entry.path);
+    }
     setOpen(false);
   };
 
