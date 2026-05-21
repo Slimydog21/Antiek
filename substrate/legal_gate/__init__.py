@@ -1,35 +1,40 @@
-"""Retrieval-time legal gate (Sprint 18 deliverable, placeholder shipped Sprint 17).
+"""Retrieval-time legal gate.
 
 Per `docs/master-product-spec.md` §9 the legal gate enforces the
-Bartz / Hachette / AG MDL banned-corpus restrictions at the SQL-WHERE
-level. The real Sprint 18 work lands `registry.py` (the curated
-banned-corpora list), `predicate.py` (the SQL-WHERE generator), and
-`gate.py` (the runtime gate wrapping `runtime/db_lock.connect_write`).
+Bartz / Hachette / AG MDL banned-corpus restrictions. Two
+implementations ship here:
 
-This Sprint-17 placeholder ships only the **interface** so the
-upstream callers (the Exa & Browserbase Wedge 1 + Wedge 2 ingestion
-path) can route through the gate seam without a future refactor. The
-default `PermissiveLegalGate` allows every URL. The acknowledgment
-flag is OFF by default so any production caller fails loudly on
-boot until the operator (a) consciously accepts the placeholder is
-permissive or (b) wires the real Sprint 18 implementation.
+  - ``RegistryBackedLegalGate`` (default) — consults the
+    operator-edited `registry.py` (banned domains / corpus ids /
+    authors / titles / content-hash prefixes) via the pure-function
+    matchers in `predicate.py`. The empty seed registry means the
+    default behavior is permissive **as data** — but the substrate
+    is correct, so adding a banned-corpus entry is a pure-data PR
+    rather than an architecture change.
+
+  - ``PermissiveLegalGate`` — Sprint 17 placeholder kept for
+    explicit opt-in test paths. Requires
+    ``ANTIEK_LEGAL_GATE_PLACEHOLDER_ACKED=1`` to construct via the
+    factory; direct construction with ``_bypass_acknowledgment=True``
+    is allowed for tests that want a known-permissive gate.
 
 The spec at §6.9 states: "Wedge 1 cannot ship before the Sprint 18
-retrieval-time legal gate is in production." This placeholder
-preserves the architectural seam — Wedge 1 callers always route
-through `check_url(...)` — so the real registry drops in by
-replacing the gate instance, not by editing the adapter.
+retrieval-time legal gate is in production." This package satisfies
+that — the gate ships with the real registry/predicate plumbing
+and an empty seed list awaiting lawyer-reviewed entries.
 
 Public surface:
-    - LegalGate (abstract base)
+    - LegalGate (Protocol)
     - LegalGateVerdict (frozen result type)
-    - PermissiveLegalGate (placeholder default)
-    - LegalGatePlaceholderUnacknowledged (boot-time exception)
+    - RegistryBackedLegalGate (real gate, the default)
+    - PermissiveLegalGate (opt-in placeholder for tests)
+    - LegalGatePlaceholderUnacknowledged (acknowledgment exception)
     - default_legal_gate() — env-aware factory
 
-When Sprint 18 lands `registry.py` + `predicate.py`, the new
-`SqlWhereLegalGate` is added here and `default_legal_gate()` switches
-its default. Callers don't change.
+The broader SQL-WHERE enforcement at every documents/chunks read
+and write path (per master-spec §9 deeper requirement) is a
+separate substrate refactor — out of scope of this module. This
+module owns the `check_url` / `check_document` seam.
 """
 
 from __future__ import annotations
@@ -115,15 +120,36 @@ class PermissiveLegalGate:
 
 
 def default_legal_gate() -> LegalGate:
-    """Factory. Returns the real gate when Sprint 18 lands it; until
-    then, returns the placeholder (with acknowledgment-flag enforced).
+    """Factory. Returns the `RegistryBackedLegalGate` consulting
+    the module-level registry — the **default and the
+    operator-defensible choice**.
 
-    Callers should not cache the result across requests — the factory
-    is cheap and the right place to swap implementations.
+    Two escape hatches:
+
+      - ``ANTIEK_LEGAL_GATE_DISABLED=1`` — returns the placeholder
+        with the acknowledgment flag auto-set. Use ONLY for offline
+        substrate work where the operator has consciously chosen to
+        bypass the gate. The trajectory still records
+        ``gate_kind="placeholder"`` so the bypass is audit-visible.
+
+      - ``ANTIEK_LEGAL_GATE_PLACEHOLDER_ACKED=1`` — returns the
+        placeholder explicitly (matches the Sprint-17 contract for
+        any caller that still depends on the placeholder shape).
+        Tests use this; production should NOT.
+
+    Callers should not cache the result across requests — the
+    factory is cheap and the right place for the
+    implementation choice to live.
     """
-    # Sprint 18 will branch here on the presence of the real registry.
-    # For now: only the placeholder exists.
-    return PermissiveLegalGate()
+    if os.environ.get("ANTIEK_LEGAL_GATE_DISABLED") == "1":
+        return PermissiveLegalGate(_bypass_acknowledgment=True)
+    if os.environ.get("ANTIEK_LEGAL_GATE_PLACEHOLDER_ACKED") == "1":
+        return PermissiveLegalGate()
+    # Lazy import to avoid touching `gate.py` (which imports back
+    # into this module for LegalGateVerdict) on every package
+    # import.
+    from .gate import RegistryBackedLegalGate
+    return RegistryBackedLegalGate()
 
 
 __all__ = [
@@ -133,3 +159,9 @@ __all__ = [
     "LegalGatePlaceholderUnacknowledged",
     "default_legal_gate",
 ]
+
+# Re-export the real-gate class so callers don't have to remember
+# the submodule layout.
+from .gate import RegistryBackedLegalGate  # noqa: E402
+
+__all__.append("RegistryBackedLegalGate")

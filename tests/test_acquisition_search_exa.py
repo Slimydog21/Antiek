@@ -59,14 +59,17 @@ from substrate.legal_gate import (
 
 @pytest.fixture
 def isolated_env(tmp_path, monkeypatch):
-    """Redirect both event log and budget sidecars to tmp_path. Sets
-    a dummy Exa key so ExaClient construction doesn't trip on the
-    missing env var (the MockTransport tests don't talk to the
-    network anyway)."""
+    """Redirect event log, budget sidecars, and DuckDB cache to
+    tmp_path. ANTIEK_DUCKDB_PATH isolation is load-bearing because
+    the discovery cache (spec §6.5) is keyed on (query, investigation_id);
+    without isolation a prior test's cached proposals can short-
+    circuit the budget-reservation branch."""
     events_dir = tmp_path / "events"
     events_dir.mkdir()
+    db_path = tmp_path / "graph.duckdb"
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db_path))
     monkeypatch.setenv("EXA_API_KEY", "test-key-not-used-by-mock-transport")
     monkeypatch.setenv("ANTIEK_LEGAL_GATE_PLACEHOLDER_ACKED", "1")
     yield {"events_dir": str(events_dir), "tmpdir": str(tmp_path)}
