@@ -389,6 +389,8 @@ def ingest(
     client: Optional[httpx.Client] = None,
     embedder: object = None,
     source_metadata: Optional[dict] = None,
+    sidecar_bytes: Optional[bytes] = None,
+    sidecar_url: Optional[str] = None,
 ) -> IngestResult:
     """Run the full pipeline for one URL.
 
@@ -559,7 +561,61 @@ def ingest(
             content_type=detection.content_type,
         )
 
+    # 5b. Sidecar apply (SPR-10 / M4). MUST run after step 5 so anchors
+    # can resolve against the just-built chunks (rigor #4: anchors are
+    # resolved against chunks, so the pipeline-step ordering invariant
+    # is anchor-apply AFTER chunk-write). We only attempt this for PDFs;
+    # other content types can't carry a meaningful sidecar today.
+    sidecar_outcome = None
+    if (sidecar_bytes or sidecar_url) and detection.content_type == ct.PDF:
+        try:
+            from services.ingestion.sidecar_detector import (
+                SidecarApplyOutcome,
+                apply_sidecar_for_pdf_after_ingest,
+                fetch_sidecar_from_url,
+            )
+            resolved_sidecar = sidecar_bytes
+            sidecar_source_label = "zip"
+            if resolved_sidecar is None and sidecar_url:
+                resolved_sidecar = fetch_sidecar_from_url(sidecar_url)
+                sidecar_source_label = "url"
+            if resolved_sidecar is not None:
+                # PDF bytes for hash check. We captured the body in step 3
+                # (fetched.body for PDF path). The variable is in scope
+                # via the local ``fetched`` from the elif branch.
+                pdf_bytes_for_hash = fetched.body if "fetched" in locals() else b""
+                from substrate.graph import default_db_path as _graph_default_db_path
+                resolved_db_path = db_path or _graph_default_db_path()
+                sidecar_outcome = apply_sidecar_for_pdf_after_ingest(
+                    sidecar_bytes=resolved_sidecar,
+                    pdf_bytes=pdf_bytes_for_hash,
+                    document_id=document_id,
+                    user_id=user_id,
+                    db_path=resolved_db_path,
+                    sidecar_source=sidecar_source_label,
+                )
+            else:
+                sidecar_outcome = SidecarApplyOutcome(
+                    detected=False,
+                    error="sidecar_url_fetch_failed",
+                    ui_message="Could not fetch the sidecar URL; PDF imported without annotations.",
+                )
+        except Exception as exc:  # noqa: BLE001
+            # Sidecar apply failures must NOT fail the ingest — the PDF
+            # is already in the substrate. We attach the outcome to the
+            # job's metadata so the UI can show what went wrong, but
+            # the ingest itself is "succeeded" because the PDF did.
+            import traceback
+            from services.ingestion.sidecar_detector import SidecarApplyOutcome
+            sidecar_outcome = SidecarApplyOutcome(
+                detected=True, applied=False,
+                error=f"sidecar_apply_crashed: {exc!r}",
+                ui_message="Sidecar apply crashed; PDF imported, annotations not restored.",
+                warnings=[traceback.format_exc()],
+            )
+
     # 6. Terminal success
+    sidecar_metadata = sidecar_outcome.to_dict() if sidecar_outcome is not None else None
     jobs_mod.update_status(
         resolved_job_id, status="succeeded",
         document_id=document_id,
@@ -567,6 +623,7 @@ def ingest(
             "title": doc.title,
             "paywalled": doc.paywalled,
             "via_cache": via_cache,
+            "sidecar": sidecar_metadata,
         },
         db_path=db_path,
     )

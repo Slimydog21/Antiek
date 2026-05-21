@@ -10,6 +10,7 @@ import { useEventStream } from "../../hooks/useEventStream";
 import { postTypedEvent } from "../../lib/api";
 import { sha256Hex } from "../../lib/hash";
 import HeaderBar from "../shared/HeaderBar";
+import ShareWithAnnotations from "./ShareWithAnnotations";
 
 /**
  * Mode B — Document Wrestler.
@@ -127,6 +128,17 @@ export default function WrestleApp() {
         </label>
         {loadError && (
           <div className="text-xs font-mono text-red-700">{loadError}</div>
+        )}
+        {documentId && (
+          // SPR-10 / M5: ship the operator's annotations alongside the
+          // PDF as a single zip. The recipient drops the zip in, the
+          // ingest pipeline detects the pair, applies the sidecar, and
+          // the operator's highlights / voice notes appear flagged as
+          // "imported from share".
+          <ShareWithAnnotations
+            documentId={documentId}
+            userId={investigationId /* dev: investigation == user surrogate */}
+          />
         )}
       </HeaderBar>
       <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr] gap-0 flex-1 min-h-0">
