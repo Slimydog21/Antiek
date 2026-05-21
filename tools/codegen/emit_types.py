@@ -200,6 +200,12 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.InvestigationChaseHaltedPayload,
     schema_module.ClaimAssertedByOperatorPayload,
     schema_module.PageAttributionComputedPayload,
+    schema_module.RLMBridgeDecidedPayload,
+    schema_module.QualityGateEvaluatedPayload,
+    schema_module.CrossGraphCitationRecordedPayload,
+    schema_module.RevShareDecidedPayload,
+    schema_module.PreferenceObservationRecordedPayload,
+    schema_module.SkillRulePromotedPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.

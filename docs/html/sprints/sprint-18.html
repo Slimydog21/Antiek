@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 18 — Retrieval-time legal gate &amp; publisher dashboard</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="../spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprint-17.html">S17</a>
+        <a href="sprint-18.html" class="active">S18</a>
+        <a href="sprint-19.html">S19</a>
+        <a href="sprint-20.html">S20</a>
+        <a href="sprint-21.html">S21</a>
+        <a href="sprint-22.html">S22</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 18 &middot; next &middot; binding precondition for Exa Wedge 1</p>
+<h1>Sprint 18 — Retrieval-time legal gate, publisher dashboard, brainstorming workstation full ship</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. The substrate sprint that closes the legal exposure window. The Sprint 18 retrieval-time legal gate is the <em>binding precondition</em> for the Exa &amp; Browserbase integration spec's Wedge 1 to ship in Sprint 19. Without this gate in production, Wedge 1 would ingest restricted-corpus content into the graph &mdash; a substrate violation.</p>
+    <p><strong>Relevance to the Exa / Browserbase spec</strong>. This is <em>the</em> sprint the spec hangs on. &sect;6.9 of the spec: "Wedge 1 cannot ship before the Sprint 18 retrieval-time legal gate is in production." &sect;12.6 of the spec: "There is no architectural way to use Exa to get content from a banned domain because the gate sits between the URL and the graph." Sprint 18 builds that gate.</p>
+    <p><strong>Predecessor</strong>. Sprint 17 closes with: interview voice mode shipped; dispatch tier measurement window open; 12 <code>program.md</code> files committed; Storybook scaffolded; Lemon UI verdict landed (either way); Brainstorming Workstation scaffold rendering (or slipped explicitly).</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#thesis">Sprint thesis</a></li>
+        <li><a href="#legal-gate">Mainline &mdash; retrieval-time legal gate (Bartz / Hachette / AG MDL)</a></li>
+        <li><a href="#publisher-dashboard">Publisher dashboard + Stripe Connect (architecture)</a></li>
+        <li><a href="#brainstorm-full">Brainstorming Workstation &mdash; full ship</a></li>
+        <li><a href="#thought-partner">Thought-partner role</a></li>
+        <li><a href="#substrate-precursor">Substrate-only precursor for Wedges 1 + 2</a></li>
+        <li><a href="#sequence">Order of operations</a></li>
+        <li><a href="#not">What this sprint deliberately does NOT do</a></li>
+        <li><a href="#open">Open questions for this sprint</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+    </ol>
+</div>
+
+<h2 id="thesis">1. Sprint thesis <a class="section-anchor" href="#thesis">#</a></h2>
+
+<p>Sprint 18 closes the legal-substrate exposure that Sprint 11&ndash;16 deliberately left open. The master-product-spec at &sect;9 commits to <strong>retrieval-time gating before Sprint 18 ships</strong>; absent the gate, the Bartz <em>v.</em> Anthropic, Hachette <em>v.</em> Anthropic, and AG MDL banned-corpus list cannot be enforced at the substrate level &mdash; only at the policy level &mdash; and policy-level enforcement is not a defensible posture for shipping the publisher dashboard.</p>
+
+<p>The sprint has three primary deliverables:</p>
+
+<ol>
+    <li><strong>The retrieval-time legal gate.</strong> SQL-WHERE-level enforcement of the banned-corpus list. Every query path that reads from <code>substrate.documents</code> or <code>substrate.chunks</code> passes through it. Every write path that inserts to those tables passes through it.</li>
+    <li><strong>The publisher dashboard architecture.</strong> Stripe Connect, escrow accruing per Kalshi-pattern, KYC pipeline. Payouts gate strictly on publisher opt-in.</li>
+    <li><strong>The Brainstorming Workstation full ship.</strong> Thought-partner role, Lego-block insight slotting, PostHog notebook-pattern polish.</li>
+</ol>
+
+<p>Plus the <strong>substrate-only precursor</strong> for the Exa / Browserbase Wedges 1 and 2: typed event payloads land ahead of the wedge work so the wedge PRs are typed from day one.</p>
+
+<h2 id="legal-gate">2. Mainline — retrieval-time legal gate <a class="section-anchor" href="#legal-gate">#</a></h2>
+
+<p>Reference: <code>master-product-spec.md</code> &sect;9. The single most important substrate change of the sprint.</p>
+
+<h3>2.1 What it is</h3>
+
+<p>A SQL-WHERE-level gate enforced at every read and write path against <code>substrate.documents</code>, <code>substrate.chunks</code>, <code>substrate.nodes</code>, and <code>substrate.edges</code>. The gate consults a <code>substrate.legal_gate.banned_corpora</code> table whose rows enumerate banned source-corpus identifiers, banned domains, banned author-publisher pairs, and banned content-hash prefixes (for the AG MDL case where specific content fingerprints are restricted regardless of domain).</p>
+
+<p>The gate is structurally inside <code>substrate/legal_gate/</code> with three sub-modules:</p>
+
+<ul>
+    <li><code>substrate/legal_gate/registry.py</code> &mdash; the banned-corpora registry. Operator-edited; not auto-learned.</li>
+    <li><code>substrate/legal_gate/predicate.py</code> &mdash; the SQL-WHERE predicate generator. Returns a parameterized <code>WHERE</code> clause that callers append to their queries.</li>
+    <li><code>substrate/legal_gate/gate.py</code> &mdash; the runtime gate that wraps <code>connect_write</code> from <code>runtime/db_lock.py</code> and rejects writes that would violate the registry.</li>
+</ul>
+
+<h3>2.2 Why the gate sits at SQL-WHERE level</h3>
+
+<p>Two reasons, both load-bearing:</p>
+
+<ol>
+    <li><strong>Defense in depth.</strong> An application-layer gate (Python-side check before SQL) can be bypassed by anyone who finds a code path that talks to DuckDB directly. A SQL-WHERE-level gate is enforced by the database engine; no application-layer code path can bypass it.</li>
+    <li><strong>Read-path coverage.</strong> The Sprint 18 gate must reject not just <em>writes</em> of banned content but <em>reads</em> &mdash; specifically, retrieval-time queries that would return banned chunks even if those chunks were ingested before the ban list expanded. SQL-WHERE is the only mechanism that applies uniformly to existing rows.</li>
+</ol>
+
+<h3>2.3 The connection to Exa &amp; Browserbase Wedge 1</h3>
+
+<div class="callout warn">
+    <strong>Binding</strong>
+    <p>The Exa &amp; Browserbase spec at &sect;6.9 commits: "Wedge 1 cannot ship before the Sprint 18 retrieval-time legal gate is in production." When Wedge 1 lands in Sprint 19, every URL it discovers passes through the gate <em>before</em> <code>ingest_url</code> writes to the graph. A discovered URL on the banned-corpus list produces <code>DiscoverySelectedPayload{decision="rejected_by_legal_gate"}</code> &mdash; the discovery is audited, but no graph write happens.</p>
+</div>
+
+<h3>2.4 Operator-edited registry, not auto-learned</h3>
+
+<p>The banned-corpora registry is <strong>operator-edited via direct commits to <code>substrate/legal_gate/registry.py</code></strong>. No "learn from negative outcomes" pattern. Reasons:</p>
+
+<ul>
+    <li>The registry has legal weight: each entry encodes a specific legal posture (Bartz settlement, Hachette pretrial order, AG MDL case-management order). Auto-learning would dilute that.</li>
+    <li>The cost of a false positive (rejecting legal content) is asymmetric with the cost of a false negative (allowing banned content into the substrate). The asymmetry favors human review on every entry.</li>
+    <li>The registry is small &mdash; tens of entries, not thousands. Hand-curation is feasible.</li>
+</ul>
+
+<h3>2.5 Acceptance criteria</h3>
+
+<ul>
+    <li>Every query against <code>substrate.documents</code> or <code>substrate.chunks</code> passes through the gate predicate.</li>
+    <li>Every write to <code>substrate.documents</code>, <code>substrate.chunks</code>, <code>substrate.nodes</code>, <code>substrate.edges</code> via <code>runtime/db_lock.connect_write</code> consults the gate.</li>
+    <li>Integration test: a fixture URL on the banned list cannot be ingested via <code>ingest_url(...)</code> &mdash; the call returns <code>IngestUrlResult{skipped_reason="rejected_by_legal_gate"}</code>.</li>
+    <li>Integration test: a pre-existing chunk whose source is added to the ban list disappears from retrieval results within the same DB connection.</li>
+    <li>Operator can edit <code>registry.py</code>, run <code>python -m substrate.legal_gate.audit</code>, and see a list of (a) what would be newly blocked, (b) what would be newly unblocked, (c) any inconsistencies.</li>
+</ul>
+
+<h2 id="publisher-dashboard">3. Publisher dashboard + Stripe Connect (architecture) <a class="section-anchor" href="#publisher-dashboard">#</a></h2>
+
+<p>Reference: <code>master-product-spec.md</code> &sect;9 Phase 2, &sect;14.1 row "Sprint 18". The IP-payout architecture ships in Sprint 18 alongside the publisher dashboard; <strong>payouts gate strictly on publisher opt-in</strong>.</p>
+
+<h3>3.1 What ships this sprint</h3>
+
+<ul>
+    <li><code>publisher.antiek.ai</code> &mdash; the publisher-facing surface (separate domain from the operator-facing app).</li>
+    <li>Stripe Connect onboarding flow &mdash; KYC, bank-account linkage, tax-form collection.</li>
+    <li>Escrow accrual per the Kalshi pattern &mdash; revenue accrues per attributed publisher but does not pay out until the publisher opts in.</li>
+    <li>Notification template &mdash; the first-cohort outreach goes out Sprint 19; this sprint ships the template + the send mechanism.</li>
+    <li>One <strong>manual sponsor slot</strong> in the MASTER.md viewer footer (per master-spec &sect;14.1 row 2: "Sponsor pays flat monthly fee. Revenue routed manually to top-3 attributed publishers as proof-of-concept.").</li>
+</ul>
+
+<h3>3.2 What does NOT ship this sprint</h3>
+
+<ul>
+    <li><strong>Synquery integration.</strong> Per master-spec &sect;14.3, Synquery slips to Sprint 21 &mdash; "only after creation surface PMF signal that warrants paying for expert calls."</li>
+    <li><strong>Automated payouts.</strong> Manual routing for the proof-of-concept sponsor slot. Automated payouts ship Sprint 20&ndash;22.</li>
+    <li><strong>Phase 4 lead-gen ad inventory.</strong> Sprint 21&ndash;22.</li>
+</ul>
+
+<h3>3.3 The connection to the Exa / Browserbase spec</h3>
+
+<p>The publisher dashboard work does <em>not</em> directly intersect Wedge 1 or Wedge 2. But the two ship in the same sprint, which creates capacity pressure. The legal gate is the absolute priority; the publisher dashboard is the second priority; the brainstorming-workstation full ship is the third. The Exa / Browserbase substrate-only precursor (&sect;5 below) is the easiest item to slip if other work pressures.</p>
+
+<h2 id="brainstorm-full">4. Brainstorming Workstation — full ship <a class="section-anchor" href="#brainstorm-full">#</a></h2>
+
+<p>Sprint 17 shipped the scaffold (route + watch-for-later folder + launch-investigation button). Sprint 18 ships the rest:</p>
+
+<ul>
+    <li><strong>Lego-block insight slotting from private graph.</strong> Operator can drag in saved insights from prior investigations &mdash; the operator's stated workflow per master-spec &sect;4.5.</li>
+    <li><strong>UI polish per PostHog notebook patterns.</strong> Reference: <code>integration_posthog.md</code> Wedge 2. Sprint 18 does not ship the full notebook surface (that's Sprint 19); it adopts the block-structured aesthetic for the brainstorm surface specifically.</li>
+    <li><strong>Voice-note-to-question chaining.</strong> Voice notes (from Sprint 13 acquisition) flow into the brainstorm surface as draft questions.</li>
+</ul>
+
+<h2 id="thought-partner">5. Thought-partner role <a class="section-anchor" href="#thought-partner">#</a></h2>
+
+<p>New role at <code>roles/thought_partner/</code>. Sprint 17 deferred this from the Brainstorming Workstation scaffold; Sprint 18 implements it.</p>
+
+<h3>5.1 What it is</h3>
+
+<p>A role specifically designed to <strong>refine an unsharpened question</strong> through dialogue. Operator types a vague question; the thought-partner asks clarifying questions, surfaces related prior investigations from the graph, proposes alternate phrasings. The output is a <em>sharpened question</em> ready to dispatch to Loop 1.</p>
+
+<h3>5.2 Why this is a new role and not a tool</h3>
+
+<p>The thought-partner needs its own dispatch tier configuration (likely a small fast model &mdash; DeepSeek V4 Flash or similar), its own <code>program.md</code> (per Sprint 17's INTEGRATE NOW), and its own typed event vocabulary (<code>QuestionSharpened</code> events). All three of those are role-level concerns, not tool-level. Plus the role-as-source-of-truth invariant: every role is in the trajectory; tools may not be.</p>
+
+<h2 id="substrate-precursor">6. Substrate-only precursor for Wedges 1 + 2 <a class="section-anchor" href="#substrate-precursor">#</a></h2>
+
+<p>Reference: <a href="../spec-exa-browserbase.html#now">Exa &amp; Browserbase spec &sect;18.3</a>. ~1 day; the easiest item to slip if other work pressures.</p>
+
+<h3>6.1 What it is</h3>
+
+<p>Three typed event payloads added to <code>substrate/schemas/events.py</code>:</p>
+
+<ul>
+    <li><code>DiscoveryProposedPayload</code> &mdash; the Wedge 1 event for "we considered this URL."</li>
+    <li><code>DiscoverySelectedPayload</code> &mdash; the Wedge 1 event for "we promoted this discovery to ingestion (or didn't)."</li>
+    <li><code>FetchFallbackEscalatedPayload</code> &mdash; the Wedge 2 event for "httpx returned low_word_count, we escalated to Browserbase."</li>
+</ul>
+
+<p>Plus three <code>ActionType</code> enum entries:</p>
+
+<pre><code>DISCOVERY_PROPOSED       = "discovery.proposed"
+DISCOVERY_SELECTED       = "discovery.selected"
+FETCH_FALLBACK_ESCALATED = "fetch.fallback.escalated"
+</code></pre>
+
+<p>Plus the TS codegen pass (<code>tools/codegen/emit_types.py</code>) so the frontend has the types from day one.</p>
+
+<h3>6.2 Why this lands in Sprint 18, not Sprint 19</h3>
+
+<p>Three reasons:</p>
+
+<ol>
+    <li><strong>Wedge 1 and Wedge 2 PRs are easier to review if the types are already in.</strong> Mixing event-schema additions with the adapter / fetcher code in one PR makes the diff harder to read.</li>
+    <li><strong>The TS codegen is a substrate-test that catches schema breakage.</strong> Landing it ahead of the wedge work means any subsequent breakage attributes cleanly to the wedge PR.</li>
+    <li><strong>The substrate-only PR is the "warm-up."</strong> Operator can review the event-schema additions independent of the larger wedge work, building familiarity with the discovery-event vocabulary before the adapter lands.</li>
+</ol>
+
+<h3>6.3 What it does NOT do</h3>
+
+<ul>
+    <li>Does NOT add the Exa client.</li>
+    <li>Does NOT add the Browserbase client.</li>
+    <li>Does NOT change <code>acquisition/urls/adapter.ingest_url</code>'s signature.</li>
+    <li>Does NOT emit any of the new events &mdash; the types exist, no caller writes them yet.</li>
+</ul>
+
+<p>Strict additions, no behavior change.</p>
+
+<h2 id="sequence">7. Order of operations <a class="section-anchor" href="#sequence">#</a></h2>
+
+<ol>
+    <li><strong>Retrieval-time legal gate</strong> (first half of sprint, ~5 days). Cannot slip. Every other Sprint 18 deliverable, plus all of Sprint 19's Exa work, depends on this.</li>
+    <li><strong>Publisher dashboard architecture</strong> (parallel to legal gate, ~4 days). Sub-track on the dashboard front-end while substrate work proceeds.</li>
+    <li><strong>Brainstorming Workstation full ship</strong> (mid-sprint, ~3 days). Builds on the Sprint 17 scaffold.</li>
+    <li><strong>Thought-partner role</strong> (~1.5 days). Coupled to the brainstorming workstation full ship.</li>
+    <li><strong>Substrate-only precursor for Wedges 1 + 2</strong> (~1 day). Land any time the legal gate is in progress &mdash; the two are independent.</li>
+</ol>
+
+<p>If the legal gate runs long, the brainstorming workstation full ship slips to Sprint 19. The legal gate cannot slip; Wedge 1 ships in Sprint 19 depends on it.</p>
+
+<h2 id="not">8. What this sprint deliberately does NOT do <a class="section-anchor" href="#not">#</a></h2>
+
+<ul>
+    <li><strong>The Exa <code>acquisition/search/exa/</code> module.</strong> Sprint 19. Requires the legal gate from Sprint 18 to be in production first.</li>
+    <li><strong>The Browserbase <code>client_browserbase.py</code>.</strong> Sprint 19. Independent of Wedge 1 but typically lands alongside.</li>
+    <li><strong>Wedge 3 (verifier <code>/contents</code> corroboration).</strong> Sprint 19+, gated on Wedge 1 ratification + dispatch-multi-turn tool-call substrate.</li>
+    <li><strong>Synquery integration.</strong> Slips to Sprint 21 per master-spec &sect;14.3.</li>
+    <li><strong>Notebook surface (PostHog Wedge 2 full).</strong> Sprint 18&ndash;19 split &mdash; the brainstorming workstation full ship absorbs the block-structured aesthetic; the full notebook surface is Sprint 19 main work.</li>
+    <li><strong>Multi-user accounts.</strong> Sprint 22+, gated on six months of solo compounding.</li>
+    <li><strong>Automated payouts to publishers.</strong> Sprint 20&ndash;22. This sprint ships escrow accrual + manual sponsor routing.</li>
+    <li><strong>Phase 4 lead-gen ad inventory.</strong> Sprint 21&ndash;22.</li>
+</ul>
+
+<h2 id="open">9. Open questions for this sprint <a class="section-anchor" href="#open">#</a></h2>
+
+<h3>9.1 Which banned-corpus seed list ships in <code>registry.py</code>?</h3>
+<p>The Bartz settlement names specific authors; the Hachette pretrial order names specific titles; the AG MDL case-management order names specific content. The seed list must be hand-curated. Operator + lawyer-review pass required before the registry is operator-edited live.</p>
+
+<h3>9.2 Stripe Connect onboarding &mdash; how aggressive is the KYC?</h3>
+<p>The minimum Stripe-required KYC vs the Antiek-preferred KYC (more thorough; reduces sponsor-friction). Operator decides based on the first-cohort outreach plan for Sprint 19.</p>
+
+<h3>9.3 First sponsor: manual onboarding via direct sales or self-serve?</h3>
+<p>Master-spec &sect;14.1 row 2 says "manual sponsor onboarding via direct sales" for the proof-of-concept. Sprint 18 ships the manual flow; whether Sprint 19+ moves to self-serve depends on the sponsor's experience.</p>
+
+<h3>9.4 Does the substrate-only precursor slip if the legal gate runs long?</h3>
+<p>It can slip to Sprint 19 with no consequence to Wedge 1 timing. The wedge PR can include the type additions if the precursor slips. Recommendation: hold a half-day reserve for the precursor; slip only if the legal gate eats &gt; 6 days.</p>
+
+<h2 id="acceptance">10. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<p>Sprint 18 is <strong>done</strong> when:</p>
+
+<ol>
+    <li>The retrieval-time legal gate is in production. Every read and write path against substrate tables passes through it. Integration tests cover the banned-corpus rejection path end-to-end.</li>
+    <li>The publisher dashboard architecture is shipped: <code>publisher.antiek.ai</code> serves a Stripe Connect onboarding flow; escrow accrual is live; one manual sponsor slot is live in the MASTER.md viewer footer.</li>
+    <li>The Brainstorming Workstation is feature-complete: thought-partner role wired, Lego-block insight slotting works, voice-note-to-question chaining works.</li>
+    <li>The substrate-only precursor for Wedges 1 + 2 lands: three typed payloads, three <code>ActionType</code> entries, TS codegen pass clean. (May slip to Sprint 19 if the legal gate runs long.)</li>
+    <li>Full test suite still green; no regression.</li>
+</ol>
+
+<p>The <strong>operator-validation criterion</strong>: the operator can edit <code>registry.py</code> to add a new banned-corpus entry, restart the substrate, run a manual <code>ingest_url(banned_url, ...)</code> call from a Python REPL, and see the call return <code>IngestUrlResult{skipped_reason="rejected_by_legal_gate"}</code> with the typed event in the JSONL log.</p>
+
+<hr>
+
+<h3>Why this sprint is the spec's pivot</h3>
+
+<p>Every wedge in the Exa &amp; Browserbase spec &mdash; integrate or reject &mdash; assumes the Sprint 18 legal gate exists. Wedge 1 depends on it for the discovery-then-gate-then-ingest flow. Wedge 6 (full agentic browsing) cites it as one of the reasons full agentic browsing is unobservable today. The nine REJECTs include "&sect;12.6: bypass the Sprint 18 retrieval-time legal gate" as the highest-priority rejection.</p>
+
+<p>If Sprint 18 ships the gate, the spec's INTEGRATE NOW pair (Wedges 1 + 2) can ship in Sprint 19. If Sprint 18 does not ship the gate &mdash; if the work slips a sprint &mdash; the Exa &amp; Browserbase wedges slip one sprint too. There is no path to Wedge 1 that skips the gate. The spec is structured this way deliberately; do not look for shortcuts.</p>
+
+<hr>
+
+<div class="meta">
+    <p><strong>Previous.</strong> <a href="sprint-17.html">&larr; Sprint 17 &mdash; Interview voice mode &amp; substrate measurement</a></p>
+    <p><strong>Next.</strong> <a href="sprint-19.html">Sprint 19 &mdash; Notebook surface, Exa &amp; Browserbase land &rarr;</a></p>
+</div>
+
+</article>
+</main>
+
+<footer>
+    Antiek docs &middot; <a href="../index.html">back to index</a> &middot; <a href="sprint-17.html">&larr; Sprint 17</a> &middot; <a href="sprint-19.html">Sprint 19 &rarr;</a>
+</footer>
+
+</body>
+</html>

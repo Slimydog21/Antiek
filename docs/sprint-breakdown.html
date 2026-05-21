@@ -1,0 +1,2248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Antiek — Sprint Breakdown</title>
+<style>
+  :root {
+    --cream: #f7f3ea;
+    --cream-deep: #efe8d7;
+    --ink: #1c1a17;
+    --ink-soft: #3b3631;
+    --muted: #6e6557;
+    --rule: #d8cfb9;
+    --accent: #6b4a1f;
+    --accent-soft: #b08a4a;
+    --shipped: #2b6a3c;
+    --scaffold: #8a6a16;
+    --pending: #7a3e1a;
+    --notstarted: #6f6f6f;
+    --parallel: #3a4a6b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--cream); color: var(--ink); }
+  body {
+    font-family: "EB Garamond", "Iowan Old Style", "Georgia", "Palatino", serif;
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    min-height: 100vh;
+  }
+  /* sidebar */
+  aside.nav {
+    background: var(--cream-deep);
+    border-right: 1px solid var(--rule);
+    padding: 24px 18px 40px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  aside.nav h1 {
+    font-size: 18px;
+    margin: 0 0 4px;
+    letter-spacing: 0.01em;
+  }
+  aside.nav .subtitle {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 18px;
+    font-style: italic;
+  }
+  aside.nav .group-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    margin: 18px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--rule);
+  }
+  aside.nav ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  aside.nav li {
+    margin: 2px 0;
+  }
+  aside.nav a {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    text-decoration: none;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+  aside.nav a:hover { background: rgba(0,0,0,0.05); }
+  aside.nav a.active {
+    background: var(--ink);
+    color: var(--cream);
+  }
+  aside.nav a .num {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 38px;
+  }
+  aside.nav a.active .num { color: var(--accent-soft); }
+  aside.nav a .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    display: inline-block;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .dot.shipped { background: var(--shipped); }
+  .dot.scaffold { background: var(--scaffold); }
+  .dot.pending  { background: var(--pending); }
+  .dot.notstarted { background: var(--notstarted); }
+  .dot.parallel { background: var(--parallel); }
+
+  /* main */
+  main.pages {
+    padding: 56px 64px 100px;
+    max-width: 980px;
+  }
+  .page { display: none; }
+  .page.visible { display: block; }
+  .page > header {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 16px;
+    margin-bottom: 28px;
+  }
+  .page > header .crumb {
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .page > header h2 {
+    font-size: 36px;
+    line-height: 1.15;
+    margin: 0 0 6px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .page > header .theme {
+    font-size: 19px;
+    font-style: italic;
+    color: var(--ink-soft);
+  }
+  .badges {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .badge {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: "JetBrains Mono", "Menlo", monospace;
+    font-weight: 600;
+  }
+  .badge.shipped    { background: #e1efe4; color: var(--shipped); border: 1px solid #b8d6bf; }
+  .badge.scaffold   { background: #f5ecd0; color: var(--scaffold); border: 1px solid #d8c890; }
+  .badge.pending    { background: #f3dccd; color: var(--pending); border: 1px solid #d8b39c; }
+  .badge.notstarted { background: #e6e3dd; color: var(--notstarted); border: 1px solid #c8c3b9; }
+  .badge.parallel   { background: #dde3ef; color: var(--parallel); border: 1px solid #b3becf; }
+  .badge.gate       { background: #ffe8e0; color: #a23000; border: 1px solid #e6b39c; }
+
+  h3 {
+    font-size: 21px;
+    margin: 32px 0 8px;
+    font-weight: 600;
+    letter-spacing: -0.003em;
+  }
+  h3 .h-num {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin-right: 8px;
+  }
+  h4 {
+    font-size: 16px;
+    margin: 18px 0 6px;
+    font-weight: 700;
+    color: var(--ink-soft);
+  }
+  p { margin: 8px 0 12px; }
+  blockquote {
+    border-left: 3px solid var(--accent-soft);
+    margin: 12px 0;
+    padding: 4px 16px;
+    color: var(--ink-soft);
+    font-style: italic;
+    background: rgba(176, 138, 74, 0.06);
+  }
+  blockquote cite { font-style: normal; font-size: 13px; color: var(--muted); display: block; margin-top: 4px; }
+  ul, ol { padding-left: 22px; margin: 6px 0 14px; }
+  li { margin: 4px 0; }
+  code, .mono { font-family: "JetBrains Mono", "Menlo", monospace; font-size: 0.88em; background: rgba(0,0,0,0.04); padding: 1px 5px; border-radius: 3px; }
+
+  .progression { counter-reset: phase; }
+  .phase {
+    counter-increment: phase;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin: 12px 0;
+    background: #fffdf6;
+    position: relative;
+  }
+  .phase::before {
+    content: "Phase " counter(phase);
+    position: absolute;
+    top: -10px;
+    left: 14px;
+    background: var(--ink);
+    color: var(--cream);
+    padding: 2px 9px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    border-radius: 999px;
+  }
+  .phase h4 {
+    margin-top: 4px;
+    font-size: 17px;
+    color: var(--ink);
+  }
+  .phase .exit {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    background: var(--cream-deep);
+    border-left: 3px solid var(--accent);
+    padding: 6px 10px;
+  }
+  .phase .exit strong { color: var(--accent); }
+
+  .deliverable-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 18px;
+    margin: 10px 0 16px;
+  }
+  .deliverable {
+    border-left: 2px solid var(--accent-soft);
+    padding: 4px 12px;
+    font-size: 14.5px;
+  }
+  .deliverable .label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+    display: block;
+  }
+
+  table.deps {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 16px;
+    font-size: 14px;
+  }
+  table.deps th, table.deps td {
+    text-align: left;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  table.deps th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .callout {
+    background: #fef6e7;
+    border: 1px solid #e7d4a3;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin: 14px 0;
+    font-size: 14.5px;
+  }
+  .callout.critical {
+    background: #fbe9e1;
+    border-color: #d8b39c;
+    color: #6c2510;
+  }
+  .callout .label {
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .callout.critical .label { color: #a23000; }
+
+  .footer-nav {
+    margin-top: 56px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+  }
+  .footer-nav a {
+    color: var(--accent);
+    text-decoration: none;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+  }
+  .footer-nav a:hover { text-decoration: underline; }
+
+  /* cover */
+  .cover .legend {
+    margin: 24px 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px 24px;
+    font-size: 14px;
+  }
+  .cover .legend .item {
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  /* print */
+  @media print {
+    .app { display: block; }
+    aside.nav { display: none; }
+    main.pages { padding: 0; max-width: none; }
+    .page { display: block !important; page-break-after: always; padding: 24px 32px; }
+    .footer-nav { display: none; }
+    body { font-size: 11pt; }
+    .page > header h2 { font-size: 22pt; }
+    h3 { font-size: 14pt; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside class="nav">
+  <h1>Antiek Sprint Breakdown</h1>
+  <div class="subtitle">Master Product Spec, §14 — exhaustive view</div>
+
+  <div class="group-title">Index</div>
+  <ul>
+    <li><a href="#cover" data-page="cover"><span class="num">—</span>Cover &amp; legend</a></li>
+  </ul>
+
+  <div class="group-title">Phase 0 — Shipped</div>
+  <ul>
+    <li><a href="#sprint-11" data-page="sprint-11"><span class="num">S11</span>Research workstation MVP<span class="dot shipped"></span></a></li>
+    <li><a href="#sprint-12" data-page="sprint-12"><span class="num">S12</span>Multimodal + continuous<span class="dot shipped"></span></a></li>
+    <li><a href="#sprint-13" data-page="sprint-13"><span class="num">S13</span>Voice notes + creation v0<span class="dot shipped"></span></a></li>
+    <li><a href="#sprint-14" data-page="sprint-14"><span class="num">S14</span>Drag-drop + X ingestion<span class="dot shipped"></span></a></li>
+    <li><a href="#sprint-15" data-page="sprint-15"><span class="num">S15</span>Edit-back + export<span class="dot shipped"></span></a></li>
+    <li><a href="#sprint-16" data-page="sprint-16"><span class="num">S16</span>Attribution + interviews<span class="dot shipped"></span></a></li>
+  </ul>
+
+  <div class="group-title">Phase 1 — In flight (uncommitted)</div>
+  <ul>
+    <li><a href="#sprint-17" data-page="sprint-17"><span class="num">S17</span>Voice mode + tier measurement<span class="dot scaffold"></span></a></li>
+    <li><a href="#sprint-18" data-page="sprint-18"><span class="num">S18</span>Publisher dashboard + gating<span class="dot scaffold"></span></a></li>
+    <li><a href="#sprint-19" data-page="sprint-19"><span class="num">S19</span>Pricing + Surface E + MCP<span class="dot scaffold"></span></a></li>
+    <li><a href="#sprint-20" data-page="sprint-20"><span class="num">S20</span>Growth motion + verdicts<span class="dot pending"></span></a></li>
+    <li><a href="#sprint-21" data-page="sprint-21"><span class="num">S21</span>Synquery + Phase 8 enforcing<span class="dot pending"></span></a></li>
+  </ul>
+
+  <div class="group-title">Phase 2 — Multi-user pivot</div>
+  <ul>
+    <li><a href="#sprint-22" data-page="sprint-22"><span class="num">S22</span>Multi-user pivot + Trust Center<span class="dot notstarted"></span></a></li>
+  </ul>
+
+  <div class="group-title">Phase 3 — Ads &amp; cross-graph</div>
+  <ul>
+    <li><a href="#sprint-2324" data-page="sprint-2324"><span class="num">S23-24</span>Lead-gen ads + rev-share<span class="dot notstarted"></span></a></li>
+    <li><a href="#sprint-25" data-page="sprint-25"><span class="num">S25+</span>Ad inventory at scale<span class="dot notstarted"></span></a></li>
+    <li><a href="#sprint-30" data-page="sprint-30"><span class="num">S30+</span>Cross-graph + federation<span class="dot notstarted"></span></a></li>
+  </ul>
+
+  <div class="group-title">Parallel tracks</div>
+  <ul>
+    <li><a href="#track-rlm" data-page="track-rlm"><span class="num">RLM</span>Recursive language models<span class="dot parallel"></span></a></li>
+    <li><a href="#track-loop3" data-page="track-loop3"><span class="num">L3</span>Loop 3 unlock<span class="dot parallel"></span></a></li>
+    <li><a href="#track-autoresearch" data-page="track-autoresearch"><span class="num">AR</span>Autoresearch local-only<span class="dot parallel"></span></a></li>
+    <li><a href="#track-prime" data-page="track-prime"><span class="num">PI</span>Prime Intellect<span class="dot parallel"></span></a></li>
+  </ul>
+</aside>
+
+<main class="pages">
+
+<!-- =================== COVER =================== -->
+<section class="page cover" id="cover">
+  <header>
+    <div class="crumb">Master Product Spec — Sprint Breakdown</div>
+    <h2>Antiek — Road from MVP to Multi-User Network Effects</h2>
+    <div class="theme">An exhaustive, page-per-sprint reading of <code>docs/master-product-spec.md §14</code></div>
+  </header>
+
+  <p>
+    This document is a single-source navigable companion to the Antiek Master
+    Product Spec. Every sprint that the spec sequences — Sprints 11 through
+    Sprint 30+, plus four parallel tracks — gets its own page below. Each page
+    answers the same five questions in the same order: <em>what is this sprint
+    for, what is the strategic objective, which goals are achieved in
+    progression, which deliverables ship as evidence, and what does the sprint
+    unblock.</em>
+  </p>
+
+  <p>
+    Sprints 11–16 are shipped and committed. Sprint 17 through Sprint 21 substrate
+    is written and tested locally, but as of the most recent audit it remains
+    <strong>uncommitted</strong> in the operator's working tree — no GitHub push,
+    no Cloudflare Pages auto-deploy, no Hetzner Ansible run. Sprints 22 and
+    beyond are future work. Parallel tracks (RLM, Loop 3 unlock, autoresearch,
+    Prime Intellect) sit off the mainline critical path and gate on explicit
+    ratification criteria.
+  </p>
+
+  <div class="callout">
+    <span class="label">How to read this</span>
+    Each sprint page is self-contained and prints as its own physical page.
+    Click any sprint in the left sidebar to navigate; use <code>Cmd+P</code> to
+    produce a paginated PDF with one sprint per leaf. The status dot beside
+    each sprint name reflects the latest audit, not the spec's optimistic
+    assertion.
+  </div>
+
+  <h3><span class="h-num">§1</span>Status legend</h3>
+  <div class="legend">
+    <div class="item"><span class="dot shipped"></span><strong>Shipped &amp; pushed</strong> — committed to <code>main</code>, on GitHub, deployed to <code>antiek.ai</code> (frontend auto) and <code>api.antiek.ai</code> (backend after ansible run)</div>
+    <div class="item"><span class="dot scaffold"></span><strong>Scaffold landed locally</strong> — code, schema, tests in worktree; <em>not committed</em>; not yet visible on the website</div>
+    <div class="item"><span class="dot pending"></span><strong>Substrate landed, activation pending</strong> — code exists but external decision, dataset, or operator action is the gate</div>
+    <div class="item"><span class="dot notstarted"></span><strong>Not started</strong> — future sprint, no implementation yet</div>
+    <div class="item"><span class="dot parallel"></span><strong>Parallel track</strong> — off the mainline critical path, governed by its own ratification criteria</div>
+  </div>
+
+  <h3><span class="h-num">§2</span>The mainline arc, compressed</h3>
+  <ol>
+    <li><strong>Sprints 11–16</strong> — built the substrate, four surfaces, attribution telemetry, and interview machinery. Workstation reached "usable." Compounding thesis enters the demonstration period.</li>
+    <li><strong>Sprints 17–21</strong> — sharpen the workstation, ship the legal gate, light up the notebook surface, turn on the pay-as-you-go pricing model, prove the visible-artifact growth motion, ratify autoresearch and dispatch posture verdicts.</li>
+    <li><strong>Sprint 22</strong> — the multi-user pivot. Two-graph architecture, Auth, Trust Center publication, substrate Stage 0 → Stage 1 transition. Gated on six months of solo-operator compounding demonstration.</li>
+    <li><strong>Sprints 23–30+</strong> — ad inventory matures, IP attribution payouts route real money, cross-graph network effects unlock once the creator and publisher populations are live.</li>
+  </ol>
+
+  <h3><span class="h-num">§3</span>Disciplines that govern every sprint</h3>
+  <ul>
+    <li><strong>Voice and style discipline</strong> (§5) — prose flows, no LLM-slop patterns, no forced bullets inside synthesis prose. Extends to UI choices and AI-driven UI actions.</li>
+    <li><strong>DuckDB single-writer invariant</strong> (§16) — never run uvicorn with <code>--workers &gt; 1</code> until the substrate explicitly transitions stage.</li>
+    <li><strong>Provenance is non-negotiable</strong> — every claim cites chunks, every chunk cites documents, every document carries an <code>ip_holder_id</code>.</li>
+    <li><strong>Substrate is the moat</strong> (§2.5) — one graph, four surfaces, no "four products" framing.</li>
+    <li><strong>Legal gate is binding</strong> (§9.0) — no payouts on an ungated graph, no commingled escrow funds, no pre-onboarded escrow active against unconsenting rights holders.</li>
+  </ul>
+</section>
+
+<!-- =================== SPRINT 11 =================== -->
+<section class="page" id="sprint-11">
+  <header>
+    <div class="crumb">Phase 0 · Shipped &amp; pushed · Sprint 11</div>
+    <h2>Sprint 11 — Research Workstation MVP</h2>
+    <div class="theme">From "operator runs Python and reads markdown" to "operator uses a web app"</div>
+    <div class="badges">
+      <span class="badge shipped">Shipped</span>
+      <span class="badge">Surface A</span>
+      <span class="badge">Substrate prep</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 11 is the moment Antiek becomes <em>usable</em>. Sprints 0–10 built
+    a fully working substrate behind a Python entrypoint; Sprint 11 wraps it in
+    the web UI that turns the operator's accumulated graph into an interactive
+    workstation. Every later sprint assumes Sprint 11's surface as the
+    default frame of reference.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>API surface — three REST endpoints</h4>
+      <p>Wire the substrate's existing investigation lifecycle into a public HTTP contract: <code>POST /investigations</code> to start, <code>GET /investigations/{id}</code> to poll, <code>WS /investigations/{id}/trajectory</code> to stream phase-by-phase progress. The orchestrator and dispatch layers stay unchanged; the API is the thinnest possible adapter.</p>
+      <div class="exit"><strong>Exit:</strong> curl can start an investigation end-to-end and stream the 8-phase trajectory.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Voice and style v1 — substrate prompt engineering</h4>
+      <p>Land the §5 discipline at the substrate level: synthesizer prompt addendum (~50 LOC) with forbidden constructions, evidence-retriever prompt parallel discipline (~30 LOC), and the new <code>style_extractor</code> role (~150 LOC) that produces a 150–300 word house-style guide injected into the synthesizer's context pack.</p>
+      <div class="exit"><strong>Exit:</strong> MASTER.md output passes the §5.4 verification checks — ≤2 em-dashes per thesis, no padding constructions, ≥40% sector-vocabulary match.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Multi-user schema prep — owner_user_id on every row</h4>
+      <p>Add <code>owner_user_id</code> to <code>documents</code>, <code>chunks</code>, <code>nodes</code>, <code>edges</code>, <code>investigations</code> with a single hard-coded default. Sprint 22's multi-user pivot then requires only application-layer changes, not schema migrations. Per §13.10 substrate hygiene.</p>
+      <div class="exit"><strong>Exit:</strong> schema migration applied to the production DuckDB; all writers populate the column; reads ignore it.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Mode A — the Research Workstation UI</h4>
+      <p>Vite + React 18 + TypeScript strict + Tailwind, served from Cloudflare Pages at <code>antiek.ai</code> (then-canonical <code>app.antiek.ai</code>). Chat input, live trajectory view (WebSocket-driven), MASTER.md viewer with hover-citation, chunk modal, highlight-to-chase, past-investigations sidebar with parent-child tree.</p>
+      <div class="exit"><strong>Exit:</strong> operator can run a real research session entirely from the browser; chase-from-highlight produces a child investigation that completes.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Cross-mode bridge — A ⇄ B</h4>
+      <p>From Mode A's chunk modal, "Open in document viewer" jumps to <code>/wrestle/&lt;document_id&gt;?page=N</code>. The existing WrestleApp's <code>PdfViewer.tsx</code> learns an <code>initialPage</code> prop. From Mode B, an emergent cross-doc question can spawn a Mode A investigation. Same substrate; fluid handoff.</p>
+      <div class="exit"><strong>Exit:</strong> a Mode A session can land the operator inside the actual source PDF on the right page in under two clicks.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">interfaces/research/api/app.py</span>FastAPI app with three Sprint-11 endpoints + WebSocket</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/ResearchWorkstation/</span>Chat, live trajectory, MASTER.md viewer, chunk modal, chase</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/WrestleApp</span>Existing surface, moved into a <code>/wrestle</code> route</div>
+    <div class="deliverable"><span class="label">roles/style_extractor/</span>New role; ~150 LOC; feature-flagged on for qualitative investigations</div>
+    <div class="deliverable"><span class="label">substrate/graph/schema.py</span><code>owner_user_id</code> added to five row tables</div>
+    <div class="deliverable"><span class="label">infrastructure/runbooks/cloudflare-pages-setup.md</span>One-time operator setup runbook for the Pages project</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>Operator runs an investigation end-to-end via the web app; no Python entrypoint touched.</li>
+    <li>The Sprint-11 spec (<code>docs/sprints/sprint11-web-app-mvp.md</code>) is satisfied across all referenced endpoints and components.</li>
+    <li><code>antiek.ai</code> is live, builds from <code>main</code> via Cloudflare Pages on push.</li>
+    <li>The §5.4 voice-and-style verification checks pass on a fresh synthesis.</li>
+  </ul>
+
+  <h3><span class="h-num">§5</span>What this unblocks</h3>
+  <p>
+    Every subsequent sprint reaches its user through this surface. Sprint 12's
+    multimodal acquisition surfaces here as new source-card types; Sprint 13's
+    voice notes get a recording widget inside the same shell; Sprint 15's
+    deliverable export hangs off the chunk modal. Without Sprint 11, the
+    substrate is invisible.
+  </p>
+
+  <div class="footer-nav">
+    <a href="#cover" data-page="cover">← Cover</a>
+    <a href="#sprint-12" data-page="sprint-12">Sprint 12 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 12 =================== -->
+<section class="page" id="sprint-12">
+  <header>
+    <div class="crumb">Phase 0 · Shipped &amp; pushed · Sprint 12</div>
+    <h2>Sprint 12 — Multimodal Acquisition &amp; Continuous Mode</h2>
+    <div class="theme">YouTube + podcasts on the input side; autonomous chase on the orchestration side; Hermes-primary on dispatch</div>
+    <div class="badges">
+      <span class="badge shipped">Shipped</span>
+      <span class="badge">Dispatch flip</span>
+      <span class="badge">Acquisition</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 11 made the substrate usable; Sprint 12 makes it <em>fed</em>.
+    Until this sprint, Antiek could only ingest text it could already find as
+    a document. Sprint 12 opens YouTube and podcast adapters and turns on the
+    continuous-mode orchestrator so the substrate keeps working between
+    operator sessions. Simultaneously, this sprint flips dispatch from
+    OpenRouter-first to Hermes-primary, locking in a posture that all later
+    sprints assume.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>YouTube adapter — captions in, transcript out</h4>
+      <p>New <code>acquisition/youtube/</code> module that fetches captions via the official API, falls back to whisper transcription when captions are absent, and emits documents with <code>section_path = "timestamp_seconds"</code> per §6.3. Source-tier policy: tier-3 by default (operator can promote per-document).</p>
+      <div class="exit"><strong>Exit:</strong> YouTube URL pasted into the workstation produces a document with chunk-level timestamps and full searchability.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Podcast adapter — RSS feeds and audio transcription</h4>
+      <p><code>acquisition/podcasts/</code> resolves RSS feeds, pulls audio, transcribes via whisper, emits <code>document_kind = "podcast"</code> with timestamp-keyed chunks. Lands a podcast-ingest endpoint and the Sources UI tab in <code>apps/reading/</code> for at-a-glance feed management.</p>
+      <div class="exit"><strong>Exit:</strong> an RSS feed URL produces transcripts of all recent episodes, ingested into the graph with hand-off into Mode A search.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Continuous-mode orchestrator — autonomous chase</h4>
+      <p>The substrate gains a <code>chase_mode</code> schema field. When an investigation completes, open-questions whose chase budget is approved fire follow-up investigations autonomously. A daemon loop enforces a $5/day default cap (§16) and emits typed events into the existing trajectory log.</p>
+      <div class="exit"><strong>Exit:</strong> overnight chase produces ≥3 child investigations on a seed without operator interaction; cost stays under the cap.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Hermes-primary dispatch flip</h4>
+      <p>Per <code>antiek-hermes-bridge</code>, route <strong>all four tiers</strong> (flash, pro, synthesis, verify) primary to <code>hermes/grok-4.3</code> via the Hermes Agent OAuth bridge, with OpenRouter (DeepSeek-Flash / DeepSeek-Pro / Claude Opus 4.7) as fallback. Provider routing config moves to <code>substrate/dispatch/config.yaml</code>; every call still emits <code>dispatch.call</code> events.</p>
+      <div class="exit"><strong>Exit:</strong> live production traffic routes through Hermes; fallback path tested manually.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">acquisition/youtube/</span>caption + whisper-fallback adapter</div>
+    <div class="deliverable"><span class="label">acquisition/podcasts/</span>RSS + whisper transcription adapter</div>
+    <div class="deliverable"><span class="label">orchestration/loop_one/</span>continuous-chase scheduler additions</div>
+    <div class="deliverable"><span class="label">substrate/dispatch/config.yaml</span>Hermes-primary tier mapping</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/Sources/</span>feeds management UI tab</div>
+    <div class="deliverable"><span class="label">interfaces/research/api/app.py</span>Sources ingest endpoint</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Integration-spec work woven in</h3>
+  <p>None. Sprint 12 precedes the integration-spec hierarchy; later chaos-testing of the dispatch flip lands in Sprint 16 via <code>cd602c9</code>.</p>
+
+  <h3><span class="h-num">§5</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>A single seed investigation can spawn an overnight continuous-chase that surfaces ≥3 new MASTER.md pages by morning.</li>
+    <li>YouTube + podcast sources mix freely with arXiv + URLs + books in synthesis without source-tier rule re-engineering.</li>
+    <li>Production traffic confirms Hermes routing; fallback to OpenRouter is tested at least once manually.</li>
+    <li>Daemon cost cap holds at $5/day across at least one full week of autonomous run.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-11" data-page="sprint-11">← Sprint 11</a>
+    <a href="#sprint-13" data-page="sprint-13">Sprint 13 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 13 =================== -->
+<section class="page" id="sprint-13">
+  <header>
+    <div class="crumb">Phase 0 · Shipped &amp; pushed · Sprint 13</div>
+    <h2>Sprint 13 — Voice Notes &amp; Creation Surface v0</h2>
+    <div class="theme">First step into the creation side; voice as the simplest acquisition mode</div>
+    <div class="badges">
+      <span class="badge shipped">Shipped</span>
+      <span class="badge">Surface C v0</span>
+      <span class="badge">Voice acquisition</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprints 11–12 built consumption: a research workstation fed by a growing
+    multimodal corpus. Sprint 13 is the first step toward
+    <em>creation</em> — the surface where the operator's accumulated graph
+    becomes a draft document. It also lands the lowest-friction acquisition
+    channel that exists, voice notes, which double as a substrate primitive
+    for the brainstorming workstation that arrives in Sprint 17.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Voice acquisition pipeline</h4>
+      <p><code>acquisition/voice/</code> records audio in the browser via <code>MediaRecorder</code>, uploads to the substrate, dispatches the new <code>transcription</code> tier to whisper. The resulting transcript becomes a document with <code>document_kind = "voice_note"</code>.</p>
+      <div class="exit"><strong>Exit:</strong> a 2–20 minute voice note turns into a fully-chunked document with insights and open-questions extracted by the existing note-taker pipeline.</div>
+    </div>
+
+    <div class="phase">
+      <h4><code>creative_writer</code> role</h4>
+      <p>New role at <code>roles/creative_writer/</code>. Inputs: section title, ordered list of attached blocks (insights, open-questions, operator notes), full deliverable title + kind, and the cached style-guide from <code>style_extractor</code>. Output: prose, a <code>prose_provenance</code> map (which blocks contributed to which paragraphs), and preserved claim citations.</p>
+      <div class="exit"><strong>Exit:</strong> given a section + attached blocks, <code>creative_writer</code> produces prose that passes the §5.4 voice-and-style verification.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Deliverable data model</h4>
+      <p>Three new substrate tables — <code>deliverables</code>, <code>deliverable_sections</code>, <code>section_blocks</code> — landed per §10.2. Stable IDs, lifecycle status (<code>draft / in_review / final</code>), block-to-section assignment indexed by ordered position.</p>
+      <div class="exit"><strong>Exit:</strong> schema migration applied; CRUD endpoints reachable from the API.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Mode C v0 — Creation Workstation</h4>
+      <p>The first version of <code>/write</code>. No drag-drop yet; blocks are added to a section via search-and-select. The operator can: create a deliverable, add sections, attach blocks, click "Generate prose" to fire <code>creative_writer</code> for that section, edit the result inline.</p>
+      <div class="exit"><strong>Exit:</strong> a complete one-section deliverable can be created end-to-end and exported as plain markdown.</div>
+    </div>
+
+    <div class="phase">
+      <h4><code>voice_note_followup</code> role</h4>
+      <p>Per §12.2 — after a voice-note is processed, the substrate identifies gaps with the new <code>voice_note_followup</code> role (~80 LOC) and surfaces a "Follow-up?" card with prompts. Operator clicks → records another voice note in response. Conversational chain captured natively without an interview-UX dependency.</p>
+      <div class="exit"><strong>Exit:</strong> the substrate proposes follow-up prompts that are recognisably specific to the operator's prior notes, not generic.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">acquisition/voice/</span>recording, upload, whisper dispatch</div>
+    <div class="deliverable"><span class="label">roles/creative_writer/</span>section-prose expansion role</div>
+    <div class="deliverable"><span class="label">roles/voice_note_followup/</span>follow-up prompt generator</div>
+    <div class="deliverable"><span class="label">substrate/dispatch/config.yaml</span>new <code>transcription</code> tier for whisper</div>
+    <div class="deliverable"><span class="label">substrate/graph/schema.py</span>three new deliverable tables</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/CreationStudio/</span>Mode C v0</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>Voice note → notes pipeline produces graph-citizen insights indistinguishable from URL or arXiv ingestion.</li>
+    <li>A complete (single-section) deliverable round-trips: create → attach blocks → generate prose → edit → save.</li>
+    <li>Whisper cost stays under <code>$0.006</code>/minute as designed.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-12" data-page="sprint-12">← Sprint 12</a>
+    <a href="#sprint-14" data-page="sprint-14">Sprint 14 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 14 =================== -->
+<section class="page" id="sprint-14">
+  <header>
+    <div class="crumb">Phase 0 · Shipped &amp; pushed · Sprint 14</div>
+    <h2>Sprint 14 — Drag-Drop Outlines &amp; X Ingestion</h2>
+    <div class="theme">Multi-section coherence in the creation surface; the X browser extension as the practical path to social ingestion</div>
+    <div class="badges">
+      <span class="badge shipped">Shipped</span>
+      <span class="badge">Surface C v1</span>
+      <span class="badge">Browser extension</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 13 produced single-section drafts. Sprint 14 makes the creation
+    surface a real writing tool by adding drag-drop outlining and
+    multi-section coherence to <code>creative_writer</code>. In parallel it
+    answers §15.2 — the X-ingestion question — with a Chrome-only sideloaded
+    browser extension that captures threads and tweets on the operator's
+    click. The extension is the workable substitute for API access that the
+    platform has consistently refused.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Drag-drop outline UI</h4>
+      <p>The three-pane Mode C layout from §10.5 lands at full fidelity. Left panel: searchable, filterable insight index. Centre: outline tree with drag-drop. Right: editor on the current section. Blocks are draggable from left to right; sections are reorderable; titles inline-editable.</p>
+      <div class="exit"><strong>Exit:</strong> a multi-section deliverable can be assembled visually in under five minutes from an existing investigation.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Multi-section coherence in <code>creative_writer</code></h4>
+      <p>The role learns to read adjacent sections' prose when generating its own, so consecutive sections do not repeat the same evidence or introduction. Coherence is implemented as a context-pack layer — adjacent prose injected as <code>previous_section_summary</code> and <code>next_section_outline</code>.</p>
+      <div class="exit"><strong>Exit:</strong> three consecutive sections read as a single coherent draft; the §5.4 verification still passes per section.</div>
+    </div>
+
+    <div class="phase">
+      <h4>X browser extension — Chrome sideload</h4>
+      <p>A minimal Chrome extension that captures the active thread or tweet on operator click and posts it to <code>POST /sources</code>. Per §15.2, distribution is sideloaded (operator + small group only). Manifest v3, single content-script + popup, no auto-collect.</p>
+      <div class="exit"><strong>Exit:</strong> the extension can capture a 50-tweet thread including embedded media URLs and create one document in the substrate.</div>
+    </div>
+
+    <div class="phase">
+      <h4>X-source-tier policy</h4>
+      <p>Default source tier for X documents is tier-4. The substrate's existing source-tier middleware governs synthesis-time treatment. Operator can promote individual documents manually.</p>
+      <div class="exit"><strong>Exit:</strong> X-sourced claims show up in syntheses with the correct tier badging.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">apps/reading/src/modes/CreationStudio/</span>full three-pane drag-drop UI</div>
+    <div class="deliverable"><span class="label">roles/creative_writer/</span>multi-section coherence prompts</div>
+    <div class="deliverable"><span class="label">extensions/x-capture/</span>Chrome extension scaffolding</div>
+    <div class="deliverable"><span class="label">interfaces/research/api/app.py</span><code>POST /sources</code> endpoint for arbitrary thread payloads</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>Operator can assemble + generate a five-section deliverable from existing investigations in a single sitting.</li>
+    <li>Extension captures at least 10 real X threads into the substrate without manual cleanup.</li>
+    <li>Multi-section coherence test: a domain reader reads three consecutive sections and cannot identify section boundaries as transitions.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-13" data-page="sprint-13">← Sprint 13</a>
+    <a href="#sprint-15" data-page="sprint-15">Sprint 15 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 15 =================== -->
+<section class="page" id="sprint-15">
+  <header>
+    <div class="crumb">Phase 0 · Shipped &amp; pushed · Sprint 15</div>
+    <h2>Sprint 15 — Edit-Back-Into-Graph &amp; Deliverable Export</h2>
+    <div class="theme">Closing the loop between the creation surface and the substrate; first publishable artifact path</div>
+    <div class="badges">
+      <span class="badge shipped">Shipped</span>
+      <span class="badge">Recursive value loop</span>
+      <span class="badge">Export pipeline</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    The creation surface that emerged in Sprints 13 + 14 produces drafts in a
+    one-way flow: graph → outline → prose → file. Sprint 15 closes the loop.
+    When the operator edits generated prose, those edits can be promoted back
+    into the graph as <code>CLAIM_ASSERTED_BY_OPERATOR</code> rows that future
+    investigations can cite. This is the recursive-value mechanism that makes
+    the creation surface a substrate <em>contributor</em>, not just a
+    consumer. Sprint 15 also ships the export pipeline so deliverables become
+    real published artifacts.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4><code>CLAIM_ASSERTED_BY_OPERATOR</code> event type</h4>
+      <p>A new typed event captures (a) the original generated text, (b) the operator's edited text, (c) the deliverable/section context. The substrate inserts a claim with <code>policy_id = "operator/&lt;deliverable_id&gt;"</code> and <code>source_tier = 5</code> unless the operator manually attaches chunk citations.</p>
+      <div class="exit"><strong>Exit:</strong> an edit in Mode C produces a queryable claim that the next investigation can retrieve.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Diff-aware edit detection</h4>
+      <p>Per §10.4 Option B — only "significant" edits become new claims; trivial whitespace / capitalisation / punctuation changes do not. Diff classification runs at save time; the operator sees what will be promoted before confirming.</p>
+      <div class="exit"><strong>Exit:</strong> the operator can edit prose freely without polluting the graph with cosmetic changes.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Grounder-on-operator-claims</h4>
+      <p>The grounder role can still run on operator-asserted claims even though they lack primary-source citation. The verdict shows up as a small badge on the prose paragraph; the operator can manually attach chunk citations to upgrade tier.</p>
+      <div class="exit"><strong>Exit:</strong> grounder verdicts populate next to operator-asserted prose without breaking on the missing-citation case.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Export pipeline — PDF, EPUB, Substack draft</h4>
+      <p>Three export targets land. PDF via a serif-typography template that matches the reading surface. EPUB for book-length deliverables. Substack draft format (markdown + frontmatter) for the operator's writing workflow. Each format preserves claim spans as inline tooltips or footnotes.</p>
+      <div class="exit"><strong>Exit:</strong> a complete multi-section deliverable can be exported to any of the three formats; PDF passes a print-quality eye-test.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">substrate/schemas/events.py</span><code>CLAIM_ASSERTED_BY_OPERATOR</code> ActionType</div>
+    <div class="deliverable"><span class="label">substrate/graph/edges.py</span>operator-claim insertion path with policy_id</div>
+    <div class="deliverable"><span class="label">tools/export/</span>three exporters: pdf, epub, substack</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/CreationStudio/</span>diff-aware save flow + export menu</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>An operator-asserted claim from a Sprint-15 edit shows up as a citable chunk in a Sprint-15+ investigation.</li>
+    <li>Three export targets each round-trip a full deliverable without losing provenance.</li>
+    <li>Voice-and-style discipline holds at the exported-artifact level — no LLM-slop patterns survive the round-trip.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-14" data-page="sprint-14">← Sprint 14</a>
+    <a href="#sprint-16" data-page="sprint-16">Sprint 16 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 16 =================== -->
+<section class="page" id="sprint-16">
+  <header>
+    <div class="crumb">Phase 0 · Shipped &amp; pushed · Sprint 16</div>
+    <h2>Sprint 16 — IP Attribution Telemetry &amp; Interview Machinery</h2>
+    <div class="theme">The substrate-side foundation for Phase 1 monetisation and Surface D's multi-party interview product</div>
+    <div class="badges">
+      <span class="badge shipped">Shipped</span>
+      <span class="badge">Attribution v1</span>
+      <span class="badge">Loop 4</span>
+      <span class="badge">Hermes chaos test</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 16 lands two big foundational pieces that don't quite light up
+    user-visibly. First, the IP-attribution telemetry path: every synthesis
+    page emits <code>page_attribution_computed</code> events carrying all
+    three §9.3 algorithms. No money flows yet — but the operator can read
+    attribution reports, qualitatively assess if they "feel right," and
+    decide which algorithm survives into Sprint 18's payout activation.
+    Second, the interview state machine and the AI-interviewer role land,
+    which DeepBlu (§11) needs as a substrate primitive. Closing the sprint
+    is the <code>cd602c9</code> chaos test that locks in the Hermes-primary
+    posture with a tested fallback path.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Three attribution algorithms</h4>
+      <p>Per §9.3 — Option A (equal split per chunk citation), Option B (weighted by claim confidence × source tier), Option C (weighted by load-bearing-ness via secondary LLM pass). All three compute on every synthesis page; the substrate stores per-document attribution weights as a row in a new <code>page_attribution</code> table.</p>
+      <div class="exit"><strong>Exit:</strong> attribution reports surface in the operator dashboard; all three algorithms produce values for the same page.</div>
+    </div>
+
+    <div class="phase">
+      <h4><code>page_attribution_computed</code> telemetry events</h4>
+      <p>Each synthesis emits a typed event recording the algorithm version, the per-document weights, and the chunk-set that produced each weight. These events become the Phase-1 dataset that proves the algorithm "feels right" before Stripe Connect activates anything in Sprint 18.</p>
+      <div class="exit"><strong>Exit:</strong> ≥10 synthesis pages have telemetry rows the operator can review.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Loop 4 — interview state machine</h4>
+      <p>A fourth orchestration loop joins Loops 1 (research), 2 (wrestling) and the chase. Loop 4 manages multi-turn conversation state, has memory across the conversation, dispatches each turn through the interviewer role to the pro tier, and ends when must-cover questions are answered or the informant exits.</p>
+      <div class="exit"><strong>Exit:</strong> a fully scripted interview runs end-to-end against a test informant flow.</div>
+    </div>
+
+    <div class="phase">
+      <h4><code>interviewer</code> role + informant UI</h4>
+      <p>Per §11.3, a new role at <code>roles/interviewer/</code>. The informant lands on <code>interview.antiek.ai/&lt;link&gt;</code> with consent checkbox, voice-or-text toggle, chat-style conversation, and a permanent "End interview" button. Voice mode is deferred to Sprint 17; text mode ships here.</p>
+      <div class="exit"><strong>Exit:</strong> an external informant can complete a text interview from a unique link; transcript lands in the substrate.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Hermes verify-tier fallback chaos test (<code>cd602c9</code>)</h4>
+      <p>Property-based test at <code>tests/test_dispatch_fallback_chain.py</code>. The verify tier — the safety net in front of the synthesizer — is dropped to simulate a Hermes outage; the dispatch layer must fail over cleanly to OpenRouter. The test runs under <code>--workers 1</code> per the single-writer invariant. This commit lands the architectural invariant the rest of the platform depends on.</p>
+      <div class="exit"><strong>Exit:</strong> chaos test passes in CI; commit hash recorded as the canonical reference.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">substrate/attribution/</span>three algorithms + page_attribution table</div>
+    <div class="deliverable"><span class="label">substrate/schemas/events.py</span><code>page_attribution_computed</code> ActionType</div>
+    <div class="deliverable"><span class="label">orchestration/loop_four/</span>interview state machine</div>
+    <div class="deliverable"><span class="label">roles/interviewer/</span>conversational role with memory</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/Interview/</span>informant chat UI</div>
+    <div class="deliverable"><span class="label">tests/test_dispatch_fallback_chain.py</span>Hermes chaos test (commit cd602c9)</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>Attribution telemetry exists on ≥10 syntheses; operator has read the reports and is comfortable picking Option B for Sprint 18 default.</li>
+    <li>A live (operator-driven, not external) interview completes end-to-end and produces a transcript document.</li>
+    <li>Chaos test passes; Hermes-primary posture is now architecturally enforced.</li>
+    <li>Substrate hygiene (§13.10): owner_user_id, encryption design, DuckLake catalog separation all confirmed in the data model.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-15" data-page="sprint-15">← Sprint 15</a>
+    <a href="#sprint-17" data-page="sprint-17">Sprint 17 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 17 =================== -->
+<section class="page" id="sprint-17">
+  <header>
+    <div class="crumb">Phase 1 · Scaffold landed locally · Sprint 17</div>
+    <h2>Sprint 17 — Interview Voice Mode + Dispatch Tier Measurement</h2>
+    <div class="theme">Closing Loop 4 with voice; pinning the synthesizer to Opus for a measurement window; lighting up the operator's preferred Surface E scaffold</div>
+    <div class="badges">
+      <span class="badge scaffold">Scaffold landed</span>
+      <span class="badge gate">Dispatch tier gate begins</span>
+      <span class="badge">Surface E scaffold</span>
+      <span class="badge">PostHog Wedges 1a + 1b</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 17 is the first sprint where multiple disciplines collide at once.
+    The interview surface needs its voice mode (the natural form factor for
+    the biography use case); the synthesizer needs its dispatch posture
+    re-measured under live traffic before Sprint 20's verdict; Surface E (the
+    operator's preferred product direction) needs at least a scaffold so the
+    next two sprints can build on it; the four integration specs need their
+    INTEGRATE-NOW items planted so the wedge mechanics can start ticking.
+    None of these has to be load-bearing yet — but all of them must be
+    started, because Sprint 18 cannot absorb them.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Interview voice mode — WebRTC + streaming whisper + TTS</h4>
+      <p>Per §11.4 + §15.3, the AI interviewer gains audio capability. WebRTC captures the informant; whisper transcribes streaming; OpenAI TTS (<code>gpt-4o-mini-tts</code>, $15/M chars) speaks the interviewer's responses. Round-trip lands at ~3–5s end-to-end — the operator accepts the rhythm. Lemon UI-style controls land later; here the controls are functional.</p>
+      <div class="exit"><strong>Exit:</strong> an informant completes a five-minute voice interview from a unique link; transcript lands in the substrate.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Dispatch tier-differentiation measurement gate begins</h4>
+      <p>Per §14.4. The synthesizer tier is pinned to Opus 4.7 via OpenRouter primary with Hermes fallback for a two-week measurement window. Verifier pass-rate per provider is logged at every synthesis. Sprint 20 takes the verdict on whether Grok-on-synthesis passes within 5pp of Opus and the posture flips back, or stays as is.</p>
+      <div class="exit"><strong>Exit:</strong> production traffic is observably on Opus-primary for synthesis; verifier outcomes per provider are queryable.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Surface E — Brainstorming Workstation scaffold</h4>
+      <p>Per §4.5 — the operator's preferred direction. The scaffold ships: <code>substrate/brainstorm/</code> + REST endpoints + UI shell at <code>/brainstorm</code>. Watch-for-later folder visible (read from <code>question.identified</code> events filtered by <code>unsharpened</code>), lego-block slot panel, thought-partner pane stubbed. Production-grade behaviour lands in Sprint 19; here the scaffold proves the navigation and primitives work.</p>
+      <div class="exit"><strong>Exit:</strong> operator can park a voice-note question into watch-for-later from the new surface; the launch-investigation button reaches Loop 1.</div>
+    </div>
+
+    <div class="phase">
+      <h4><code>program.md</code> per role — autoresearch INTEGRATE NOW</h4>
+      <p>Half-day item per <code>integration_autoresearch.md</code>. Each of the twelve roles gains a <code>program.md</code> capturing the prompt-shape contract, the input/output schema, and the version-bumped <code>ANTIEK_PARAM_VERSION</code>. This is the substrate hook that Wedge 1 (prompt autoresearch, Sprint 19+) and Wedge 2 (Phase 8 gate, Sprint 20+) will both consume.</p>
+      <div class="exit"><strong>Exit:</strong> all 12 roles carry a <code>program.md</code>; the format is consistent enough that a generic autoresearch runner could mutate any of them.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Storybook scaffold — PostHog Wedge 1a</h4>
+      <p>Half-day item per <code>integration_posthog.md</code>. Storybook 8.6+ lands in <code>apps/reading/</code>; ≥9 stories cover the substrate's existing components (ClaimCard, NotesPanel, PdfViewer, CrossDocSidebar, NotesFeed, ChatInput, CommandPalette, AISidecar, TrajectoryReplay). Visual regression catches structural breakage before the notebook surface lands in Sprint 18.</p>
+      <div class="exit"><strong>Exit:</strong> <code>npm run storybook</code> renders the component library; CI runs visual diff on at least the nine seeded stories.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Lemon UI spike — PostHog Wedge 1b</h4>
+      <p>Operator-only decision spike. A spike document at <code>docs/sprints/sprint17-lemon-ui-spike.md</code> compares Lemon UI's component aesthetic against the researcher's-notebook discipline (§5.5). The decision criterion is whether Lemon UI preserves the serif/notebook feel or drags the surface toward SaaS-dashboard. <strong>Either outcome is defensible.</strong> Operator's visual eye-test is final.</p>
+      <div class="exit"><strong>Exit:</strong> the operator has looked at the Lemon UI side-by-side comparison and made a yes/no call. Sprint 18's notebook editor depends on this verdict.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Prime F+D debt — first real-LLM eval cycle (if it ships)</h4>
+      <p>Item F + Item D from <code>integration_prime_intellect.md</code>. The 10-example <code>parameter_extractor_v0.jsonl</code> expands to 50; <code>prime eval run</code> wires to the Antiek rubric registry; the compat test that proves Antiek's trajectory shape and Prime's verifiers shape don't drift apart lands. <strong>Conditional</strong> on the first real-LLM eval cycle actually shipping in the sprint window; otherwise absorbs into Sprint 19.</p>
+      <div class="exit"><strong>Exit:</strong> a real <code>prime eval run</code> produces a verifier pass-rate number against the 50-example fixture.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">acquisition/voice/webrtc.py</span>WebRTC capture + streaming whisper</div>
+    <div class="deliverable"><span class="label">substrate/dispatch/providers/openai_tts.py</span>TTS dispatch tier</div>
+    <div class="deliverable"><span class="label">substrate/dispatch/config.yaml</span>synthesizer pinned to Opus primary for measurement window</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/BrainstormStation/</span>Surface E scaffold</div>
+    <div class="deliverable"><span class="label">roles/&lt;each&gt;/program.md</span>12 role contracts in autoresearch format</div>
+    <div class="deliverable"><span class="label">apps/reading/.storybook/</span>Storybook 8.6+ scaffolding</div>
+    <div class="deliverable"><span class="label">docs/sprints/sprint17-lemon-ui-spike.md</span>operator-decision spike</div>
+    <div class="deliverable"><span class="label">tests/fixtures/parameter_extractor_v0.jsonl</span>10 → 50 examples; Prime eval-run target</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Open blockers</h3>
+  <ul>
+    <li><strong>Operator visual eye-test on Lemon UI.</strong> Sprint 18's notebook editor cannot start until this verdict lands.</li>
+    <li><strong>First real-LLM eval cycle.</strong> Needs operator API keys; the Prime F+D debt items absorb here or push to Sprint 19.</li>
+    <li><strong>Dispatch tier measurement window must run for two weeks of real traffic.</strong> Sprint 20 takes the verdict.</li>
+    <li><strong>Voice latency tuning</strong> per §15.3 — async at ~3–5s is the starting answer; synchronous voice (OpenAI Realtime, Anthropic when available) is deferred to Sprint 23+.</li>
+  </ul>
+
+  <h3><span class="h-num">§5</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>Voice interview lands at acceptable latency; operator has used it on a real (low-stakes) informant.</li>
+    <li>Synthesizer Opus-primary posture is live; verifier outcomes are being logged per provider.</li>
+    <li>Surface E scaffold reachable at <code>/brainstorm</code>; watch-for-later parking and launch-investigation work end-to-end.</li>
+    <li>All twelve roles carry a <code>program.md</code>.</li>
+    <li>Storybook serves the seeded component library; Lemon UI verdict is on paper.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-16" data-page="sprint-16">← Sprint 16</a>
+    <a href="#sprint-18" data-page="sprint-18">Sprint 18 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 18 =================== -->
+<section class="page" id="sprint-18">
+  <header>
+    <div class="crumb">Phase 1 · Scaffold landed locally · Sprint 18</div>
+    <h2>Sprint 18 — Publisher Dashboard, Retrieval-Time Gating, Notebook Surface</h2>
+    <div class="theme">The legal gate becomes binding; the linchpin notebook surface lights up; pre-onboarded escrow architecture lands</div>
+    <div class="badges">
+      <span class="badge scaffold">Substrate landed</span>
+      <span class="badge gate">Legal gate binding</span>
+      <span class="badge">PostHog Wedge 2 — linchpin</span>
+      <span class="badge">Stripe Connect scaffold</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 18 is the single most carefully gated sprint in the entire spec.
+    Three precedents — Bartz, Hachette, Authors Guild MDL — make procurement,
+    not use, the dispositive variable for IP liability. The substrate cannot
+    ship payouts on an ungated graph; pre-payout exposure is takedown,
+    post-payout exposure is Bartz-level damages on a contemporary monetary
+    transaction. So Sprint 18 builds <em>all</em> the payout infrastructure
+    but ships it behind two gates: <strong>retrieval-time gating must be in
+    production</strong> and <strong>at least one publisher must have opted
+    in</strong> before Stripe Connect routes a single cent. In parallel,
+    this sprint ships PostHog Wedge 2 — the notebook surface — which is the
+    linchpin every later UI wedge (palette, ubiquitous AI, replay) chains
+    off.
+  </p>
+
+  <div class="callout critical">
+    <span class="label">Sprint 18 legal gate (§9.0)</span>
+    Sprint 18 ships ONLY after: (a) retrieval-time gating is live in
+    production; (b) at least one publisher has affirmatively opted in. Either
+    missing → no Stripe activation. This is binding, not advisory. Operator's
+    lawyer must review the gate before the first notification email sends.
+  </div>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Retrieval-time policy gating in <code>substrate.graph.search</code></h4>
+      <p>Every retrieval call carries a <code>policy_tag</code> parameter. <code>PRIVILEGED_POLICY_TAGS = {"private_research", "operator_only"}</code> can surface restricted-class content; everything else returns a filtered set. <code>RESTRICTED_CONTENT_CLASSES = {"restricted_pending_opt_in"}</code> stays in the graph for fair-use research but never reaches a synthesis that triggers attribution. Fail-closed on unknown tags. Enforced at the SQL-WHERE level — the database makes accidental leakage physically impossible.</p>
+      <div class="exit"><strong>Exit:</strong> a synthesis triggered on a public-attribution code path cannot pull a chunk whose document is tagged <code>restricted_pending_opt_in</code>.</div>
+    </div>
+
+    <div class="phase">
+      <h4><code>ip_holders</code> table + state machine + Kalshi-pattern notification template</h4>
+      <p>New substrate module at <code>substrate/ip_holders/</code>. Status state machine: <code>pre_onboarded → invited → claimed | opted_out</code>. <strong>Claim only fires from <code>invited</code></strong> — data-model enforced. CRUD endpoints: <code>POST/GET /publishers</code>, <code>GET /publishers/{id}</code>, <code>POST /publishers/{id}/notify</code>, <code>POST /publishers/{id}/claim</code>, <code>POST /publishers/{id}/opt-out</code>. Notification template adapts Kalshi's "we have your money waiting" pattern (per §9.10) to research IP.</p>
+      <div class="exit"><strong>Exit:</strong> the operator can pre-onboard MIT Press / Cambridge UP / Princeton UP as <code>pre_onboarded</code> rows; the data path to flip them to <code>invited</code> exists; no emails sent yet.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Document content-class + ip_holder_id columns</h4>
+      <p>Idempotent ALTER TABLE migration: <code>documents.content_class</code> + <code>documents.ip_holder_id</code>. Existing rows default to <code>content_class = "operator_uploaded"</code>; ingest pipelines populate the column at write time based on document source.</p>
+      <div class="exit"><strong>Exit:</strong> every document row carries a content_class; retrieval-time gating reads from this column.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Stripe Connect scaffold — MockStripeProvider for tests</h4>
+      <p><code>tools/stripe_connect/</code> lands a real Stripe Connect integration shape with a mock provider for testing. Three-tier pricing model per §13.5 wired up: operator-decided 50% private / 10% public / 0% free / 70% creator rev-share + 5M-token DeepSeek-Flash cap. <strong>Mock provider only; no real Stripe activation until the legal gate is satisfied.</strong></p>
+      <div class="exit"><strong>Exit:</strong> Stripe Connect integration is end-to-end testable against the mock; the real-provider switch is a single config flip when the gate clears.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Notebook surface — PostHog Wedge 2 linchpin</h4>
+      <p>The largest single UI deliverable in the whole roadmap. Two new substrate tables (<code>notebooks</code>, <code>notebook_blocks</code>) + <code>substrate/notebooks/</code> CRUD. Ten block types per §4.2: <code>prose</code>, <code>region_embed</code>, <code>claim_card</code>, <code>note</code>, <code>question_card</code>, <code>cross_doc_link</code>, <code>chat_exchange</code>, <code>master_md_section</code>, <code>image</code>, <code>latex</code>. UI mode at <code>apps/reading/src/modes/Notebook/</code> ships read + append-prose affordance now; full TipTap editor lands after the Lemon UI verdict per §5.5 gate.</p>
+      <div class="exit"><strong>Exit:</strong> a notebook can be created, blocks added programmatically, rendered read-only; the append-prose affordance works.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Publisher dashboard REST surface</h4>
+      <p>The endpoints described above mature into a real surface — operator-only at first, scoped down to read endpoints for the public publisher dashboard later. UI at <code>apps/reading/src/modes/OperatorDashboard/</code> renders the cohort: pre_onboarded count, invited count, claimed count, accrued (zero) escrow.</p>
+      <div class="exit"><strong>Exit:</strong> operator can pre-onboard a 20-publisher cohort, inspect status, and queue notification emails (queued — not sent until the lawyer review).</div>
+    </div>
+
+    <div class="phase">
+      <h4>Notebook promote-public hook (§13.9 quality gate stub)</h4>
+      <p><code>POST /notebooks/{id}/promote-public</code> exists with a quality-gate hook stub. The actual quality gate (verification + voice-style scoring + source-tier validation before eligibility for attribution) lands in Sprint 19 with the rest of the §13.9 user-as-IP-holder mechanism.</p>
+      <div class="exit"><strong>Exit:</strong> the API contract for promote-public is published; UI affordance is hidden until Sprint 19 quality gate ships.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Pricing-page template — PostHog Wedge 6 stub</h4>
+      <p>A static pricing-page template lands at <code>apps/reading/src/modes/Pricing/</code> with the three-tier model rendered, a token-cost calculator (estimate cost given expected token usage on private + public partitions), free-tier limits prominent, no card required for free. Sprint 19 wires this to real Stripe flow.</p>
+      <div class="exit"><strong>Exit:</strong> pricing page renders the three-tier model correctly; calculator math is right.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Substrate decisions made now (§13.10)</h3>
+  <ul>
+    <li><strong>DuckLake catalog separation</strong> designed into the data model from this sprint forward, even though the catalog Postgres serves a single tenant for the first 100 users.</li>
+    <li><strong>Per-graph encryption keys</strong> with KMS escrow shape — actual KMS integration ships later; the model is fixed now.</li>
+    <li><strong>Substrate trust controls</strong> begin: encryption-at-rest design, access logging in code, change management discipline, vulnerability scanning hooked into CI, backup testing periodic.</li>
+  </ul>
+
+  <h3><span class="h-num">§4</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">substrate/ip_holders/</span>table + state machine + CRUD + notification template</div>
+    <div class="deliverable"><span class="label">substrate/graph/schema.py</span>content_class + ip_holder_id columns</div>
+    <div class="deliverable"><span class="label">substrate/graph/search.py</span>retrieval-time policy gating at SQL-WHERE level</div>
+    <div class="deliverable"><span class="label">substrate/notebooks/</span>notebooks + notebook_blocks + CRUD</div>
+    <div class="deliverable"><span class="label">tools/stripe_connect/</span>MockStripeProvider; three-tier shape; not yet activated</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/Notebook/</span>read + append-prose, full editor deferred</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/OperatorDashboard/</span>publisher cohort view</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/Pricing/</span>three-tier pricing page with calculator</div>
+  </div>
+
+  <h3><span class="h-num">§5</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li><strong>Retrieval-time gating is live in production</strong> — verified at the SQL-WHERE level; <code>tests/test_retrieval_time_gate.py</code> passes.</li>
+    <li><strong>Operator's lawyer has reviewed the Kalshi-pattern notification template</strong> before any email sends.</li>
+    <li>The notebook surface can store, render, and append blocks; full editor blocked on Sprint-17 Lemon UI verdict.</li>
+    <li>Stripe Connect mock works end-to-end; a single config flip activates the real provider whenever the gate clears.</li>
+    <li>Pre-payout cohort of 20 publishers is queued; no notification has sent.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-17" data-page="sprint-17">← Sprint 17</a>
+    <a href="#sprint-19" data-page="sprint-19">Sprint 19 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 19 =================== -->
+<section class="page" id="sprint-19">
+  <header>
+    <div class="crumb">Phase 1 · Scaffold landed locally · Sprint 19</div>
+    <h2>Sprint 19 — Pay-as-You-Go Pricing, First-Cohort Outreach, Surface E Production, MCP-First Developer Surface</h2>
+    <div class="theme">Phase 1 monetisation goes live; the brainstorming workstation becomes load-bearing; "Antiek Memory" exposes the personal graph to external LLMs</div>
+    <div class="badges">
+      <span class="badge scaffold">Substrate landed</span>
+      <span class="badge">Stripe activation</span>
+      <span class="badge">MCP-first</span>
+      <span class="badge">PostHog Wedges 3 + 4</span>
+      <span class="badge">Autoresearch Wedge 1 scaffolding</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 19 is the inflection. The pay-as-you-go pricing model goes live;
+    the first cohort of individual users start using Antiek; the operator's
+    preferred surface (Brainstorming Workstation) becomes the load-bearing
+    surface for private-graph engagement; the developer surface ships as the
+    MCP-first <em>Antiek Memory</em> server (the brand framing is
+    load-bearing per §13.8 — the personal graph is the user's memory). The
+    first-cohort publisher outreach starts in parallel: MIT Press, Cambridge
+    UP, Princeton UP per §9.10. None of these are huge code lifts on their
+    own; the choreography between them is the sprint.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Stripe Connect activation — three-tier pricing</h4>
+      <p>The Sprint-18 mock flips to the real provider. The three tiers come online per §13.5: free public on DeepSeek-Flash up to a 5M-token monthly cap; paid public at 10% margin above the cap; paid private at 50% managed-service margin. Creators earn 70% of ad-revenue rev-share on public-note attention; payouts via the same Stripe Connect architecture as publisher escrow. <strong>Conditional</strong> on Sprint 18's legal gate being satisfied (retrieval-time gating in production + first publisher opted in).</p>
+      <div class="exit"><strong>Exit:</strong> a real (non-test) user can set a budget, consume tokens, see them billed.</div>
+    </div>
+
+    <div class="phase">
+      <h4>First-cohort publisher notification emails — sent</h4>
+      <p>The Sprint-18 Kalshi-pattern notification template sends to MIT Press, Cambridge University Press, Princeton University Press first. Big Five last per §9.10 sequencing — those have the most aggressive disintermediation appetite and need a different posture. Each notification carries: pre-onboarded status, opt-in mechanics, costless 30-day opt-out, link to escrow account dashboard. No money flows yet; the publisher must opt in to claim.</p>
+      <div class="exit"><strong>Exit:</strong> the first cohort has received notifications; at least one response is on record (positive, negative, or no-reply).</div>
+    </div>
+
+    <div class="phase">
+      <h4>Brainstorming Workstation — full production rollout</h4>
+      <p>Per §4.5 — what was scaffolded in Sprint 17 becomes load-bearing. Watch-for-later folder with full edit/refine/launch affordances. Thought-partner workflow via the new <code>thought_partner</code> role (CHALLENGE / SYNTHESIS / EXTENSION shapes). Lego-block slotting from any private-graph insight. Voice-note input feeds directly here. <strong>Privacy posture</strong>: this surface stays on the private graph by default; sharing to public is a separate explicit affordance.</p>
+      <div class="exit"><strong>Exit:</strong> the operator chooses to use Surface E as their default daily entry point; the surface justifies the 50% private margin in lived use.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Antiek Memory MCP server — three resources, four tools, signed manifest</h4>
+      <p>Per §13.8 — the primary developer surface. <code>tools/antiek_memory/</code> ships as stdio JSON-RPC (no SDK dep). Three resources: <code>antiek://private/notes/{user_id}/{note_id}</code> (OAuth-scoped), <code>antiek://public/notes/{note_id}</code> (attribution-routing metadata), <code>antiek://books/{isbn}/{chunk_id}</code> (returns licensing-required error until publisher contracts execute). Four tools: <code>search_personal</code>, <code>search_public</code>, <code>cite_source</code>, <code>record_attribution</code>. <strong>Rug-pull defense</strong>: tool description hashes in <code>.well-known/mcp-tools.json</code>; drift is fatal session termination.</p>
+      <div class="exit"><strong>Exit:</strong> Claude Desktop or another MCP-aware client can connect, list the resources, exercise the tools, and trigger an attribution event that routes through the substrate.</div>
+    </div>
+
+    <div class="phase">
+      <h4>User-as-IP-holder dashboard — §13.9 quality gate live</h4>
+      <p>Creators of public-graph contributions are first-class IP holders from day one. The same Stripe Connect + account structure + attribution dashboard that holds publisher escrow holds user creator revenue. <strong>Quality gate on public-graph entry:</strong> verification + voice-style scoring + source-tier validation before eligibility for attribution. Low-quality submissions get rejected or routed to private graph only.</p>
+      <div class="exit"><strong>Exit:</strong> a user can promote a notebook to public, pass the quality gate, and accrue (zero, until ads turn on) attribution revenue.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Command palette — PostHog Wedge 3</h4>
+      <p>Universal Cmd+K palette across all surfaces. One palette indexes investigations, documents, claims, notes, open questions, watch-for-later items, routes, AI actions. Substrate-event-aware: updates within seconds of new content landing in the graph.</p>
+      <div class="exit"><strong>Exit:</strong> Cmd+K opens from any surface and resolves any first-class graph object in under 300ms.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Max-style ubiquitous AI — PostHog Wedge 4</h4>
+      <p>Inline presence on every screen. Context-aware (knows current investigation, current personal-graph partition, current selection). UI-action capable with undo affordance through the event log. <strong>Critical discipline:</strong> every AI-driven UI action emits a typed event so the trajectory captures the AI's UI-driving behavior — this is what makes Wedge 5 (trajectory replay) work, and is the §5.5 discipline applied to AI actions.</p>
+      <div class="exit"><strong>Exit:</strong> the AI sidecar can rearrange a notebook, modify a MASTER.md section, or queue a Loop-1 investigation, all undoable via the event log.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Prompt autoresearch local-only — autoresearch Wedge 1 scaffolding</h4>
+      <p>Per <code>integration_autoresearch.md</code> Wedge 1. Outer loop, budget caps ($5 total / $0.30 per iteration), composite score (40% LLM-judged + 60% deterministic), <code>ProductionEnvironmentRefusal</code> enforced via <code>ANTIEK_ENV != 'production'</code>. Runs on operator's local machine, never against production VM. <strong>Ratification verdict lands in Sprint 20</strong> — the Lutke-gap test per §15.6.</p>
+      <div class="exit"><strong>Exit:</strong> the runner produces a synthesizer-prompt mutation set with composite scores; operator can read the report.</div>
+    </div>
+
+    <div class="phase">
+      <h4>DP shuffler substrate plumbing — §13.3</h4>
+      <p><code>substrate/dp_shuffler/</code> ships the ε-registry with sensitivity caps (low=4, medium=2, high=1, forbidden=0), <code>MAX_EPSILON = 10</code> hard cap per §16.2, randomized-response primitive, debiased aggregation. Dashboard UI stays deferred to Sprint 22; the substrate plumbing is live now.</p>
+      <div class="exit"><strong>Exit:</strong> a preference-telemetry signal can flow through the shuffler with a recorded ε that satisfies the per-surface budget.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">tools/stripe_connect/</span>real provider activation; three-tier billing</div>
+    <div class="deliverable"><span class="label">substrate/billing/</span>budget enforcement + usage events</div>
+    <div class="deliverable"><span class="label">roles/thought_partner/</span>CHALLENGE / SYNTHESIS / EXTENSION shapes</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/BrainstormStation/</span>full production version</div>
+    <div class="deliverable"><span class="label">tools/antiek_memory/</span>MCP server, stdio JSON-RPC, signed manifest</div>
+    <div class="deliverable"><span class="label">substrate/dp_shuffler/</span>ε-registry + randomized-response + debiased aggregation</div>
+    <div class="deliverable"><span class="label">tools/prompt_autoresearch/</span>local-only mutation runner with budget caps</div>
+    <div class="deliverable"><span class="label">apps/reading/src/components/CommandPalette.tsx</span>Cmd+K across surfaces</div>
+    <div class="deliverable"><span class="label">apps/reading/src/components/AISidecar.tsx</span>Max-style ubiquitous AI</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/Pricing/</span>real Stripe flow wired</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>First individual paying user is live on the three-tier model.</li>
+    <li>First publisher notification has been sent and at least one response is on file.</li>
+    <li>Surface E is the operator's daily entry point.</li>
+    <li>An external MCP client can list Antiek Memory resources and exercise tools.</li>
+    <li>Cmd+K palette + ubiquitous AI sidecar are visible on every surface.</li>
+    <li>Autoresearch Wedge 1 has produced its first mutation report.</li>
+    <li>DP shuffler is observably routing telemetry.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-18" data-page="sprint-18">← Sprint 18</a>
+    <a href="#sprint-20" data-page="sprint-20">Sprint 20 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 20 =================== -->
+<section class="page" id="sprint-20">
+  <header>
+    <div class="crumb">Phase 1 · Verdicts pending · Sprint 20</div>
+    <h2>Sprint 20 — Visible-Artifact Growth, Trajectory Replay, Dispatch Tier Verdict</h2>
+    <div class="theme">Two binary verdicts land; the growth wedge opens or doesn't</div>
+    <div class="badges">
+      <span class="badge pending">Verdicts pending</span>
+      <span class="badge">Autoresearch Wedge 1 ratify-or-reject</span>
+      <span class="badge">PostHog Wedge 5</span>
+      <span class="badge">Dispatch verdict</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 20 is the sprint where Sprint 17–19's measurement windows pay off
+    — or fail. Three binary outcomes land here:
+  </p>
+  <ol>
+    <li><strong>Visible-artifact growth motion opens.</strong> The operator publishes outputs from Antiek (under any byline or account). Peers ask what tool produced them. Individual-to-individual organic discovery either starts or doesn't.</li>
+    <li><strong>Dispatch tier-measurement verdict</strong> per §14.4. Two weeks of synthesizer-on-Opus traffic vs. Hermes baseline: if Grok-4.3-on-synthesis stays within 5pp of Opus, flip back to Hermes-primary on cost grounds. If the gap is larger, keep Opus on synthesis as primary. <strong>Either outcome is defensible</strong>; cost-per-acceptable-synthesis is the denominator that matters.</li>
+    <li><strong>Autoresearch Wedge 1 ratification verdict</strong> per §15.6 — the Lutke-gap test. Sprint 19's local-only prompt-autoresearch produces a synthesizer-prompt mutation set; the operator reads the report and decides whether to ratify (Wedges 2–4 unlock) or reject (Wedges 2–4 fall, Phase 8 keeps its current unconditional patching).</li>
+  </ol>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Operator publishes Antiek-produced outputs into the world</h4>
+      <p>Per §9.0.1 / §13.4. The operator uses Antiek and publishes — under their personal account, Sanabil byline, or any pen name. The outputs surface the voice/style discipline (§5) at a quality that distinguishes them from LLM slop. Visible-artifact peer distribution is the growth motion; it cannot be tested before the operator publishes.</p>
+      <div class="exit"><strong>Exit:</strong> at least one substantive piece (book chapter, research memo, investor brief, biography section) has been published outside Antiek under the operator's choice of byline.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Trajectory replay viewer — PostHog Wedge 5</h4>
+      <p>Per §5.6 / Wedge 5. Timeline scrubber + event-at-time renderer for re-reading investigations, watch-for-later trajectories, and any operator-graded outcome. <strong>Does NOT vendor rrweb</strong> — Antiek records typed events, not DOM mutations (§16.1 REJECT). The notebook (Wedge 2) is the render target; replay scrubs through the trajectory and shows the notebook state at that moment in time.</p>
+      <div class="exit"><strong>Exit:</strong> any past investigation can be scrubbed second-by-second through its full lifecycle; the replay renders meaningfully different intermediate states.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Dispatch tier-differentiation verdict</h4>
+      <p>End-of-measurement-window report. Verifier pass-rates per provider on synthesis outputs; cost-per-acceptable-synthesis computed both ways. Operator reads the report, signs off on Hermes-back-to-primary or Opus-stays-primary. The verdict reshapes <code>substrate/dispatch/config.yaml</code> for the rest of the roadmap.</p>
+      <div class="exit"><strong>Exit:</strong> dispatch posture is decided and committed for the synthesizer tier; Sprint 21+ assumes the verdict.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Autoresearch Wedge 1 ratify-or-reject</h4>
+      <p>Per <code>integration_autoresearch.md</code> Wedge 1. Operator reads the Sprint 19 mutation report. The decision is whether the proposed synthesizer prompts are <em>distinguishably</em> better than the operator's existing prompts — the Lutke-gap test (§15.6). <strong>Ratify</strong>: Wedges 2–4 unlock (Phase 8 gate shadow → enforcing path; config sweeps once ≥500 graded outcomes; local SFT loop deferred behind Loop 3). <strong>Reject</strong>: Wedges 2–4 fall; Phase 8 keeps its current unconditional patching.</p>
+      <div class="exit"><strong>Exit:</strong> the verdict is on paper, signed by the operator, and the Sprint-21 plan reflects it.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Phase 8 gate shadow-mode</h4>
+      <p>If Wedge 1 ratifies — <code>compounding/skill_growth/gate.py</code> runs the Phase 8 accept/reject gate in shadow mode (computes the decision, logs it, but does NOT block the patch). Minimum cohort size = 50; shadow notes carry the would-be-decision for calibration. <strong>Conditional</strong> on Wedge 1 ratification above.</p>
+      <div class="exit"><strong>Exit:</strong> shadow-mode decisions are calibrated against operator judgment for at least 30 days of Phase 8 patches.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">apps/reading/src/components/TrajectoryReplay.tsx</span>timeline scrubber + event-at-time renderer</div>
+    <div class="deliverable"><span class="label">docs/decisions/sprint20-dispatch-verdict.md</span>final verdict on Opus vs Hermes for synthesis</div>
+    <div class="deliverable"><span class="label">docs/decisions/sprint20-autoresearch-verdict.md</span>Wedge 1 ratify-or-reject record</div>
+    <div class="deliverable"><span class="label">compounding/skill_growth/gate.py</span>Phase 8 gate shadow-mode (conditional)</div>
+    <div class="deliverable"><span class="label">— (external)</span>operator publishes substantive Antiek-produced piece(s)</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>Trajectory replay works against a real, multi-step investigation.</li>
+    <li>Dispatch verdict is on paper.</li>
+    <li>Autoresearch Wedge 1 verdict is on paper.</li>
+    <li>At least one Antiek-produced artifact is in the wild; the growth-motion experiment is live.</li>
+    <li>Phase 8 gate is in shadow-mode (only if Wedge 1 ratified).</li>
+  </ul>
+
+  <h3><span class="h-num">§5</span>What this sprint unblocks</h3>
+  <p>
+    Sprint 21's <strong>Phase 8 enforcing</strong> mode is gated on the Wedge
+    1 ratification verdict. Sprint 21's <strong>Synquery integration</strong>
+    is gated on the visible-artifact growth motion producing a creation-surface
+    PMF signal that warrants paying for expert calls. The dispatch verdict
+    shapes every cost model from Sprint 21 onward.
+  </p>
+
+  <div class="footer-nav">
+    <a href="#sprint-19" data-page="sprint-19">← Sprint 19</a>
+    <a href="#sprint-21" data-page="sprint-21">Sprint 21 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 21 =================== -->
+<section class="page" id="sprint-21">
+  <header>
+    <div class="crumb">Phase 1 · Not started · Sprint 21</div>
+    <h2>Sprint 21 — Synquery Integration &amp; Phase 8 Enforcing</h2>
+    <div class="theme">Expert-network plug-in when creation-surface PMF lands; substrate begins to self-improve under autoresearch ratification</div>
+    <div class="badges">
+      <span class="badge notstarted">Not started</span>
+      <span class="badge gate">PMF gate</span>
+      <span class="badge">Phase 8 enforcing</span>
+      <span class="badge">Ubiquitous AI everywhere</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 21 is split into two genuinely independent workstreams. The first
+    is the Synquery expert-network integration that was originally planned for
+    Sprint 18 but slipped per §14.3 because the workflows (publisher onboarding
+    + Stripe + KYC + 1099) and (expert sourcing + transcript ingestion +
+    billing) have nothing in common and shouldn't share risk. Synquery
+    activates only after creation-surface PMF signal that operators want to
+    commission expert calls. The second workstream is Phase 8 enforcing —
+    only if Sprint 20's Wedge 1 verdict ratified. Both flow ubiquitous AI
+    further across surfaces and tighten the substrate's compounding loop.
+  </p>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Creation-surface PMF gate check</h4>
+      <p>Operator's read on whether the creation surface has produced enough demand-shape for expert calls to make sense. Inputs: number of distinct deliverables produced, number of "I should interview someone about X" open-questions that survived chase, dollar-willing-to-pay-for-expert-call sentiment. <strong>If the gate fails, Synquery slips again.</strong></p>
+      <div class="exit"><strong>Exit:</strong> gate verdict is on paper. Pass → proceed. Fail → reschedule.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Synquery API client</h4>
+      <p>Per §11.6 — substrate identifies "you need to interview someone with expertise in X" via the open-question chase. Operator clicks "find an expert" → Synquery API call → matching experts + booking flow → interview through Synquery's platform → transcript returned to Antiek as a new ingested source. Lives in <code>tools/synquery/</code>; integration shape from <code>docs/integration_*</code> precedent.</p>
+      <div class="exit"><strong>Exit:</strong> operator can find-and-book an expert via the Antiek surface; transcript ingests into the substrate as a tier-2 source.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Phase 8 enforcing mode</h4>
+      <p>Per <code>integration_autoresearch.md</code> Wedge 2. Phase 8's skill-patch accept/reject gate flips from shadow → enforcing. Minimum cohort size stays at 50. Patches that fail the gate get rejected at the patch-application step; the patch and its rejection reason are recorded as typed events. <strong>Conditional on Sprint 20's Wedge 1 ratification.</strong></p>
+      <div class="exit"><strong>Exit:</strong> at least one real skill-patch has been rejected by the enforcing gate; operator agrees the rejection was correct.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Ubiquitous AI across all surfaces</h4>
+      <p>The Sprint 19 AI sidecar widens its reach. By the end of Sprint 21 every surface — research workstation, document wrestle, notebook, brainstorming workstation, creation studio, interview — has the same inline AI presence with the same context-aware capabilities and the same UI-action undo affordance through the event log.</p>
+      <div class="exit"><strong>Exit:</strong> the AI sidecar is present and functional on every surface the operator uses.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Synquery cost discipline</h4>
+      <p>Expert calls are expensive (~$200–$800 / hour typical). The substrate enforces a per-deliverable cap on Synquery spend defaulting to <code>$1,000</code>, operator-overridable, hard-capped at <code>$5,000</code>. Cost events flow through the same <code>dispatch.call</code> log so the daemon's overall cost cap (§16, $5/day default for chase; expert-call line is separate) cannot quietly exceed the design.</p>
+      <div class="exit"><strong>Exit:</strong> a Synquery booking gets enforced against the cap; an over-cap attempt is blocked at the API surface.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">tools/synquery/</span>API client + booking flow + transcript ingestion</div>
+    <div class="deliverable"><span class="label">compounding/skill_growth/gate.py</span>shadow → enforcing transition</div>
+    <div class="deliverable"><span class="label">apps/reading/src/components/AISidecar.tsx</span>presence on every surface; UI-action capability complete</div>
+    <div class="deliverable"><span class="label">substrate/billing/</span>Synquery cost line + per-deliverable cap</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>If PMF gate passed: operator has booked + completed at least one expert call via Synquery, transcript ingested.</li>
+    <li>If Wedge 1 ratified: Phase 8 gate is enforcing in production; at least one rejection on record.</li>
+    <li>Ubiquitous AI sidecar reaches every surface.</li>
+    <li>Cost discipline holds across the new expert-call spend line.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-20" data-page="sprint-20">← Sprint 20</a>
+    <a href="#sprint-22" data-page="sprint-22">Sprint 22 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 22 =================== -->
+<section class="page" id="sprint-22">
+  <header>
+    <div class="crumb">Phase 2 · Not started · Sprint 22</div>
+    <h2>Sprint 22 — Multi-User Pivot &amp; Two-Graph Architecture</h2>
+    <div class="theme">The architectural inflection: single-operator → personal-graph-as-memory + collective public graph + shared platform substrate</div>
+    <div class="badges">
+      <span class="badge notstarted">Not started</span>
+      <span class="badge gate">6-month compounding gate</span>
+      <span class="badge">Substrate Stage 0 → 1</span>
+      <span class="badge">Trust Center publication</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 22 is the most architecturally consequential sprint after Sprint 11.
+    Until now Antiek has been single-operator on a single graph. The personal-
+    graph-as-memory framing (§13.2) becomes real: each user gets a personal
+    graph (their memory) partitioned into public-facing and private-facing;
+    the public-facing partition aggregates into a collective graph; the shared
+    substrate (skills, rubrics, attribution algorithm versions) stays
+    platform-owned with single-writer discipline. <strong>Gated on six months
+    of solo-operator compounding demonstration</strong> — the moat that
+    multi-user is supposed to monetise must be demonstrated before multi-user
+    can be opened.
+  </p>
+
+  <div class="callout critical">
+    <span class="label">Sprint 22 gate (§13.4)</span>
+    Sprint 22 ships ONLY after six months of operator-graph accumulation
+    demonstrates the compounding curve. Premature multi-user destroys the
+    moat via graph contamination. The visible-artifact growth motion of
+    Sprint 20 is what counts as demonstration.
+  </div>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Auth integration — Clerk or Supabase</h4>
+      <p>The first user-facing change. Sign-up + sign-in + session management + OAuth scope mapping for the Antiek Memory MCP server's per-user resources. The choice between Clerk and Supabase is an operator-decided spike; either works architecturally.</p>
+      <div class="exit"><strong>Exit:</strong> a second user can register and sign in independently of the operator.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Per-user personal graph at storage level</h4>
+      <p>Per §13.2 — physical separation, not tagging. Per-user DuckDB files with per-partition encryption keys. A query against a user's private-facing notes cannot, by schema design, write into the collective graph. Stage 0 → Stage 1 transition per the §13.6 matrix.</p>
+      <div class="exit"><strong>Exit:</strong> a synthetic cross-user-read attempt fails at the database boundary, not the application layer.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Collective graph aggregation</h4>
+      <p>Every user's public-facing notes flow into the collective graph through the §13.9 quality gate (verification + voice-style scoring + source-tier validation). Pre-onboarded IP-holder content (§9.10) sits alongside. Operator-curated source corpus continues to seed.</p>
+      <div class="exit"><strong>Exit:</strong> a second user's published note shows up in the collective graph's search index, attributable, ad-eligible.</div>
+    </div>
+
+    <div class="phase">
+      <h4>DuckLake catalog separation activated</h4>
+      <p>The catalog Postgres (designed into the data model since Sprint 18) becomes operational. Per-user file routing in the app layer; Postgres catalog mediates. The Stage 1 → Stage 2 transition path is now opened — though only triggered if per-user file count approaches OS handle limits.</p>
+      <div class="exit"><strong>Exit:</strong> a query routed via the catalog reaches the right per-user DuckDB; per-user backup latency stays inside the backup window.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Cross-graph writes flow through shared substrate</h4>
+      <p>The mechanism that makes the privacy claim load-bearing. A skill patch discovered in a user's private-facing notes propagates as a <em>discovered rule</em> via the shared-substrate writer queue, never as the patched private content. Differential-privacy guarantees per §13.3.</p>
+      <div class="exit"><strong>Exit:</strong> a skill patch derived from User B's private graph reaches the shared substrate; the original private content is provably not exfiltrated.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Privacy dashboard as first-class product</h4>
+      <p>Per §13.3 — real-time view of every telemetry collected from the user's private graph, with toggles per category and a "delete everything" button that actually deletes everything within 30 days. The privacy dashboard is the credibility mechanism by which users develop trust.</p>
+      <div class="exit"><strong>Exit:</strong> a user can see exactly what is collected, toggle off any category, and trigger a deletion that completes in ≤30 days verifiably.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Trust Center publication</h4>
+      <p>Public-facing Trust Center per §13.7. Privacy architecture description, DP parameters (ε-registry per surface), data-retention policy, deletion SLA, incident-response process, privacy-dashboard tutorial. Lives at <code>antiek.ai/trust</code>.</p>
+      <div class="exit"><strong>Exit:</strong> Trust Center is publicly published; a prospective user can read it without an account.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Differential privacy enforcement live</h4>
+      <p>The DP shuffler that landed substrate-side in Sprint 19 now enforces per-surface ε budgets in production. <code>ε &gt; 10</code> on any DP claim is rejected per §16.2.</p>
+      <div class="exit"><strong>Exit:</strong> production telemetry routes through the shuffler at the documented ε for each surface.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Multi-tenant org/team UI — strictly avoided</h4>
+      <p>Per §16.1 — Antiek is a consumer product where each user pays Stripe directly through the pay-as-you-go token-budget model. Multi-tenant org/team UI is irrelevant; this sprint does NOT build it. The pricing page from Sprint 18/19 continues to be the only billing surface.</p>
+      <div class="exit"><strong>Exit:</strong> no org/team surfaces shipped; pricing stays per-individual.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">substrate/multi_user/</span>Clerk/Supabase auth integration</div>
+    <div class="deliverable"><span class="label">substrate/graph/per_user_storage.py</span>per-user DuckDB + encryption keys</div>
+    <div class="deliverable"><span class="label">substrate/cross_graph/</span>writer-queue with DP shuffler in front</div>
+    <div class="deliverable"><span class="label">substrate/ducklake/</span>catalog Postgres + per-user routing</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/PrivacyDashboard/</span>real-time telemetry view + delete-all</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/TrustCenter/</span>public-facing trust documentation</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole sprint</h3>
+  <ul>
+    <li>Two real users (operator + one) are live on independent personal graphs.</li>
+    <li>The architectural-incapability claim holds under a cross-graph-leak attempt.</li>
+    <li>Trust Center is publicly published and accurately describes the architecture.</li>
+    <li>Substrate is in Stage 1 of the §13.6 transition matrix.</li>
+    <li>SOC 2 Type II is explicitly deferred — no work has begun; the substrate-controls work is the foundation either way.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-21" data-page="sprint-21">← Sprint 21</a>
+    <a href="#sprint-2324" data-page="sprint-2324">Sprints 23-24 →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINTS 23-24 =================== -->
+<section class="page" id="sprint-2324">
+  <header>
+    <div class="crumb">Phase 3 · Not started · Sprints 23-24</div>
+    <h2>Sprints 23 – 24 — Lead-Gen Ad Inventory &amp; Creator Rev-Share Infrastructure</h2>
+    <div class="theme">First real ad revenue routing through the attribution system; 70% rev-share to creators</div>
+    <div class="badges">
+      <span class="badge notstarted">Not started</span>
+      <span class="badge">Phase 3 ads launch</span>
+      <span class="badge">70% creator rev-share live</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    With multi-user live (Sprint 22) and creator + publisher populations
+    active, Sprints 23–24 turn on the actual ad-revenue plumbing per §9.4
+    Option C. <strong>Lead-gen / vertical ads</strong> first — higher CPMs
+    than display, audience-intent aligned, builds on existing topic
+    classification. 70% of ad revenue from any consumed public note routes
+    to the note's creator via the same Stripe Connect architecture the
+    publisher escrow uses. The choice to start lead-gen instead of
+    programmatic display is load-bearing per §9.4: programmatic infrastructure
+    cost and brand-safety overhead are not justified at the operator's
+    audience scale; lead-gen aligns CPMs with the researcher-grade content
+    and keeps the §5.5 voice-and-style discipline tractable.
+  </p>
+
+  <div class="callout critical">
+    <span class="label">Phase 4 ads gate (§9.4 + §9.5)</span>
+    Sprints 23–24 ship ONLY after: (a) Sprint 22's multi-user pivot is
+    stable, two-graph architecture has been hardened against contamination;
+    (b) at least one creator and one publisher are accruing under the
+    Sprint-22 attribution pipeline with no rev-share routed yet; (c) the
+    anti-gaming layer passes a documented adversarial review. If any of
+    those fail, ad inventory does not light up. Real money compounds the
+    cost of any fraud or attribution mis-routing.
+  </div>
+
+  <h3><span class="h-num">§2</span>Progressive phases (across the two sprints)</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Vertical ad slot mechanic</h4>
+      <p>Ad slot appears as the page-border banner per the operator vision — never inline with synthesis prose, never breaking the researcher's-notebook aesthetic. The substrate's existing topic classification (from <code>decomposer</code>) chooses the slot's ad inventory: sector + sub-sector + audience-intent dimensions. No programmatic bidding yet; ads are manually curated, vertical-targeted, lead-gen oriented. The ad-rendering component lives in <code>apps/reading/src/components/AdSlot/</code> and is feature-flagged so operator can A/B the position against zero ads to measure §5.5 voice-impact.</p>
+      <div class="exit"><strong>Exit:</strong> ads render on real public-graph pages without breaking the §5.5 visual discipline; voice-style score on ad-bearing pages stays within 5% of non-ad pages.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Attribution → rev-share payout pipeline</h4>
+      <p>Real money routes per the Sprint-16 attribution algorithm (Option B by default per §9.3 phased approach; Option C as premium tier). 30% platform / 70% IP-holders. Of the IP-holder share, the creator (§13.9) takes 70%; the publisher share (§9.10) flows only if the publisher has opted in. The Stripe Connect activation that lit up in Sprint 19 for token-budget billing now extends to rev-share payouts via the same provider; a single config flag controls whether a creator account is "credit-only" or "payout-eligible."</p>
+      <div class="exit"><strong>Exit:</strong> a first creator receives a non-trivial monthly payout through Stripe Connect; the per-payout attribution trail is auditable end-to-end.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Anti-gaming layer</h4>
+      <p>Click-fraud detection, view-fraud detection, attribution-gaming detection. Per §9.2. Required before any meaningful rev-share at scale — without it, the unit economics collapse. Implementation lands at <code>substrate/anti_gaming/</code>: bot-traffic scoring against UA + IP entropy, session-burst detection, attribution-chain anomaly detection (a single user accounting for outsized rev-share on a single creator's notes). Adversarial review by an external red-team is gate (c) on the Phase 4 ads callout above.</p>
+      <div class="exit"><strong>Exit:</strong> simulated fraud attempts are caught at the substrate level before they route revenue; the red-team review report is filed.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Per-month minimum payout threshold</h4>
+      <p>Per §9.5 — <code>$10</code> minimum payout threshold to avoid Stripe fees eating small payouts. Below-threshold balances roll over to next month with a 12-month rollover ceiling (after which the balance forfeits to the platform with explicit notice to the creator at month 9). KYC + 1099 reporting + ToS for any creator above threshold; Stripe Connect's existing onboarding flow handles KYC. A creator dashboard at <code>apps/reading/src/modes/CreatorPayouts/</code> surfaces accrued + paid history.</p>
+      <div class="exit"><strong>Exit:</strong> a creator who crosses the threshold completes KYC and receives payout cleanly; below-threshold rollover behaves correctly on a synthetic 13-month test.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Lead-gen advertiser onboarding</h4>
+      <p>Manual sales motion for the first wave of advertisers. Vertical SaaS, consulting firms, recruiting platforms targeted by topic. Operator-driven; tooling stays light. An operator-only advertiser console at <code>apps/reading/src/modes/AdvertiserConsole/</code> handles inventory entry, targeting rules (sector + intent), creative upload (image + URL + click-out), and per-campaign performance reporting. No advertiser self-service in this sprint; that lands at Sprint 25+ only if scale justifies it.</p>
+      <div class="exit"><strong>Exit:</strong> at least three vertical advertisers are paying for ad slots; each can see campaign performance via operator-mediated reports.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Anti-gaming red-team report + voice-and-style audit</h4>
+      <p>Two parallel pre-launch reviews. (1) An external red-team probes the anti-gaming layer with at least three classes of attack (botnet view inflation, attribution graph injection, multi-account self-attribution). Report filed at <code>docs/sprint23_red_team.md</code>. (2) An internal voice-and-style audit compares ad-bearing pages against non-ad baseline on the §5.5 rubric; any regression &gt; 5% kicks ads back to the prior sprint for redesign.</p>
+      <div class="exit"><strong>Exit:</strong> both reports filed; both pass; legal counsel signs off on the §9.5 KYC/1099 posture.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">substrate/ad_inventory/</span>ad slot table + manual-curation CRUD + topic-targeting rules</div>
+    <div class="deliverable"><span class="label">substrate/anti_gaming/</span>click/view/attribution fraud detectors + red-team interface</div>
+    <div class="deliverable"><span class="label">substrate/rev_share/</span>30/70 split + creator 70% + publisher 70% (opted-in) + rollover ledger</div>
+    <div class="deliverable"><span class="label">tools/stripe_connect/payouts.py</span>credit-only → payout-eligible flip + KYC trigger + 1099 export</div>
+    <div class="deliverable"><span class="label">apps/reading/src/components/AdSlot/</span>page-border banner with §5.5-discipline feature flag</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/CreatorPayouts/</span>accrued + paid + rollover history; Stripe Connect onboarding</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/AdvertiserConsole/</span>operator-only inventory + targeting + creative + reporting</div>
+    <div class="deliverable"><span class="label">docs/sprint23_red_team.md</span>external adversarial review report (gate (c) artefact)</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria for the whole arc</h3>
+  <ul>
+    <li>Creators are receiving real money through the rev-share — at least one payout above the §9.5 threshold has cleared Stripe.</li>
+    <li>Ad spend is routing through the substrate at non-trivial volume — at least three paying advertisers, monthly run-rate &gt; $5K.</li>
+    <li>The attribution algorithm in production matches operator's qualitative read — sampled audit of 20 payouts shows no operator-reversed attributions.</li>
+    <li>No fraud incident has bypassed the anti-gaming layer — red-team report's three attack classes are all caught pre-payout.</li>
+    <li>Voice-and-style discipline holds at the ad-page level — voice-style audit shows &lt; 5% regression vs non-ad baseline.</li>
+    <li>The §9.5 KYC + 1099 posture has been reviewed by legal counsel; no creator above threshold is paid out without KYC completion.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-22" data-page="sprint-22">← Sprint 22</a>
+    <a href="#sprint-25" data-page="sprint-25">Sprint 25+ →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 25+ =================== -->
+<section class="page" id="sprint-25">
+  <header>
+    <div class="crumb">Phase 3 · Not started · Sprint 25+</div>
+    <h2>Sprint 25+ — Ad Inventory at Scale + Cross-Graph Network Effects (Phase 3)</h2>
+    <div class="theme">The Spotify-pattern Phase 3 surface: ad-supported public consumption, 70% rev-share to creators and publishers, cross-graph "ask an expert"</div>
+    <div class="badges">
+      <span class="badge notstarted">Not started</span>
+      <span class="badge">Phase 3 ads at scale</span>
+      <span class="badge">Cross-graph "ask an expert"</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 25+ is the Phase 3 inflection. With Sprints 23–24's lead-gen ads
+    proven and creator rev-share routing real money, this sprint scales ad
+    inventory across the public consumption surface. 70% rev-share routes to
+    creators AND opted-in publishers through the existing Phase 1 escrow
+    architecture. Cross-graph network effects unlock — User A's interview
+    transcript becomes citable by User B; the "ask an expert" flow surfaces
+    User A as a potential interview subject for B (with A's opt-in). The
+    substrate moves from "product with monetisation bolted on" to recognisable
+    marketplace: creator economics, publisher economics, and advertiser
+    economics all clearing through the same attribution backbone.
+  </p>
+
+  <div class="callout">
+    <span class="label">Phase 3 unlock conditions (§9.6 + §13.9)</span>
+    Sprint 25+ depends on three pre-conditions, each independently measurable
+    against the Sprints 23–24 outcomes table: (1) at least 30 creators
+    actively earning monthly rev-share above the §9.5 threshold; (2) at
+    least 5 publishers opted in under §9.10, with non-trivial escrow
+    accrual; (3) the anti-gaming layer's incident rate is below the
+    documented tolerance (no payout reversal in the prior 8 weeks). The
+    PostHog Wedge 7 and SOC 2 phases stay conditional on §14.1 / §13.7
+    triggers — they are NOT prerequisites for the Phase 3 ad scaling.
+  </div>
+
+  <h3><span class="h-num">§2</span>Progressive phases</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Ad inventory live across the public consumption surface</h4>
+      <p>The vertical-ad mechanic from Sprints 23–24 expands to every public-graph page. Inventory scales with traffic. Topic classification gets more nuanced (sector + sub-sector + audience-intent dimensions). A second slot pattern lands per §9.6 — an "inline sponsor card" that sits between top-level synthesis sections, gated by a §5.5 voice-discipline test: the card is suppressed if the surrounding prose pattern would be disrupted.</p>
+      <div class="exit"><strong>Exit:</strong> &gt;90% of public-graph page views serve an ad without harming voice-and-style discipline; the inline-sponsor pattern passes the §5.5 voice test on 95% of placements.</div>
+    </div>
+
+    <div class="phase">
+      <h4>70% rev-share routes to creators AND opted-in publishers</h4>
+      <p>The user-as-IP-holder framing (§13.9) and publisher escrow (§9.10) converge into one rev-share pipeline. Creators take 70% of ad revenue from sessions consuming their content; opted-in publishers take 70% of attribution-weighted revenue on content they license. Both flow through the same Stripe Connect architecture. Where a session pulls from both a publisher's licensed content and a creator's public note, the attribution algorithm splits the 70% share proportionally — never duplicating dollars.</p>
+      <div class="exit"><strong>Exit:</strong> a single user-facing payout dashboard renders both creator and publisher accruals consistently; mixed-attribution payout audits show no double-spend.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Cross-graph "ask an expert" flow (with opt-in)</h4>
+      <p>The substrate's open-question chase identifies "you need to interview someone with expertise in X." If a creator User A has accumulated relevant public-graph contribution AND has opted in to be discoverable, the surface offers A as a candidate. Outreach flows through the platform (with A's contact preferences); A can accept, decline, or counter-propose. Payment-for-interview is mediated by the existing Stripe Connect rails so a researcher can compensate an expert without leaving Antiek.</p>
+      <div class="exit"><strong>Exit:</strong> a real cross-graph interview happens at least once; payment-for-interview path is exercised at least once on a real transaction.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Advertiser self-service console (if scale justifies)</h4>
+      <p><strong>Conditional</strong> on aggregate advertiser monthly spend crossing the §9.6 threshold (operator-decided in the spec; default $50K/mo). Lifts the operator-mediated manual sales motion from Sprints 23–24 into a self-service flow at <code>apps/reading/src/modes/AdvertiserSelfService/</code>: campaign creation, creative upload, targeting selection, budget + bid setting, performance dashboard. Manual review still gates first activation per campaign.</p>
+      <div class="exit"><strong>Exit:</strong> if condition met, two advertisers complete self-service onboarding without operator intervention; if not met, the gate stays in place and operator-mediated sales continue.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Public-handbook discipline (PostHog Wedge 7, IF team &gt; 1)</h4>
+      <p><strong>Conditional</strong>. If a second team member joins Antiek's operations, the PostHog Wedge 7 public-handbook discipline lands. Until that condition, the wedge stays deferred per §14.1. When triggered, the handbook publishes at <code>antiek.ai/handbook</code> and covers: decision rights, sprint cadence, voice-and-style rubrics, on-call rotation, escalation paths, performance review framing.</p>
+      <div class="exit"><strong>Exit:</strong> handbook published only if precondition met; team-member-2 has reviewed it before their first sprint.</div>
+    </div>
+
+    <div class="phase">
+      <h4>SOC 2 Type II — only if enterprise procurement opens</h4>
+      <p><strong>Conditional</strong> per §13.7. Sprint 25+ is when the platform's substrate hygiene becomes mature enough to fund a real SOC 2 Type II observation window if enterprise demand appears. Drata or Secureframe onboarding; ~6 month observation window; first Type II report at Sprint 40–44 if pursued. The substrate trust controls scaffolded in Sprint 18 (encryption-at-rest, access logging, change management, vuln scanning, backup testing) become the SOC 2 evidence chain without re-implementation.</p>
+      <div class="exit"><strong>Exit:</strong> the decision to pursue SOC 2 has been taken (yes or no) based on enterprise procurement signal; if yes, the observation window has started.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Marketplace metrics dashboard</h4>
+      <p>One operator-only surface that aggregates the three economic loops: creator earnings distribution (median, p90, long-tail mass), publisher escrow accrual + claim rate, advertiser spend + retention. The dashboard is the input to the Sprint 30+ federation/programmatic decision and to the §9.4 "is programmatic display warranted" gate.</p>
+      <div class="exit"><strong>Exit:</strong> dashboard is live; the three economic loops can be read at a glance; operator can answer "is the marketplace healthy" without manual SQL.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">substrate/ad_inventory/scaling.py</span>inline-sponsor card + voice-discipline suppression hook</div>
+    <div class="deliverable"><span class="label">substrate/rev_share/mixed_attribution.py</span>creator + publisher proportional split; no double-spend</div>
+    <div class="deliverable"><span class="label">substrate/cross_graph/ask_an_expert.py</span>opt-in discovery + outreach + payment-mediated interview</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/AdvertiserSelfService/</span>conditional; campaign/creative/targeting/budget self-service</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/PayoutDashboard/</span>unified creator + publisher accrual + payout history</div>
+    <div class="deliverable"><span class="label">apps/reading/src/modes/MarketplaceMetrics/</span>operator-only economic-loops dashboard</div>
+    <div class="deliverable"><span class="label">antiek.ai/handbook</span>conditional; public handbook if team &gt; 1</div>
+    <div class="deliverable"><span class="label">docs/soc2_decision.md</span>SOC 2 yes/no with enterprise procurement signal cited</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria</h3>
+  <ul>
+    <li>Ad-supported public consumption is the dominant revenue line — &gt; 60% of monthly platform revenue.</li>
+    <li>Creator rev-share is producing real take-home dollars for at least 10 creators above the §9.5 threshold.</li>
+    <li>Cross-graph "ask an expert" has produced at least one completed interview with a payment cleared.</li>
+    <li>Antiek is recognisably a marketplace, not just a product — at least one external observer (analyst, journalist, prospective enterprise customer) describes it that way without prompting.</li>
+    <li>The mixed-attribution rev-share has cleared an audit on a sampled month with no double-spend or under-payment.</li>
+    <li>The §9.4 programmatic-display gate has been re-evaluated; decision (still no / now yes) is documented.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-2324" data-page="sprint-2324">← Sprints 23-24</a>
+    <a href="#sprint-30" data-page="sprint-30">Sprint 30+ →</a>
+  </div>
+</section>
+
+<!-- =================== SPRINT 30+ =================== -->
+<section class="page" id="sprint-30">
+  <header>
+    <div class="crumb">Phase 3 · Not started · Sprint 30+</div>
+    <h2>Sprint 30+ — Cross-Graph Network Effects &amp; Federation</h2>
+    <div class="theme">The substrate becomes a federated platform; vision-capable role for richer content; programmatic auction only if scale warrants</div>
+    <div class="badges">
+      <span class="badge notstarted">Not started</span>
+      <span class="badge">Federation</span>
+      <span class="badge">Programmatic (conditional)</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Sprint 30+ is speculative by design. The spec deliberately does not over-
+    specify it — at the time of writing the operator does not have the demand
+    signal to know which of the five threads (federation, long-tail
+    user-as-IP-holder revenue, programmatic ads, vision-capable role, config
+    sweeps) actually matters. Sprint 30+ is "if Phase 3 holds, here's what's
+    next." Each thread is independently triggered by its own measurable
+    pre-condition; the sprint as a whole is a portfolio decision, not a
+    sequenced execution. The unifying discipline: never light up a thread
+    whose pre-condition has not measurably cleared, even if operator
+    enthusiasm for it is high.
+  </p>
+
+  <div class="callout">
+    <span class="label">Sprint 30+ thread triggers (§14.5)</span>
+    Each thread has its own gate, evaluated against the Sprint 25+
+    marketplace-metrics dashboard: federation requires a partner Antiek
+    instance willing to negotiate a slice exchange; long-tail rev-share
+    requires &gt; 200 active monthly-earning creators; programmatic requires
+    aggregate advertiser demand exceeding manual-curation capacity;
+    vision-capable role requires a source-corpus expansion where ≥ 30% of
+    citable material is non-text; autoresearch Wedge 3 requires ≥ 500
+    graded outcomes per §14.1. <strong>Threads without cleared triggers
+    stay explicitly deferred</strong> — the documented rejection IS the
+    deliverable.
+  </div>
+
+  <h3><span class="h-num">§2</span>Threads (not sequential phases)</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Cross-user "ask an expert" matures into a federation layer</h4>
+      <p>What Sprint 25+ shipped as an experiment becomes a real federation primitive. Antiek instances at different organisations can opt-in expose collective-graph slices to each other under negotiated terms. Substrate retains the single-writer invariant per instance; federation lives at the application-protocol layer. The protocol is signed-resource-pull (not push): receiving instance fetches a slice, validates the signing key, ingests under its own quality gate. No cross-instance write paths exist; federation never becomes a backdoor for the single-writer invariant.</p>
+      <div class="exit"><strong>Exit:</strong> two Antiek instances federate one slice successfully; the signed-resource-pull protocol passes a documented adversarial review.</div>
+    </div>
+
+    <div class="phase">
+      <h4>User-as-IP-holder revenue attribution matures</h4>
+      <p>§13.9's revenue path turns into a real long-tail creator economy: hundreds or thousands of users earning meaningful rev-share. The substrate's anti-gaming layer hardens accordingly: per-creator anomaly detection, network-effect manipulation detection (creator clusters artificially boosting each other), payout-graph forensics. Stripe Connect's 1099 reporting volume becomes non-trivial; tax-tooling integration lands here, not earlier.</p>
+      <div class="exit"><strong>Exit:</strong> long-tail creator economics are healthy without operator intervention per case; a sampled 1099 batch passes accountant review.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Programmatic auction (only if scale warrants)</h4>
+      <p>The §9.4 Option A — programmatic display ads — was rejected for Phase 1/2/3 because the infrastructure complexity and brand-safety overhead aren't justified at the operator's audience. Sprint 30+ revisits only if scale demands it. If triggered: integrate one programmatic SSP (Google Ad Manager or Magnite); brand-safety classifier runs in front of every served ad against the §5.5 voice rubric extended for brand-fit; manual fall-back for inventory below the brand-safety threshold. <strong>If not triggered: the rejection is renewed in writing with current-quarter numbers.</strong></p>
+      <div class="exit"><strong>Exit:</strong> programmatic stack lives in production OR the rejection is renewed with cited numbers; either outcome is acceptable.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Vision-capable role</h4>
+      <p>Image-and-video ingestion expands beyond timestamps into actual frame-level analysis. A new substrate role joins the existing twelve at <code>substrate/roles/vision_extractor/</code>. Useful for biography-as-acquisition and any source corpus where the visual is part of the argument. Reuses the §5.4 verification rubric extended for visual claims (frame timestamp, visual-element bounding box, surrounding-text grounding). DeepSeek-VL or Gemini-Vision as the model dependency; tier-measurement infrastructure from Sprint 17 evaluates both.</p>
+      <div class="exit"><strong>Exit:</strong> the substrate can extract claims from a video frame as it does from a text chunk; verification rubric extension passes the §5.4 audit on a 50-frame sample.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Config sweeps — autoresearch Wedge 3</h4>
+      <p>Per <code>integration_autoresearch.md</code> Wedge 3 — DEFER until ≥500 graded outcomes in cohort per §14.1. Sprint 30+ is the earliest realistic moment that condition holds. When triggered: nightly sweep over context-pack composition + dispatch-tier routing, ranked against the outcomes table; a candidate config requires operator review before promotion (no auto-promotion ever, per the Loop 3 unlock criteria). The output is a single "proposed config delta" markdown file the operator can accept, reject, or modify.</p>
+      <div class="exit"><strong>Exit:</strong> sweep produces a context-pack/dispatch config change that survives operator review and improves outcomes on a held-out cohort.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Substrate Stage 2 transition (if per-user file count warrants)</h4>
+      <p><strong>Conditional</strong> per §13.6. Triggered when per-user DuckDB file count approaches OS handle limits or the catalog Postgres becomes the contention point. Stage 1 → Stage 2: shared substrate stays on DuckDB; user partitions migrate to a sharded model with the DuckLake catalog mediating routing. The migration path was designed into the data model at Sprint 18; this is the activation, not the design.</p>
+      <div class="exit"><strong>Exit:</strong> if condition met, Stage 2 is live with no measurable user-facing latency regression; if not met, the Stage 1 architecture continues.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Specific deliverables</h3>
+  <div class="deliverable-grid">
+    <div class="deliverable"><span class="label">substrate/federation/</span>signed-resource-pull protocol + per-slice negotiation primitives</div>
+    <div class="deliverable"><span class="label">substrate/anti_gaming/long_tail.py</span>creator-cluster manipulation + payout-graph forensics</div>
+    <div class="deliverable"><span class="label">substrate/ad_inventory/programmatic.py</span>conditional; SSP integration + brand-safety classifier</div>
+    <div class="deliverable"><span class="label">substrate/roles/vision_extractor/</span>frame-level claim extraction + §5.4 verification extension</div>
+    <div class="deliverable"><span class="label">substrate/autoresearch/wedge3_sweep.py</span>conditional; nightly config sweep with operator-gated promotion</div>
+    <div class="deliverable"><span class="label">substrate/ducklake/stage2_migration.py</span>conditional; sharded user partitions + catalog routing</div>
+    <div class="deliverable"><span class="label">tools/stripe_connect/tax_export.py</span>1099 batch export + accountant-review format</div>
+    <div class="deliverable"><span class="label">docs/sprint30_thread_decisions.md</span>per-thread trigger evaluation + go/defer verdict with cited numbers</div>
+  </div>
+
+  <h3><span class="h-num">§4</span>Exit criteria</h3>
+  <ul>
+    <li>Each thread is either live or has been explicitly rejected with a documented reason citing current-quarter numbers — the rejection IS a deliverable, not an absence of work.</li>
+    <li>The substrate's compounding curve remains intact under federation — outcomes-table metrics show no regression after federation goes live.</li>
+    <li>Voice and style discipline holds even at the federation boundary — outputs from federated instances still read as researcher's-notebook prose; brand-safety classifier (if programmatic is live) passes §5.5 audit.</li>
+    <li>Long-tail creator economics support themselves — operator does not intervene per case to resolve payouts or attribution disputes.</li>
+    <li>The single-writer invariant per instance survives federation — no cross-instance write path exists, audited by adversarial review.</li>
+    <li>If Stage 2 transitioned, per-user latency stays within the documented SLA; otherwise Stage 1 is still adequate.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-25" data-page="sprint-25">← Sprint 25+</a>
+    <a href="#track-rlm" data-page="track-rlm">Parallel: RLM →</a>
+  </div>
+</section>
+
+<!-- =================== PARALLEL: RLM =================== -->
+<section class="page" id="track-rlm">
+  <header>
+    <div class="crumb">Parallel track · Not started · RLM</div>
+    <h2>RLM Track — Recursive Language Models</h2>
+    <div class="theme">Long-doc wrestling, long-corpus synthesis, RLM-mode orchestration; parallel to mainline, sequenced AFTER Sprint 20</div>
+    <div class="badges">
+      <span class="badge parallel">Parallel track</span>
+      <span class="badge gate">Six-design ratification gate</span>
+      <span class="badge">~3400 LOC across RLM-1..RLM-5</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Recursive Language Models (RLMs) handle the long-context cases the
+    substrate's flat dispatch cannot — single documents that exceed context
+    window, long corpora that benefit from recursive synthesis, the
+    interview-replay case where the trajectory itself is the input. The track
+    sequences AFTER Sprint 20's outcomes-table populates enough graded
+    trajectories. The six design decisions in <code>rlm_integration_spec.md</code>
+    §6 must be ratified before RLM-1 starts; <code>ANTIEK_RLM_RATIFIED=1</code>
+    gates every code path.
+  </p>
+
+  <div class="callout">
+    <span class="label">Tool-isolation invariant</span>
+    Tools NEVER attach to the root REPL of an RLM session. Tool isolation is
+    enforced at the orchestration layer; violation is a session-termination
+    event. This is the architectural safeguard that prevents an RLM run from
+    silently turning into a general tool-use loop.
+  </div>
+
+  <h3><span class="h-num">§2</span>Stage progression — RLM-1 through RLM-5</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>RLM-1 — Long-doc wrestling bridge (~600 LOC, load-bearing)</h4>
+      <p>The first RLM target. When a document exceeds the wrestle surface's flat-dispatch capacity, the substrate hands off to an RLM session that recursively summarises, links, and notes. <code>$5</code> session cost cap; <code>cost_capped</code> status emitted as a typed event; 64K token threshold constant determines the handoff point.</p>
+      <div class="exit"><strong>Exit:</strong> a 200-page document yields the same shape of insights + open-questions as a normal wrestle, within the cap.</div>
+    </div>
+
+    <div class="phase">
+      <h4>RLM-2 — Long-corpus synthesizer RLM mode (~250 LOC)</h4>
+      <p>The synthesizer role gains an RLM mode for corpora that would exceed its context pack. Same recursive pattern; same cost-cap discipline. Reuses RLM-1's primitives.</p>
+      <div class="exit"><strong>Exit:</strong> a synthesis over &gt;50 chunks produces an artifact that passes §5.4 verification.</div>
+    </div>
+
+    <div class="phase">
+      <h4>RLM-3 — <code>investigation_kind="rlm"</code> orchestrator (~500 LOC, net-new)</h4>
+      <p>A new investigation kind alongside Loop 1's cold-research chain. Specifically designed for cases where the whole investigation is recursive (interview-replay synthesis, multi-document cross-corpus claim derivation, long-thread X-style synthesis). Sits parallel to Loops 1–4.</p>
+      <div class="exit"><strong>Exit:</strong> an end-to-end RLM investigation completes on a real workload.</div>
+    </div>
+
+    <div class="phase">
+      <h4>RLM-4 — Verifiers envs for the other four roles + <code>rlm_env.py</code> (~2000 LOC)</h4>
+      <p>Per <code>integration_prime_intellect.md</code> — each role except parameter_extractor (which has Phase 2 already) gets a verifiers env. <code>rlm_env.py</code> is the RLM-specific env. These envs are substrate-only; training is forbidden until Loop 3 unlock.</p>
+      <div class="exit"><strong>Exit:</strong> <code>prime eval run</code> can be invoked against each role's env.</div>
+    </div>
+
+    <div class="phase">
+      <h4>RLM-5 — Trajectory harvest CLI for <code>prime-rl</code></h4>
+      <p>Trajectory harvest CLI produces datasets in the shape <code>prime-rl</code> consumes. Strictly DEFER until Loop 3 unlock criteria pass; the CLI exists, but the actual training run waits.</p>
+      <div class="exit"><strong>Exit:</strong> harvest can produce a real dataset for review.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>Gates</h3>
+  <ul>
+    <li><strong>Six design decisions ratified</strong> per <code>rlm_integration_spec.md</code> §6 before RLM-1 starts.</li>
+    <li><code>ANTIEK_RLM_RATIFIED=1</code> in the environment for every RLM execution path.</li>
+    <li><strong>Outcomes table populated</strong> with enough graded trajectories from Sprint 20.</li>
+    <li><strong>Tool isolation invariant</strong> enforced; violation is fatal.</li>
+    <li>Cost caps per session ($5) and per pipeline (overall budget) hold.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#sprint-30" data-page="sprint-30">← Sprint 30+</a>
+    <a href="#track-loop3" data-page="track-loop3">Parallel: Loop 3 unlock →</a>
+  </div>
+</section>
+
+<!-- =================== PARALLEL: LOOP 3 =================== -->
+<section class="page" id="track-loop3">
+  <header>
+    <div class="crumb">Parallel track · Strictly gated · Loop 3</div>
+    <h2>Loop 3 Unlock Track</h2>
+    <div class="theme">Training-time work that doesn't start until five hard criteria pass</div>
+    <div class="badges">
+      <span class="badge parallel">Parallel track</span>
+      <span class="badge gate">5 hard prerequisites; none met</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Loop 3 is the training-time loop. Everything in the substrate so far has
+    been inference-time: dispatch, orchestration, attribution. Loop 3 covers
+    SFT, hosted RL, model fine-tuning. <strong>No work happens on Loop 3
+    until five criteria in <code>docs/loop_3_unlock_criteria.md</code>
+    pass.</strong> Per §16, pre-building the SFT loop, the verifiers envs
+    for training (not just substrate eval), or the hosted RL infrastructure
+    is explicitly rejected.
+  </p>
+
+  <h3><span class="h-num">§2</span>The five unlock criteria</h3>
+  <table class="deps">
+    <thead><tr><th>#</th><th>Criterion</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>Trajectory volume.</strong> Enough real, graded trajectories accumulated to fund a non-trivial training dataset.</td><td>Not met. Sprint 20+ produces the first meaningful batch.</td></tr>
+      <tr><td>2</td><td><strong>SFT readiness.</strong> Data pipeline, label quality, evaluation harness all in place.</td><td>Not met. Depends on (1).</td></tr>
+      <tr><td>3</td><td><strong>Validated reward.</strong> Reward signal is shown to correlate with operator judgment under blinded review.</td><td>Not met. Depends on Phase 8 enforcing landing (Sprint 21 conditional).</td></tr>
+      <tr><td>4</td><td><strong>Open-weight justification.</strong> A clear reason to fine-tune an open-weight model rather than continue routing to closed-weight providers.</td><td>Not met. Depends on dispatch verdict (Sprint 20) + token-cost trajectory.</td></tr>
+      <tr><td>5</td><td><strong>Eval headroom.</strong> A clear margin between current performance and the operator-acceptability target that fine-tuning could plausibly close.</td><td>Not met. Depends on (1)–(4).</td></tr>
+    </tbody>
+  </table>
+
+  <h3><span class="h-num">§3</span>What happens at unlock</h3>
+  <p>
+    At unlock, <code>integration_prime_intellect.md</code> governs whether to
+    use hosted <code>prime rl run</code> (DEFERRED until unlock) or the local
+    SFT loop pattern from <code>integration_autoresearch.md</code> Wedge 4
+    (also DEFERRED). The comparison happens at unlock time, not before.
+  </p>
+
+  <h3><span class="h-num">§4</span>What does NOT happen until unlock</h3>
+  <ul>
+    <li>No SFT loop construction.</li>
+    <li>No verifiers env for training (substrate-eval envs from RLM-4 are different — they don't train, they evaluate).</li>
+    <li>No hosted-RL plumbing.</li>
+    <li>No model registry. No deployed fine-tuned checkpoint.</li>
+    <li>No Hub publishing of envs, methodology, or prompts.</li>
+  </ul>
+
+  <h3><span class="h-num">§5</span>Why the gate is hard</h3>
+  <p>
+    Pre-building Loop 3 has a sharply asymmetric failure mode. The work is
+    expensive (engineering + training compute + evaluation infrastructure).
+    The benefit only materialises if the closed-weight cost curve actually
+    bends against the operator at the operator's volume. As long as Hermes-
+    primary is providing acceptable cost-per-acceptable-output, Loop 3 is
+    not the right capital allocation. The five criteria exist precisely to
+    keep that judgment honest.
+  </p>
+
+  <div class="footer-nav">
+    <a href="#track-rlm" data-page="track-rlm">← Parallel: RLM</a>
+    <a href="#track-autoresearch" data-page="track-autoresearch">Parallel: Autoresearch →</a>
+  </div>
+</section>
+
+<!-- =================== PARALLEL: AUTORESEARCH =================== -->
+<section class="page" id="track-autoresearch">
+  <header>
+    <div class="crumb">Parallel track · Local-only · Autoresearch</div>
+    <h2>Autoresearch Track — Local-Only Prompt Mutation</h2>
+    <div class="theme">Karpathy-style propose-execute-measure-gate loop applied to prompt mutation, Phase 8 gate, config sweeps, local SFT</div>
+    <div class="badges">
+      <span class="badge parallel">Parallel track</span>
+      <span class="badge gate">Wedge 1 ratify or fall</span>
+      <span class="badge">Local-only — NEVER production</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    The autoresearch track applies Karpathy's propose-execute-measure-gate
+    loop to Antiek's prompts. Wedge 1 (prompt autoresearch for the
+    synthesizer) is the ratification gate for the whole integration — Sprint
+    20's Lutke-gap test (§15.6). If Wedge 1 ratifies, Wedges 2–4 unlock; if
+    it fails, all four wedges fall and Phase 8 keeps its current
+    unconditional patching. <strong>Local-only at every stage</strong> —
+    autoresearch never touches the production VM. <code>ANTIEK_ENV !=
+    'production'</code> enforced as a hard gate.
+  </p>
+
+  <h3><span class="h-num">§2</span>Wedges in sequence</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Wedge 0 — <code>program.md</code> per role (INTEGRATE NOW)</h4>
+      <p>Half-day item in Sprint 17. Every role gains a <code>program.md</code> describing its prompt contract, I/O schema, version. Substrate hook for every later wedge.</p>
+      <div class="exit"><strong>Exit:</strong> 12 <code>program.md</code> files in place.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Wedge 1 — Prompt autoresearch for the synthesizer (Sprint 19 scaffold; Sprint 20 verdict)</h4>
+      <p>Outer loop, budget caps ($5 total / $0.30 per iteration), composite score (40% LLM-judged + 60% deterministic), <code>ProductionEnvironmentRefusal</code> enforced. Local machine only. Operator reviews the mutation report in Sprint 20 — the Lutke-gap test.</p>
+      <div class="exit"><strong>Exit:</strong> ratify or reject verdict on paper.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Wedge 2 — Phase 8 skill-patch accept/reject gate (Sprint 20+ shadow; Sprint 21+ enforcing)</h4>
+      <p><strong>Conditional</strong> on Wedge 1 ratification. Phase 8 patches go through an accept/reject gate that scores against the operator's prior accepted-patch distribution. Minimum cohort size 50. Shadow mode first, then enforcing.</p>
+      <div class="exit"><strong>Exit:</strong> first real patch rejection on paper.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Wedge 3 — Context-pack + dispatch config sweeps (Sprint 30+, DEFERRED)</h4>
+      <p><strong>Conditional</strong> on ≥500 graded outcomes in cohort. Sweeps mutate context-pack budgets and dispatch routing parameters; gate against operator-acceptability target.</p>
+      <div class="exit"><strong>Exit:</strong> sweep produces a config change that survives operator review.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Wedge 4 — Local SFT loop using autoresearch's shape (DEFERRED behind Loop 3)</h4>
+      <p><strong>Conditional</strong> on Loop 3 unlock criteria passing. The autoresearch shape is portable to local SFT — same propose-execute-measure-gate skeleton, different mutation primitive (token-level instead of prompt-level).</p>
+      <div class="exit"><strong>Exit:</strong> the unlock-time comparison between this and hosted <code>prime rl run</code> chooses one.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>REJECTs (canonical per §16.1)</h3>
+  <ul>
+    <li><strong>No rewriting the investigation loop in autoresearch's shape</strong> — category error.</li>
+    <li><strong>No using autoresearch as a dispatch substrate</strong> — collides with Hermes-primary.</li>
+    <li><strong>No publishing role prompts Hub-style</strong> — asymmetric IP reversal.</li>
+    <li><strong>No targeting Karpathy's "100 experiments overnight" cadence</strong> — cost-bound, not throughput-bound.</li>
+    <li><strong>No git-commit-per-change at substrate level</strong> — duplicates <code>ANTIEK_PARAM_VERSION</code>.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#track-loop3" data-page="track-loop3">← Parallel: Loop 3</a>
+    <a href="#track-prime" data-page="track-prime">Parallel: Prime Intellect →</a>
+  </div>
+</section>
+
+<!-- =================== PARALLEL: PRIME =================== -->
+<section class="page" id="track-prime">
+  <header>
+    <div class="crumb">Parallel track · Debt + future · Prime Intellect</div>
+    <h2>Prime Intellect Track</h2>
+    <div class="theme">Verifiers env + GEPA + hosted RL; F+D debt items absorb early, hosted RL deferred behind Loop 3</div>
+    <div class="badges">
+      <span class="badge parallel">Parallel track</span>
+      <span class="badge">F + D debt (Sprint 17 or 19)</span>
+      <span class="badge gate">Hosted RL → Loop 3 unlock</span>
+    </div>
+  </header>
+
+  <h3><span class="h-num">§1</span>Strategic objective</h3>
+  <p>
+    Prime Intellect provides the verifiers env framework + GEPA + hosted RL
+    runners. Antiek integrates only the substrate-eval pieces (envs + eval
+    runner) early; everything that involves training is gated behind Loop 3
+    unlock. The F + D debt items — schema compat test and <code>prime eval
+    run</code> runner with the 50-example fixture — absorb into Sprint 17 if
+    the first real-LLM eval cycle ships in window, else into Sprint 19.
+  </p>
+
+  <h3><span class="h-num">§2</span>Item-by-item</h3>
+  <div class="progression">
+
+    <div class="phase">
+      <h4>Item F — Trajectory→verifiers schema compat test (debt)</h4>
+      <p>A test that proves Antiek's trajectory schema and Prime's verifiers schema do not silently drift apart. Lives at <code>tests/test_prime_intellect_compat.py</code>. Absorbs into Sprint 17 or 19.</p>
+      <div class="exit"><strong>Exit:</strong> CI runs the compat test; any drift breaks the build.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Item D — <code>prime eval run</code> for Antiek rubrics with 50-example fixture (debt)</h4>
+      <p><code>parameter_extractor_v0.jsonl</code> expands from 10 → 50 examples. <code>prime eval run</code> wires to Antiek's rubric registry; produces a verifier pass-rate per role. Absorbs into Sprint 17 or 19.</p>
+      <div class="exit"><strong>Exit:</strong> <code>prime eval run</code> produces a baseline pass-rate number against the 50-example fixture.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Item A — GEPA on <code>parameter_extractor</code> (Phase 2)</h4>
+      <p>First real GEPA pass on Antiek. Substrate-only; no training data leaves the operator's machine. Targets the <code>parameter_extractor</code> role because its I/O is the cleanest schema in the substrate.</p>
+      <div class="exit"><strong>Exit:</strong> a measured improvement on the rubric pass-rate after GEPA.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Item B — Verifiers env stub for <code>parameter_extractor</code> (Phase 2)</h4>
+      <p>The env exists for substrate eval only; training against it is forbidden until Loop 3 unlock.</p>
+      <div class="exit"><strong>Exit:</strong> env can be exercised via <code>prime eval run</code>.</div>
+    </div>
+
+    <div class="phase">
+      <h4>Item E — Hosted <code>prime rl run</code> (DEFERRED behind Loop 3)</h4>
+      <p>Hosted RL training. Strictly DEFERRED until the five Loop-3 unlock criteria pass. The infrastructure cost alone justifies the gate; pre-building this work is explicitly REJECTed per §16 and §16.1.</p>
+      <div class="exit"><strong>Exit:</strong> a hosted run happens only after unlock.</div>
+    </div>
+
+  </div>
+
+  <h3><span class="h-num">§3</span>REJECTs (canonical per §16.1)</h3>
+  <ul>
+    <li><strong>No Prime as a dispatch provider.</strong> Verify tier needs cross-family independence; synthesis tier needs Opus; flash/pro tiers are 3–10× more expensive on Prime. Reversible only when an Antiek-trained checkpoint wins on §D eval.</li>
+    <li><strong>No Hub publishing of envs or methodology.</strong> Methodology is the product; asymmetric reversal cost.</li>
+  </ul>
+
+  <div class="footer-nav">
+    <a href="#track-autoresearch" data-page="track-autoresearch">← Parallel: Autoresearch</a>
+    <a href="#cover" data-page="cover">Cover ↺</a>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function() {
+  const pages = document.querySelectorAll('.page');
+  const links = document.querySelectorAll('aside.nav a[data-page]');
+  function show(id) {
+    pages.forEach(function (p) { p.classList.toggle('visible', p.id === id); });
+    links.forEach(function (a) { a.classList.toggle('active', a.getAttribute('data-page') === id); });
+    if (location.hash.replace('#', '') !== id) {
+      history.replaceState(null, '', '#' + id);
+    }
+    window.scrollTo(0, 0);
+  }
+  links.forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      show(a.getAttribute('data-page'));
+    });
+  });
+  document.querySelectorAll('a[data-page]').forEach(function (a) {
+    if (a.closest('aside.nav')) return;
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      show(a.getAttribute('data-page'));
+    });
+  });
+  const initial = (location.hash || '#cover').replace('#', '');
+  show(document.getElementById(initial) ? initial : 'cover');
+})();
+</script>
+</body>
+</html>

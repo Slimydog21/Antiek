@@ -1,0 +1,530 @@
+/* =====================================================================
+   Antiek docs — shared stylesheet
+   Researcher's-notebook aesthetic per master-product-spec §5.5 + §5.6.
+   Stone palette, serif headers, generous whitespace, no SaaS-dashboard.
+   No external fonts; system stack only so the docs render offline.
+   ===================================================================== */
+
+:root {
+    --stone-50:  #fafaf9;
+    --stone-100: #f5f5f4;
+    --stone-200: #e7e5e4;
+    --stone-300: #d6d3d1;
+    --stone-400: #a8a29e;
+    --stone-500: #78716c;
+    --stone-600: #57534e;
+    --stone-700: #44403c;
+    --stone-800: #292524;
+    --stone-900: #1c1917;
+
+    --amber-50:  #fffbeb;
+    --amber-200: #fde68a;
+    --amber-700: #b45309;
+    --amber-900: #78350f;
+
+    --red-50:    #fef2f2;
+    --red-200:   #fecaca;
+    --red-700:   #b91c1c;
+    --red-900:   #7f1d1d;
+
+    --green-50:  #f0fdf4;
+    --green-200: #bbf7d0;
+    --green-700: #15803d;
+    --green-900: #14532d;
+
+    --blue-50:   #eff6ff;
+    --blue-200:  #bfdbfe;
+    --blue-700:  #1d4ed8;
+
+    --max-width: 880px;
+    --reading-width: 720px;
+
+    --font-serif: Charter, "Iowan Old Style", "Sitka Text", Cambria, Georgia, serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--stone-50);
+    color: var(--stone-900);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    padding: 0;
+}
+
+/* ----------------------------- top nav ------------------------------ */
+
+.topnav {
+    border-bottom: 1px solid var(--stone-200);
+    background: var(--stone-100);
+}
+
+.topnav-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 16px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    align-items: baseline;
+    font-family: var(--font-sans);
+    font-size: 14px;
+}
+
+.topnav-title {
+    font-family: var(--font-serif);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--stone-900);
+    margin-right: 16px;
+    letter-spacing: -0.01em;
+}
+
+.topnav a {
+    color: var(--stone-700);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--stone-300);
+}
+
+.topnav a:hover {
+    color: var(--stone-900);
+    border-bottom-color: var(--stone-700);
+}
+
+.topnav a.active {
+    color: var(--stone-900);
+    border-bottom: 1px solid var(--stone-900);
+}
+
+/* ----------------------------- layout ------------------------------- */
+
+main {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 48px 24px 96px 24px;
+}
+
+article {
+    font-family: var(--font-serif);
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--stone-900);
+}
+
+article > * {
+    max-width: var(--reading-width);
+}
+
+article > .wide {
+    max-width: var(--max-width);
+}
+
+/* ----------------------------- headings ----------------------------- */
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    color: var(--stone-900);
+    line-height: 1.25;
+    margin-top: 2.2em;
+    margin-bottom: 0.6em;
+    letter-spacing: -0.01em;
+    font-weight: 600;
+}
+
+h1 {
+    font-size: 36px;
+    margin-top: 0;
+    margin-bottom: 0.2em;
+    letter-spacing: -0.02em;
+}
+
+h2 {
+    font-size: 26px;
+    border-bottom: 1px solid var(--stone-200);
+    padding-bottom: 0.3em;
+}
+
+h3 {
+    font-size: 21px;
+    color: var(--stone-800);
+}
+
+h4 {
+    font-size: 18px;
+    color: var(--stone-700);
+    font-style: italic;
+    font-weight: 500;
+}
+
+h5, h6 {
+    font-size: 16px;
+    color: var(--stone-700);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+}
+
+/* ----------------------------- text --------------------------------- */
+
+p {
+    margin: 0 0 1em 0;
+}
+
+strong {
+    font-weight: 700;
+    color: var(--stone-900);
+}
+
+em {
+    font-style: italic;
+}
+
+a {
+    color: var(--stone-900);
+    text-decoration: none;
+    border-bottom: 1px solid var(--stone-300);
+    transition: border-color 0.15s;
+}
+
+a:hover {
+    border-bottom-color: var(--stone-900);
+}
+
+a.external::after {
+    content: " \2197";
+    color: var(--stone-400);
+}
+
+/* --------------------------- meta block ----------------------------- */
+
+.meta {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    color: var(--stone-600);
+    background: var(--stone-100);
+    border-left: 3px solid var(--stone-400);
+    padding: 14px 18px;
+    margin: 24px 0 40px 0;
+    line-height: 1.6;
+}
+
+.meta strong { color: var(--stone-800); }
+
+.meta p { margin: 0 0 6px 0; }
+
+.meta p:last-child { margin-bottom: 0; }
+
+/* ---------------------------- lists --------------------------------- */
+
+ul, ol {
+    margin: 0.4em 0 1.2em 0;
+    padding-left: 1.6em;
+}
+
+li {
+    margin: 0.35em 0;
+}
+
+ul li::marker {
+    color: var(--stone-500);
+}
+
+ol li::marker {
+    color: var(--stone-500);
+    font-family: var(--font-sans);
+    font-size: 14px;
+}
+
+/* ---------------------------- tables -------------------------------- */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 24px 0;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    background: white;
+    border: 1px solid var(--stone-200);
+}
+
+thead {
+    background: var(--stone-100);
+    border-bottom: 2px solid var(--stone-300);
+}
+
+th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border: 1px solid var(--stone-200);
+    vertical-align: top;
+}
+
+th {
+    font-weight: 600;
+    color: var(--stone-800);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+tr:nth-child(even) td {
+    background: var(--stone-50);
+}
+
+/* ---------------------------- code ---------------------------------- */
+
+code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: var(--stone-100);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--stone-800);
+    border: 1px solid var(--stone-200);
+}
+
+pre {
+    background: var(--stone-100);
+    border: 1px solid var(--stone-200);
+    border-left: 3px solid var(--stone-500);
+    padding: 14px 18px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 18px 0;
+    border-radius: 2px;
+}
+
+pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--stone-900);
+    font-size: inherit;
+}
+
+/* ---------------------------- blockquote ---------------------------- */
+
+blockquote {
+    margin: 18px 0;
+    padding: 4px 0 4px 18px;
+    border-left: 3px solid var(--stone-300);
+    color: var(--stone-700);
+    font-style: italic;
+}
+
+/* ---------------------------- callouts ------------------------------ */
+
+.callout {
+    margin: 24px 0;
+    padding: 14px 18px;
+    border-radius: 3px;
+    font-family: var(--font-sans);
+    font-size: 14.5px;
+    line-height: 1.6;
+}
+
+.callout strong { display: block; margin-bottom: 4px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+.callout p:last-child { margin-bottom: 0; }
+
+.callout.note {
+    background: var(--blue-50);
+    border-left: 3px solid var(--blue-700);
+    color: var(--stone-900);
+}
+.callout.note strong { color: var(--blue-700); }
+
+.callout.warn {
+    background: var(--amber-50);
+    border-left: 3px solid var(--amber-700);
+    color: var(--stone-900);
+}
+.callout.warn strong { color: var(--amber-700); }
+
+.callout.reject {
+    background: var(--red-50);
+    border-left: 3px solid var(--red-700);
+    color: var(--stone-900);
+}
+.callout.reject strong { color: var(--red-700); }
+
+.callout.integrate {
+    background: var(--green-50);
+    border-left: 3px solid var(--green-700);
+    color: var(--stone-900);
+}
+.callout.integrate strong { color: var(--green-700); }
+
+/* ---------------------------- verdict tags -------------------------- */
+
+.tag {
+    display: inline-block;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px solid;
+    vertical-align: 2px;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.tag.integrate { background: var(--green-50); border-color: var(--green-200); color: var(--green-900); }
+.tag.phase2    { background: var(--blue-50);  border-color: var(--blue-200);  color: var(--blue-700); }
+.tag.defer     { background: var(--amber-50); border-color: var(--amber-200); color: var(--amber-900); }
+.tag.reject    { background: var(--red-50);   border-color: var(--red-200);   color: var(--red-900); }
+.tag.neutral   { background: var(--stone-100);border-color: var(--stone-300); color: var(--stone-700); }
+
+/* ---------------------------- TOC ----------------------------------- */
+
+.toc {
+    background: var(--stone-100);
+    border: 1px solid var(--stone-200);
+    border-radius: 3px;
+    padding: 18px 24px;
+    margin: 24px 0 40px 0;
+    font-family: var(--font-sans);
+    font-size: 14px;
+}
+
+.toc-title {
+    font-family: var(--font-serif);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--stone-800);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+}
+
+.toc ol { margin: 0; padding-left: 1.4em; }
+
+.toc li { margin: 4px 0; }
+
+.toc a { border-bottom: none; color: var(--stone-700); }
+.toc a:hover { color: var(--stone-900); text-decoration: underline; }
+
+/* ---------------------------- cards (index page) -------------------- */
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+    max-width: var(--max-width);
+}
+
+.card {
+    background: white;
+    border: 1px solid var(--stone-200);
+    border-radius: 4px;
+    padding: 20px 22px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card:hover {
+    border-color: var(--stone-400);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.card h3 {
+    margin: 0 0 6px 0;
+    font-size: 18px;
+}
+
+.card h3 a {
+    color: var(--stone-900);
+    border-bottom: none;
+}
+
+.card .card-meta {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--stone-500);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+}
+
+.card p {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    color: var(--stone-700);
+    margin: 0;
+    line-height: 1.55;
+}
+
+/* ---------------------------- footer -------------------------------- */
+
+footer {
+    border-top: 1px solid var(--stone-200);
+    padding: 32px 24px;
+    margin-top: 64px;
+    text-align: center;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--stone-500);
+}
+
+footer a { color: var(--stone-600); }
+
+/* ---------------------------- utilities ----------------------------- */
+
+.center { text-align: center; }
+.muted  { color: var(--stone-500); }
+.small  { font-size: 0.88em; }
+.kicker {
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--stone-500);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid var(--stone-200);
+    margin: 40px 0;
+}
+
+.wedge-divider {
+    margin: 32px 0;
+    padding: 0;
+    border: 0;
+    border-top: 2px solid var(--stone-300);
+}
+
+.section-anchor {
+    color: var(--stone-300);
+    text-decoration: none;
+    border: none;
+    margin-left: 6px;
+    font-weight: 400;
+}
+
+.section-anchor:hover { color: var(--stone-700); }
+
+/* ---------------------------- print --------------------------------- */
+
+@media print {
+    .topnav, footer { display: none; }
+    main { padding: 0; max-width: none; }
+    a { color: inherit; border-bottom: none; }
+    pre, table { page-break-inside: avoid; }
+}

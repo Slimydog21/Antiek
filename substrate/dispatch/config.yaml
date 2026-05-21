@@ -63,18 +63,30 @@ tiers:
 
   synthesis:
     # Synthesizer role — the human-facing artifact.
-    provider: hermes
-    model: grok-4.3
+    #
+    # MEASUREMENT WINDOW OPEN 2026-05-19 (Sprint 17 → Sprint 20).
+    # Per master-spec §14.4 + sprint17 spec §1.2: synthesizer is pinned
+    # to Opus 4.7 via OpenRouter primary, Hermes/Grok fallback, for
+    # 2 weeks of normal investigation traffic. At Sprint 20 verdict:
+    #   - if Grok-on-synthesis verifier-pass-rate within 5pp of Opus →
+    #     flip primary back to hermes/grok-4.3 on cost grounds
+    #   - if gap > 5pp → keep Opus primary; the cost savings on Grok
+    #     are illusory because they convert to additional verifier and
+    #     re-synthesizer dispatch
+    # Synthesis is the operator-facing artifact and voice/style
+    # discipline (master §5) is synthesizer-level; Grok 4.3 has not
+    # been benchmarked on long-form English research writing the way
+    # Opus 4.7 has. The right denominator is cost-per-acceptable-
+    # synthesis, not cost-per-call.
+    provider: openrouter
+    model: anthropic/claude-opus-4.7
     pricing:
-      input_per_mtok: 0.0
-      output_per_mtok: 0.0
-      cached_input_per_mtok: 0.0
+      input_per_mtok: 5.0
+      output_per_mtok: 25.0
+      cached_input_per_mtok: 0.50  # 90% Anthropic prompt-caching discount
     fallback:
-      # Claude Opus 4.7 on synthesis tier when Hermes unreachable —
-      # preserves the option to ship the highest-quality synthesis if
-      # the chase chain ever needs to fall back during a long run.
-      provider: openrouter
-      model: anthropic/claude-opus-4.7
+      provider: hermes
+      model: grok-4.3
 
   verify:
     # Cross-family verification. Same Hermes/Grok path.
@@ -107,6 +119,22 @@ tiers:
       # output tokens (1 minute = 1000 "output_tokens" placeholder).
       input_per_mtok: 0.0
       output_per_mtok: 6.0  # 1 mtok placeholder ≈ 1000 minutes
+      cached_input_per_mtok: 0.0
+
+  tts:
+    # Sprint 17 — interview voice mode. Routes AI-interviewer responses
+    # to OpenAI TTS for the informant-facing audio. ~$15 per 1M
+    # characters (gpt-4o-mini-tts pricing as of 2026-05).
+    # ElevenLabs is the alternative for higher voice quality at higher
+    # cost — feature-flagged via ANTIEK_TTS_PROVIDER once that adapter
+    # ships. Async voice loop with 3-5s round-trip latency per
+    # master-spec §11.5; synchronous voice (OpenAI Realtime API)
+    # deferred to Sprint 23+ per §15.3.
+    provider: openai
+    model: gpt-4o-mini-tts
+    pricing:
+      input_per_mtok: 15.0  # per million characters; substrate accounts as input
+      output_per_mtok: 0.0  # TTS has no token output; audio is the output
       cached_input_per_mtok: 0.0
 
   local:
@@ -167,6 +195,11 @@ tier_defaults:
     # Whisper has no tokens / temperature; these are placeholders so
     # the schema validator does not need a transcription-specific
     # branch.
+    max_tokens: 0
+    temperature: 0.0
+    context_budget_tokens: 0
+  tts:
+    # TTS has no tokens / temperature; same placeholder pattern.
     max_tokens: 0
     temperature: 0.0
     context_budget_tokens: 0

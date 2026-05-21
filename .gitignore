@@ -31,9 +31,11 @@ env/
 # Local runtime artifacts
 *.duckdb
 *.duckdb.wal
+*.duckdb.write.lock
 events.jsonl
 events.parquet
 .antiek/
+.antiek_demo/
 
 # Secrets and local config overrides
 .env

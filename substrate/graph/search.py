@@ -112,6 +112,24 @@ def cosine_similarity_sql(
 # ---------------------------------------------------------------------------
 
 
+# Policy tags privileged to bypass the restricted-content gate.
+# Per master-spec §9.0 retrieval-time gating: restricted content (i.e.
+# content_class='restricted_pending_opt_in') is retrievable only on
+# private-research or operator-only paths where fair use is robust.
+# The default policy_tag for any ad-attributable surface is
+# 'attribution_eligible' — which explicitly does NOT bypass the gate.
+PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
+    "private_research",
+    "operator_only",
+})
+
+# Content classes that the substrate may withhold from retrieval
+# depending on policy_tag. Per master-spec §9.0 §9.10.
+RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
+    "restricted_pending_opt_in",
+})
+
+
 def search(
     con: Any,
     query: str,
@@ -121,6 +139,7 @@ def search(
     source_tier_max: Optional[int] = None,
     document_id: Optional[str] = None,
     with_edges: bool = False,
+    policy_tag: str = "attribution_eligible",
 ) -> dict:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -140,6 +159,15 @@ def search(
             the user was wrestling, not the whole corpus.
         with_edges: When True, attach the edges sourced from each
             returned chunk plus the nodes those edges connect.
+        policy_tag: Retrieval-time gate per master-spec §9.0. When
+            ``policy_tag`` is in PRIVILEGED_POLICY_TAGS
+            ({"private_research", "operator_only"}), restricted
+            content (content_class='restricted_pending_opt_in') is
+            included. For ALL other policy_tag values — including the
+            default 'attribution_eligible' (Sprint 18+ ad-attribution
+            path) — restricted content is excluded. The Sprint 18
+            legal gate (master §15.9) is non-negotiable: payouts on
+            an ungated graph are explicitly forbidden by §16.2.
 
     Returns:
         ``{"query": ..., "top_k": ..., "results": [...], "node_matches": []}``
@@ -175,6 +203,19 @@ def search(
     if source_tier_max is not None:
         sql += " AND d.source_tier <= ?"
         params.append(int(source_tier_max))
+    # Sprint 18 retrieval-time gate (master-spec §9.0). The gate
+    # excludes restricted_pending_opt_in content from any retrieval
+    # path whose policy_tag is not privileged. NULL content_class is
+    # treated as legacy/grandfathered and passes — this is acceptable
+    # because the Sprint 16 telemetry ran on pre-gate data and the
+    # backfill to populate content_class for legacy documents lands
+    # alongside Sprint 18 ip_holders onboarding.
+    if policy_tag not in PRIVILEGED_POLICY_TAGS:
+        placeholders = ",".join("?" for _ in RESTRICTED_CONTENT_CLASSES)
+        sql += (
+            f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
+        )
+        params.extend(RESTRICTED_CONTENT_CLASSES)
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 

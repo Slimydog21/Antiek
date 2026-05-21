@@ -1,0 +1,151 @@
+import { useCallback, useEffect, useState } from "react";
+
+import { apiFetch } from "../../lib/api";
+import HeaderBar from "../shared/HeaderBar";
+
+/**
+ * Substrate stats summary UI (master-spec §13.7 audit).
+ *
+ * Operator-facing "what does the substrate look like right now"
+ * dashboard. Pulls GET /stats and renders counts across every
+ * load-bearing table. Warnings (e.g. table missing on a partial
+ * install) surface verbatim so the operator sees them.
+ */
+
+interface StatsResponse {
+  counts: Record<string, number>;
+  warnings: string[];
+}
+
+const TABLE_GROUPS: { title: string; tables: string[] }[] = [
+  {
+    title: "Research",
+    tables: ["investigations", "documents", "chunks", "nodes", "edges"],
+  },
+  {
+    title: "Notebooks",
+    tables: ["notebooks", "notebook_blocks"],
+  },
+  {
+    title: "Interviews",
+    tables: ["interview_projects", "interviews"],
+  },
+  {
+    title: "IP + payouts",
+    tables: ["ip_holders", "payout_transfers"],
+  },
+  {
+    title: "Outcomes + shared substrate",
+    tables: ["outcomes", "skill_rules"],
+  },
+  {
+    title: "Privacy + governance",
+    tables: ["deletion_requests"],
+  },
+];
+
+export default function Stats() {
+  const [data, setData] = useState<StatsResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await apiFetch("/stats");
+      if (!resp.ok) {
+        throw new Error(`GET /stats: HTTP ${resp.status}`);
+      }
+      setData(await resp.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  return (
+    <div className="flex flex-col h-screen">
+      <HeaderBar />
+      <main className="flex-1 overflow-y-auto bg-white">
+        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
+          <header className="flex items-baseline justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-serif text-stone-900">
+                Substrate stats
+              </h1>
+              <p className="text-sm text-stone-600 leading-relaxed">
+                Cardinality across every load-bearing table. Per
+                master-spec §13.7: this is the 'what does the
+                substrate look like right now' surface before grading
+                outcomes or running the Phase 8 gate.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void reload()}
+              className="text-xs font-mono text-stone-700 border border-stone-300 px-2 py-1 rounded hover:bg-stone-50"
+            >
+              Refresh
+            </button>
+          </header>
+
+          {error && (
+            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+              {error}
+            </p>
+          )}
+
+          {loading && (
+            <p className="text-sm text-stone-500 italic">Loading…</p>
+          )}
+
+          {data && data.warnings.length > 0 && (
+            <section className="border border-amber-200 bg-amber-50 rounded-md p-4 space-y-1">
+              <p className="text-xs font-mono uppercase text-amber-900">
+                Warnings
+              </p>
+              <ul className="text-xs text-amber-900 list-disc pl-5 space-y-0.5">
+                {data.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {data &&
+            TABLE_GROUPS.map((group) => (
+              <section
+                key={group.title}
+                className="border border-stone-200 rounded-md p-4 space-y-3"
+              >
+                <h2 className="text-sm font-serif text-stone-900">
+                  {group.title}
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {group.tables.map((t) => (
+                    <div
+                      key={t}
+                      className="border border-stone-100 rounded-md px-3 py-2 text-center"
+                    >
+                      <p className="text-2xl font-serif text-stone-900">
+                        {(data.counts[t] ?? 0).toLocaleString()}
+                      </p>
+                      <p className="text-[10px] font-mono text-stone-500 uppercase">
+                        {t.replace(/_/g, " ")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+        </div>
+      </main>
+    </div>
+  );
+}

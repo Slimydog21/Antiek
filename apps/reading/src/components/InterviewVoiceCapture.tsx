@@ -1,0 +1,234 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { apiFetch } from "../lib/api";
+
+/**
+ * Browser-side voice capture for Loop 4 interviews (master-spec
+ * §11.5 + acquisition/voice/webrtc.py substrate).
+ *
+ * Substrate-first: capture happens entirely in MediaRecorder + an
+ * uploadable Blob. No WebRTC peer-to-peer signaling is needed since
+ * the substrate is a server-side aggregator, not a real-time call.
+ * The component:
+ *
+ *   1. Starts a MediaRecorder bound to the user's microphone (16kHz
+ *      mono opus inside webm) once the operator clicks 'Start'.
+ *   2. Streams chunks as ondataavailable fires (~200ms intervals).
+ *   3. Posts the accumulated Blob to ``POST /voice/sessions/{id}/upload``
+ *      when the operator clicks 'Stop'.
+ *
+ * Consent gate (§11.5 binding): the operator must explicitly grant
+ * mic access. The component shows a clear state-machine that mirrors
+ * the substrate state machine (idle → consent_granted → recording →
+ * uploading → uploaded | error).
+ *
+ * The component does NOT render the interview transcript itself —
+ * the orchestrator displays that downstream. This component owns
+ * capture + upload only.
+ */
+
+type CaptureState =
+  | "idle"
+  | "requesting_consent"
+  | "consent_granted"
+  | "recording"
+  | "uploading"
+  | "uploaded"
+  | "error";
+
+interface Props {
+  sessionId: string;
+  onUploaded?: (audioUrl: string) => void;
+}
+
+export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) {
+  const [state, setState] = useState<CaptureState>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [durationSeconds, setDurationSeconds] = useState<number>(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const tickRef = useRef<number | null>(null);
+  const startTimeRef = useRef<number>(0);
+
+  const cleanup = useCallback(() => {
+    if (tickRef.current !== null) {
+      window.clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    if (mediaRecorderRef.current) {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {
+        // already stopped — ignore
+      }
+      mediaRecorderRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => cleanup(), [cleanup]);
+
+  const requestConsent = async () => {
+    setError(null);
+    setState("requesting_consent");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16_000,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+      streamRef.current = stream;
+      setState("consent_granted");
+    } catch (e: unknown) {
+      setError(
+        e instanceof Error
+          ? `Mic permission denied: ${e.message}`
+          : "Mic permission denied.",
+      );
+      setState("error");
+    }
+  };
+
+  const startRecording = () => {
+    if (!streamRef.current) {
+      setError("No mic stream — grant consent first.");
+      setState("error");
+      return;
+    }
+    chunksRef.current = [];
+    const rec = new MediaRecorder(streamRef.current, {
+      mimeType: "audio/webm;codecs=opus",
+    });
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    rec.onerror = (e: Event) => {
+      setError(`MediaRecorder error: ${(e as ErrorEvent).message ?? "unknown"}`);
+      setState("error");
+    };
+    rec.start(200); // 200ms chunk timeslice
+    mediaRecorderRef.current = rec;
+    startTimeRef.current = Date.now();
+    setDurationSeconds(0);
+    tickRef.current = window.setInterval(() => {
+      setDurationSeconds(
+        Math.floor((Date.now() - startTimeRef.current) / 1000),
+      );
+    }, 250);
+    setState("recording");
+  };
+
+  const stopAndUpload = async () => {
+    if (!mediaRecorderRef.current) return;
+    mediaRecorderRef.current.stop();
+    if (tickRef.current !== null) {
+      window.clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    setState("uploading");
+
+    // Wait for the final ondataavailable to fire (MediaRecorder
+    // flushes on stop). One requestAnimationFrame is enough in
+    // practice; tests on slower hardware may need a microtask delay.
+    await new Promise((r) => requestAnimationFrame(r));
+
+    try {
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      // Raw-body upload; duration rides on the query string. Keeps
+      // the substrate side free of the python-multipart dependency
+      // for a single-field upload (master-spec §11.5).
+      const url =
+        `/voice/sessions/${encodeURIComponent(sessionId)}/upload` +
+        `?duration_seconds=${durationSeconds}`;
+      const resp = await apiFetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "audio/webm" },
+        body: blob,
+      });
+      if (!resp.ok) {
+        throw new Error(`Upload failed: HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      setState("uploaded");
+      if (data.audio_url && onUploaded) {
+        onUploaded(data.audio_url);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      setState("error");
+    } finally {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      mediaRecorderRef.current = null;
+    }
+  };
+
+  return (
+    <div className="border border-stone-200 rounded-md p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-serif text-stone-900">Voice capture</p>
+        <span className="text-[11px] font-mono text-stone-500 uppercase">
+          {state.replace(/_/g, " ")}
+        </span>
+      </div>
+
+      {state === "idle" && (
+        <button
+          type="button"
+          onClick={requestConsent}
+          className="px-3 py-1.5 rounded-md bg-stone-900 text-white text-sm font-medium hover:bg-stone-800 transition-colors"
+        >
+          Grant mic access
+        </button>
+      )}
+
+      {state === "consent_granted" && (
+        <button
+          type="button"
+          onClick={startRecording}
+          className="px-3 py-1.5 rounded-md bg-rose-700 text-white text-sm font-medium hover:bg-rose-600 transition-colors"
+        >
+          Start recording
+        </button>
+      )}
+
+      {state === "recording" && (
+        <div className="space-y-2">
+          <p className="text-xs font-mono text-stone-500">
+            Recording · {durationSeconds}s
+          </p>
+          <button
+            type="button"
+            onClick={stopAndUpload}
+            className="px-3 py-1.5 rounded-md bg-stone-700 text-white text-sm font-medium hover:bg-stone-600 transition-colors"
+          >
+            Stop &amp; upload
+          </button>
+        </div>
+      )}
+
+      {state === "uploading" && (
+        <p className="text-xs font-mono text-stone-500">Uploading…</p>
+      )}
+
+      {state === "uploaded" && (
+        <p className="text-xs font-mono text-emerald-700">
+          Upload complete · {durationSeconds}s of audio captured.
+        </p>
+      )}
+
+      {state === "error" && (
+        <p className="text-xs font-mono text-red-700">{error ?? "Unknown error."}</p>
+      )}
+    </div>
+  );
+}

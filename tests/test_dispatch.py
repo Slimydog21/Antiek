@@ -375,20 +375,20 @@ def test_config_loads_from_yaml_file():
     assert "flash" in config.tiers
     assert "synthesis" in config.tiers
     assert config.role_tiers["synthesizer"] == "synthesis"
-    # Sprint 12 routing change (2026-05-18, operator directive): all
-    # tiers route through Hermes/Grok primary with OpenRouter
-    # (DeepSeek + Claude) as fallback. Volume over per-call quality —
-    # the substrate's compounding loop turns dispatch volume into
-    # synthesis quality; SuperGrok via Hermes OAuth captures
-    # already-paid-for inference. Fallback to Claude Opus on
-    # synthesis tier preserves the high-quality option when Hermes
-    # is unreachable.
+    # Sprint 17 dispatch tier-differentiation measurement (2026-05-19,
+    # master-spec §14.4 + sprint17 spec §1.2): synthesis tier inverted
+    # to Opus 4.7 primary via OpenRouter, Hermes/Grok fallback, for a
+    # 2-week measurement window. Verdict at Sprint 20 either flips
+    # back to Hermes primary (cost grounds) or keeps Opus primary
+    # (operator-acceptable-synthesis denominator). The flash, pro,
+    # and verify tiers stay Hermes primary — only synthesis is under
+    # measurement.
     syn = config.tiers["synthesis"]
-    assert syn.provider == "hermes"
-    assert syn.model == "grok-4.3"
+    assert syn.provider == "openrouter"
+    assert syn.model == "anthropic/claude-opus-4.7"
     assert syn.fallback is not None
-    assert syn.fallback.provider == "openrouter"
-    assert syn.fallback.model == "anthropic/claude-opus-4.7"
+    assert syn.fallback.provider == "hermes"
+    assert syn.fallback.model == "grok-4.3"
 
 
 def test_config_role_tiers_covers_every_dispatching_role():

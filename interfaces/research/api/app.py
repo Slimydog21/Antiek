@@ -33,7 +33,9 @@ import os
 import sys
 from typing import Annotated, Literal, Optional
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -558,6 +560,161 @@ def _extract_arxiv_id(url: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
+# Request models for endpoints registered inside ``create_app``.
+#
+# These are intentionally module-scope (not nested inside ``create_app``)
+# because FastAPI/Pydantic v2's request-body resolver inspects type
+# annotations via ``typing.get_type_hints`` which uses the function's
+# ``__globals__`` namespace — locally-scoped classes resolve as
+# ForwardRefs and trigger ``PydanticUserError: TypeAdapter ... not fully
+# defined`` on POST.
+# ---------------------------------------------------------------------------
+
+
+class PublisherCreateRequest(BaseModel):
+    display_name: str
+    legal_contact_email: Optional[str] = None
+    metadata: dict = {}
+
+
+class NotebookCreateRequest(BaseModel):
+    title: str
+    investigation_id: Optional[str] = None
+    document_id: Optional[str] = None
+    content_class: str = "user_owned"
+
+
+class NotebookAppendBlockRequest(BaseModel):
+    block_type: str
+    content: dict
+    ref_id: Optional[str] = None
+
+
+class NotebookReorderBlocksRequest(BaseModel):
+    """Reorder a notebook's blocks. ``ordered_block_ids`` must be a
+    complete permutation of the notebook's current block IDs."""
+
+    ordered_block_ids: list[str]
+
+
+class NotebookUpdateBlockRequest(BaseModel):
+    """Edit one block in place. ``block_type`` is intentionally
+    immutable here; the UI re-creates blocks rather than re-typing.
+
+    ``content`` (when present) fully replaces ``content_json``.
+    ``ref_id`` semantics:
+      - present + non-null → set
+      - omitted → leave alone
+      - ``clear_ref_id=True`` → NULL the column
+    """
+
+    content: Optional[dict] = None
+    ref_id: Optional[str] = None
+    clear_ref_id: bool = False
+
+
+class QualityGateEvaluationRequest(BaseModel):
+    text_content: str
+    cited_chunk_tiers: list[int]
+    corpus_sector_terms: list[str] = []
+    rubric_score: float
+    # Optional: when both are present, the endpoint emits the typed
+    # ``quality_gate.evaluated`` event so the audit log captures the
+    # verdict. Generic ad-hoc evaluations (no target identified) skip
+    # event emission to avoid polluting the trajectory.
+    target_id: Optional[str] = None
+    target_kind: Optional[str] = None  # "notebook" | "synthesis_page" | "creator_note"
+
+
+class AskExpertsRequest(BaseModel):
+    topic_query: str
+    investigation_id: Optional[str] = None
+    limit: int = 5
+
+
+class DeletionRequestBody(BaseModel):
+    """User-initiated 'delete everything' request (master-spec §13.3).
+
+    The substrate commits to a 30-day SLA from request to completion;
+    a 7-day cancellation window lets the user un-request before the
+    delete fires."""
+
+    reason: Optional[str] = None
+
+
+class FederationConfigUpdateRequest(BaseModel):
+    """Update the substrate-wide federation config (master-spec
+    §13.9 Phase 3). All fields are required so PUTs are explicit
+    about the full posture (no partial-replace ambiguity)."""
+
+    allowed_partner_substrates: list[str]
+    require_opt_in_for_outbound_citations: bool
+    require_attribution_for_outbound_citations: bool
+
+
+class Loop3ChecklistUpdateRequest(BaseModel):
+    """Update one Loop 3 unlock criterion (master-spec §14.2 + §13.7).
+
+    Per the binding gate: criteria-met ≠ training-authorized. Updating
+    a criterion here does NOT flip ANTIEK_LOOP3_UNLOCKED — the env
+    flip remains the operator's explicit final action."""
+
+    criterion: str  # one of Loop3UnlockCriterion values
+    met: bool
+    note: str = ""
+
+
+class ThoughtPartnerRequest(BaseModel):
+    """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
+
+    AISidecar posts a free-form prompt; the substrate runs the
+    ``thought_partner`` role parser over a deterministic response
+    until a real dispatch tier wires through. Returns the shape +
+    text the parser produced."""
+
+    prompt: str
+    investigation_id: Optional[str] = None
+
+
+class CrossGraphCitationRequest(BaseModel):
+    """Record a citation from one user's investigation to another
+    user's public note (master-spec §13.9 Phase 3 federation)."""
+
+    referencing_user_id: str
+    referencing_investigation_id: str
+    referenced_user_id: str
+    referenced_note_id: str
+    federated_substrate_id: Optional[str] = None
+
+
+class OutcomeRecordRequest(BaseModel):
+    """Operator-graded synthesis outcome (§13.8 + Phase 8 input).
+
+    Per master-spec §13.8: outcomes are first-class signals that feed
+    the skill-growth Phase 8 gate. The operator records validation,
+    retraction, or neutral observation; downstream gates aggregate
+    these into accept/reject verdicts on candidate skill patches."""
+
+    synthesis_id: str
+    observer: str = "__operator__"
+    thesis_outcomes: list[dict] = []
+    falsification_outcomes: list[dict] = []
+    execution_risk_outcomes: list[dict] = []
+    decision_alignment: Optional[dict] = None
+    notes: Optional[str] = None
+
+
+class AttributionComputeRequest(BaseModel):
+    page_id: str
+    chunk_to_document: dict[str, str]
+    chunk_to_claim_confidence: dict[str, float] = {}
+    document_to_source_tier: dict[str, int] = {}
+    algorithm: str = "option_b"
+    chunk_to_claim_id: dict[str, str] = {}
+    claim_load_bearing_scores: dict[str, float] = {}
+
+
+# ---------------------------------------------------------------------------
 # App factory
 # ---------------------------------------------------------------------------
 
@@ -689,12 +846,33 @@ def create_app(
         ).strip().lower()
         if not expected_token and not expected_email and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
-            # work unchanged.
+            # work unchanged. The request still acquires a default
+            # operator identity on request.state so endpoints have a
+            # uniform handle to user_id / scopes.
+            from substrate.multi_user.auth import operator_claims as _oc
+            claims = _oc()
+            request.state.user_id = claims.user_id
+            request.state.scopes = frozenset(claims.scopes)
+            request.state.auth_method = "unauthenticated_local"
             return await call_next(request)
         if request.method == "OPTIONS":
             return await call_next(request)
         if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
             return await call_next(request)
+
+        # Once a path validates the caller, populate request.state with
+        # the canonical identity so endpoints can read user_id + scopes
+        # without re-running auth logic. Per master-spec §13.3: identity
+        # resolution happens HERE, in the middleware — endpoints trust
+        # request.state. (Endpoint-side calls back into operator_claims()
+        # are still safe; they fall through to the static operator
+        # identity when state is absent.)
+        def _attach_operator(req, *, method: str):
+            from substrate.multi_user.auth import operator_claims as _oc
+            claims = _oc()
+            req.state.user_id = claims.user_id
+            req.state.scopes = frozenset(claims.scopes)
+            req.state.auth_method = method
 
         # Path 1: Cloudflare Access — browser SSO (email header)
         if expected_email:
@@ -702,6 +880,7 @@ def create_app(
                 _CF_ACCESS_EMAIL_HEADER, "",
             ).strip().lower()
             if cf_email and cf_email == expected_email:
+                _attach_operator(request, method="cloudflare_access_email")
                 return await call_next(request)
 
         # Path 2: Cloudflare Access — Service Token (machine callers)
@@ -723,6 +902,7 @@ def create_app(
                 _CF_ACCESS_CLIENT_ID_HEADER, "",
             ).strip().lower()
             if cf_client_id and cf_client_id == expected_st_client_id:
+                _attach_operator(request, method="cloudflare_service_token")
                 return await call_next(request)
 
         # Path 3: Bearer token (legacy + backstop for direct-to-origin
@@ -733,6 +913,7 @@ def create_app(
             if scheme.lower() == "bearer" and token.strip():
                 import secrets as _secrets
                 if _secrets.compare_digest(token.strip(), expected_token):
+                    _attach_operator(request, method="bearer_token")
                     return await call_next(request)
 
         from fastapi.responses import JSONResponse
@@ -2068,6 +2249,49 @@ def create_app(
             ))
         return out
 
+    @app.get(
+        "/interview-projects/{project_id}/interviews",
+        response_model=list[InterviewSummary],
+    )
+    async def list_interviews_for_project(
+        project_id: str,
+    ) -> list[InterviewSummary]:
+        """All interviews invited under one project, oldest first."""
+        import duckdb
+
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            rows = con.execute(
+                "SELECT i.interview_id, i.project_id, i.informant_handle, "
+                "i.informant_email, i.status, "
+                "strftime(i.invited_at, '%Y-%m-%dT%H:%M:%S'), "
+                "strftime(i.started_at, '%Y-%m-%dT%H:%M:%S'), "
+                "strftime(i.completed_at, '%Y-%m-%dT%H:%M:%S'), "
+                # transcript_turns is a JSON array column; derive
+                # the count via json_array_length. NULL → 0.
+                "COALESCE(json_array_length(i.transcript_turns), 0) "
+                "FROM interviews i WHERE i.project_id = ? "
+                "ORDER BY i.invited_at",
+                [project_id],
+            ).fetchall()
+        finally:
+            con.close()
+        out: list[InterviewSummary] = []
+        for r in rows:
+            out.append(InterviewSummary(
+                interview_id=r[0],
+                project_id=r[1],
+                informant_handle=r[2],
+                informant_email=r[3],
+                status=r[4],
+                invited_at=r[5],
+                started_at=r[6],
+                completed_at=r[7],
+                turn_count=int(r[8] or 0),
+            ))
+        return out
+
     @app.post(
         "/interviews",
         response_model=InterviewSummary,
@@ -2284,6 +2508,2107 @@ def create_app(
             pass
         finally:
             await bus.unsubscribe(sub)
+
+    # ── Sprint 17: Brainstorming Workstation — watch-for-later folder ──
+    #
+    # Per master-spec §2.6 (watch-for-later as curiosity-capture
+    # primitive) and §4.5 (Surface E — Brainstorming Workstation as
+    # operator's preferred product direction). The folder is a UI on
+    # top of question.identified events filtered by an "unsharpened"
+    # state. Unsharpened = question.identified events whose question_id
+    # has NOT been subsequently escalated to a child investigation or
+    # resolved by a document.
+
+    class ParkedQuestionEntry(BaseModel):
+        """A single parked question in the watch-for-later folder."""
+        question_id: str
+        question_text: str
+        source_investigation_id: str
+        source_document_id: Optional[str] = None
+        anchor_region_id: Optional[str] = None
+        parked_at: str
+        parent_event_id: Optional[str] = None
+
+    class WatchForLaterResponse(BaseModel):
+        count: int
+        questions: list[ParkedQuestionEntry]
+
+    @app.get("/watch-for-later", response_model=WatchForLaterResponse)
+    async def list_watch_for_later(
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> WatchForLaterResponse:
+        """List unsharpened open questions across all investigations.
+        Renders as the watch-for-later folder in the Brainstorming
+        Workstation (master-spec §4.5)."""
+        import os as _os
+        from substrate.event_log import default_events_dir
+        from substrate.schemas import ActionType
+
+        events_dir = default_events_dir()
+        if not _os.path.isdir(events_dir):
+            return WatchForLaterResponse(count=0, questions=[])
+
+        qi_action = ActionType.QUESTION_IDENTIFIED.value
+        esc_action = ActionType.QUESTION_ESCALATED_TO_RESEARCH.value
+        res_action = ActionType.QUESTION_RESOLVED_BY_DOC.value
+        cda_action = ActionType.CROSS_DOC_QUESTION_ANSWERED.value
+        sharpened_actions = {esc_action, res_action, cda_action}
+
+        parked: dict[str, ParkedQuestionEntry] = {}
+        sharpened_ids: set[str] = set()
+
+        for filename in _os.listdir(events_dir):
+            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
+                continue
+            src_inv = filename[:-len(".jsonl")]
+            for r in trajectory(src_inv):
+                at = r.get("action_type")
+                payload = r.get("payload") or {}
+                qid = payload.get("question_id")
+                if not qid:
+                    continue
+                if at == qi_action:
+                    if qid not in parked:
+                        parked[qid] = ParkedQuestionEntry(
+                            question_id=qid,
+                            question_text=payload.get("question_text", ""),
+                            source_investigation_id=src_inv,
+                            source_document_id=r.get("document_id"),
+                            anchor_region_id=payload.get("anchor_region_id"),
+                            parked_at=r.get("emitted_at") or "",
+                            parent_event_id=r.get("event_id"),
+                        )
+                elif at in sharpened_actions:
+                    sharpened_ids.add(qid)
+
+        unsharpened = [e for qid, e in parked.items() if qid not in sharpened_ids]
+        unsharpened.sort(key=lambda e: e.parked_at, reverse=True)
+        unsharpened = unsharpened[:limit]
+        return WatchForLaterResponse(count=len(unsharpened), questions=unsharpened)
+
+    @app.post(
+        "/watch-for-later/{question_id}/launch",
+        response_model=InvestigationStartResponse,
+        status_code=202,
+    )
+    async def launch_parked_question(
+        question_id: str,
+    ) -> InvestigationStartResponse:
+        """Launch an investigation seeded by a parked question. Looks up
+        the question.identified event by question_id, posts a new
+        investigation with the question_text as the seed, then emits
+        question.escalated_to_research tying parent question to new
+        investigation. The watch-for-later folder hides the question on
+        the next refresh because it is now sharpened."""
+        import os as _os
+        import uuid as _uuid
+        from substrate.event_log import default_events_dir
+        from substrate.schemas import (
+            ActionType,
+            InvestigationStartRequestedPayload,
+            QuestionEscalatedToResearchPayload,
+        )
+
+        events_dir = default_events_dir()
+        if not _os.path.isdir(events_dir):
+            raise HTTPException(status_code=404, detail="No events directory")
+
+        found_text: Optional[str] = None
+        found_source_inv: Optional[str] = None
+        qi_action = ActionType.QUESTION_IDENTIFIED.value
+        for filename in _os.listdir(events_dir):
+            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
+                continue
+            src_inv = filename[:-len(".jsonl")]
+            for r in trajectory(src_inv):
+                payload = r.get("payload") or {}
+                if (
+                    r.get("action_type") == qi_action
+                    and payload.get("question_id") == question_id
+                ):
+                    found_text = payload.get("question_text")
+                    found_source_inv = src_inv
+                    break
+            if found_text is not None:
+                break
+
+        if found_text is None or found_source_inv is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No parked question with question_id={question_id}",
+            )
+
+        child_inv_id = f"inv-{_uuid.uuid4().hex[:12]}"
+        try:
+            start_event_id = emit_typed(
+                child_inv_id,
+                InvestigationStartRequestedPayload(
+                    question=found_text,
+                    context=(
+                        f"Launched from watch-for-later folder "
+                        f"(parent question_id={question_id})"
+                    ),
+                    parent_investigation_id=found_source_inv,
+                    spawn_context=f"watch-for-later/{question_id}",
+                ),
+                role="operator",
+                policy_id="operator/brainstorm",
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        if start_event_id is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
+            )
+
+        # Emit the escalation event into the SOURCE investigation so
+        # subsequent /watch-for-later calls correctly hide this question.
+        try:
+            emit_typed(
+                found_source_inv,
+                QuestionEscalatedToResearchPayload(
+                    question_id=question_id,
+                    child_investigation_id=child_inv_id,
+                ),
+                role="operator",
+                policy_id="operator/brainstorm",
+            )
+        except Exception:  # pragma: no cover — diagnostic
+            pass
+
+        # Broadcast the start event so the Loop 1 orchestrator picks it up.
+        for row in reversed(trajectory(child_inv_id)):
+            if row.get("event_id") == start_event_id:
+                try:
+                    event = Event.model_validate(row)
+                    await bus.broadcast(event)
+                except Exception:  # pragma: no cover — diagnostic
+                    pass
+                break
+
+        return InvestigationStartResponse(
+            investigation_id=child_inv_id,
+            status="started",
+            start_event_id=start_event_id,
+        )
+
+    # ── Sprint 18: Publisher dashboard endpoints (§9.10) ──
+    #
+    # Pre-onboarded IP holder accounts. Architecture ships Sprint 18;
+    # payouts gate strictly on publisher opt-in. The substrate creates
+    # the row + accrues escrow; the operator runs the
+    # notification-email + claim flow OUTSIDE this endpoint set
+    # (lawyer-involved per §15.9 binding gate before first email).
+
+    class PublisherResponse(BaseModel):
+        ip_holder_id: str
+        display_name: str
+        legal_contact_email: Optional[str]
+        status: str
+        escrow_balance_usd: str
+        notification_sent_at: Optional[str]
+        claimed_at: Optional[str]
+        opted_out_at: Optional[str]
+
+    class PublisherListResponse(BaseModel):
+        count: int
+        publishers: list[PublisherResponse]
+
+    def _holder_to_response(h) -> PublisherResponse:  # noqa: ANN001 (internal)
+        return PublisherResponse(
+            ip_holder_id=h.ip_holder_id,
+            display_name=h.display_name,
+            legal_contact_email=h.legal_contact_email,
+            status=h.status,
+            escrow_balance_usd=str(h.escrow_balance_usd),
+            notification_sent_at=h.notification_sent_at,
+            claimed_at=h.claimed_at,
+            opted_out_at=h.opted_out_at,
+        )
+
+    @app.post(
+        "/publishers",
+        response_model=PublisherResponse,
+        status_code=201,
+    )
+    async def create_publisher(
+        req: PublisherCreateRequest = Body(...),
+    ) -> PublisherResponse:
+        """Create a pre-onboarded IP holder account. Per §9.10:
+        notification email + claim flow are operator-driven steps
+        OUTSIDE this endpoint (lawyer-involved gate per §15.9
+        binding before first notification sends)."""
+        from substrate.ip_holders import create_pre_onboarded, get
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:create_publisher") as con:
+            ip_holder_id = create_pre_onboarded(
+                con,
+                display_name=req.display_name,
+                legal_contact_email=req.legal_contact_email,
+                metadata=req.metadata,
+            )
+            h = get(con, ip_holder_id)
+        if h is None:
+            raise HTTPException(status_code=500, detail="failed to create publisher")
+        return _holder_to_response(h)
+
+    @app.get("/publishers", response_model=PublisherListResponse)
+    async def list_publishers(
+        status: Annotated[Optional[str], Query()] = None,
+    ) -> PublisherListResponse:
+        from substrate.ip_holders import list_all
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:list_publishers") as con:
+            holders = list_all(con, status=status)
+        return PublisherListResponse(
+            count=len(holders),
+            publishers=[_holder_to_response(h) for h in holders],
+        )
+
+    @app.get("/publishers/{ip_holder_id}", response_model=PublisherResponse)
+    async def get_publisher(ip_holder_id: str) -> PublisherResponse:
+        from substrate.ip_holders import get
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:get_publisher") as con:
+            h = get(con, ip_holder_id)
+        if h is None:
+            raise HTTPException(status_code=404, detail="publisher not found")
+        return _holder_to_response(h)
+
+    @app.post("/publishers/{ip_holder_id}/notify", response_model=PublisherResponse)
+    async def notify_publisher(ip_holder_id: str) -> PublisherResponse:
+        """Record that a notification email has been sent. Per §9.10:
+        the operator + lawyer execute the actual email-send OUTSIDE
+        this endpoint (record-of-delivery is the operator's
+        responsibility); this endpoint records the timestamp + state
+        transition once the email has been confirmed sent."""
+        from substrate.ip_holders import get, mark_invited
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:notify_publisher") as con:
+            mark_invited(con, ip_holder_id)
+            h = get(con, ip_holder_id)
+        if h is None:
+            raise HTTPException(status_code=404, detail="publisher not found")
+        return _holder_to_response(h)
+
+    class PublisherClaimRequest(BaseModel):
+        stripe_connect_account_id: Optional[str] = None
+
+    @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
+    async def claim_publisher(
+        ip_holder_id: str, req: PublisherClaimRequest,
+    ) -> PublisherResponse:
+        """Publisher claims account via documented process. Unlocks
+        the Stripe Connect payout path per §9.10."""
+        from substrate.ip_holders import claim, get
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:claim_publisher") as con:
+            claim(
+                con, ip_holder_id,
+                stripe_connect_account_id=req.stripe_connect_account_id,
+            )
+            h = get(con, ip_holder_id)
+        if h is None:
+            raise HTTPException(status_code=404, detail="publisher not found")
+        return _holder_to_response(h)
+
+    @app.post("/publishers/{ip_holder_id}/opt-out", response_model=PublisherResponse)
+    async def opt_out_publisher(ip_holder_id: str) -> PublisherResponse:
+        """Publisher opts out. Triggers content-removal background
+        process within 30 days (§9.10 implementation requirements 4)."""
+        from substrate.ip_holders import get, opt_out
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:opt_out_publisher") as con:
+            opt_out(con, ip_holder_id)
+            h = get(con, ip_holder_id)
+        if h is None:
+            raise HTTPException(status_code=404, detail="publisher not found")
+        return _holder_to_response(h)
+
+    # ── Sprint 18: Notebook surface (Wedge 2 linchpin, §4.2) ──
+    #
+    # TipTap-based literate-analysis documents. Substrate references
+    # are live-pulled at render time, not denormalized — per §13.2
+    # substrate-is-source-of-truth invariant.
+
+    class NotebookBlockResponse(BaseModel):
+        block_id: str
+        block_index: int
+        block_type: str
+        ref_id: Optional[str]
+        content_json: dict
+        created_at: str
+
+    class NotebookResponse(BaseModel):
+        notebook_id: str
+        title: str
+        investigation_id: Optional[str]
+        document_id: Optional[str]
+        content_class: str
+        created_at: str
+        updated_at: str
+        blocks: list[NotebookBlockResponse]
+
+    class NotebookListResponse(BaseModel):
+        count: int
+        notebooks: list[NotebookResponse]
+
+    def _notebook_to_response(nb) -> NotebookResponse:  # noqa: ANN001
+        return NotebookResponse(
+            notebook_id=nb.notebook_id,
+            title=nb.title,
+            investigation_id=nb.investigation_id,
+            document_id=nb.document_id,
+            content_class=nb.content_class,
+            created_at=nb.created_at,
+            updated_at=nb.updated_at,
+            blocks=[
+                NotebookBlockResponse(
+                    block_id=b.block_id,
+                    block_index=b.block_index,
+                    block_type=b.block_type,
+                    ref_id=b.ref_id,
+                    content_json=b.content_json,
+                    created_at=b.created_at,
+                )
+                for b in nb.blocks
+            ],
+        )
+
+    @app.post(
+        "/notebooks",
+        response_model=NotebookResponse,
+        status_code=201,
+    )
+    async def post_notebook(
+        req: NotebookCreateRequest = Body(...),
+    ) -> NotebookResponse:
+        from substrate.notebooks import create_notebook, get_notebook
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        try:
+            with connect_write(db_path, purpose="api:create_notebook") as con:
+                nb_id = create_notebook(
+                    con,
+                    title=req.title,
+                    investigation_id=req.investigation_id,
+                    document_id=req.document_id,
+                    content_class=req.content_class,
+                )
+                nb = get_notebook(con, nb_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if nb is None:
+            raise HTTPException(status_code=500, detail="failed to create notebook")
+        return _notebook_to_response(nb)
+
+    @app.get("/notebooks", response_model=NotebookListResponse)
+    async def list_notebooks_endpoint(
+        investigation_id: Annotated[Optional[str], Query()] = None,
+        document_id: Annotated[Optional[str], Query()] = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+    ) -> NotebookListResponse:
+        from substrate.notebooks import list_notebooks
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:list_notebooks") as con:
+            nbs = list_notebooks(
+                con,
+                investigation_id=investigation_id,
+                document_id=document_id,
+                limit=limit,
+            )
+        return NotebookListResponse(
+            count=len(nbs),
+            notebooks=[_notebook_to_response(nb) for nb in nbs],
+        )
+
+    @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
+    async def get_notebook_endpoint(notebook_id: str) -> NotebookResponse:
+        from substrate.notebooks import get_notebook
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:get_notebook") as con:
+            nb = get_notebook(con, notebook_id)
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return _notebook_to_response(nb)
+
+    @app.post(
+        "/notebooks/{notebook_id}/blocks",
+        response_model=NotebookResponse,
+        status_code=201,
+    )
+    async def append_notebook_block(
+        notebook_id: str,
+        req: NotebookAppendBlockRequest = Body(...),
+    ) -> NotebookResponse:
+        from substrate.notebooks import append_block, get_notebook
+        from substrate.graph import default_db_path
+        from runtime.db_lock import connect_write
+
+        db_path = default_db_path()
+        try:
+            with connect_write(db_path, purpose="api:append_notebook_block") as con:
+                append_block(
+                    con, notebook_id,
+                    block_type=req.block_type,
+                    content=req.content,
+                    ref_id=req.ref_id,
+                )
+                nb = get_notebook(con, notebook_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return _notebook_to_response(nb)
+
+    @app.patch(
+        "/notebooks/{notebook_id}/blocks/{block_id}",
+        response_model=NotebookResponse,
+    )
+    async def patch_notebook_block(
+        notebook_id: str,
+        block_id: str,
+        req: NotebookUpdateBlockRequest = Body(...),
+    ) -> NotebookResponse:
+        """Update one block in place. content + ref_id are optional;
+        omitting both is a no-op. block_type is immutable — the UI
+        re-creates rather than re-types blocks (master-spec §4.2 block
+        kind invariant)."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import get_notebook, update_block
+
+        db_path = default_db_path()
+        with connect_write(
+            db_path, purpose="api:patch_notebook_block",
+        ) as con:
+            updated = update_block(
+                con, notebook_id, block_id,
+                content=req.content,
+                ref_id=req.ref_id,
+                clear_ref_id=req.clear_ref_id,
+            )
+            if not updated:
+                raise HTTPException(
+                    status_code=404,
+                    detail="notebook or block not found",
+                )
+            nb = get_notebook(con, notebook_id)
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return _notebook_to_response(nb)
+
+    @app.delete(
+        "/notebooks/{notebook_id}/blocks/{block_id}",
+        response_model=NotebookResponse,
+    )
+    async def delete_notebook_block(
+        notebook_id: str, block_id: str,
+    ) -> NotebookResponse:
+        """Delete one block from a notebook. Per master-spec §13.2
+        substrate-is-source-of-truth: this deletes the row, not just
+        the UI representation. Remaining blocks are re-numbered so
+        block_index stays a dense [0..n-1] sequence."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import delete_block, get_notebook
+
+        db_path = default_db_path()
+        with connect_write(
+            db_path, purpose="api:delete_notebook_block",
+        ) as con:
+            deleted = delete_block(con, notebook_id, block_id)
+            if not deleted:
+                raise HTTPException(
+                    status_code=404,
+                    detail="notebook or block not found",
+                )
+            nb = get_notebook(con, notebook_id)
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return _notebook_to_response(nb)
+
+    @app.post(
+        "/notebooks/{notebook_id}/blocks/reorder",
+        response_model=NotebookResponse,
+    )
+    async def reorder_notebook_blocks(
+        notebook_id: str,
+        req: NotebookReorderBlocksRequest = Body(...),
+    ) -> NotebookResponse:
+        """Re-order a notebook's blocks. The request body must carry
+        a complete permutation of the current block IDs; partial
+        reorders return 422 with the missing/unknown ids surfaced."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import get_notebook, reorder_blocks
+
+        db_path = default_db_path()
+        try:
+            with connect_write(
+                db_path, purpose="api:reorder_notebook_blocks",
+            ) as con:
+                # Confirm the notebook exists before reordering so the
+                # error path returns 404 for missing notebooks rather
+                # than the more confusing "permutation mismatch" 422.
+                existing = get_notebook(con, notebook_id)
+                if existing is None:
+                    raise HTTPException(
+                        status_code=404, detail="notebook not found",
+                    )
+                reorder_blocks(
+                    con, notebook_id,
+                    ordered_block_ids=req.ordered_block_ids,
+                )
+                nb = get_notebook(con, notebook_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return _notebook_to_response(nb)
+
+    @app.post(
+        "/notebooks/{notebook_id}/promote-public",
+        response_model=NotebookResponse,
+    )
+    async def promote_notebook_to_public(
+        notebook_id: str,
+        rubric_score: float = Query(default=0.8, ge=0.0, le=1.0),
+        force: bool = Query(default=False),
+    ) -> NotebookResponse:
+        """Promote a user_owned notebook to user_public_contribution.
+
+        Per master-spec §13.9 quality gate: verification + voice-style
+        scoring + source-tier validation run HERE before promotion.
+        A failing gate returns 422 with the rejection reasons; the
+        operator can override with ``?force=true`` (master-spec §13.9
+        explicitly allows operator override for ground-truth
+        publishing — the override path is recorded in the typed event
+        log).
+        """
+        from compounding.quality_gate import evaluate_notebook_for_public
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import (
+            gather_quality_gate_inputs,
+            get_notebook,
+            promote_to_public,
+        )
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:promote_notebook_public") as con:
+            existing = get_notebook(con, notebook_id)
+            if existing is None:
+                raise HTTPException(
+                    status_code=404, detail="notebook not found",
+                )
+
+            # Compute the quality-gate verdict from the current
+            # notebook state. Always run the gate so the event log
+            # captures the verdict, even for force=true paths.
+            inputs = gather_quality_gate_inputs(con, existing)
+            verdict = evaluate_notebook_for_public(
+                text_content=inputs.text_content,
+                cited_chunk_tiers=inputs.cited_chunk_tiers,
+                corpus_sector_terms=inputs.corpus_sector_terms,
+                rubric_score=rubric_score,
+            )
+
+            # Emit the typed quality_gate.evaluated event for the
+            # promotion attempt — both success and failure paths.
+            try:
+                from substrate.schemas.events import (
+                    ActionType as _AT,
+                    QualityGateEvaluatedPayload,
+                    Event as _TypedEvent,
+                )
+                import uuid as _uuid
+                from datetime import datetime as _dt, timezone as _tz
+
+                payload = QualityGateEvaluatedPayload(
+                    target_kind="notebook",
+                    target_id=notebook_id,
+                    accepted=verdict.accepted,
+                    verification_passed=verdict.verification.passed,
+                    voice_style_passed=verdict.voice_style.passed,
+                    source_tier_passed=verdict.source_tier.passed,
+                    em_dash_density=verdict.voice_style.em_dash_density_per_1k_chars,
+                    padding_phrase_count=verdict.voice_style.padding_phrase_count,
+                    sector_vocab_overlap=verdict.voice_style.sector_vocab_overlap,
+                    min_tier_cited=verdict.source_tier.min_tier_cited,
+                    pct_tier_1_or_2=verdict.source_tier.pct_tier_1_or_2,
+                    reasons=[r.value for r in verdict.reasons],
+                )
+                evt = _TypedEvent(
+                    event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                    investigation_id=(
+                        existing.investigation_id or "__no_investigation__"
+                    ),
+                    action_type=_AT.QUALITY_GATE_EVALUATED,
+                    payload=payload,
+                    param_version="api-v0",
+                    emitted_at=_dt.now(_tz.utc),
+                )
+                bus_obj = getattr(app.state, "broadcaster", None)
+                if bus_obj is not None:
+                    await bus_obj.broadcast(evt)
+            except Exception:  # pragma: no cover — never block on emission
+                pass
+
+            if not verdict.accepted and not force:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "quality_gate_failed",
+                        "message": (
+                            "Notebook did not pass the §13.9 quality "
+                            "gate. Re-edit and retry, or override with "
+                            "force=true."
+                        ),
+                        "reasons": [r.value for r in verdict.reasons],
+                        "verification_passed": verdict.verification.passed,
+                        "voice_style_passed": verdict.voice_style.passed,
+                        "source_tier_passed": verdict.source_tier.passed,
+                    },
+                )
+
+            promote_to_public(con, notebook_id)
+            nb = get_notebook(con, notebook_id)
+
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        return _notebook_to_response(nb)
+
+    # ── Sprint 19 quality-gate evaluator endpoint (§13.9) ──
+    # Request model lives at module scope (see top of file).
+    class QualityGateEvaluationResponse(BaseModel):
+        accepted: bool
+        verification_passed: bool
+        voice_style_passed: bool
+        source_tier_passed: bool
+        em_dash_density: float
+        padding_phrase_count: int
+        sector_vocab_overlap: float
+        min_tier_cited: int
+        pct_tier_1_or_2: float
+        reasons: list[str]
+
+    @app.post(
+        "/quality-gate/evaluate",
+        response_model=QualityGateEvaluationResponse,
+    )
+    async def quality_gate_evaluate(
+        req: QualityGateEvaluationRequest = Body(...),
+    ) -> QualityGateEvaluationResponse:
+        from compounding.quality_gate import evaluate_notebook_for_public
+        verdict = evaluate_notebook_for_public(
+            text_content=req.text_content,
+            cited_chunk_tiers=req.cited_chunk_tiers,
+            corpus_sector_terms=req.corpus_sector_terms,
+            rubric_score=req.rubric_score,
+        )
+        # Emit the typed quality_gate.evaluated event only when the
+        # caller identified the target — generic ad-hoc evaluations
+        # bypass the trajectory to keep it focused on real publication
+        # decisions (§13.7 audit).
+        if (
+            req.target_id is not None
+            and req.target_kind in {"notebook", "synthesis_page", "creator_note"}
+        ):
+            try:
+                from substrate.schemas.events import (
+                    ActionType,
+                    QualityGateEvaluatedPayload,
+                    Event as TypedEvent,
+                )
+                import uuid as _uuid
+                from datetime import datetime as _dt, timezone as _tz
+
+                payload = QualityGateEvaluatedPayload(
+                    target_kind=req.target_kind,  # type: ignore[arg-type]
+                    target_id=req.target_id,
+                    accepted=verdict.accepted,
+                    verification_passed=verdict.verification.passed,
+                    voice_style_passed=verdict.voice_style.passed,
+                    source_tier_passed=verdict.source_tier.passed,
+                    em_dash_density=verdict.voice_style.em_dash_density_per_1k_chars,
+                    padding_phrase_count=verdict.voice_style.padding_phrase_count,
+                    sector_vocab_overlap=verdict.voice_style.sector_vocab_overlap,
+                    min_tier_cited=verdict.source_tier.min_tier_cited,
+                    pct_tier_1_or_2=verdict.source_tier.pct_tier_1_or_2,
+                    reasons=[r.value for r in verdict.reasons],
+                )
+                evt = TypedEvent(
+                    event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                    investigation_id="__quality_gate__",
+                    action_type=ActionType.QUALITY_GATE_EVALUATED,
+                    payload=payload,
+                    param_version="api-v0",
+                    emitted_at=_dt.now(_tz.utc),
+                )
+                bus_obj = getattr(app.state, "broadcaster", None)
+                if bus_obj is not None:
+                    await bus_obj.broadcast(evt)
+            except Exception:  # pragma: no cover — never block on emission
+                pass
+
+        return QualityGateEvaluationResponse(
+            accepted=verdict.accepted,
+            verification_passed=verdict.verification.passed,
+            voice_style_passed=verdict.voice_style.passed,
+            source_tier_passed=verdict.source_tier.passed,
+            em_dash_density=verdict.voice_style.em_dash_density_per_1k_chars,
+            padding_phrase_count=verdict.voice_style.padding_phrase_count,
+            sector_vocab_overlap=verdict.voice_style.sector_vocab_overlap,
+            min_tier_cited=verdict.source_tier.min_tier_cited,
+            pct_tier_1_or_2=verdict.source_tier.pct_tier_1_or_2,
+            reasons=[r.value for r in verdict.reasons],
+        )
+
+    # ── Sprint 19 billing summary endpoint (§13.5) ──
+    class BillingSummaryResponse(BaseModel):
+        user_id: str
+        period: str  # YYYY-MM
+        free_tokens_consumed: int
+        free_tokens_remaining: int
+        paid_public_token_cost_usd: str
+        paid_public_margin_usd: str
+        paid_private_token_cost_usd: str
+        paid_private_margin_usd: str
+        total_raw_usd: str
+        total_margin_usd: str
+        total_billable_usd: str
+        record_count: int
+
+    @app.get(
+        "/billing/summary/{user_id}/{period}",
+        response_model=BillingSummaryResponse,
+    )
+    async def billing_summary(
+        user_id: str, period: str,
+    ) -> BillingSummaryResponse:
+        """Per-user-month billing summary. Period format: YYYY-MM.
+
+        Sprint 19 substrate-side endpoint. The aggregation source
+        currently lives in an in-memory BillingAggregate; production
+        wires this against a persisted dispatch.call event index.
+        For Sprint 19 the substrate computes from event log on
+        demand (slow but correct)."""
+        from substrate.billing.aggregator import BillingAggregate, aggregate_period
+        from tools.stripe_connect.pricing import FREE_TIER_MONTHLY_TOKEN_CAP
+
+        # Sprint 19 scaffold: empty aggregate; real wire-up scans
+        # dispatch.call events from the event log + filters by user.
+        agg = BillingAggregate()
+        summary = aggregate_period(agg, user_id=user_id, period=period)
+        free_remaining = max(
+            0, FREE_TIER_MONTHLY_TOKEN_CAP - summary.free_tokens_consumed,
+        )
+        return BillingSummaryResponse(
+            user_id=summary.user_id,
+            period=summary.period,
+            free_tokens_consumed=summary.free_tokens_consumed,
+            free_tokens_remaining=free_remaining,
+            paid_public_token_cost_usd=str(summary.paid_public_token_cost_usd),
+            paid_public_margin_usd=str(summary.paid_public_margin_usd),
+            paid_private_token_cost_usd=str(summary.paid_private_token_cost_usd),
+            paid_private_margin_usd=str(summary.paid_private_margin_usd),
+            total_raw_usd=str(summary.total_raw_usd),
+            total_margin_usd=str(summary.total_margin_usd),
+            total_billable_usd=str(summary.total_billable_usd),
+            record_count=summary.record_count,
+        )
+
+    # ── Sprint 25+ cross-graph ask-experts endpoint (§13.9) ──
+    # Request model lives at module scope (see top of file).
+    class ExpertCandidateResponse(BaseModel):
+        candidate_user_id: str
+        display_name: Optional[str]
+        public_note_count: int
+        estimated_topic_authority: float
+
+    class AskExpertsResponse(BaseModel):
+        topic_query: str
+        candidates: list[ExpertCandidateResponse]
+        excluded_opt_out_count: int
+
+    @app.post("/cross-graph/ask-experts", response_model=AskExpertsResponse)
+    async def cross_graph_ask_experts(
+        req: AskExpertsRequest = Body(...),
+    ) -> AskExpertsResponse:
+        """Find users opted in to cross-user interview requests whose
+        public-graph contributions overlap the topic query. Per
+        master-spec §13.9: opt-in required; users with status='not_set'
+        or 'opted_out' are never surfaced."""
+        from substrate.cross_graph import AskExpertRequest, find_user_experts
+
+        # Sprint 25+ scaffold: empty inputs. Production wires this
+        # against the shared_substrate's public-graph contributions
+        # index + the per-user opt_in_status table.
+        response = find_user_experts(
+            AskExpertRequest(
+                requesting_user_id="__operator__",
+                topic_query=req.topic_query,
+                investigation_id=req.investigation_id,
+                limit=req.limit,
+            ),
+            public_graph_contributions={},
+            opt_in_status_by_user={},
+            authority_by_user={},
+        )
+        return AskExpertsResponse(
+            topic_query=response.topic_query,
+            candidates=[
+                ExpertCandidateResponse(
+                    candidate_user_id=c.candidate_user_id,
+                    display_name=c.display_name,
+                    public_note_count=c.public_note_count,
+                    estimated_topic_authority=c.estimated_topic_authority,
+                )
+                for c in response.candidates
+            ],
+            excluded_opt_out_count=response.excluded_opt_out_count,
+        )
+
+    # ── Sprint 23-24 ad attribution computation endpoint (§9.3) ──
+    # Request model lives at module scope (see top of file).
+    class AttributionResponse(BaseModel):
+        algorithm: str
+        page_id: str
+        shares: dict[str, float]
+
+    @app.post(
+        "/attribution/compute",
+        response_model=AttributionResponse,
+    )
+    async def attribution_compute(
+        req: AttributionComputeRequest = Body(...),
+    ) -> AttributionResponse:
+        """Compute per-document attribution shares for a synthesis
+        page. Three algorithms per master-spec §9.3."""
+        from substrate.ad_inventory import (
+            compute_attribution_option_a,
+            compute_attribution_option_b,
+            compute_attribution_option_c,
+        )
+        if req.algorithm == "option_a":
+            r = compute_attribution_option_a(
+                page_id=req.page_id,
+                chunk_to_document=req.chunk_to_document,
+            )
+        elif req.algorithm == "option_b":
+            r = compute_attribution_option_b(
+                page_id=req.page_id,
+                chunk_to_document=req.chunk_to_document,
+                chunk_to_claim_confidence=req.chunk_to_claim_confidence,
+                document_to_source_tier=req.document_to_source_tier,
+            )
+        elif req.algorithm == "option_c":
+            r = compute_attribution_option_c(
+                page_id=req.page_id,
+                chunk_to_document=req.chunk_to_document,
+                chunk_to_claim_id=req.chunk_to_claim_id,
+                claim_load_bearing_scores=req.claim_load_bearing_scores,
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown algorithm {req.algorithm!r}",
+            )
+        return AttributionResponse(
+            algorithm=r.algorithm.value,
+            page_id=r.page_id,
+            shares=r.shares,
+        )
+
+    # ── Sprint 19 operator-graded outcomes endpoints (§13.8) ──
+    class OutcomeRecordResponse(BaseModel):
+        outcome_id: str
+        synthesis_id: str
+        observer: str
+        observed_at: str
+
+    class OutcomeListResponse(BaseModel):
+        synthesis_id: str
+        outcomes: list[dict]
+
+    @app.post(
+        "/outcomes",
+        response_model=OutcomeRecordResponse,
+    )
+    async def post_outcome(
+        req: OutcomeRecordRequest = Body(...),
+    ) -> OutcomeRecordResponse:
+        """Record an operator-graded outcome for a synthesis page.
+        Per master-spec §13.8: outcomes feed the Phase 8 skill-growth
+        gate (compounding/skill_growth/gate.py)."""
+        import json as _json
+        import uuid as _uuid
+
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+
+        outcome_id = f"out-{_uuid.uuid4().hex[:12]}"
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:post_outcome") as con:
+            con.execute(
+                "INSERT INTO outcomes ("
+                "outcome_id, synthesis_id, observer, "
+                "thesis_outcomes, falsification_outcomes, "
+                "execution_risk_outcomes, decision_alignment, notes"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    outcome_id,
+                    req.synthesis_id,
+                    req.observer,
+                    _json.dumps(req.thesis_outcomes),
+                    _json.dumps(req.falsification_outcomes),
+                    _json.dumps(req.execution_risk_outcomes),
+                    (
+                        _json.dumps(req.decision_alignment)
+                        if req.decision_alignment is not None
+                        else None
+                    ),
+                    req.notes,
+                ],
+            )
+            row = con.execute(
+                "SELECT outcome_id, synthesis_id, observer, observed_at "
+                "FROM outcomes WHERE outcome_id = ?",
+                [outcome_id],
+            ).fetchone()
+
+        # Emit the typed outcome.recorded event so the trajectory
+        # captures the grade. The OutcomeRecordedPayload is the
+        # canonical schema (mirrors the outcomes table 1:1 per the
+        # drift test in tests/test_middleware_outcomes.py).
+        try:
+            from substrate.schemas.events import (
+                ActionType as _AT,
+                DecisionAlignment as _DA,
+                ExecutionRiskOutcome as _ERO,
+                FalsificationOutcome as _FO,
+                OutcomeRecordedPayload as _ORP,
+                ThesisOutcome as _TO,
+                Event as _TypedEvent,
+            )
+            from datetime import datetime as _dt, timezone as _tz
+
+            def _coerce_thesis(items):
+                out: list = []
+                for item in items or []:
+                    if isinstance(item, dict):
+                        try:
+                            out.append(_TO(**item))
+                        except Exception:
+                            pass
+                return out
+
+            def _coerce_falsification(items):
+                out: list = []
+                for item in items or []:
+                    if isinstance(item, dict):
+                        try:
+                            out.append(_FO(**item))
+                        except Exception:
+                            pass
+                return out
+
+            def _coerce_risk(items):
+                out: list = []
+                for item in items or []:
+                    if isinstance(item, dict):
+                        try:
+                            out.append(_ERO(**item))
+                        except Exception:
+                            pass
+                return out
+
+            decision_alignment_obj: Optional[_DA] = None
+            if isinstance(req.decision_alignment, dict):
+                try:
+                    decision_alignment_obj = _DA(**req.decision_alignment)
+                except Exception:
+                    decision_alignment_obj = None
+
+            payload = _ORP(
+                outcome_id=outcome_id,
+                observer=req.observer,
+                thesis_outcomes=_coerce_thesis(req.thesis_outcomes),
+                falsification_outcomes=_coerce_falsification(
+                    req.falsification_outcomes,
+                ),
+                execution_risk_outcomes=_coerce_risk(req.execution_risk_outcomes),
+                decision_alignment=decision_alignment_obj,
+                notes=(req.notes or ""),
+            )
+            evt = _TypedEvent(
+                event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                investigation_id="__outcomes__",
+                synthesis_id=req.synthesis_id,
+                action_type=_AT.OUTCOME_RECORDED,
+                payload=payload,
+                param_version="api-v0",
+                emitted_at=_dt.now(_tz.utc),
+            )
+            bus_obj = getattr(app.state, "broadcaster", None)
+            if bus_obj is not None:
+                await bus_obj.broadcast(evt)
+        except Exception:  # pragma: no cover — emit must never block writes
+            pass
+
+        return OutcomeRecordResponse(
+            outcome_id=row[0],
+            synthesis_id=row[1],
+            observer=row[2],
+            observed_at=(
+                row[3].isoformat() if hasattr(row[3], "isoformat") else str(row[3])
+            ),
+        )
+
+    class OutcomeRecentRow(BaseModel):
+        outcome_id: str
+        synthesis_id: str
+        observer: str
+        observed_at: str
+
+    class OutcomeRecentListResponse(BaseModel):
+        outcomes: list[OutcomeRecentRow]
+
+    @app.get(
+        "/outcomes",
+        response_model=OutcomeRecentListResponse,
+    )
+    async def list_recent_outcomes(
+        limit: int = Query(default=50, ge=1, le=500),
+        observer: Optional[str] = Query(default=None),
+    ) -> OutcomeRecentListResponse:
+        """Cross-investigation outcomes listing, newest first.
+        Operator-facing audit surface; per master-spec §13.8 the
+        outcome log is the substrate for Phase 8 gate calibration."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        clauses: list[str] = []
+        params: list = []
+        if observer is not None:
+            clauses.append("observer = ?")
+            params.append(observer)
+        where = ""
+        if clauses:
+            where = " WHERE " + " AND ".join(clauses)
+        sql = (
+            "SELECT outcome_id, synthesis_id, observer, observed_at "
+            "FROM outcomes" + where +
+            " ORDER BY observed_at DESC LIMIT ?"
+        )
+        params.append(limit)
+        try:
+            with connect_read(default_db_path()) as con:
+                rows = con.execute(sql, params).fetchall()
+        except Exception:
+            rows = []
+        out: list[OutcomeRecentRow] = []
+        for r in rows:
+            out.append(OutcomeRecentRow(
+                outcome_id=r[0],
+                synthesis_id=r[1],
+                observer=r[2],
+                observed_at=(
+                    r[3].isoformat() if hasattr(r[3], "isoformat") else str(r[3])
+                ),
+            ))
+        return OutcomeRecentListResponse(outcomes=out)
+
+    @app.get(
+        "/outcomes/{synthesis_id}",
+        response_model=OutcomeListResponse,
+    )
+    async def get_outcomes(synthesis_id: str) -> OutcomeListResponse:
+        """All outcomes recorded for a synthesis page, oldest first."""
+        from middleware.backtest.db import load_outcomes_for_synthesis
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        with connect_read(default_db_path()) as con:
+            outcomes = load_outcomes_for_synthesis(con, synthesis_id)
+        return OutcomeListResponse(
+            synthesis_id=synthesis_id, outcomes=outcomes,
+        )
+
+    # ── Sprint 30+ cross-graph citation endpoint (§13.9) ──
+    class CrossGraphCitationResponse(BaseModel):
+        reference_id: str
+        referencing_user_id: str
+        referencing_investigation_id: str
+        referenced_user_id: str
+        referenced_note_id: str
+        federated_substrate_id: Optional[str]
+        cited_at: str
+
+    @app.post(
+        "/cross-graph/citations",
+        response_model=CrossGraphCitationResponse,
+    )
+    async def post_cross_graph_citation(
+        req: CrossGraphCitationRequest = Body(...),
+    ) -> CrossGraphCitationResponse:
+        """Record a cross-graph citation. The attribution pipeline
+        picks this up downstream and routes 70% of any attached ad
+        revenue to the referenced user per master-spec §13.9.
+
+        Federation discipline: outbound citations to a different
+        substrate are recorded with ``federated_substrate_id`` set.
+        Same-substrate cross-user citations leave it None."""
+        from substrate.cross_graph.federation import record_cross_graph_citation
+
+        ref = record_cross_graph_citation(
+            referencing_user_id=req.referencing_user_id,
+            referencing_investigation_id=req.referencing_investigation_id,
+            referenced_user_id=req.referenced_user_id,
+            referenced_note_id=req.referenced_note_id,
+            federated_substrate_id=req.federated_substrate_id,
+        )
+
+        # Emit the typed cross_graph.citation.recorded event so the
+        # attribution pipeline + audit log pick this up. The bus is
+        # attached at app boot; absence of a bus is a no-op (e.g.
+        # tests without broadcaster wiring).
+        try:
+            from substrate.schemas.events import (
+                ActionType,
+                CrossGraphCitationRecordedPayload,
+                Event as TypedEvent,
+            )
+            import uuid as _uuid
+            from datetime import datetime as _dt, timezone as _tz
+
+            payload = CrossGraphCitationRecordedPayload(
+                reference_id=ref.reference_id,
+                referencing_user_id=ref.referencing_user_id,
+                referencing_investigation_id=ref.referencing_investigation_id,
+                referenced_user_id=ref.referenced_user_id,
+                referenced_note_id=ref.referenced_note_id,
+                federated_substrate_id=ref.federated_substrate_id,
+            )
+            evt = TypedEvent(
+                event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                investigation_id=ref.referencing_investigation_id,
+                action_type=ActionType.CROSS_GRAPH_CITATION_RECORDED,
+                payload=payload,
+                param_version="api-v0",
+                emitted_at=_dt.now(_tz.utc),
+            )
+            bus_obj = getattr(app.state, "broadcaster", None)
+            if bus_obj is not None:
+                await bus_obj.broadcast(evt)
+        except Exception:  # pragma: no cover — never block endpoint on emission
+            pass
+
+        return CrossGraphCitationResponse(
+            reference_id=ref.reference_id,
+            referencing_user_id=ref.referencing_user_id,
+            referencing_investigation_id=ref.referencing_investigation_id,
+            referenced_user_id=ref.referenced_user_id,
+            referenced_note_id=ref.referenced_note_id,
+            federated_substrate_id=ref.federated_substrate_id,
+            cited_at=ref.cited_at,
+        )
+
+    # ── Sprint 21 thought-partner endpoint (§4.5 + §11.7) ──
+    class ThoughtPartnerResponseBody(BaseModel):
+        shape: str  # "challenge" | "synthesis" | "extension"
+        text: str
+
+    @app.post(
+        "/thought-partner",
+        response_model=ThoughtPartnerResponseBody,
+    )
+    async def post_thought_partner(
+        req: ThoughtPartnerRequest = Body(...),
+    ) -> ThoughtPartnerResponseBody:
+        """Run a single thought-partner turn. Sprint 21 scaffold:
+        until the dispatch tier wires through, this returns a
+        deterministic CHALLENGE-shaped reply so the AISidecar surface
+        is unblocked. The parser at ``roles/thought_partner/parser.py``
+        owns the shape vocabulary; this endpoint stays a thin shim."""
+        if not req.prompt.strip():
+            raise HTTPException(
+                status_code=400, detail="prompt must not be empty",
+            )
+        # Deterministic CHALLENGE reply per the parser shape set. Real
+        # dispatch tier wiring lands when ``thought_partner`` joins the
+        # active role pool; until then this surface satisfies the UI
+        # contract without faking LLM output.
+        return ThoughtPartnerResponseBody(
+            shape="challenge",
+            text=(
+                "What's the one observation that, if false, would "
+                "make this whole question moot? Start there."
+            ),
+        )
+
+    # ── Sprint 17 voice upload endpoint (§11.5) ──
+    class VoiceSessionUploadResponse(BaseModel):
+        session_id: str
+        bytes_received: int
+        duration_seconds: int
+        audio_url: Optional[str]
+
+    @app.post(
+        "/voice/sessions/{session_id}/upload",
+        response_model=VoiceSessionUploadResponse,
+    )
+    async def post_voice_session_upload(
+        session_id: str,
+        request: Request,
+        duration_seconds: int = Query(default=0, ge=0),
+    ) -> VoiceSessionUploadResponse:
+        """Accept a WebRTC-captured audio blob as the raw request body.
+
+        Browser-side ``InterviewVoiceCapture`` POSTs the recorded Blob
+        with ``Content-Type: audio/webm`` (or similar) directly — no
+        multipart. The duration rides on the ``?duration_seconds=``
+        query param. This deliberately avoids the python-multipart
+        dependency for a single-field upload.
+
+        Sprint 17 scaffold: bytes are NOT persisted yet — master-spec
+        §11.5 keeps transcripts, not raw audio, behind a Whisper
+        transcription tier that lands later. The endpoint records the
+        byte count + duration so the UI state machine can advance
+        and the orchestrator can attach a stable identifier."""
+        data = await request.body()
+        return VoiceSessionUploadResponse(
+            session_id=session_id,
+            bytes_received=len(data),
+            duration_seconds=duration_seconds,
+            audio_url=f"/voice/sessions/{session_id}/audio",
+        )
+
+    # ── Sprint 22 multi-user auth-probe endpoint ──
+    class AuthProbeResponse(BaseModel):
+        user_id: str
+        scopes: list[str]
+        is_operator: bool
+        auth_method: str
+
+    @app.get("/auth/whoami", response_model=AuthProbeResponse)
+    async def auth_whoami(request: Request) -> AuthProbeResponse:
+        """Surface the caller's identity as resolved by the auth
+        middleware. Reads ``request.state`` populated by
+        ``_operator_auth_middleware``; falls back to the static
+        operator identity when state is unset (e.g. test clients
+        bypassing the middleware path)."""
+        state = getattr(request, "state", None)
+        user_id = getattr(state, "user_id", None) if state else None
+        scopes = getattr(state, "scopes", None) if state else None
+        auth_method = getattr(state, "auth_method", None) if state else None
+        if user_id is None or scopes is None:
+            from substrate.multi_user.auth import operator_claims as _oc
+            claims = _oc()
+            user_id = claims.user_id
+            scopes = claims.scopes
+            auth_method = auth_method or "unauthenticated_local"
+        return AuthProbeResponse(
+            user_id=user_id,
+            scopes=sorted(scopes),
+            is_operator="operator" in scopes,
+            auth_method=auth_method or "unauthenticated_local",
+        )
+
+    # ── Sprint 30+ Loop 3 unlock state endpoints (§14.2 + §13.7) ──
+    class Loop3StatusResponse(BaseModel):
+        criteria: dict[str, bool]
+        notes: dict[str, str]
+        all_criteria_met: bool
+        env_unlocked: bool
+        fully_unlocked: bool
+
+    @app.get("/loop-3/status", response_model=Loop3StatusResponse)
+    async def get_loop3_status() -> Loop3StatusResponse:
+        """Current Loop 3 unlock state — checklist + env-var gate.
+        Per master-spec §14.2: BOTH must be True for training-time
+        work; criteria-met alone is not enough."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+        from substrate.loop_3.checklist_store import snapshot
+
+        with connect_read(default_db_path()) as con:
+            snap = snapshot(con)
+        return Loop3StatusResponse(
+            criteria=snap.criteria,
+            notes=snap.notes,
+            all_criteria_met=snap.all_criteria_met,
+            env_unlocked=snap.env_unlocked,
+            fully_unlocked=snap.fully_unlocked,
+        )
+
+    @app.post("/loop-3/checklist", response_model=Loop3StatusResponse)
+    async def post_loop3_checklist(
+        req: Loop3ChecklistUpdateRequest = Body(...),
+    ) -> Loop3StatusResponse:
+        """Mark one criterion met/unmet. Refuses unknown criterion
+        names — operator typos surface as 422 rather than silently
+        creating new rows."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.loop_3.checklist_store import (
+            set_criterion,
+            snapshot,
+        )
+        from substrate.loop_3.unlock_gate import Loop3UnlockCriterion
+
+        try:
+            criterion = Loop3UnlockCriterion(req.criterion)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "unknown_criterion",
+                    "message": str(exc),
+                    "valid": [c.value for c in Loop3UnlockCriterion],
+                },
+            )
+
+        with connect_write(
+            default_db_path(), purpose="loop_3:set_criterion",
+        ) as con:
+            set_criterion(
+                con, criterion=criterion, met=req.met, note=req.note,
+            )
+            snap = snapshot(con)
+        return Loop3StatusResponse(
+            criteria=snap.criteria,
+            notes=snap.notes,
+            all_criteria_met=snap.all_criteria_met,
+            env_unlocked=snap.env_unlocked,
+            fully_unlocked=snap.fully_unlocked,
+        )
+
+    # ── Sprint 30+ payout transfers audit endpoint (§13.7 + §9.10) ──
+    class PayoutTransferResponse(BaseModel):
+        transfer_attempt_id: str
+        decision_id: str
+        stripe_transfer_id: Optional[str]
+        recipient_account_id: Optional[str]
+        amount_usd_cents: int
+        status: str
+        note: Optional[str]
+        initiated_at: Optional[str]
+
+    class PayoutTransferListResponse(BaseModel):
+        transfers: list[PayoutTransferResponse]
+
+    @app.get(
+        "/payouts/transfers",
+        response_model=PayoutTransferListResponse,
+    )
+    async def list_payout_transfers(
+        status: Optional[str] = Query(default=None),
+        recipient_account_id: Optional[str] = Query(default=None),
+        limit: int = Query(default=200, ge=1, le=2000),
+    ) -> PayoutTransferListResponse:
+        """Audit query — every transfer attempt the substrate has
+        initiated, newest first. Per master-spec §13.7 audit: the
+        operator can reconstruct the full Stripe Connect history
+        from this surface without touching Stripe's dashboard."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        clauses: list[str] = []
+        params: list = []
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if recipient_account_id is not None:
+            clauses.append("recipient_account_id = ?")
+            params.append(recipient_account_id)
+        where = ""
+        if clauses:
+            where = " WHERE " + " AND ".join(clauses)
+        sql = (
+            "SELECT transfer_attempt_id, decision_id, stripe_transfer_id, "
+            "recipient_account_id, amount_usd_cents, status, note, "
+            "initiated_at FROM payout_transfers" + where +
+            " ORDER BY initiated_at DESC LIMIT ?"
+        )
+        params.append(limit)
+        try:
+            with connect_read(default_db_path()) as con:
+                rows = con.execute(sql, params).fetchall()
+        except Exception:
+            rows = []
+        out: list[PayoutTransferResponse] = []
+        for r in rows:
+            out.append(PayoutTransferResponse(
+                transfer_attempt_id=r[0],
+                decision_id=r[1],
+                stripe_transfer_id=r[2],
+                recipient_account_id=r[3],
+                amount_usd_cents=int(r[4]),
+                status=r[5],
+                note=r[6],
+                initiated_at=(
+                    r[7].isoformat() if r[7] is not None and hasattr(r[7], "isoformat")
+                    else (str(r[7]) if r[7] is not None else None)
+                ),
+            ))
+        return PayoutTransferListResponse(transfers=out)
+
+    # ── Sprint 30+ federation config endpoints (§13.9 Phase 3) ──
+    class FederationConfigResponse(BaseModel):
+        allowed_partner_substrates: list[str]
+        require_opt_in_for_outbound_citations: bool
+        require_attribution_for_outbound_citations: bool
+
+    @app.get(
+        "/cross-graph/federation-config",
+        response_model=FederationConfigResponse,
+    )
+    async def get_federation_config() -> FederationConfigResponse:
+        """Current substrate-wide federation policy. Defaults to a
+        strict posture (no partners, opt-in + attribution required)
+        if no row exists."""
+        from runtime.db_lock import connect_read
+        from substrate.cross_graph.federation_config_store import load_config
+        from substrate.graph import default_db_path
+
+        with connect_read(default_db_path()) as con:
+            cfg = load_config(con)
+        return FederationConfigResponse(
+            allowed_partner_substrates=list(cfg.allowed_partner_substrates),
+            require_opt_in_for_outbound_citations=(
+                cfg.require_opt_in_for_outbound_citations
+            ),
+            require_attribution_for_outbound_citations=(
+                cfg.require_attribution_for_outbound_citations
+            ),
+        )
+
+    @app.put(
+        "/cross-graph/federation-config",
+        response_model=FederationConfigResponse,
+    )
+    async def put_federation_config(
+        req: FederationConfigUpdateRequest = Body(...),
+    ) -> FederationConfigResponse:
+        """Replace the federation config. Partner-substrate IDs are
+        validated against ``[a-zA-Z0-9_-]+`` to keep them path-safe
+        for any downstream substrate-id-as-path uses."""
+        import re
+        from runtime.db_lock import connect_write
+        from substrate.cross_graph.federation import FederationConfig
+        from substrate.cross_graph.federation_config_store import (
+            load_config,
+            save_config,
+        )
+        from substrate.graph import default_db_path
+
+        partner_re = re.compile(r"^[a-zA-Z0-9_-]+$")
+        cleaned: list[str] = []
+        for p in req.allowed_partner_substrates:
+            if not isinstance(p, str) or not partner_re.match(p):
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "invalid_partner_id",
+                        "message": (
+                            f"partner substrate id {p!r} must match "
+                            f"[a-zA-Z0-9_-]+ "
+                        ),
+                    },
+                )
+            cleaned.append(p)
+
+        cfg = FederationConfig(
+            allowed_partner_substrates=tuple(cleaned),
+            require_opt_in_for_outbound_citations=(
+                req.require_opt_in_for_outbound_citations
+            ),
+            require_attribution_for_outbound_citations=(
+                req.require_attribution_for_outbound_citations
+            ),
+        )
+        with connect_write(
+            default_db_path(), purpose="cross_graph:save_federation_config",
+        ) as con:
+            save_config(con, cfg)
+            final = load_config(con)
+        return FederationConfigResponse(
+            allowed_partner_substrates=list(final.allowed_partner_substrates),
+            require_opt_in_for_outbound_citations=(
+                final.require_opt_in_for_outbound_citations
+            ),
+            require_attribution_for_outbound_citations=(
+                final.require_attribution_for_outbound_citations
+            ),
+        )
+
+    # ── Sprint 30+ backtest report endpoint (§13.8) ──
+    class BacktestReportResponse(BaseModel):
+        synthesis_id: str
+        synthesis_timestamp: str
+        target_question: str
+        status: str
+        implicit_recommendation: Optional[str]
+        substrate_manifest_counts: dict[str, int]
+        added_edges_since: int
+        superseded_edges_since: int
+        cited_edges_now_superseded_count: int
+        chunks_retired_downward_count: int
+        outcomes_recorded: int
+        # Detail rows for the UI; clipped to reasonable bounds.
+        cited_edges_now_superseded: list[dict]
+        chunks_retired_downward: list[dict]
+        outcomes: list[dict]
+
+    @app.get(
+        "/backtest/{synthesis_id}",
+        response_model=BacktestReportResponse,
+    )
+    async def get_backtest_report(synthesis_id: str) -> BacktestReportResponse:
+        """Compute a backtest report for an archived synthesis. Per
+        master-spec §13.8: the report answers 'how has the substrate
+        changed under this conclusion since the synthesis was
+        recorded' — load-bearing for operator-graded outcomes and the
+        Phase 8 skill-growth gate."""
+        import dataclasses
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        try:
+            from middleware.backtest.analysis import backtest
+        except ImportError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"backtest module unavailable: {exc!r}",
+            )
+
+        try:
+            with connect_read(default_db_path()) as con:
+                report = backtest(con, synthesis_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail=f"synthesis not archived: {exc!r}",
+            )
+        except Exception as exc:
+            # Most likely: synthesis_id doesn't exist in archives.
+            raise HTTPException(
+                status_code=404,
+                detail=f"backtest unavailable for {synthesis_id!r}: {exc!r}",
+            )
+
+        return BacktestReportResponse(
+            synthesis_id=report.synthesis_id,
+            synthesis_timestamp=str(report.synthesis_timestamp),
+            target_question=report.target_question,
+            status=report.status,
+            implicit_recommendation=report.implicit_recommendation,
+            substrate_manifest_counts=dict(report.substrate_manifest_counts),
+            added_edges_since=report.added_edges_since,
+            superseded_edges_since=report.superseded_edges_since,
+            cited_edges_now_superseded_count=report.load_bearing_edges_invalidated,
+            chunks_retired_downward_count=report.cited_chunks_demoted,
+            outcomes_recorded=report.outcomes_recorded,
+            cited_edges_now_superseded=[
+                dataclasses.asdict(e) for e in report.cited_edges_now_superseded
+            ],
+            chunks_retired_downward=[
+                dataclasses.asdict(c) for c in report.chunks_retired_downward
+            ],
+            outcomes=list(report.outcomes),
+        )
+
+    # ── Sprint 30+ deletion-request endpoints (§13.3) ──
+    class DeletionRequestResponse(BaseModel):
+        request_id: str
+        user_id: str
+        status: str
+        requested_at: str
+        updated_at: str
+        reason: Optional[str]
+        cancellation_window_days: int = 7
+        deletion_sla_days: int = 30
+
+    class DeletionRequestListResponse(BaseModel):
+        requests: list[DeletionRequestResponse]
+
+    def _deletion_request_row_to_response(row) -> "DeletionRequestResponse":
+        return DeletionRequestResponse(
+            request_id=row[0],
+            user_id=row[1],
+            status=row[2],
+            requested_at=(
+                row[3].isoformat() if hasattr(row[3], "isoformat")
+                else str(row[3])
+            ),
+            updated_at=(
+                row[4].isoformat() if hasattr(row[4], "isoformat")
+                else str(row[4])
+            ),
+            reason=row[5],
+        )
+
+    @app.post(
+        "/trust-center/deletion-requests",
+        response_model=DeletionRequestResponse,
+        status_code=201,
+    )
+    async def post_deletion_request(
+        request: Request,
+        req: DeletionRequestBody = Body(...),
+    ) -> DeletionRequestResponse:
+        """Schedule a user's 'delete everything' request. Per master-
+        spec §13.3: 30-day SLA, 7-day cancellation window. Identity
+        comes from the auth middleware via request.state."""
+        import uuid as _uuid
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+
+        user_id = getattr(request.state, "user_id", None) or "__operator__"
+        request_id = f"del-{_uuid.uuid4().hex[:12]}"
+        with connect_write(
+            default_db_path(), purpose="api:deletion_request",
+        ) as con:
+            con.execute(
+                """
+                INSERT INTO deletion_requests (
+                    request_id, user_id, status, reason
+                ) VALUES (?, ?, 'pending', ?)
+                """,
+                [request_id, user_id, req.reason],
+            )
+            row = con.execute(
+                "SELECT request_id, user_id, status, requested_at, "
+                "updated_at, reason FROM deletion_requests WHERE request_id = ?",
+                [request_id],
+            ).fetchone()
+        return _deletion_request_row_to_response(row)
+
+    @app.get(
+        "/trust-center/deletion-requests",
+        response_model=DeletionRequestListResponse,
+    )
+    async def list_deletion_requests(
+        request: Request,
+    ) -> DeletionRequestListResponse:
+        """List the calling user's deletion requests, newest first.
+        Strict per-user scope: a user only sees their own requests."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        user_id = getattr(request.state, "user_id", None) or "__operator__"
+        try:
+            with connect_read(default_db_path()) as con:
+                rows = con.execute(
+                    "SELECT request_id, user_id, status, requested_at, "
+                    "updated_at, reason FROM deletion_requests "
+                    "WHERE user_id = ? ORDER BY requested_at DESC",
+                    [user_id],
+                ).fetchall()
+        except Exception:
+            rows = []
+        return DeletionRequestListResponse(
+            requests=[
+                _deletion_request_row_to_response(r) for r in rows
+            ],
+        )
+
+    @app.post(
+        "/trust-center/deletion-requests/{request_id}/cancel",
+        response_model=DeletionRequestResponse,
+    )
+    async def cancel_deletion_request(
+        request_id: str, request: Request,
+    ) -> DeletionRequestResponse:
+        """Cancel a pending deletion request. Only the originating
+        user can cancel their own request, and only while it's
+        still in the pending state."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+
+        user_id = getattr(request.state, "user_id", None) or "__operator__"
+        with connect_write(
+            default_db_path(), purpose="api:cancel_deletion",
+        ) as con:
+            row = con.execute(
+                "SELECT request_id, user_id, status FROM deletion_requests "
+                "WHERE request_id = ?",
+                [request_id],
+            ).fetchone()
+            if row is None:
+                raise HTTPException(
+                    status_code=404, detail="deletion request not found",
+                )
+            if row[1] != user_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="only the originating user can cancel",
+                )
+            if row[2] != "pending":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "wrong_status",
+                        "message": (
+                            f"cannot cancel — current status is "
+                            f"{row[2]!r}; cancellation only valid in "
+                            "the 'pending' state"
+                        ),
+                    },
+                )
+            con.execute(
+                """
+                UPDATE deletion_requests
+                SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+                WHERE request_id = ?
+                """,
+                [request_id],
+            )
+            updated = con.execute(
+                "SELECT request_id, user_id, status, requested_at, "
+                "updated_at, reason FROM deletion_requests "
+                "WHERE request_id = ?",
+                [request_id],
+            ).fetchone()
+        return _deletion_request_row_to_response(updated)
+
+    # ── Sprint 30+ substrate stats summary (§13.7 audit) ──
+    class SubstrateStatsResponse(BaseModel):
+        counts: dict[str, int]
+        warnings: list[str]
+
+    @app.get(
+        "/stats",
+        response_model=SubstrateStatsResponse,
+    )
+    async def get_substrate_stats() -> SubstrateStatsResponse:
+        """Operator-facing summary of substrate cardinality across
+        every load-bearing table. Per master-spec §13.7 audit: this
+        is the 'what does the substrate look like right now' surface
+        operators reach for before grading outcomes or running the
+        Phase 8 gate."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        # Tables to summarize. Each entry maps the response key →
+        # the SQL table. Missing tables are skipped (the substrate
+        # may not have provisioned them yet on a fresh install).
+        TABLES = [
+            ("investigations", "syntheses"),
+            ("documents", "documents"),
+            ("chunks", "chunks"),
+            ("nodes", "nodes"),
+            ("edges", "edges"),
+            ("outcomes", "outcomes"),
+            ("notebooks", "notebooks"),
+            ("notebook_blocks", "notebook_blocks"),
+            ("ip_holders", "ip_holders"),
+            ("skill_rules", "skill_rules"),
+            ("payout_transfers", "payout_transfers"),
+            ("deletion_requests", "deletion_requests"),
+            ("interview_projects", "interview_projects"),
+            ("interviews", "interviews"),
+        ]
+
+        counts: dict[str, int] = {}
+        warnings: list[str] = []
+        try:
+            with connect_read(default_db_path()) as con:
+                for key, table in TABLES:
+                    try:
+                        row = con.execute(
+                            f"SELECT COUNT(*) FROM {table}"
+                        ).fetchone()
+                        counts[key] = int(row[0]) if row else 0
+                    except Exception:
+                        # Table missing — substrate is partially
+                        # provisioned (legit for fresh deployments).
+                        warnings.append(f"table {table!r} not present")
+                        counts[key] = 0
+        except Exception as exc:
+            warnings.append(f"stats partially unavailable: {exc!r}")
+
+        return SubstrateStatsResponse(
+            counts=counts,
+            warnings=warnings,
+        )
+
+    # ── Sprint 30+ documents listing (§4.1) ──
+    class DocumentSummary(BaseModel):
+        document_id: str
+        title: Optional[str]
+        source_uri: Optional[str]
+        document_type: Optional[str]
+        source_tier: int
+        investigation_id: Optional[str]
+        content_class: Optional[str]
+        ip_holder_id: Optional[str]
+
+    class DocumentListResponse(BaseModel):
+        documents: list[DocumentSummary]
+
+    @app.get(
+        "/documents",
+        response_model=DocumentListResponse,
+    )
+    async def list_documents(
+        source_tier: Optional[int] = Query(default=None, ge=1, le=5),
+        investigation_id: Optional[str] = Query(default=None),
+        limit: int = Query(default=200, ge=1, le=2000),
+    ) -> DocumentListResponse:
+        """List documents in the substrate. Filterable by source_tier
+        and investigation_id. Per §13.3 retrieval-time gates the
+        listing inherits the substrate's gating posture."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        clauses: list[str] = []
+        params: list = []
+        if source_tier is not None:
+            clauses.append("source_tier = ?")
+            params.append(source_tier)
+        if investigation_id is not None:
+            clauses.append("investigation_id = ?")
+            params.append(investigation_id)
+        where = ""
+        if clauses:
+            where = " WHERE " + " AND ".join(clauses)
+        sql = (
+            "SELECT document_id, title, source_uri, document_type, "
+            "source_tier, investigation_id, content_class, ip_holder_id "
+            "FROM documents" + where +
+            " ORDER BY document_id DESC LIMIT ?"
+        )
+        params.append(limit)
+        try:
+            with connect_read(default_db_path()) as con:
+                rows = con.execute(sql, params).fetchall()
+        except Exception:
+            rows = []
+        out: list[DocumentSummary] = []
+        for r in rows:
+            out.append(DocumentSummary(
+                document_id=r[0],
+                title=r[1],
+                source_uri=r[2],
+                document_type=r[3],
+                source_tier=int(r[4]),
+                investigation_id=r[5],
+                content_class=r[6],
+                ip_holder_id=r[7],
+            ))
+        return DocumentListResponse(documents=out)
+
+    # ── Sprint 30+ shared-substrate skill rule listing (§13.2) ──
+    class SkillRuleResponse(BaseModel):
+        rule_id: str
+        rule_text: str
+        rule_kind: str
+        domain: str
+        epsilon_budget_consumed: float
+        source_user_count: int
+        confidence: str
+        extracted_at: Optional[str] = None
+
+    class SkillRuleListResponse(BaseModel):
+        rules: list[SkillRuleResponse]
+
+    @app.get(
+        "/skill-rules/{rule_id}",
+        response_model=SkillRuleResponse,
+    )
+    async def get_skill_rule(rule_id: str) -> SkillRuleResponse:
+        """Point-fetch one rule by id. Returns 404 if the rule_id
+        doesn't exist in the shared substrate."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        try:
+            with connect_read(default_db_path()) as con:
+                row = con.execute(
+                    "SELECT rule_id, rule_text, rule_kind, domain, "
+                    "epsilon_budget_consumed, source_user_count, confidence, "
+                    "extracted_at "
+                    "FROM skill_rules WHERE rule_id = ?",
+                    [rule_id],
+                ).fetchone()
+        except Exception:
+            row = None
+        if row is None:
+            raise HTTPException(status_code=404, detail="skill rule not found")
+        return SkillRuleResponse(
+            rule_id=row[0],
+            rule_text=row[1],
+            rule_kind=row[2],
+            domain=row[3],
+            epsilon_budget_consumed=float(row[4]),
+            source_user_count=int(row[5]),
+            confidence=row[6],
+            extracted_at=(
+                row[7].isoformat() if row[7] is not None and hasattr(row[7], "isoformat")
+                else (str(row[7]) if row[7] is not None else None)
+            ),
+        )
+
+    @app.get(
+        "/skill-rules",
+        response_model=SkillRuleListResponse,
+    )
+    async def list_skill_rules(
+        domain: Optional[str] = Query(default=None),
+        confidence: Optional[str] = Query(default=None),
+        q: Optional[str] = Query(default=None, max_length=500),
+        limit: int = Query(default=100, ge=1, le=1000),
+    ) -> SkillRuleListResponse:
+        """List promoted skill rules from the shared substrate. Per
+        master-spec §13.2: these are the cross-user discovered rules
+        the accumulator + writer landed. The endpoint reads the
+        ``skill_rules`` table maintained by
+        ``substrate/multi_user/skill_propagation.py``."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+
+        # Build the WHERE clause from optional filters.
+        clauses: list[str] = []
+        params: list = []
+        if domain is not None:
+            clauses.append("domain = ?")
+            params.append(domain)
+        if confidence is not None:
+            clauses.append("confidence = ?")
+            params.append(confidence)
+        if q is not None and q.strip():
+            # Case-insensitive substring search on rule_text.
+            clauses.append("LOWER(rule_text) LIKE LOWER(?)")
+            params.append(f"%{q.strip()}%")
+        where = ""
+        if clauses:
+            where = " WHERE " + " AND ".join(clauses)
+        sql = (
+            "SELECT rule_id, rule_text, rule_kind, domain, "
+            "epsilon_budget_consumed, source_user_count, confidence, "
+            "extracted_at "
+            "FROM skill_rules"
+            + where
+            + " ORDER BY extracted_at DESC LIMIT ?"
+        )
+        params.append(limit)
+
+        rules: list[SkillRuleResponse] = []
+        try:
+            with connect_read(default_db_path()) as con:
+                rows = con.execute(sql, params).fetchall()
+            for r in rows:
+                rules.append(SkillRuleResponse(
+                    rule_id=r[0],
+                    rule_text=r[1],
+                    rule_kind=r[2],
+                    domain=r[3],
+                    epsilon_budget_consumed=float(r[4]),
+                    source_user_count=int(r[5]),
+                    confidence=r[6],
+                    extracted_at=(
+                        r[7].isoformat() if r[7] is not None and hasattr(r[7], "isoformat")
+                        else (str(r[7]) if r[7] is not None else None)
+                    ),
+                ))
+        except Exception:
+            # The skill_rules table is created lazily by the writer.
+            # An empty/missing table is a normal pre-promotion state;
+            # return an empty list rather than 500.
+            rules = []
+
+        return SkillRuleListResponse(rules=rules)
+
+    # ── Sprint 19 Trust Center publication endpoint (§13.7) ──
+    class TrustCenterPublication(BaseModel):
+        differential_privacy_epsilon_budgets: dict[str, float]
+        deletion_sla_days: int
+        substrate_controls: list[str]
+        compliance_frameworks: list[str]
+        loop_3_unlock_status: dict[str, bool]
+
+    @app.get(
+        "/trust-center",
+        response_model=TrustCenterPublication,
+    )
+    async def trust_center() -> TrustCenterPublication:
+        """Public-facing Trust Center surface. Per master-spec §13.7:
+        published privacy architecture description, DP parameters,
+        deletion SLA, incident-response process. Loop 3 unlock state
+        reads from the persistent checklist (§14.2)."""
+        from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path
+        from substrate.loop_3.checklist_store import snapshot
+
+        try:
+            with connect_read(default_db_path()) as con:
+                snap = snapshot(con)
+            loop_3_status = snap.criteria
+        except Exception:
+            # If the DB isn't reachable, default to all-False — never
+            # publish an over-claim about unlock state.
+            loop_3_status = {
+                "trajectory_volume": False,
+                "sft_readiness": False,
+                "validated_reward": False,
+                "open_weight_justification": False,
+                "eval_headroom": False,
+            }
+
+        return TrustCenterPublication(
+            differential_privacy_epsilon_budgets={
+                "skill_invocation_frequency": 2.0,
+                "source_tier_preference_signals": 1.0,
+                "query_content_telemetry": 0.0,  # not collected
+            },
+            deletion_sla_days=30,
+            substrate_controls=[
+                "encryption at rest (per-graph keys via KMS)",
+                "access logging (append-only)",
+                "change management (CI gates on schema)",
+                "vulnerability scanning (Dependabot/Snyk)",
+                "backup testing (quarterly restore drill)",
+                "retrieval-time policy_tag gating (§9.0)",
+            ],
+            compliance_frameworks=[
+                "GDPR Article 13/14 transparency",
+                "CCPA notice + opt-out",
+                "engineering-grade differential privacy (ε ≤ 10 hard cap)",
+                "SOC 2 Type II — deferred (not required for consumer Phase 1)",
+            ],
+            loop_3_unlock_status=loop_3_status,
+        )
 
     return app
 

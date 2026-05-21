@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 3;
+export const EVENT_SCHEMA_VERSION = 5;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -96,6 +96,12 @@ export const ActionType = {
   USER_EDIT_DISTILLATION: "user.edit_distillation",
   ARTIFACT_GENERATED: "artifact.generated",
   ARTIFACT_INTERACTED: "artifact.interacted",
+  RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
+  QUALITY_GATE_EVALUATED: "quality_gate.evaluated",
+  CROSS_GRAPH_CITATION_RECORDED: "cross_graph.citation.recorded",
+  REV_SHARE_DECIDED: "rev_share.decided",
+  PREFERENCE_OBSERVATION_RECORDED: "preference.observation.recorded",
+  SKILL_RULE_PROMOTED: "skill_rule.promoted",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -1390,6 +1396,125 @@ export interface PageAttributionComputedPayload {
 }
 
 /**
+ * Emitted by the RLM bridge on every document-load when the bridge
+ * weighs in (above-threshold → escalate or defer; below-threshold →
+ * skipped). Per master-spec §11.6 + rlm_integration_spec.md RLM-1.
+ * 
+ * Carries the verdict + the ratification state at decision time so
+ * operators reading the trajectory can reconstruct WHY a long doc
+ * did or did not enter RLM mode at a given moment.
+ */
+export interface RLMBridgeDecidedPayload {
+  action_type: "rlm.bridge.decided";
+  document_id_ref: string;
+  estimated_tokens: number;
+  threshold_tokens: number;
+  above_threshold: boolean;
+  ratified: boolean;
+  escalated: boolean;
+  session_id?: string | null;
+  reason: "below_threshold" | "deferred_pending_ratification" | "escalated_to_rlm";
+}
+
+/**
+ * Quality-gate verdict for §13.9 public-graph promotion of a
+ * notebook block. Carries the per-rubric pass/fail and the headline
+ * accept decision; downstream gates aggregate these into operator-
+ * visible counts on the Trust Center.
+ */
+export interface QualityGateEvaluatedPayload {
+  action_type: "quality_gate.evaluated";
+  target_kind: "notebook" | "synthesis_page" | "creator_note";
+  target_id: string;
+  accepted: boolean;
+  verification_passed: boolean;
+  voice_style_passed: boolean;
+  source_tier_passed: boolean;
+  em_dash_density: number;
+  padding_phrase_count: number;
+  sector_vocab_overlap: number;
+  min_tier_cited: number;
+  pct_tier_1_or_2: number;
+  reasons?: string[];
+}
+
+/**
+ * A citation from one user's investigation to another user's
+ * public note. Per master-spec §13.9 Phase 3 federation. The
+ * attribution pipeline reads these to route 70% of any attached ad
+ * revenue to the referenced user.
+ */
+export interface CrossGraphCitationRecordedPayload {
+  action_type: "cross_graph.citation.recorded";
+  reference_id: string;
+  referencing_user_id: string;
+  referencing_investigation_id: string;
+  referenced_user_id: string;
+  referenced_note_id: string;
+  federated_substrate_id?: string | null;
+}
+
+/**
+ * One revenue-routing decision arising from an ad impression.
+ * Mirrors ``substrate.ad_inventory.payout.RevShareDecision`` and is
+ * emitted once per decision (creator/publisher/platform). The
+ * daily-cap state is carried in ``capped_to_daily_limit`` so the
+ * operator can audit §9.7 enforcement from the event log alone.
+ */
+export interface RevShareDecidedPayload {
+  action_type: "rev_share.decided";
+  decision_id: string;
+  impression_id: string;
+  kind: "creator" | "publisher" | "platform";
+  recipient_ref: string;
+  amount_usd_cents: number;
+  document_id_ref?: string | null;
+  requires_escrow?: boolean;
+  capped_to_daily_limit?: boolean;
+}
+
+/**
+ * Emitted by the DP-aware preference learning stream every time
+ * a binary observation is randomized + recorded against a category's
+ * ε budget. Per master-spec §16.2: per-observation ε spend is
+ * recorded; the underlying TRUE value is never logged (local DP
+ * guarantee).
+ */
+export interface PreferenceObservationRecordedPayload {
+  action_type: "preference.observation.recorded";
+  category: string;
+  noisy_value: boolean;
+  per_obs_epsilon: number;
+  cumulative_epsilon_spent: number;
+  category_budget: number;
+  user_id: string;
+}
+
+/**
+ * Emitted by ``substrate/multi_user/skill_writer.py`` when a
+ * discovered skill rule clears the ``SkillRuleAccumulator`` promotion
+ * gate and lands in the shared substrate's ``skill_rules`` table.
+ * 
+ * Carries the rule's content-addressed identifier, the cumulative DP
+ * ε spent across all contributing users (capped at §16.2's 10.0),
+ * the distinct-user count that triggered promotion, and the
+ * confidence tier the writer assigned. Contributing user IDs ride as
+ * a tuple so the attribution + audit paths can reconstruct
+ * provenance.
+ */
+export interface SkillRulePromotedPayload {
+  action_type: "skill_rule.promoted";
+  rule_id: string;
+  rule_text: string;
+  rule_kind: string;
+  domain: string;
+  distinct_user_count: number;
+  total_epsilon_consumed: number;
+  confidence: "low" | "moderate" | "high";
+  contributing_user_ids?: string[];
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1458,7 +1583,13 @@ export type TypedPayload =
   | InvestigationSpawnedFromPayload
   | InvestigationChaseHaltedPayload
   | ClaimAssertedByOperatorPayload
-  | PageAttributionComputedPayload;
+  | PageAttributionComputedPayload
+  | RLMBridgeDecidedPayload
+  | QualityGateEvaluatedPayload
+  | CrossGraphCitationRecordedPayload
+  | RevShareDecidedPayload
+  | PreferenceObservationRecordedPayload
+  | SkillRulePromotedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1500,6 +1631,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "constraint.violation_found",
   "context_pack.assembled",
   "cross_doc.question_answered",
+  "cross_graph.citation.recorded",
   "decompose.delivered",
   "decompose.requested",
   "decomposer.paraphrase.flagged",
@@ -1536,12 +1668,17 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "phase.enter",
   "phase.exit",
   "phase.verify",
+  "preference.observation.recorded",
+  "quality_gate.evaluated",
   "question.escalated_to_research",
   "question.identified",
   "question.resolved_by_doc",
+  "rev_share.decided",
+  "rlm.bridge.decided",
   "rubric.scored",
   "skill.auto_patch_applied",
   "skill.auto_patch_skipped",
+  "skill_rule.promoted",
   "synthesis.archived",
   "synthesis.master_md_skipped",
   "synthesis.master_md_written",

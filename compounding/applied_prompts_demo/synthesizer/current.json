@@ -1,0 +1,13 @@
+{
+  "applied_at": "2026-05-20T06:46:57.319737Z",
+  "baseline_backtest_score": 0.6,
+  "candidate_backtest_score": 0.7729999999999999,
+  "cohort_size": 50,
+  "delta": 0.17299999999999993,
+  "epsilon_required": 0.02,
+  "notes": "delta=0.1730 exceeds epsilon=0.02",
+  "rationale": "GEPA proposal 2",
+  "role": "synthesizer",
+  "variant_id": "gepa-synthesizer-00020002feed",
+  "variant_path": "/Users/slimydog/Desktop/Antiek/compounding/applied_prompts_demo/synthesizer/gepa-synthesizer-00020002feed.md"
+}

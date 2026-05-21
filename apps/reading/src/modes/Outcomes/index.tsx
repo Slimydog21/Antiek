@@ -1,0 +1,273 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+
+import { apiFetch } from "../../lib/api";
+import HeaderBar from "../shared/HeaderBar";
+
+/**
+ * Outcomes surface (master-spec §13.8 + Phase 8 input).
+ *
+ * Operator-graded outcomes for synthesis pages. Per master-spec:
+ *
+ *   "Outcomes are first-class signals; without them, accept/reject
+ *    verdicts on candidate skill patches degrade into vibes."
+ *
+ * Flow:
+ *   1. Operator opens a synthesis page (via /inv/:id or Mode A).
+ *   2. Decides whether thesis was validated, falsified, or remains
+ *      indeterminate. Records each outcome with a one-line note.
+ *   3. The compounding gate (Phase 8) reads these via
+ *      ``middleware.backtest.db.load_outcomes_for_synthesis`` and
+ *      decides accept/reject for candidate skill patches.
+ *
+ * The UI is intentionally narrow — three columns (validated /
+ * falsified / indeterminate), one button per outcome — so the
+ * operator can grade quickly. No dropdowns, no modal.
+ */
+
+interface OutcomeRow {
+  outcome_id: string;
+  observer: string;
+  observed_at: string;
+  thesis_outcomes: { kind: string; note: string }[];
+  falsification_outcomes: { kind: string; note: string }[];
+  execution_risk_outcomes: { kind: string; note: string }[];
+  notes: string | null;
+}
+
+type OutcomeKind = "validated" | "falsified" | "indeterminate";
+
+export default function Outcomes() {
+  const { synthesisId } = useParams<{ synthesisId: string }>();
+  const [outcomes, setOutcomes] = useState<OutcomeRow[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [draftNote, setDraftNote] = useState<string>("");
+  const [submitting, setSubmitting] = useState<boolean>(false);
+
+  const reload = useCallback(async () => {
+    if (!synthesisId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await apiFetch(`/outcomes/${encodeURIComponent(synthesisId)}`);
+      if (!resp.ok) {
+        throw new Error(`GET /outcomes failed: HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      setOutcomes(data.outcomes ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [synthesisId]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const submit = async (kind: OutcomeKind) => {
+    if (!synthesisId || submitting) return;
+    setSubmitting(true);
+    try {
+      const note = draftNote.trim() || `Graded ${kind}.`;
+      const body = {
+        synthesis_id: synthesisId,
+        observer: "__operator__",
+        thesis_outcomes:
+          kind === "validated" ? [{ kind: "validated", note }] : [],
+        falsification_outcomes:
+          kind === "falsified" ? [{ kind: "falsified", note }] : [],
+        execution_risk_outcomes:
+          kind === "indeterminate" ? [{ kind: "indeterminate", note }] : [],
+        notes: draftNote || null,
+      };
+      const resp = await apiFetch("/outcomes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        throw new Error(`POST /outcomes failed: HTTP ${resp.status}`);
+      }
+      setDraftNote("");
+      await reload();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const counts = useMemo(() => {
+    return {
+      validated: outcomes.reduce(
+        (n, o) => n + o.thesis_outcomes.length,
+        0,
+      ),
+      falsified: outcomes.reduce(
+        (n, o) => n + o.falsification_outcomes.length,
+        0,
+      ),
+      indeterminate: outcomes.reduce(
+        (n, o) => n + o.execution_risk_outcomes.length,
+        0,
+      ),
+    };
+  }, [outcomes]);
+
+  return (
+    <div className="flex flex-col h-screen">
+      <HeaderBar />
+      <main className="flex-1 overflow-y-auto bg-white">
+        <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
+          <header className="space-y-2">
+            <h1 className="text-2xl font-serif text-stone-900">
+              Outcomes
+            </h1>
+            <p className="text-sm text-stone-600 leading-relaxed">
+              Grade the synthesis page below. Outcomes feed the
+              Phase 8 skill-growth gate (compounding/skill_growth/gate.py).
+              Per master-spec §13.8: 'without operator-graded outcomes,
+              accept/reject verdicts on candidate skill patches degrade
+              into vibes.'
+            </p>
+            <p className="text-xs font-mono text-stone-500 flex items-center gap-2 flex-wrap">
+              <span>synthesis_id = {synthesisId ?? "—"}</span>
+              {synthesisId && (
+                <Link
+                  to={`/backtest/${encodeURIComponent(synthesisId)}`}
+                  className="text-stone-700 hover:underline"
+                >
+                  open backtest report →
+                </Link>
+              )}
+            </p>
+          </header>
+
+          {error && (
+            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+              {error}
+            </p>
+          )}
+
+          <section className="border border-stone-200 rounded-md p-5 space-y-4">
+            <h2 className="text-base font-serif text-stone-900">Grade now</h2>
+            <textarea
+              value={draftNote}
+              onChange={(e) => setDraftNote(e.target.value)}
+              placeholder="One-line rationale (optional but useful for future review)"
+              className="w-full text-sm font-serif text-stone-900 border border-stone-200 rounded p-2 resize-y"
+              rows={2}
+              disabled={submitting}
+            />
+            <div className="grid grid-cols-3 gap-2">
+              <GradeButton
+                label="Validated"
+                onClick={() => submit("validated")}
+                disabled={submitting}
+                accent="bg-emerald-700 hover:bg-emerald-600"
+              />
+              <GradeButton
+                label="Falsified"
+                onClick={() => submit("falsified")}
+                disabled={submitting}
+                accent="bg-rose-700 hover:bg-rose-600"
+              />
+              <GradeButton
+                label="Indeterminate"
+                onClick={() => submit("indeterminate")}
+                disabled={submitting}
+                accent="bg-stone-700 hover:bg-stone-600"
+              />
+            </div>
+          </section>
+
+          <section className="grid grid-cols-3 gap-4">
+            <CountCard label="Validated" count={counts.validated} accent="text-emerald-700" />
+            <CountCard label="Falsified" count={counts.falsified} accent="text-rose-700" />
+            <CountCard label="Indeterminate" count={counts.indeterminate} accent="text-stone-700" />
+          </section>
+
+          <section className="border border-stone-200 rounded-md p-5 space-y-3">
+            <h2 className="text-base font-serif text-stone-900">History</h2>
+            {loading ? (
+              <p className="text-sm text-stone-500 italic">Loading…</p>
+            ) : outcomes.length === 0 ? (
+              <p className="text-sm text-stone-500 italic">
+                No outcomes recorded yet for this synthesis.
+              </p>
+            ) : (
+              <ul className="divide-y divide-stone-200">
+                {outcomes.map((o) => (
+                  <li key={o.outcome_id} className="py-2 space-y-1">
+                    <p className="text-xs font-mono text-stone-500">
+                      {o.observed_at} · {o.observer}
+                    </p>
+                    {o.thesis_outcomes.map((t, i) => (
+                      <p key={`t-${i}`} className="text-sm text-emerald-700">
+                        validated — {t.note}
+                      </p>
+                    ))}
+                    {o.falsification_outcomes.map((f, i) => (
+                      <p key={`f-${i}`} className="text-sm text-rose-700">
+                        falsified — {f.note}
+                      </p>
+                    ))}
+                    {o.execution_risk_outcomes.map((e, i) => (
+                      <p key={`e-${i}`} className="text-sm text-stone-700">
+                        indeterminate — {e.note}
+                      </p>
+                    ))}
+                    {o.notes && (
+                      <p className="text-xs text-stone-500 italic">
+                        Note: {o.notes}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function GradeButton({
+  label,
+  onClick,
+  disabled,
+  accent,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+  accent: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`px-3 py-2 rounded-md text-white text-sm font-medium transition-colors disabled:opacity-50 ${accent}`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CountCard({
+  label,
+  count,
+  accent,
+}: { label: string; count: number; accent: string }) {
+  return (
+    <div className="border border-stone-200 rounded-md px-4 py-3 text-center">
+      <p className={`text-2xl font-serif ${accent}`}>{count}</p>
+      <p className="text-xs font-mono text-stone-500 uppercase">{label}</p>
+    </div>
+  );
+}

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Antiek UI redesign — PostHog-style layered workspace · Master plan</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN-POSTHOG</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1>Antiek UI redesign<br/><span style="font-size:24px; font-weight:500; color:var(--ink-soft);">PostHog-style layered workspace · master plan</span></h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Spec version</div><div class="value">v1.0 — DRAFT</div></div>
+  <div class="cell"><div class="label">Authored</div><div class="value">2026-05-21</div></div>
+  <div class="cell"><div class="label">Sprints</div><div class="value">13 (S0–S12)</div></div>
+  <div class="cell"><div class="label">Single-dev est.</div><div class="value">~63 days</div></div>
+  <div class="cell"><div class="label">Touches</div><div class="value">apps/reading</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">None (frontend only)</div></div>
+</div>
+
+<div class="callout decision">
+  <strong>Decision · this spec supersedes integration_posthog.md §5.3</strong>
+  The earlier verdict held that Antiek's serif / researcher's-notebook aesthetic was
+  <em>load-bearing for the product proposition</em> and that adopting a PostHog-style
+  visual layer would hurt the product. The operator has explicitly reversed that
+  finding (2026-05-21): the current UI is judged "lame" and the layered-window
+  pattern from PostHog is the new target. This spec encodes that reversal, lists
+  exactly what changes, and what assumptions from the prior spec still hold.
+</div>
+
+<h2>1 · What we're building</h2>
+
+<p>
+  A wholesale visual + interaction rebuild of <code>apps/reading/</code> in the
+  style of PostHog's <code>frontend/src/layout/panel-layout/</code> system:
+  a workspace shell where the operator opens, stacks, drags, resizes,
+  pins, and pops out independent <em>panels</em> — each panel being one of
+  the existing Antiek modes or one of its sub-surfaces (investigation
+  list, trajectory viewer, notebook, AI sidecar, chase flow, claim
+  inspector, etc.).
+</p>
+
+<p>
+  Panels live in a 2.5D layout: docked left or right, free-floating with
+  z-index depth + offset shadow, or popped out into an OS-level window.
+  Visual language: <strong>chunky offset shadows, retro yellow + red
+  accents on cream paper, JetBrains Mono for system text, Inter for
+  reading.</strong> The aesthetic of this document is the aesthetic of
+  the target build.
+</p>
+
+<div class="diagram">
+┌───────────────────────────────────────────────────────────────────────┐
+│ <span class="y">▆ ANTIEK</span>  research · wrestle · create · brainstorm · …       <span class="m">⌘K</span>  <span class="m">👤</span> │
+├───────┬───────────────────────────────────────────────────────┬───────┤
+│       │                                                       │       │
+│ <span class="y">RAIL</span>  │           <span class="b">┌─── PANEL: InvestigationSidebar ───┐</span>     │ <span class="y">DOCK</span>  │
+│ ┌───┐ │           <span class="b">│ ▸ NVDA Q4 risk model               │</span>     │       │
+│ │ ⌂ │ │           <span class="b">│ ▾ Web gaming 2026                  │</span>     │ ┌───┐ │
+│ │ ⏍ │ │           <span class="b">│   • Rosebud diligence              │</span>     │ │MAX│ │
+│ │ ❒ │ │           <span class="b">│   • Behavioral moderation          │</span>     │ └───┘ │
+│ │ 🜘 │ │           <span class="b">└────────────────────────────────────┘</span>     │ ┌───┐ │
+│ └───┘ │     <span class="r">┌─── PANEL: ChaseSlideOver (floating, z=3) ───┐</span> │ │ Σ │ │
+│       │     <span class="r">│  spawn-context: "kalshi liquidity gate"     │</span> │ └───┘ │
+│       │     <span class="r">│  ── chase prompt ──                         │</span> │       │
+│       │     <span class="r">└─────────────────────────────────────────────┘</span> │       │
+│       │                                                       │       │
+│       ├──────────────────────────────────────────────────── <span class="g">⌃</span> ─┤       │
+│       │  <span class="g">CHAT</span>  ask anything · cmd+enter to chase                │       │
+└───────┴───────────────────────────────────────────────────────┴───────┘
+</div>
+
+<h2>2 · Why this redesign, in one paragraph</h2>
+
+<p>
+  The current Antiek shell is a 280px-sidebar + main-pane + bottom-input
+  layout (<code>apps/reading/src/modes/ResearchWorkstation/index.tsx</code>).
+  It is functional but flat: there is exactly one place to look, one place
+  to type, and modes are <em>routes</em>, not <em>surfaces you can have
+  open at the same time</em>. A real research workstation needs side-by-side:
+  the trajectory, the source PDF, the notebook, and the chat — concurrent,
+  not modal. The PostHog panel system is the closest open-source precedent
+  for this in production, and is MIT-licensed.
+</p>
+
+<h2>3 · What stays from the prior spec</h2>
+
+<table>
+  <thead>
+    <tr><th style="width:35%">Prior decision</th><th style="width:15%">Source</th><th>Status under this spec</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Storybook scaffold — pure-upside hygiene</td>
+      <td><code>integration_posthog.md §5.1a</code></td>
+      <td><strong>HOLDS.</strong> Already partially landed (8 stories present). Sprint 2 finishes the job.</td>
+    </tr>
+    <tr>
+      <td>Notebook surface = TipTap, single-author, substrate-ref-not-denormalized</td>
+      <td><code>integration_posthog.md §6</code></td>
+      <td><strong>HOLDS.</strong> Re-sequenced into S7 of this plan but technical choices unchanged.</td>
+    </tr>
+    <tr>
+      <td>Universal command palette — phase 2</td>
+      <td><code>integration_posthog.md §7</code></td>
+      <td><strong>HOLDS,</strong> now S8 (the panel system is a prerequisite for the "open as window" command actions).</td>
+    </tr>
+    <tr>
+      <td>Max-style ubiquitous AI assistant</td>
+      <td><code>integration_posthog.md §8</code></td>
+      <td><strong>HOLDS,</strong> now S8. AISidecar becomes a dockable panel rather than a floating overlay.</td>
+    </tr>
+    <tr>
+      <td>Reject ClickHouse + Kafka substrate</td>
+      <td><code>integration_posthog.md §2.4</code></td>
+      <td><strong>HOLDS.</strong> Substrate untouched. This spec is frontend-only.</td>
+    </tr>
+    <tr>
+      <td>Reject PostHog voice/tone/hedgehog mascot</td>
+      <td><code>integration_posthog.md §2.5</code></td>
+      <td><strong>HOLDS.</strong> Visual primitives only — no Max/Hedgehog characters, no PostHog copy.</td>
+    </tr>
+    <tr>
+      <td>Reject PostHog plugin marketplace shape</td>
+      <td><code>integration_posthog.md §2.3</code></td>
+      <td><strong>HOLDS.</strong> Antiek remains single-operator + acquisition adapters.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4 · What this spec reverses</h2>
+
+<table>
+  <thead>
+    <tr><th style="width:35%">Prior verdict (§5.3)</th><th>This spec</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>"Antiek's serif / researcher's-notebook aesthetic is load-bearing for the product proposition."</td>
+      <td><strong>REVERSED.</strong> The reading body of synthesis output stays serif (Inter / Charter for prose); the <em>shell</em> goes PostHog-flavored (Inter UI, JetBrains Mono for system, chunky shadows, yellow accent). The notebook feel survives inside the panel that renders prose, not at the chrome level.</td>
+    </tr>
+    <tr>
+      <td>"If Lemon UI fails the visual-fit criterion, the evaluation is the defensible answer — adopting it anyway would hurt the product."</td>
+      <td><strong>BYPASSED.</strong> We don't adopt the <code>@posthog/lemon-ui</code> npm package; we build a parallel set of components in <code>src/components/lemon/</code> that match the visual language but live in our Tailwind + strict-TS world. See <a href="sprint_00_foundations.html">S0 §3</a>.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5 · Sprint list</h2>
+
+<div class="sprint-grid">
+
+  <a class="sprint-tile" href="sprint_00_foundations.html">
+    <div class="num">SPRINT 0</div>
+    <div class="title">Foundations &amp; supersession</div>
+    <p class="blurb">Lock palette + type + shadow tokens. Ratify supersession of §5.3. Settle Lemon-UI-vs-custom. Scaffold <code>src/design/</code>.</p>
+    <span class="duration">~3 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_01_design_system.html">
+    <div class="num">SPRINT 1</div>
+    <div class="title">Design-system primitives</div>
+    <p class="blurb">Button / Card / Modal / Input / Tag / Select / Dropdown — custom in <code>src/components/lemon/</code>, no external dependency.</p>
+    <span class="duration">~5 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_02_storybook.html">
+    <div class="num">SPRINT 2</div>
+    <div class="title">Storybook coverage + visual-regression</div>
+    <p class="blurb">Extend the existing Storybook with every primitive and every legacy component. Lost-Pixel for screenshot diffs.</p>
+    <span class="duration">~2 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_03_panel_layout.html">
+    <div class="num">SPRINT 3</div>
+    <div class="title">Panel-layout shell — the 3D layered window manager</div>
+    <p class="blurb">The heart of the redesign. <code>WorkspaceStore</code> (Zustand), <code>PanelLayout</code>, four panel modes, framer-motion lift, drag/resize.</p>
+    <span class="duration">~7 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_04_navigation.html">
+    <div class="num">SPRINT 4</div>
+    <div class="title">Navigation re-shell</div>
+    <p class="blurb">Replace <code>HeaderBar</code> with a left rail + breadcrumbs + tabs. <code>ProjectTree</code> + <code>PinnedFolder</code>.</p>
+    <span class="duration">~4 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_05_research_workstation.html">
+    <div class="num">SPRINT 5</div>
+    <div class="title">ResearchWorkstation on panel layout</div>
+    <p class="blurb">Highest-traffic route first. <code>InvestigationSidebar</code> → docked-left, <code>ChatInputArea</code> → docked-bottom, <code>ChaseSlideOver</code> → floating panel.</p>
+    <span class="duration">~5 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_06_wrestle.html">
+    <div class="num">SPRINT 6</div>
+    <div class="title">WrestleApp (PDF) on panel layout</div>
+    <p class="blurb">Heavy-embed stress test. pdf.js inside floating panels. <code>NotesPanel</code>, <code>CrossDocSidebar</code>, <code>ClaimCard</code> inspector all become panels.</p>
+    <span class="duration">~5 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_07_notebook.html">
+    <div class="num">SPRINT 7</div>
+    <div class="title">Notebook surface as windowed panel</div>
+    <p class="blurb">Hooks into <code>integration_posthog.md</code> Wedge 2. TipTap block editor + popout window mode.</p>
+    <span class="duration">~7 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_08_command_palette_ai.html">
+    <div class="num">SPRINT 8</div>
+    <div class="title">Command palette + AI sidecar</div>
+    <p class="blurb">Cmd+K + Max-style ubiquitous chat panel + keyboard shortcuts for the panel system.</p>
+    <span class="duration">~4 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_09_window_state.html">
+    <div class="num">SPRINT 9</div>
+    <div class="title">Workspace state persistence + deep-linking</div>
+    <p class="blurb">localStorage + URL params for panel layout. Multi-monitor popout via <code>window.open</code>. Restore on reload.</p>
+    <span class="duration">~4 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_10_migration.html">
+    <div class="num">SPRINT 10</div>
+    <div class="title">Migrate remaining routes</div>
+    <p class="blurb">25+ legacy routes converted onto <code>PanelLayout</code>. Per-route tracking.</p>
+    <span class="duration">~10 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_11_a11y_responsive.html">
+    <div class="num">SPRINT 11</div>
+    <div class="title">Accessibility + responsive + reduced-motion</div>
+    <p class="blurb">WCAG AA, keyboard focus inside panels, <code>prefers-reduced-motion</code> respect, tablet/mobile fallback layout.</p>
+    <span class="duration">~4 d</span>
+  </a>
+
+  <a class="sprint-tile" href="sprint_12_visual_regression_release.html">
+    <div class="num">SPRINT 12</div>
+    <div class="title">Visual regression + release</div>
+    <p class="blurb">Lost-Pixel integration, bundle-size budget, flag-gated cutover, retirement of old shell.</p>
+    <span class="duration">~3 d</span>
+  </a>
+
+</div>
+
+<h2>6 · Dependency graph</h2>
+
+<div class="diagram">
+                    <span class="y">S0</span>  foundations
+                     │
+            ┌────────┼────────┐
+            ▼        ▼        ▼
+           <span class="b">S1</span>       <span class="b">S2</span>       <span class="b">S3</span>     ← can run in parallel
+        primitives  stories  panel shell
+            │         │        │
+            └────┬────┘        │
+                 ▼             ▼
+                <span class="b">S4</span> nav ◀──────────┘
+                 │
+        ┌────────┼────────┐
+        ▼        ▼        ▼
+       <span class="b">S5</span>       <span class="b">S6</span>       <span class="b">S7</span>     ← parallel pilot mode ports
+    research   wrestle  notebook
+        └────┬────┴────────┘
+             ▼
+            <span class="b">S8</span> palette + AI
+             │
+             ▼
+            <span class="b">S9</span> persistence + popout
+             │
+             ▼
+            <span class="b">S10</span> bulk migration
+             │
+             ▼
+            <span class="b">S11</span> a11y + responsive
+             │
+             ▼
+            <span class="r">S12</span> visual regression + release
+</div>
+
+<p>
+  Hard prerequisite chain: <strong>S0 → {S1, S2, S3} → S4 → {S5, S6, S7} → S8 → S9 → S10 → S11 → S12</strong>.
+  Parallelizable: S1+S2+S3, then S5+S6+S7. Single-developer estimate at the
+  top of this page assumes <em>serial</em> execution; two developers can land
+  this in ~38 working days by exploiting the parallel windows.
+</p>
+
+<h2>7 · Out of scope (explicit)</h2>
+
+<ul>
+  <li>Substrate (Python, DuckDB, orchestration). This is frontend-only.</li>
+  <li>Mobile-native apps. We ship a responsive web fallback in S11, not a separate mobile app.</li>
+  <li>Multi-tenant / multi-user. Antiek is single-operator pre-launch (per master spec).</li>
+  <li>Auth / login flows. The shell is layout, not identity.</li>
+  <li>Theming &gt; light. Dark mode is queued as a S12 stretch; not in the v1.0 cut.</li>
+  <li>Replacing pdf.js or react-markdown. Engines stay; only chrome changes.</li>
+  <li>Replacing <code>react-router-dom</code> with PostHog's Kea-routed scenes. Router stays; the shell renders inside it.</li>
+</ul>
+
+<h2>8 · Operator-visible exit criteria for the whole programme</h2>
+
+<ul class="ac-list">
+  <li>Cmd+B toggles the left rail in every route.</li>
+  <li>A panel can be docked left, docked right, made floating, or popped into a new OS-level window.</li>
+  <li>The trajectory of an active investigation, the source PDF being wrestled, and the notebook being authored can all be visible at once on a 24"+ display.</li>
+  <li>Closing and reopening the browser restores the last panel layout per-investigation.</li>
+  <li>No regression in Lighthouse a11y or in the 1540-test substrate suite (frontend-only change ⇒ substrate suite untouched, but frontend unit + Storybook tests pass).</li>
+  <li>Production bundle (main + lemon + panel system, excluding pdf.worker) ≤ 700 KB gzipped.</li>
+  <li>The operator can answer: <em>"is this UI cool now?"</em> — yes.</li>
+</ul>
+
+<h2>9 · Risk register (programme-level)</h2>
+
+<ul class="risk-list">
+  <li><strong>Aesthetic miss.</strong> The PostHog look depends on shadow + spacing + palette balance. Rendering it "almost right" looks worse than the current flat UI. Mitigation: S0 ships a moodboard + S1 ships the primitives in Storybook first, gated on operator sign-off before any mode ports.</li>
+  <li><strong>pdf.js performance inside a floating panel.</strong> PDF rendering on a continually z-shifting + animated container can drop frames. Mitigation: S6 has an explicit perf budget (≥45 fps scroll inside a 1200×900 floating PDF panel on M1).</li>
+  <li><strong>Substrate-spec drift.</strong> While we work on this, substrate sprints continue. A new route landed on the old shell during S5–S10 means an extra migration step. Mitigation: S0 lands a thin <code>PanelHost</code> wrapper that the substrate-track devs can opt into for any new route, so new routes ship on the new shell from day one.</li>
+  <li><strong>Storybook + Vite + strict TS pile-up.</strong> Already in <code>devDependencies</code> at <code>storybook ^8.4.7</code>; not all primitives + lemon components will compile clean on first try. Mitigation: S1 + S2 explicitly include TS-strict pass.</li>
+  <li><strong>Bundle bloat.</strong> Framer Motion + Zustand + react-resizable-panels add weight. Mitigation: S12 enforces a hard 700 KB gzipped budget on the main chunk; S0 picks lighter alternatives where the budget pressures.</li>
+  <li><strong>Multi-monitor popout fragility.</strong> <code>window.open</code> popups need React portal + shared store hookup; some browsers throttle. Mitigation: S9 ships popout behind a feature flag with a graceful fallback to floating-in-tab.</li>
+  <li><strong>Cutover regression.</strong> Switching the operator's daily-driver UI overnight is dangerous. Mitigation: S12 ships behind <code>ANTIEK_UI=v2</code> env flag; old shell stays runnable for one sprint after cutover.</li>
+</ul>
+
+<h2>10 · Operator decisions still required</h2>
+
+<div class="callout warn">
+  <strong>BLOCKERS · ratify before S1 starts</strong>
+  <ol>
+    <li><strong>Palette ratification</strong> — accept the yellow/red/teal palette demonstrated by this document, OR specify substitutions. Default if no decision: ship as shown.</li>
+    <li><strong>Lemon UI: custom-build, install package, or fork-and-paste?</strong> S0 recommends custom-build; needs operator sign-off so S1 can start.</li>
+    <li><strong>Cutover style</strong> — flag-gated overlap (recommended), or hard cutover at S12 end. Default: flag-gated.</li>
+  </ol>
+</div>
+
+<p>
+  Everything else has a recommended default in the per-sprint page; the
+  operator can ratify those defaults sprint-by-sprint or simply approve
+  the whole spec and let the build proceed.
+</p>
+
+<h2>11 · How to read this spec</h2>
+
+<p>
+  Each sprint page follows the same template:
+</p>
+
+<ol>
+  <li><strong>Meta-strip</strong> — duration, dependencies, blocks, deliverables count.</li>
+  <li><strong>Goal</strong> — one sentence.</li>
+  <li><strong>Why this sprint exists</strong> — what it unlocks.</li>
+  <li><strong>Non-goals</strong> — explicit rejections.</li>
+  <li><strong>Architecture</strong> — diagram + prose.</li>
+  <li><strong>Work packages</strong> — each WP names files, code skeletons, tests, estimated effort.</li>
+  <li><strong>Acceptance criteria</strong> — concrete + measurable, gates the next sprint.</li>
+  <li><strong>Risks + mitigations</strong>.</li>
+  <li><strong>Open questions</strong>.</li>
+  <li><strong>Verification protocol</strong> — how to demo it; what the operator should see.</li>
+  <li><strong>Rollback plan</strong>.</li>
+</ol>
+
+<p>
+  Start at <a href="sprint_00_foundations.html">Sprint 0 →</a>
+</p>
+
+<div class="sprint-nav">
+  <a href="../integration_posthog.md"><span class="label">↩ Predecessor spec</span>integration_posthog.md</a>
+  <a class="next" href="sprint_00_foundations.html"><span class="label">Next →</span>S0 · Foundations &amp; supersession</a>
+</div>
+
+</div>
+</body>
+</html>

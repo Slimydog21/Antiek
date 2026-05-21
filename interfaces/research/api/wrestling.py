@@ -411,6 +411,7 @@ def make_distillation_handler(
 def make_document_loaded_handler(
     *,
     db_path: Optional[str] = None,
+    broadcaster: Optional["EventBroadcaster"] = None,
 ):
     """Build the handler that mirrors ``document.loaded`` events into a
     row in the documents table. Sprint 3 Day 2-3: the wrestling bridge
@@ -463,6 +464,73 @@ def make_document_loaded_handler(
             )
         finally:
             con.close()
+
+        # RLM bridge: above-threshold long docs need the recursive
+        # wrestling pattern (§11.6 + RLM-1). The decision is
+        # ratification-gated; below-threshold OR pre-ratification
+        # documents stay on the existing single-call path.
+        try:
+            from orchestration.rlm.bridge import (
+                estimate_tokens_from_bytes,
+                maybe_escalate_to_rlm,
+            )
+
+            decision = maybe_escalate_to_rlm(
+                document_id=event.document_id,
+                investigation_id=event.investigation_id or "__no_investigation__",
+                estimated_tokens=estimate_tokens_from_bytes(p.size_bytes or 0),
+                root_role="wrestler",
+            )
+            if decision.above_threshold:
+                # Surface the decision for the wrestling driver +
+                # observability — escalated or deferred, both informative.
+                print(
+                    f"wrestling.document_loaded[rlm-bridge]: "
+                    f"document_id={event.document_id} "
+                    f"estimated_tokens={decision.estimated_tokens} "
+                    f"escalated={decision.escalated} "
+                    f"session_id={decision.session_id or '-'} "
+                    f"reason={decision.reason}",
+                    flush=True,
+                )
+                # Emit the typed rlm.bridge.decided event so the
+                # trajectory carries the verdict. Only emitted for
+                # above-threshold documents to keep the event log
+                # focused on real bridge weigh-ins; below-threshold
+                # docs skip emission to avoid noise.
+                if broadcaster is not None:
+                    try:
+                        import uuid as _uuid
+                        from datetime import datetime as _dt, timezone as _tz
+                        from substrate.schemas.events import (
+                            ActionType as _AT,
+                            Event as _TypedEvent,
+                        )
+
+                        bridge_payload = decision.to_typed_payload()
+                        bridge_event = _TypedEvent(
+                            event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                            investigation_id=(
+                                event.investigation_id or "__no_investigation__"
+                            ),
+                            action_type=_AT.RLM_BRIDGE_DECIDED,
+                            payload=bridge_payload,
+                            param_version="wrestling-v0",
+                            emitted_at=_dt.now(_tz.utc),
+                            document_id=event.document_id,
+                        )
+                        await broadcaster.broadcast(bridge_event)
+                    except Exception as exc:  # pragma: no cover — emit must never block ingestion
+                        print(
+                            f"wrestling.document_loaded[rlm-bridge]: "
+                            f"emit failed — {exc!r}",
+                            flush=True,
+                        )
+        except Exception as exc:  # pragma: no cover — bridge must never break ingestion
+            print(
+                f"wrestling.document_loaded[rlm-bridge]: skipped — {exc!r}",
+                flush=True,
+            )
 
     return handle_document_loaded
 
@@ -606,7 +674,9 @@ def register_handlers(
     )
     broadcaster.register_handler(
         ActionType.DOCUMENT_LOADED.value,
-        make_document_loaded_handler(db_path=db_path),
+        make_document_loaded_handler(
+            db_path=db_path, broadcaster=broadcaster,
+        ),
     )
     broadcaster.register_handler(
         ActionType.DOCUMENT_REGION_SELECTED.value,

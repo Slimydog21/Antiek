@@ -344,7 +344,186 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "outcomes", "chunk_tier_overrides",
     "deliverables", "deliverable_sections", "section_blocks",
     "interview_projects", "interviews",
+    "ip_holders", "notebooks", "notebook_blocks",
 )
+
+
+# Sprint 18 additions — Pre-onboarded IP holder escrow + retrieval-time
+# gating + notebook surface. Per master-spec §9.0 + §9.10 + §4.2
+# (notebook surface — Wedge 2 linchpin).
+ANTIEK_GRAPH_SCHEMA_V2_SPRINT18_SQL = """
+-- ============================================================
+-- ip_holders — Pre-onboarded IP holder escrow (Sprint 18, §9.10)
+-- ============================================================
+-- Architecture ships Sprint 18 alongside publisher dashboard. Escrow
+-- accrues from Sprint 19 first-cohort outreach (MIT Press, Cambridge,
+-- Princeton) but no money routes until first publisher opt-in. The
+-- substrate creates the row + accrues escrow; payouts gate strictly
+-- on claim_status='claimed' per master-spec §9.10.
+CREATE TABLE IF NOT EXISTS ip_holders (
+    ip_holder_id              TEXT PRIMARY KEY,
+    display_name              TEXT NOT NULL,
+    legal_contact_email       TEXT,
+    status                    TEXT NOT NULL DEFAULT 'pre_onboarded'
+        CHECK (status IN (
+            'pre_onboarded',  -- account created; no notification sent
+            'invited',        -- notification email sent to legal
+            'claimed',        -- publisher opted in; payouts unlock
+            'opted_out'       -- publisher opted out; content removal scheduled
+        )),
+    escrow_balance_usd        DECIMAL(18, 6) NOT NULL DEFAULT 0,
+    escrow_account_ref        TEXT,  -- Stripe Connect account ID once claimed
+    notification_sent_at      TIMESTAMP,
+    claimed_at                TIMESTAMP,
+    opted_out_at              TIMESTAMP,
+    created_at                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata                  TEXT  -- JSON
+);
+
+CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
+
+-- ============================================================
+-- documents — content_class + ip_holder_id retrieval-time gate
+-- ============================================================
+-- Per master-spec §9.0 retrieval-time gating: every retrieval call
+-- carries a policy_tag; restricted content returns only when
+-- policy_tag in {'private_research', 'operator_only'}.
+--
+-- content_class values:
+--   'public_domain'                 → unrestricted retrieval
+--   'opt_in_licensed'               → unrestricted retrieval (publisher claimed)
+--   'restricted_pending_opt_in'     → restricted: only retrievable on
+--                                     policy_tag in {private_research, operator_only}
+--   'user_owned'                    → only the owner_user_id user can retrieve
+--   'user_public_contribution'      → user-posted to public graph (§13.9)
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_class TEXT;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS ip_holder_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_documents_content_class ON documents(content_class);
+CREATE INDEX IF NOT EXISTS idx_documents_ip_holder ON documents(ip_holder_id);
+
+-- ============================================================
+-- notebooks — Wedge 2 linchpin (Sprint 18-19, §4.2)
+-- ============================================================
+-- TipTap-based literate-analysis documents. Substrate references are
+-- live-pulled (substrate-is-source-of-truth invariant §13 §16.1
+-- REJECTs); the notebook stores reference IDs, the renderer resolves
+-- current state at render time.
+CREATE TABLE IF NOT EXISTS notebooks (
+    notebook_id          TEXT PRIMARY KEY,
+    title                TEXT NOT NULL,
+    investigation_id     TEXT,  -- optional binding to an investigation
+    document_id          TEXT,  -- optional binding to a document (Loop 2 wrestle notebook)
+    owner_user_id        TEXT NOT NULL DEFAULT '__operator__',
+    content_class        TEXT NOT NULL DEFAULT 'user_owned'
+        CHECK (content_class IN (
+            'user_owned', 'user_public_contribution'
+        )),
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata             TEXT  -- JSON
+);
+
+CREATE INDEX IF NOT EXISTS idx_notebooks_investigation ON notebooks(investigation_id);
+CREATE INDEX IF NOT EXISTS idx_notebooks_document ON notebooks(document_id);
+CREATE INDEX IF NOT EXISTS idx_notebooks_owner ON notebooks(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS notebook_blocks (
+    block_id             TEXT PRIMARY KEY,
+    notebook_id          TEXT NOT NULL REFERENCES notebooks(notebook_id),
+    block_index          INTEGER NOT NULL,
+    block_type           TEXT NOT NULL
+        CHECK (block_type IN (
+            'prose',             -- markdown prose
+            'region_embed',      -- PDF region selection reference
+            'claim_card',        -- claim reference (claim_id)
+            'note',              -- note reference (note_id)
+            'question_card',     -- open-question reference (question_id)
+            'cross_doc_link',    -- bridging note + source/target documents
+            'chat_exchange',     -- chat exchange snippet
+            'master_md_section', -- MASTER.md section reference
+            'image',             -- image artifact reference
+            'latex'              -- LaTeX equation
+        )),
+    ref_id               TEXT,                -- substrate ref (claim_id, note_id, etc); NULL for prose/latex
+    content_json         TEXT NOT NULL,       -- TipTap block JSON content
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_notebook_blocks_notebook ON notebook_blocks(notebook_id, block_index);
+
+-- ============================================================
+-- loop_3_checklist — Persistent unlock-criteria state (Sprint 30+,
+-- master-spec §14.2 + §13.7). One row per criterion. The Trust
+-- Center reads this surface; the unlock-env-var gate remains
+-- authoritative for training-time work.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS loop_3_checklist (
+    criterion  TEXT PRIMARY KEY,
+    met        BOOLEAN NOT NULL DEFAULT FALSE,
+    note       TEXT,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- federation_config — Single-row substrate-wide federation policy
+-- (master-spec §13.9 Phase 3 + §13.7 audit). Operator updates via the
+-- /cross-graph/federation-config endpoint; default is strict (no
+-- partners, opt-in + attribution required).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS federation_config (
+    singleton_key TEXT PRIMARY KEY,
+    allowed_partner_substrates TEXT,
+    require_opt_in_for_outbound_citations BOOLEAN NOT NULL DEFAULT TRUE,
+    require_attribution_for_outbound_citations BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- payout_transfers — Persistent log of Stripe Connect transfer
+-- attempts (Sprint 30+, master-spec §9.10 + §13.5 + §13.7 audit).
+-- One row per RevShareDecision the transfer initiator handles.
+-- Status state machine: pending → transferred | skipped_escrow |
+-- skipped_platform | failed.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS payout_transfers (
+    transfer_attempt_id     TEXT PRIMARY KEY,
+    decision_id             TEXT NOT NULL,
+    stripe_transfer_id      TEXT,
+    recipient_account_id    TEXT,
+    amount_usd_cents        INTEGER NOT NULL,
+    status                  TEXT NOT NULL CHECK (status IN (
+        'pending', 'transferred', 'skipped_escrow',
+        'skipped_platform', 'failed'
+    )),
+    note                    TEXT,
+    initiated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_payout_transfers_decision
+    ON payout_transfers(decision_id);
+CREATE INDEX IF NOT EXISTS idx_payout_transfers_recipient
+    ON payout_transfers(recipient_account_id);
+
+-- ============================================================
+-- deletion_requests — Persistent log of operator-initiated
+-- "delete everything" requests (Sprint 30+, master-spec §13.3).
+-- Status state machine: pending → confirmed | cancelled | completed.
+-- The 7-day cancellation window lives in code (substrate doesn't
+-- auto-confirm); the 30-day SLA from request to completion is the
+-- substrate's binding commitment.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS deletion_requests (
+    request_id      TEXT PRIMARY KEY,
+    user_id         TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending', 'confirmed', 'cancelled', 'completed'
+    )),
+    requested_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reason          TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_deletion_requests_user
+    ON deletion_requests(user_id);
+"""
 
 
 def init_database(con: LockedConnection) -> None:
@@ -361,6 +540,9 @@ def init_database(con: LockedConnection) -> None:
             "connect_write into this function."
         )
     con.execute(ANTIEK_GRAPH_SCHEMA_V1_SQL)
+    # Sprint 18 additions are idempotent (CREATE IF NOT EXISTS,
+    # ALTER TABLE ADD COLUMN IF NOT EXISTS).
+    con.execute(ANTIEK_GRAPH_SCHEMA_V2_SPRINT18_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:

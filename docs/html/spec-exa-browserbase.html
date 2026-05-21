@@ -1,0 +1,1238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antiek × Exa × Browserbase — integration spec (draft v1, 2026-05-21)</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="index.html">Index</a>
+        <a href="spec-exa-browserbase.html" class="active">Exa &amp; Browserbase spec</a>
+        <a href="sprints/sprint-17.html">S17</a>
+        <a href="sprints/sprint-18.html">S18</a>
+        <a href="sprints/sprint-19.html">S19</a>
+        <a href="sprints/sprint-20.html">S20</a>
+        <a href="sprints/sprint-21.html">S21</a>
+        <a href="sprints/sprint-22.html">S22</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Integration spec &middot; draft v1 &middot; 2026-05-21</p>
+<h1>Antiek × Exa × Browserbase — web retrieval &amp; live browsing</h1>
+
+<div class="meta">
+    <p><strong>Status.</strong> Draft v1, 2026-05-21.</p>
+    <p><strong>Scope.</strong> Decide where Exa (neural search + cleaned content API) and Browserbase (hosted headless Chromium + Stagehand) integrate into Antiek's acquisition path, where each is deferred behind unlock criteria, and which adoption shapes are explicitly rejected as category errors or substrate violations. Produce defensible verdicts, not consensus hedging.</p>
+    <p><strong>Predecessor docs</strong> (precedence on conflict, in this order):</p>
+    <ol style="margin-top:4px;margin-bottom:6px">
+        <li><code>architecture_notes.md</code> &mdash; substrate commitments (load-bearing). Especially &sect;2.1 (typed event log), &sect;2.3 (DuckDB single-writer), &sect;7 (schema discipline), &sect;9 (wrestling event vocabulary), &sect;13 (four-layer HTML/rendering model).</li>
+        <li><code>master-product-spec.md</code> &mdash; product vision + sprint sequencing. Especially &sect;6 (primary source connection), &sect;7 (continuous research mode), &sect;9 (IP attribution + retrieval-time gating, Sprint 18 gate), &sect;16 (no pre-building for hypothetical users).</li>
+        <li><code>strategy/voice-and-style-discipline.md</code> &mdash; synthesis quality bar.</li>
+        <li>Peer integration specs: <code>integration_prime_intellect.md</code>, <code>integration_autoresearch.md</code>, <code>integration_posthog.md</code>, <code>daytona_integration_spec.md</code>, <code>rlm_integration_spec.md</code>.</li>
+    </ol>
+    <p><strong>Operator quality bar.</strong> Intellectual honesty, rigor, defensibility. Explicit REJECT verdicts where warranted. No "Exa is hot, ship it" or "Browserbase is necessary because the agent should be able to browse" framings. The right question is always: <em>what specific Antiek problem does this primitive solve, and is it a better solve than what we'd build or already have native?</em></p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">Table of contents</div>
+    <ol>
+        <li><a href="#1">What Exa and Browserbase actually are (and what's reusable)</a></li>
+        <li><a href="#2">What they are NOT &mdash; the misreadings to avoid</a></li>
+        <li><a href="#3">The single architectural decision that drives every wedge below</a></li>
+        <li><a href="#4">Mapping each primitive to Antiek's substrate</a></li>
+        <li><a href="#verdict-matrix">Verdict matrix</a></li>
+        <li><a href="#wedge1">Wedge 1 &mdash; <code>acquisition/search/exa</code> discovery adapter</a></li>
+        <li><a href="#wedge2">Wedge 2 &mdash; Browserbase as escalation fallback inside <code>acquisition/urls/</code></a></li>
+        <li><a href="#wedge3">Wedge 3 &mdash; Exa <code>/contents</code> for in-loop verifier-tier fact lookup</a></li>
+        <li><a href="#wedge4">Wedge 4 &mdash; Stagehand-driven extractor for one structured-data surface</a></li>
+        <li><a href="#wedge5">Wedge 5 &mdash; Exa Websets for continuous research mode</a></li>
+        <li><a href="#wedge6">Wedge 6 &mdash; Full agentic browsing as a first-class role</a></li>
+        <li><a href="#rejects">Explicit rejections (don't re-litigate)</a></li>
+        <li><a href="#envelope">Cost, legal, and safety envelope</a></li>
+        <li><a href="#risks">Risks and mitigations</a></li>
+        <li><a href="#unlock">Unlock criteria for promoting wedges</a></li>
+        <li><a href="#sprint-placement">Sprint placement</a></li>
+        <li><a href="#open">Open questions (genuinely unresolved)</a></li>
+        <li><a href="#now">What to do now</a></li>
+    </ol>
+</div>
+
+<h2 id="1">1. What Exa and Browserbase actually are (and what's reusable) <a class="section-anchor" href="#1">#</a></h2>
+
+<p>Read carefully. Both products are commonly conflated as "agent web tools"; they solve different layers and the spec breaks down if you treat them as substitutes.</p>
+
+<h3>1.1 Exa</h3>
+
+<p>A search API plus a cleaned-content-extraction API, both LLM-optimized. Three endpoints worth caring about:</p>
+
+<ul>
+    <li><strong><code>POST /search</code></strong> &mdash; neural / keyword / auto search. Returns ranked result URLs with title, published date, author, and an optional <code>text</code> field (truncated body). Supports filters: <code>includeDomains</code>, <code>excludeDomains</code>, <code>startCrawlDate</code>, <code>category</code> (<code>research paper</code>, <code>news</code>, <code>linkedin profile</code>, <code>company</code>, <code>github</code>, <code>tweet</code>, &hellip;), <code>numResults</code> up to 100.</li>
+    <li><strong><code>POST /contents</code></strong> &mdash; given a list of URLs, returns the cleaned full-text content as either <code>text</code> (markdown-ish) or <code>highlights</code> (LLM-extracted relevant spans), with optional <code>summary</code> (LLM-generated per-page summary against an operator-supplied schema) and <code>livecrawl</code> (force re-crawl if the indexed copy is stale).</li>
+    <li><strong><code>POST /findSimilar</code></strong> &mdash; given one URL, return URLs Exa thinks are semantically similar. Useful for "I have one good source, find five more like it."</li>
+</ul>
+
+<p>Plus a thin <strong><code>/answer</code></strong> endpoint that does search + content + LLM synthesis in one call. We will not integrate this &mdash; it collapses the attribution chain.</p>
+
+<p>Pricing (as of 2026-Q1, verify before any sprint commit): roughly $5 per 1k searches, $5 per 1k contents pages, $1 per 1k findSimilar calls. Free tier exists. SDK: official <code>exa-py</code> and <code>exa-js</code>.</p>
+
+<div class="callout note">
+    <strong>The Exa-shaped problem class</strong>
+    <p>I want to find pages that exist somewhere on the public web that are <em>semantically</em> about X (not just keyword-matching X), with reasonable freshness and de-duplication, and I want the page body already cleaned to text/markdown so I don't have to run my own HTML extractor for every page.</p>
+</div>
+
+<h3>1.2 Browserbase</h3>
+
+<p>A hosted-Chromium-as-a-service. Three layers worth caring about:</p>
+
+<ul>
+    <li><strong>Raw Playwright connection.</strong> You drive a real Chromium instance living on Browserbase's infrastructure via Playwright's standard CDP-over-WebSocket. Stealth fingerprinting, proxy rotation, residential IPs, captcha-solving (via a separate add-on) are configurable. You pay per session-minute. Persistence: optional "contexts" preserve cookies/localStorage across sessions.</li>
+    <li><strong>Stagehand SDK.</strong> Browserbase's higher-level abstraction. Three methods on top of Playwright:
+        <ul>
+            <li><code>page.act("click the cookie accept button")</code> &mdash; LLM decides which DOM node to interact with, returns success/failure.</li>
+            <li><code>page.extract({ schema: &lt;zod schema&gt;, instruction: ... })</code> &mdash; LLM extracts structured data from the current DOM against a schema.</li>
+            <li><code>page.observe("find the search box")</code> &mdash; LLM returns a list of candidate locators without acting.</li>
+        </ul>
+        All three round-trip through an LLM (configurable; defaults to OpenAI but can use Anthropic / OpenRouter).</li>
+    <li><strong>Director.</strong> Browserbase's natural-language browser-agent product. Higher-level than Stagehand; we will not integrate (see &sect;11).</li>
+</ul>
+
+<p>Pricing: roughly $0.10 per active session-minute, plus ~$0.0005 per Stagehand LLM call (small models, fast). Sessions run typically 30s&ndash;5min. So one Browserbase page-fetch costs ~50&times; to 5000&times; more than one <code>httpx.get(...)</code>. <strong>This number drives every verdict below.</strong></p>
+
+<div class="callout note">
+    <strong>The Browserbase-shaped problem class</strong>
+    <p>I need to interact with a page &mdash; log in, click, scroll-to-load, dismiss a modal, submit a form, or just render a JS-heavy SPA &mdash; to get to content that a plain HTTP GET can't reach. The premium is justified per-page only when the page is high-value enough to be worth 50&ndash;5000&times; the marginal cost.</p>
+</div>
+
+<h3>1.3 What both products share</h3>
+
+<p>Both are <strong>acquisition-layer</strong> services. They are not dispatch providers (they are not LLMs), they are not roles (they have no opinion on what to do with the data), they are not graph operators. They sit <em>upstream</em> of <code>acquisition/urls/adapter.py</code> in the data flow.</p>
+
+<p>This framing is load-bearing for &sect;3 below.</p>
+
+<h2 id="2">2. What they are NOT — the misreadings to avoid <a class="section-anchor" href="#2">#</a></h2>
+
+<p>These are the framings that look plausible but are wrong for Antiek's state. Each becomes a REJECT in &sect;12 unless explicitly upgraded.</p>
+
+<h3>2.1 Exa is NOT a replacement for <code>acquisition/urls/</code></h3>
+
+<p><code>acquisition/urls/</code> is the URL &rarr; substrate adapter: it owns the stable <code>doc-url-&lt;sha256[:16]&gt;</code> document id (<code>acquisition/urls/adapter.py:76</code>), the source-tier assignment, the <code>DocumentLoadedPayload</code> event emission, the chunking, the embedding, the graph writes. Exa returns a URL plus a cleaned text body &mdash; that's the input <em>to</em> this adapter, not a substitute for it. If we let Exa's <code>/contents</code> output land in the graph directly without going through <code>acquisition/urls/adapter.ingest_url(...)</code>, we fork two paths for "a URL became a Document," with different doc-id shapes, different event emission, and different idempotency. The substrate-as-source-of-truth invariant breaks.</p>
+
+<h3>2.2 Browserbase is NOT a default fetcher</h3>
+
+<p><code>acquisition/urls/client.fetch(...)</code> works for ~80% of the public web because most pages still serve usable HTML on a plain GET. Browserbase costs 50&ndash;5000&times; more per page. Promoting it to default would 50&ndash;5000&times; the per-page acquisition cost for a marginal coverage gain on the long tail. The defensible posture is escalation, not replacement (Wedge 2).</p>
+
+<h3>2.3 Exa <code>/answer</code> is NOT a synthesis primitive</h3>
+
+<p>Exa's <code>/answer</code> endpoint does search &rarr; content &rarr; LLM synthesis in one opaque call. Antiek's synthesis is a typed-event sequence (<code>DecomposeQuestionRequested</code> &rarr; <code>KeywordsExtracted</code> &rarr; &hellip; &rarr; <code>SynthesisArchived</code> per <code>substrate/schemas/events.py</code>). Substituting <code>/answer</code> for any of that collapses the trajectory &mdash; the operator cannot replay it, the verifier-tier cannot grade it, the event log cannot reconstruct what was actually retrieved. Hard reject (&sect;12.5).</p>
+
+<h3>2.4 Stagehand's <code>page.extract</code> is NOT a substitute for <code>parameter_extractor</code></h3>
+
+<p><code>roles/parameter_extractor/</code> is the role that mints typed nodes and edges from chunked document text. It runs against the substrate's chunk table, not against live DOM. Stagehand's <code>page.extract</code> runs against a live DOM in a browser session &mdash; different input medium, different schema lineage. The latter could feed the former (Wedge 4), but it cannot replace it. The misreading is "Stagehand does extraction so it does what <code>parameter_extractor</code> does." It doesn't.</p>
+
+<h3>2.5 Neither product bypasses the Sprint 18 retrieval-time legal gate</h3>
+
+<p><code>master-product-spec.md</code> &sect;9 commits Sprint 18 to a retrieval-time gating system for restricted content (Bartz / Hachette / AG MDL legal corpus restrictions). That gate enforces at the SQL-WHERE level (<code>substrate/legal_gate/...</code>). <strong>Exa search results from a banned domain hit the gate the same way a manually-typed URL does.</strong> Browserbase session that lands on banned-domain content hits the same gate. Integrating either does not authorize bypass; both are <em>upstream</em> of the gate, not around it.</p>
+
+<h3>2.6 Exa's index is NOT comprehensive</h3>
+
+<p>Exa indexes the public web but with their crawler's coverage, freshness, and recency biases. Specifically:</p>
+<ul>
+    <li>Paywalled news (NYT, WSJ, FT) appears in search results but <code>/contents</code> returns the paywall page, not the article.</li>
+    <li>Many SaaS app pages (logged-in dashboards, internal docs) are not indexed at all.</li>
+    <li>Real-time content (tweets, livestreams) is best-effort and lags.</li>
+    <li>Some site operators rate-limit Exa or block their crawler.</li>
+</ul>
+<p>Treating Exa as "the public web" is a category error. It's "Exa's neural index of the public web, with their crawler's blind spots."</p>
+
+<h3>2.7 Browserbase is NOT a way to avoid building scrapers</h3>
+
+<p>The Stagehand pitch is "natural-language browser automation, no brittle selectors." This is true for one-off extraction but <strong>breaks down at scale.</strong> Stagehand's LLM calls add latency (3&ndash;10s per <code>act</code> / <code>extract</code>), cost (~$0.0005 each, accumulates), and non-determinism (same page, different runs, sometimes different extractions). A high-volume scraper still wants typed selectors; Stagehand is for the exact opposite use case &mdash; one or two pages where building a typed scraper is more expensive than tolerating Stagehand's noise.</p>
+
+<h2 id="3">3. The single architectural decision that drives every wedge below <a class="section-anchor" href="#3">#</a></h2>
+
+<div class="callout warn">
+    <strong>Load-bearing decision</strong>
+    <p>Exa and Browserbase are not the same layer. They must not share an adapter. They must not share a config namespace. They must not share an environment variable prefix.</p>
+</div>
+
+<p>The clean split:</p>
+
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│  DISCOVERY LAYER (which URLs to ingest)                          │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │ acquisition/search/                       NEW MODULE      │   │
+│  │   exa/client.py        — typed Exa SDK wrapper            │   │
+│  │   exa/adapter.py       — Exa search → DiscoveryProposed   │   │
+│  │                          events → URL list                │   │
+│  │   exa/README.md                                           │   │
+│  │ (future siblings: serpapi/, tavily/, perplexity/)         │   │
+│  └───────────────────────────────────────────────────────────┘   │
+│                          │                                        │
+│                          ▼   one URL per Discovery row            │
+│                                                                   │
+│  INGESTION LAYER (turn a URL into a Document)                    │
+│  ┌───────────────────────────────────────────────────────────┐   │
+│  │ acquisition/urls/                         EXISTING        │   │
+│  │   client.py            — httpx primary fetcher            │   │
+│  │   client_browserbase.py — Browserbase escalation fallback │   │
+│  │                          (NEW, behind feature flag)       │   │
+│  │   adapter.py           — fetch → markdown → graph writes  │   │
+│  └───────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
+</code></pre>
+
+<p>The contract between the two layers is <strong>a URL</strong>, not a content blob. Discovery proposes URLs; ingestion turns URLs into substrate. The <code>acquisition/urls/adapter.ingest_url(...)</code> call is the single substrate-write seam &mdash; there is no second path.</p>
+
+<p>This split has three consequences that every wedge below honors:</p>
+
+<ol>
+    <li><strong>One doc-id formula.</strong> <code>url_doc_id(final_url)</code> in <code>acquisition/urls/adapter.py:76</code> remains the only way to mint a document id for a URL-sourced document. Exa results, Browserbase sessions, manual operator pastes &mdash; all route through the same id. Idempotent across discovery sources.</li>
+    <li><strong>One event emission point.</strong> <code>DocumentLoadedPayload</code> is emitted exactly once per document, from <code>acquisition/urls/adapter.py</code>. Discovery emits its own events (<code>DiscoveryProposed</code>, <code>DiscoverySelected</code>, etc. &mdash; defined in Wedge 1) but those are discovery-layer events, not document-layer events. The trajectory log distinguishes "we considered this URL" from "we ingested this URL."</li>
+    <li><strong>One legal gate.</strong> The Sprint 18 retrieval-time gate sits <em>between</em> discovery and ingestion. Exa returns a URL; the gate decides whether <code>ingest_url(...)</code> can run. This is the only viable place to put the gate without leaking restricted content into the graph.</li>
+</ol>
+
+<p>If a future wedge proposes violating this split, the wedge is rejected on architecture grounds before any cost/value analysis. The split is prior to the wedge selection.</p>
+
+<h2 id="4">4. Mapping each primitive to Antiek's substrate <a class="section-anchor" href="#4">#</a></h2>
+
+<table>
+    <thead>
+        <tr><th>Primitive</th><th>Closest Antiek analog</th><th>Mapping cleanliness</th><th>Layer</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>Exa <code>/search</code> (neural)</td><td><code>acquisition/arxiv/client.search</code>, <code>acquisition/twitter/adapter</code> (keyword-driven discovery)</td><td><strong>Strong analog &mdash; pure discovery-layer addition.</strong> Same shape: query &rarr; result URLs &rarr; operator picks &rarr; ingest</td><td>Discovery</td></tr>
+        <tr><td>Exa <code>/search</code> (<code>category="research paper"</code>)</td><td><code>acquisition/arxiv/client.search</code></td><td>Weak &mdash; arXiv has its own API, no Exa middleman needed; using Exa for arXiv would add latency and cost with no quality gain</td><td>Discovery</td></tr>
+        <tr><td>Exa <code>/contents</code> (full text)</td><td><code>acquisition/urls/extract.html_to_markdown</code></td><td><strong>Mixed &mdash; pre-extracted text overlaps with Antiek's own extractor.</strong> Cleaner path: Exa returns URL, Antiek fetches + extracts. <code>/contents</code> only justified when Exa's index has a copy and the live page is unreachable / paywalled / 404'd since crawl</td><td>Ingestion-adjacent</td></tr>
+        <tr><td>Exa <code>/contents</code> (<code>summary</code> against schema)</td><td><code>roles/parameter_extractor/</code></td><td>Anti-mapping &mdash; summary collapses to a single LLM call against Exa's choice of model, with no Antiek event trace. <code>parameter_extractor</code> is the source of truth for typed extraction. <strong>Reject &sect;12.4</strong></td><td>&mdash;</td></tr>
+        <tr><td>Exa <code>/contents</code> (<code>highlights</code>)</td><td>Loop 2's region-selection + claim distillation</td><td>Weak &mdash; highlights are LLM-judged spans without grounding back to chunk indices; Antiek's claim grounding requires substrate chunk references</td><td>&mdash;</td></tr>
+        <tr><td>Exa <code>findSimilar</code></td><td>"Cross-doc question answered" pattern in <code>substrate/cross_graph/</code></td><td>Medium &mdash; Exa's similarity is <em>to</em> its index; Antiek's similarity is over the operator's own graph. Useful for <em>discovery expansion</em> (find more sources like this one) but distinct from substrate similarity</td><td>Discovery</td></tr>
+        <tr><td>Exa <code>/answer</code></td><td>Loop 1 synthesis</td><td>Anti-mapping &mdash; collapses the entire trajectory into one opaque call. <strong>Reject &sect;12.5</strong></td><td>&mdash;</td></tr>
+        <tr><td>Exa Websets</td><td><code>compounding/continuous_research.py</code>, master-product-spec &sect;7 continuous research mode</td><td>Medium analog with a real overlap concern &mdash; both monitor sources over time. Distinct enough to be complementary (Wedge 5), but the boundaries need explicit definition</td><td>Discovery / monitoring</td></tr>
+        <tr><td>Browserbase raw Playwright</td><td>None &mdash; Antiek has no live-browser primitive</td><td>New capability &mdash; but only justified per-page when the page is high-value. <strong>Wedge 2 as escalation fallback only</strong></td><td>Ingestion</td></tr>
+        <tr><td>Stagehand <code>page.act</code></td><td>None &mdash; Antiek does not click</td><td>New capability. Only meaningful inside Wedge 4 (one specific structured-data surface). General "agent that clicks" is Wedge 6 &mdash; DEFER</td><td>Ingestion / interaction</td></tr>
+        <tr><td>Stagehand <code>page.extract</code></td><td><code>roles/parameter_extractor/</code> (against chunks), <code>roles/note_taker/</code> (against chunks)</td><td>Weak &mdash; DOM-time extraction is structurally different from chunk-time extraction; preserving the typed event log requires chunk-time extraction stays primary</td><td>&mdash;</td></tr>
+        <tr><td>Stagehand <code>page.observe</code></td><td>None</td><td>Internal to Wedge 4 if it ships</td><td>&mdash;</td></tr>
+        <tr><td>Browserbase Director (NL browser agent)</td><td>None &mdash; and shouldn't have one this sprint</td><td>Anti-mapping &mdash; full agentic browsing requires multi-step state, undo, cost discipline, and a UI surface for operator to review. <strong>Wedge 6 DEFER</strong></td><td>&mdash;</td></tr>
+        <tr><td>Stagehand "contexts" (persistent cookies)</td><td>None</td><td>Conditional &mdash; only meaningful if a wedge requires logged-in browsing (Wedge 4 might; Wedges 2 and 3 do not)</td><td>&mdash;</td></tr>
+    </tbody>
+</table>
+
+<p><strong>The cleanest wins</strong> are Exa search (Wedge 1) and Browserbase escalation (Wedge 2). The cleanest mid-confidence wins are Exa <code>/contents</code> for verifier-tier corroboration (Wedge 3) and one narrow Stagehand extractor (Wedge 4). The high-risk shapes are Websets (monitoring overlap, Wedge 5) and full agentic browsing (Wedge 6 &mdash; DEFER).</p>
+
+<h2 id="verdict-matrix">5. Verdict matrix <a class="section-anchor" href="#verdict-matrix">#</a></h2>
+
+<table>
+    <thead>
+        <tr><th>Wedge</th><th>What it is</th><th>Verdict</th><th>Sprint</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><strong>Wedge 1</strong> &mdash; <code>acquisition/search/exa</code> discovery adapter</td>
+            <td>New module: Exa <code>/search</code> + <code>findSimilar</code> returning a stream of <code>DiscoveryProposed</code> events; operator-curated promotion to <code>ingest_url</code></td>
+            <td><span class="tag integrate">Integrate now</span></td>
+            <td>Sprint 18&ndash;19 (sequence with retrieval-time gating; gate must land before Wedge 1 writes graph data)</td>
+        </tr>
+        <tr>
+            <td><strong>Wedge 2</strong> &mdash; Browserbase escalation fallback inside <code>acquisition/urls/client.py</code></td>
+            <td>When httpx fetch returns <code>low_word_count</code> or fails JS-detect heuristic, <em>optionally</em> (operator opt-in or flagged on doc) re-fetch via Browserbase. Behind feature flag, off by default</td>
+            <td><span class="tag integrate">Integrate now</span></td>
+            <td>Sprint 18&ndash;19</td>
+        </tr>
+        <tr>
+            <td><strong>Wedge 3</strong> &mdash; Exa <code>/contents</code> as verifier-tier corroboration tool</td>
+            <td>The verifier tier (Grok 4.3 via Hermes) gets a tool: <code>exa_lookup_claim(claim_text, k=3)</code> &rarr; returns 3 URLs with text snippets that support / refute the claim. Used during <code>RUBRIC_SCORED</code> and <code>claim.grounding_check</code></td>
+            <td><span class="tag phase2">Phase 2</span></td>
+            <td>Sprint 19+ (gated on Wedge 1 ratification + verifier-tool-call infrastructure existing)</td>
+        </tr>
+        <tr>
+            <td><strong>Wedge 4</strong> &mdash; Stagehand-driven extractor for one structured-data surface</td>
+            <td>One narrow surface where the operator needs login-gated structured data (e.g. SEC EDGAR full-text search results page, or a specific paywalled academic database). Stagehand <code>page.act</code> + <code>page.extract</code> against a typed Pydantic schema</td>
+            <td><span class="tag phase2">Phase 2 (conditional)</span></td>
+            <td>Sprint 20+, only if a concrete data need surfaces</td>
+        </tr>
+        <tr>
+            <td><strong>Wedge 5</strong> &mdash; Exa Websets for continuous research mode</td>
+            <td>Continuous research (master-product-spec &sect;7) uses Exa Websets as one monitoring source. Webset cron &rarr; operator-reviewed discovery queue</td>
+            <td><span class="tag defer">Defer</span></td>
+            <td>Sprint 21+, gated on continuous research mode having shipped on a non-Exa baseline first</td>
+        </tr>
+        <tr>
+            <td><strong>Wedge 6</strong> &mdash; Full agentic browsing as a first-class role</td>
+            <td>A <code>roles/web_browser/</code> that takes a goal ("find Tesla's Q3 deliveries by segment from their IR site") and uses Stagehand to navigate freely</td>
+            <td><span class="tag defer">Defer</span> <span class="tag reject">Maybe reject</span></td>
+            <td>No earlier than Sprint 23+; explicit unlock criteria in &sect;15.6</td>
+        </tr>
+        <tr>
+            <td>Use Exa as a dispatch provider</td>
+            <td>Add Exa to <code>substrate/dispatch/providers/</code></td>
+            <td><span class="tag reject">Reject</span></td>
+            <td>&mdash;</td>
+        </tr>
+        <tr>
+            <td>Use Browserbase as a dispatch provider</td>
+            <td>Add Browserbase to <code>substrate/dispatch/providers/</code></td>
+            <td><span class="tag reject">Reject</span></td>
+            <td>&mdash;</td>
+        </tr>
+        <tr>
+            <td>Use Exa <code>/answer</code> for synthesis</td>
+            <td>Replace or augment <code>roles/synthesizer/</code> with Exa's hosted answer endpoint</td>
+            <td><span class="tag reject">Reject</span></td>
+            <td>&mdash;</td>
+        </tr>
+        <tr>
+            <td>Use Exa summary-against-schema as <code>parameter_extractor</code></td>
+            <td>Replace <code>roles/parameter_extractor/</code> with Exa's hosted schema summary</td>
+            <td><span class="tag reject">Reject</span></td>
+            <td>&mdash;</td>
+        </tr>
+        <tr>
+            <td>Use Browserbase as the default URL fetcher</td>
+            <td>Replace <code>httpx</code> in <code>acquisition/urls/client.py</code> with Browserbase</td>
+            <td><span class="tag reject">Reject</span></td>
+            <td>&mdash;</td>
+        </tr>
+        <tr>
+            <td>Use either to bypass the Sprint 18 retrieval-time legal gate</td>
+            <td>"Exa results come from Exa, not from us, so the legal gate doesn't apply"</td>
+            <td><span class="tag reject">Reject</span> (with extreme prejudice)</td>
+            <td>&mdash;</td>
+        </tr>
+        <tr>
+            <td>Use Browserbase to bypass robots.txt or paywalls</td>
+            <td>Use stealth-fingerprinting to access content the site operator declined to allow</td>
+            <td><span class="tag reject">Reject</span></td>
+            <td>&mdash;</td>
+        </tr>
+        <tr>
+            <td>Bundle a Browserbase session per investigation</td>
+            <td>One persistent session per investigation, kept warm</td>
+            <td><span class="tag reject">Reject (for now)</span></td>
+            <td>&mdash;</td>
+        </tr>
+    </tbody>
+</table>
+
+<hr class="wedge-divider">
+
+<h2 id="wedge1">6. Wedge 1 — <code>acquisition/search/exa</code> discovery adapter <a class="section-anchor" href="#wedge1">#</a></h2>
+
+<div class="callout integrate">
+    <strong>Integrate now &middot; Sprint 18 &rarr; 19</strong>
+    <p>The first INTEGRATE NOW item. Detailed because it sets the discovery-layer contract every future search-source wedge will inherit. Cannot ship before the Sprint 18 retrieval-time legal gate.</p>
+</div>
+
+<h3>6.1 What it does</h3>
+
+<p>Adds <code>acquisition/search/exa/</code> with the following shape:</p>
+
+<pre><code>acquisition/search/
+  __init__.py
+  README.md                  # what the discovery layer is, when to use it
+  events.py                  # DiscoveryProposed, DiscoverySelected types
+  exa/
+    __init__.py
+    client.py                # typed Exa HTTP client (httpx, no SDK)
+    adapter.py               # search(query, ...) → list[DiscoveryProposed]
+    README.md                # Exa-specific knobs, cost notes, blind spots
+</code></pre>
+
+<p><strong>Operator API</strong> (the seam other code calls):</p>
+
+<pre><code>from acquisition.search.exa import discover
+
+candidates = discover(
+    query="Anthropic Claude pricing late 2025 vs 2026",
+    investigation_id="inv-...",
+    num_results=10,
+    include_domains=None,             # optional whitelist
+    exclude_domains=("reddit.com",),  # optional blacklist
+    category=None,                    # one of Exa's categories or None
+    start_published_date="2025-09-01",
+)
+# candidates: list[DiscoveryProposed], persisted as events, returned for
+# operator review. NO graph writes until ingest_url is called.
+
+for c in candidates:
+    if operator_accepts(c):
+        ingest_url(
+            c.url,
+            investigation_id="inv-...",
+            source_tier=c.suggested_tier,
+        )
+</code></pre>
+
+<h3>6.2 The data flow, step by step</h3>
+
+<ol>
+    <li>Operator (or a role) calls <code>discover(query=..., investigation_id=...)</code>.</li>
+    <li>Exa client makes one <code>/search</code> HTTP call against Exa's API.</li>
+    <li>For each result, the adapter:
+        <ul>
+            <li>Mints a stable <code>discovery_id = "disc-exa-" + sha256(url + investigation_id)[:16]</code>.</li>
+            <li>Computes a <code>suggested_tier</code> heuristic (research domain &rarr; 2, news &rarr; 3, blog &rarr; 4, social &rarr; 4).</li>
+            <li>Emits a typed <code>DiscoveryProposedPayload</code> event (new payload type, defined below).</li>
+        </ul>
+    </li>
+    <li>The adapter returns a list of typed <code>DiscoveryProposed</code> objects (the Python representation of the event), NOT a graph write.</li>
+    <li>Operator-or-caller decides which to promote. Promotion = call <code>ingest_url(...)</code>. The <code>DiscoverySelected</code> event ties the <code>discovery_id</code> to the resulting <code>document_id</code> so the trajectory shows "this document came from this Exa query."</li>
+</ol>
+
+<h3>6.3 New event types</h3>
+
+<p>Add to <code>substrate/schemas/events.py</code>:</p>
+
+<pre><code>class DiscoveryProposedPayload(_PayloadBase):
+    """A discovery-layer source proposed a URL. The URL has NOT been
+    ingested; this event is the audit trail of 'what we considered.'
+    Promotion to ingestion is a separate event (DiscoverySelected)."""
+    discovery_id: str
+    provider: Literal["exa", "serpapi", "tavily", "operator", ...]
+    query: str
+    url: str
+    title: Optional[str] = None
+    published_date: Optional[str] = None  # ISO-8601 if known
+    author: Optional[str] = None
+    relevance_score: Optional[float] = None
+    suggested_tier: int                   # 1-4 per source-tier system
+    text_snippet_preview: Optional[str] = None  # truncated to 300 chars
+    provider_response_id: Optional[str] = None  # Exa's request id for audit
+</code></pre>
+
+<pre><code>class DiscoverySelectedPayload(_PayloadBase):
+    """A previously-proposed discovery was promoted to ingestion. Ties
+    the discovery_id to the resulting document_id when ingestion
+    succeeded. document_id is None if ingestion was rejected by the
+    legal gate or failed."""
+    discovery_id: str
+    document_id: Optional[str]
+    decision: Literal["ingested", "rejected_by_legal_gate", "rejected_by_operator", "fetch_failed"]
+    rejection_reason: Optional[str] = None
+</code></pre>
+
+<p>Update <code>ActionType</code> enum:</p>
+
+<pre><code>DISCOVERY_PROPOSED = "discovery.proposed"
+DISCOVERY_SELECTED = "discovery.selected"
+</code></pre>
+
+<p>Update the TS codegen at <code>tools/codegen/emit_types.py</code> so frontend discovery review surfaces (Sprint 19+) can render these.</p>
+
+<h3>6.4 Authentication and configuration</h3>
+
+<ul>
+    <li>Environment variable: <strong><code>EXA_API_KEY</code></strong>. Never share a prefix with any other service's key. Never read from <code>OPENAI_API_KEY</code>. Never fall back to a different key on failure (silent misrouting is worse than a loud failure).</li>
+    <li>Configuration lives in <code>acquisition/search/exa/client.py</code>, not in <code>substrate/dispatch/config.yaml</code>. Discovery layer is separate from dispatch layer.</li>
+    <li>Default base URL: <code>https://api.exa.ai</code>. Override via constructor for tests (<code>httpx.MockTransport</code>).</li>
+    <li>Default timeout: 30s (longer than the URL fetcher because Exa's upstream crawl-on-demand can be slow).</li>
+    <li>Retry policy: 429 and 5xx retried with exponential backoff up to 3 attempts. 4xx other than 429 raises immediately (configuration error).</li>
+</ul>
+
+<h3>6.5 Idempotency and de-duplication</h3>
+
+<ul>
+    <li>Same <code>(query, investigation_id)</code> pair within 24h: deduplicate by short-circuiting to a cached <code>DiscoveryProposed</code> list. The reasoning: operator running <code>discover(...)</code> twice in a session should not pay twice for the same Exa call. Cache key is hashed; results stored in a new <code>discovery_cache</code> DuckDB table.</li>
+    <li>Same URL appearing in multiple discoveries: each gets its own <code>DiscoveryProposed</code> event (different <code>discovery_id</code>) but <code>ingest_url(...)</code> deduplicates downstream via <code>url_doc_id</code> &mdash; there is no double-ingestion.</li>
+</ul>
+
+<h3>6.6 Source-tier suggestion heuristic</h3>
+
+<p>The adapter's <code>suggested_tier</code> is a <em>suggestion</em>, not an authority. The heuristic (in <code>acquisition/search/exa/adapter.py</code>):</p>
+
+<pre><code>def suggest_tier(url: str, category: Optional[str]) -> int:
+    """
+    Tier 1: primary source (operator-curated only — NEVER auto-assigned)
+    Tier 2: known-good research (arXiv, *.gov, *.edu, doi.org, primary IR pages)
+    Tier 3: known-good news (NYT, WSJ, FT, Bloomberg, Reuters, Economist, etc.)
+    Tier 4: general web (default)
+    """
+    if category == "research paper":
+        return 2
+    host = urlparse(url).netloc.lower()
+    if any(host.endswith(s) for s in (".gov", ".edu", "doi.org", "arxiv.org")):
+        return 2
+    if host in _CURATED_NEWS_TIER_3:    # explicit allowlist
+        return 3
+    return 4
+</code></pre>
+
+<p><code>_CURATED_NEWS_TIER_3</code> lives in <code>substrate/constants.py</code> next to the existing source-tier definitions. Operator edits it directly. <strong>No automatic learning of "what's a good source"</strong> &mdash; that's a substrate decision, not a search-API decision.</p>
+
+<h3>6.7 Cost discipline</h3>
+
+<ul>
+    <li>Per-call cost is logged into the event payload (<code>DiscoveryProposedPayload</code> via a sibling <code>DiscoveryCostPayload</code> &mdash; or inline as a <code>cost_usd_estimate</code> field; decide before merge).</li>
+    <li>A daily cap of $5 of Exa search spend (configurable via <code>EXA_DAILY_BUDGET_USD</code>) hard-stops new search calls until UTC midnight. When the cap is hit, <code>discover(...)</code> raises a typed <code>DiscoveryBudgetExceeded</code> error that the caller must handle. <strong>No silent fallback to a different provider.</strong></li>
+    <li>Roll-up cost reporting: nightly job (extends <code>runtime/weekly_report.py</code>) emits a discovery-cost summary alongside the existing dispatch cost summary.</li>
+</ul>
+
+<h3>6.8 What this wedge does NOT do</h3>
+
+<ul>
+    <li>Does NOT fetch the URLs. <code>acquisition/urls/adapter.ingest_url(...)</code> does.</li>
+    <li>Does NOT call <code>/contents</code>. Wedge 3 introduces <code>/contents</code>, gated on a separate use case (verifier-tier corroboration).</li>
+    <li>Does NOT auto-ingest. Every promotion is an explicit <code>DiscoverySelected</code> event.</li>
+    <li>Does NOT bypass the Sprint 18 legal gate. Discovery proposes URLs; the gate decides whether ingestion proceeds. If a discovered URL is on the banned-corpus list, ingestion is refused and <code>DiscoverySelected{decision="rejected_by_legal_gate"}</code> is emitted &mdash; the discovery is still in the trail (audit) but no graph write happens.</li>
+</ul>
+
+<h3>6.9 Sequencing constraint</h3>
+
+<div class="callout warn">
+    <strong>Binding</strong>
+    <p>Wedge 1 cannot ship before the Sprint 18 retrieval-time legal gate is in production. Exa returns URLs across the full public web, including domains the legal gate must restrict. Shipping the adapter without the gate ingests restricted content.</p>
+</div>
+
+<ol>
+    <li>Sprint 18 &mdash; retrieval-time legal gate ships (per <code>master-product-spec.md</code> &sect;9).</li>
+    <li>Sprint 18 (late) or Sprint 19 (early) &mdash; Wedge 1 ships, with pre-ingestion gate enforcement and <code>DiscoverySelected{decision="rejected_by_legal_gate"}</code> wired through.</li>
+</ol>
+
+<p>Skipping the sequencing is a substrate violation. The wedge is defensible only with the gate first.</p>
+
+<h3>6.10 Acceptance criteria</h3>
+
+<ul>
+    <li><code>discover(query=..., investigation_id=...)</code> returns &ge;1 result for a well-formed query against the production Exa key.</li>
+    <li>Each result emits exactly one <code>DiscoveryProposedPayload</code> event, visible in the event log JSONL.</li>
+    <li>Promoting a result via <code>ingest_url(...)</code> emits exactly one <code>DiscoverySelectedPayload</code> with <code>decision="ingested"</code> and a non-null <code>document_id</code> matching <code>url_doc_id(final_url)</code>.</li>
+    <li>Promoting a banned-corpus URL emits <code>DiscoverySelectedPayload{decision="rejected_by_legal_gate"}</code> and produces zero graph writes.</li>
+    <li>Daily budget cap (<code>EXA_DAILY_BUDGET_USD</code>) triggers <code>DiscoveryBudgetExceeded</code> on the next call after threshold.</li>
+    <li>Integration test: one synthetic Exa response (via <code>httpx.MockTransport</code>) flows through <code>discover &rarr; ingest_url &rarr; graph writes</code>, with all events emitted in order, and idempotent re-run produces no duplicate graph rows.</li>
+    <li>Cost-per-call recorded; weekly_report.py picks up the new line item.</li>
+</ul>
+
+<h3>6.11 Estimated effort</h3>
+
+<p>~4 days of focused work:</p>
+<ul>
+    <li>New module scaffold + httpx client + retry/backoff: ~1 day</li>
+    <li>Event payload types + Pydantic + TS codegen update: ~half a day</li>
+    <li>Idempotency + cache table + daily budget: ~1 day</li>
+    <li>Legal-gate integration (assumes gate exists from Sprint 18): ~half a day</li>
+    <li>Tests (unit + integration with mock transport + legal-gate paths): ~1 day</li>
+</ul>
+
+<hr class="wedge-divider">
+
+<h2 id="wedge2">7. Wedge 2 — Browserbase as escalation fallback inside <code>acquisition/urls/</code> <a class="section-anchor" href="#wedge2">#</a></h2>
+
+<div class="callout integrate">
+    <strong>Integrate now &middot; Sprint 18 &rarr; 19 &middot; independent of Wedge 1</strong>
+    <p>The second INTEGRATE NOW item. Narrowly scoped &mdash; the failure mode it addresses is real, but the cost differential demands escalation, not default-on.</p>
+</div>
+
+<h3>7.1 The failure mode this targets</h3>
+
+<p><code>acquisition/urls/adapter.py:155</code> already short-circuits when extracted content is <code>&lt; MIN_INGEST_WORD_COUNT</code> (50 words), emitting the <code>DocumentLoadedPayload</code> event but skipping graph writes with <code>skipped_reason="low_word_count"</code>. This is the right behavior for the common case (paywall, JS-rendered SPA, captcha wall) &mdash; pollutes the graph less and tells the operator what failed.</p>
+
+<p>But sometimes the operator KNOWS the page has content the httpx fetch can't see (Twitter threads, news sites with aggressive bot detection, SPAs like LinkedIn job posts, Substack subscriber-only previews that expose enough text to be useful behind the modal). For those cases, the current behavior is "give up." Wedge 2 adds one escalation path: re-fetch with Browserbase.</p>
+
+<h3>7.2 What it does</h3>
+
+<p>Add <code>acquisition/urls/client_browserbase.py</code>:</p>
+
+<pre><code>def fetch_via_browserbase(
+    url: str,
+    *,
+    wait_for: Optional[str] = None,         # CSS selector or "networkidle"
+    wait_timeout_s: float = 15.0,
+    session_pool: Optional[BrowserbaseSessionPool] = None,
+    user_agent: Optional[str] = None,
+) -> FetchedHtml:
+    """
+    Drives a Browserbase Chromium session via Playwright.
+    Returns the same FetchedHtml shape as client.fetch — drop-in
+    compatible with html_to_markdown.
+
+    DOES NOT change the URL adapter contract. DOES NOT emit events
+    directly; the adapter's existing event emission still happens.
+    """
+</code></pre>
+
+<p>Extend <code>acquisition/urls/adapter.ingest_url</code>:</p>
+
+<pre><code>def ingest_url(
+    url: str,
+    *,
+    investigation_id: str,
+    source_tier: int = DEFAULT_URL_SOURCE_TIER,
+    db_path: Optional[str] = None,
+    embedder: Optional[EmbeddingProvider] = None,
+    http_client: Optional[object] = None,
+    fetched: Optional[FetchedHtml] = None,
+    min_word_count: int = MIN_INGEST_WORD_COUNT,
+    fallback_to_browserbase: bool = False,         # NEW
+    browserbase_wait_for: Optional[str] = None,    # NEW
+) -> IngestUrlResult:
+    ...
+</code></pre>
+
+<p>The behavior change is <strong>purely additive</strong>:</p>
+
+<ol>
+    <li>If <code>fetched</code> was passed, use it as before. No fallback.</li>
+    <li>Else <code>fetched = fetch(url)</code> via httpx, as before.</li>
+    <li>Extract markdown, as before.</li>
+    <li>If <code>md_doc.word_count &lt; min_word_count</code> AND <code>fallback_to_browserbase</code> is True AND the URL is not on a no-fallback list:
+        <ul>
+            <li>Re-fetch via <code>fetch_via_browserbase(url, wait_for=browserbase_wait_for)</code>.</li>
+            <li>Re-extract.</li>
+            <li>Emit a typed <code>FetchFallbackEscalatedPayload</code> event so the trajectory shows the escalation happened.</li>
+            <li>Continue with the new content if word_count now passes; else skip with <code>skipped_reason="low_word_count_after_fallback"</code>.</li>
+        </ul>
+    </li>
+    <li>The rest of the flow (event emission, graph writes) is unchanged.</li>
+</ol>
+
+<h3>7.3 The new event type</h3>
+
+<pre><code>class FetchFallbackEscalatedPayload(_PayloadBase):
+    """Recorded when the URL adapter escalated from httpx to a heavier
+    fetcher (currently Browserbase). Captures cost and the heuristic
+    that triggered the escalation."""
+    url: str
+    primary_fetcher: Literal["httpx"]
+    primary_word_count: int
+    fallback_fetcher: Literal["browserbase"]
+    fallback_word_count: int
+    escalation_reason: Literal["low_word_count", "operator_override", "JS-detect"]
+    estimated_cost_usd: float
+</code></pre>
+
+<p>Add <code>ActionType.FETCH_FALLBACK_ESCALATED = "fetch.fallback.escalated"</code>.</p>
+
+<h3>7.4 Why escalation, not default</h3>
+
+<ul>
+    <li>httpx fetch cost: ~$0.0001 per page (bandwidth + my own electricity).</li>
+    <li>Browserbase cost: ~$0.10&ndash;$0.50 per session.</li>
+    <li>1000&times; to 5000&times; ratio. At Antiek's projected ingestion volume (<code>compounding/continuous_research.py</code> is designed for 100+ pages per day in continuous mode), going default-on means $100&ndash;500/day vs $0.10/day. That is <em>not</em> a defensible delta for a marginal coverage gain.</li>
+    <li>Default behavior remains: httpx fetches; if it fails, the operator sees <code>skipped_reason="low_word_count"</code> in the event log, and can re-call <code>ingest_url(url, ..., fallback_to_browserbase=True)</code> manually.</li>
+</ul>
+
+<h3>7.5 What this wedge does NOT do</h3>
+
+<ul>
+    <li>Does NOT log in to anything. Browserbase persistent contexts (cookies) are NOT used in Wedge 2. Logged-in browsing is Wedge 4's scope and depends on the specific data surface.</li>
+    <li>Does NOT execute JavaScript-driven interactions (clicks, scrolls). Wedge 2 is a smarter fetcher, not an interaction agent. If a page needs <code>click("Load more")</code> to expose content, Wedge 2 returns the pre-click HTML and the operator decides if it's worth Wedge 4.</li>
+    <li>Does NOT bypass robots.txt. The Browserbase fetcher respects <code>robots.txt</code> (via a polite-pre-check; see <code>client_browserbase.py</code>). If a site disallows crawling, the fallback does not proceed.</li>
+    <li>Does NOT silently retry on captcha. If the Browserbase session hits a captcha, the fetch returns the captcha page; the adapter treats it as another <code>low_word_count</code> skip and emits the event with <code>escalation_reason</code> truthful about what happened.</li>
+</ul>
+
+<h3>7.6 Concurrency and session pooling</h3>
+
+<ul>
+    <li>Default: one Browserbase session per <code>fetch_via_browserbase</code> call, torn down at the end.</li>
+    <li>Optional: pass a <code>BrowserbaseSessionPool</code> (defined in <code>client_browserbase.py</code>) for batch ingestion to reuse sessions across calls &mdash; at the cost of carrying state. The pool is opt-in per call; the default is no pool.</li>
+    <li>Hard cap: max 3 concurrent Browserbase sessions per process. This is enforced by a semaphore in the client. The cap exists because Browserbase's free / dev tiers cap concurrency, and silent queueing past the cap masks failure.</li>
+</ul>
+
+<h3>7.7 Configuration</h3>
+
+<ul>
+    <li>Environment variables: <strong><code>BROWSERBASE_API_KEY</code></strong>, <strong><code>BROWSERBASE_PROJECT_ID</code></strong>. Never alias to other services' env vars.</li>
+    <li>Default per-session timeout: 60s.</li>
+    <li>Default total per-day Browserbase budget: $5 (configurable via <code>BROWSERBASE_DAILY_BUDGET_USD</code>). Hard-stops, no silent fallback.</li>
+</ul>
+
+<h3>7.8 Acceptance criteria</h3>
+
+<ul>
+    <li><code>ingest_url(url, ..., fallback_to_browserbase=True)</code> on a known JS-rendered SPA (test fixture: a captured Twitter thread URL that httpx returns empty for) produces a non-skipped result.</li>
+    <li>Default behavior unchanged: <code>ingest_url(url, ...)</code> without the new flag uses httpx only and behaves identically to before Wedge 2.</li>
+    <li><code>FetchFallbackEscalatedPayload</code> event emitted exactly when fallback fired.</li>
+    <li>Concurrency cap enforced (4th simultaneous call blocks until one finishes).</li>
+    <li>Daily budget cap triggers <code>BrowserbaseBudgetExceeded</code> typed error.</li>
+    <li>Integration test with mocked Browserbase SDK round-trips a fixture page.</li>
+</ul>
+
+<h3>7.9 Estimated effort</h3>
+
+<p>~3 days:</p>
+<ul>
+    <li><code>client_browserbase.py</code> (Playwright over Browserbase, session pool, retry, budget): ~1.5 days</li>
+    <li>Adapter wiring + new payload type + event emission + TS codegen: ~half a day</li>
+    <li>Tests (unit + integration mocked + concurrency cap + budget cap): ~1 day</li>
+</ul>
+
+<h3>7.10 Sequencing with Wedge 1</h3>
+
+<p>Wedges 1 and 2 are <strong>independent on the substrate</strong> &mdash; Wedge 1 doesn't require Wedge 2 to ship, and vice versa. Sequence either way. Recommended: Wedge 1 first because the discovery layer is the bigger missing primitive and Wedge 2 is a fallback on an already-working path.</p>
+
+<hr class="wedge-divider">
+
+<h2 id="wedge3">8. Wedge 3 — Exa <code>/contents</code> for in-loop verifier-tier fact lookup <a class="section-anchor" href="#wedge3">#</a></h2>
+
+<div class="callout note">
+    <strong>Phase 2 &middot; Sprint 19+</strong>
+    <p>Depends on Wedge 1 ratification and the verifier-tier tool-call infrastructure being defined.</p>
+</div>
+
+<h3>8.1 What it does</h3>
+
+<p>The verifier tier (Grok 4.3 via Hermes) currently scores rubrics against the substrate's own claims. It does NOT independently corroborate against the public web. Wedge 3 adds one tool:</p>
+
+<pre><code>def exa_lookup_claim(
+    claim_text: str,
+    *,
+    k: int = 3,
+    investigation_id: str,
+    require_published_after: Optional[str] = None,
+) -> list[ExaLookupResult]:
+    """
+    Searches Exa for ≤k pages whose text appears to support or refute
+    the claim. Returns URL + cleaned snippet (NOT full text). Emits a
+    typed VerifierLookupPayload event.
+
+    DOES NOT ingest anything into the graph. This is a tool call, not
+    an acquisition.
+    """
+</code></pre>
+
+<p>The verifier tier calls it during <code>RUBRIC_SCORED</code> evaluation or during <code>claim.grounding_check</code>. The returned snippets enter the verifier's context as <strong>evidence-of-claim-existence-in-the-world</strong>, not as substrate evidence &mdash; the substrate's grounding remains anchored to ingested documents.</p>
+
+<h3>8.2 New event type</h3>
+
+<pre><code>class VerifierLookupPayload(_PayloadBase):
+    """The verifier tier consulted an external corroboration tool.
+    Recorded so the trajectory shows when the verifier reached
+    outside the substrate."""
+    tool: Literal["exa.search_contents"]
+    query: str
+    claim_text: Optional[str] = None
+    k_requested: int
+    results: list[ExaLookupResult]
+    cost_usd_estimate: float
+</code></pre>
+
+<h3>8.3 Why the snippets stay out of the graph</h3>
+
+<p>The substrate-as-source-of-truth invariant requires that every claim in the graph traces back to a chunk in an ingested document. Exa snippets are NOT ingested documents &mdash; they have no chunk index, no section path, no stable position. If a verifier-tier snippet later becomes substrate evidence, the operator promotes the underlying URL via <code>ingest_url(...)</code> and the claim is re-grounded against the now-ingested chunk. The verifier-lookup event records what the verifier considered; the graph records what the substrate believes.</p>
+
+<h3>8.4 Why this is PHASE 2</h3>
+
+<p>Two preconditions:</p>
+
+<ol>
+    <li><strong>Wedge 1 must ship first.</strong> The Exa client + budget + event plumbing are reused; building them twice is waste.</li>
+    <li><strong>Verifier-tier tool-call infrastructure does not yet exist in a ratified form.</strong> The verifier tier currently scores rubrics in a single-shot dispatch. Adding tools introduces multi-turn dispatch semantics that touch <code>substrate/dispatch/</code>. That's a substrate change that should be its own decision, not a side effect of an Exa integration. Sprint 19+ depending on dispatch-multi-turn readiness.</li>
+</ol>
+
+<h3>8.5 Goodhart risk</h3>
+
+<p>If the verifier always defers to "but Exa returned a corroborating snippet," it stops doing its actual job (rubric scoring against Antiek's claim) and reduces to "did Exa find an agreeing page?" Mitigation:</p>
+
+<ul>
+    <li>The verifier's rubric weighting MUST keep substrate-grounding as primary. Exa lookup is a <em>signal</em>, not the score.</li>
+    <li>Calibration: a curated eval set (per Prime Intellect spec &sect;D) with claims where the Exa result is misleading (correct claim, no corroborating page; incorrect claim, plenty of agreeing pages because the falsehood is popular). The verifier's accuracy with Wedge 3 enabled vs disabled must be measured on this set before Wedge 3 ships to production scoring.</li>
+</ul>
+
+<h3>8.6 Unlock criteria</h3>
+<p>See <a href="#unlock">&sect;15.3</a>.</p>
+
+<hr class="wedge-divider">
+
+<h2 id="wedge4">9. Wedge 4 — Stagehand-driven extractor for one structured-data surface <a class="section-anchor" href="#wedge4">#</a></h2>
+
+<div class="callout note">
+    <strong>Phase 2 (conditional) &middot; Sprint 20+</strong>
+    <p>Conditional on a concrete data need surfacing.</p>
+</div>
+
+<h3>9.1 What it does</h3>
+
+<p>For ONE specific surface where:</p>
+
+<ul>
+    <li>The operator needs structured data (typed fields, not free text).</li>
+    <li>The data lives behind login OR aggressive JS rendering OR multi-step navigation.</li>
+    <li>The volume is low enough that Stagehand's per-page cost is acceptable.</li>
+    <li>A keyed scraper (typed Playwright selectors) would be too brittle to maintain.</li>
+</ul>
+
+<p>&hellip;build a Stagehand-driven extractor as a single typed adapter under <code>acquisition/&lt;source_name&gt;/adapter.py</code>. Concrete candidates the operator mentioned in prior sessions:</p>
+
+<ul>
+    <li><strong>SEC EDGAR full-text search</strong> (logged-out but JS-heavy and slow to scrape conventionally) &mdash; though EDGAR also has a direct API; if so, use it instead and Wedge 4 doesn't apply here.</li>
+    <li><strong>Polymarket markets</strong> (some JS-loaded data) &mdash; but Polymarket has an API too. Prefer API.</li>
+    <li><strong>One specific academic database paywalled per-institution</strong> &mdash; conditional on the operator's research workflow demanding it.</li>
+</ul>
+
+<p>The wedge is <em>conditional</em> because Antiek does not currently have a ratified specific surface. Until one is named, the wedge is "designed, not built."</p>
+
+<h3>9.2 The pattern when it lands</h3>
+
+<p>Each Wedge-4 adapter:</p>
+
+<ol>
+    <li>Lives at <code>acquisition/&lt;source&gt;/adapter.py</code> (e.g. <code>acquisition/edgar/adapter.py</code>).</li>
+    <li>Uses Stagehand for navigation + <code>page.extract</code> for typed extraction against a Pydantic schema defined in the adapter.</li>
+    <li>Calls <code>acquisition/urls/adapter.ingest_url(...)</code> for any URL it discovers along the way &mdash; so the standard URL-to-document path handles those, not Stagehand's <code>page.extract</code>.</li>
+    <li>Mints typed nodes/edges directly for the structured data only when the data has no underlying URL representation (rare; most things on a page can be reached via a URL).</li>
+    <li>Emits <code>DocumentLoadedPayload</code> with <code>media_type="stagehand_extracted"</code> when the structured-data payload IS the document.</li>
+</ol>
+
+<h3>9.3 Why this is PHASE 2 and conditional</h3>
+
+<ul>
+    <li>No specific data surface ratified yet (open question &sect;17.4).</li>
+    <li>Stagehand's stability under workload is not directly observed by Antiek. Operator should run a 100-page scrape against the candidate surface as a spike before committing to a Wedge-4 adapter.</li>
+    <li>Per-page cost (~$0.001&ndash;$0.005 with Stagehand LLM calls) accumulates fast. Volume estimate must precede commit.</li>
+</ul>
+
+<h3>9.4 Open question — Pydantic schema vs. zod</h3>
+
+<p>Stagehand's TS SDK uses zod; the Python SDK uses Pydantic. Antiek's substrate-side schemas are Pydantic (per <code>substrate/schemas/events.py</code>). Use the Python SDK. The TS surface for any Wedge-4 data lives downstream of substrate writes, not at extraction time.</p>
+
+<h3>9.5 Acceptance criteria when it ships</h3>
+
+<p>Adapter-specific. Defined per concrete Wedge-4 candidate when the surface is named.</p>
+
+<hr class="wedge-divider">
+
+<h2 id="wedge5">10. Wedge 5 — Exa Websets for continuous research mode <a class="section-anchor" href="#wedge5">#</a></h2>
+
+<div class="callout warn">
+    <strong>Defer &middot; Sprint 21+</strong>
+    <p>Gated on continuous research mode shipping on a non-Exa baseline first.</p>
+</div>
+
+<h3>10.1 What Websets actually are</h3>
+
+<p>Exa's Websets product: define a Webset (a saved search with criteria), Exa runs it as a continuous job, and you receive new matches as they appear. Conceptually similar to RSS-for-the-public-web. Per-Webset pricing applies.</p>
+
+<h3>10.2 The overlap with <code>compounding/continuous_research.py</code></h3>
+
+<p><code>master-product-spec.md</code> &sect;7 describes continuous research mode: the operator's open questions are watched, sources are revisited, new documents trigger re-synthesis. The intended implementation is substrate-native (cron + the operator's existing RSS feeds + arxiv polling + selected acquisition adapters).</p>
+
+<p>Wedge 5 would add Exa Websets as one monitoring source: instead of the operator manually choosing which RSS feeds to watch, Exa's neural-search monitoring runs in their cloud and pushes results.</p>
+
+<h3>10.3 Why DEFER</h3>
+
+<ul>
+    <li><strong>Substrate-native first.</strong> Continuous research mode must work without Exa before Exa is added as a complication. If continuous research only works with Exa, the substrate is incomplete.</li>
+    <li><strong>Cost surface is unbounded.</strong> Webset cost scales with match frequency, which is not pre-known. Adding Websets before the daily-budget pattern from Wedge 1 has been operated on for &ge;30 days risks runaway cost.</li>
+    <li><strong>Operator hasn't validated the use case.</strong> The continuous research cron is designed for low-frequency revisit (daily, not minute-by-minute). Webset's value compounds at high-frequency monitoring.</li>
+</ul>
+
+<h3>10.4 What CAN happen during defer</h3>
+
+<p>The discovery layer from Wedge 1 is reusable &mdash; when Webset matches arrive, they flow through <code>acquisition/search/exa/</code> as <code>DiscoveryProposed</code> events with <code>query=&lt;webset_id&gt;</code> and a different provider sub-tag. No second adapter, no second event type. The substrate stays clean.</p>
+
+<h3>10.5 Unlock criteria</h3>
+<p>See <a href="#unlock">&sect;15.5</a>.</p>
+
+<hr class="wedge-divider">
+
+<h2 id="wedge6">11. Wedge 6 — Full agentic browsing as a first-class role <a class="section-anchor" href="#wedge6">#</a></h2>
+
+<div class="callout reject">
+    <strong>Defer (possibly reject permanently) &middot; Sprint 23+ at earliest</strong>
+    <p>This is the headline thing the question "can my agent browse the web" implies, and it's the wrong thing to build this year.</p>
+</div>
+
+<h3>11.1 What it would be</h3>
+
+<p>A <code>roles/web_browser/</code> role that takes a high-level goal ("find Tesla's Q3 deliveries by segment from their IR site") and uses Stagehand (or Browserbase Director) to navigate freely: search, click links, scroll, follow redirects, extract data, return a result. Multi-step. Stateful. LLM-in-the-loop on every interaction decision.</p>
+
+<h3>11.2 Why DEFER</h3>
+
+<ul>
+    <li><strong>Cost is unbounded per goal.</strong> A multi-step browsing session can rack up 10&ndash;100 Stagehand calls. At ~$0.005 each plus session-minutes, one goal = $0.50&ndash;$5. Antiek's substrate runs hundreds of goals per investigation; this is not bounded.</li>
+    <li><strong>State is hard.</strong> Multi-step browsing requires session resumption, rollback on dead ends, deduplication of visited pages, cost ceilings per goal &mdash; all of which are substrate-level concerns, not Browserbase-level concerns. Building this <em>correctly</em> is multi-sprint work, not "add Stagehand."</li>
+    <li><strong>The substrate already handles the structured cases.</strong> Tesla's Q3 deliveries? <code>acquisition/urls/</code> pointed at the IR press release. Anthropic's pricing? <code>acquisition/urls/</code> on the pricing page. The cases where free-form browsing wins are the long tail of "I don't know the URL." The discovery layer (Wedge 1) addresses that long tail better &mdash; Exa's neural search finds the URL; the URL adapter ingests it.</li>
+    <li><strong>The operator's review surface doesn't exist yet.</strong> An agent that freely browses must be observable. The trajectory replay viewer (PostHog Wedge 5 &mdash; Sprint 20) is the right surface; until it exists, browsing trajectories are opaque JSONL.</li>
+</ul>
+
+<h3>11.3 Why possibly REJECT permanently</h3>
+
+<p>If Wedges 1, 2, 3, and 4 together cover &ge;95% of the realistic web-acquisition needs Antiek encounters, Wedge 6 has no remaining demand. The hypothesis is that the discovery + escalation + corroboration + narrow-extractor pattern outperforms free-form browsing for Antiek's research domain, because Antiek is <em>evidence-anchored</em> &mdash; claims must be substrate-grounded, not just "the agent saw it on a page." Free-form browsing is the wrong primitive when the deliverable is grounded synthesis.</p>
+
+<h3>11.4 Unlock criteria</h3>
+<p>See <a href="#unlock">&sect;15.6</a>. They are stringent on purpose.</p>
+
+<hr class="wedge-divider">
+
+<h2 id="rejects">12. Explicit rejections (don't re-litigate) <a class="section-anchor" href="#rejects">#</a></h2>
+
+<p>Stated once. The verdicts are settled. Re-open only if the underlying substrate state changes meaningfully.</p>
+
+<div class="callout reject">
+    <strong>12.1 Exa as a dispatch provider</strong>
+    <p><code>substrate/dispatch/providers/</code> is the LLM provider abstraction &mdash; OpenAI-shaped chat-completions adapters that handle prompt + response + usage tracking. Exa is not an LLM. Forcing Exa into the dispatch abstraction (treating its <code>/search</code> as a dispatch call) overloads the abstraction with two unrelated shapes. Discovery and dispatch are different concerns. Same rejection logic as Prime Intellect spec &sect;C (Prime hosted models would be a dispatch provider; Prime as a <em>runner</em> isn't). Exa stays in <code>acquisition/search/</code>.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.2 Browserbase as a dispatch provider</strong>
+    <p>Same logic. Browserbase is a browser, not an LLM. The Stagehand LLM calls <em>inside</em> a Browserbase session DO use an LLM, but configured internally &mdash; they are not dispatched by Antiek's router and should not be. The cost-tracking is per-session, not per-token; the abstraction mismatch is total.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.3 Browserbase as the default URL fetcher</strong>
+    <p>50&ndash;5000&times; cost ratio (&sect;7.4). Cannot be defended at Antiek's projected ingestion volume. The escalation pattern in Wedge 2 captures the value without the cost. Default-on Browserbase would also tie the URL adapter's reliability to a third-party SaaS &mdash; every continuous research job would fail when Browserbase has an incident. The httpx primary keeps the adapter substrate-internal-only at default.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.4 Exa <code>/contents</code> <code>summary</code>-against-schema as <code>parameter_extractor</code></strong>
+    <p><code>/contents</code> with a summary parameter runs an LLM (Exa's choice, with Exa's prompt, against Exa's chosen model) to extract structured data from a page. <code>roles/parameter_extractor/</code> does the same thing &mdash; for Antiek's chunks, with Antiek's prompts, with Antiek's dispatch tier, with Antiek's typed event trail. The two systems doing the same job with different lineages is the misalignment. The parameter_extractor is the typed-extraction source of truth; Exa's summary is opaque.</p>
+    <p>If the operator wants Exa's summary, they get it from <code>/contents</code> without Antiek's involvement &mdash; but it does not enter the substrate as parameter-extraction output. The same content goes through <code>parameter_extractor</code> if the document is ingested.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.5 Exa <code>/answer</code> for synthesis</strong>
+    <p><code>/answer</code> collapses search &rarr; contents &rarr; LLM into one opaque call. Antiek's synthesis is a typed-event sequence (Decompose, Keywords, ParameterExtract, Connect, Synthesize, ConstraintCheck, RubricScore). Substituting <code>/answer</code> for any of those collapses the trajectory. The trajectory IS the product (master-product-spec &sect;15.4). Operations that collapse it are rejected by category, not by cost.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.6 Using either to bypass the Sprint 18 retrieval-time legal gate</strong>
+    <p>The legal gate is at the SQL-WHERE level in <code>substrate/legal_gate/</code> (Sprint 18 deliverable). Any code path that reaches the graph must pass the gate. <strong>There is no architectural way to "use Exa to get content from a banned domain" because the gate sits between the URL and the graph, not between Exa and the URL.</strong></p>
+    <p>Stated explicitly because the question will be asked: "Exa already ingested it, so we're not crawling, we're just reading from Exa's cache &mdash; does the gate apply?" Yes. The gate applies to graph writes, not to crawls. Reading from Exa's cache and writing to the graph is a graph write. Gate applies. Period.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.7 Browserbase to bypass robots.txt or paywalls</strong>
+    <p>Browserbase offers stealth fingerprinting and residential IPs. These make a session look more like a real user. Using them to access content the site operator declined to allow (via robots.txt, IP blocks, paywall) is not a legal-defensibility position Antiek will take. The substrate's value depends on the operator's ability to attribute sources publicly; sources reached by circumventing access control are not publicly defensible.</p>
+    <p>This rejection is broader than the AG MDL / Hachette / Bartz legal gate &mdash; that gate concerns specific banned corpora; this rejection concerns the general norm.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.8 Bundling a persistent Browserbase session per investigation</strong>
+    <p>PostHog-style "one persistent session per investigation, kept warm" sounds efficient but creates two failure modes:</p>
+    <ul>
+        <li><strong>State leakage.</strong> Cookies, localStorage, fingerprints accumulate across pages. A session that logged in to site A and then visits site B leaks site-A identity to site B. Antiek does not control what each ad-tech tracker does with this.</li>
+        <li><strong>Cost surface unbounded.</strong> A session kept warm runs the meter whether or not it's doing useful work. The escalation pattern in Wedge 2 (start a session for one URL, tear it down) bounds cost per fetch.</li>
+    </ul>
+    <p>If a future use case requires logged-in browsing (Wedge 4), the specific adapter manages its own session lifecycle &mdash; there is no investigation-level session.</p>
+</div>
+
+<div class="callout reject">
+    <strong>12.9 Using Stagehand's <code>page.act</code> against substrate UI</strong>
+    <p>A misreading I'd preempt: "Stagehand can navigate Antiek's own web app." It can. It shouldn't. Antiek's UI is the operator's surface; having an agent click around the operator's notebook is the inverse of the workflow. The agent operates against external sources; the operator operates against the agent's outputs.</p>
+    <p>This rejection forecloses a fun-sounding demo (the agent uses Stagehand to do the operator's review work) that would actually be a category error.</p>
+</div>
+
+<h2 id="envelope">13. Cost, legal, and safety envelope <a class="section-anchor" href="#envelope">#</a></h2>
+
+<p>The numbers below are 2026-Q1 estimates. <strong>Confirm current pricing before any sprint commit. Re-verify quarterly thereafter.</strong></p>
+
+<h3>13.1 Cost model</h3>
+
+<table>
+    <thead>
+        <tr><th>Operation</th><th>Cost (USD)</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>One <code>httpx</code> URL fetch</td><td>~$0.0001</td><td>Bandwidth + electricity only</td></tr>
+        <tr><td>Antiek's own HTML&rarr;markdown extract</td><td>~$0 (CPU-only)</td><td>Already in <code>processing/extraction/</code></td></tr>
+        <tr><td>One Exa <code>/search</code> call (10 results)</td><td>~$0.005</td><td>$5/1k searches</td></tr>
+        <tr><td>One Exa <code>/contents</code> call (10 URLs, no summary)</td><td>~$0.005</td><td>$5/1k pages</td></tr>
+        <tr><td>One Exa <code>/contents</code> call (10 URLs, with summary)</td><td>~$0.02&ndash;0.05</td><td>Summary uses LLM, varies by model</td></tr>
+        <tr><td>One Exa <code>findSimilar</code> call</td><td>~$0.001</td><td>$1/1k calls</td></tr>
+        <tr><td>One Browserbase session (1 minute, no Stagehand)</td><td>~$0.10</td><td>Per session-minute, rounded up</td></tr>
+        <tr><td>One Browserbase session (3 minutes, Stagehand-driven)</td><td>~$0.30 + ~$0.005 (LLM calls)</td><td>Per session + Stagehand per-call</td></tr>
+        <tr><td>One verifier-tier dispatch call (Grok 4.3 via Hermes)</td><td>~$0.005</td><td>Existing; unchanged by Wedges</td></tr>
+    </tbody>
+</table>
+
+<p><strong>The asymmetries that drive the verdicts:</strong></p>
+
+<ul>
+    <li>Exa search &asymp; 50&times; httpx fetch. Cheap enough to be a routine discovery cost.</li>
+    <li>Browserbase session &asymp; 1000&ndash;5000&times; httpx fetch. Reserved for escalation.</li>
+</ul>
+
+<h3>13.2 Daily budget caps (default values; configurable)</h3>
+
+<ul>
+    <li><code>EXA_DAILY_BUDGET_USD</code>: $5. Sustains ~1k searches/day or ~500 contents calls.</li>
+    <li><code>BROWSERBASE_DAILY_BUDGET_USD</code>: $5. Sustains ~25 escalation sessions/day.</li>
+    <li>Total acquisition budget cap (sum of Exa + Browserbase + future providers): $10/day default. Enforced at <code>acquisition/search/__init__.py</code> level.</li>
+</ul>
+
+<p><strong>Cap behavior:</strong> the next call raises a typed <code>DailyAcquisitionBudgetExceeded</code> error. There is no silent throttle, no silent provider swap. The operator sees the failure.</p>
+
+<h3>13.3 Legal envelope</h3>
+
+<ul>
+    <li><strong>Exa's TOS:</strong> Exa indexes the public web and licenses access to its index. Antiek's use is consistent with their published terms (verified 2026-Q1; re-verify before Sprint 18 commit).</li>
+    <li><strong>Browserbase's TOS:</strong> Browserbase provides infrastructure; the user is responsible for what they crawl. Antiek's use must respect robots.txt and applicable site terms. The wedge specs (especially &sect;7.5, &sect;12.7) commit to this.</li>
+    <li><strong>AG MDL / Hachette / Bartz banned-corpus list:</strong> enforced at the Sprint 18 retrieval-time gate. Both Exa-sourced and Browserbase-sourced URLs flow through the gate before any graph write.</li>
+    <li><strong>GDPR / personal data:</strong> Exa's <code>category="linkedin profile"</code> and <code>category="company"</code> results may surface personal data. Antiek operator (single operator pre-Sprint-19) is the data controller. Sprint 22 multi-user pivot needs to re-evaluate data-controller arrangements before this wedge is exposed to non-operator users.</li>
+</ul>
+
+<h3>13.4 Safety envelope</h3>
+
+<ul>
+    <li><strong>Exa cannot execute code.</strong> Exa returns text and URLs. Safe.</li>
+    <li><strong>Browserbase executes JavaScript on remote pages.</strong> That's the point. Risks:
+        <ul>
+            <li>Malicious sites can fingerprint Browserbase sessions and target them (e.g. serve a poison page on detection). Mitigation: Browserbase's stealth mode is enabled by default; we don't add aggressive identifying headers.</li>
+            <li>Browser exploits in the Chromium build could compromise the Browserbase session. Mitigation: not our infra; trust Browserbase's patching cadence. Sessions are ephemeral and isolated per their docs.</li>
+            <li>Cross-site state leakage if sessions are pooled. Mitigation: sessions are NOT pooled across investigations or domains by default (&sect;7.6, &sect;12.8).</li>
+        </ul>
+    </li>
+    <li><strong>Cost-as-DoS.</strong> A bug that loops on <code>discover(...)</code> or <code>fetch_via_browserbase(...)</code> can exhaust budget in minutes. Mitigation: hard daily caps + per-call cost logging + weekly reporting (&sect;6.7, &sect;13.2).</li>
+</ul>
+
+<h2 id="risks">14. Risks and mitigations <a class="section-anchor" href="#risks">#</a></h2>
+
+<h3>14.1 Discovery-layer pollution</h3>
+<p><strong>Risk:</strong> Wedge 1 floods the event log with <code>DiscoveryProposed</code> events; the operator stops paying attention and the audit value decays.</p>
+<p><strong>Mitigation:</strong></p>
+<ul>
+    <li>Discovery events live in a separate JSONL file from substrate events (<code>~/.antiek/discovery_events/*.jsonl</code>), not interleaved.</li>
+    <li>A discovery-review surface (Sprint 19 work, ties to PostHog Wedge 3 command palette) lets the operator skim proposals, filter by query / domain / score.</li>
+    <li>30-day retention default; older proposals roll up to a summary table.</li>
+</ul>
+
+<h3>14.2 Doc-id collision via final-url drift</h3>
+<p><strong>Risk:</strong> A URL's <code>final_url</code> (after redirects) varies across fetches (some sites change canonical slugs over time). Two fetches via two sources (Exa + manual paste) of the same logical content might produce two different <code>final_url</code> values and two different <code>url_doc_id</code> hashes.</p>
+<p><strong>Mitigation:</strong></p>
+<ul>
+    <li><code>url_doc_id</code> already uses <code>final_url</code>, not <code>requested_url</code> &mdash; same redirect produces the same id.</li>
+    <li>Add a <code>url_alias</code> table mapping <code>requested_url &rarr; document_id</code> so re-encountering an alias links back to the canonical document.</li>
+    <li>Operator-facing alert when a near-duplicate document is created (high embedding overlap, different URL); operator can merge.</li>
+</ul>
+
+<h3>14.3 Exa relevance score is opaque</h3>
+<p><strong>Risk:</strong> Exa returns a <code>relevance_score</code> per result; using it to auto-promote (rather than operator review) creates a Goodhart problem against Exa's ranking model.</p>
+<p><strong>Mitigation:</strong></p>
+<ul>
+    <li>Wedge 1 does NOT auto-promote. Every promotion is operator-mediated (or a Wedge-3 verifier-tier call with bounded scope).</li>
+    <li>The score is recorded in the event payload but not used for ingestion gating.</li>
+</ul>
+
+<h3>14.4 Browserbase API instability</h3>
+<p><strong>Risk:</strong> Browserbase is a startup; SDK breaking changes, pricing changes, or service incidents will happen.</p>
+<p><strong>Mitigation:</strong></p>
+<ul>
+    <li>Wedge 2 is opt-in per-call. Default behavior unaffected by Browserbase outages.</li>
+    <li>Pin SDK version in <code>pyproject.toml</code>.</li>
+    <li>The escalation pattern (httpx primary, Browserbase fallback) means losing Browserbase degrades to "low_word_count skip," not to total acquisition failure.</li>
+    <li>Failure is loud: <code>BrowserbaseProviderError</code> raises explicitly; no silent fallback to a different provider.</li>
+</ul>
+
+<h3>14.5 The verifier-tier corroboration honeypot (Wedge 3)</h3>
+<p><strong>Risk:</strong> As articulated in &sect;8.5 &mdash; verifier defers to Exa's "did agreeing pages exist" signal and stops doing rubric work.</p>
+<p><strong>Mitigation:</strong></p>
+<ul>
+    <li>Calibration eval set (&sect;8.5).</li>
+    <li>Rubric weighting MUST keep substrate-grounding primary.</li>
+    <li>Wedge 3 acceptance criterion: verifier accuracy on the Exa-misleading subset doesn't degrade vs Exa-off baseline.</li>
+</ul>
+
+<h3>14.6 Wedge sequencing drift</h3>
+<p><strong>Risk:</strong> Wedge 1 ships before the Sprint 18 legal gate (sequencing violation &sect;6.9); restricted content leaks into the graph.</p>
+<p><strong>Mitigation:</strong></p>
+<ul>
+    <li>Sequencing constraint is documented at the wedge level (&sect;6.9).</li>
+    <li>The Sprint 18 gate ships first. The Wedge 1 PR includes the gate enforcement test &mdash; without the gate, the PR fails CI.</li>
+</ul>
+
+<h3>14.7 Provider lock-in via event-payload shape</h3>
+<p><strong>Risk:</strong> <code>DiscoveryProposedPayload</code> includes Exa-specific fields (<code>provider_response_id</code>, Exa's <code>relevance_score</code> interpretation). Future providers don't map cleanly.</p>
+<p><strong>Mitigation:</strong></p>
+<ul>
+    <li><code>provider</code> is a <code>Literal</code> union &mdash; adding a new provider extends the union, doesn't break existing events.</li>
+    <li>Provider-specific fields are nested under <code>provider_specific: dict[str, Any]</code> rather than promoted to top-level. The top-level fields are the provider-agnostic ones (url, title, query, score).</li>
+</ul>
+
+<h2 id="unlock">15. Unlock criteria for promoting wedges <a class="section-anchor" href="#unlock">#</a></h2>
+
+<p>Each wedge has explicit gates. Crossing them is the ratification event.</p>
+
+<h3>15.1 Wedge 1 (Exa discovery adapter)</h3>
+<ul>
+    <li>Sprint 18 retrieval-time legal gate shipped to production.</li>
+    <li><code>DiscoveryProposedPayload</code> + <code>DiscoverySelectedPayload</code> typed in <code>substrate/schemas/events.py</code>; TS codegen run.</li>
+    <li><code>EXA_DAILY_BUDGET_USD</code> enforcement integration-tested.</li>
+    <li>Operator has run <code>discover(...)</code> against a real query on the production Exa key, reviewed &ge;10 results, ingested &ge;3 of them, and confirmed the trajectory log captures the discovery &rarr; selection chain end-to-end.</li>
+</ul>
+
+<h3>15.2 Wedge 2 (Browserbase escalation fallback)</h3>
+<ul>
+    <li><code>BROWSERBASE_DAILY_BUDGET_USD</code> enforcement integration-tested.</li>
+    <li>Concurrency cap (3 sessions) integration-tested.</li>
+    <li><code>robots.txt</code> pre-check verified against one disallowed-domain fixture.</li>
+    <li><code>FetchFallbackEscalatedPayload</code> typed and emitted in the integration test path.</li>
+    <li>Operator has flipped <code>fallback_to_browserbase=True</code> on a known JS-rendered SPA fixture and confirmed the recovery + cost logging.</li>
+</ul>
+
+<h3>15.3 Wedge 3 (verifier <code>/contents</code> lookup)</h3>
+<ul>
+    <li>Wedge 1 ratified.</li>
+    <li>Dispatch-multi-turn tool-call infrastructure exists in <code>substrate/dispatch/</code> (separate substrate decision, not part of this spec).</li>
+    <li>Calibration eval set: &ge;20 (claim, expected_result) pairs where Exa's <code>/contents</code> is known to be misleading.</li>
+    <li>Verifier accuracy with Wedge-3 enabled is &ge; baseline accuracy (no degradation on the calibration set).</li>
+</ul>
+
+<h3>15.4 Wedge 4 (Stagehand structured-data extractor)</h3>
+<ul>
+    <li>A specific data surface named, with documented:
+        <ul>
+            <li>Volume estimate (pages/day, peak).</li>
+            <li>Per-page cost estimate (Stagehand calls &times; $0.005 + session-minutes &times; $0.10).</li>
+            <li>Schema design (Pydantic models for the extracted data).</li>
+        </ul>
+    </li>
+    <li>Operator-run 100-page spike against the candidate surface; cost + reliability data captured.</li>
+    <li>Confirmation that no direct API exists for the same data (if an API exists, it dominates Wedge 4).</li>
+    <li>Substrate-write contract: the wedge ingests via <code>acquisition/urls/adapter.ingest_url(...)</code> where possible; only directly mints nodes for structured data with no URL representation.</li>
+</ul>
+
+<h3>15.5 Wedge 5 (Exa Websets for continuous research)</h3>
+<ul>
+    <li>Continuous research mode (<code>compounding/continuous_research.py</code>) has shipped on a non-Exa baseline (RSS + arxiv polling + operator-curated sources) and operated for &ge;30 days.</li>
+    <li>Operator can articulate which specific monitoring need the non-Exa baseline does NOT cover &mdash; i.e. the Webset value-add.</li>
+    <li>Per-Webset cost cap pattern defined and operator-reviewed.</li>
+</ul>
+
+<h3>15.6 Wedge 6 (full agentic browsing)</h3>
+<p>All of these. Stringent on purpose.</p>
+<ul>
+    <li>Wedges 1, 2, 3, 4 all shipped and operated for &ge;60 days.</li>
+    <li>Documented evidence of &ge;10 specific cases where Wedges 1&ndash;4 together could NOT meet a real research need, and free-form browsing would have.</li>
+    <li>Trajectory replay viewer (PostHog Wedge 5) shipped &mdash; without it, Wedge 6 is unobservable.</li>
+    <li>Per-goal cost ceiling pattern designed and operator-reviewed. Includes hard timeouts, max-steps caps, and rollback semantics when a goal exceeds budget.</li>
+    <li>Undo affordance (PostHog Wedge 4 &sect;8.4) shipped &mdash; Wedge 6 takes actions; undo must exist for those actions before the role is promoted.</li>
+    <li>An operator-graded eval set of &ge;30 free-form browsing goals, scored against the Wedge 1&ndash;4 baseline. Wedge 6 must outperform the baseline on at least one principled axis (coverage, cost, time-to-result) to justify shipping.</li>
+</ul>
+
+<p>If any criterion fails to ratify, the verdict moves from DEFER to REJECT permanently.</p>
+
+<h2 id="sprint-placement">16. Sprint placement <a class="section-anchor" href="#sprint-placement">#</a></h2>
+
+<table>
+    <thead>
+        <tr><th>Sprint</th><th>Theme</th><th>Exa / Browserbase work</th></tr>
+    </thead>
+    <tbody>
+        <tr><td><strong>17</strong></td><td>Interview voice mode + program.md per role</td><td>None</td></tr>
+        <tr><td><strong>18</strong></td><td>Publisher dashboard + Synquery (deferred) + <strong>retrieval-time legal gate</strong></td><td>Sequencing precondition for Wedge 1. No wedge work this sprint.</td></tr>
+        <tr><td><strong>18 (late) &rarr; 19</strong></td><td>Multi-user pivot start + PostHog Wedge 2 (notebooks)</td><td><strong>Wedge 1</strong> (Exa discovery adapter) main work. <strong>Wedge 2</strong> (Browserbase escalation) parallel &mdash; independent.</td></tr>
+        <tr><td><strong>19</strong></td><td>Multi-user / notebooks / command palette (PostHog Wedge 3)</td><td>Wedge 1 ratifies. Wedge 2 ratifies. <strong>Wedge 3</strong> (Exa <code>/contents</code> for verifier) scoped IF dispatch-multi-turn tool-call substrate is ready.</td></tr>
+        <tr><td><strong>20</strong></td><td>Multi-user / payouts / trajectory replay (PostHog Wedge 5)</td><td>Wedge 3 main work if scoped. <strong>Wedge 4</strong> (Stagehand for ONE structured-data surface) main work IF a surface has been ratified.</td></tr>
+        <tr><td><strong>21&ndash;22</strong></td><td>Phase 4 ad inventory</td><td><strong>Wedge 5</strong> (Exa Websets) consideration if continuous research has operated 30+ days.</td></tr>
+        <tr><td><strong>22+</strong></td><td>Scale / multi-user-with-team / Phase 4 monetization</td><td>Wedge 6 (full agentic browsing) re-evaluation. Possibly REJECT permanently if Wedges 1&ndash;5 cover &ge;95% of demand.</td></tr>
+    </tbody>
+</table>
+
+<p><strong>Critical sequencing constraints:</strong></p>
+<ul>
+    <li>Wedge 1 cannot land before the Sprint 18 retrieval-time legal gate.</li>
+    <li>Wedge 3 cannot land before Wedge 1 ratifies AND dispatch-multi-turn tool-call substrate is ready (separate substrate decision).</li>
+    <li>Wedges 4, 5, 6 each have explicit unlock criteria (&sect;15.4&ndash;15.6).</li>
+</ul>
+
+<p><strong>What's NOT on the critical path:</strong></p>
+<ul>
+    <li>Wedge 2 (Browserbase escalation) can ship independent of Wedge 1.</li>
+    <li>The discovery-event types in <code>substrate/schemas/events.py</code> can land ahead of Wedge 1 as a substrate-only PR.</li>
+</ul>
+
+<h2 id="open">17. Open questions (genuinely unresolved) <a class="section-anchor" href="#open">#</a></h2>
+
+<p>These are the questions this spec does NOT settle. Each requires operator decision before the wedge it gates lands.</p>
+
+<h3>17.1 Should Wedge 1 share <code>acquisition/search/</code> with future providers (SerpAPI, Tavily, Perplexity), or get its own <code>acquisition/exa/</code>?</h3>
+<p>This spec recommends <code>acquisition/search/exa/</code> to anticipate sibling providers. The alternative (<code>acquisition/exa/</code> at the same level as <code>acquisition/urls/</code>) is more parallel to existing acquisition modules but encodes the assumption that Exa is one of one, not one of many.</p>
+<p><strong>Recommendation:</strong> <code>acquisition/search/exa/</code>. The discovery layer is its own pattern, distinguishable from the source-specific adapters (arxiv, books, podcasts). Future providers extend it cleanly.</p>
+<p><em>Operator decision needed before Wedge 1 ships.</em></p>
+
+<h3>17.2 Does Browserbase's persistent context (cookies across sessions) belong in Wedge 2 or only in Wedge 4?</h3>
+<p>This spec says Wedge 4 only (&sect;7.5). The alternative: Wedge 2 could optionally accept a persistent context for sites the operator has logged into. This is more powerful but introduces state per-domain.</p>
+<p><strong>Recommendation:</strong> Wedge 4 only. Wedge 2's mission is "smarter fetch for the same logged-out URL"; logged-in browsing is a fundamentally different mode and deserves its own wedge.</p>
+<p><em>Operator decision needed before Wedge 2 ships.</em></p>
+
+<h3>17.3 Is Exa's <code>findSimilar</code> valuable enough to include in Wedge 1, or should it be deferred?</h3>
+<p><code>findSimilar</code> adds a "I have one good source, find five more like it" capability. Independently valuable to discovery. But it's a distinct call shape (URL &rarr; URLs, not query &rarr; URLs) and adds API surface.</p>
+<p><strong>Recommendation:</strong> include in Wedge 1 from day one. It's the same event shape (<code>DiscoveryProposed</code> with <code>query=&lt;originating_url&gt;</code>), so no schema cost. Operator-side value is high &mdash; easy way to expand a narrow lead.</p>
+<p><em>Operator decision needed before Wedge 1 ships.</em></p>
+
+<h3>17.4 Which specific surface justifies Wedge 4 (or does any)?</h3>
+<p>Listed candidates in &sect;9.1. None ratified. If no surface emerges over Sprints 18&ndash;19, Wedge 4 may simply not ship &mdash; defer permanently rather than build a Stagehand adapter for an imaginary use case.</p>
+<p><em>Operator decision needed when a candidate surface surfaces, NOT prospectively.</em></p>
+
+<h3>17.5 Should the discovery layer support multi-provider fan-out (query &rarr; Exa + SerpAPI + Tavily simultaneously) from day one?</h3>
+<p>This spec scopes Wedge 1 to Exa only. Multi-provider fan-out (issue the same query against multiple providers, merge results) is a separate decision. Value: redundancy + breadth. Cost: 2&ndash;3&times; per query.</p>
+<p><strong>Recommendation:</strong> single-provider in Wedge 1. The multi-provider pattern is added when a second provider ships, not preemptively.</p>
+<p><em>Operator decision needed only when a second provider lands.</em></p>
+
+<h3>17.6 What's the right surface for operator review of <code>DiscoveryProposed</code> events?</h3>
+<p>This spec assumes Sprint 19's PostHog Wedge 3 command palette or Wedge 2 notebook surface picks up discovery review. Concrete UI design not in this spec's scope.</p>
+<p><em>Operator decision needed during Sprint 19 UI work.</em></p>
+
+<h3>17.7 Does Stagehand call dispatch through Antiek's router (preserving the substrate-as-source-of-truth for LLM choices) or through Stagehand's own LLM config?</h3>
+<p>Stagehand defaults to OpenAI; can be configured to use Anthropic, OpenRouter, or others. The architectural question: when Stagehand calls an LLM inside a Browserbase session, should that LLM call go through Antiek's dispatch router (so the tier system + cost tracking captures it) or through Stagehand's separate config?</p>
+<p><strong>Recommendation:</strong> Stagehand's own config in Wedge 4. The dispatch router is for <em>Antiek role calls</em>; Stagehand's internal LLM is for <em>Stagehand's DOM-decision</em>. Different concerns. Stagehand's cost is tracked separately as part of the Browserbase budget.</p>
+<p><em>Operator decision needed before Wedge 4 ships.</em></p>
+
+<h2 id="now">18. What to do now <a class="section-anchor" href="#now">#</a></h2>
+
+<p><strong>Two INTEGRATE NOW items</strong>, both Sprint 18&ndash;19. They depend on the Sprint 18 retrieval-time legal gate landing first.</p>
+
+<h3>18.1 Wedge 1 — <code>acquisition/search/exa</code> discovery adapter</h3>
+<p>The largest single discovery-layer upgrade. ~4 days. Adds the missing primitive ("the agent can find URLs about a topic") without violating the substrate-as-source-of-truth invariant. Sequence: legal gate ships &rarr; Wedge 1 ships against the gate &rarr; operator-mediated promotion to ingestion. <strong>Defer until the gate ships.</strong></p>
+
+<h3>18.2 Wedge 2 — Browserbase escalation fallback</h3>
+<p>Narrow, opt-in, ~3 days. Solves the <code>low_word_count</code> skip cases that the operator KNOWS have content (JS-rendered SPAs). Default behavior unchanged; cost bounded by daily budget cap + concurrency cap + per-call operator opt-in.</p>
+
+<h3>18.3 Substrate-only precursor (can land at any time)</h3>
+<p><code>DiscoveryProposedPayload</code> + <code>DiscoverySelectedPayload</code> + <code>FetchFallbackEscalatedPayload</code> types added to <code>substrate/schemas/events.py</code>, with <code>ActionType</code> extensions and TS codegen. ~1 day, independent of any wedge. Lets Wedges 1 and 2 hit the ground typed.</p>
+
+<h3>18.4 Everything else defers</h3>
+<ul>
+    <li><strong>Wedge 3</strong> (verifier <code>/contents</code>): PHASE 2, gated on Wedge 1 + dispatch tool-call substrate.</li>
+    <li><strong>Wedge 4</strong> (Stagehand for one structured-data surface): conditional on a specific surface surfacing. May not ship at all.</li>
+    <li><strong>Wedge 5</strong> (Exa Websets): DEFER. Continuous research mode must work without Exa first.</li>
+    <li><strong>Wedge 6</strong> (full agentic browsing): DEFER, possibly REJECT permanently. Stringent unlock criteria (&sect;15.6) on purpose.</li>
+</ul>
+
+<h3>18.5 The nine explicit REJECTs</h3>
+<p>&sect;12.1&ndash;12.9 close the bait that the headline "give the agent web access" implies. Exa-as-dispatch, Browserbase-as-dispatch, Browserbase as default fetcher, Exa-summary as <code>parameter_extractor</code>, Exa-answer as synthesizer, legal-gate bypass, robots/paywall bypass, persistent investigation sessions, Stagehand against Antiek's own UI. These are not deferred; they are settled negative.</p>
+
+<h3>18.6 The principle restated</h3>
+
+<div class="callout warn">
+    <strong>The substrate is the moat. Exa and Browserbase are inputs to the substrate, not substitutes for it.</strong>
+    <p>Exa makes the discovery layer cheaper and richer. Browserbase makes the long-tail ingestion path reachable. Both are valuable IF they flow through <code>acquisition/urls/adapter.ingest_url(...)</code> and the typed event log and the Sprint 18 legal gate. Both are substrate violations IF they shortcut around those things. Every wedge above is structured to keep the flow correct; every rejection above closes a shortcut.</p>
+    <p>The integration is the wedges in &sect;6&ndash;&sect;11. The rejections in &sect;12 are the guardrails. The unlock criteria in &sect;15 are the ratchet. The verdict on Wedges 1 and 2 (the INTEGRATE NOW pair) lands Sprint 18&ndash;19, gated on the legal gate.</p>
+</div>
+
+<hr>
+
+<h2>Final note for the implementing agent</h2>
+
+<p>When this spec conflicts with another, precedence is:</p>
+
+<ol>
+    <li><code>architecture_notes.md</code> &mdash; substrate invariants (never violate).</li>
+    <li><code>master-product-spec.md</code> &mdash; product vision + sprint sequencing.</li>
+    <li><code>strategy/voice-and-style-discipline.md</code> &mdash; synthesis quality bar.</li>
+    <li>This spec &mdash; Exa / Browserbase integration verdicts and wedge mechanics.</li>
+    <li>Peer integration specs &mdash; conflicts resolved by operator review.</li>
+</ol>
+
+<p>If precedence (1) and any wedge ever conflict &mdash; i.e., adopting an Exa or Browserbase pattern would weaken the substrate-as-source-of-truth invariant &mdash; the substrate wins. The wedges in &sect;6&ndash;&sect;11 are the means; the substrate is the end. <strong>Never substitute the end for the means.</strong></p>
+
+<p>The discovery layer is new. The escalation pattern is new. Both are structurally clean only because they preserve the single substrate-write seam at <code>acquisition/urls/adapter.ingest_url(...)</code>. Any implementation that bypasses that seam is wrong, no matter how plausible the surface argument.</p>
+
+<p>Borrow ruthlessly from Exa and Browserbase where the primitives fit. Reject loudly where they don't. Use the wedge unlock criteria to ratchet &mdash; and re-evaluate the rejections (&sect;12) only when the underlying substrate state changes meaningfully, not because the headline trends shift.</p>
+
+</article>
+</main>
+
+<footer>
+    Antiek docs &middot; <a href="index.html">back to index</a>
+</footer>
+
+</body>
+</html>

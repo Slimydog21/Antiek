@@ -207,6 +207,24 @@ class ActionType(str, Enum):
     ARTIFACT_GENERATED = "artifact.generated"
     ARTIFACT_INTERACTED = "artifact.interacted"
 
+    # ── Sprint 17-30+ additions (master-spec §11.6 + §13.5 + §13.7
+    #    + §13.9). Bumped EVENT_SCHEMA_VERSION accordingly when this
+    #    block landed.
+    # RLM bridge decision (orchestration/rlm/bridge.py) — emitted by
+    # wrestling.document_loaded when the bridge decides escalate/defer.
+    RLM_BRIDGE_DECIDED = "rlm.bridge.decided"
+    # Quality-gate verdict for §13.9 public-graph promotion.
+    QUALITY_GATE_EVALUATED = "quality_gate.evaluated"
+    # Cross-graph citation recorded (substrate/cross_graph/federation.py).
+    CROSS_GRAPH_CITATION_RECORDED = "cross_graph.citation.recorded"
+    # PayoutRouter decisions — one event per RevShareDecision emitted
+    # by substrate/ad_inventory/event_subscription.py.
+    REV_SHARE_DECIDED = "rev_share.decided"
+    # DP-aware preference learning (substrate/dp_shuffler/preference_learning.py).
+    PREFERENCE_OBSERVATION_RECORDED = "preference.observation.recorded"
+    # Skill-rule promotion to the shared substrate (substrate/multi_user/skill_writer.py).
+    SKILL_RULE_PROMOTED = "skill_rule.promoted"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -217,7 +235,13 @@ class ActionType(str, Enum):
 # v3: Antiek migration — wrestling-loop vocabulary added; DISPATCH_CALL and
 #     CONTEXT_PACK_ASSEMBLED added; 19 typed payloads introduced via
 #     discriminated union. 2026-05-16.
-EVENT_SCHEMA_VERSION: int = 3
+# v4: Sprint 17-30+ — RLM bridge decisions, quality-gate verdicts,
+#     cross-graph citations, payout decisions, preference observations.
+#     2026-05-19.
+# v5: Sprint 30+ skill-rule promotion — dedicated payload replaces the
+#     v4 placeholder that reused cross_graph.citation.recorded for
+#     skill-writer audit events. 2026-05-19.
+EVENT_SCHEMA_VERSION: int = 5
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1879,6 +1903,142 @@ class PhaseVerifyPayload(_PayloadBase):
 
 
 # ---------------------------------------------------------------------------
+# Sprint 17-30+ additions (master-spec §11.6 + §13.5 + §13.7 + §13.9)
+# ---------------------------------------------------------------------------
+
+
+class RLMBridgeDecidedPayload(_PayloadBase):
+    """Emitted by the RLM bridge on every document-load when the bridge
+    weighs in (above-threshold → escalate or defer; below-threshold →
+    skipped). Per master-spec §11.6 + rlm_integration_spec.md RLM-1.
+
+    Carries the verdict + the ratification state at decision time so
+    operators reading the trajectory can reconstruct WHY a long doc
+    did or did not enter RLM mode at a given moment.
+    """
+
+    action_type: Literal[ActionType.RLM_BRIDGE_DECIDED] = ActionType.RLM_BRIDGE_DECIDED
+    document_id_ref: str
+    estimated_tokens: int = Field(ge=0)
+    threshold_tokens: int = Field(ge=0)
+    above_threshold: bool
+    ratified: bool
+    escalated: bool
+    session_id: Optional[str] = None
+    reason: Literal[
+        "below_threshold",
+        "deferred_pending_ratification",
+        "escalated_to_rlm",
+    ]
+
+
+class QualityGateEvaluatedPayload(_PayloadBase):
+    """Quality-gate verdict for §13.9 public-graph promotion of a
+    notebook block. Carries the per-rubric pass/fail and the headline
+    accept decision; downstream gates aggregate these into operator-
+    visible counts on the Trust Center.
+    """
+
+    action_type: Literal[ActionType.QUALITY_GATE_EVALUATED] = (
+        ActionType.QUALITY_GATE_EVALUATED
+    )
+    target_kind: Literal["notebook", "synthesis_page", "creator_note"]
+    target_id: str
+    accepted: bool
+    verification_passed: bool
+    voice_style_passed: bool
+    source_tier_passed: bool
+    em_dash_density: float = Field(ge=0.0)
+    padding_phrase_count: int = Field(ge=0)
+    sector_vocab_overlap: float = Field(ge=0.0, le=1.0)
+    min_tier_cited: int = Field(ge=1, le=5)
+    pct_tier_1_or_2: float = Field(ge=0.0, le=1.0)
+    reasons: list[str] = Field(default_factory=list)
+
+
+class CrossGraphCitationRecordedPayload(_PayloadBase):
+    """A citation from one user's investigation to another user's
+    public note. Per master-spec §13.9 Phase 3 federation. The
+    attribution pipeline reads these to route 70% of any attached ad
+    revenue to the referenced user.
+    """
+
+    action_type: Literal[ActionType.CROSS_GRAPH_CITATION_RECORDED] = (
+        ActionType.CROSS_GRAPH_CITATION_RECORDED
+    )
+    reference_id: str
+    referencing_user_id: str
+    referencing_investigation_id: str
+    referenced_user_id: str
+    referenced_note_id: str
+    federated_substrate_id: Optional[str] = None
+
+
+class RevShareDecidedPayload(_PayloadBase):
+    """One revenue-routing decision arising from an ad impression.
+    Mirrors ``substrate.ad_inventory.payout.RevShareDecision`` and is
+    emitted once per decision (creator/publisher/platform). The
+    daily-cap state is carried in ``capped_to_daily_limit`` so the
+    operator can audit §9.7 enforcement from the event log alone.
+    """
+
+    action_type: Literal[ActionType.REV_SHARE_DECIDED] = ActionType.REV_SHARE_DECIDED
+    decision_id: str
+    impression_id: str
+    kind: Literal["creator", "publisher", "platform"]
+    recipient_ref: str
+    amount_usd_cents: int = Field(ge=0)
+    document_id_ref: Optional[str] = None
+    requires_escrow: bool = False
+    capped_to_daily_limit: bool = False
+
+
+class SkillRulePromotedPayload(_PayloadBase):
+    """Emitted by ``substrate/multi_user/skill_writer.py`` when a
+    discovered skill rule clears the ``SkillRuleAccumulator`` promotion
+    gate and lands in the shared substrate's ``skill_rules`` table.
+
+    Carries the rule's content-addressed identifier, the cumulative DP
+    ε spent across all contributing users (capped at §16.2's 10.0),
+    the distinct-user count that triggered promotion, and the
+    confidence tier the writer assigned. Contributing user IDs ride as
+    a tuple so the attribution + audit paths can reconstruct
+    provenance.
+    """
+
+    action_type: Literal[ActionType.SKILL_RULE_PROMOTED] = (
+        ActionType.SKILL_RULE_PROMOTED
+    )
+    rule_id: str
+    rule_text: str
+    rule_kind: str
+    domain: str
+    distinct_user_count: int = Field(ge=1)
+    total_epsilon_consumed: float = Field(ge=0.0, le=10.0)
+    confidence: Literal["low", "moderate", "high"]
+    contributing_user_ids: list[str] = Field(default_factory=list)
+
+
+class PreferenceObservationRecordedPayload(_PayloadBase):
+    """Emitted by the DP-aware preference learning stream every time
+    a binary observation is randomized + recorded against a category's
+    ε budget. Per master-spec §16.2: per-observation ε spend is
+    recorded; the underlying TRUE value is never logged (local DP
+    guarantee).
+    """
+
+    action_type: Literal[ActionType.PREFERENCE_OBSERVATION_RECORDED] = (
+        ActionType.PREFERENCE_OBSERVATION_RECORDED
+    )
+    category: str
+    noisy_value: bool
+    per_obs_epsilon: float = Field(gt=0.0)
+    cumulative_epsilon_spent: float = Field(ge=0.0)
+    category_budget: float = Field(ge=0.0)
+    user_id: str
+
+
+# ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
 
@@ -1950,6 +2110,12 @@ TypedPayload = Annotated[
         InvestigationChaseHaltedPayload,
         ClaimAssertedByOperatorPayload,
         PageAttributionComputedPayload,
+        RLMBridgeDecidedPayload,
+        QualityGateEvaluatedPayload,
+        CrossGraphCitationRecordedPayload,
+        RevShareDecidedPayload,
+        PreferenceObservationRecordedPayload,
+        SkillRulePromotedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -2023,6 +2189,12 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.INVESTIGATION_CHASE_HALTED.value,
     ActionType.CLAIM_ASSERTED_BY_OPERATOR.value,
     ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
+    ActionType.RLM_BRIDGE_DECIDED.value,
+    ActionType.QUALITY_GATE_EVALUATED.value,
+    ActionType.CROSS_GRAPH_CITATION_RECORDED.value,
+    ActionType.REV_SHARE_DECIDED.value,
+    ActionType.PREFERENCE_OBSERVATION_RECORDED.value,
+    ActionType.SKILL_RULE_PROMOTED.value,
 })
 
 
@@ -2265,4 +2437,12 @@ __all__ = [
     "InvestigationChaseHaltedPayload",
     "ClaimAssertedByOperatorPayload",
     "PageAttributionComputedPayload",
+    # Sprint 17-30+ additions (v4 schema bump)
+    "RLMBridgeDecidedPayload",
+    "QualityGateEvaluatedPayload",
+    "CrossGraphCitationRecordedPayload",
+    "RevShareDecidedPayload",
+    "PreferenceObservationRecordedPayload",
+    # Sprint 30+ addition (v5 schema bump)
+    "SkillRulePromotedPayload",
 ]

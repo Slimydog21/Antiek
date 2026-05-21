@@ -1,17 +1,36 @@
 # Antiek — Master Product Spec
 
 **Status**: execution-ready master spec consolidating the operator's product
-  vision across four voice-memo dictations on 2026-05-17. Sprint-by-sprint
-  sequence at the end. Each sprint is independently scoped; each builds on
-  what the prior sprints made possible.
+  vision across four voice-memo dictations on 2026-05-17, sharpened
+  2026-05-18 with the four ratified integration specs (§17), reoriented
+  to faithfully absorb the operator's vision on 2026-05-19 with the
+  personal-graph-as-memory framing (§13.2), Surface E as operator's
+  preferred product direction (§4.5), PostHog's design and UI philosophy
+  as Antiek's design philosophy (§5.6), and the watch-for-later folder as
+  curiosity-capture-as-primitive (§2.6). Sprint-by-sprint sequence at the
+  end. Each sprint is independently scoped; each builds on what the prior
+  sprints made possible.
 **Audience**: any agent (or human) picking up Antiek's product work cold.
   After reading this spec, you should know what Antiek is, why it exists,
   what's already built, what comes next, and which decisions are
   load-bearing vs. cosmetic.
 **Predecessor docs**: `architecture_notes.md` (substrate-level commitments),
-  `strategy/voice-and-style-discipline.md` (substrate prompt engineering),
+  `strategy/voice-and-style-discipline.md` (voice + UI discipline),
   `sprints/sprint11-web-app-mvp.md` (first web-app sprint).
+**Integration specs** (peer documents — each owns a ratified verdict
+matrix for one external system or framework):
+  - `integration_posthog.md` — UI/design/product/website patterns
+    (Lemon UI, Notebooks, command palette, Max-style AI, trajectory
+    replay, pricing-page template, handbook discipline)
+  - `integration_autoresearch.md` — Karpathy's propose-execute-measure-gate
+    loop applied to prompt mutation, Phase 8 gate, config sweeps
+  - `integration_prime_intellect.md` — Verifiers env + GEPA + hosted RL
+    (gated by `loop_3_unlock_criteria.md`)
+  - `rlm_integration_spec.md` — Recursive Language Models for
+    long-doc wrestling, long-corpus synthesis, RLM-mode orchestration
 **Companion**: `infrastructure/SKILL.md` (production operations).
+**Sub-document**: `loop_3_unlock_criteria.md` (5 gates for any
+  training-time work).
 
 ---
 
@@ -20,8 +39,8 @@
 1. [Product thesis](#1-product-thesis)
 2. [Conceptual primitives](#2-conceptual-primitives)
 3. [What's already built](#3-whats-already-built)
-4. [The four surfaces](#4-the-four-surfaces)
-5. [Voice and style — non-negotiable quality bar](#5-voice-and-style--non-negotiable-quality-bar)
+4. [The five surfaces](#4-the-four-surfaces)
+5. [Voice and style — non-negotiable quality bar](#5-voice-and-style--non-negotiable-quality-bar) *(includes §5.6 PostHog design philosophy as load-bearing)*
 6. [Primary source connection](#6-primary-source-connection)
 7. [Continuous research mode](#7-continuous-research-mode)
 8. [Multimodal acquisition](#8-multimodal-acquisition)
@@ -30,9 +49,21 @@
 11. [DeepBlu — interview-as-acquisition](#11-deepblu--interview-as-acquisition)
 12. [Voice note ingestion](#12-voice-note-ingestion)
 13. [Account model + network effects](#13-account-model--network-effects)
-14. [Sprint sequence (11 → 18)](#14-sprint-sequence-11--18)
+14. [Sprint sequence (11 → 30+ mainline + parallel tracks)](#14-sprint-sequence-11--22-mainline--parallel-tracks)
 15. [Strategic open questions](#15-strategic-open-questions)
 16. [What we explicitly do NOT do](#16-what-we-explicitly-do-not-do)
+17. [Integration spec hierarchy and precedence](#17-integration-spec-hierarchy-and-precedence)
+
+*Section §2.6 (watch-for-later as curiosity-capture primitive), §4.5
+(Surface E — Brainstorming Workstation as operator's preferred product
+direction), §5.6 (PostHog design philosophy as Antiek's design philosophy),
+§9.0 (legal gate binding now), §9.0.1 (operator's pay-as-you-go
+token-budget pricing), §13.2 (personal-graph-as-memory architecture),
+§13.6 (substrate transition matrix), §13.7 (consumer privacy compliance),
+§13.8 (Antiek Memory developer surface), §14.4 (dispatch tier measurement)
+were added or sharpened in the 2026-05-18 → 2026-05-19 evolution to
+faithfully reflect the operator's voice notes and the four integration
+specs (PostHog, autoresearch, Prime Intellect, RLM).*
 
 ---
 
@@ -75,6 +106,19 @@ The eventual economics layer — banner ad attribution that pays IP
 holders for the chunks contributing to insights — is novel mechanism
 design and a strategic call. Documented in section 9. Not the
 immediate path.
+
+**The architectural analog is Cursor, but only at the inference layer.**
+Antiek's substrate is the moat (§2.5); Cursor's substrate is Anysphere's
+own IDE plugin. The analogy holds at the inference layer (route to
+external providers via dispatch with Hermes-primary + OpenRouter fallback
+per §3.1, charge for workflow value, do NOT train foundation models)
+but breaks at the substrate layer (Antiek's typed event log + graph +
+dispatch + verifier-shaped roles + skill-patching is what compounds;
+Cursor's IDE plugin is replaceable in a quarter). Treating Antiek as
+"Cursor for research" misses that the substrate IS the product. Treating
+Antiek as "Spotify for knowledge" pulls Phase 3 IP economics forward
+into Phase 0, which is the failure mode the Bartz precedent now prices
+at $3,000 per ingested work (§9.0).
 
 ---
 
@@ -207,6 +251,75 @@ because building the typed event log + dispatch routing + 8-phase
 orchestration + verifier-shaped role environments takes the
 12-sprint cycle Antiek already paid.
 
+The UI is how the operator interacts with the moat.
+`integration_posthog.md` (§17) is the best-in-class reference for
+that interface layer specifically. Borrow its patterns where they
+fit the researcher's-notebook identity; reject loudly where they
+don't (§16.1). The substrate is the end; UI patterns are the means.
+
+**The Cursor architectural analog applies to inference routing, not to
+the substrate.** Cursor pays OpenAI and Anthropic for inference, wraps
+the workflow, charges users for the wrap. Antiek does the same at the
+inference layer via dispatch with Hermes-primary + OpenRouter fallback
+(§3.1). Cursor has no substrate — the IDE plugin is its product. Antiek
+has a substrate that compounds across investigations, and that substrate
+is what defends the product against the "ChatGPT can do this now"
+question that every Cursor competitor faces. Adopting the Cursor mental
+model wholesale would mean treating the dispatch layer as the product,
+which is exactly the inversion that the substrate-is-moat thesis
+prohibits. Cursor reached gross-margin profitability in April 2026 only
+after shipping its own inference model (Composer); at Antiek's scale
+owning the inference model is not feasible in Phase 1. The available
+levers are routing intelligence (cheap models for routine steps,
+expensive models for synthesis only — see §14.4 tier-differentiation
+measurement) and aggressive prompt caching.
+
+### 2.6 The watch-for-later primitive — research is curiosity-gated
+
+Operator vision (voice notes 2026-05-17): a brainstorming workstation
+where the operator parks unsharpened questions throughout the day,
+talks to their notes, slots insights like Legos, and on the operator's
+go-ahead launches a research chain on a parked question.
+
+This is a product insight, not a feature. **Research is gated by
+curiosity, not by tooling.** Curiosity surfaces in fragments throughout
+the day — reading another paper, in a conversation, in a voice note.
+Currently the operator parks those fragments in a notes file, a browser
+tab, or nothing. The platform that solves the parking problem captures
+the moment curiosity becomes investigable.
+
+Operator verbatim on the deeper insight: *"having that folder of
+rough ideas that are not sharpened yet can help a user extract their
+curiosity and encode it in technology."* **The watch-for-later folder
+is curiosity-capture-as-primitive**, not just a UI affordance. The
+mechanism the platform provides is: a place to put a half-formed
+thought, the ability to refine it later via voice or thought-partner
+workflow, and the ability to launch a full research chain on the
+sharpened version when ready. The curiosity is the operator's; the
+encoding-in-technology is what Antiek provides.
+
+**Substrate mapping**: voice notes already work (Sprint 13). Open
+questions are already first-class objects in the graph
+(`question.identified` events). The "watch-for-later" folder is a UI
+on top of `QuestionIdentified` events filtered by an `unsharpened`
+state. The "launch investigation" affordance posts to `/investigations`
+with the parked question as the seed. The thought-partner workflow
+(slot notes, challenge them, voice-note follow-up) is a new role
+under `roles/` that takes a set of operator-selected notes plus a
+prompt and produces challenges, syntheses, or extensions.
+
+**Why this matters strategically**: the brainstorming workstation is
+where private graph usage happens. Research workstation drives public
+graph contribution. Brainstorming workstation is where users park
+their actual thinking, which is what they don't want to share.
+**This is the surface that justifies the 50% margin on private tokens
+(§13.5) because it's the surface where users will pay to keep their
+thoughts private.**
+
+Sprint placement: Sprint 17 or 18 product surface depending on
+mainline-work capacity. Builds on existing voice notes + open-question
+events; no new substrate primitives required.
+
 ---
 
 ## 3. What's already built
@@ -214,22 +327,27 @@ orchestration + verifier-shaped role environments takes the
 This section is **status as of 2026-05-17** so any agent reading
 this spec knows what doesn't need to be re-derived.
 
-### 3.1 Substrate (1166 tests passing)
+### 3.1 Substrate (1386 tests passing as of commit cd602c9, 2026-05-18)
 
 - **Event log**: typed Pydantic schema with 61 ActionTypes; canonical
   source `substrate/schemas/events.py`; append-only `.jsonl` storage.
 - **Dispatch**: provider-agnostic routing via `substrate/dispatch/`.
-  OpenRouter-backed in production (single key drives DeepSeek-Flash,
-  DeepSeek-Pro, Claude Opus 4.7). Cost tracked per call, emitted as
-  `dispatch.call` events. Fallback chain with `--workers 1` enforced.
+  **Hermes-primary posture (Sprint 12+):** all flash/pro/synthesis/verify
+  tiers route to `hermes / grok-4.3` (xAI via the Hermes Agent OAuth
+  bridge — see `antiek-hermes-bridge` memory) with OpenRouter (DeepSeek-Flash,
+  DeepSeek-Pro, Claude Opus 4.7) as fallback. Verify-tier fallback
+  chaos-tested at `tests/test_dispatch_fallback_chain.py` (Sprint 16,
+  commit cd602c9). Cost tracked per call, emitted as `dispatch.call`
+  events. Fallback chain with `--workers 1` enforced.
 - **Context pack**: layered prompt assembly with budget enforcement
   in `substrate/context_pack/assembler.py`. 3 truncation strategies.
 - **Graph schema**: DuckDB with `documents`, `chunks`, `nodes`,
   `edges`, plus Sprint-10 additions for `syntheses`,
   `synthesis_substrate_manifest`, `outcomes`, `chunk_tier_overrides`.
-- **9 roles**: decomposer, evidence_retriever, parameter_extractor,
+- **12 roles**: decomposer, evidence_retriever, parameter_extractor,
   connector, synthesizer (the 5 orchestrate.py originals) +
-  challenger, grounder, note_taker, user_agent.
+  challenger, grounder, note_taker, user_agent + creative_writer
+  (Sprint 13), interviewer (Sprint 16), voice_note_followup (Sprint 13).
 - **Loop 1**: 8-phase autonomous research chain via
   `orchestration/loop_one/orchestrator.py`. End-to-end validated on
   real LLMs.
@@ -271,18 +389,113 @@ this spec knows what doesn't need to be re-derived.
 
 ### 3.4 What's NOT yet built
 
-- Web app for chat-first research (Sprint 11 — the immediate next
-  build).
-- Voice and style prompt discipline (Sprint 11 substrate-side work).
-- Primary source PDF deep-link from a synthesis (Sprint 11).
-- Multimodal acquisition (YouTube, podcasts, X, social).
-- Continuous chase mode.
-- IP attribution + ad economics.
-- Creation surface (writing tool).
-- DeepBlu interview surface.
-- Multi-user accounts + cross-graph network effects.
+Status as of 2026-05-18, organized by which spec covers each item.
 
-These are the eight directions this spec covers.
+**Covered by this master spec's sprint sequence (§14):**
+
+- Interview voice mode — WebRTC + TTS + streaming whisper (Sprint 17)
+- **Dispatch tier-differentiation measurement gate** — synthesizer pinned
+  to Opus primary for 2-week measurement against Hermes/Grok on verifier
+  pass rates (Sprint 17, §14.4)
+- **Watch-for-later folder / brainstorming workstation** (§2.6;
+  Sprint 17 or 18 product surface — voice notes + open-question events
+  already exist as substrate primitives)
+- Publisher dashboard + Stripe Connect (Sprint 18, §9 Phase 2)
+- **Retrieval-time gating for restricted content** (Sprint 18
+  PREREQUISITE per §9.0 legal gate — restricted-class content cannot
+  be retrieved into syntheses that trigger attribution)
+- **Operator's pay-as-you-go pricing model** — three-tier token-budget
+  pricing (free public capped DeepSeek-Flash / above-cap paid public
+  10% margin / private 50% margin) + 70% creator rev-share on ads +
+  Antiek Memory developer API/MCP/CLI usage-based (§9.0.1 / §13.5;
+  Sprint 19+). OpenRouter-style "user sets budget, billed for actual
+  usage." Audience: anyone doing knowledge work — researchers, writers,
+  students, journalists, analysts, founders, hobbyists, curious
+  individuals
+- **Antiek Memory MCP server** as primary developer surface — three
+  resources (private notes, public notes, books) + four tools, signed
+  tool descriptions, prompt-injection envelopes (Sprint 19-20, §13.6)
+- Synquery expert-network integration (Sprint 20-21, **NOT Sprint 18**
+  per §14.1 split — gated on creation surface PMF signal)
+- Trajectory replay viewer (Sprint 20, PostHog Wedge 5)
+- **Multi-user accounts + two-graph architecture (private + public + shared
+  substrate)** with substrate stage transition (Sprint 22+, **NOT
+  Sprint 19**; gated on six months of demonstrated solo compounding
+  per §13.4)
+- Phase 4 lead-gen ad inventory (Sprint 21-22)
+- IP attribution payouts (telemetry shipped Sprint 16; payouts ship
+  ONLY after retrieval-time gating in production AND first publisher
+  opt-in per §9.0)
+- **Ad-supported public-tier consumption with 70% creator + 70%
+  publisher rev-share** (operator's three-tier pricing model §13.5;
+  free public tier ships Sprint 19, ad inventory live Sprint 25+)
+- **Pre-onboarded IP holder escrow framework — Kalshi pattern**
+  (operator-decided per §9.10). Architecture ships Sprint 18 alongside
+  publisher dashboard. First-cohort notification outreach Sprint 19
+  (MIT Press, Cambridge University Press, Princeton University Press
+  first; Big Five last per §9.10). Cash-only, segregated regulated
+  accounts, opt-in only, costless 30-day opt-out. **Payouts gate
+  strictly on publisher opt-in** — escrow accrues from Sprint 19 but
+  no money routes until first opt-in
+- **Consumer privacy compliance + Trust Center** — GDPR + CCPA notice;
+  Trust Center publication by Sprint 22; engineering-grade privacy
+  architecture (DP, two-graph, privacy dashboard per §13.3). Substrate
+  trust controls (encryption-at-rest, access logging, change management,
+  vulnerability scanning, backup testing) ship Sprint 16-18 hygiene
+  regardless. **SOC 2 Type II is deferred** unless enterprise procurement
+  ever becomes relevant — not required for consumer Phase 1 (§13.7)
+- Cross-graph network effects + federation (Sprint 30+)
+
+**Covered by `integration_posthog.md`:**
+
+- Storybook scaffold for design-system documentation (Wedge 1a,
+  Sprint 17 half-day)
+- Lemon UI evaluation decision (Wedge 1b, Sprint 17 spike)
+- **Notebook surface for Loop 2 — the linchpin** (Wedge 2,
+  Sprint 18-19 main work, ~10 days)
+- Universal Cmd+K command palette (Wedge 3, Sprint 19-20)
+- Max-style ubiquitous AI assistant with UI-action capability
+  (Wedge 4, Sprint 19-20, requires undo affordance through the
+  event log)
+- rrweb-concept trajectory replay viewer (Wedge 5, Sprint 20,
+  requires Wedge 2 block renderers as render target)
+
+**Covered by `integration_autoresearch.md`:**
+
+- `program.md` per role module (INTEGRATE NOW, Sprint 17 half-day)
+- Prompt autoresearch loop for synthesizer (Wedge 1, Sprint 19
+  parallel side-track, local-only)
+- Phase 8 skill-patch accept/reject gate (Wedge 2, Sprint 20+
+  shadow-mode → Sprint 21+ enforcing, gated on Wedge 1 ratifying)
+- Context-pack + dispatch config sweeps (Wedge 3, DEFER until
+  ≥500 graded outcomes in cohort)
+- Local SFT loop using autoresearch's shape (Wedge 4, DEFER behind
+  `loop_3_unlock_criteria.md`)
+
+**Covered by `integration_prime_intellect.md`:**
+
+- Trajectory→verifiers schema compat test (item F, debt — absorb
+  Sprint 17 or 19)
+- `prime eval run` runner for Antiek rubrics with
+  `parameter_extractor_v0.jsonl` 50-example set (item D, debt)
+- GEPA on `parameter_extractor` (item A, Phase 2 of Prime track)
+- `verifiers` env stub for `parameter_extractor` (item B, Phase 2,
+  substrate only, training forbidden until unlock)
+- Hosted `prime rl run` (item E, DEFERRED behind
+  `loop_3_unlock_criteria.md`)
+
+**Covered by `rlm_integration_spec.md` (RLM track, parallel to mainline):**
+
+- Long-doc wrestling RLM bridge (RLM-1, ~600 LOC, load-bearing)
+- Long-corpus synthesizer RLM mode (RLM-2, ~250 LOC)
+- `investigation_kind="rlm"` orchestrator (RLM-3, ~500 LOC, net-new)
+- Verifiers envs for the other four roles + `rlm_env.py` (RLM-4,
+  ~2000 LOC)
+- Trajectory harvest CLI for `prime-rl` (RLM-5)
+
+The integration-spec items run alongside (not blocking) the mainline
+sprint sequence except where explicitly noted (Wedge 2 notebook is
+mainline Sprint 18-19 work).
 
 ---
 
@@ -341,6 +554,17 @@ the document in Mode B at the right page. From Mode B, an emergent
 note that opens a cross-doc question spawns a Mode A investigation.
 Same substrate, two reading modes, fluid handoff.
 
+**Sprint 18-19 upgrade — the notebook surface.** The current chat-feed
+in `NotesPanel.tsx` is the right baseline; PostHog Notebooks pattern
+(`integration_posthog.md` Wedge 2) is the right ceiling. A TipTap-based
+literate document combining region selections + claim cards + emergent
+notes + cross-doc links + markdown prose + LaTeX as embeddable blocks.
+Available at `/wrestle/<id>/notebook` alongside the chat-feed —
+operator picks per use case. The notebook is the canonical render
+target that Wedges 3 (command palette), 4 (ubiquitous AI), and 5
+(trajectory replay) all build on. See §15.5 for the adoption open
+question.
+
 ### 4.3 Surface C — Creation Workstation (`app.antiek.ai/write/`)
 
 **Status**: Multi-sprint vision (Sprints 13-15). Detailed in section
@@ -373,6 +597,89 @@ as a document yet. Two modes:
   conducts the conversation, transcripts feed back into the
   substrate. Originally the "biography as a service" product
   concept.
+
+### 4.5 Surface E — Brainstorming Workstation (`app.antiek.ai/brainstorm/`) — operator's stated preferred product direction
+
+**Status**: operator-decided as the **preferred product direction**
+in voice notes 2026-05-17. Operator verbatim: *"My thinking now is
+that I would prefer to create my own brainstorming workstation
+product where you can talk to your notes and slot some into focus
+like legos and challenge them."* Sprint 17-18 product surface;
+substrate primitives already exist.
+
+**Why this matters for prioritization**: Surface E is not "Surface E"
+in build-order rank — it is the operator's most-favored direction
+among the five surfaces. Surfaces A (research workstation) and B
+(document wrestle) are already built; Surface E is what the operator
+specifically said they would prefer to build next, ahead of further
+investment in the others. Sprint 17-18 reflects this priority.
+
+**What it is**: the surface where the user parks unsharpened
+thoughts, talks to their notes, slots them like Legos, and on the
+user's go-ahead launches a research chain on a parked question.
+Operator vision verbatim: *"I would prefer to create my own
+brainstorming workstation product where you can talk to your notes
+and slot some into focus like legos and challenge them. This can be
+a thought partner like workflow where voicenotes or even an AI
+assistant can be used to discuss the open-questions that the thoughts
+of a user can be distilled to, and that list can exist as a 'watch
+for later' function where they can be information research
+trajectories that given the go-ahead can be launched by the user or
+can be parked in that folder."*
+
+**Why this is a fifth surface, not a feature of A or D**: research is
+gated by curiosity, not by tooling. Curiosity surfaces in fragments
+throughout the day — reading another paper, in a conversation, in a
+voice note. The other surfaces start from a question (A) or a
+document (B) or an outline (C) or an interview (D). The brainstorming
+workstation starts from the user's own raw, unsharpened thoughts and
+provides the parking lot + thought-partner + launch-when-ready
+affordances. Currently the operator's parking lot is a notes file, a
+browser tab, or nothing. The platform that solves the parking problem
+captures the moment curiosity becomes investigable.
+
+**Components**:
+
+- **Watch-for-later folder**: UI on top of `question.identified`
+  events filtered by an `unsharpened` state. Each parked question
+  carries the context fragment that surfaced it (the voice note text,
+  the highlighted paragraph, the conversation snippet). Click any
+  parked question to expand context, edit, refine, or launch.
+- **Launch-investigation affordance**: a button per parked question
+  that POSTs to `/investigations` with the parked question as the
+  seed. The investigation runs the Loop 1 cold-research chain on the
+  question; results flow back as a new MASTER.md surfaced in the
+  research workstation (Surface A).
+- **Thought-partner workflow**: a new role under `roles/`
+  (`thought_partner`) that takes a set of user-selected notes plus a
+  prompt and produces challenges, syntheses, or extensions. Same
+  recursive note-taking pattern as the autonomous chase, just
+  initiated by user selection rather than autonomous trigger.
+- **Voice-note input**: leverages Sprint 13 voice-acquisition
+  pipeline. User talks through a thought; the system transcribes,
+  extracts insights + open questions, parks the questions in the
+  watch-for-later folder by default, surfaces insights for slotting.
+- **Lego-block slotting**: any insight in the user's private graph
+  is a first-class draggable object. User selects a set of insights,
+  drops them into the thought-partner pane, prompts the partner to
+  challenge or extend, iterates.
+
+**Strategic role**: this is the surface where **private graph usage
+happens**. Surface A (research workstation) drives public-graph
+contribution. Surface B (document wrestle) sits between (public for
+shared documents, private for user-uploaded content). Surface C
+(creation workstation) produces deliverables from accumulated
+material. Surface D (interview) captures content from others.
+**Surface E is where users park their actual thinking, which is what
+they don't want to share.** This is the surface that justifies the
+50% margin on private tokens (§13.5) because it is the surface where
+users will pay to keep their thoughts private.
+
+**Privacy posture**: brainstorming workstation interactions stay on
+the user's private graph by default. Nothing from this surface
+enters the public collective graph without explicit user action
+("share this to public graph" is a separate affordance, not the
+default).
 
 ---
 
@@ -436,6 +743,103 @@ spans inline (`<span>`), appendix material collapsed by default.
   sector terms from corpus chunks.
 - A/B with style_extractor on vs off: read both, decide if the role
   earns its cost.
+
+### 5.5 Discipline extends to UI choices
+
+Per `integration_posthog.md` §13.1, the voice and style discipline
+governs **visual** choices, not just prose. The researcher's-notebook
+identity — serif typography, no forced bullets, claim spans inline,
+appendix material collapsed — is load-bearing for the product
+proposition AND for the visual surface.
+
+**Implication for UI library adoption:** any third-party component
+library (Lemon UI candidate per `integration_posthog.md` Wedge 1b)
+gets the same gate as prose. Decision criteria: does it preserve the
+serif/notebook aesthetic, or does it drag the surface toward
+SaaS-dashboard. Operator's eye test is final.
+
+**Implication for AI-driven UI actions:** when Wedge 4 ubiquitous AI
+ships, every AI action that modifies operator-visible surfaces
+(notebook edits, MASTER.md modifications, dashboard rearrangements)
+emits a typed event so the trajectory captures the AI's UI-driving
+behavior. Voice and style discipline applied to AI actions: an
+AI-rearranged notebook should not feel AI-rearranged; it should feel
+like the operator's own work in the operator's own register.
+
+**Implication for marketing surfaces** (when they ship): the same
+discipline extends to the pricing page (`integration_posthog.md`
+Wedge 6) and the eventual public handbook (Wedge 7). PostHog's
+conversational-irreverent register is theirs. Antiek's register is
+researcher's-notebook serious. Pattern transfers; tone does not.
+
+### 5.6 PostHog's design and UI philosophy IS Antiek's design philosophy (operator-decided 2026-05-19)
+
+Beyond the integration-spec verdicts in §17, **PostHog's design and
+UI philosophy is the canonical reference for every interface decision
+Antiek ships.** This is operator-decided and load-bearing, not a
+stylistic preference. When designing any interface surface — for
+operator use, for end users, for developers, for IP holders — the
+first reference is `integration_posthog.md`. The voice/style
+discipline (§5.1-§5.5) is the second reference and supersedes
+PostHog's tone whenever they conflict.
+
+**What transfers from PostHog (load-bearing):**
+
+- **Notebooks as the literate-analysis primitive** (PostHog Wedge 2).
+  TipTap-based block-structured documents combining queries + prose
+  + replays + insights + region selections + claim cards + emergent
+  notes + cross-doc links + LaTeX. This is Antiek's Loop 2 surface
+  (Sprints 18-19, the linchpin per §14.3) AND the rendering target
+  for trajectory replay (Wedge 5) AND a candidate render target for
+  brainstorming workstation thought-partner sessions (Surface E §4.5).
+- **Universal command palette (Cmd+K)** as cross-surface navigation
+  (PostHog Wedge 3). One palette indexes everything: investigations,
+  documents, claims, notes, open questions, watch-for-later items
+  (§2.6), routes, AI actions. The palette is substrate-event-aware
+  and updates within seconds of new content landing in the graph.
+- **Max-style ubiquitous AI assistant** (PostHog Wedge 4). Inline
+  presence on every screen, context-aware (knows current
+  investigation, current personal-graph partition, current
+  selection), UI-action capable with undo affordance through the
+  event log. Every AI-driven UI action emits a typed event so the
+  trajectory captures the AI's UI-driving behavior.
+- **rrweb-concept trajectory replay** (PostHog Wedge 5). Timeline
+  scrubber + event-at-time renderer for re-reading investigations,
+  watch-for-later trajectories, and any operator-graded outcome.
+- **Pricing page with calculator and transparent voice** (PostHog
+  Wedge 6 template). When Antiek's pricing page ships, it surfaces
+  the three-tier token-budget model (§13.5) with a calculator the
+  user can manipulate (estimate cost given expected token usage
+  on private + public partitions), free-tier limits prominent, no
+  card required for free, plain-language explanation of why the 50%
+  managed-service margin exists.
+- **Storybook for the design system** (PostHog Wedge 1a). Every
+  Antiek component documented as a story; visual regression catches
+  structural breakage during Surface E / notebook / palette work.
+- **Lemon UI evaluation gate** (PostHog Wedge 1b). The evaluation
+  decision (Sprint 17 spike) is whether Lemon UI preserves the
+  researcher's-notebook aesthetic per §5.5. If it does, adopt; if it
+  doesn't, custom components stay. Either outcome is defensible.
+
+**What does NOT transfer from PostHog** (Antiek's voice/style §5 wins):
+
+- PostHog's conversational-irreverent tone, hedgehog mascot,
+  SaaS-startup register. Antiek's register is researcher's-notebook
+  serious — serif body font, no forced bullets in prose, claim spans
+  inline. Pattern transfers; tone does not.
+- PostHog's multi-tenant org/team/billing surfaces. Antiek is a
+  consumer product (§9.0.1) where each user pays Stripe directly
+  through the pay-as-you-go token-budget model; multi-tenant
+  org/team UI is irrelevant.
+- PostHog's ClickHouse + Kafka substrate. Antiek's DuckDB
+  single-writer invariant is non-negotiable (§13.6 substrate
+  transition matrix).
+- PostHog's plugin marketplace. Antiek has zero third-party
+  developers; building a marketplace would be theater.
+
+**The discipline**: when in doubt about a UI/design decision, consult
+`integration_posthog.md` first. The PostHog spec's wedge mechanics
+and explicit REJECTs (§16.1) are canonical within their domain.
 
 ---
 
@@ -708,6 +1112,185 @@ incentives turn perverse. Get it right and Antiek becomes the first
 piece of infrastructure that pays IP holders for the LLM-mediated
 information economy.
 
+### 9.0 The legal gate is binding NOW (added 2026-05-18)
+
+Three precedents have landed between original master-spec drafting
+and the data-repository sharpening that fundamentally change the IP
+posture:
+
+1. **Bartz v. Anthropic** (settled September 5, 2025): $1.5B class
+   settlement covering ~500,000 books at ~$3,000 per work. Judge
+   Alsup held that training on **legally acquired** books is fair use
+   ("quintessentially transformative") but training on books pirated
+   from LibGen / Books3 / Pirate Library Mirror is NOT fair use, and
+   such procurement is independently infringing regardless of what
+   the model does with the content. Settlement releases conduct
+   through August 25, 2025 only — future training is not licensed.
+   Authors Guild reports 91.3% of eligible works claimed as of
+   March 30, 2026.
+
+2. **Hachette v. Internet Archive** (Second Circuit, September 4,
+   2024): killed the structural argument that scanning-plus-lending
+   or scanning-plus-querying is fair use. Binding precedent in the
+   Second Circuit; IA declined certiorari. AAP describes as "broadly
+   impactful to other controversies, including artificial
+   intelligence cases."
+
+3. **Authors Guild MDL** (In re OpenAI Inc. Copyright Infringement
+   Litigation, MDL No. 3143): consolidated April 3, 2025. Judge Stein
+   denied OpenAI's motion to dismiss October 2025, finding ChatGPT
+   outputs could be "substantially similar" to plaintiff works. Fact
+   discovery closes February 27, 2026. Summary judgment on fair use
+   expected summer 2026.
+
+**The dispositive variable is now procurement, not use.** Sprint 16
+shipped IP attribution telemetry with three algorithms — correctly,
+because no money flows yet. Sprint 18 ships Stripe Connect with money
+flowing on the same attribution algorithm. **The Sprint 16
+operator-stated gate ("operator's lawyer involved before payouts")
+is binding for Sprint 18, not deferred.** Pre-payout the worst case
+is a publisher cease-and-desist forcing takedown (lose data, not
+money). Post-payout the worst case is a publisher discovers
+attribution-based money has been routed based on a corpus including
+their books ingested without license — now they have a contemporary
+monetary transaction to point to. Once money flows, every chunk in
+the graph has been monetized regardless of whether the publisher saw
+any of it.
+
+**Required intervention: retrieval-time gating before Sprint 18
+ships.** Three options for ingested-but-restricted content:
+
+- **Option A — Purge restricted-class content from the graph.**
+  Cleanest legally. Breaks the cross-corpus value because the most-
+  cited works will be the missing ones. **REJECTED** on product-thesis
+  grounds — destroys the moat.
+- **Option B — Tag and gate at attribution time.** Content stays in
+  the graph for retrieval but is zeroed out in the attribution
+  algorithm. Publishers see your platform using their content but
+  never receiving payment. **REJECTED** as documented unjust
+  enrichment.
+- **Option C — Tag and gate at retrieval time.** Restricted content
+  cannot be retrieved into a synthesis that triggers attribution.
+  Stays in graph for private/operator-only research where fair use
+  is robust. **ACCEPTED.** Requires a graph schema change: every
+  retrieval call carries a `policy_tag` parameter; restricted content
+  returns only when `policy_tag in {"private_research",
+  "operator_only"}`.
+
+Sprint 18 ships ONLY after retrieval-time gating is in production AND
+publisher onboarding is a prerequisite to payouts (no payout
+activates until at least one publisher has opted in). This converts
+the payout system from "we owe you for retrospective use" to "we
+will pay you for prospective use once you opt in." The legal
+characterization is fundamentally different.
+
+### 9.0.1 Phase 1 monetization is the operator's pay-as-you-go token model, NOT IP-payouts
+
+The IP payout system (§9.1-§9.10 below) is the novel mechanism design
+and the most strategically consequential piece, but **it is not the
+right initial monetization vehicle**. Three reasons.
+
+**First, the unit economics of ad-supported consumption alone don't
+work.** Banner ad RPM on text content runs $5-$20 effective CPM in
+good niches. A reader spending 10 minutes on a page generates
+$0.05-$0.20 in ad revenue. That same reader's agentic interaction
+during those 10 minutes (synthesizer + verifier + note-taker +
+evidence-retriever all running) consumes 100,000-500,000 tokens at
+~$5/M input, which is $0.50-$2.50 in token cost. **Pure unlimited
+ad-supported AI consumption pays users to consume content** — the
+Scribd failure mode. The fix is in the operator's pricing model
+itself (next).
+
+**Second, the operator-decided Phase 1 monetization is the
+pay-as-you-go token-budget model from voice notes 2026-05-17**
+(codified in §13.5). It is NOT a flat subscription; it is OpenRouter-
+style budget pricing with explicit margin tiers and a free cap that
+bounds CAC exposure.
+
+- **Free public tier (the network-effect driver)**: ad-supported
+  public-graph consumption on DeepSeek-Flash inference up to a
+  generous monthly cap (~5M tokens). 70% of ad revenue from a public
+  note's attention routes to the note's creator (the user-as-IP-
+  holder mechanism — §13.9). Above-cap users convert to paid public
+  consumption.
+- **Paid public consumption (above cap)**: pay-as-you-go on the
+  public graph at **10% margin** on raw token cost. Ads still on;
+  creators still earn 70% rev-share.
+- **Paid private use (the brainstorming workstation surface,
+  Surface E §4.5)**: pay-as-you-go on the user's private graph at
+  **50% managed-service margin** on raw token cost. No ads. Content
+  walled. This is the surface that justifies the 50% margin because
+  it is the surface where users will pay to keep their thoughts
+  private.
+- **Developer surface (API + MCP + CLI as Antiek Memory)**: usage-
+  based per query with IP-attribution routing on public-notes queries
+  (§13.8).
+
+This is the YouTube + OpenRouter + creator-economy hybrid the
+operator articulated. Pricing is **a budget set by the user, billed
+on actual usage** — not a fixed monthly seat fee. The OpenRouter
+framing the operator named is exact: users set a budget, get billed
+for tokens consumed against that budget. The platform's margin layers
+on top of underlying inference cost.
+
+**Third, the legal characterization is cleanest for individual users**
+who upload documents they have legitimate access to (research papers
+they purchased, books they own, notes they wrote, voice notes they
+recorded). Fair use is most robust for individual research with
+assistive software on a personal corpus — the Authors Guild v. Google
+snippets analysis and decades of researcher-tools precedent. The
+platform is hosting infrastructure; the user is the fetch agent. The
+Bartz failure mode (§9.0) is the inverse: if the platform fetches
+copyrighted content on behalf of users, the platform owns the
+procurement liability. **Architectural commitment: never have the
+platform fetch a copyrighted document on behalf of the user.** User
+uploads documents they have legitimate access to; platform processes
+them.
+
+**Verdict**: the operator's pay-as-you-go token-budget model is
+Phase 1 monetization from Sprint 19+. The IP-payout system
+(§9.1-§9.10) stays on the roadmap with one operator-decided
+restructuring: pre-onboarded IP holder accounts ship with the
+architecture in Sprint 18 (escrow accruing per the Kalshi-pattern
+framing — §9.10), but **escrow payouts gate strictly on publisher
+opt-in**, not on session attribution. Sprint 18 ships payout
+infrastructure with the activation gate "first publisher contract
+executed."
+
+**Unit-economic envelope per population**:
+
+- **Free-tier user**: ~$0 net of ad revenue (CAC line item bounded
+  by the 5M-token DeepSeek-Flash cap)
+- **Above-cap public user**: platform earns 10% margin on token cost
+  + 30% of ad revenue from that user's session (70% goes to the
+  creator whose note generated attention)
+- **Private user**: platform earns 50% managed-service margin on
+  token cost
+- **Creator earning ad rev-share**: net positive contributor to
+  ecosystem; payouts via the same Stripe Connect architecture as
+  publisher escrow (§13.9)
+- **Developer API consumer**: per-query usage-based; per-query cost
+  on public-notes queries flows through IP attribution to publishers
+  and creators (§13.8)
+
+**Audience framing**: anyone doing knowledge work. Researchers,
+writers, students, journalists, analysts, founders, hobbyists,
+curious individuals — the operator's vision in voice notes is
+explicit that "the information economy could be really, really
+transformed with a very cursor-like experience to research and
+knowledge work." This is a consumer product for individuals. The
+platform's job is to make information consumption + creation feel
+fundamentally different. No specific job-title segment is the target.
+
+**Growth motion**: visible-artifact peer distribution. The operator
+uses Antiek themselves, publishes outputs (under their personal
+account or any pen name they choose), and peers who see the outputs
+ask what tool produced them. Individual-to-individual organic
+discovery through artifact quality, not paid acquisition or
+enterprise sales. Voice-and-style discipline (§5) is the load-bearing
+quality requirement that makes this growth motion work — the outputs
+have to be visibly different from LLM slop or peers won't ask.
+
 ### 9.1 The full mechanic
 
 1. User reads a synthesis page (MASTER.md viewer) on
@@ -879,17 +1462,97 @@ Mitigations:
   ads invites a different legal response than research-only
   ingestion.
 
-### 9.10 What to do now
+### 9.10 Pre-onboarded IP holder accounts (Kalshi pattern — operator-decided 2026-05-17)
 
-**Nothing.** Sprint 11 (MVP) ships first. Sprints 12-15 cover
-multimodal acquisition + continuous mode + creation surface +
-DeepBlu. The IP attribution layer is Sprint 16+ at earliest.
+Operator vision verbatim from voice notes: *"I also had an interesting
+idea of pretending all the IP I use from Anna's Archive and other
+sources is legal and creating accounts for the IP holders so that the
+revenue share accrues over time until we partner so that I can hand
+them the account when we partner. I will also send each an email
+saying that I am building this platform and have created accounts for
+them and am excited to onboard them (and distribute revenue) whenever
+they are ready. This timestamp will help me in the legal tension;
+Kalshi executed perfectly in a legally tense environment by being
+transparent and aggressive; I want to do the same."*
 
-Documentation discipline: when Sprint 11 ships, the substrate
-should ALREADY be emitting the chunk-level citation data that
-Phase 1 attribution telemetry needs. Sprint 11 doesn't add anything
-specifically for attribution; it just ensures the data exists and
-is queryable when Phase 1 starts.
+**Architecture ships Sprint 18 alongside the publisher dashboard
+(§14.1). Payouts gate strictly on publisher opt-in.** The Sprint 18
+legal gate (§9.0) and the operator's Kalshi-pattern framing are
+compatible because the architecture creates the account + accrues
+the escrow but does NOT route money until the publisher affirmatively
+opts in. This converts the publisher's eventual framing from "this
+platform stole from us" to "this platform was openly building an
+opt-in payment system that we ignored."
+
+**Why pre-onboarded accounts cut both ways legally** (and why
+execution discipline matters):
+
+- **Mechanism that helps**: documentary evidence of good-faith
+  intent. Timestamped notification email + pre-created account +
+  segregated escrow accruing per publisher = "we were not
+  free-riding; we were building an opt-in payment system."
+- **Mechanism that hurts**: the escrow itself documents the
+  platform's use of unlicensed content. Bartz turned on procurement,
+  not training. A plaintiff's lawyer could frame the escrow as
+  "they admit they owe us money, they just didn't pay us."
+
+**The framing that makes this work in Antiek's favor** is precision
+about what the platform is and isn't doing. The platform is NOT
+republishing books. It is NOT letting users read books cover-to-cover.
+It IS using chunks of text for attribution-bearing synthesis and
+discussion in a manner the platform believes is transformative use,
+with revenue share routing back to IP holders in good faith from day
+one. The notification email language matters: *"We are building a
+platform that uses your published works for AI-mediated research
+synthesis, in a manner we believe is transformative under fair use,
+while routing revenue share to you in good faith from day one. We
+invite you to claim your account and accept payments accrued to date."*
+This frames Antiek as a fair-use operator voluntarily sharing
+revenue, not as an infringer paying restitution.
+
+**Implementation requirements (binding)**:
+
+1. **Notification email to publisher's legal department**, not
+   marketing team. Record of delivery required.
+2. **Account claimable through documented process** (claim by
+   verified domain ownership, ISBN matching for books, manual
+   review for ambiguous cases).
+3. **Escrow in segregated regulated accounts**, not commingled
+   with operating funds — so "we have your money waiting" is a
+   verifiable statement.
+4. **Opt-out within 30 days** (7 days better): if publisher emails
+   "remove our content from your platform," content must actually
+   be removed within the defined window, or the good-faith framing
+   collapses.
+5. **Lawyer involved before the first notification email is sent**,
+   not after. The Sprint 18 legal gate (§9.0) is binding for
+   this exact reason.
+
+**First-cohort strategy** (Sprint 19): send the first batch of
+notification emails to academic publishers + university presses
+whose institutional mission includes broad dissemination of
+knowledge and whose litigation budgets are smaller. **MIT Press,
+Cambridge University Press, Princeton University Press** are the
+right first cohort. Their response (positive, negative, or none)
+calibrates how the broader strategy will land before committing
+with publishers who have more aggressive postures (e.g., the Big
+Five publishers who joined the Hachette v. Internet Archive
+plaintiff group are the WORST candidates for first notification
+because they have institutional momentum toward litigation).
+
+**Substrate hooks**: every document carries `ip_holder_id` (already
+in spec). Pre-onboarded IP holders get an `ip_holder` record with
+`status: pre_onboarded`, `claim_status: unclaimed`,
+`escrow_balance_usd: 0`. Every attributable usage of their content
+accrues to the escrow balance. Opt-in flips `claim_status: claimed`
+and unlocks the Stripe Connect payout. Opt-out flips
+`status: opted_out` and triggers content removal within 30 days.
+
+### 9.11 What to do now
+
+Sprint 18 substrate work + Sprint 19 first-cohort outreach. **Lawyer
+involved before any notification email sends.** The Sprint 16
+operator-stated gate is binding here per §9.0.
 
 ---
 
@@ -1246,7 +1909,7 @@ people to have a version where private documents could be sent. But I
 guess for now, I don't care about private documents being sent. This
 is very, very, very, very, very far down the line."*
 
-### 13.1 Current model (Sprints 11-15)
+### 13.1 Current model (Sprints 11-21 — extended through pay-as-you-go pricing model launch)
 
 **Single-operator, single-graph.** The production VM hosts one
 substrate, one DuckDB file, one event log. The operator is the only
@@ -1254,89 +1917,608 @@ user. No accounts, no auth, no isolation.
 
 This is acceptable because:
 - `app.antiek.ai` is publicly reachable but no one knows about it
-- Only the operator's OpenRouter key gets burned by abuse (rate
-  limit at the Caddy level if it becomes a real problem)
-- The operator's research is the only content; nothing private
-  is at risk
+- Only the operator's API keys get burned by abuse (rate limit at the
+  Caddy level if it becomes a real problem)
+- The operator's research is the only content; nothing private is
+  at risk
 
-### 13.2 Future model (Sprint 19+)
+**The pay-as-you-go pricing-model Phase 1 launch (Sprint 19+) does
+NOT force the full multi-user substrate to ship simultaneously.** Per
+§9.0.1, the first cohort of individual users can run on a shared
+single-graph architecture with per-user `owner_user_id` row scoping
+(per §13.10 substrate hygiene) and the shared substrate remaining
+operator-curated. The full two-graph architecture (private + public +
+shared substrate, §13.2) ships at Sprint 22+ for the architectural
+reasons in §13.4 below (compounding hasn't demonstrated yet on the
+solo operator graph; premature multi-user destroys the moat that
+multi-user is supposed to monetize).
 
-The transition to multi-user introduces these requirements:
+### 13.2 Future model — the personal-graph-as-memory architecture (Sprint 22+)
 
-- Authentication (probably Clerk or Supabase Auth)
-- Per-user knowledge graphs OR shared graph with per-user view
-  filters
-- Privacy model: documents marked public vs private; defaults to
-  private
-- IP attribution complications: if user A's private document
-  contributes to user B's synthesis, what happens? (Probably: B
-  can't cite A's document; B's synthesizer sees the chunks
-  redacted)
+Per operator voice notes 2026-05-17, the architecture is NOT a single
+shared graph with view filters, and it is NOT three separate graph
+classes per user. **It is organized around the personal graph as the
+user's memory, with public-facing and private-facing partitions inside
+the personal graph.** Operator verbatim: *"the personal graph of a
+user is different than a private one, as a user can have a public
+one. And a user facing one that is public and private. This can be a
+user's memory."*
 
-### 13.3 Network-effects path
+**Three graphs total, with a clear ownership boundary:**
 
-The operator's vision involves network effects across users'
-knowledge graphs:
+1. **Personal graph (one per user) — the user's memory.** Contains
+   every note the user has produced, voice-noted, highlighted, or
+   curated. The user partitions notes into **public-facing** (visible
+   in the collective graph, earns 70% ad rev-share to the user when
+   consumed) and **private-facing** (walled, never reaches the
+   collective graph, paid by the user at 50% token margin). The user
+   can move notes between private-facing and public-facing at any
+   time, with immediate effect on what the collective graph sees.
+   **The personal graph is what Antiek Memory (§13.8) exposes to
+   external LLMs through API/MCP/CLI** — it IS the user's memory in
+   the literal product-naming sense.
+2. **Collective graph (one global aggregation).** Built from every
+   user's public-facing notes, plus pre-onboarded IP holder content
+   (§9.10), plus operator-curated source corpus. This is what the
+   free public tier consumes; ad-supported; 70% creator rev-share
+   routes to whichever public-facing note generated attention.
+   Quality-gated on entry (verification + voice-style scoring +
+   source-tier validation per §13.9) before eligibility for
+   attribution.
+3. **Shared substrate (one global, platform-owned).** Skill versions,
+   source-tier rules, rubric registry, attribution algorithm versions,
+   RLM env definitions, model routing config. Single-writer at platform
+   level via the writer queue.
+
+**The architectural commitment that makes the privacy claim
+load-bearing**: the private-facing partition of every personal graph
+is **physically separated** at the storage layer (per-user DuckDB
+files with per-partition encryption keys), not merely tagged. A query
+against a user's private-facing notes cannot, by schema design, write
+into the collective graph. This is the database-separation +
+audit-log + impossibility-by-design pattern from §13.3 that lets
+Antiek say "we are architecturally incapable of leaking your data"
+rather than "we promise not to."
+
+**Cross-graph writes flow through the shared substrate, never directly.**
+A skill patch derived in a user's private-facing notes (e.g., "Tier-1
+sources in neutral atom physics include Lukin lab papers but not
+Vuletic preprints") propagates to all users via the shared-substrate
+writer queue — not as the patched private content, but as the
+**discovered rule**. The user's specific quantum chunks stay walled;
+the discovered fact about source tiers propagates as a shared skill
+patch with differential-privacy guarantees per §13.3. This is how the
+platform learns from private usage without ever exposing private
+content — which is the operator's stated requirement: *"such
+information I use to make my product better will be de-identified."*
+
+**This is not a small change.** It requires splitting the DuckDB schema
+between user-scoped tables (documents, chunks, nodes, edges) and
+substrate-scoped tables (skill versions, source-tier rules, rubric
+registry). Single-writer DuckDB invariant becomes
+**single-writer-per-user-graph plus single-writer-on-substrate**. The
+Quack swap point becomes more load-bearing because Postgres handles
+this natively while DuckDB's single-file-per-database architecture
+makes the boundary cleaner but the implementation more file-system-
+coupled.
+
+**Three substrate decisions to make now (Sprint 16-18) to avoid
+retrofit cost:**
+
+1. **Adopt the DuckLake pattern early.** Production-ready April 2026.
+   Even if the catalog Postgres serves a single tenant for the first
+   100 users, having the catalog separation in the data model from day
+   one is what enables the Stage 1 → Stage 2 transition (§13.6)
+   without rewriting the application layer.
+2. **Design encryption keys per-partition inside the personal graph,
+   not per-user account.** A user has ONE personal graph (their
+   memory, §13.2), and within it multiple project-scoped partitions
+   (research projects, biography contexts,
+   professional vs personal). Unit of encryption is the graph, with
+   per-graph keys wrapped by user master key. Also the natural unit at
+   which to measure 50%-margin token pricing (§13.5).
+3. **Pick the memory framework architecture now.** Substrate is DuckDB;
+   workload is inherently temporal (every claim carries "when did I
+   learn this"). Zep's Graphiti pattern (temporal knowledge graph with
+   validity windows on facts; LongMemEval 63.8%) is the architectural
+   template. Implement Graphiti's pattern in native DuckDB tables
+   rather than adopting Zep as a runtime dependency, but the data
+   model should match.
+
+### 13.3 Engineering-grade privacy (the differentiator)
+
+Chatbot privacy fear is the single largest unmet need in
+knowledge-worker LLM products today. Every analyst, lawyer,
+consultant has at least one story about pasting something into
+ChatGPT and then panic-deleting the conversation. The product
+category that solves this is currently empty. Notion AI doesn't
+solve it because Notion is the storage. Claude and ChatGPT don't
+because their privacy policies are written by lawyers, not engineers.
+A product that ships with **engineering-grade privacy architecture**
+has a real differentiator.
+
+**The credibility mechanism is architectural separation, not policy
+promise.** Users have been burned by "we don't train on your data"
+promises that turned out to mean "we don't train unless you forget to
+toggle this setting we changed the default on." Verifiable: database
+separation (per-user DuckDB files for private graphs, shared substrate
+DuckDB for the collective graph; schema makes accidental cross-graph
+writes physically impossible), audit logs, impossibility-by-design.
+
+**Differential privacy for preference telemetry — local-DP shuffler
+pattern with per-surface ε budgets.** Per Apple's deployed parameters
+(ε = 2 for HealthKit, ε = 4 for emoji, ε = 8 for QuickType) and the
+expert consensus band (ε < 1 strong, 1-10 various degrees of better
+than nothing, > 10 not meaningful):
+
+- **Skill-invocation frequency**: low sensitivity, ε = 2/day defensible
+- **Source-tier preference signals**: medium sensitivity, ε = 1/day,
+  explicit opt-in
+- **Query-content telemetry**: do NOT collect under DP at any ε that
+  preserves utility. Either E2E encryption with no learning, or no
+  collection.
+
+The shuffler model (local randomization on-device + third-party
+shuffler stripping identifiers before aggregation) is the
+architecturally correct pattern. Local-DP alone requires materially
+higher ε to achieve same utility because each user contributes only
+one noisy sample. The US Census Bureau's ε = 19.61 is the cautionary
+tale — too high to be meaningful per multiple peer-reviewed critiques;
+not the target.
+
+**Privacy dashboard as first-class product surface.** Real-time view of
+every telemetry collected from the user's private graph, with toggles
+per category and a "delete everything" button that actually deletes
+everything within 30 days. The privacy dashboard is the mechanism by
+which users develop trust. Engineering investment is modest (~2-4
+engineer-weeks for the DP layer + a few sprints for the dashboard);
+the differentiation value is "we are architecturally incapable of
+leaking your data" rather than "we promise not to."
+
+### 13.4 Why multi-user delays to Sprint 22+
+
+The substrate compounding thesis (§2.5) — "investigation N+1 is
+genuinely cheaper and better than N" — **has not been demonstrated
+yet** as of Sprint 16. The operator-graph has 16 sprints of plumbing
+and an unknown number of weeks of actual research use. Sprint 11 was
+when the workstation became usable. **Six months of operator-graph
+accumulation is the minimum demonstration period before multi-user is
+the right risk to take.**
+
+The mechanism that argues against early multi-user is **graph
+contamination**. Current architecture has one graph, one operator, one
+set of source-tier classifications. The compounding asset is that
+every investigation deepens specific themes (quantum, defense,
+semiconductors, batteries) and the next investigation in those themes
+inherits a richer prior. The moment user B opens an account and runs
+an investigation on a topic that overlaps operator's themes (and they
+will, because those are the popular deep-tech themes), B's
+investigation either contaminates the operator's graph or runs against
+a stale snapshot. Both options destroy the compounding asset that is
+supposed to be the moat.
+
+**The two-graph architecture (§13.2) is the resolution, but it
+requires Sprint 22+ engineering work, not a Sprint 19 turn-on.**
+Sprint 19 should be operator-graph depth: more sources, more
+investigations, accumulated skill patches that demonstrate the
+compounding curve. That demonstration is what gets shown in the
+peer-distribution motion (§9.0.1) — the operator's research outputs
+under the Sanabil byline or personal account, with peers asking what
+tool produced them.
+
+### 13.5 Pricing model (operator-decided 2026-05-17)
+
+Per operator voice notes verbatim: **"I will charge people like
+OpenRouter by allowing people to set a budget for tokens used, and
+for private documents I will charge for token usage on such documents
+at a 50% margin. I guess I will charge users for public token
+consumption at a 10% margin, but will allow rev share of 70% to them
+on the ad placement; So this will incentivize people to consume to
+create IP on my platform."**
+
+**Three tiers + developer surface, all pay-as-you-go on tokens:**
+
+1. **Free public tier (the network-effect driver)**: ad-supported
+   public-graph consumption on DeepSeek-Flash inference up to a
+   generous monthly cap (~5M tokens). No per-token charge under the
+   cap. 70% of ad revenue from a public note's attention routes to
+   the note's creator. Above-cap users automatically convert to
+   paid public consumption (next tier).
+2. **Paid public consumption (above cap)**: pay-as-you-go at **10%
+   margin** on raw token cost across whichever model the user
+   chooses. Ads still on; creators still earn 70% rev-share on the
+   ad revenue from sessions that consumed their content.
+3. **Paid private use (brainstorming workstation, document wrestle
+   on user-uploaded private content, etc.)**: pay-as-you-go at
+   **50% managed-service margin** on raw token cost. **No ads.**
+   Content stays in the user's private graph, never reaches the
+   collective public graph. This is the surface that justifies the
+   50% margin because it is the surface where users will pay to
+   keep their thoughts private.
+
+**Framing to the user for the 50% private margin**: NOT "we charge
+50% margin on tokens" but "we charge a managed-service fee equivalent
+to 50% of underlying inference cost, in exchange for the substrate
+value (graph infrastructure, attribution, voice/style discipline,
+recursive note-taking, brainstorming workstation, two-graph privacy
+architecture, etc.)." Same number, different psychology. The
+OpenRouter analog the operator named is exact: users set a budget,
+get billed for actual token consumption against that budget.
+
+4. **Developer surface (API + MCP + CLI as "Antiek Memory")**:
+   usage-based per query. Personal-notes endpoint free for the
+   user's own account (it's their data). Public-notes endpoint
+   priced per query with the per-query cost flowing through IP
+   attribution to publishers (§9) and creators (§13.9). Book
+   endpoint priced at publisher contract rate; ships only after
+   publisher onboarding (§9.10).
+
+**The mechanism for resolving the public-tier unit-economics
+problem**: the free-tier cap. Without a cap, ad revenue per
+session ($0.05-$0.20 for 10 minutes at $5-$20 CPM) doesn't cover
+token cost ($0.50-$2.50 in tokens at $5/M input). The Scribd failure
+mode. With the 5M-token DeepSeek-Flash cap, free-tier CAC is bounded;
+above the cap, the user pays 10% margin which is positive contribution.
+The 70% creator rev-share stays on both free and paid public tiers
+because that's where network effects accrue.
+
+### 13.6 The substrate transition matrix
+
+| Stage | Substrate | Tenancy model | Trigger to migrate |
+|---|---|---|---|
+| **0** (current) | Single DuckDB file with single-writer agent | Per-user file path | Sustained write contention > 100 writes/sec across all users |
+| **1** (Sprint 18-22) | DuckDB per user + shared substrate DuckLake | File-per-user routing in app layer; Postgres catalog | Per-user file count approaches OS handle limits; backup latency exceeds backup window |
+| **2** (Sprint 22+) | DuckLake (DuckDB + Postgres catalog) for shared substrate; per-user DuckDB for private graphs | Hybrid: Postgres catalog routes to per-user files | Cross-user analytics queries become a primary workload |
+| **3** (post-Series A) | Postgres sharded by user_id for both private and shared; DuckDB for analytical workloads only | Postgres-native multi-tenant (Notion pattern: logical shards across physical DBs) | Per-user query load exceeds single-machine DuckDB capacity |
+
+Realistic forced-move thresholds (inferred from Notion's 2020 trigger
++ DuckDB's stated production limits):
+
+- Stage 0 → Stage 1: ~100-500 concurrent active users with non-trivial
+  write rates
+- Stage 1 → Stage 2: ~1,000-5,000 users
+- Stage 2 → Stage 3: depends on workload mix, not predictable from
+  current information
+
+**Encryption at rest is a Stage 1+ requirement for the
+engineering-grade privacy claim** (§13.3) — the consumer differentiator
+— AND for SOC 2 Type II if/when enterprise procurement becomes
+relevant (§13.7 deferred). DuckDB does NOT natively support transparent
+file-level encryption; use LUKS or filesystem-level encryption with
+per-graph keys in KMS (AWS KMS, GCP Cloud KMS, or HashiCorp Vault).
+Substrate-level requirement that must be designed in before user
+files are created (retrofit = per-user migration with downtime).
+
+### 13.7 Trust infrastructure: consumer privacy compliance + deferred SOC 2
+
+**Consumer Phase 1 monetization (§9.0.1) does NOT require SOC 2 Type
+II attestation.** SOC 2 is the enterprise-procurement compliance
+framework; consumer Phase 1 is individual subscribers paying out of
+pocket through Stripe, not enterprise procurement. The relevant
+compliance frameworks for an individual-subscription consumer
+product are:
+
+- **GDPR Article 13/14 transparency** (EU users): privacy notice,
+  lawful basis, data-subject rights (access, deletion, portability)
+- **CCPA notice + opt-out** (California users)
+- **Engineering-grade privacy architecture** (§13.3): differential
+  privacy with per-surface ε budgets, two-graph database separation,
+  privacy dashboard with real-time telemetry view
+
+**Trust Center publication for consumer users**: build a public-
+facing Trust Center by Sprint 22 alongside the multi-user pivot.
+Contents: privacy architecture description, DP parameters (epsilon
+registry per §13.3), data-retention policy, deletion SLA (30 days),
+incident-response process, privacy-dashboard tutorial.
+
+**The substrate hygiene work (encryption at rest, access logging,
+change management, vulnerability scanning, backup testing) is
+required regardless of SOC 2** — it's the foundation for the
+engineering-grade privacy claim consumer users will check, not just
+for an enterprise compliance certificate. Build the controls in
+Sprint 16-18 hygiene window per §13.10.
+
+**SOC 2 Type II becomes relevant later** ONLY if Antiek ever enters
+enterprise procurement workflows (e.g., a corporate strategy team
+wants to standardize on Antiek and their procurement asks for SOC 2).
+That is not Phase 1, not Phase 2, and may not happen at all if the
+consumer thesis holds. If/when it does become relevant, the realistic
+13-15 month timeline from substrate controls is: Sprint 22-24
+platform onboarding (Drata recommended, Secureframe as budget
+alternative ~$5-$7K/year base) → Sprint 28-30 observation window
+begins (6 months minimum for enterprise procurement; 3 minimum
+technically) → Sprint 40-44 first Type II report. Cost: ~$30-$50K
+first year for single-framework Type II all-in.
+
+**The substrate-controls work is in the Sprint 16-18 hygiene window
+either way.** The choice between "consumer privacy compliance" and
+"SOC 2 Type II" is upstream of the actual engineering work; both
+rest on the same controls. The decision to defer SOC 2 is a marketing
+and procurement-positioning decision, not a substrate-engineering
+decision.
+
+### 13.8 Developer surface (MCP-first)
+
+Per data repository workstream 2 (MCP ecosystem: ~97M monthly SDK
+downloads, ~2,000 servers in official Registry, 92% adoption among
+2025-2026 agent frameworks per BCG), MCP is the only defensible
+**primary** developer surface as of mid-2026. Direct REST API and CLI
+ship as secondary.
+
+**Antiek Memory MCP server design (Sprint 19-20):**
+
+1. **Three resources** as first-class URI-addressable entities:
+   - `antiek://private/notes/{user_id}/{note_id}` — per-user OAuth
+     scope, encrypted at rest, no public exposure
+   - `antiek://public/notes/{note_id}` — read-only with
+     attribution-routing metadata; all writes through public-notes
+     pipeline with prompt-injection filtering
+   - `antiek://books/{isbn}/{chunk_id}` — per-publisher licensing
+     state; returns chunk OR licensing-required error per §9.0
+     retrieval-time gating
+2. **Four tools**: `search_personal`, `search_public`, `cite_source`,
+   `record_attribution`. The `record_attribution` tool captures the
+   attribution event at the agent step that consumed the content,
+   not after the fact — this is what makes rev-share work end-to-end
+   across the MCP boundary.
+3. **Prompt-injection defense**: every public-notes return wraps
+   content in `<antiek:content trusted="false">...</antiek:content>`;
+   system prompt instructs agent to treat envelope content as data,
+   not instructions. OWASP LLM01 mitigation adapted to MCP.
+4. **Rug-pull defense**: tool description hashes published in
+   `.well-known/mcp-tools.json` manifest; clients verify on every
+   refresh. Drift treated as fatal session-termination event (per
+   Invariant Labs April 2025 disclosures of MCP rug-pull attacks).
+
+**Naming**: brand as "Antiek Memory" not "Antiek API." This is
+load-bearing per §13.2 — the user's personal graph IS the user's
+memory, and Antiek Memory is the developer-facing exposure of that
+memory to external LLMs. The value proposition to developers is not
+"another data API"; it is *"connect your LLM to your user's memory
+of everything they've read, thought about, asked, and written,
+respecting the public-vs-private partition the user has set up."*
+Positions against OpenAI Memory and Anthropic MCP catalog rather
+than against Postgres-as-a-service.
+
+**Pricing tiers**:
+- Personal-notes API: free for the user's own account (it's their
+  data), rate-limited to prevent abuse
+- Public-notes API: per-query priced, per-query cost flowing to IP
+  attribution per §9.1
+- Book API: priced at publisher contract rate; ships ONLY after
+  publisher onboarding
+
+### 13.9 User-as-IP-holder framing (Phase 1 architecture, Sprint 19)
+
+**Users producing public notes are first-class IP holders from
+day one.** This is operator-decided per voice notes 2026-05-17:
+*"So this will incentivize people to consume to create IP on my
+platform."* The mechanism the operator named — public notes get
+70% ad rev-share to their creator — IS the lock-in mechanism. A
+user who has accrued meaningful attribution revenue from their
+public notes does not switch platforms easily.
+
+**The architectural commitment**: the same Stripe Connect + account
+structure + attribution dashboard that holds pre-onboarded publisher
+escrow (§9.10) holds user creator revenue. The populations differ;
+the architecture does not. **Four populations sharing one substrate
++ one Stripe Connect integration + one attribution dashboard:**
+
+1. **Free-tier users** consuming public-graph content, generating
+   ad views, no payment in or out
+2. **Paying private + above-cap public users** paying token margin
+   at the operator's three-tier model (§13.5)
+3. **Creators** of public-graph contributions, earning 70% of ad
+   revenue routed by attribution
+4. **Pre-onboarded IP holders (publishers)** with escrow accruing
+   until opt-in (§9.10)
+
+**Quality gate on public-graph entry**: voice-and-style discipline
+(§5) is enforced on synthesizer prompts but the platform doesn't
+control input quality for user-contributed public notes. Users will
+paste in low-quality notes and expect attribution revenue. The
+mechanism that handles this: public-notes ingest pipeline runs
+verification + voice-style scoring + source-tier validation before
+eligibility for attribution. Low-quality submissions get rejected
+or routed to private graph only. This is the mechanism that prevents
+the public graph becoming a content farm.
+
+**Cross-user network effects (Phase 3, Sprint 25+).** Once multi-user
+ships (Sprint 22+) and the four populations are live, cross-graph
+network effects unlock:
 
 - User A interviews their colleague C; the transcript becomes a
   public document in A's graph
-- User B is researching the same topic; B's investigations can
-  cite C's transcript via cross-graph search
-- The substrate's "ask an expert" flow surfaces user A as a
-  potential interview subject for B (with A's opt-in)
+- User B is researching the same topic; B's investigations can cite
+  C's transcript via cross-graph search
+- The substrate's "ask an expert" flow surfaces user A as a potential
+  interview subject for B (with A's opt-in)
 
-This is the **Sprint 20+ vision**. It depends on:
-- Multi-user accounts working
-- Public/private model being well-defined
-- IP attribution scaled enough that contributing publicly has
-  economic upside
-- DeepBlu interview surface mature enough to handle cross-user
-  interview requests
+This is the **Sprint 25+ network-effects layer**. Depends on:
+- Multi-user accounts shipped (Sprint 22+)
+- Two-graph architecture proven (§13.2)
+- Creator population active and earning meaningful rev-share
+- DeepBlu interview surface mature enough for cross-user interview
+  requests
 
-### 13.4 What to do now
+The Phase 1 commitment (Sprint 19) is the architecture, the
+dashboard, and the rev-share flow for users-as-creators. The
+Phase 3 commitment is the cross-graph teleportation that compounds
+once enough creators are contributing. Four populations (operator,
+paying private + above-cap public users, free-tier creators,
+publishers), one
+substrate, one set of incentives.
 
-**Nothing structural.** Substrate stays single-user until Sprint 19+.
+**Quality gate on public-graph entry.** Voice-and-style discipline (§5)
+is enforced on synthesizer prompts but the platform doesn't control
+input quality for user-contributed public notes. Users will paste in
+low-quality notes and expect attribution revenue. Mechanism that
+handles this: public-notes ingest pipeline runs verification +
+voice-style scoring + source-tier validation before eligibility for
+attribution. Low-quality submissions get rejected or routed to private
+graph only. This is what prevents the public graph becoming a content
+farm.
 
-What CAN be done now: ensure the substrate's data model doesn't
-make multi-user impossible later. Specifically:
-- Every document, every chunk, every node, every investigation
-  should already carry the data needed for per-user filtering
-  even if no filter is applied (e.g., `documents.owner_user_id`
-  defaulting to a single hard-coded value). When multi-user
-  lands, the substrate schema doesn't need migration; only the
-  application layer changes.
+### 13.10 What to do now
 
-This is **cheap to do now**, expensive to do later. Add as a
-one-day Sprint-11 substrate-side task.
+**Substrate decisions only.** No multi-user surfaces ship before
+Sprint 22. What CAN and MUST be done now:
+
+1. **DuckLake catalog separation** designed into the data model from
+   Sprint 18 (per §13.2 substrate decisions).
+2. **Per-graph encryption keys** with KMS escrow (per §13.6).
+3. **Owner identifier on every row** — every document, chunk, node,
+   edge, investigation carries `owner_user_id` defaulting to a single
+   hard-coded value. When multi-user lands, schema needs no
+   migration; only application layer changes.
+4. **Differential privacy shuffler infrastructure** (per §13.3) —
+   ε-budget enforcement at the substrate level, with dashboard UI
+   deferred to Sprint 22+ but substrate plumbing live by Sprint 19.
+5. **Substrate trust controls** (per §13.7 — foundation for consumer
+   engineering-grade privacy claim; also satisfies SOC 2 if/when
+   enterprise procurement becomes relevant) — encryption-at-rest +
+   access logging + change management + vulnerability scanning +
+   backup testing all designed in.
+
+This is **cheap to do now, expensive to do later**. Sprint 16-18
+hygiene work.
 
 ---
 
-## 14. Sprint sequence (11 → 18)
+## 14. Sprint sequence (11 → 22 mainline + parallel tracks)
 
-This is the road from "MVP shipped" through "creation surface live"
-through "IP attribution telemetry running."
+This is the road from "MVP shipped" through Sprint 16 (current state)
+through "Wedge 2 notebook + multi-user + payouts + Wedge 5 replay."
 
-| Sprint | Theme | Substrate work | UI work | Strategic risk |
-|---|---|---|---|---|
-| **11** | Research workstation MVP | 3 new endpoints + voice/style discipline + multi-user schema prep | Full Mode A (chat → trajectory → MASTER.md viewer → highlight-to-chase) | Low — substrate is solid, UI is thin renderer |
-| **12** | Multimodal + continuous mode | YouTube + podcast adapters; continuous-mode orchestrator parameter | Sources tab in workstation; chase-mode selector in chat input | Medium — cost runaway risk in continuous mode |
-| **13** | Voice notes + creation v0 | Voice acquisition adapter; creative_writer role; deliverables data model | Mode C (creation) v0: section-based, no drag-drop yet | Low |
-| **14** | Creation drag-drop + X ingestion | Multi-section coherence in creative_writer; browser extension for X | Mode C drag-drop UI + block palette; X extension popup | Medium — browser extension friction |
-| **15** | Edit-back-into-graph + export | New event type for operator-asserted claims; deliverable export to PDF/EPUB/Substack draft | Mode C editor with provenance preservation; export dialog | Low |
-| **16** | IP attribution telemetry + interviews | `page_attribution_computed` events; 3 attribution algorithms; interview state machine + AI interviewer role | Interview project dashboard; informant UI at `interview.antiek.ai` | High — attribution math is novel; interview voice loop is unfamiliar territory |
-| **17** | Interview voice mode | WebRTC capture; TTS dispatch tier; streaming whisper transcription | Voice interface in interview surface | Medium — voice loop latency / quality calibration |
-| **18** | Publisher dashboard + Synquery | `ip_holders` table + `publisher.antiek.ai`; Stripe Connect onboarding; Synquery API client | Publisher dashboard surface | High — KYC + compliance + Synquery partnership all simultaneously |
+### 14.1 Mainline sprint table
 
-Each sprint ~5-10 working days. Total: ~10-12 weeks of focused work
-for the Sprint 11-18 arc.
+| Sprint | Theme | Mainline work | Integration-spec work woven in |
+|---|---|---|---|
+| **11** ✅ | Research workstation MVP | 3 REST endpoints + voice/style v1 + multi-user schema prep + full Mode A | — |
+| **12** ✅ | Multimodal + continuous mode | YouTube + podcast adapters; continuous-mode orchestrator; **Hermes-primary dispatch flip** | — |
+| **13** ✅ | Voice notes + creation v0 | Voice acquisition; creative_writer role; deliverables data model; Mode C v0 | — |
+| **14** ✅ | Creation drag-drop + X ingestion | Multi-section coherence; browser extension for X; drag-drop UI | — |
+| **15** ✅ | Edit-back-into-graph + export | CLAIM_ASSERTED_BY_OPERATOR; deliverable export PDF/EPUB/Substack | — |
+| **16** ✅ | IP attribution telemetry + interview machinery | `page_attribution_computed` events; 3 attribution algorithms; interview state machine; AI interviewer role; informant UI | Hermes verify-tier fallback chaos test (cd602c9) |
+| **17** | Interview voice mode + **dispatch tier measurement** | WebRTC capture; TTS dispatch tier; streaming whisper; **synthesizer pinned to Opus primary** for 2-week measurement against Hermes/Grok on verifier pass rates (§14.4) | **Storybook scaffold** (PostHog Wedge 1a, half-day); **Lemon UI evaluation decision** (PostHog Wedge 1b spike); **`program.md` per role** (autoresearch INTEGRATE NOW, half-day); **Watch-for-later folder** (§2.6) as Sprint 17 or 18 product surface; **Prime F+D debt** items absorb if first real-LLM eval cycle ships |
+| **18** | Publisher dashboard (SPLIT — NOT Synquery) + **Retrieval-time gating** + **Pre-onboarded escrow architecture** + **Notebook surface (linchpin)** | `ip_holders` table with `status: pre_onboarded` + `escrow_balance_usd`; Stripe Connect onboarding; **retrieval-time gating in production BEFORE Stripe Connect activates** (§9.0); **publisher opt-in prerequisite to any payouts** (§9.10) | **Notebook surface Wedge 2** (PostHog) main work ~10 days; **Pricing-page template** (PostHog Wedge 6) for the operator's three-tier pricing model; **DuckLake catalog separation** designed in (§13.10); **substrate trust controls** begin (§13.7) |
+| **19** | **Operator's pay-as-you-go pricing model live** + **First-cohort publisher outreach** + **Brainstorming Workstation Surface E** + Developer surface MCP-first + UI upgrade chain | **Three-tier token-budget pricing via Stripe** (§9.0.1 / §13.5): free public tier (DeepSeek-Flash cap), paid public (10% margin), paid private (50% margin); **Antiek Memory MCP server** (§13.8) — 3 resources + 4 tools + signed tool descriptions; **MIT Press + Cambridge + Princeton notification emails** sent (§9.10 first cohort); **user-as-IP-holder dashboard** ships parallel to publisher dashboard (§13.9); **Surface E Brainstorming Workstation** (§4.5) ships with watch-for-later folder + thought-partner workflow + Lego-block slotting | **Command palette** (PostHog Wedge 3); **Ubiquitous AI** (PostHog Wedge 4) if undo affordance ready; **Prompt autoresearch local-only** (autoresearch Wedge 1) parallel side-track scaffolding; **DP shuffler substrate plumbing** (§13.3) |
+| **20** | **Visible-artifact growth motion** + Trajectory replay + dispatch tier verdict | Operator uses Antiek and publishes outputs (any pen name, any account); peers who see the outputs ask what tool produced them — individual-to-individual organic discovery through artifact quality; **dispatch tier-measurement verdict** lands (§14.4) — if Grok-on-synthesis within 5pp of Opus, flip back to Hermes-primary; else keep Opus on synthesis | **Trajectory replay viewer** (PostHog Wedge 5); **Autoresearch Wedge 1 ratify-or-REJECT** verdict landing (the Lutke gap test, §15.6); **Phase 8 gate shadow-mode** (autoresearch Wedge 2 prep) |
+| **21** | **Synquery integration** + Phase 8 enforcing | Synquery API client (deferred from Sprint 18); **only after creation surface PMF signal** that warrants paying for expert calls | Ubiquitous AI across all surfaces; **Phase 8 gate enforcing** (autoresearch Wedge 2 ratified) |
+| **22** | **Multi-user pivot + two-graph architecture** (NOT Sprint 19) | Auth (Clerk/Supabase); **per-user private graphs** + **shared public graph** + **shared substrate** per §13.2; **consumer Trust Center** publication (§13.7) | Privacy dashboard as first-class product (§13.3); DP enforcement live; substrate stage 0→1 transition |
+| **23-24** | Phase 4 ad inventory + creator rev-share infrastructure | Lead-gen ad inventory; vertical ad targeting; **70% creator rev-share** (§13.9 user-as-IP-holder) on public-graph contributions | — |
+| **25+** | **Phase 3 ad inventory at scale** + **Cross-graph network effects (§13.9)** | Ad inventory live across public consumption surface; **70% rev-share to creators AND opted-in publishers** routes via the existing Phase 1 escrow architecture; cross-graph "ask an expert" flow with user opt-in | **Config sweeps** (autoresearch Wedge 3) IF ≥500 graded outcomes; **Public handbook** (PostHog Wedge 7) IF team >1; **SOC 2 Type II deferred** unless enterprise procurement path opens (§13.7) |
+| **30+** | Cross-graph network effects + federation | Cross-user "ask an expert" flow; user-as-IP-holder revenue attribution (§13.9) | Programmatic auction (if scale warrants); vision-capable role |
 
-### Out beyond Sprint 18
+Each sprint ~5-10 working days. The Sprint 11-16 arc shipped in
+~10-12 weeks of focused work; Sprints 17-22 are projected at similar
+cadence.
 
-- **Sprint 19-22**: payouts + multi-user accounts + Phase 4 ad inventory.
-  Quarter-long initiative.
-- **Sprint 23+**: scale. Programmatic ad auction, vision-capable role
-  for video/image content, federation / network effects, RL training
-  loops (the Loop 3 vision that's been deferred since Sprint 0).
+### 14.2 Parallel tracks (off the mainline critical path)
+
+**RLM track** (sequenced inside `rlm_integration_spec.md` as RLM-1
+through RLM-5 — independent of mainline sprint numbering to avoid
+collision): sequences AFTER Sprint 20's outcomes table populates
+enough graded trajectories. The six design decisions in
+`rlm_integration_spec.md` §6 await ratification before RLM-1 starts.
+Cost-cap discipline mirrors continuous-mode budget caps.
+
+- RLM-1: long-doc wrestling RLM bridge (~600 LOC, load-bearing)
+- RLM-2: long-corpus synthesizer RLM mode (~250 LOC)
+- RLM-3: `investigation_kind="rlm"` orchestrator (~500 LOC, net-new)
+- RLM-4: verifiers envs for the other four roles + `rlm_env.py`
+  (~2000 LOC)
+- RLM-5: trajectory harvest CLI for `prime-rl`
+
+**Loop 3 unlock track:** strictly gated by the five criteria in
+`loop_3_unlock_criteria.md`. No work happens until trajectory volume
++ SFT readiness + validated reward + open-weight justification + eval
+headroom are all checked. When unlocked: `integration_prime_intellect.md`
+governs whether to use `prime rl run` (DEFERRED until unlock) or the
+local SFT loop pattern from `integration_autoresearch.md` Wedge 4
+(comparison at unlock time, not before).
+
+**Autoresearch local-only track:** prompt mutation experiments on
+operator's local machine, gated to NEVER touch production VM until
+ratified. Sprint 19 starts scaffolding; Sprint 20 ratification
+verdict. If REJECTed, autoresearch Wedges 2-4 fall and Phase 8 keeps
+its current unconditional patching.
+
+### 14.3 Sequencing discipline
+
+- **Wedge 2 notebook surface is the linchpin.** PostHog Wedges 3, 4, 5
+  all depend on it. Sprints 18-19 must not slip the notebook.
+- **Autoresearch Wedge 1 is the integration ratification gate.** If it
+  fails the Lutke-gap test in Sprint 20, autoresearch Wedges 2-4 fall.
+  Phase 8 gate work in Sprint 21+ depends on this verdict.
+- **The Sprint 18 legal gate is binding.** Retrieval-time gating must
+  ship to production AND first publisher must be opted in BEFORE
+  Stripe Connect activates any payout. Pre-payout exposure is
+  takedown; post-payout exposure is Bartz-level damages on a
+  contemporary monetary transaction. The two are not equivalent and
+  the gate is not negotiable (§9.0).
+- **Synquery slips from Sprint 18 to Sprint 21.** The split is
+  binding. Different workflows (publisher onboarding + Stripe + KYC
+  + 1099 vs expert sourcing + transcript ingestion), independent
+  failure modes, no reason to correlate risk. Synquery activates only
+  after creation surface PMF signal that operators want to commission
+  expert calls.
+- **Multi-user pushes from Sprint 19 to Sprint 22+.** Compounding has
+  not been demonstrated yet. Sprint 11 was when the workstation
+  became usable; six months of operator-graph accumulation is the
+  minimum demonstration period. Premature multi-user destroys the
+  moat that multi-user is supposed to monetize (§13.4 graph
+  contamination).
+- **Hermes-primary dispatch posture is locked for flash/pro/verify
+  tiers; synthesizer is under measurement (Sprint 17-20).** Sprint 12
+  + cd602c9 chaos test establish the architectural invariant per
+  `antiek-hermes-bridge`. Synthesizer is the operator-facing artifact
+  and voice/style discipline is synthesizer-level; the dispatch tier
+  measurement gate (§14.4) decides whether Grok-4.3 on synthesis
+  matches Opus 4.7 within the 5-percentage-point verifier-pass-rate
+  tolerance.
+- **No work on Loop 3 unlock criteria until the criteria themselves
+  pass.** Don't pre-build the SFT loop, the verifiers envs, or the
+  hosted RL infrastructure.
+
+### 14.4 Dispatch tier-differentiation measurement gate (Sprint 17-20)
+
+Per data repository workstream 7 + `integration_autoresearch.md` cost
+modeling, the Hermes-primary posture is correct for cold research
+loop (volume of dispatches builds the graph; substrate quality
+emerges from compounding) but **the cost-per-acceptable-synthesis
+denominator matters more than cost-per-call** for the synthesizer
+specifically.
+
+**Synthesis is the artifact that gets read by humans, edited, and
+exported.** Voice and style discipline (§5) is a synthesizer-level
+requirement. Grok 4.3 has not been benchmarked on long-form English
+research writing the way Claude Opus 4.7 has. Routing synthesis to
+Grok primary is a bet on Hermes Bridge + Grok producing verifier-
+passing synthesis at acceptable rates. Maybe true; not yet measured.
+
+**Measurement protocol** (Sprint 17 begin, Sprint 20 verdict):
+
+1. **Pin synthesizer tier to Opus 4.7 via OpenRouter primary with
+   Hermes fallback** for the measurement window.
+2. **Run 2 weeks** of normal investigation traffic.
+3. **Measure verifier pass rates per provider** on synthesis outputs.
+4. **Verdict criteria** at end of measurement:
+   - If Grok-4.3-on-synthesis passes verifier within 5 percentage
+     points of Opus-on-synthesis: flip back to Hermes primary on
+     cost grounds.
+   - If gap is larger: cost savings on synthesis are illusory because
+     they convert to additional verifier and re-synthesizer dispatch.
+     Keep Opus on synthesis as primary.
+
+**The volume argument cuts the other way once synthesizer is the
+binding artifact.** Cost per synthesis is not the right denominator;
+cost per **operator-acceptable** synthesis is. If Grok produces three
+rejections for every one Claude acceptance, the cost ratio is the
+inverse of the per-call ratio.
+
+**Verify tier stays as configured** (Hermes primary, OpenRouter
+fallback, property-tested at `tests/test_dispatch_fallback_chain.py`).
 
 ---
 
@@ -1415,6 +2597,124 @@ Specifically: never compromise the single-writer DuckDB invariant
 to get a flashier UI. Never compromise the typed event log to
 get faster prototyping. The substrate's discipline IS the product.
 
+### 15.5 Wedge 2 (notebook) adoption — will the operator actually use it? (must answer by end of Sprint 19 + 4 weeks)
+
+`integration_posthog.md` §16.2 names this explicitly. Wedge 2 ships
+BOTH the notebook AND the chat-feed; operator picks per use case.
+After 4 weeks of operator use:
+
+- If chat-feed usage <20% of notebook usage: notebook is the ceiling;
+  deprecate chat-feed in Sprint 21
+- If chat-feed usage >50%: notebook isn't the right primitive for
+  quick-question use cases; reframe as "deep-read mode only"
+- In between: both surfaces stay; the operator's choice is the answer
+
+**Recommended:** ship both, instrument both via the event log, decide
+after 4 weeks of operator behavior data. No design call needed before
+ship.
+
+### 15.6 The Lutke gap — does autoresearch's mechanic survive LLM-judged metrics? (must answer by end of Sprint 20)
+
+`integration_autoresearch.md` §10.6 names this as the load-bearing
+question for the whole autoresearch integration. Lutke's Shopify
+result was on a deterministic metric (render time). Antiek's metrics
+are LLM-judged. **No published evidence yet that the
+propose-execute-measure-gate mechanic survives the deterministic →
+LLM-judged transition.**
+
+Wedge 1 ratification IS the test. Verdict lands by end of Sprint 20.
+If REJECTed: autoresearch Wedges 2-4 fall; the integration ends
+honestly rather than getting salvaged by lowering the bar. If
+RATIFIED: Wedges 2-4 sequence per their own unlock criteria.
+
+### 15.7 RLM bridge design decisions — six awaiting ratification (must answer before RLM-1 starts)
+
+`rlm_integration_spec.md` §6 has six design decisions blocking RLM-1:
+RLM-as-bridge stance, cost attribution to root role, $5 session cap,
+subllm_role_tiers flash split, per-iteration event granularity,
+64K-token wrestling threshold.
+
+**Recommended:** ratify the six decisions in a single review session
+when RLM-1 sequences into priority (after Sprint 20). Pre-Sprint-20
+they're premature to litigate.
+
+### 15.8 The Prime Intellect F+D debt (must absorb into Sprint 17 or 19)
+
+`integration_prime_intellect.md` INTEGRATE NOW called for items F
+(trajectory→verifiers schema compat test) + D (`prime eval run`
+against a 50-example `parameter_extractor_v0.jsonl`) at "Sprint 10."
+Sprint 10 shipped without them. They are debt.
+
+**Recommended:** absorb into Sprint 17 IF the first real-LLM
+evaluation cycle ships in that window; otherwise defer to Sprint 19
+(when prompt autoresearch needs the same compat-test infrastructure).
+Either window is defensible; both keep the items inside the
+near-term horizon.
+
+### 15.9 The Sprint 18 legal gate — is retrieval-time gating in production before payouts ship? (binding NOW, Sprint 18)
+
+§9.0 names this. The operator-stated gate "operator's lawyer involved
+before Sprint 16 payouts" was technically preserved because Sprint 16
+shipped telemetry without money flowing. Sprint 18 ships Stripe Connect
+on the same attribution algorithm — that's the same decision deferred
+by one sprint, not resolved.
+
+Three options surfaced (§9.0): Option A (purge restricted content,
+breaks moat — REJECTED), Option B (gate at attribution time, documented
+unjust enrichment — REJECTED), Option C (gate at retrieval time —
+ACCEPTED). The binding question is whether Option C is implementable
+and in production by Sprint 18 ship date.
+
+**Recommended:** Sprint 18 has TWO prerequisites that must be met
+before Stripe Connect activates any payout: (a) retrieval-time gating
+in production, (b) at least one publisher opted in. If either is
+unmet at Sprint 18 ship, defer the Stripe Connect activation to
+Sprint 19. Do NOT ship payouts on an ungated graph.
+
+### 15.10 The operator's pay-as-you-go token-budget pricing IS the monetization model (operator-decided 2026-05-17)
+
+The pricing model lives in §9.0.1 and §13.5 verbatim from the
+operator's voice notes. The shape is **OpenRouter-style pay-as-you-go
+token-budget pricing**: users set a budget for tokens used; the
+platform bills against actual consumption at three margin tiers (free
+public DeepSeek-Flash cap, paid public 10% margin, paid private 50%
+margin) + 70% creator rev-share on ad revenue + developer surface
+(API + MCP + CLI as Antiek Memory, §13.8) priced at usage. This is
+hard-to-vary creative work the operator did across voice notes
+2026-05-17. The structure is non-negotiable substrate-level
+commitment, not a design space to explore.
+
+If a sprint plan or integration spec ever proposes a different
+monetization shape, escalate to the operator and treat the proposal
+as a substrate-level question, not a sprint-level decision.
+
+### 15.11 The dispatch tier-differentiation question (Sprint 17-20 measurement)
+
+§14.4 names this. Synthesizer is the operator-facing artifact; voice
+and style discipline is synthesizer-level; Grok 4.3 has not been
+benchmarked against Opus 4.7 on long-form English research writing.
+The Hermes-primary posture (cost-optimization through volume) may not
+hold on the synthesis tier because the binding denominator is
+cost-per-acceptable-synthesis, not cost-per-call.
+
+**Recommended:** the measurement protocol in §14.4 is the answer.
+Sprint 17 begins; Sprint 20 verdict lands. No design call before the
+verdict.
+
+### 15.12 The watch-for-later product surface — does it actually unlock private graph usage? (4-week post-ship measurement)
+
+§2.6 introduces this as an operator product insight. The strategic
+claim is that the brainstorming workstation is where users park
+unsharpened questions and pay 50% margin on private token consumption.
+The mechanism is real but the willingness-to-pay at that price point
+is not yet validated.
+
+**Recommended:** ship in Sprint 17 or 18, instrument every parked
+question and every launched investigation, measure 4 weeks of operator
+behavior data. If operator uses watch-for-later >3 times per week, the
+product hypothesis holds. If <1 time per week, deprecate the surface
+and absorb the voice-note path into the existing workstation.
+
 ---
 
 ## 16. What we explicitly do NOT do
@@ -1463,25 +2763,252 @@ underlying assumption changes.
   provenance graph is the substrate's compounding asset; never
   break the chain.
 
+### 16.1 Consolidated REJECTs from integration specs
+
+The four integration specs (§17) each carry their own REJECT lists.
+These are canonical at product-strategy level and re-stated here so
+they cannot be quietly re-opened by a sprint-level decision.
+
+**From `integration_posthog.md` §12:**
+
+- **No ClickHouse + Kafka migration.** DuckDB single-writer is the
+  substrate. Re-evaluate only via explicit substrate sprint.
+- **No plugin marketplace.** Zero third-party developers; theater.
+- **No copying PostHog's voice / mascot / tonal register wholesale.**
+  Antiek has its own voice discipline (§5.5). Pattern transfers;
+  tone does not.
+- **No HogQL-style user-facing query language for the graph.** No
+  power users; re-evaluate Sprint 25+ only.
+- **No multi-tenant org/team/billing surfaces before the multi-user
+  pivot.** Sprint 19 builds these as part of multi-user; not earlier.
+- **No 25+ acquisition adapters by parity to PostHog destinations.**
+  Different shape (research-pull vs CDP-push). Adapter count is
+  driven by operator's actual source needs.
+- **No multi-product nav before its time.** Sprint 19+ alongside
+  multi-user.
+- **No rrweb DOM-mutation capture.** Antiek records typed events,
+  not DOM.
+
+**From `integration_autoresearch.md` §9:**
+
+- **No rewriting the investigation loop in autoresearch's shape.**
+  Category error — knowledge research ≠ ML systems research.
+- **No using autoresearch as a dispatch substrate.** Collides with
+  Hermes-primary posture.
+- **No publishing role prompts Hub-style.** Asymmetric IP reversal.
+- **No targeting Karpathy's "100 experiments overnight" cadence.**
+  Cost-bound, not throughput-bound.
+- **No git-commit-per-change at substrate level.** Duplicates
+  `ANTIEK_PARAM_VERSION` discipline.
+
+**From `integration_prime_intellect.md` §5:**
+
+- **No Prime as a dispatch provider.** Verify tier needs cross-family
+  independence; synthesis tier needs Opus; flash/pro tiers are 3-10×
+  more expensive on Prime. Reversible only when an Antiek-trained
+  checkpoint wins on §D eval.
+- **No Hub publishing of envs or methodology.** Methodology is the
+  product; asymmetric reversal cost.
+
+These rejections are not deferred decisions; they are settled
+negative. Re-open only if the underlying assumption changes
+meaningfully — e.g., an Antiek-trained checkpoint actually winning
+the §D eval would reopen the Prime-as-dispatch-provider question.
+
+### 16.2 Additional REJECTs from the data-repository sharpening (2026-05-18)
+
+**On positioning and strategy:**
+
+- **No "four products" framing.** The substrate is the moat (§2.5).
+  Separating products would have meant separating graphs, which would
+  kill the cross-corpus knowledge-graph value that IS the product
+  thesis. The biography wedge, the research workstation, the
+  brainstorming surface, the creation tool — all one substrate. Re-
+  raised in the May 2026 reframing analysis and explicitly REJECTed.
+- **No "Cursor for research" mental model wholesale.** Cursor has no
+  substrate; Antiek does (§1, §2.5). The analog applies at inference
+  routing (don't train, route to providers — already Antiek's
+  Hermes-primary posture) but NOT at the substrate. Reframing Antiek
+  as "Cursor for research" misses the moat.
+- **No "Spotify-pattern" framework as Phase 1 strategy.** That
+  framework is correct for Phase 3+ (Sprint 25+ ad-supported public
+  surface with publisher rev-share). Pulling it into Phase 0/1 is the
+  Bartz failure mode that just cost Anthropic $1.5B. Phase 1
+  monetization is the operator's pay-as-you-go token-budget model
+  (§9.0.1, §13.5), not IP-payouts.
+- **No biography-first MVP pivot.** The May 2026 reframing analysis
+  recommended biography-as-MVP as the cleanest IP-zero wedge. Operator
+  ratified the substrate-is-moat unification (§2.5). Biography stays as
+  Surface D (§4.4); it is not the MVP wedge replacement for the
+  research workstation.
+
+**On legal posture:**
+
+- **No payouts on an ungated graph.** Sprint 18 ships ONLY after
+  retrieval-time gating in production + first publisher opt-in
+  (§9.0, §15.9). Pre-payout exposure is takedown; post-payout
+  exposure is Bartz-level damages on a contemporary monetary
+  transaction. The gate is not negotiable.
+- **No pre-onboarded escrow active against unconsenting rights
+  holders.** Google Books precedent (Judge Chin's 2011 rejection of
+  the Amended Settlement Agreement) defeats opt-out-by-default. Escrow
+  framework activates ONLY when publisher has affirmatively opted in
+  (§9.10).
+- **No commingled escrow funds.** Cash only, segregated regulated
+  accounts at a real fiduciary institution. Mechanically distinct from
+  operating funds. If "we have your money waiting" is going to be the
+  framing, it must be a verifiable statement.
+
+**On substrate and architecture:**
+
+- **No multi-user before Sprint 22.** Compounding has not been
+  demonstrated yet. Premature multi-user destroys the moat that
+  multi-user is supposed to monetize via graph contamination (§13.4).
+- **No single-graph-with-view-filters as the multi-user model.** Two-
+  graph architecture (private + public + shared substrate) is the
+  resolution (§13.2). View-filter shortcuts that share underlying
+  storage between users are explicitly excluded.
+- **No epsilon > 10 on any DP claim.** Per the expert consensus band
+  (§13.3), ε > 10 is not a meaningful privacy guarantee. The Apple
+  Tang-et-al. precedent is the cautionary tale on overstating DP
+  claims; the Census ε=19.61 is the cautionary tale on under-engineered
+  DP at scale. Per-surface budgets stay in the 1-8 range.
+- **No DuckDB migration off without an explicit substrate sprint.**
+  Reiterated from §16 above with sharpening: the DuckLake transition
+  (Stage 1) is a planned migration with a designed catalog-Postgres
+  separation; the Postgres-sharded transition (Stage 3) is the
+  contingency. Neither happens as a config flip.
+
+**On publisher relationships:**
+
+- **No Pearson as textbook anchor.** Pearson+ direct-to-student
+  strategy signals disintermediation appetite. Cengage is the textbook
+  anchor; McGraw-Hill secondary. Pearson approached last in the
+  publisher sequence, if at all (§9.6 sequenced onboarding).
+- **No MFN on publisher equity.** Spotify precedent issued preferred
+  shares with NO equity MFN — only standard licensing MFN on rate
+  cards. Equity stake compresses naturally through subsequent rounds.
+  Pulling an equity MFN into the term sheet creates a cap-table block
+  on later capital formation.
+- **No publisher equity above 15% combined.** Spotify's combined
+  founding grant was ~17-18% across five rights-holders; compressed
+  to ~7% combined by 2024. A book platform allocating 15%+ to anchors
+  blocks future capital formation. Allocate aggressively to first 3
+  signers (12% combined) and reserve only 3% for all subsequent
+  signers in aggregate (§9.6).
+
+**On the developer surface:**
+
+- **No CLI as the primary developer surface.** CLI is the developer
+  experience layer (third in the stack); MCP is the primary; REST API
+  is secondary universal substrate (§13.8). Building the CLI as a
+  parallel implementation rather than as a wrapper over the API is the
+  rejection.
+- **No book API before publisher contracts.** The Antiek Memory MCP
+  server's three resources include `antiek://books/{isbn}/{chunk_id}`
+  but the resource returns licensing-required errors until publisher
+  contracts execute. Shipping the book resource before contracts is
+  the rejection.
+
+**On unit economics:**
+
+- **No unlimited public-tier consumption.** Scribd failure mode. Free
+  public tier caps at 5M tokens/month on DeepSeek-Flash, then converts
+  to paid at private rate (§13.5). Any pricing model that doesn't cap
+  consumption is rejected.
+- **No fresh deep-research queries on the ad-supported tier.** Fresh
+  queries cost $3-$10 in tokens; ad revenue per session is $0.05-$0.20.
+  Pure ad-supported fresh queries lose money structurally. Fresh
+  queries are paywall-gated or rate-limited (§13.5).
+
+---
+
+## 17. Integration spec hierarchy and precedence
+
+Four peer integration specs sit alongside this master spec. Each
+owns a ratified verdict matrix for one external system or framework.
+Their wedge mechanics and REJECTs are canonical within their domains.
+
+### 17.1 The four integration specs
+
+**`integration_posthog.md`** — UI / design / product / website patterns
+(MIT-licensed PostHog core). The Wedge 2 notebook surface is the
+largest single product upgrade in Sprints 18-19; Wedges 3-5 chain off
+it. Eight REJECTs guard against ClickHouse migration, plugin
+marketplace, voice/mascot copying, HogQL-style query language,
+multi-tenant surfaces before pivot, parity-adapter inflation,
+multi-product nav before its time, and rrweb DOM capture. §16.1
+consolidates these as canonical.
+
+**`integration_autoresearch.md`** — Karpathy's
+propose-execute-measure-gate loop (MIT, 630 LOC). Wedge 1 (prompt
+autoresearch for the synthesizer role, local-only) is the
+ratification gate for the whole integration. Sprint 19 starts;
+Sprint 20 verdict. The Lutke-gap question is open — see §15.6. Five
+REJECTs cover the category errors (rewriting investigation loop,
+using as dispatch substrate, Hub-style prompt publishing, throughput
+targeting, git-commit-per-change).
+
+**`integration_prime_intellect.md`** — Verifiers env + GEPA + hosted
+RL (Prime Intellect open-source stack). F+D debt items (compat test
++ eval runner) absorb into Sprint 17 or 19 per §15.8. Hosted
+`prime rl run` strictly DEFERRED behind `loop_3_unlock_criteria.md`.
+Prime-as-dispatch-provider + Hub publishing explicitly REJECTed.
+
+**`rlm_integration_spec.md`** — Recursive Language Models for
+long-doc wrestling, long-corpus synthesis, RLM-mode orchestration.
+Six design decisions in spec §6 await ratification per §15.7. RLM
+track sequences as parallel-to-mainline AFTER Sprint 20
+outcomes-table populates (§14.2).
+
+### 17.2 Precedence order
+
+When this master spec conflicts with another:
+
+1. `architecture_notes.md` — substrate-level commitments
+   (load-bearing; never violate)
+2. `loop_3_unlock_criteria.md` — gates ALL training-time work
+3. This master spec — product vision + sprint sequencing
+4. `strategy/voice-and-style-discipline.md` — quality bar for prose
+   AND UI (extended in §5.5)
+5. Integration specs — verdict matrices, wedge mechanics, REJECTs
+6. Sprint-specific specs (`sprints/sprintN-*.md`) — execution
+   detail for the active sprint
+
+When precedence (1), (2), or (4) conflict with any integration spec
+wedge, the substrate / unlock-gate / discipline wins. The integration
+patterns are the means; the substrate is the moat (§2.5); the
+researcher's-notebook product proposition is the end. **Never
+substitute the end for the means.**
+
+### 17.3 When a new integration spec gets authored
+
+New integration specs follow the existing template (see any of the
+four above). Required elements: header status + scope, mapping
+section showing where the foreign system's primitives map to
+Antiek's, verdict matrix with INTEGRATE NOW / WEDGE 1..N / DEFER /
+REJECT categories, per-wedge unlock criteria, risks + mitigations,
+sprint placement, open questions, "what to do now," final note
+with precedence reference.
+
+The discipline is rigorous-defensible-not-consensus-hedging
+(per `feedback_architectural_rigor`).
+
 ---
 
 ## Final note for the implementing agent
 
-This spec is the master reference. When you encounter ambiguity
-during implementation, the precedence order is:
+This spec is the master reference. The four integration specs in
+§17.1 are peer documents; their wedge mechanics and REJECTs are
+canonical within their domains. The precedence order is in §17.2.
 
-1. `architecture_notes.md` — substrate-level commitments
-   (load-bearing; never violate)
-2. This spec (`master-product-spec.md`) — product vision +
-   sprint sequencing
-3. The sprint-specific spec (`sprints/sprintN-*.md`) — execution
-   detail for the active sprint
-4. The voice and style discipline (`strategy/voice-and-style-discipline.md`) —
-   quality bar for every operator-facing output
+If §17.2's precedence (1) substrate commitments and any integration
+spec wedge ever conflict, escalate to the operator. The substrate's
+commitments are non-negotiable; integration patterns can be re-shaped.
 
-If precedence (1) and (2) conflict, escalate to the operator
-before resolving. The substrate's commitments are non-negotiable;
-product vision can be re-shaped.
-
-Sprint 11 (`sprints/sprint11-web-app-mvp.md`) is the immediate
+Sprint 17 (`sprints/sprint17-*.md` once authored) is the immediate
+work. The Sprint 17 integration-spec items — Storybook scaffold
+(PostHog Wedge 1a), Lemon UI evaluation decision (PostHog Wedge 1b),
+`program.md` per role (autoresearch INTEGRATE NOW) — are half-day-each
+side-tracks that don't compete with the interview-voice mainline
 work. Begin there.

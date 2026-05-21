@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 17 — Interview voice mode &amp; substrate measurement</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="../spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprint-17.html" class="active">S17</a>
+        <a href="sprint-18.html">S18</a>
+        <a href="sprint-19.html">S19</a>
+        <a href="sprint-20.html">S20</a>
+        <a href="sprint-21.html">S21</a>
+        <a href="sprint-22.html">S22</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 17 &middot; in flight &middot; opened 2026-05-19</p>
+<h1>Sprint 17 — Interview voice mode, dispatch tier measurement, and the four half-day integration items</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. One mainline engineering workstream (interview voice mode), one substrate-wide measurement gate (dispatch tier-differentiation), and four half-day items absorbing the INTEGRATE-NOW work from the four sibling integration specs.</p>
+    <p><strong>Predecessor</strong>. Sprint 16 closed the chaos test + IP-attribution telemetry, ratifying the Hermes bridge verdict at commit <code>cd602c9</code>. The substrate is now production-stable at 1540+ tests passing across 86 test files.</p>
+    <p><strong>Relevance to the Exa / Browserbase spec</strong>. Sprint 17 does <em>no</em> Exa or Browserbase work. It is the sprint that creates the <em>preconditions</em> &mdash; specifically, the dispatch tier measurement gate that will later inform Wedge 3 (verifier-tier corroboration), and the <code>program.md</code> per role files that will later inform whether the synthesizer needs an Exa-corroborated grounding step.</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#thesis">Sprint thesis</a></li>
+        <li><a href="#mainline">Mainline &mdash; interview voice mode (Loop 4)</a></li>
+        <li><a href="#tier-gate">Substrate &mdash; dispatch tier-differentiation measurement gate</a></li>
+        <li><a href="#program-md"><code>program.md</code> per role (autoresearch INTEGRATE NOW)</a></li>
+        <li><a href="#storybook">Storybook scaffold (PostHog Wedge 1a)</a></li>
+        <li><a href="#lemon-ui">Lemon UI evaluation spike (PostHog Wedge 1b)</a></li>
+        <li><a href="#brainstorm">Brainstorming Workstation scaffold</a></li>
+        <li><a href="#prime-debt">Optional &mdash; Prime F + D debt absorption</a></li>
+        <li><a href="#sequence">Order of operations</a></li>
+        <li><a href="#not">What this sprint deliberately does NOT do</a></li>
+        <li><a href="#open">Open questions for this sprint</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+    </ol>
+</div>
+
+<h2 id="thesis">1. Sprint thesis <a class="section-anchor" href="#thesis">#</a></h2>
+
+<p>Sprint 17 is structurally unusual: instead of one big engineering push, it distributes across <strong>six independent workstreams</strong> whose failure modes do not cross. The interview-voice mainline is engineering-heavy; the dispatch tier measurement is a one-line config change with a two-week observation window; the four integration-spec items are each ~half a day. <strong>A blocker on any one of them does not block the others.</strong></p>
+
+<p>Why this shape: Sprint 16 ratified the Hermes verdict at commit <code>cd602c9</code>; with the bridge stable, the operator has appetite for a wider-but-shallower sprint that closes <em>cheap unlocks</em> across the integration spec backlog (PostHog Wedge 1a/1b, autoresearch INTEGRATE NOW, Prime F+D debt) while a substantial new product surface (interview voice) builds in parallel. The risk pattern: the integration items take less time than projected, freeing capacity for the Brainstorming Workstation scaffold (the operator-preferred product surface per master-spec &sect;4.5).</p>
+
+<h2 id="mainline">2. Mainline — interview voice mode (Loop 4) <a class="section-anchor" href="#mainline">#</a></h2>
+
+<p>Reference: <code>master-product-spec.md</code> &sect;11.5 and &sect;11.6. The substantive engineering build of the sprint.</p>
+
+<h3>2.1 What it is</h3>
+
+<p>WebRTC capture + TTS dispatch tier + streaming Whisper transcription, wired into a new orchestration loop &mdash; <strong>Loop 4 (Interview)</strong> &mdash; parallel to Loop 1 (research), Loop 2 (wrestling), and Loop 3 (RL training, deferred). The interview surface is the operator's preferred surface for the autobiography product validation: a real-time conversation with the AI interviewer that produces a transcript flowing through <code>acquisition/voice/</code> into the note-taking pipeline.</p>
+
+<h3>2.2 What this is NOT (Sprint 17)</h3>
+
+<ul>
+    <li><strong>Synchronous voice (OpenAI Realtime API).</strong> Deferred to Sprint 23+ per master-spec &sect;15.3. The realistic round-trip latency for the async pattern is 3&ndash;5s, validated as workable for the biography use case.</li>
+    <li><strong>Voice over the dispatch tier.</strong> TTS becomes a dispatch tier in its own right with its own configuration; this is the right architectural move but introduces a new tier that the cost-tracking and weekly-report code must learn about.</li>
+    <li><strong>Voice-driven actions.</strong> Saying "open Claude's pricing page" doesn't navigate the UI. That is closer to Wedge 4 of the PostHog spec (ubiquitous AI assistant) and is Sprint 19&ndash;20 work.</li>
+</ul>
+
+<h3>2.3 Acceptance criteria</h3>
+
+<p>Operator can send an interview link to themselves, record a 5-minute conversation in voice mode, receive a transcript that flows through <code>acquisition/voice/</code> into the note-taking pipeline, and see insights + open questions surface in the workstation.</p>
+
+<h2 id="tier-gate">3. Substrate — dispatch tier-differentiation measurement gate <a class="section-anchor" href="#tier-gate">#</a></h2>
+
+<p>Reference: <code>master-product-spec.md</code> &sect;14.4. Substrate-wide measurement, two-week observation window opening Sprint 17 and closing Sprint 20.</p>
+
+<h3>3.1 The question being measured</h3>
+
+<p>The Hermes-primary posture (Grok 4.3 verify-tier; DeepSeek V4 pro/flash) is correct for <em>most</em> tiers but <strong>under measurement for synthesis</strong>. Synthesis is the operator-facing artifact; the voice/style discipline at &sect;5 is synthesizer-level. Grok 4.3 has not been benchmarked on long-form English research writing the way Opus 4.7 has, and the master spec's discipline is to <em>measure before deciding</em>.</p>
+
+<h3>3.2 Protocol (verbatim from master &sect;14.4)</h3>
+
+<ol>
+    <li>Pin synthesizer tier to <strong>Opus 4.7 via OpenRouter primary, Hermes fallback</strong>. Edit at <code>substrate/dispatch/config.yaml</code>.</li>
+    <li>Run 2 weeks of normal investigation traffic.</li>
+    <li>Measure verifier pass rates per provider on synthesis outputs.</li>
+    <li>Verdict at Sprint 20:
+        <ul>
+            <li>Within 5pp of Opus &rarr; flip back to Hermes primary on cost grounds.</li>
+            <li>Larger gap &rarr; keep Opus on synthesis as primary; the cost savings on synthesis are illusory because they convert to additional verifier and re-synthesizer dispatch.</li>
+        </ul>
+    </li>
+</ol>
+
+<h3>3.3 Why this matters to the Exa / Browserbase spec</h3>
+
+<p>The dispatch tier verdict at Sprint 20 informs whether the <strong>verifier tier</strong> &mdash; the consumer of Wedge 3's <code>exa_lookup_claim</code> tool &mdash; is Grok 4.3 (Hermes) or shifted. The Wedge 3 calibration eval set (&sect;15.3 of the spec) is verifier-specific; a mid-sprint tier change would invalidate the calibration. Sprint 17 starts the measurement so Sprint 20 can land it cleanly.</p>
+
+<h2 id="program-md">4. <code>program.md</code> per role (autoresearch INTEGRATE NOW) <a class="section-anchor" href="#program-md">#</a></h2>
+
+<p>Half a day. Reference: <code>integration_autoresearch.md</code> &mdash; the one INTEGRATE NOW item.</p>
+
+<h3>4.1 What it is</h3>
+
+<p>Each of the 12 roles at <code>roles/&lt;role&gt;/</code> gets a <code>program.md</code> file written in plain markdown. The format follows the autoresearch pattern (Karpathy 2026-03): <strong>lightweight, operator-editable instructions</strong> naming what the role does, what good output looks like, what to avoid, and what hypotheses to try when iterating.</p>
+
+<h3>4.2 Why this lands first in the sprint</h3>
+
+<p>It is the mutation target for the prompt autoresearch loop (autoresearch Wedge 1, Sprint 19+ parallel side-track). Without <code>program.md</code> per role, the autoresearch runner has no surface to write the hypothesis against. Half-day cost, zero production risk, unlocks the entire Wedge-1 chain.</p>
+
+<h3>4.3 Roles shipped this sprint (12 total)</h3>
+
+<p>decomposer, evidence_retriever, parameter_extractor, connector, synthesizer, challenger, grounder, note_taker, user_agent, creative_writer, interviewer, voice_note_followup.</p>
+
+<h3>4.4 Acceptance criteria</h3>
+
+<ul>
+    <li>12 <code>program.md</code> files committed.</li>
+    <li>The synthesizer's <code>program.md</code> explicitly codifies the voice/style discipline from master &sect;5.1&ndash;&sect;5.5.</li>
+    <li>Codegen and tests still passing.</li>
+</ul>
+
+<h2 id="storybook">5. Storybook scaffold (PostHog Wedge 1a) <a class="section-anchor" href="#storybook">#</a></h2>
+
+<p>Half a day. Reference: <code>integration_posthog.md</code> &sect;5.1a.</p>
+
+<h3>5.1 What it is</h3>
+
+<p>Add Storybook to <code>apps/reading/</code> and write a <code>*.stories.tsx</code> for each existing custom component (<code>ClaimCard</code>, <code>NotesPanel</code>, <code>ChatInput</code>, <code>MasterMdViewer</code>, <code>NotesFeed</code>, <code>CrossDocSidebar</code>, <code>PdfViewer</code>). <strong>No component-API changes.</strong> This is documentation work.</p>
+
+<h3>5.2 Why this lands now</h3>
+
+<p>It is the design-system source of truth in lieu of a separate Figma library. Visual regression catches structural breakage during the larger Wedge 2 notebook surface work in Sprint 18&ndash;19. Future contributors (and Claude Code) can read the component contract without inferring it from usage. Pure-upside hygiene.</p>
+
+<h3>5.3 Acceptance criteria</h3>
+
+<ul>
+    <li><code>npm run storybook</code> boots.</li>
+    <li>One story per existing custom component.</li>
+    <li>Production <code>npm run build</code> still passes.</li>
+</ul>
+
+<h2 id="lemon-ui">6. Lemon UI evaluation spike (PostHog Wedge 1b) <a class="section-anchor" href="#lemon-ui">#</a></h2>
+
+<p>Half a day on a side branch. Reference: <code>integration_posthog.md</code> &sect;5.1b. The decision is the deliverable, not the adoption.</p>
+
+<h3>6.1 What it is</h3>
+
+<p><code>npm i @posthog/lemon-ui</code> in a branch; replace one component (<code>ChatInput</code> is lowest-risk) and measure against four decision criteria:</p>
+
+<ul>
+    <li>Bundle size delta &lt; 80 KB gzipped.</li>
+    <li>TypeScript strict compile clean.</li>
+    <li>Tailwind interop verified.</li>
+    <li>Operator's visual-fit eye test passes (researcher's-notebook aesthetic preserved per master &sect;5.5).</li>
+    <li>At least 60% migration coverage projection across the existing component surface.</li>
+</ul>
+
+<h3>6.2 The two defensible outcomes</h3>
+
+<table>
+    <thead><tr><th>Verdict</th><th>What happens</th></tr></thead>
+    <tbody>
+        <tr><td><strong>ADOPT</strong> (all four gates passed)</td><td>Merge the migration to main; plan Sprint 18 work for the remaining components.</td></tr>
+        <tr><td><strong>KEEP CUSTOM</strong> (any gate failed)</td><td>Document the failing gate(s); spike branch is deleted; Storybook stays as the design-system source of truth without Lemon UI underneath.</td></tr>
+    </tbody>
+</table>
+
+<p><strong>Either verdict is defensible.</strong> The default assumption is KEEP CUSTOM &mdash; Lemon UI is built for PostHog's SaaS-dashboard aesthetic and the default expectation is that it will not pass the eye test. The spike's job is to verify that assumption empirically rather than assert it.</p>
+
+<h2 id="brainstorm">7. Brainstorming Workstation scaffold <a class="section-anchor" href="#brainstorm">#</a></h2>
+
+<p>Reference: <code>master-product-spec.md</code> &sect;4.5. The operator's stated preferred product direction; may slip to Sprint 18 if voice-mode work consumes more capacity than projected.</p>
+
+<h3>7.1 What ships this sprint (scaffolding only)</h3>
+
+<ul>
+    <li>New route <code>app.antiek.ai/brainstorm/</code>.</li>
+    <li>Watch-for-later folder UI on top of <code>question.identified</code> events filtered by an <code>unsharpened</code> state.</li>
+    <li>Launch-investigation button per parked question (POSTs to <code>/investigations</code> with the parked question as the seed).</li>
+    <li>Voice-note input affordance (reuses Sprint 13 voice acquisition).</li>
+</ul>
+
+<h3>7.2 Deferred to Sprint 18 (full ship)</h3>
+
+<ul>
+    <li>Thought-partner workflow (new role <code>thought_partner</code> under <code>roles/</code>).</li>
+    <li>Lego-block insight slotting from private graph.</li>
+    <li>Full UI polish per PostHog notebook patterns (<code>integration_posthog.md</code> Wedge 2 referenced for visual reference).</li>
+</ul>
+
+<h3>7.3 Why scaffold rather than full ship</h3>
+
+<p>The operator's preferred direction warrants getting the substrate hooks right before the surface polish. The <code>unsharpened</code> state for <code>question.identified</code> events is a substrate addition; once in production it can be iterated against in Sprint 18.</p>
+
+<h2 id="prime-debt">8. Optional — Prime F + D debt absorption <a class="section-anchor" href="#prime-debt">#</a></h2>
+
+<p>Reference: <code>integration_prime_intellect.md</code> &sect;F + &sect;D, master-spec &sect;15.8. <strong>Absorb in Sprint 17 only if the first real-LLM evaluation cycle ships.</strong> Otherwise defer to Sprint 19 when prompt autoresearch (Wedge 1) needs the same compat-test infrastructure.</p>
+
+<ul>
+    <li><strong>F</strong>: trajectory &rarr; verifiers schema compat test.</li>
+    <li><strong>D</strong>: <code>prime eval run</code> runner for Antiek rubrics with <code>parameter_extractor_v0.jsonl</code> 50-example set.</li>
+</ul>
+
+<p>Operator-decided. Don't force-fit if the voice-mode mainline + the four integration items already exhaust sprint capacity.</p>
+
+<h2 id="sequence">9. Order of operations <a class="section-anchor" href="#sequence">#</a></h2>
+
+<p>Operator-recommended sequence (each item's failure modes are independent; sequencing is by leverage + risk):</p>
+
+<ol>
+    <li><strong><code>program.md</code> per role</strong> &mdash; half-day, no production impact, unlocks Sprint 19 autoresearch Wedge 1. Lowest risk, highest unlock value.</li>
+    <li><strong>Storybook scaffold</strong> &mdash; half-day, no production impact, unlocks Sprint 18 notebook surface work. Pure-upside hygiene.</li>
+    <li><strong>Lemon UI evaluation spike</strong> &mdash; half-day on a branch, no merge required to mainline. Decision-making work.</li>
+    <li><strong>Dispatch tier-differentiation measurement begins</strong> &mdash; one config edit; 2-week measurement window starts. Substrate change, low risk, gates Sprint 20 verdict.</li>
+    <li><strong>Interview voice mode</strong> &mdash; mainline sprint work, the substantive build.</li>
+    <li><strong>Brainstorming Workstation scaffold</strong> &mdash; operator-preferred direction; may slip to Sprint 18 if voice-mode work consumes more capacity than projected.</li>
+</ol>
+
+<p>Items 1&ndash;4 are designed to land in the first 2 days. Item 5 takes the remainder of the sprint. Item 6 lands in the last 1&ndash;2 days OR slips to Sprint 18.</p>
+
+<h2 id="not">10. What this sprint deliberately does NOT do <a class="section-anchor" href="#not">#</a></h2>
+
+<ul>
+    <li><strong>Multi-user pivot.</strong> Deferred to Sprint 22+ per master-spec &sect;13.4. Six months of operator-graph accumulation must demonstrate the compounding curve first.</li>
+    <li><strong>Publisher dashboard / Stripe Connect.</strong> Sprint 18 work.</li>
+    <li><strong>Retrieval-time legal gate.</strong> Sprint 18 deliverable. Without this gate landing in Sprint 18, the Exa / Browserbase Wedges 1 and 2 cannot ship in Sprint 19.</li>
+    <li><strong>Synquery integration.</strong> Slips to Sprint 21 per master-spec &sect;14.3 sequencing discipline (creation surface PMF signal required first).</li>
+    <li><strong>Loop 3 unlock work.</strong> Gated by <code>loop_3_unlock_criteria.md</code>. Don't pre-build the SFT loop, the verifiers envs, or hosted RL.</li>
+    <li><strong>Autoresearch Wedge 1 prompt mutation runner.</strong> Sprint 19+ parallel side-track. Sprint 17 ships the mutation TARGETS (<code>program.md</code> per role) but not the runner itself.</li>
+    <li><strong>Pricing-page template.</strong> Sprint 18 work when the publisher dashboard ships.</li>
+    <li><strong>Any Exa or Browserbase wiring.</strong> The spec's Wedges 1 and 2 land Sprint 18&ndash;19 only, after the legal gate.</li>
+</ul>
+
+<h2 id="open">11. Open questions for this sprint <a class="section-anchor" href="#open">#</a></h2>
+
+<h3>11.1 Lemon UI verdict — adopt or keep custom?</h3>
+<p>Driven by the &sect;6 evaluation. Operator decides at end of Sprint 17. No design call needed before the spike.</p>
+
+<h3>11.2 Voice-mode latency tolerance</h3>
+<p>Master-spec &sect;11.5 cites 3&ndash;5s round-trip. The operator's biography use case is the validation target. If the latency feels unworkable at operator self-test, escalate to master-spec &sect;15.3 (synchronous voice model options) &mdash; but Sprint 23+ is the realistic timeline for the synchronous switch.</p>
+
+<h3>11.3 Brainstorming Workstation scope creep</h3>
+<p>The thought-partner workflow (new <code>thought_partner</code> role) is deferred to Sprint 18 to keep Sprint 17 scope honest. If the operator wants thought-partner in Sprint 17, voice-mode work slips one sprint. <strong>Don't bundle.</strong></p>
+
+<h3>11.4 Prime F + D debt</h3>
+<p>Absorb in Sprint 17 only if the real-LLM eval cycle ships. Defer to Sprint 19 otherwise. Either is defensible per master-spec &sect;15.8.</p>
+
+<h2 id="acceptance">12. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<p>Sprint 17 is <strong>done</strong> when:</p>
+
+<ol>
+    <li>The interview voice mode end-to-end demo passes: operator records 5 minutes, receives transcript, sees insights + open questions in the workstation.</li>
+    <li>12 <code>program.md</code> files are committed and the synthesizer's program codifies the voice/style discipline.</li>
+    <li>Storybook boots with one story per existing custom component; production build still passes.</li>
+    <li>The Lemon UI spike has produced a written verdict (ADOPT or KEEP CUSTOM) with documented evidence on all four decision criteria.</li>
+    <li>The dispatch tier-differentiation measurement is running: <code>config.yaml</code> pins Opus 4.7 as synthesizer primary; investigation traffic from Sprint 17 onward is captured under the new routing for the Sprint 20 verdict.</li>
+    <li>The Brainstorming Workstation scaffold renders the watch-for-later folder OR is explicitly slipped to Sprint 18 with a recorded reason.</li>
+</ol>
+
+<p>The <strong>substrate criterion</strong>: full test suite still green; no regression in the 1540+ tests across 86 test files.</p>
+
+<hr>
+
+<h3>Final note for the implementing agent</h3>
+
+<p>This sprint's work is intentionally distributed. <strong>Failure modes are independent.</strong> A blocker on voice-mode does not block Storybook, <code>program.md</code>, or the Lemon UI spike. A blocker on Lemon UI does not block voice mode. Sequence per &sect;9; do not bundle.</p>
+
+<p>If the operator picks one item to start with: <strong><code>program.md</code> per role</strong>. Half a day. Zero production risk. Unlocks the Sprint 19 autoresearch Wedge 1 mutation runner directly. Every hour spent here is leverage for every iteration of every role prompt in Sprints 19+.</p>
+
+<p>If the operator picks two: add Storybook. Same shape &mdash; no production risk, unlocks Sprint 18.</p>
+
+<p>If the operator wants to start with the operator-preferred direction instead: the Brainstorming Workstation scaffold. This is the surface operator named as preferred; everything else slips one sprint.</p>
+
+<hr>
+
+<div class="meta">
+    <p><strong>Next.</strong> <a href="sprint-18.html">Sprint 18 &rarr; Retrieval-time legal gate &amp; publisher dashboard</a> &mdash; the binding precondition for Exa Wedge 1, plus the Stripe Connect publisher dashboard architecture.</p>
+</div>
+
+</article>
+</main>
+
+<footer>
+    Antiek docs &middot; <a href="../index.html">back to index</a> &middot; <a href="sprint-18.html">next: Sprint 18 &rarr;</a>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antiek — Exa &amp; Browserbase integration and sprint analyses</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="index.html" class="active">Index</a>
+        <a href="spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprints/sprint-17.html">S17</a>
+        <a href="sprints/sprint-18.html">S18</a>
+        <a href="sprints/sprint-19.html">S19</a>
+        <a href="sprints/sprint-20.html">S20</a>
+        <a href="sprints/sprint-21.html">S21</a>
+        <a href="sprints/sprint-22.html">S22</a>
+    </div>
+</nav>
+
+<main>
+
+<p class="kicker">2026-05-21 &middot; draft v1 &middot; operator: Faisal</p>
+<h1>Antiek — Exa &amp; Browserbase integration and sprint analyses</h1>
+
+<p>This is the operator-facing landing page for the
+<strong>Antiek &times; Exa &times; Browserbase</strong> integration spec
+(2026-05-21) and the comprehensive analysis of Sprints 17 through 22+
+that the spec's wedge placement depends on.</p>
+
+<p>The spec defends a single architectural decision: <strong>Exa and
+Browserbase are different layers</strong>. Exa is the discovery layer
+(query &rarr; URLs); Browserbase is an ingestion-layer escalation
+fallback (when httpx can't reach the content). They share no adapter,
+no config namespace, no environment variable prefix. Both flow through
+the existing substrate-write seam at
+<code>acquisition/urls/adapter.ingest_url(&hellip;)</code>.</p>
+
+<p>The sprint pages translate the wedge placement in <a
+href="spec-exa-browserbase.html#sprint-placement">&sect;16 of the
+spec</a> into the broader sprint context &mdash; what each sprint
+ships in total, why the sequencing is binding, and what's deliberately
+deferred to a later sprint.</p>
+
+<h2>The integration spec</h2>
+
+<div class="card-grid">
+    <div class="card">
+        <p class="card-meta">Spec &middot; draft v1 &middot; 2026-05-21</p>
+        <h3><a href="spec-exa-browserbase.html">Antiek &times; Exa &times; Browserbase</a></h3>
+        <p>Two INTEGRATE NOW wedges (Exa discovery adapter, Browserbase escalation fallback), two PHASE 2 wedges, two DEFER wedges, nine explicit REJECTs. Verdict matrix, unlock criteria, cost model, sprint placement.</p>
+    </div>
+</div>
+
+<h2>Sprint analyses</h2>
+
+<div class="card-grid">
+    <div class="card">
+        <p class="card-meta">Sprint 17 &middot; in flight</p>
+        <h3><a href="sprints/sprint-17.html">Interview voice mode &amp; substrate measurement</a></h3>
+        <p>Mainline voice mode (WebRTC + TTS + streaming Whisper); dispatch tier-differentiation measurement gate; four half-day integration items (program.md per role, Storybook, Lemon UI spike, brainstorming workstation scaffold).</p>
+    </div>
+    <div class="card">
+        <p class="card-meta">Sprint 18 &middot; next</p>
+        <h3><a href="sprints/sprint-18.html">Retrieval-time legal gate &amp; publisher dashboard</a></h3>
+        <p>The binding precondition for Exa Wedge 1. SQL-WHERE legal gate enforcing Bartz / Hachette / AG MDL restrictions; publisher dashboard + Stripe Connect; brainstorming workstation full ship; thought-partner role.</p>
+    </div>
+    <div class="card">
+        <p class="card-meta">Sprint 18 &rarr; 19</p>
+        <h3><a href="sprints/sprint-19.html">Notebook surface, Exa &amp; Browserbase land</a></h3>
+        <p>PostHog Wedge 2 notebook surface (the linchpin); Wedge 1 Exa discovery adapter; Wedge 2 Browserbase escalation fallback; prompt autoresearch Wedge 1 scaffolding; multi-user accounts substrate plumbing.</p>
+    </div>
+    <div class="card">
+        <p class="card-meta">Sprint 20</p>
+        <h3><a href="sprints/sprint-20.html">Trajectory replay, Wedge 3 verifier corroboration</a></h3>
+        <p>Dispatch tier verdict (Hermes vs Opus); rrweb-concept trajectory replay viewer; command palette; Wedge 3 Exa <code>/contents</code> for verifier-tier corroboration; Wedge 4 Stagehand extractor if surface ratified.</p>
+    </div>
+    <div class="card">
+        <p class="card-meta">Sprint 21</p>
+        <h3><a href="sprints/sprint-21.html">Synquery, Phase 8 enforcing</a></h3>
+        <p>Synquery expert-network integration (deferred from Sprint 18); Phase 8 skill-patch gate moves from shadow to enforcing; ad-inventory architecture begins; Wedge 5 Exa Websets evaluation if continuous-research baseline ratified.</p>
+    </div>
+    <div class="card">
+        <p class="card-meta">Sprint 22+</p>
+        <h3><a href="sprints/sprint-22.html">Multi-user pivot, two-graph architecture</a></h3>
+        <p>The deferred multi-user pivot finally lands (gated on six months of solo compounding); two-graph architecture per master-spec &sect;13.2; consumer Trust Center publication; Wedge 6 full agentic browsing re-evaluation.</p>
+    </div>
+</div>
+
+<h2>Reading order</h2>
+
+<p>For an operator approaching this material fresh:</p>
+
+<ol>
+    <li>Read the spec, <a href="spec-exa-browserbase.html#3">&sect;3 (the single architectural decision)</a> first &mdash; the wedges below it only make sense once that split is internalized.</li>
+    <li>Then <a href="spec-exa-browserbase.html#verdict-matrix">&sect;5 (verdict matrix)</a> for the at-a-glance.</li>
+    <li>Then Sprint 18 &mdash; the legal gate is the precondition the spec hangs on.</li>
+    <li>Then Sprint 19 &mdash; where the two INTEGRATE NOW wedges actually land.</li>
+    <li>Then Sprint 20 onward for the PHASE 2 / DEFER trajectory.</li>
+</ol>
+
+<p>For an implementing agent picking up Wedge 1 or Wedge 2: read the
+spec end-to-end, then Sprint 18 and Sprint 19 for the surrounding
+substrate context. The wedge work cannot land without the legal gate
+from Sprint 18 in production.</p>
+
+<h2>Cross-references</h2>
+
+<p>The spec defers on conflict to:</p>
+
+<ol>
+    <li><code>architecture_notes.md</code> &mdash; substrate-level commitments (load-bearing).</li>
+    <li><code>master-product-spec.md</code> &mdash; product vision + sprint sequencing.</li>
+    <li><code>strategy/voice-and-style-discipline.md</code> &mdash; quality bar for synthesis (relevant because web-sourced content can lower-quality contaminate it).</li>
+    <li>This spec &mdash; Exa / Browserbase verdicts and wedge mechanics.</li>
+    <li>Peer integration specs &mdash; conflicts resolved by operator review:
+        <code>integration_prime_intellect.md</code>,
+        <code>integration_autoresearch.md</code>,
+        <code>integration_posthog.md</code>,
+        <code>daytona_integration_spec.md</code>,
+        <code>rlm_integration_spec.md</code>.
+    </li>
+</ol>
+
+<p>If precedence (1) and any wedge ever conflict, the substrate wins.
+The wedges are the means; the substrate is the end. <em>Never substitute
+the end for the means.</em></p>
+
+</main>
+
+<footer>
+    Antiek docs &middot; researcher's notebook discipline &middot;
+    rendered offline, no external dependencies.
+</footer>
+
+</body>
+</html>

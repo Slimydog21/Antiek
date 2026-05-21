@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 19 — Notebook surface, Exa &amp; Browserbase land</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="../spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprint-17.html">S17</a>
+        <a href="sprint-18.html">S18</a>
+        <a href="sprint-19.html" class="active">S19</a>
+        <a href="sprint-20.html">S20</a>
+        <a href="sprint-21.html">S21</a>
+        <a href="sprint-22.html">S22</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 19 &middot; the linchpin sprint &middot; Wedges 1 + 2 land</p>
+<h1>Sprint 19 — Notebook surface, Exa discovery, Browserbase escalation, autoresearch Wedge 1</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. The largest single product-and-substrate sprint in the integration window. The PostHog Wedge 2 notebook surface ships (the linchpin for PostHog Wedges 3, 4, 5). The Exa &amp; Browserbase Wedges 1 and 2 land. The autoresearch Wedge 1 prompt mutation runner scaffolds. The first-cohort publisher outreach goes out. Multi-user accounts substrate plumbing lands (architecture only; the multi-user pivot itself is Sprint 22+).</p>
+    <p><strong>Relevance to the Exa / Browserbase spec</strong>. This is the sprint the INTEGRATE NOW pair lands in. Wedge 1 (Exa discovery adapter) ships against the Sprint 18 legal gate. Wedge 2 (Browserbase escalation fallback) ships in parallel &mdash; independent of Wedge 1 on the substrate.</p>
+    <p><strong>Predecessor</strong>. Sprint 18 closes with the retrieval-time legal gate in production, the publisher dashboard architecture shipped, the brainstorming workstation feature-complete, and the substrate-only precursor for Wedges 1 + 2 landed (or absorbed into the wedge PRs).</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#thesis">Sprint thesis</a></li>
+        <li><a href="#notebook">PostHog Wedge 2 &mdash; the notebook surface</a></li>
+        <li><a href="#wedge1">Exa &amp; Browserbase Wedge 1 &mdash; discovery adapter</a></li>
+        <li><a href="#wedge2">Exa &amp; Browserbase Wedge 2 &mdash; escalation fallback</a></li>
+        <li><a href="#autoresearch">Autoresearch Wedge 1 &mdash; prompt mutation runner</a></li>
+        <li><a href="#multiuser-plumb">Multi-user accounts substrate plumbing</a></li>
+        <li><a href="#first-cohort">First-cohort publisher outreach</a></li>
+        <li><a href="#sequence">Order of operations</a></li>
+        <li><a href="#not">What this sprint deliberately does NOT do</a></li>
+        <li><a href="#open">Open questions for this sprint</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+    </ol>
+</div>
+
+<h2 id="thesis">1. Sprint thesis <a class="section-anchor" href="#thesis">#</a></h2>
+
+<p>Sprint 19 is <strong>the linchpin</strong>. Three integration specs simultaneously land their first major wedge:</p>
+
+<ul>
+    <li>PostHog Wedge 2 (the notebook surface) &mdash; the single largest product upgrade since the Sprint 11 web app MVP. It's the canonical rendering target for PostHog Wedges 3 (command palette), 4 (ubiquitous AI), and 5 (trajectory replay), all of which sequence behind it.</li>
+    <li>Exa &amp; Browserbase Wedges 1 and 2 &mdash; the two INTEGRATE NOW items from the discovery + ingestion spec. Together they add the "agent can find URLs about a topic" primitive (Wedge 1) and the "agent can reach long-tail JS-rendered pages when it has to" primitive (Wedge 2).</li>
+    <li>Autoresearch Wedge 1 (prompt mutation runner scaffold) &mdash; the first concrete step toward the propose-execute-measure-gate loop applied to role prompts. Mutates the Sprint 17 <code>program.md</code> files.</li>
+</ul>
+
+<p>Plus the multi-user substrate plumbing (Sprint 22 ships the pivot; Sprint 19 lays the typed-event and DB-routing groundwork) and the first-cohort publisher outreach (Sprint 18 shipped the dashboard; Sprint 19 sends the first notification batch).</p>
+
+<p>Sprint 19 is also <strong>capacity-bound</strong>. The notebook surface alone is ~10 days. Wedge 1 is ~4 days. Wedge 2 is ~3 days. Autoresearch Wedge 1 scaffold is ~3 days. Multi-user plumbing is ~3 days. First-cohort outreach is ~1 day. The math doesn't fit a single sprint; the sequencing below identifies what can slip to Sprint 20 without breaking the wedge chain.</p>
+
+<h2 id="notebook">2. PostHog Wedge 2 — the notebook surface <a class="section-anchor" href="#notebook">#</a></h2>
+
+<p>Reference: <code>integration_posthog.md</code> &sect;6. The main product work of the sprint.</p>
+
+<h3>2.1 What it is</h3>
+
+<p>A new view at <code>app.antiek.ai/wrestle/&lt;document_id&gt;/notebook</code> (and later <code>app.antiek.ai/investigations/&lt;id&gt;/notebook</code>) that renders a literate-analysis document. Block types include markdown prose, PDF region embeds, claim cards, notes, question cards, cross-doc links, chat exchanges, MASTER.md sections, images, LaTeX.</p>
+
+<h3>2.2 Technology choice</h3>
+
+<p><strong>TipTap</strong> (ProseMirror-based, MIT-licensed). PostHog's Notebooks use this; the React adapter is mature; block-structured docs serialize cleanly to JSON.</p>
+
+<p>Storage: notebook documents are a new <code>notebooks</code> table in DuckDB (<code>document_id</code>, <code>investigation_id</code>, <code>title</code>, <code>content_json</code>, version fields). Each block carries either prose, a substrate reference (<code>claim_id</code>, <code>note_id</code>, <code>question_id</code>, <code>region_id</code>, <code>chunk_id</code>, <code>document_id</code>), or both. <strong>Substrate references are NOT denormalized into the notebook JSON</strong> &mdash; the notebook stores the reference; the renderer pulls the current substrate state at render time. This preserves the substrate-as-source-of-truth invariant.</p>
+
+<h3>2.3 Why the notebook surface sequences first in Sprint 19</h3>
+
+<p>PostHog Wedges 3 (command palette), 4 (ubiquitous AI), and 5 (trajectory replay) all depend on the notebook surface as their canonical rendering target. If Sprint 19 slips on the notebook, the entire PostHog wedge chain delays. Sprint 19 protects the notebook by sequencing it ahead of the other items.</p>
+
+<h3>2.4 Estimated effort</h3>
+
+<p>~10 days (matches PostHog spec &sect;6.7 estimate). The notebook eats the majority of the sprint.</p>
+
+<h2 id="wedge1">3. Exa &amp; Browserbase Wedge 1 — discovery adapter <a class="section-anchor" href="#wedge1">#</a></h2>
+
+<p>Reference: <a href="../spec-exa-browserbase.html#wedge1">Exa &amp; Browserbase spec &sect;6</a>. The discovery layer.</p>
+
+<h3>3.1 Precondition check</h3>
+
+<div class="callout warn">
+    <strong>Binding precondition</strong>
+    <p>The Sprint 18 retrieval-time legal gate MUST be in production before this wedge ships. The PR cannot pass CI unless the gate is enforced. Sprint 19 verifies the gate is live on day 1 before any Wedge 1 implementation work begins.</p>
+</div>
+
+<h3>3.2 What it adds</h3>
+
+<p>The <code>acquisition/search/exa/</code> module:</p>
+
+<pre><code>acquisition/search/
+  __init__.py
+  README.md
+  events.py                  # DiscoveryProposed, DiscoverySelected types
+  exa/
+    __init__.py
+    client.py                # typed Exa HTTP client (httpx)
+    adapter.py               # search(query, ...) → list[DiscoveryProposed]
+    README.md
+</code></pre>
+
+<p>Plus the <code>discovery_cache</code> DuckDB table for idempotency. Plus the daily budget enforcement (<code>EXA_DAILY_BUDGET_USD</code>). Plus the integration with the Sprint 18 legal gate at the <code>DiscoverySelected</code> emission point.</p>
+
+<h3>3.3 Estimated effort</h3>
+
+<p>~4 days (matches spec &sect;6.11 estimate). Sequencing within the sprint: Wedge 1 starts after notebook surface is feature-complete (day 7&ndash;8 of the sprint).</p>
+
+<h3>3.4 Open questions resolved in this sprint</h3>
+
+<ul>
+    <li>&sect;17.1 of the spec &mdash; <code>acquisition/search/exa/</code> vs <code>acquisition/exa/</code> module naming. Recommendation: <code>acquisition/search/exa/</code> to anticipate sibling providers.</li>
+    <li>&sect;17.3 &mdash; whether <code>findSimilar</code> ships in Wedge 1 from day one. Recommendation: yes.</li>
+</ul>
+
+<h3>3.5 Acceptance criteria (verbatim from spec &sect;6.10)</h3>
+
+<ul>
+    <li><code>discover(query=..., investigation_id=...)</code> returns &ge;1 result against the production Exa key.</li>
+    <li>Each result emits exactly one <code>DiscoveryProposedPayload</code> event.</li>
+    <li>Promoting a result via <code>ingest_url(...)</code> emits exactly one <code>DiscoverySelectedPayload</code> with <code>decision="ingested"</code>.</li>
+    <li>Promoting a banned-corpus URL emits <code>DiscoverySelectedPayload{decision="rejected_by_legal_gate"}</code> with zero graph writes.</li>
+    <li>Daily budget cap triggers <code>DiscoveryBudgetExceeded</code> on the next call after threshold.</li>
+    <li>Integration test with <code>httpx.MockTransport</code> flows discover &rarr; ingest_url &rarr; graph writes; idempotent re-run produces no duplicate rows.</li>
+    <li>Cost-per-call recorded; <code>weekly_report.py</code> picks up the new line item.</li>
+</ul>
+
+<h2 id="wedge2">4. Exa &amp; Browserbase Wedge 2 — escalation fallback <a class="section-anchor" href="#wedge2">#</a></h2>
+
+<p>Reference: <a href="../spec-exa-browserbase.html#wedge2">Exa &amp; Browserbase spec &sect;7</a>. Browserbase as an opt-in fallback inside <code>acquisition/urls/</code>.</p>
+
+<h3>4.1 What it adds</h3>
+
+<ul>
+    <li><code>acquisition/urls/client_browserbase.py</code> &mdash; Browserbase-via-Playwright client with session pool, retry, daily budget enforcement.</li>
+    <li>Two new keyword arguments on <code>acquisition/urls/adapter.ingest_url</code>: <code>fallback_to_browserbase: bool</code> and <code>browserbase_wait_for: Optional[str]</code>.</li>
+    <li><code>FetchFallbackEscalatedPayload</code> emission on the escalation path.</li>
+    <li><code>BROWSERBASE_API_KEY</code> + <code>BROWSERBASE_PROJECT_ID</code> + <code>BROWSERBASE_DAILY_BUDGET_USD</code> environment variables.</li>
+</ul>
+
+<h3>4.2 Sequencing with Wedge 1</h3>
+
+<p>Independent. Wedge 2 can land before, after, or alongside Wedge 1. Recommended in Sprint 19: <strong>land Wedge 2 second</strong> &mdash; the discovery layer (Wedge 1) is the bigger missing primitive; Wedge 2 is a fallback on an already-working path.</p>
+
+<h3>4.3 Estimated effort</h3>
+
+<p>~3 days (matches spec &sect;7.9 estimate).</p>
+
+<h3>4.4 Open question resolved in this sprint</h3>
+
+<ul>
+    <li>&sect;17.2 of the spec &mdash; whether Browserbase persistent contexts (cookies across sessions) belong in Wedge 2. Recommendation: NO &mdash; Wedge 4 only.</li>
+</ul>
+
+<h2 id="autoresearch">5. Autoresearch Wedge 1 — prompt mutation runner <a class="section-anchor" href="#autoresearch">#</a></h2>
+
+<p>Reference: <code>integration_autoresearch.md</code> &sect;5. The scaffold ships in Sprint 19; the gating verdict ("does the loop produce improvement on Antiek's role prompts?") is Sprint 20.</p>
+
+<h3>5.1 What ships in Sprint 19</h3>
+
+<ul>
+    <li>The mutation runner: a script that reads a role's <code>program.md</code> + current prompt, proposes one mutation, runs the role against a held-out eval set, scores the output, and either keeps or reverts the mutation.</li>
+    <li>The <code>parameter_extractor_v0.jsonl</code> 50-example eval set (Prime Intellect spec &sect;D INTEGRATE NOW).</li>
+    <li>The <code>tools/eval/antiek_rubric_to_verifiers.py</code> adapter (Prime Intellect spec &sect;D).</li>
+    <li>Initial baseline run: the runner executes once against the synthesizer's <code>program.md</code> to establish baseline scores.</li>
+</ul>
+
+<h3>5.2 What does NOT ship in Sprint 19</h3>
+
+<ul>
+    <li>Promotion of any mutation to production. The runner is in shadow mode; no role prompt changes ship without operator review.</li>
+    <li>The Phase 8 skill-patch gate (autoresearch Wedge 2). That's Sprint 20+.</li>
+    <li>GEPA against parameter_extractor (Prime Intellect spec &sect;A). That requires Wedge 1 to have ratified first.</li>
+</ul>
+
+<h2 id="multiuser-plumb">6. Multi-user accounts substrate plumbing <a class="section-anchor" href="#multiuser-plumb">#</a></h2>
+
+<p>Reference: <code>master-product-spec.md</code> &sect;13.2 (Phase 1 architecture). The multi-user <em>pivot</em> is Sprint 22+; Sprint 19 lays the substrate plumbing so the pivot is a feature-flag flip, not an architecture rewrite.</p>
+
+<h3>6.1 What ships in Sprint 19</h3>
+
+<ul>
+    <li>Typed event additions: <code>UserRegistered</code>, <code>UserIdentityAttached</code>, <code>GraphScopeChanged</code>.</li>
+    <li>DuckDB schema: <code>user_id</code> column added to <code>documents</code>, <code>chunks</code>, <code>nodes</code>, <code>edges</code>, <code>investigations</code>, all <code>NOT NULL DEFAULT 'operator'</code>.</li>
+    <li>File-per-user DuckDB routing pattern stubbed (file-per-user routing in the app layer, Postgres catalog deferred to Sprint 22).</li>
+    <li>The Antiek Memory MCP server (Sprint 19&ndash;20 per master-spec &sect;13.7) wired against the new typed events.</li>
+</ul>
+
+<h3>6.2 What does NOT ship in Sprint 19</h3>
+
+<ul>
+    <li>The multi-user pivot itself.</li>
+    <li>Authentication (Clerk / Supabase).</li>
+    <li>Per-user private graphs vs shared public graph routing.</li>
+    <li>Differential-privacy enforcement live.</li>
+    <li>Consumer Trust Center publication.</li>
+</ul>
+
+<p>The plumbing is "Sprint 22 can flip a flag and the multi-user pivot lands cleanly." It is not "multi-user is now live."</p>
+
+<h2 id="first-cohort">7. First-cohort publisher outreach <a class="section-anchor" href="#first-cohort">#</a></h2>
+
+<p>Reference: <code>master-product-spec.md</code> &sect;9, &sect;14.1. Sprint 18 shipped the dashboard architecture + the notification template; Sprint 19 sends the first batch.</p>
+
+<h3>7.1 What it is</h3>
+
+<p>Identification of the top-30 attributed publishers from the operator's existing graph. Notification email goes out informing them that Antiek has accumulated $X of escrowed revenue attributable to their content, and offering them opt-in onboarding to claim it.</p>
+
+<h3>7.2 What this is NOT</h3>
+
+<p>This is <strong>not</strong> a public-launch announcement. The first cohort is private outreach to specific identified publishers. Public visibility of the publisher dashboard waits for Sprint 20&ndash;22 (post first-cohort feedback).</p>
+
+<h2 id="sequence">8. Order of operations <a class="section-anchor" href="#sequence">#</a></h2>
+
+<ol>
+    <li><strong>Day 1</strong>: Verify the Sprint 18 legal gate is in production. Verify the substrate-only precursor (typed events) is landed. If either is incomplete, route to Sprint 18 first.</li>
+    <li><strong>Days 1&ndash;7</strong>: Notebook surface main work (PostHog Wedge 2). TipTap integration, block schema, JSON serialization, block renderers, REST endpoints, DuckDB notebooks table, export-to-markdown.</li>
+    <li><strong>Days 7&ndash;10</strong>: Exa &amp; Browserbase Wedge 1 (discovery adapter). Starts after notebook is feature-complete to avoid context-switching overhead.</li>
+    <li><strong>Days 10&ndash;12</strong>: Wedge 2 (Browserbase escalation). Independent of Wedge 1; can run in parallel by a second hand if available, or sequenced after Wedge 1.</li>
+    <li><strong>Days 12&ndash;14</strong>: Autoresearch Wedge 1 scaffold (prompt mutation runner + parameter_extractor eval set).</li>
+    <li><strong>Concurrent</strong>: Multi-user substrate plumbing (~3 days, can fit into the gaps between the main items). First-cohort outreach (~1 day, sequence after Sprint 18 dashboard is operationally clean).</li>
+</ol>
+
+<p><strong>What can slip to Sprint 20 without breaking the wedge chain</strong>:</p>
+
+<ul>
+    <li>Wedge 2 (Browserbase escalation) &mdash; independent on the substrate; slipping a sprint has no downstream impact.</li>
+    <li>Autoresearch Wedge 1 scaffold &mdash; Sprint 20 can absorb it.</li>
+    <li>Multi-user substrate plumbing &mdash; the pivot is Sprint 22+; one sprint of plumbing slip is recoverable.</li>
+</ul>
+
+<p><strong>What cannot slip</strong>:</p>
+
+<ul>
+    <li>Notebook surface &mdash; the linchpin for PostHog Wedges 3, 4, 5.</li>
+    <li>Wedge 1 &mdash; the spec sequences Sprint 18 (legal gate) &rarr; Sprint 19 (Wedge 1) tightly; slipping Wedge 1 cascades to Wedge 3's Sprint 19+ window.</li>
+</ul>
+
+<h2 id="not">9. What this sprint deliberately does NOT do <a class="section-anchor" href="#not">#</a></h2>
+
+<ul>
+    <li><strong>Wedge 3 (verifier <code>/contents</code> corroboration).</strong> Phase 2, gated on Wedge 1 ratification + dispatch-multi-turn tool-call substrate. Earliest Sprint 19 (if Wedge 1 ratifies by mid-sprint and the dispatch infrastructure is ready); realistic Sprint 20.</li>
+    <li><strong>Wedge 4 (Stagehand for structured-data surface).</strong> Conditional on a surface being named. None ratified yet.</li>
+    <li><strong>Wedge 5 (Exa Websets).</strong> Sprint 21+, gated on continuous research mode running 30+ days on a non-Exa baseline.</li>
+    <li><strong>Wedge 6 (full agentic browsing).</strong> Sprint 23+ at earliest. Stringent unlock criteria.</li>
+    <li><strong>Synquery integration.</strong> Sprint 21.</li>
+    <li><strong>Multi-user pivot itself.</strong> Sprint 22+. Sprint 19 ships plumbing only.</li>
+    <li><strong>Phase 4 ad inventory.</strong> Sprint 21&ndash;22.</li>
+    <li><strong>Phase 8 skill-patch gate enforcing.</strong> Sprint 20+ shadow; Sprint 21+ enforcing.</li>
+    <li><strong>Automated payouts.</strong> Sprint 20&ndash;22.</li>
+    <li><strong>Trajectory replay viewer (PostHog Wedge 5).</strong> Sprint 20.</li>
+    <li><strong>Command palette (PostHog Wedge 3).</strong> Sprint 19&ndash;20 if notebook lands early; else Sprint 20.</li>
+</ul>
+
+<h2 id="open">10. Open questions for this sprint <a class="section-anchor" href="#open">#</a></h2>
+
+<h3>10.1 Should the notebook chat-feed augment or replace the existing Loop 2 chat?</h3>
+<p>PostHog spec &sect;6.6 says BOTH ship; operator picks. After 4 weeks of operator usage in Sprint 20+, decide whether to deprecate the chat-feed if usage is &lt;20% of notebook usage.</p>
+
+<h3>10.2 Where does the Wedge 1 discovery-review UI live in the notebook?</h3>
+<p>Open question &sect;17.6 of the spec. Defer to mid-sprint: when the notebook block schema is concrete, decide whether discovery review is a notebook block type or a separate command-palette surface (Sprint 19&ndash;20 PostHog Wedge 3).</p>
+
+<h3>10.3 Wedge 2 + autoresearch parallel execution &mdash; is operator capacity for both?</h3>
+<p>If sprint capacity is tight, slip Wedge 2 first (Browserbase escalation) since it has no downstream wedge dependencies. Autoresearch Wedge 1 scaffold blocks Sprint 20's autoresearch ratification verdict.</p>
+
+<h3>10.4 First-cohort outreach &mdash; how many publishers?</h3>
+<p>Top 30 by attribution count is the default. If operator wants to start narrower (top 10), defensible &mdash; less noise, more individual attention. If operator wants top 100, defensible &mdash; more signal at the cost of less per-publisher curation. Master spec &sect;9 allows either; Sprint 19 ships the operator-chosen N.</p>
+
+<h2 id="acceptance">11. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<p>Sprint 19 is <strong>done</strong> when:</p>
+
+<ol>
+    <li>The notebook surface is in production. Operator can open a PDF, highlight regions, ask questions, get claims, interleave prose blocks, export as markdown. The chat-feed remains available.</li>
+    <li>Wedge 1 (Exa discovery adapter) ratifies per spec &sect;15.1: legal gate enforcement integration-tested; budget enforcement integration-tested; operator has run <code>discover(...)</code> on the production Exa key and ingested &ge;3 results.</li>
+    <li>Wedge 2 (Browserbase escalation) ratifies per spec &sect;15.2: concurrency cap, daily budget cap, robots.txt pre-check all integration-tested; operator has confirmed recovery on a JS-rendered SPA fixture. (Acceptable to slip to Sprint 20.)</li>
+    <li>Autoresearch Wedge 1 scaffold is in shadow mode: the runner executes against the synthesizer's program.md without operator intervention; baseline scores are captured. (Acceptable to slip to Sprint 20.)</li>
+    <li>Multi-user substrate plumbing landed: typed events, schema additions, MCP server. Tests cover the operator-default behavior is unchanged. (Acceptable to slip half a sprint.)</li>
+    <li>First-cohort outreach sent: operator-chosen N publishers received the notification email.</li>
+    <li>Full test suite still green.</li>
+</ol>
+
+<p>The <strong>operator-validation criterion</strong>: the operator can run a complete end-to-end research session using only Sprint 19 primitives &mdash; ask a question in the workstation, see the agent <code>discover(query, ...)</code> against Exa, review the proposed URLs, promote three of them via <code>ingest_url</code>, see one rejected by the legal gate, see the agent escalate one stubborn URL to Browserbase via the operator-flipped flag, and assemble the synthesis output in the new notebook surface.</p>
+
+<hr>
+
+<h3>Why Sprint 19 is the spec's first ratification event</h3>
+
+<p>Sprint 17 prepared the substrate. Sprint 18 closed the legal exposure. Sprint 19 is where the discovery + escalation pair actually ships against real Exa and Browserbase production APIs against the operator's real research workflow. By end of sprint, the spec's &sect;15.1 and &sect;15.2 unlock criteria are either ratified (Wedges 1 and 2 are operational) or explicitly slipped (with documented reasons). No silent slip.</p>
+
+<p>The spec's PHASE 2 wedge &mdash; Wedge 3 (verifier <code>/contents</code>) &mdash; sequences from Sprint 19's Wedge 1 ratification. If Sprint 19 ratifies Wedge 1, Sprint 20 can scope Wedge 3 if the dispatch-multi-turn tool-call substrate is ready. If Sprint 19 slips Wedge 1, Wedge 3 slips one sprint downstream.</p>
+
+<hr>
+
+<div class="meta">
+    <p><strong>Previous.</strong> <a href="sprint-18.html">&larr; Sprint 18 &mdash; Retrieval-time legal gate &amp; publisher dashboard</a></p>
+    <p><strong>Next.</strong> <a href="sprint-20.html">Sprint 20 &mdash; Trajectory replay, dispatch tier verdict, Wedge 3 corroboration &rarr;</a></p>
+</div>
+
+</article>
+</main>
+
+<footer>
+    Antiek docs &middot; <a href="../index.html">back to index</a> &middot; <a href="sprint-18.html">&larr; Sprint 18</a> &middot; <a href="sprint-20.html">Sprint 20 &rarr;</a>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,196 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+
+import { apiFetch } from "../../lib/api";
+import HeaderBar from "../shared/HeaderBar";
+
+/**
+ * Documents listing UI (master-spec §4.1).
+ *
+ * Operator-facing list of substrate-attached documents with
+ * source-tier + investigation filters. Each row links to
+ * /wrestle/:documentId where the existing PDF + region-selection
+ * surface lives.
+ */
+
+interface DocumentRow {
+  document_id: string;
+  title: string | null;
+  source_uri: string | null;
+  document_type: string | null;
+  source_tier: number;
+  investigation_id: string | null;
+  content_class: string | null;
+  ip_holder_id: string | null;
+}
+
+const TIER_FILTERS = ["all", 1, 2, 3, 4, 5] as const;
+type TierFilter = (typeof TIER_FILTERS)[number];
+
+export default function DocumentsIndex() {
+  const [rows, setRows] = useState<DocumentRow[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [tierFilter, setTierFilter] = useState<TierFilter>("all");
+  const [investigationFilter, setInvestigationFilter] = useState<string>("");
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (tierFilter !== "all") {
+        params.set("source_tier", String(tierFilter));
+      }
+      if (investigationFilter.trim()) {
+        params.set("investigation_id", investigationFilter.trim());
+      }
+      params.set("limit", "500");
+      const resp = await apiFetch(`/documents?${params.toString()}`);
+      if (!resp.ok) {
+        throw new Error(`GET /documents: HTTP ${resp.status}`);
+      }
+      const data = await resp.json();
+      setRows(data.documents ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [tierFilter, investigationFilter]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const counts = useMemo(() => {
+    const acc = [0, 0, 0, 0, 0]; // tier 1..5
+    for (const r of rows) {
+      if (r.source_tier >= 1 && r.source_tier <= 5) {
+        acc[r.source_tier - 1] += 1;
+      }
+    }
+    return acc;
+  }, [rows]);
+
+  return (
+    <div className="flex flex-col h-screen">
+      <HeaderBar />
+      <main className="flex-1 overflow-y-auto bg-white">
+        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
+          <header className="space-y-2">
+            <h1 className="text-2xl font-serif text-stone-900">
+              Documents
+            </h1>
+            <p className="text-sm text-stone-600 leading-relaxed">
+              Substrate-attached documents (PDFs + web sources +
+              transcripts). Tier reflects source quality per master-
+              spec §9.5: Tier 1 peer-reviewed primary, Tier 5
+              anonymous.
+            </p>
+          </header>
+
+          <section className="grid grid-cols-5 gap-2">
+            {[1, 2, 3, 4, 5].map((t) => (
+              <div
+                key={t}
+                className="border border-stone-200 rounded-md px-3 py-2 text-center"
+              >
+                <p className="text-base font-serif text-stone-900">
+                  {counts[t - 1]}
+                </p>
+                <p className="text-[10px] font-mono text-stone-500 uppercase">
+                  Tier {t}
+                </p>
+              </div>
+            ))}
+          </section>
+
+          <section className="border border-stone-200 rounded-md p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {TIER_FILTERS.map((t) => (
+                <button
+                  key={String(t)}
+                  type="button"
+                  onClick={() => setTierFilter(t)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
+                    tierFilter === t
+                      ? "bg-stone-900 text-white"
+                      : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                  }`}
+                >
+                  {t === "all" ? "all" : `tier ${t}`}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={investigationFilter}
+              onChange={(e) => setInvestigationFilter(e.target.value)}
+              placeholder="filter by investigation_id"
+              className="w-full text-xs font-mono text-stone-900 border border-stone-200 rounded p-2"
+            />
+          </section>
+
+          {error && (
+            <p className="text-sm text-red-700 border border-red-200 bg-red-50 px-3 py-2 rounded">
+              {error}
+            </p>
+          )}
+
+          {loading && (
+            <p className="text-sm text-stone-500 italic">Loading…</p>
+          )}
+
+          {!loading && rows.length === 0 && !error && (
+            <p className="text-sm text-stone-500 italic">
+              No documents match this filter.
+            </p>
+          )}
+
+          {rows.length > 0 && (
+            <section className="border border-stone-200 rounded-md divide-y divide-stone-100">
+              {rows.map((r) => (
+                <Link
+                  key={r.document_id}
+                  to={`/wrestle/${encodeURIComponent(r.document_id)}`}
+                  className="block px-4 py-3 hover:bg-stone-50 transition-colors"
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-sm font-serif text-stone-900 truncate flex-1">
+                      {r.title ?? r.document_id}
+                    </p>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded shrink-0 ${
+                        r.source_tier <= 2
+                          ? "bg-emerald-100 text-emerald-700"
+                          : r.source_tier <= 4
+                            ? "bg-stone-100 text-stone-700"
+                            : "bg-amber-50 text-amber-800"
+                      }`}
+                    >
+                      tier {r.source_tier}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-mono text-stone-500 truncate">
+                    {r.document_id}
+                    {r.document_type && <> · {r.document_type}</>}
+                    {r.investigation_id && (
+                      <> · inv: {r.investigation_id.slice(0, 8)}</>
+                    )}
+                    {r.content_class && <> · {r.content_class}</>}
+                  </p>
+                  {r.source_uri && (
+                    <p className="text-[10px] font-mono text-stone-400 truncate">
+                      {r.source_uri}
+                    </p>
+                  )}
+                </Link>
+              ))}
+            </section>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

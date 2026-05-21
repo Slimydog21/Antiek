@@ -65,6 +65,52 @@ export default function HeaderBar({
           >
             Create
           </NavLink>
+          <NavLink
+            to="/brainstorm"
+            className={({ isActive }) =>
+              `px-2.5 py-1 rounded transition-colors ${
+                isActive
+                  ? "bg-white text-stone-900 shadow-sm font-medium"
+                  : "text-stone-500 hover:text-stone-900"
+              }`
+            }
+          >
+            Brainstorm
+          </NavLink>
+        </nav>
+        <nav className="flex items-center gap-3 text-xs text-stone-500">
+          <NavLink
+            to="/privacy"
+            className={({ isActive }) =>
+              isActive ? "text-stone-900 underline" : "hover:text-stone-900"
+            }
+          >
+            Privacy
+          </NavLink>
+          <NavLink
+            to="/pricing"
+            className={({ isActive }) =>
+              isActive ? "text-stone-900 underline" : "hover:text-stone-900"
+            }
+          >
+            Pricing
+          </NavLink>
+          <NavLink
+            to="/operator"
+            className={({ isActive }) =>
+              isActive ? "text-stone-900 underline" : "hover:text-stone-900"
+            }
+          >
+            Operator
+          </NavLink>
+          <NavLink
+            to="/trust"
+            className={({ isActive }) =>
+              isActive ? "text-stone-900 underline" : "hover:text-stone-900"
+            }
+          >
+            Trust
+          </NavLink>
         </nav>
       </div>
       <div className="flex items-center gap-3">{children}</div>

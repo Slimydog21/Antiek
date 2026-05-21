@@ -60,8 +60,11 @@ function authHeaders(extra?: HeadersInit): Record<string, string> {
   return merged;
 }
 
-/** ``fetch`` wrapper that sends Cloudflare Access cookies. */
-function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+/** ``fetch`` wrapper that sends Cloudflare Access cookies.
+ * Exported for new mode components that need direct API access
+ * outside the typed helper functions (e.g. OperatorDashboard,
+ * PrivacyDashboard, Notebook). */
+export function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return fetch(input, {
     ...(init ?? {}),
     headers: authHeaders(init?.headers),
@@ -207,6 +210,192 @@ export async function listInvestigations(opts?: {
   if (!resp.ok) {
     throw new ApiError(
       `GET /investigations failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// ── Brainstorming Workstation — watch-for-later folder ──
+//
+// Mirrors interfaces/research/api/app.py ParkedQuestionEntry +
+// WatchForLaterResponse. The folder is unsharpened
+// question.identified events across all investigations. See
+// master-spec §2.6 + §4.5.
+
+export interface ParkedQuestionEntry {
+  question_id: string;
+  question_text: string;
+  source_investigation_id: string;
+  source_document_id: string | null;
+  anchor_region_id: string | null;
+  parked_at: string;
+  parent_event_id: string | null;
+}
+
+/** GET /watch-for-later — list unsharpened parked questions. */
+export async function listWatchForLater(
+  opts?: { limit?: number },
+): Promise<{ count: number; questions: ParkedQuestionEntry[] }> {
+  const url = new URL(`${API_BASE}/watch-for-later`, window.location.origin);
+  if (opts?.limit !== undefined) url.searchParams.set("limit", String(opts.limit));
+  const resp = await apiFetch(url.toString());
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /watch-for-later failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /watch-for-later/{question_id}/launch — spawn investigation
+ * seeded by the parked question. Returns the new investigation handle. */
+export async function launchParkedQuestion(
+  question_id: string,
+): Promise<StartInvestigationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/watch-for-later/${encodeURIComponent(question_id)}/launch`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /watch-for-later/${question_id}/launch failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// ── Notebook surface — Wedge 2 linchpin (master-spec §4.2) ──
+
+export interface NotebookBlockShape {
+  block_id: string;
+  block_index: number;
+  block_type: string;
+  ref_id: string | null;
+  content_json: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface NotebookShape {
+  notebook_id: string;
+  title: string;
+  investigation_id: string | null;
+  document_id: string | null;
+  content_class: "user_owned" | "user_public_contribution";
+  created_at: string;
+  updated_at: string;
+  blocks: NotebookBlockShape[];
+}
+
+/** GET /notebooks/{id} — fetch a notebook + ordered blocks. */
+export async function getNotebook(notebookId: string): Promise<NotebookShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /notebooks/${notebookId} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /notebooks/{id}/blocks — append a block. */
+export async function appendNotebookBlock(
+  notebookId: string,
+  req: { block_type: string; content: unknown; ref_id?: string | null },
+): Promise<NotebookShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /notebooks/${notebookId}/blocks failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** PATCH /notebooks/{id}/blocks/{block_id} — edit one block in place. */
+export async function patchNotebookBlock(
+  notebookId: string,
+  blockId: string,
+  body: {
+    content?: Record<string, unknown> | null;
+    ref_id?: string | null;
+    clear_ref_id?: boolean;
+  },
+): Promise<NotebookShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks/${encodeURIComponent(blockId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `PATCH notebook block failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** DELETE /notebooks/{id}/blocks/{block_id} — remove one block. */
+export async function deleteNotebookBlock(
+  notebookId: string,
+  blockId: string,
+): Promise<NotebookShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks/${encodeURIComponent(blockId)}`,
+    { method: "DELETE" },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `DELETE notebook block failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /notebooks/{id}/blocks/reorder — move blocks. */
+export async function reorderNotebookBlocks(
+  notebookId: string,
+  orderedBlockIds: string[],
+): Promise<NotebookShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks/reorder`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ordered_block_ids: orderedBlockIds }),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `Reorder failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

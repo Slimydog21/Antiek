@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprint 0 — Foundations &amp; supersession · Antiek UI redesign</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / UI-REDESIGN-POSTHOG</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint_00_foundations.html">S0</a>
+    <a href="sprint_01_design_system.html">S1</a>
+    <a href="sprint_02_storybook.html">S2</a>
+    <a href="sprint_03_panel_layout.html">S3</a>
+    <a href="sprint_04_navigation.html">S4</a>
+    <a href="sprint_05_research_workstation.html">S5</a>
+    <a href="sprint_06_wrestle.html">S6</a>
+    <a href="sprint_07_notebook.html">S7</a>
+    <a href="sprint_08_command_palette_ai.html">S8</a>
+    <a href="sprint_09_window_state.html">S9</a>
+    <a href="sprint_10_migration.html">S10</a>
+    <a href="sprint_11_a11y_responsive.html">S11</a>
+    <a href="sprint_12_visual_regression_release.html">S12</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1><span class="sprint-tag">S0</span>Foundations &amp; supersession</h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~3 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S1, S2, S3</div></div>
+  <div class="cell"><div class="label">Work packages</div><div class="value">5</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Land the three things that every later sprint depends on: a ratified design
+  token system, a settled answer to "which Lemon UI strategy", and an empty
+  but conventionally-named home (<code>src/design/</code> +
+  <code>src/components/lemon/</code> + <code>src/workspace/</code>) for the
+  redesign code to live in.
+</p>
+
+<h2>2 · Why this sprint exists</h2>
+
+<p>
+  Without S0, every subsequent sprint argues about palette in PRs, copies
+  shadow rules ad-hoc, and litters lemon-style components across whatever
+  directory the author picked that day. The redesign needs a single source
+  of truth for tokens; the redesign needs a settled answer on whether
+  <code>@posthog/lemon-ui</code> is a dependency or a reference; the redesign
+  needs a directory convention so that a Storybook scan or a grep is
+  meaningful. S0 closes all three. It is short by design.
+</p>
+
+<h2>3 · The Lemon-UI decision (the key fork)</h2>
+
+<p>
+  The prior spec (<code>integration_posthog.md §5.1b</code>) gated Lemon UI
+  adoption on a spike that has not been executed. Rather than execute that
+  spike now — which would burn 2–3 days on a bundle-size +
+  visual-fit check that could still go either way — we settle this by
+  picking the option that has the lowest reversibility cost.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:24%">Option</th>
+      <th>Pros</th>
+      <th>Cons</th>
+      <th>Verdict</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>A · Install <code>@posthog/lemon-ui</code></strong></td>
+      <td>Fastest to a finished look. Free upgrades. Componentry is battle-tested in PostHog itself.</td>
+      <td>Brings Kea + own CSS layer. Strict-TS gate is unverified. Bundle delta unknown (prior gate was &lt; 80 KB gzipped). Visual fit may be too SaaS-dashboard for Antiek's reading prose.</td>
+      <td>REJECT for v1.</td>
+    </tr>
+    <tr>
+      <td><strong>B · Fork-and-paste from posthog/posthog</strong></td>
+      <td>Closest pixel-fidelity to PostHog. No dependency. Strip Kea bindings as we go.</td>
+      <td>Mass-copying their MIT components front-loads a lot of unfamiliar code. Maintenance is now ours. Visual fit still unverified.</td>
+      <td>REJECT — too much unfamiliar code, too early.</td>
+    </tr>
+    <tr>
+      <td><strong>C · Custom Tailwind, PostHog visual language</strong></td>
+      <td>Stays in current Tailwind + strict-TS world. Bundle delta tiny (5–10 KB for the new components). Each primitive is small + readable. Visual fit tuned to Antiek's prose-reading context as we go.</td>
+      <td>We write the components. ~5 days in S1.</td>
+      <td><strong>ACCEPT.</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout decision">
+  <strong>S0 verdict</strong>
+  Build a custom <code>src/components/lemon/</code> in Tailwind matching
+  PostHog's visual language. Do not take a dependency on
+  <code>@posthog/lemon-ui</code>. The cost of writing the components is
+  bounded; the cost of an aesthetic mismatch on a reading product is not.
+  If a specific Lemon component is genuinely irreplaceable, we
+  fork-and-paste that <em>one</em> file at the time we need it.
+</div>
+
+<h2>4 · Non-goals</h2>
+<ul>
+  <li>No production components ship in S0. Only tokens + directory scaffold + design moodboard.</li>
+  <li>No routes change. No <code>App.tsx</code> diff in S0.</li>
+  <li>No Tailwind config rewrite. We <em>extend</em> the existing config (which already adds JetBrains Mono).</li>
+  <li>No <code>HeaderBar</code> rewrite. That's S4.</li>
+  <li>No dark mode. Token system permits one in S12 stretch.</li>
+</ul>
+
+<h2>5 · Architecture</h2>
+
+<div class="diagram">
+apps/reading/src/
+├── <span class="y">design/                          ◀ new in S0</span>
+│   ├── <span class="y">tokens.ts</span>       — typed palette + shadow + spacing
+│   ├── <span class="y">tokens.css</span>      — CSS-var sibling for non-TS contexts
+│   └── <span class="y">moodboard.stories.tsx</span> — the palette + shadow + type demo
+├── components/
+│   ├── <span class="y">lemon/                       ◀ new in S0 (empty)</span>
+│   │   └── <span class="y">README.md</span>   — directory contract, S1 fills it
+│   └── (existing components untouched)
+├── <span class="y">workspace/                       ◀ new in S0 (empty)</span>
+│   └── <span class="y">README.md</span>       — panel-system home, S3 fills it
+└── (everything else untouched)
+
+tailwind.config.js     — extend with tokens imported from design/tokens.ts
+</div>
+
+<h2>6 · Work packages</h2>
+
+<!-- ============ WP-0.1 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-0.1</div>
+  <h3>Design tokens module</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>apps/reading/src/design/tokens.ts</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+    <span><strong>Owner:</strong> frontend</span>
+  </div>
+
+  <p>
+    A single TS module exporting palette, shadow, radius, spacing, and type
+    constants. Imported by <code>tailwind.config.js</code> (via dynamic import
+    in the config) and by every component that needs a constant outside the
+    Tailwind class system.
+  </p>
+
+  <pre><code>// apps/reading/src/design/tokens.ts
+export const palette = {
+  yellow:      "#FFD329",
+  yellowSoft:  "#FFE680",
+  blue:        "#1D4AFF",
+  blueSoft:    "#E0E7FF",
+  red:         "#F54E00",
+  redSoft:     "#FFDDD0",
+  teal:        "#29DBBB",
+  purple:      "#B62AD9",
+
+  paper:       "#FBFBFA",
+  paperSoft:   "#F2F2EE",
+  card:        "#FFFFFF",
+  ink:         "#1D1F27",
+  inkSoft:     "#4B4F5C",
+  inkMute:     "#8B8FA0",
+  rule:        "#E5E5E0",
+} as const;
+
+export const shadow = {
+  z1:   "3px 3px 0 0 #1D1F27",
+  z2:   "5px 5px 0 0 #1D1F27",
+  z3:   "8px 8px 0 0 #1D1F27",
+  lift: "12px 12px 0 0 #1D1F27",
+} as const;
+
+export const radius = {
+  sm: "4px",
+  md: "6px",
+  lg: "10px",
+} as const;
+
+export const type = {
+  sans: '"Inter", system-ui, -apple-system, sans-serif',
+  mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',
+  serif: '"Charter", "Iowan Old Style", Georgia, serif',  // reading prose only
+} as const;
+
+export type Palette = typeof palette;
+export type ShadowKey = keyof typeof shadow;
+</code></pre>
+
+  <p><strong>Tests:</strong></p>
+  <ul>
+    <li>One TS unit test asserting <code>palette</code> + <code>shadow</code> object keys are stable (catches accidental renames).</li>
+    <li>Snapshot of <code>moodboard.stories.tsx</code> (lands in WP-0.3).</li>
+  </ul>
+</div>
+
+<!-- ============ WP-0.2 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-0.2</div>
+  <h3>Tailwind config extension</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>apps/reading/tailwind.config.js</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+
+  <p>
+    Extend the existing Tailwind config to expose the palette and shadow
+    tokens as Tailwind utility classes (<code>bg-hog-yellow</code>,
+    <code>shadow-z2</code>, etc.). Keep the existing JetBrains Mono entry.
+  </p>
+
+  <pre><code>// tailwind.config.js  (CJS-compatible re-import of tokens)
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        "hog-yellow":      "#FFD329",
+        "hog-yellow-soft": "#FFE680",
+        "hog-blue":        "#1D4AFF",
+        "hog-blue-soft":   "#E0E7FF",
+        "hog-red":         "#F54E00",
+        "hog-red-soft":    "#FFDDD0",
+        "hog-teal":        "#29DBBB",
+        "hog-purple":      "#B62AD9",
+
+        paper:        "#FBFBFA",
+        "paper-soft": "#F2F2EE",
+        card:         "#FFFFFF",
+        ink:          "#1D1F27",
+        "ink-soft":   "#4B4F5C",
+        "ink-mute":   "#8B8FA0",
+        rule:         "#E5E5E0",
+      },
+      boxShadow: {
+        z1:    "3px 3px 0 0 #1D1F27",
+        z2:    "5px 5px 0 0 #1D1F27",
+        z3:    "8px 8px 0 0 #1D1F27",
+        lift:  "12px 12px 0 0 #1D1F27",
+      },
+      borderRadius: { hog: "6px", "hog-lg": "10px" },
+      fontFamily: {
+        sans:  ['Inter', 'system-ui', 'sans-serif'],
+        mono:  ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        serif: ['Charter', 'Georgia', 'serif'],
+      },
+    },
+  },
+  plugins: [],
+};
+</code></pre>
+
+  <p>
+    <em>Note on the colour sync:</em> the same six-pair palette lives in
+    three places — <code>tokens.ts</code>, <code>tailwind.config.js</code>,
+    and <code>shared.css</code> (this spec). S1 lands a one-time Vitest
+    that diffs all three; failure means a token was changed in only one.
+  </p>
+</div>
+
+<!-- ============ WP-0.3 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-0.3</div>
+  <h3>Moodboard story</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>apps/reading/src/design/moodboard.stories.tsx</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+
+  <p>
+    A single Storybook story that renders the full palette, every shadow,
+    every type style, and a side-by-side <em>before/after</em> render of
+    one current component (<code>ChatInput</code>) so the operator can
+    sign off the aesthetic before S1 ships components.
+  </p>
+
+  <p><strong>This story is the gate.</strong> If the operator looks at it
+  and says "no, still ugly", S0 reopens with palette adjustments
+  <em>before</em> S1 starts. The cost of changing the palette here is
+  one CSS-var edit; the cost in S5 is touching every component.</p>
+
+  <pre><code>// apps/reading/src/design/moodboard.stories.tsx
+import type { Meta, StoryObj } from "@storybook/react";
+import { palette, shadow } from "./tokens";
+
+const meta: Meta = { title: "Design / Moodboard" };
+export default meta;
+
+export const Palette: StoryObj = {
+  render: () =&gt; (
+    &lt;div className="grid grid-cols-4 gap-3 p-6 bg-paper"&gt;
+      {Object.entries(palette).map(([name, hex]) =&gt; (
+        &lt;div key={name}
+             className="border-2 border-ink rounded-hog shadow-z2 p-3"
+             style={{ background: hex }}&gt;
+          &lt;div className="font-mono text-xs"&gt;{name}&lt;/div&gt;
+          &lt;div className="font-mono text-[11px] opacity-70"&gt;{hex}&lt;/div&gt;
+        &lt;/div&gt;
+      ))}
+    &lt;/div&gt;
+  )
+};
+
+export const Shadows: StoryObj = { /* renders z1..lift as paper cards */ };
+export const Typography: StoryObj = { /* renders Inter/JBM/Charter */ };
+export const BeforeAfterChatInput: StoryObj = { /* side-by-side */ };
+</code></pre>
+</div>
+
+<!-- ============ WP-0.4 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-0.4</div>
+  <h3>Directory scaffold + READMEs</h3>
+  <div class="meta">
+    <span><strong>Files:</strong>
+      <code>src/design/README.md</code>,
+      <code>src/components/lemon/README.md</code>,
+      <code>src/workspace/README.md</code></span>
+    <span><strong>Effort:</strong> 0.5 d</span>
+  </div>
+
+  <p>
+    Empty directories with READMEs that name the contract each will fill.
+    The READMEs are short but binding — they prevent S1/S3 authors from
+    inventing new locations.
+  </p>
+
+  <pre><code># src/design/README.md
+Design-system source of truth.
+
+- tokens.ts        canonical palette / shadow / type / radius constants
+- tokens.css       CSS-var sibling, for non-TS contexts (Storybook docs)
+- moodboard.stories.tsx   visual gate; operator-signed.
+
+Rules:
+1. No component imports a colour/shadow from anywhere else.
+2. tailwind.config.js MUST stay in sync; a Vitest enforces this.
+3. Palette ratification flows through this directory only.
+</code></pre>
+
+  <pre><code># src/components/lemon/README.md
+PostHog-Lemon-style primitives, built custom (no @posthog/lemon-ui dep).
+
+Files appear here as Sprint 1 lands them:
+- LemonButton.tsx   variant: primary, secondary, tertiary, danger
+- LemonCard.tsx     elevation 1 / 2 / 3 + colour variants
+- LemonModal.tsx    layered modal with backdrop, used by workspace popouts
+- LemonInput.tsx    text, search, with kbd hint slot
+- LemonTextarea.tsx
+- LemonTag.tsx      pill chip
+- LemonSelect.tsx
+- LemonDropdown.tsx
+- LemonTable.tsx    used by every list-mode (sources, payouts, …)
+- LemonToast.tsx
+
+Rules:
+1. All components consume tokens from src/design/tokens.ts (never inline hex).
+2. All components have a *.stories.tsx in the same directory.
+3. All components are strict-TS clean. No `any`. No `@ts-ignore`.
+4. All components render the same in the moodboard preview as in use.
+</code></pre>
+
+  <pre><code># src/workspace/README.md
+Panel-layout substrate (the 3D layered window manager).
+
+S3 lands:
+- WorkspaceStore.ts    Zustand store: panels[], zOrder, focusedPanel,
+                       pinned, layout-version
+- PanelLayout.tsx      orchestrator
+- PanelLayoutPanel.tsx individual panel (modes: docked-l/r, floating, popout)
+- PanelHost.tsx        wrapper a Route can drop into to opt into the shell
+- PanelHandle.tsx      drag/resize/close handle
+- panel.types.ts       PanelDescriptor + PanelMode + WorkspaceSnapshot
+- panelLayoutLogic.ts  pure helpers (z-reorder, dock-snap, persistence)
+
+Rules:
+1. Panel descriptors are pure data; rendering lives in PanelLayoutPanel.
+2. State changes go through WorkspaceStore actions; no direct mutation.
+3. URL + localStorage persistence is bolted on in S9; S3 builds the in-mem store.
+</code></pre>
+</div>
+
+<!-- ============ WP-0.5 ============ -->
+<div class="wp">
+  <div class="wp-id">WP-0.5</div>
+  <h3>Supersession note in the prior spec</h3>
+  <div class="meta">
+    <span><strong>File:</strong> <code>docs/integration_posthog.md</code> (top + §5.3)</span>
+    <span><strong>Effort:</strong> 0.5 d (writing only)</span>
+  </div>
+
+  <p>
+    A short banner at the top of the prior PostHog spec linking to this
+    one, plus an inline note in §5.3 stating that the "load-bearing serif
+    notebook aesthetic" verdict has been operator-reversed on 2026-05-21.
+    Do <strong>not</strong> delete the prior text; future readers need to
+    see both the original reasoning and the reversal.
+  </p>
+
+  <pre><code>&gt; **SUPERSEDED 2026-05-21** — §5.3's "load-bearing serif notebook" verdict
+&gt; was reversed by the operator. The new direction is a PostHog-style
+&gt; layered workspace; see [docs/ui_redesign_posthog/index.html](ui_redesign_posthog/index.html).
+&gt; The reasoning below is preserved for context.
+</code></pre>
+</div>
+
+<h2>7 · Acceptance criteria</h2>
+
+<ul class="ac-list">
+  <li><code>apps/reading/src/design/tokens.ts</code> exists, exports <code>palette</code> + <code>shadow</code> + <code>radius</code> + <code>type</code>, compiles under strict TS.</li>
+  <li><code>tailwind.config.js</code> exposes <code>bg-hog-yellow</code>, <code>shadow-z2</code>, <code>rounded-hog</code>, <code>font-mono</code> — verified by a one-page render in dev.</li>
+  <li><code>storybook</code> runs and the <em>Design / Moodboard</em> story renders palette + shadows + type + before/after-ChatInput.</li>
+  <li>Operator signs off the moodboard story. Without this signature, S1 does not start.</li>
+  <li>The three new directories exist with their READMEs. <code>grep -r "import.*from.*design/tokens"</code> returns 0 hits in components (nobody has consumed it yet — that's correct in S0).</li>
+  <li><code>integration_posthog.md</code> carries the SUPERSEDED banner.</li>
+  <li><code>npm run build</code> produces no new TS errors compared to baseline.</li>
+</ul>
+
+<h2>8 · Risks &amp; mitigations</h2>
+
+<ul class="risk-list">
+  <li><strong>Operator dislikes the palette after the moodboard.</strong> Mitigation: changes are one-edit, in <code>tokens.ts</code> + <code>tailwind.config.js</code> + <code>shared.css</code>. Allocate up to 0.5 d for one palette round-trip inside S0's budget.</li>
+  <li><strong>Tailwind config syntax error breaks the dev server.</strong> Mitigation: WP-0.2 lands behind a separate commit with a working <code>npm run build</code> as the gate.</li>
+  <li><strong>The custom path forecloses a real Lemon UI eval forever.</strong> Mitigation: explicit revisit point in S12. If Lemon UI proves more attractive in the future, we still have it as an option — we just haven't paid for it speculatively.</li>
+</ul>
+
+<h2>9 · Open questions</h2>
+
+<ol>
+  <li><strong>Serif font for prose:</strong> Charter (free-ish, ships on macOS), Iowan Old Style (Apple), or Lora (Google Fonts, web-loadable)? Default: Charter with Iowan + Georgia fallback. Operator: ratify or override.</li>
+  <li><strong>Border-rule colour:</strong> the spec uses near-black <code>#1D1F27</code> for hard borders; this is what gives the "stamp-printed" PostHog feel. Operator: accept or soften to a true grey?</li>
+  <li><strong>Shadow direction:</strong> currently bottom-right (PostHog convention). Bottom-left would also be valid; affects perceived light direction. Default: bottom-right.</li>
+</ol>
+
+<h2>10 · Verification protocol</h2>
+
+<ol>
+  <li><code>cd apps/reading &amp;&amp; npm run storybook</code></li>
+  <li>Open <em>Design / Moodboard / Palette</em>. Confirm all 16 swatches render with the chunky-shadow look and JetBrains Mono labels.</li>
+  <li>Open <em>Design / Moodboard / BeforeAfter / ChatInput</em>. Confirm the after-render is recognisably PostHog-shaped (yellow accent, hard border, offset shadow) while the before-render is the current flat version.</li>
+  <li><code>npm run build</code> succeeds. Bundle delta &lt; 1 KB (no new components, only config).</li>
+  <li>Operator confirms aesthetic. The literal artefact is a checkbox in the Sprint 0 PR description.</li>
+</ol>
+
+<h2>11 · Rollback plan</h2>
+
+<p>
+  S0 is additive-only: new files, no edits to existing components. Rollback
+  is a single <code>git revert</code> of the S0 commit. No state migration,
+  no runtime config changes. The supersession banner in
+  <code>integration_posthog.md</code> stays even on rollback (it documents
+  the failed attempt), with an "experiment paused" note appended.
+</p>
+
+<div class="sprint-nav">
+  <a href="index.html"><span class="label">↩ Back</span>Master plan</a>
+  <a class="next" href="sprint_01_design_system.html"><span class="label">Next →</span>S1 · Design-system primitives</a>
+</div>
+
+</div>
+</body>
+</html>
