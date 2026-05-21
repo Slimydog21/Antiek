@@ -107,13 +107,27 @@ def _allowlist() -> frozenset[str]:
     )
 
 
-def _public_base_url() -> str:
-    return os.environ.get("ANTIEK_PUBLIC_BASE_URL", _DEFAULT_PUBLIC_BASE).rstrip("/") + "/"
+def _api_base_url() -> str:
+    """Where the magic-link click lands (the FastAPI host). The
+    callback handler is server-side, so the link must point at the
+    API origin even when the frontend lives on a different host."""
+    return os.environ.get(
+        "ANTIEK_API_BASE_URL",
+        os.environ.get("ANTIEK_PUBLIC_BASE_URL", _DEFAULT_PUBLIC_BASE),
+    ).rstrip("/") + "/"
+
+
+def _frontend_base_url() -> str:
+    """Where the API redirects after setting the session cookie. If
+    unset, fall back to same-origin redirects (relative path). If set,
+    the redirect target is ``${frontend_base}${next_path}``."""
+    raw = os.environ.get("ANTIEK_FRONTEND_BASE_URL", "").strip()
+    return raw.rstrip("/") if raw else ""
 
 
 def _build_magic_link(token: str, next_path: str) -> str:
     qs = urlencode({"token": token, "next": next_path or "/"})
-    return urljoin(_public_base_url(), f"auth/callback?{qs}")
+    return urljoin(_api_base_url(), f"auth/callback?{qs}")
 
 
 def _is_safe_relative(path: str) -> bool:
@@ -127,17 +141,36 @@ def _is_safe_relative(path: str) -> bool:
     return path.startswith("/")
 
 
+def _resolve_redirect(next_path: str) -> str:
+    """Compute the final redirect URL after a successful callback.
+
+    If ``ANTIEK_FRONTEND_BASE_URL`` is set (cross-origin deployment:
+    Pages on antiek.ai, API on api.antiek.ai), prefix ``next_path``
+    with that host so the browser lands on the frontend with the
+    cookie already set (via Domain=.antiek.ai). Otherwise relative.
+    """
+    safe = next_path if _is_safe_relative(next_path) else "/"
+    fe = _frontend_base_url()
+    return f"{fe}{safe}" if fe else safe
+
+
 def _cookie_kwargs() -> dict:
     """HttpOnly + Secure + SameSite=Lax. ``Secure`` is unconditional
     on production; tests work because the test client doesn't
-    enforce the flag."""
+    enforce the flag. ``Domain`` is set in cross-origin deployments
+    so the cookie is visible to both Pages (antiek.ai) and the API
+    (api.antiek.ai)."""
     secure = os.environ.get("ANTIEK_COOKIE_INSECURE", "").strip() != "1"
-    return dict(
+    kwargs: dict = dict(
         httponly=True,
         secure=secure,
         samesite="lax",
         path="/",
     )
+    domain = os.environ.get("ANTIEK_COOKIE_DOMAIN", "").strip()
+    if domain:
+        kwargs["domain"] = domain
+    return kwargs
 
 
 def _format_magic_link_email(*, email: str, link: str) -> OutboundEmail:
@@ -213,7 +246,7 @@ def register_auth_routes(
 
     @app.get("/auth/callback", tags=["auth"])
     async def auth_callback(token: str, next: str = "/") -> Response:
-        next_path = next if _is_safe_relative(next) else "/"
+        redirect_url = _resolve_redirect(next)
         try:
             email = verify_magic_link_token(token)
         except TokenExpired:
@@ -253,7 +286,7 @@ def register_auth_routes(
             user_id="__operator__",
             email=email,
         )
-        response = RedirectResponse(url=next_path, status_code=302)
+        response = RedirectResponse(url=redirect_url, status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
             value=cookie,

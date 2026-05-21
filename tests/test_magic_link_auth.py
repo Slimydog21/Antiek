@@ -249,6 +249,53 @@ def test_email_provider_factory_default_mock(monkeypatch):
     assert get_email_provider().name == "resend"
 
 
+def test_cross_origin_callback_redirects_to_frontend(monkeypatch):
+    """When ANTIEK_FRONTEND_BASE_URL is set, the callback redirect
+    is absolute to the frontend host so the browser lands on Pages
+    with the cookie set (cross-origin deployment)."""
+    monkeypatch.setenv("ANTIEK_FRONTEND_BASE_URL", "https://antiek.ai")
+    client = _client(monkeypatch)
+    tok = mint_magic_link_token(_OPERATOR)
+    r = client.get(f"/auth/callback?token={tok}&next=/notebooks", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "https://antiek.ai/notebooks"
+
+
+def test_cookie_domain_set_when_env_configured(monkeypatch):
+    """ANTIEK_COOKIE_DOMAIN=.antiek.ai is what lets the cookie cross
+    from api.antiek.ai to antiek.ai on the same parent domain."""
+    monkeypatch.setenv("ANTIEK_COOKIE_DOMAIN", ".antiek.ai")
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "")
+    client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")  # so TestClient receives it
+    tok = mint_magic_link_token(_OPERATOR)
+    r = client.get(f"/auth/callback?token={tok}", follow_redirects=False)
+    assert r.status_code == 302
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "Domain=.antiek.ai" in set_cookie
+
+
+def test_magic_link_uses_api_base_when_set(monkeypatch):
+    """ANTIEK_API_BASE_URL points the magic link at the FastAPI host
+    even when ANTIEK_PUBLIC_BASE_URL is the frontend."""
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr(
+        "interfaces.research.api.auth.get_email_provider",
+        lambda: sender,
+    )
+    monkeypatch.setenv("ANTIEK_API_BASE_URL", "https://api.antiek.ai")
+    monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", "https://antiek.ai")
+    client = _client(monkeypatch)
+    r = client.post("/auth/request", json={"email": _OPERATOR})
+    assert r.status_code == 200
+    body = sender.sent[0].email.text_body
+    import re
+
+    m = re.search(r"https://[^\s]+", body)
+    assert m
+    assert m.group(0).startswith("https://api.antiek.ai/auth/callback")
+
+
 def test_magic_link_url_carries_safe_next(monkeypatch):
     sender = MockEmailProvider(log_to_stdout=False)
     monkeypatch.setattr(

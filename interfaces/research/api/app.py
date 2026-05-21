@@ -777,10 +777,15 @@ def create_app(
                 "https://antiek.ai",
             ]
     if cors_origins:
+        # H6 magic-link auth: ``credentials=True`` is required for the
+        # browser to carry the ANTIEK_SESSION cookie cross-origin from
+        # the Pages frontend to api.antiek.ai. Pair with explicit
+        # origins (no wildcard); the cookie itself is HttpOnly +
+        # Secure + SameSite=Lax + Domain=.antiek.ai in production.
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
-            allow_credentials=False,
+            allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
         )
