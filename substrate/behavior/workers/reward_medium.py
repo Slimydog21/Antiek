@@ -1,14 +1,23 @@
-"""Medium-horizon reward proxy backfill worker (SPR-01 M5).
+"""Medium-horizon reward proxy backfill worker (SPR-01 M5, SPR-08 M7).
 
-STUB. The medium signal requires Tier-2 notebook references — see
-``substrate/behavior/REWARD_PROXY.md`` §"Worker 2". The notebooks
-table is a SPR-08 artifact; until then this worker is a no-op
-that handles the empty-state case cleanly and logs a single
-breadcrumb so an ops operator can confirm the cron is firing.
+REAL IMPLEMENTATION as of SPR-08. The medium signal requires Tier-2
+notebook references — see ``substrate/behavior/REWARD_PROXY.md``
+§"Worker 2".
 
-The canonical join query lives in REWARD_PROXY.md. When SPR-08
-lands and `notebooks` + `notebook_blocks` populate, swap the no-op
-in ``_run_real`` below for that join.
+Pre-SPR-08 this module was a documented stub; SPR-08's per-document
+notebook surface populates ``notebook_documents`` + ``notebook_blocks``,
+which makes the canonical join real. The body below delegates to
+``services.notebooks.reward_hook.run_medium_backfill`` — the
+service-layer module that owns the join semantics. This keeps the
+SPR-01 worker module thin (it remains the cron's entry point) while
+the SPR-08 service owns the SQL and the test surface.
+
+Backwards compatibility
+-----------------------
+The ``run_reward_medium_backfill`` signature + ``MediumBackfillResult``
+return shape are preserved so SPR-01 callers (cron + the e2e
+``test_e2e_emit.py``) keep compiling. The status strings now include
+``"ran"`` in addition to ``"deferred"`` / ``"empty"``.
 """
 
 from __future__ import annotations
@@ -18,8 +27,6 @@ import sys
 from dataclasses import dataclass
 from typing import Optional
 
-import duckdb
-
 try:
     from ..schema import default_db_path
 except ImportError:  # pragma: no cover — direct-script fallback
@@ -28,83 +35,78 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.behavior.schema import default_db_path  # type: ignore[no-redef]
 
 
-def _connect_for_read(db_path: str) -> "duckdb.DuckDBPyConnection":
-    return duckdb.connect(db_path)
-
-
-REQUIRED_TABLES: tuple[str, ...] = ("notebooks", "notebook_blocks")
-"""Tables this worker joins against. Stub-aware: if any are missing
-the worker exits with ``status='deferred'`` rather than crashing."""
+REQUIRED_TABLES: tuple[str, ...] = ("notebook_documents", "notebook_blocks")
+"""Tables this worker joins against. If any are missing, the worker
+returns ``status='deferred'`` rather than crashing — keeps cron
+logs readable while SPR-08 is still rolling out."""
 
 
 @dataclass(frozen=True)
 class MediumBackfillResult:
-    """Diagnostic returned by ``run_reward_medium_backfill``."""
+    """Diagnostic returned by ``run_reward_medium_backfill``.
 
-    status: str  # "deferred" | "ran" | "empty"
+    ``status`` values:
+      - ``"ran"`` — join executed; ``rows_updated`` may be 0+.
+      - ``"empty"`` — notebooks table is empty; nothing to do.
+      - ``"deferred"`` — required tables missing (substrate not
+        yet migrated).
+    """
+
+    status: str
     reason: str
     rows_updated: int = 0
-
-
-def _tables_present(db_path: str, names: tuple[str, ...]) -> tuple[str, ...]:
-    con = _connect_for_read(db_path)
-    try:
-        rows = con.execute(
-            "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema='main'"
-        ).fetchall()
-    finally:
-        con.close()
-    present = {r[0] for r in rows}
-    return tuple(n for n in names if n in present)
 
 
 def run_reward_medium_backfill(
     *,
     db_path: Optional[str] = None,
 ) -> MediumBackfillResult:
-    """Single pass; stub until SPR-08 lands notebooks emission.
+    """Single pass over ``behavior_events``.
 
-    Returns ``status='deferred'`` when dependencies are absent so
-    the cron caller can log + move on without raising.
+    Delegates to ``services.notebooks.reward_hook.run_medium_backfill``
+    so the join lives next to the schema that defines its inputs.
+    The shape this function returns is unchanged from the SPR-01
+    stub, so existing callers (cron + e2e tests) don't break.
+
+    Args:
+        db_path: DuckDB file. Defaults to substrate constants.
+
+    Returns:
+        ``MediumBackfillResult``.
     """
-    path = db_path or default_db_path()
-    present = _tables_present(path, REQUIRED_TABLES)
-    missing = tuple(t for t in REQUIRED_TABLES if t not in present)
-    if missing:
-        return MediumBackfillResult(
-            status="deferred",
-            reason=(
-                f"medium reward backfill deferred: required tables "
-                f"missing: {missing}. SPR-08 will populate; this is "
-                f"expected at SPR-01 closeout."
-            ),
-        )
-
-    # Tables exist but are empty — also deferred. The canonical join
-    # query lives in REWARD_PROXY.md.
-    con = _connect_for_read(path)
+    # Local import keeps the dependency one-way: services.notebooks
+    # imports substrate, not the reverse. The module-level import
+    # would create a cycle (notebooks.reward_hook ← substrate.behavior
+    # at import time).
     try:
-        nb_count = con.execute("SELECT COUNT(*) FROM notebooks").fetchone()[0]
-    finally:
-        con.close()
-    if not nb_count:
-        return MediumBackfillResult(
-            status="empty",
-            reason="notebooks present but empty; nothing to backfill",
+        from services.notebooks.reward_hook import (
+            BackfillResult,
+            run_medium_backfill,
+        )
+    except ImportError:  # pragma: no cover — services not on path
+        path_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        )
+        if path_root not in sys.path:
+            sys.path.insert(0, path_root)
+        from services.notebooks.reward_hook import (  # type: ignore[no-redef]
+            BackfillResult,
+            run_medium_backfill,
         )
 
-    # When SPR-08 lands and the canonical join in REWARD_PROXY.md is
-    # ready, replace this with the real UPDATE. Today, return a stub
-    # diagnostic so the cron caller knows the worker is intact.
+    path = db_path or default_db_path()
+    result: BackfillResult = run_medium_backfill(db_path=path)
+
+    status_map = {
+        "ran": "ran",
+        "skipped_no_notebooks": "empty",
+        "skipped_tables_missing": "deferred",
+    }
     return MediumBackfillResult(
-        status="deferred",
-        reason=(
-            "stub: real implementation pending. See "
-            "substrate/behavior/REWARD_PROXY.md §Worker 2 for the "
-            "canonical join query."
-        ),
+        status=status_map.get(result.status, "deferred"),
+        reason=result.reason,
+        rows_updated=int(result.rows_updated),
     )
 
 
-__all__ = ["MediumBackfillResult", "run_reward_medium_backfill"]
+__all__ = ["MediumBackfillResult", "REQUIRED_TABLES", "run_reward_medium_backfill"]
