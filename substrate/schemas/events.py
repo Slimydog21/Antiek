@@ -225,6 +225,19 @@ class ActionType(str, Enum):
     # Skill-rule promotion to the shared substrate (substrate/multi_user/skill_writer.py).
     SKILL_RULE_PROMOTED = "skill_rule.promoted"
 
+    # ── Sprint 18 — Exa/Browserbase substrate-only precursor ──────────
+    # Spec: docs/integration_exa_browserbase.md §18.3.
+    # Discovery layer: discovery.proposed records "we considered this URL";
+    # discovery.selected ties a prior discovery_id to the resulting
+    # document_id (or to a refusal — rejected_by_legal_gate, etc.).
+    # NOT a graph-write event; the URL adapter still owns DocumentLoaded.
+    DISCOVERY_PROPOSED = "discovery.proposed"
+    DISCOVERY_SELECTED = "discovery.selected"
+    # Ingestion-layer escalation: emitted by acquisition/urls/adapter.py
+    # when the httpx primary fetch returned low_word_count and the
+    # caller opted into a heavier fetcher (currently Browserbase).
+    FETCH_FALLBACK_ESCALATED = "fetch.fallback.escalated"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -241,7 +254,14 @@ class ActionType(str, Enum):
 # v5: Sprint 30+ skill-rule promotion — dedicated payload replaces the
 #     v4 placeholder that reused cross_graph.citation.recorded for
 #     skill-writer audit events. 2026-05-19.
-EVENT_SCHEMA_VERSION: int = 5
+# v6: Sprint 18 Exa/Browserbase substrate-only precursor — DISCOVERY_PROPOSED,
+#     DISCOVERY_SELECTED, FETCH_FALLBACK_ESCALATED action types and their
+#     payloads. Discovery layer is upstream of the URL adapter; ingestion
+#     escalation event records when httpx's low_word_count skip path was
+#     re-fetched via Browserbase. The wedges themselves (Sprint 18-19) emit
+#     these; this precursor only types them.
+#     docs/integration_exa_browserbase.md §18.3. 2026-05-21.
+EVENT_SCHEMA_VERSION: int = 6
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2038,6 +2058,144 @@ class PreferenceObservationRecordedPayload(_PayloadBase):
     user_id: str
 
 
+# ── Sprint 18 — Exa/Browserbase substrate-only precursor ────────────
+#
+# Wedge 1 (discovery layer) and Wedge 2 (ingestion escalation) emit
+# these. The wedges themselves are Sprint 18-19 work; this precursor
+# only types the events so the wedge PRs land typed from day one.
+# Spec: docs/integration_exa_browserbase.md §6.3, §7.3, §18.3.
+#
+# Discovery events are NOT graph-write events — they record what the
+# discovery layer considered (proposed) and what the operator chose
+# to promote (selected). The graph-write event (DocumentLoadedPayload)
+# is still emitted exclusively by acquisition/urls/adapter.ingest_url.
+
+
+DiscoveryProvider = Literal["exa", "operator"]
+# Future providers (serpapi, tavily, perplexity, brave) extend the
+# union here, not in payload fields. Keeping the discriminator narrow
+# means a new provider is a one-line schema change rather than a
+# free-form string.
+
+
+DiscoveryDecision = Literal[
+    "ingested",
+    "rejected_by_legal_gate",
+    "rejected_by_operator",
+    "fetch_failed",
+]
+
+
+class DiscoveryProposedPayload(_PayloadBase):
+    """A discovery-layer source (Wedge 1: Exa search) proposed a URL.
+
+    The URL has NOT been ingested; this event is the audit trail of
+    "what we considered." Promotion to ingestion is a separate event
+    (DiscoverySelectedPayload). Per spec §6.8: discovery does NOT
+    fetch, does NOT auto-ingest, does NOT bypass the legal gate.
+
+    ``discovery_id`` is the stable handle for a proposal. The wedge
+    mints it as ``"disc-{provider}-" + sha256(url+investigation_id)[:16]``.
+    """
+
+    action_type: Literal[ActionType.DISCOVERY_PROPOSED] = ActionType.DISCOVERY_PROPOSED
+    discovery_id: str
+    provider: DiscoveryProvider
+    # The query that produced this proposal. For findSimilar-style
+    # discovery, this is the originating URL.
+    query: str
+    url: str
+    title: Optional[str] = None
+    # ISO-8601 if the provider returned it; None otherwise. Not parsed
+    # to datetime — providers diverge on format and we'd rather log
+    # what was received than silently normalize.
+    published_date: Optional[str] = None
+    author: Optional[str] = None
+    # Provider-supplied score. Opaque per spec §14.3 — recorded but
+    # NOT used for ingestion gating. The operator decides what to
+    # promote; the score is just one signal.
+    relevance_score: Optional[float] = None
+    # Heuristic suggestion from acquisition/search/exa/adapter.py
+    # (research domain → 2, news allowlist → 3, default → 4). The
+    # operator can override at ingestion time; this is a suggestion,
+    # not an authority.
+    suggested_tier: int = Field(ge=1, le=4)
+    # Truncated preview of the provider's text snippet (≤300 chars).
+    # NOT the substrate's grounding evidence — that requires ingestion
+    # via acquisition/urls/adapter.ingest_url.
+    text_snippet_preview: Optional[str] = Field(default=None, max_length=300)
+    # Provider's own request id, for audit cross-reference.
+    provider_response_id: Optional[str] = None
+    # Per-call cost estimate in USD. Captured per spec §6.7 so
+    # weekly_report.py can aggregate discovery-layer spend separately
+    # from dispatch spend.
+    cost_usd_estimate: Optional[float] = Field(default=None, ge=0.0)
+
+
+class DiscoverySelectedPayload(_PayloadBase):
+    """A previously-proposed discovery was promoted to ingestion (or
+    explicitly refused). Ties the discovery_id to the resulting
+    document_id when ingestion succeeded.
+
+    ``document_id`` is None when the decision is anything other than
+    ``"ingested"``. The legal-gate rejection path emits a Selected
+    event with ``decision="rejected_by_legal_gate"`` and a None
+    document_id so the audit trail records the refusal — the Sprint
+    18 retrieval-time gate (master-spec §9) is enforced upstream of
+    this event, not by this event.
+
+    Per spec §6.9: this event only fires once per (discovery_id,
+    decision) pair. Re-promoting an already-ingested discovery is
+    idempotent at the URL adapter level (url_doc_id deduplicates);
+    the second Selected event is suppressed by the caller, not by
+    the payload schema.
+    """
+
+    action_type: Literal[ActionType.DISCOVERY_SELECTED] = ActionType.DISCOVERY_SELECTED
+    discovery_id: str
+    document_id: Optional[str] = None
+    decision: DiscoveryDecision
+    # Free-text detail when decision != "ingested". Required only by
+    # convention; the schema allows None so an "ingested" event
+    # doesn't carry dead weight.
+    rejection_reason: Optional[str] = None
+
+
+class FetchFallbackEscalatedPayload(_PayloadBase):
+    """Wedge 2 escalation event. Emitted by acquisition/urls/adapter.py
+    when the httpx primary fetch returned ``low_word_count`` and the
+    caller opted into a heavier fetcher (currently Browserbase).
+
+    Per spec §7.2: the URL adapter still owns DocumentLoadedPayload
+    emission; this event sits alongside, recording the escalation
+    itself. Per spec §7.4: this is escalation, NOT default — the
+    1000-5000× cost ratio against httpx is the load-bearing reason
+    Browserbase is never the primary fetcher.
+
+    ``primary_word_count`` and ``fallback_word_count`` let the
+    trajectory show whether the escalation recovered usable content
+    (fallback > primary) or hit a paywall/captcha (fallback ≈ primary).
+    """
+
+    action_type: Literal[ActionType.FETCH_FALLBACK_ESCALATED] = (
+        ActionType.FETCH_FALLBACK_ESCALATED
+    )
+    url: str
+    primary_fetcher: Literal["httpx"] = "httpx"
+    primary_word_count: int = Field(ge=0)
+    fallback_fetcher: Literal["browserbase"]
+    fallback_word_count: int = Field(ge=0)
+    escalation_reason: Literal[
+        "low_word_count",
+        "operator_override",
+        "js_detect",
+    ]
+    # Per-session cost estimate in USD. Captured so the weekly report
+    # can flag runaway escalation early (the per-page cost is 50-5000×
+    # an httpx fetch — see spec §13.1).
+    estimated_cost_usd: float = Field(ge=0.0)
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -2116,6 +2274,9 @@ TypedPayload = Annotated[
         RevShareDecidedPayload,
         PreferenceObservationRecordedPayload,
         SkillRulePromotedPayload,
+        DiscoveryProposedPayload,
+        DiscoverySelectedPayload,
+        FetchFallbackEscalatedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -2195,6 +2356,10 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.REV_SHARE_DECIDED.value,
     ActionType.PREFERENCE_OBSERVATION_RECORDED.value,
     ActionType.SKILL_RULE_PROMOTED.value,
+    # Sprint 18 — Exa/Browserbase substrate-only precursor.
+    ActionType.DISCOVERY_PROPOSED.value,
+    ActionType.DISCOVERY_SELECTED.value,
+    ActionType.FETCH_FALLBACK_ESCALATED.value,
 })
 
 
@@ -2445,4 +2610,10 @@ __all__ = [
     "PreferenceObservationRecordedPayload",
     # Sprint 30+ addition (v5 schema bump)
     "SkillRulePromotedPayload",
+    # Sprint 18 — Exa/Browserbase substrate-only precursor (v6 schema bump)
+    "DiscoveryProvider",
+    "DiscoveryDecision",
+    "DiscoveryProposedPayload",
+    "DiscoverySelectedPayload",
+    "FetchFallbackEscalatedPayload",
 ]

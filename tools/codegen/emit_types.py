@@ -206,6 +206,11 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.RevShareDecidedPayload,
     schema_module.PreferenceObservationRecordedPayload,
     schema_module.SkillRulePromotedPayload,
+    # Sprint 18 — Exa/Browserbase substrate-only precursor.
+    # docs/integration_exa_browserbase.md §18.3.
+    schema_module.DiscoveryProposedPayload,
+    schema_module.DiscoverySelectedPayload,
+    schema_module.FetchFallbackEscalatedPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
@@ -232,6 +237,9 @@ LITERAL_ALIASES: dict[str, tuple[str, ...]] = {
     "ThesisRiskSeverity": typing.get_args(schema_module.ThesisRiskSeverity),
     "SynthesisRecommendation": typing.get_args(schema_module.SynthesisRecommendation),
     "AuditSeverity": typing.get_args(schema_module.AuditSeverity),
+    # Sprint 18 — Exa/Browserbase substrate-only precursor.
+    "DiscoveryProvider": typing.get_args(schema_module.DiscoveryProvider),
+    "DiscoveryDecision": typing.get_args(schema_module.DiscoveryDecision),
 }
 
 

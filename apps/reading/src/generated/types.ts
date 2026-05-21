@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 5;
+export const EVENT_SCHEMA_VERSION = 6;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -102,6 +102,9 @@ export const ActionType = {
   REV_SHARE_DECIDED: "rev_share.decided",
   PREFERENCE_OBSERVATION_RECORDED: "preference.observation.recorded",
   SKILL_RULE_PROMOTED: "skill_rule.promoted",
+  DISCOVERY_PROPOSED: "discovery.proposed",
+  DISCOVERY_SELECTED: "discovery.selected",
+  FETCH_FALLBACK_ESCALATED: "fetch.fallback.escalated",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -144,6 +147,10 @@ export type ThesisRiskSeverity = "critical" | "high" | "moderate" | "low";
 export type SynthesisRecommendation = "proceed" | "pass" | "conditional" | "undetermined" | "insufficient_evidence";
 
 export type AuditSeverity = "info" | "warning" | "critical";
+
+export type DiscoveryProvider = "exa" | "operator";
+
+export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
 
 /**
  * One layer of an assembled context pack. Embedded inside
@@ -1515,6 +1522,85 @@ export interface SkillRulePromotedPayload {
 }
 
 /**
+ * A discovery-layer source (Wedge 1: Exa search) proposed a URL.
+ * 
+ * The URL has NOT been ingested; this event is the audit trail of
+ * "what we considered." Promotion to ingestion is a separate event
+ * (DiscoverySelectedPayload). Per spec §6.8: discovery does NOT
+ * fetch, does NOT auto-ingest, does NOT bypass the legal gate.
+ * 
+ * ``discovery_id`` is the stable handle for a proposal. The wedge
+ * mints it as ``"disc-{provider}-" + sha256(url+investigation_id)[:16]``.
+ */
+export interface DiscoveryProposedPayload {
+  action_type: "discovery.proposed";
+  discovery_id: string;
+  provider: "exa" | "operator";
+  query: string;
+  url: string;
+  title?: string | null;
+  published_date?: string | null;
+  author?: string | null;
+  relevance_score?: number | null;
+  suggested_tier: number;
+  text_snippet_preview?: string | null;
+  provider_response_id?: string | null;
+  cost_usd_estimate?: number | null;
+}
+
+/**
+ * A previously-proposed discovery was promoted to ingestion (or
+ * explicitly refused). Ties the discovery_id to the resulting
+ * document_id when ingestion succeeded.
+ * 
+ * ``document_id`` is None when the decision is anything other than
+ * ``"ingested"``. The legal-gate rejection path emits a Selected
+ * event with ``decision="rejected_by_legal_gate"`` and a None
+ * document_id so the audit trail records the refusal — the Sprint
+ * 18 retrieval-time gate (master-spec §9) is enforced upstream of
+ * this event, not by this event.
+ * 
+ * Per spec §6.9: this event only fires once per (discovery_id,
+ * decision) pair. Re-promoting an already-ingested discovery is
+ * idempotent at the URL adapter level (url_doc_id deduplicates);
+ * the second Selected event is suppressed by the caller, not by
+ * the payload schema.
+ */
+export interface DiscoverySelectedPayload {
+  action_type: "discovery.selected";
+  discovery_id: string;
+  document_id?: string | null;
+  decision: "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
+  rejection_reason?: string | null;
+}
+
+/**
+ * Wedge 2 escalation event. Emitted by acquisition/urls/adapter.py
+ * when the httpx primary fetch returned ``low_word_count`` and the
+ * caller opted into a heavier fetcher (currently Browserbase).
+ * 
+ * Per spec §7.2: the URL adapter still owns DocumentLoadedPayload
+ * emission; this event sits alongside, recording the escalation
+ * itself. Per spec §7.4: this is escalation, NOT default — the
+ * 1000-5000× cost ratio against httpx is the load-bearing reason
+ * Browserbase is never the primary fetcher.
+ * 
+ * ``primary_word_count`` and ``fallback_word_count`` let the
+ * trajectory show whether the escalation recovered usable content
+ * (fallback > primary) or hit a paywall/captcha (fallback ≈ primary).
+ */
+export interface FetchFallbackEscalatedPayload {
+  action_type: "fetch.fallback.escalated";
+  url: string;
+  primary_fetcher?: "httpx";
+  primary_word_count: number;
+  fallback_fetcher: "browserbase";
+  fallback_word_count: number;
+  escalation_reason: "low_word_count" | "operator_override" | "js_detect";
+  estimated_cost_usd: number;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1589,7 +1675,10 @@ export type TypedPayload =
   | CrossGraphCitationRecordedPayload
   | RevShareDecidedPayload
   | PreferenceObservationRecordedPayload
-  | SkillRulePromotedPayload;
+  | SkillRulePromotedPayload
+  | DiscoveryProposedPayload
+  | DiscoverySelectedPayload
+  | FetchFallbackEscalatedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1636,6 +1725,8 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "decompose.requested",
   "decomposer.paraphrase.flagged",
   "decomposer.regenerated",
+  "discovery.proposed",
+  "discovery.selected",
   "dispatch.call",
   "distillation.delivered",
   "distillation.requested",
@@ -1643,6 +1734,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "document.region_selected",
   "evidence.retrieve.delivered",
   "evidence.retrieve.requested",
+  "fetch.fallback.escalated",
   "graph.edge.inserted",
   "graph.node.inserted",
   "graph.staleness.flagged",
