@@ -1,0 +1,60 @@
+/*
+ * SPR-04 M3 — WrestleApp layout styles.
+ *
+ * The mode switch is a CSS-class change on the WrestleApp root, NOT
+ * a conditional render. Per rigor #3 (scroll-preservation): toggling
+ * via `display: none` on the side panels keeps PdfViewer mounted, so
+ * scroll position + zoom level survive the mode flip mechanically.
+ * If you replace this with conditional rendering, the test in
+ * __tests__/readingMode.test.tsx that asserts scroll equality will
+ * fail.
+ *
+ * Tailwind utilities are used inline in the JSX everywhere else in
+ * this codebase; this file exists because the three-column → single-
+ * pane layout transformation is more declarative as data-attribute
+ * selectors than as conditional className strings.
+ */
+
+/* Researcher mode (default) — three columns: PDF · NotesPanel · Notes+CrossDoc. */
+.wrestle-shell[data-reading-mode="researcher"] .wrestle-shell__columns {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  min-height: 0;
+}
+
+/* Reader mode — single centered PDF, side panels hidden via display:none.
+ *
+ * `display: none` rather than `visibility: hidden` so the hidden panels
+ * do not reserve grid tracks. PdfViewer's own DOM stays mounted (it's
+ * inside .wrestle-shell__pdf, which is never hidden).
+ */
+.wrestle-shell[data-reading-mode="reader"] .wrestle-shell__columns {
+  display: grid;
+  /* Single column. PdfViewer fills the full width. */
+  grid-template-columns: 1fr;
+  min-height: 0;
+}
+
+.wrestle-shell[data-reading-mode="reader"] .wrestle-shell__notes-panel,
+.wrestle-shell[data-reading-mode="reader"] .wrestle-shell__rail {
+  display: none;
+}
+
+/* Center the PdfViewer in reader mode with a sensible max-width so a
+ * paragraph isn't 1800px wide on a 27" monitor. The viewer's own
+ * internal scaling is unchanged. */
+.wrestle-shell[data-reading-mode="reader"] .wrestle-shell__pdf {
+  max-width: 980px;
+  margin: 0 auto;
+  border-right: none;
+  background: var(--color-bg, #fafaf7);
+}
+
+/* Header simplifies in reader mode: file picker stays (the operator
+ * needs to load a PDF in either mode), but the investigation chip
+ * shrinks. The Cmd+K hint replaces the chip's role as "what can I do
+ * here?".
+ */
+.wrestle-shell[data-reading-mode="reader"] .wrestle-shell__investigation-chip {
+  display: none;
+}
