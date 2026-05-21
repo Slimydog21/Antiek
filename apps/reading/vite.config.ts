@@ -29,6 +29,30 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // S1 acceptance: "Bundle size of lemon/ chunk < 12 KB gzipped".
+        // Force the design-system primitives into their own chunk so the
+        // budget is measurable. The lemon chunk is shared between the
+        // main app + Storybook stories + RTL tests.
+        manualChunks: {
+          lemon: [
+            "./src/components/lemon/LemonButton",
+            "./src/components/lemon/LemonCard",
+            "./src/components/lemon/LemonModal",
+            "./src/components/lemon/LemonInput",
+            "./src/components/lemon/LemonTextarea",
+            "./src/components/lemon/LemonTag",
+            "./src/components/lemon/LemonSelect",
+            "./src/components/lemon/LemonDropdown",
+            "./src/components/lemon/LemonTable",
+            "./src/components/lemon/LemonToast",
+          ],
+        },
+      },
+    },
+  },
   // The codegen output lives at src/generated/types.ts — no special
   // alias needed; it's just a relative import.
 });

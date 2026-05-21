@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 96" width="320" height="96" role="img" aria-label="Antiek with Werner the penguin mark">
+  <!-- Antiek wordmark stack lockup. Werner on the left, the Antiek
+       wordmark on the right with the sun underline. Day variant uses
+       ink on ice; night variant uses ice on void. CSS variables
+       resolve at runtime so the same SVG flips with the OS theme. -->
+  <style>
+    .ink { fill: #0F1419; }
+    .bright { fill: #EEF1F6; }
+    .sun { fill: #F5DF24; }
+    .belly { fill: #EEF1F6; }
+    .eye { fill: #0F1419; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #EEF1F6; }
+      .bright { fill: #0F1419; }
+    }
+  </style>
+
+  <!-- Werner — abstracted head silhouette (matches NavRail.tsx inline) -->
+  <g transform="translate(8 8) scale(2.4)">
+    <ellipse cx="16" cy="17" rx="9" ry="11" class="ink" />
+    <ellipse cx="16" cy="19" rx="5.5" ry="8" class="belly" />
+    <circle cx="13" cy="13" r="1.4" class="eye" />
+    <circle cx="19" cy="13" r="1.4" class="eye" />
+    <path d="M14.5 16 L16 18 L17.5 16 Z" class="sun" />
+    <ellipse cx="12.5" cy="29" rx="2.5" ry="1" class="sun" />
+    <ellipse cx="19.5" cy="29" rx="2.5" ry="1" class="sun" />
+  </g>
+
+  <!-- Antiek wordmark — bold geometric uppercase, 24px cap height. -->
+  <g transform="translate(108 60)">
+    <text
+      x="0" y="0"
+      font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, system-ui"
+      font-size="44"
+      font-weight="800"
+      letter-spacing="-1.5"
+      class="ink"
+    >ANTIEK</text>
+    <!-- Sun-yellow underline — the brand outline as a wordmark accent.
+         Width matches the rendered text width at the chosen font. -->
+    <rect x="0" y="4" width="186" height="6" class="sun" />
+  </g>
+</svg>

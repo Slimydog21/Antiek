@@ -1,5 +1,9 @@
 # apps/reading/
 
+<p align="center">
+  <img src="src/brand/werner/marks/social-card-1200.png" alt="Werner the penguin · Antiek" width="640" />
+</p>
+
 The TS side of the polyglot seam (`architecture_notes §11`). After the
 S0–S12 redesign (`docs/ui_redesign_posthog/`), this app is the
 Antarctic-themed Werner-the-penguin operator surface: a brand-outlined
