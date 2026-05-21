@@ -9,7 +9,10 @@ import type { TextareaHTMLAttributes } from "react";
  * read scrollHeight and grow rows until either scrollHeight stops
  * shrinking or we hit maxRows. Cheap, no measurement library.
  */
-export type LemonTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
+export type LemonTextareaProps = Omit<
+  TextareaHTMLAttributes<HTMLTextAreaElement>,
+  "onSubmit"
+> & {
   minRows?: number;
   maxRows?: number;
   /** Called on Cmd/Ctrl + Enter when value is non-empty. */

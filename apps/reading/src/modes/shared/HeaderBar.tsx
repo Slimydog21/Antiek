@@ -1,10 +1,21 @@
 import { NavLink } from "react-router-dom";
 
 /**
- * Shared header bar across both modes. Carries the Antiek wordmark,
- * the mode toggle (Research / Wrestle), and optional right-aligned
- * children for mode-specific affordances (e.g. PDF upload button in
- * Wrestle mode, investigation-id chip in Research mode).
+ * @deprecated Superseded by `AppShell` (S4 of the UI redesign).
+ *
+ * `AppShell` (`src/AppShell.tsx`) renders the new global chrome:
+ *   - `NavRail` — always-visible 60px icon column
+ *   - `Topbar`  — breadcrumbs + ⌘K + account
+ *   - `PanelLayout` — left/right docks + floating layer + main slot
+ *
+ * This file stays in the tree as a fallback during the mid-migration
+ * window. Per `docs/ui_redesign_posthog/sprint_12_visual_regression_release.html`
+ * WP-12.4 it is deleted after one zero-rollback sprint following the
+ * `VITE_ANTIEK_UI=v2` cutover.
+ *
+ * Do NOT use this in new code. New routes wrap their content in
+ * `<PanelHost>` (from `src/workspace/PanelHost.tsx`) and let AppShell
+ * provide the chrome.
  */
 export default function HeaderBar({
   children,

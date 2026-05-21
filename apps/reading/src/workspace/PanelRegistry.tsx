@@ -57,9 +57,7 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   CommandPalette: lazy(() => import("../components/CommandPalette")),
 
   // S4 — project-tree side rail panel (NavRail is separate, not a panel)
-  // ProjectTree lands as a real component in S4 — until then we render
-  // a small placeholder so the type stays exhaustive.
-  ProjectTree: lazy(() => import("./__fakes__/FakeProjectTreePlaceholder")),
+  ProjectTree: lazy(() => import("../components/navigation/ProjectTree")),
 
   // S10 — example route migrated as a panel
   Stats: lazy(() => import("../modes/Stats")),
