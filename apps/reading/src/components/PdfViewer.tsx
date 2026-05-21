@@ -4,6 +4,7 @@ import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 
 import type { DocumentRegionSelectedPayload } from "../generated/types";
 import { postTypedEvent } from "../lib/api";
+import { BehaviorEventType, emitBehaviorEvent } from "../lib/behaviorEvents";
 import Gutter, {
   type ActiveHighlight,
 } from "../modes/WrestleApp/PdfViewer/Gutter";
@@ -78,6 +79,39 @@ export default function PdfViewer({
   const [activeHighlights, setActiveHighlights] = useState<ActiveHighlight[]>(
     [],
   );
+
+  // Taxonomy v2 — document_closed instrumentation. Session start +
+  // running highlight counter let us emit the close event with a real
+  // session_duration_s + highlights_created tally on unmount. Voice-
+  // notes-created is harder to track from here (the voice anchor save
+  // path doesn't notify the PdfViewer); we leave it null until SPR-05
+  // adds a counter prop.
+  const sessionStartRef = useRef<number>(Date.now());
+  const highlightsCreatedRef = useRef<number>(0);
+
+  useEffect(() => {
+    const sessionStart = sessionStartRef.current;
+    const docId = documentId;
+    return () => {
+      try {
+        emitBehaviorEvent({
+          eventType: BehaviorEventType.DOCUMENT_CLOSED,
+          state: { document_id: docId },
+          action: {
+            session_duration_s: Math.max(
+              0, (Date.now() - sessionStart) / 1000,
+            ),
+            highlights_created: highlightsCreatedRef.current,
+            voice_notes_created: null,
+          },
+          documentId: docId,
+        });
+      } catch {
+        // Cleanup-time emit must never throw.
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId]);
 
   // Render the page once when pdfBytes changes.
   useEffect(() => {
@@ -208,6 +242,36 @@ export default function PdfViewer({
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setPostError(msg);
+    }
+
+    // Taxonomy v2 — emit highlight_created into the SPR-01 behavior
+    // store (separate from the IP-audit typed event posted above).
+    // chunk_id is null at create time; the chunks.page+bbox columns
+    // from the 2026-05-22 substrate migration let the auto-populator
+    // back-fill chunk_id when the chunker populates geometry. The
+    // schema's bbox field doesn't exist (SPR-10 handoff flagged this
+    // — bbox is stored in the typed event above, not in
+    // behavior_events.action); start_offset / end_offset carry the
+    // text-layer position. Emit failure is non-fatal.
+    try {
+      emitBehaviorEvent({
+        eventType: BehaviorEventType.HIGHLIGHT_CREATED,
+        state: {
+          document_id: documentId,
+          reading_mode: "researcher",
+          chunk_id: null,
+        },
+        action: {
+          highlight_id: regionId,
+          start_offset: charStart,
+          end_offset: charEnd,
+          passage_text: excerpt,
+        },
+        documentId,
+      });
+      highlightsCreatedRef.current += 1;
+    } catch {
+      // Swallow — behavior emit must never break the highlight flow.
     }
 
     // SPR-07 M2: register the highlight with the Gutter overlay. The

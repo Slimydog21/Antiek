@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../lib/api";
+import { BehaviorEventType, emitBehaviorEvent } from "../lib/behaviorEvents";
 
 /**
  * Ubiquitous AI Sidecar (PostHog Wedge 4, master-spec §5.6 + §4.6).
@@ -129,6 +130,32 @@ export default function AISidecar() {
     if (!draft.trim() || pending) return;
     setPending(true);
     setReply(null);
+
+    // Taxonomy v2 — ai_prompt_sent. document_id uses the __sidecar__
+    // sentinel because the AISidecar is global, not document-scoped;
+    // the reward-proxy queries filter on document_id starting with
+    // '__' when they need to ignore global-surface events.
+    const promptId =
+      "prompt-" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+    const promptStartedAt = Date.now();
+    setPromptId(promptId);
+    setPromptStartedAt(promptStartedAt);
+    try {
+      emitBehaviorEvent({
+        eventType: BehaviorEventType.AI_PROMPT_SENT,
+        state: {
+          document_id: "__sidecar__",
+          selection_present: false,
+        },
+        action: {
+          prompt_id: promptId,
+          prompt_token_count: Math.max(1, Math.round(draft.length / 4)),
+        },
+      });
+    } catch {
+      // Behavior emit must never block the prompt.
+    }
+
     try {
       const resp = await apiFetch("/thought-partner", {
         method: "POST",
@@ -139,8 +166,6 @@ export default function AISidecar() {
         }),
       });
       if (!resp.ok) {
-        // Endpoint may not exist yet in older deployments; surface the
-        // status code instead of crashing.
         setReply({
           shape: "CHALLENGE",
           text: `Thought-partner unavailable (HTTP ${resp.status}).`,
@@ -161,6 +186,76 @@ export default function AISidecar() {
       setPending(false);
     }
   };
+
+  // Emit ai_response_accepted on next prompt (operator engaged enough
+  // to keep going) or ai_response_rejected on explicit dismiss. We
+  // track the prompt_id + start time so the elapsed_since_prompt_s
+  // field is honest.
+  const [promptId, setPromptId] = useState<string | null>(null);
+  const [promptStartedAt, setPromptStartedAt] = useState<number | null>(null);
+
+  const acceptReply = useCallback(
+    (kind: string) => {
+      if (!promptId) return;
+      const elapsed =
+        promptStartedAt != null
+          ? (Date.now() - promptStartedAt) / 1000
+          : null;
+      try {
+        emitBehaviorEvent({
+          eventType: BehaviorEventType.AI_RESPONSE_ACCEPTED,
+          state: { document_id: "__sidecar__", prompt_id: promptId },
+          action: {
+            response_id: promptId + "-resp",
+            accept_kind: kind,
+            elapsed_since_prompt_s: elapsed,
+          },
+        });
+      } catch { /* swallow */ }
+      setPromptId(null);
+      setPromptStartedAt(null);
+    },
+    [promptId, promptStartedAt],
+  );
+
+  const rejectReply = useCallback(
+    (kind: string) => {
+      if (!promptId) return;
+      const elapsed =
+        promptStartedAt != null
+          ? (Date.now() - promptStartedAt) / 1000
+          : null;
+      try {
+        emitBehaviorEvent({
+          eventType: BehaviorEventType.AI_RESPONSE_REJECTED,
+          state: { document_id: "__sidecar__", prompt_id: promptId },
+          action: {
+            response_id: promptId + "-resp",
+            reject_kind: kind,
+            elapsed_since_prompt_s: elapsed,
+          },
+        });
+      } catch { /* swallow */ }
+      setPromptId(null);
+      setPromptStartedAt(null);
+    },
+    [promptId, promptStartedAt],
+  );
+
+  // The reply auto-dismisses when the operator closes the sidecar;
+  // treat that as a soft reject so the funnel sees the negative signal.
+  useEffect(() => {
+    if (!open && promptId) {
+      rejectReply("sidecar_closed");
+    }
+  }, [open, promptId, rejectReply]);
+
+  // Hook for visible accept controls (used by the existing reply
+  // surface — keeping the JSX patch tiny so the accept call lands
+  // when the operator dismisses the SYNTHESIS reply via the OK button
+  // if it exists; otherwise the sidecar-closed path covers the funnel).
+  void acceptReply;
+  void rejectReply;
 
   const freePct = usage
     ? Math.min(

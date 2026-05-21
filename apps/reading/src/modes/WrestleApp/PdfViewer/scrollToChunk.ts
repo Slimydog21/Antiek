@@ -61,13 +61,18 @@ export function scrollToChunk(chunkId: string): boolean {
 
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.classList.add(...CHUNK_PULSE_CLASSES);
-  // Remove the pulse class after the duration. Use a defensive
-  // setTimeout that captures the element ref; class-removal on an
-  // already-removed element is a no-op so we don't need to track
-  // the timer for cleanup.
   window.setTimeout(() => {
     el.classList.remove(...CHUNK_PULSE_CLASSES);
   }, PULSE_DURATION_MS);
+
+  // Note (taxonomy v2): we deliberately do NOT emit cite_jump here.
+  // The cite_jump schema requires source/target document_id and a
+  // direction; scrollToChunk only knows the target chunk_id. Callers
+  // with full source/target context (Gutter cross_doc_link_clicked
+  // already covers the gutter path; NotesFeed/CrossDocSidebar callers
+  // can layer their own emit when they need the funnel signal) own
+  // the emit. Adding a one-arg emit here would either fail schema
+  // validation or pollute the trajectory with sentinel values.
   return true;
 }
 
