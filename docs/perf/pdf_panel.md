@@ -55,3 +55,4 @@ commit hash + the SHA of the PDF used.
    mounted with CSS-scaling until the new one finishes rasterising.
    Visual regression in S12 catches this if it regresses.
 | 2026-05-22T16:40:03.777Z | 1200×900 | 39.5 | 89.3 | 137.0 | PASS |
+| 2026-05-22T18:25:02.837Z | 1200×900 | 54.9 | 93.5 | 140.8 | PASS |

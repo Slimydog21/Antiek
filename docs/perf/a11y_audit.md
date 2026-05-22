@@ -1,6 +1,6 @@
 # axe-core a11y audit
 
-**Run:** 2026-05-22T17:51:18.594Z
+**Run:** 2026-05-22T18:21:45.880Z
 **Stories audited:** 38
 **Serious / critical violations:** 0
 

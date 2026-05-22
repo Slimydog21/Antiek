@@ -4029,25 +4029,52 @@ def create_app(
         # dispatch tier wires through; the scaffold acknowledges
         # receipt by including a tiny @@actions sentinel so the UI's
         # tool-call protocol can be smoke-tested end-to-end without
-        # a real model. The sentinel opens the operator's existing
-        # InvestigationSidebar (a safe no-op for already-open panels
-        # given the idempotent panel ids).
+        # a real model.
+        #
+        # Prompt-keyword routing for richer smoke coverage: the
+        # scaffold inspects the operator's prompt and chooses an
+        # @@actions mix that exercises the part of the protocol they
+        # implicitly asked about. This is NOT intelligence — it's a
+        # canned dispatcher whose only purpose is letting the
+        # operator's e2e suite hit every action kind without a real
+        # model. The dispatch tier replaces this whole branch.
         scaffold_text = (
             "What's the one observation that, if false, would "
             "make this whole question moot? Start there."
         )
         if req.system_context:
-            # Include the @@actions fence ONLY when the client opted
-            # in via system_context — older clients without the
-            # protocol won't see it.
-            scaffold_text += (
-                "\n\n@@actions\n"
-                '[\n'
-                '  {"kind": "toast", "level": "info",\n'
-                '   "message": "Thought-partner scaffold: real dispatch tier pending."}\n'
-                ']\n'
-                "@@end"
-            )
+            prompt_lower = req.prompt.lower()
+            actions_json: str
+            if "note" in prompt_lower or "notebook" in prompt_lower:
+                actions_json = (
+                    '[\n'
+                    '  {"kind": "add_to_notebook", '
+                    '"notebook_id": "scratch", '
+                    '"block": {"kind": "note", "text": "Scaffold note: real dispatch tier pending."}}\n'
+                    ']\n'
+                )
+            elif "open" in prompt_lower and "pdf" in prompt_lower:
+                actions_json = (
+                    '[\n'
+                    '  {"kind": "toast", "level": "info", '
+                    '"message": "Scaffold: would open PdfViewer; dispatch tier pending."}\n'
+                    ']\n'
+                )
+            elif "chase" in prompt_lower or "question" in prompt_lower:
+                actions_json = (
+                    '[\n'
+                    '  {"kind": "chase_question", '
+                    '"text": "What would falsify this claim?"}\n'
+                    ']\n'
+                )
+            else:
+                actions_json = (
+                    '[\n'
+                    '  {"kind": "toast", "level": "info", '
+                    '"message": "Thought-partner scaffold: real dispatch tier pending."}\n'
+                    ']\n'
+                )
+            scaffold_text += "\n\n@@actions\n" + actions_json + "@@end"
         return ThoughtPartnerResponseBody(
             shape="challenge",
             text=scaffold_text,
