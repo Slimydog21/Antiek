@@ -62,6 +62,25 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
     };
   }, [playing, playSpeed, total]);
 
+  // S10 row 10.14 — Replay step-list panel dispatches `antiek:replay:goto`
+  // with an event_id when the operator clicks a step pill. We listen +
+  // jump the slider to that index. Pauses playback so the operator
+  // can read at their own pace.
+  useEffect(() => {
+    const onGoto = (e: globalThis.Event) => {
+      const ce = e as CustomEvent<{ eventId?: string }>;
+      const eid = ce.detail?.eventId;
+      if (!eid) return;
+      const idx = sortedEvents.findIndex((evt) => evt.event_id === eid);
+      if (idx >= 0) {
+        setPlaying(false);
+        setCurrentIndex(idx);
+      }
+    };
+    window.addEventListener("antiek:replay:goto", onGoto);
+    return () => window.removeEventListener("antiek:replay:goto", onGoto);
+  }, [sortedEvents]);
+
   if (total === 0) {
     return (
       <div className="px-4 py-3 text-xs text-shadow-1 dark:text-moonlight italic">

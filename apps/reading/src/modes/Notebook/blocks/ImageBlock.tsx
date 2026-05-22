@@ -26,8 +26,8 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
               import("../../../workspace/WorkspaceStore").then(
                 ({ useWorkspace }) => {
                   useWorkspace.getState().open(
-                    "ClaimInspector", // generic body renderer
-                    { _imageBlock: true, src, alt, caption },
+                    "Lightbox",
+                    { src, alt, caption },
                     {
                       mode: "floating",
                       title: "Image · lightbox",

@@ -52,7 +52,8 @@ export type PanelKind =
   | "ReplayStepList"
   | "InterviewRecording"
   | "InterviewTranscript"
-  | "InterviewNotes";
+  | "InterviewNotes"
+  | "Lightbox";
 
 export type PanelDescriptor = {
   /** Stable id. e.g. "InvestigationSidebar:default", "Chat:inv-abc:42". */

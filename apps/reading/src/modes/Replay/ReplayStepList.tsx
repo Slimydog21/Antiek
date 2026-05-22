@@ -113,11 +113,21 @@ export default function ReplayStepList({ investigationId }: Props) {
           </p>
         )}
         {steps.map((s, i) => (
-          <a
+          <button
+            type="button"
             key={s.event_id || i}
-            href={`#event-${s.event_id}`}
+            onClick={() => {
+              // TrajectoryReplay is a slider, not a scrollable list —
+              // we dispatch a custom event with the target event_id;
+              // the slider component listens + jumps its currentIndex.
+              window.dispatchEvent(
+                new CustomEvent("antiek:replay:goto", {
+                  detail: { eventId: s.event_id },
+                }),
+              );
+            }}
             className={
-              "block px-2 py-1.5 rounded text-[12px] font-mono " +
+              "block w-full text-left px-2 py-1.5 rounded text-[12px] font-mono " +
               "border border-rule dark:border-charcoal-1 " +
               "bg-ice-1 dark:bg-charcoal-2 " +
               "hover:bg-sun/15 dark:hover:bg-sun/10 transition-colors"
@@ -139,7 +149,7 @@ export default function ReplayStepList({ investigationId }: Props) {
                 {s.emitted_at}
               </div>
             )}
-          </a>
+          </button>
         ))}
       </div>
     </div>

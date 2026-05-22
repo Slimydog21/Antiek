@@ -97,4 +97,7 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   InterviewRecording: lazy(() => import("../modes/Interview/InterviewRecording")),
   InterviewTranscript: lazy(() => import("../modes/Interview/InterviewTranscript")),
   InterviewNotes: lazy(() => import("../modes/Interview/InterviewNotes")),
+
+  // S7 WP-7.3 — ImageBlock "open as panel" target
+  Lightbox: lazy(() => import("../components/Lightbox")),
 };

@@ -609,6 +609,15 @@ class NotebookPutContentRequest(BaseModel):
     doc: dict
 
 
+class AIUndoRequest(BaseModel):
+    """``POST /ai/undo`` body (§5.5 Wedge 4). The AI sidecar records
+    both ids when it emits ``ai.action.applied`` so the undo button
+    has both available without an extra lookup."""
+
+    event_id: str
+    investigation_id: str
+
+
 class NotebookUpdateBlockRequest(BaseModel):
     """Edit one block in place. ``block_type`` is intentionally
     immutable here; the UI re-creates blocks rather than re-typing.
@@ -861,6 +870,10 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        # MCP rug-pull defense per §13.8 — the well-known manifest is
+        # public by design so any MCP client can verify the tool
+        # hashes without an account.
+        "/.well-known/mcp-tools.json",
     }
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
@@ -1180,6 +1193,87 @@ def create_app(
         return EmittedEventResponse(event_id=event_id, action_type=action_value)
 
     # ── GET trajectory ──────────────────────────────────────────
+
+    @app.post("/ai/undo", response_model=EmittedEventResponse)
+    async def post_ai_undo(req: AIUndoRequest = Body(...)) -> EmittedEventResponse:
+        """Undo a previously-applied AI sidecar action (§5.5 Wedge 4).
+
+        Looks up the ``ai.action.applied`` event in the trajectory
+        for the given investigation, re-applies ``prev_state`` to
+        the substrate via the per-kind inverse handler, and emits
+        ``ai.action.undone`` linking back. Substrate restore + audit
+        event live inside a single ``connect_write`` lock.
+        """
+        from runtime.db_lock import connect_write
+        from substrate.ai_actions import AIActionError, undo_ai_action
+        from substrate.graph import default_db_path
+
+        rows = trajectory(req.investigation_id)
+        applied_event = next(
+            (r for r in rows if r.get("event_id") == req.event_id),
+            None,
+        )
+
+        if applied_event is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "applied_event_not_found",
+                    "message": (
+                        f"no ai.action.applied event found with id "
+                        f"{req.event_id!r} in investigation "
+                        f"{req.investigation_id!r}"
+                    ),
+                },
+            )
+
+        payload = applied_event.get("payload") or {}
+        if payload.get("action_type") != "ai.action.applied":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "wrong_action_type",
+                    "message": (
+                        f"event {req.event_id} is action_type "
+                        f"{payload.get('action_type')!r}; only "
+                        "ai.action.applied events can be undone."
+                    ),
+                },
+            )
+
+        db_path = default_db_path()
+        try:
+            with connect_write(db_path, purpose="api:ai_undo") as con:
+                undone_event_id = undo_ai_action(
+                    con,
+                    applied_event=applied_event,
+                )
+        except AIActionError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "undo_failed", "message": str(exc)},
+            ) from exc
+
+        # Surface the new event_id; downstream broadcast happens on
+        # the next /trajectory poll or /ws/events tick.
+        return EmittedEventResponse(
+            event_id=undone_event_id,
+            action_type="ai.action.undone",
+        )
+
+    @app.get("/.well-known/mcp-tools.json", tags=["mcp"])
+    async def mcp_well_known_manifest() -> dict:
+        """Antiek Memory MCP server tool manifest (§13.8 rug-pull
+        defense). Clients fetch this from
+        ``https://api.antiek.ai/.well-known/mcp-tools.json`` and
+        verify each tool's description hash matches the hash in
+        tools/list responses. Drift treated as fatal session-
+        termination per Invariant Labs disclosure precedent.
+        """
+        from tools.antiek_memory.server import CANONICAL_TOOLS
+        from tools.antiek_memory.signing import render_well_known_manifest
+
+        return render_well_known_manifest(CANONICAL_TOOLS)
 
     @app.get("/trajectory/{investigation_id}")
     async def get_trajectory(

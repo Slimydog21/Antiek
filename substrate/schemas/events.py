@@ -259,6 +259,30 @@ class ActionType(str, Enum):
     FEDERATION_INBOUND_CITATION_ACCEPTED = "federation.inbound_citation.accepted"
     FEDERATION_INBOUND_CITATION_REFUSED = "federation.inbound_citation.refused"
 
+    # ── Sprint 30+ thread 4 — Visual role audit trail. The 13th
+    #    substrate role; frame-level claim extraction. Three typed
+    #    events: frame_identified (upstream selected a frame to
+    #    process), claims_extracted (role produced VisualResult),
+    #    role_failed (dispatch failed or parser refused output).
+    VISUAL_FRAME_IDENTIFIED = "visual.frame_identified"
+    VISUAL_CLAIMS_EXTRACTED = "visual.claims_extracted"
+    VISUAL_ROLE_FAILED = "visual.role_failed"
+
+    # ── PostHog Wedge 4 — Max-style AI sidecar audit trail (§5.5).
+    #    Every AI-driven UI mutation emits ai.action.applied with
+    #    enough payload to invert (target_kind + target_id + prev_state
+    #    + next_state). The undo button reads the most recent applied
+    #    event for the operator's session and emits ai.action.undone
+    #    when the inverse is replayed via the substrate.
+    AI_ACTION_APPLIED = "ai.action.applied"
+    AI_ACTION_UNDONE = "ai.action.undone"
+
+    # ── DP shuffler production routing audit trail (§13.3 +
+    #    §16.2). Every telemetry signal that passes through the
+    #    shuffler emits dp.routed so the Trust Center can publish a
+    #    verifiable per-surface ε budget under §13.7.
+    DP_ROUTED = "dp.routed"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -293,7 +317,21 @@ class ActionType(str, Enum):
 #     Tavily / Perplexity can add provider-shaped fields without
 #     bumping the schema again. The top-level fields stay provider-
 #     agnostic. 2026-05-22.
-EVENT_SCHEMA_VERSION: int = 9
+# v10: Sprint 30+ thread 4 — visual role audit trail. 3 typed events
+#     (frame_identified / claims_extracted / role_failed) so the
+#     visual dispatch path participates in §13.7 audit identically
+#     to the other twelve roles. 2026-05-22.
+# v11: PostHog Wedge 4 — AI sidecar undoable actions per §5.5. Two
+#     typed events (ai.action.applied + ai.action.undone) carrying
+#     prev_state + next_state JSON snapshots so the undo handler can
+#     replay the inverse via the substrate. Closes the Wedge 4
+#     acceptance bar. 2026-05-22.
+# v12: DP shuffler production routing audit per §13.3 + §13.7. One
+#     typed event (dp.routed) emitted whenever telemetry passes
+#     through randomized response. Records surface + ε + whether
+#     flipped, never the original value. Trust Center reads the
+#     daily running ε sum from this stream. 2026-05-22.
+EVENT_SCHEMA_VERSION: int = 12
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2151,6 +2189,65 @@ class FederationInboundCitationRefusedPayload(_PayloadBase):
     received_at: str
 
 
+# ── Sprint 30+ thread 4 — Visual role audit trail (master-spec §13.7) ──
+
+
+class VisualFrameIdentifiedPayload(_PayloadBase):
+    """Emitted when the substrate picks a frame for visual analysis.
+    ``frame_source`` is "still" for image documents, "video" for an
+    extracted video frame. ``frame_timestamp_ms`` is set only for
+    video sources; None for stills. The audit trail records WHAT the
+    role was asked to look at — the actual image bytes never appear
+    in payloads (they live in the document store)."""
+
+    action_type: Literal[ActionType.VISUAL_FRAME_IDENTIFIED] = (
+        ActionType.VISUAL_FRAME_IDENTIFIED
+    )
+    document_id: str
+    frame_source: Literal["still", "video"]
+    page_or_frame_id: str
+    frame_timestamp_ms: Optional[int] = None
+    frame_width_px: Optional[int] = None
+    frame_height_px: Optional[int] = None
+
+
+class VisualClaimsExtractedPayload(_PayloadBase):
+    """Emitted when the visual role returns a parsed ``VisualResult``.
+    The full claim text rides for downstream attribution; the bbox
+    is normalized [0, 1] coords. ``frame_summary`` is the role's one-
+    sentence summary."""
+
+    action_type: Literal[ActionType.VISUAL_CLAIMS_EXTRACTED] = (
+        ActionType.VISUAL_CLAIMS_EXTRACTED
+    )
+    document_id: str
+    page_or_frame_id: str
+    frame_summary: str
+    claim_count: int = Field(ge=0)
+    high_confidence_count: int = Field(ge=0)
+    uncited_observation_count: int = Field(ge=0)
+
+
+class VisualRoleFailedPayload(_PayloadBase):
+    """Emitted when the dispatch call to the visual role fails OR the
+    parser refuses the role's output. ``failure_kind`` discriminates;
+    ``detail`` is a short operator-readable string. NEVER includes
+    the raw model output (could leak unstructured prose) — the
+    parser's error class names land here instead."""
+
+    action_type: Literal[ActionType.VISUAL_ROLE_FAILED] = (
+        ActionType.VISUAL_ROLE_FAILED
+    )
+    document_id: str
+    page_or_frame_id: str
+    failure_kind: Literal[
+        "dispatch_error",
+        "parse_validation",
+        "provider_unavailable",
+    ]
+    detail: str = ""
+
+
 class SkillRulePromotedPayload(_PayloadBase):
     """Emitted by ``substrate/multi_user/skill_writer.py`` when a
     discovered skill rule clears the ``SkillRuleAccumulator`` promotion
@@ -2377,6 +2474,98 @@ class VerifierLookupPayload(_PayloadBase):
     cost_usd_estimate: float = Field(ge=0.0)
 
 
+class AIActionAppliedPayload(_PayloadBase):
+    """Emitted by the AI sidecar (Max-style ubiquitous AI per §5.5)
+    whenever the AI applies a UI-mutating action on behalf of the
+    operator. Carries enough state to invert the action:
+
+    - ``target_kind`` + ``target_id`` say what was changed.
+    - ``prev_state`` + ``next_state`` are opaque JSON snapshots the
+      undo handler diffs to produce the inverse.
+    - ``operator_prompt`` is the natural-language ask that triggered
+      the action — so the operator can read what they asked for.
+
+    The undo path replays the inverse: if ``ai.action.applied`` set
+    a notebook block from X to Y, the undo POST sets it back from Y
+    to X and emits ``ai.action.undone`` linking back via
+    ``inverted_event_id``.
+    """
+
+    action_type: Literal[ActionType.AI_ACTION_APPLIED] = ActionType.AI_ACTION_APPLIED
+    target_kind: Literal[
+        "notebook_block",
+        "notebook",
+        "master_md_section",
+        "claim",
+        "watch_for_later_question",
+        "investigation_chase",
+        "ui_layout",
+    ]
+    target_id: str
+    operator_prompt: str = Field(min_length=1, max_length=2000)
+    prev_state: dict = Field(default_factory=dict)
+    next_state: dict = Field(default_factory=dict)
+    # SHA-256 of (target_kind + target_id + prev_state JSON) — gives
+    # the undo handler a cheap optimistic-concurrency check so two
+    # rapid AI actions on the same target can't accidentally overwrite
+    # each other on undo.
+    prev_state_hash: str
+    summary: str = Field(default="", max_length=500)
+
+
+class AIActionUndonePayload(_PayloadBase):
+    """Emitted when the operator clicks "undo" on the AI sidecar.
+
+    Links to the ``ai.action.applied`` event being inverted via
+    ``inverted_event_id``. The undo handler is responsible for
+    actually re-applying ``prev_state`` to the substrate; this event
+    just records that the operator chose to revert.
+    """
+
+    action_type: Literal[ActionType.AI_ACTION_UNDONE] = ActionType.AI_ACTION_UNDONE
+    inverted_event_id: str
+    target_kind: Literal[
+        "notebook_block",
+        "notebook",
+        "master_md_section",
+        "claim",
+        "watch_for_later_question",
+        "investigation_chase",
+        "ui_layout",
+    ]
+    target_id: str
+    reason: Literal["operator_undo", "automated_rollback"] = "operator_undo"
+
+
+class DPRoutedPayload(_PayloadBase):
+    """Emitted by the DP shuffler whenever a telemetry signal passes
+    through randomized response (§13.3 + §16.2).
+
+    Records the surface, the configured ε, and whether the value was
+    flipped — *without* recording the original or flipped value
+    (that would defeat the point). The aggregator downstream consumes
+    only the noisy stream + the registered ε to debias.
+
+    The Trust Center reads the running sum of recorded ε per surface
+    per day to publish "X surfaces collect at total ε=Y today" per
+    §13.7.
+    """
+
+    action_type: Literal[ActionType.DP_ROUTED] = ActionType.DP_ROUTED
+    surface_name: str
+    epsilon: float = Field(ge=0.0, le=10.0)
+    sensitivity: Literal["low", "medium", "high", "forbidden"]
+    # Whether the value was randomized-flipped from its true value.
+    # NOT the value itself — only whether RR fired the noise coin.
+    # Distinguishes a "value not flipped" from a "value not observed";
+    # the aggregator uses this to debias correctly.
+    was_flipped: bool
+    # The shuffler step the event is from: "local_randomized" (a
+    # single user contribution) vs "aggregated" (the debiased final
+    # estimate). The audit trail captures both.
+    stage: Literal["local_randomized", "aggregated"] = "local_randomized"
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -2465,6 +2654,12 @@ TypedPayload = Annotated[
         FederationOutboundCitationEmittedPayload,
         FederationInboundCitationAcceptedPayload,
         FederationInboundCitationRefusedPayload,
+        VisualFrameIdentifiedPayload,
+        VisualClaimsExtractedPayload,
+        VisualRoleFailedPayload,
+        AIActionAppliedPayload,
+        AIActionUndonePayload,
+        DPRoutedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -2557,6 +2752,15 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED.value,
     ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED.value,
     ActionType.FEDERATION_INBOUND_CITATION_REFUSED.value,
+    # Sprint 30+ thread 4 — visual role audit trail.
+    ActionType.VISUAL_FRAME_IDENTIFIED.value,
+    ActionType.VISUAL_CLAIMS_EXTRACTED.value,
+    ActionType.VISUAL_ROLE_FAILED.value,
+    # PostHog Wedge 4 — AI sidecar undoable actions.
+    ActionType.AI_ACTION_APPLIED.value,
+    ActionType.AI_ACTION_UNDONE.value,
+    # DP shuffler production routing.
+    ActionType.DP_ROUTED.value,
 })
 
 
@@ -2823,4 +3027,13 @@ __all__ = [
     "FederationOutboundCitationEmittedPayload",
     "FederationInboundCitationAcceptedPayload",
     "FederationInboundCitationRefusedPayload",
+    # Sprint 30+ thread 4 — visual role audit (v10 schema bump)
+    "VisualFrameIdentifiedPayload",
+    "VisualClaimsExtractedPayload",
+    "VisualRoleFailedPayload",
+    # PostHog Wedge 4 — AI sidecar undoable actions (§5.5)
+    "AIActionAppliedPayload",
+    "AIActionUndonePayload",
+    # DP shuffler production routing audit (§13.3 + §13.7)
+    "DPRoutedPayload",
 ]

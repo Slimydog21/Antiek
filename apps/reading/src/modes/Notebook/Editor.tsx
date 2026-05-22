@@ -200,6 +200,40 @@ export function NotebookEditor({
     };
   }, []);
 
+  // S8 WP-8.4 follow-through — when the AI tool-call protocol's
+  // `add_to_notebook` action writes to our localStorage key, it
+  // dispatches a same-window custom event. We listen here + reload
+  // the editor's content. Cross-tab writes already arrive through
+  // the browser's standard `storage` event, which we also handle.
+  useEffect(() => {
+    const reloadFromStorage = () => {
+      if (!editor) return;
+      const stored = readStored(notebookId);
+      if (!stored) return;
+      // Only swap if the etag advanced past our baseline — avoids
+      // clobbering an in-flight local edit on every dispatched action.
+      if (stored.etag <= etagRef.current) return;
+      editor.commands.setContent(stored.html);
+      etagRef.current = stored.etag;
+      setSaved("saved");
+    };
+    const onCustom = (e: Event) => {
+      const ce = e as CustomEvent<{ notebookId: string }>;
+      if (ce.detail?.notebookId !== notebookId) return;
+      reloadFromStorage();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== "antiek.notebook." + notebookId) return;
+      reloadFromStorage();
+    };
+    window.addEventListener("antiek:notebook:appended", onCustom);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("antiek:notebook:appended", onCustom);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [editor, notebookId]);
+
   if (!editor) {
     return (
       <div className="p-4 text-sm text-shadow-1 dark:text-moonlight italic">

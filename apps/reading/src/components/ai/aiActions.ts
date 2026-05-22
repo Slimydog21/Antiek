@@ -275,6 +275,12 @@ export function dispatchAiAction(action: AiAction): DispatchedAction {
       // we append a custom-element tag the TipTap NodeView extensions
       // recognise. (See modes/Notebook/Editor.tsx for the storage
       // shape + Notebook/blocks/*.tsx for the parseHTML hooks.)
+      //
+      // After the write, dispatch a same-window custom event so an
+      // open NotebookEditor instance with the matching notebookId can
+      // reload its content. Cross-tab consumers also get the standard
+      // browser `storage` event; same-tab consumers need this custom
+      // signal because `storage` only fires across tabs.
       const html = aiBlockToHtml(action.block);
       const lsKey = "antiek.notebook." + action.notebook_id;
       const etagKey = lsKey + ".etag";
@@ -288,6 +294,12 @@ export function dispatchAiAction(action: AiAction): DispatchedAction {
         ) + "\n" + html;
         window.localStorage.setItem(lsKey, appended);
         window.localStorage.setItem(etagKey, String(next));
+        // Same-tab signal: editors keyed by `notebook_id` reload.
+        window.dispatchEvent(
+          new CustomEvent("antiek:notebook:appended", {
+            detail: { notebookId: action.notebook_id, etag: next },
+          }),
+        );
       } catch {
         // ignore quota; the operator sees the action label without effect
       }

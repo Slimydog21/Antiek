@@ -38,19 +38,28 @@ from .pricing import (
     apply_margin,
     record_token_usage,
 )
-from .providers import MockStripeProvider, StripeProvider
+from .providers import (
+    MockStripeProvider,
+    RealStripeProvider,
+    StripeProvider,
+    StripeUnavailable,
+    get_stripe_provider,
+)
 
 __all__ = [
     "BillingEvent",
     "MockStripeProvider",
     "PricingTier",
+    "RealStripeProvider",
     "StripeAccountStatus",
     "StripeConnectAccount",
     "StripeOperationsLog",
     "StripeProvider",
+    "StripeUnavailable",
     "TokenUsageRecord",
     "apply_margin",
     "create_publisher_account",
     "create_user_creator_account",
+    "get_stripe_provider",
     "record_token_usage",
 ]
