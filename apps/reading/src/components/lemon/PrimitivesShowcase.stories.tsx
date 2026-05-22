@@ -60,6 +60,7 @@ export const Showcase: Story = {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="search · ⌘K"
+                aria-label="Search"
                 kbdHint="⌘K"
                 sizing="sm"
                 wrapperClassName="w-72"
@@ -112,9 +113,9 @@ export const Showcase: Story = {
             <div className="grid grid-cols-2 gap-6">
               <LemonCard title="Input">
                 <div className="space-y-3">
-                  <LemonInput placeholder="basic input" />
-                  <LemonInput placeholder="with icon" iconLeft={<span>⌕</span>} />
-                  <LemonInput placeholder="with kbd hint" kbdHint="⌘K" iconLeft={<span>⌕</span>} />
+                  <LemonInput aria-label="Basic input demo" placeholder="basic input" />
+                  <LemonInput aria-label="Input with icon demo" placeholder="with icon" iconLeft={<span>⌕</span>} />
+                  <LemonInput aria-label="Input with kbd hint demo" placeholder="with kbd hint" kbdHint="⌘K" iconLeft={<span>⌕</span>} />
                 </div>
               </LemonCard>
               <LemonCard title="Textarea · Cmd+Enter to submit">

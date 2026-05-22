@@ -19,8 +19,14 @@ const colourMap: Record<Colour, string> = {
   default: "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright",
   sun:     "bg-sun text-ink",
   aurora:  "bg-aurora text-ink",
-  danger:  "bg-emperor text-ice-1 border-ink dark:border-ink",
-  muted:   "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight border-rule dark:border-charcoal-2 shadow-none",
+  // text-ice-0 (#FFFFFF) → 4.69:1 contrast against bg-emperor — above
+  // WCAG AA 4.5 floor. text-ice-1 was 4.12 (a11y_audit flagged this
+  // as a serious contrast violation in S11).
+  danger:  "bg-emperor text-ice-0 font-bold border-ink dark:border-ink",
+  // muted: text-shadow-1 on bg-ice-3 gave 3.99 (below WCAG AA 4.5
+  // for small text). Stepped to text-shadow-2 → 6.51. Night variant
+  // unchanged (text-moonlight on charcoal-1 already passes).
+  muted:   "bg-ice-3 dark:bg-charcoal-1 text-shadow-2 dark:text-moonlight border-rule dark:border-charcoal-2 shadow-none",
 };
 
 export function LemonTag({

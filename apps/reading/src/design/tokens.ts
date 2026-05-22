@@ -137,7 +137,9 @@ export const werner = {
 /** Reserved-use accents — use sparingly; never substitute for sun. */
 export const accent = {
   aurora: { day: "#16C2C2", night: "#3FE0DC" }, // secondary, AI-thinking states
-  emperor: { day: "#E33C2D", night: "#FF6155" }, // danger only
+  // emperor (danger). S11 a11y audit darkened day variant from
+  // #E33C2D → #CE3623 so white text hits the WCAG AA 4.5:1 floor.
+  emperor: { day: "#CE3623", night: "#FF6155" }, // danger only
 } as const;
 
 export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;

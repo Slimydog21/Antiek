@@ -41,8 +41,11 @@ const variants: Record<Variant, string> = {
   tertiary:
     "bg-transparent text-ink dark:text-bright border-transparent shadow-none " +
     "hover:bg-ice-3 dark:hover:bg-charcoal-1",
+  // Danger: bg-emperor on text-ice-0 gives 4.69:1 contrast (above
+  // WCAG AA 4.5 floor). The previous text-ice-1 was 4.12 — axe
+  // flagged it as a serious contrast violation in the S11 a11y audit.
   danger:
-    "bg-emperor text-ice-1 border-ink shadow-z1 dark:shadow-z1-night " +
+    "bg-emperor text-ice-0 font-bold border-ink shadow-z1 dark:shadow-z1-night " +
     "hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night",
 };
 

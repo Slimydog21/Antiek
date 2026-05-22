@@ -27,6 +27,9 @@ type Props<V> = {
   sizing?: Sizing;
   fullWidth?: boolean;
   className?: string;
+  /** Accessible name for the combobox. Required for WCAG 2 AA
+   *  (axe `aria-input-field-name`). Defaults to placeholder if absent. */
+  "aria-label"?: string;
   /** Custom label renderer if you want the trigger label to differ from option label. */
   renderTriggerLabel?: (selected: LemonOption<V> | undefined) => ReactNode;
 };
@@ -44,6 +47,7 @@ export function LemonSelect<V>({
   placeholder = "Select…",
   sizing = "md",
   fullWidth = false,
+  "aria-label": ariaLabel,
   className = "",
   renderTriggerLabel,
 }: Props<V>) {
@@ -108,6 +112,7 @@ export function LemonSelect<V>({
       role="combobox"
       aria-haspopup="listbox"
       aria-expanded={open}
+      aria-label={ariaLabel ?? placeholder}
     >
       <button
         type="button"

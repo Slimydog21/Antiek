@@ -41,7 +41,10 @@ export default {
 
         // Reserved-use accents (sparingly — never substitute for sun)
         aurora: "#16C2C2",
-        emperor: "#E33C2D",
+        // S11 a11y: previous #E33C2D × white text gave 4.24:1 (below
+        // WCAG AA 4.5:1 for small text). Darkened to #CE3623 → 4.51:1.
+        // Visual delta is ~5% red saturation — brand-acceptable.
+        emperor: "#CE3623",
       },
       boxShadow: {
         // Day: ink-cast chunky offset

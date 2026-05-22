@@ -37,7 +37,7 @@ type Args = {
 const DEFAULTS: Args = {
   storybook: "http://localhost:6006",
   story:
-    "/iframe.html?args=&id=loop-2-pdf-viewer--pdf-perf-target&viewMode=story",
+    "/iframe.html?args=&id=loop-2-pdfviewer--pdf-perf-target&viewMode=story",
   duration_ms: 5_000,
   panel_width: 1200,
   panel_height: 900,
@@ -114,14 +114,19 @@ async function main() {
 
   // ── Sampling ─────────────────────────────────────────────
   console.log("[*] sampling rAF frame intervals…");
-  const samples: number[] = await page.evaluate(
-    async (duration_ms: number) => {
-      const frames: number[] = [];
-      const start = performance.now();
-      let last = start;
-      return new Promise<number[]>((resolve) => {
-        function tick(t: number) {
-          const delta = t - last;
+  // tsx compiles arrow functions + classes to forms that emit `__name`
+  // helper references — those don't exist in the browser page context
+  // + cause `ReferenceError: __name is not defined` when we pass the
+  // function as a closure to page.evaluate. Workaround: pass the
+  // sampler as a stringified function so Playwright wraps it itself.
+  const SAMPLER_SOURCE = `
+    (duration_ms) => {
+      var frames = [];
+      var start = performance.now();
+      var last = start;
+      return new Promise(function (resolve) {
+        function tick(t) {
+          var delta = t - last;
           last = t;
           frames.push(delta);
           if (t - start < duration_ms) {
@@ -131,22 +136,23 @@ async function main() {
           }
         }
         requestAnimationFrame(tick);
-        // Drive a scroll inside the panel during sampling so the
-        // benchmark exercises both render path + scroll handler.
-        const panel = document.querySelector<HTMLElement>(
-          '[role="region"][aria-label="PDF perf target"]',
+        var panel = document.querySelector(
+          '[role="region"][aria-label="PDF perf target"]'
         );
-        const scroller = panel?.querySelector<HTMLElement>(".overflow-auto");
+        var scroller = panel && panel.querySelector('.overflow-auto');
         if (scroller) {
-          let y = 0;
-          const scrollInterval = setInterval(() => {
-            y += 24; // 24px per tick × 60Hz ≈ 1440 px/s
+          var y = 0;
+          var iv = setInterval(function () {
+            y += 24;
             scroller.scrollTop = y % scroller.scrollHeight;
           }, 16);
-          setTimeout(() => clearInterval(scrollInterval), duration_ms);
+          setTimeout(function () { clearInterval(iv); }, duration_ms);
         }
       });
-    },
+    }
+  `;
+  const samples: number[] = await page.evaluate(
+    new Function("duration_ms", "return (" + SAMPLER_SOURCE + ")(duration_ms);") as never,
     args.duration_ms,
   );
 
