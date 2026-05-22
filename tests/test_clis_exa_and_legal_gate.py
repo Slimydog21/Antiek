@@ -240,6 +240,107 @@ def test_exa_main_returns_budget_zero_exit(isolated_env):
     assert rc == 0
 
 
+# ── Exa CLI: retention subcommands (Finding E) ──────────────────
+
+
+def test_exa_cli_retention_rollup_dry_run_renders_table(isolated_env):
+    """Dry-run is read-only — should never raise even when no
+    discovery_events dir exists yet."""
+    args = build_exa_parser().parse_args([
+        "retention", "rollup", "--dry-run",
+    ])
+    buf = io.StringIO()
+    from acquisition.search.exa.__main__ import _cmd_retention_rollup
+    rc = _cmd_retention_rollup(args, out=buf)
+    assert rc == 0
+    out = buf.getvalue()
+    assert "DRY RUN" in out
+    assert "events_dir=" in out
+
+
+def test_exa_cli_retention_rollup_dry_run_json(isolated_env):
+    args = build_exa_parser().parse_args([
+        "retention", "rollup", "--dry-run", "--json",
+    ])
+    buf = io.StringIO()
+    from acquisition.search.exa.__main__ import _cmd_retention_rollup
+    rc = _cmd_retention_rollup(args, out=buf)
+    assert rc == 0
+    obj = json.loads(buf.getvalue())
+    assert obj["dry_run"] is True
+    assert obj["retention_days"] == 30
+    assert "files_examined" in obj
+
+
+def test_exa_cli_retention_rollup_custom_retention_days(isolated_env):
+    args = build_exa_parser().parse_args([
+        "retention", "rollup", "--retention-days", "7", "--dry-run", "--json",
+    ])
+    buf = io.StringIO()
+    from acquisition.search.exa.__main__ import _cmd_retention_rollup
+    rc = _cmd_retention_rollup(args, out=buf)
+    obj = json.loads(buf.getvalue())
+    assert obj["retention_days"] == 7
+
+
+def test_exa_cli_retention_summary_empty_db(isolated_env, monkeypatch):
+    """With no graph DB present, summary should print a friendly
+    'no rows' message and exit 0."""
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH",
+                       str(isolated_env["tmpdir"]) + "/does-not-exist.duckdb")
+    args = build_exa_parser().parse_args([
+        "retention", "summary",
+    ])
+    buf = io.StringIO()
+    from acquisition.search.exa.__main__ import _cmd_retention_summary
+    rc = _cmd_retention_summary(args, out=buf)
+    assert rc == 0
+    assert "no discovery_summary" in buf.getvalue()
+
+
+def test_exa_cli_retention_summary_with_rows(isolated_env, monkeypatch):
+    """Populate the discovery_summary table and verify the summary
+    subcommand renders the rows."""
+    import json as _json
+    from datetime import datetime, timedelta, timezone
+    from pathlib import Path
+
+    db = str(Path(isolated_env["tmpdir"]) / "graph.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    from substrate.graph import ensure_initialized
+    ensure_initialized(db)
+
+    # Pre-populate one row via the rollup harness.
+    from acquisition.search.retention import rollup_expired
+
+    edir = Path(isolated_env["tmpdir"]) / "discovery_events"
+    edir.mkdir(parents=True, exist_ok=True)
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=45)).replace(tzinfo=None).isoformat() + "Z"
+    (edir / "old.jsonl").write_text(_json.dumps({
+        "action_type": "discovery.proposed", "emitted_at": old_ts,
+        "payload": {"provider": "exa", "query": "old query",
+                    "url": "https://e.com/x", "cost_usd_estimate": 0.005},
+    }))
+    rollup_expired(retention_days=30, db_path=db, events_dir=str(edir))
+
+    # The rolled-up event is 45 days old; pass --days 60 so the
+    # summary window includes it.
+    args = build_exa_parser().parse_args(["retention", "summary", "--days", "60"])
+    buf = io.StringIO()
+    from acquisition.search.exa.__main__ import _cmd_retention_summary
+    rc = _cmd_retention_summary(args, out=buf)
+    assert rc == 0
+    out = buf.getvalue()
+    assert "exa" in out
+    assert "$0.0050" in out
+
+
+def test_exa_parser_retention_requires_sub_subcommand():
+    """`retention` alone with no `rollup` / `summary` should error."""
+    with pytest.raises(SystemExit):
+        build_exa_parser().parse_args(["retention"])
+
+
 # ── Legal-gate audit CLI ─────────────────────────────────────────
 
 

@@ -46,6 +46,31 @@ Until the real gate lands, **don't promote URLs from banned-corpus domains.** Th
 
 No automatic learning of "what's a good source." Tier assignments are substrate decisions, not search-API decisions.
 
+## Provider-specific payload bag (`provider_specific`)
+
+Per spec §14.7 (and the Deviation B closure on 2026-05-22), Exa-shaped data on a `DiscoveryProposedPayload` lives under the `provider_specific: dict[str, Any]` overflow bag, NOT as top-level payload fields. The top-level fields (`url`, `title`, `query`, `relevance_score`, `suggested_tier`, etc.) stay **provider-agnostic** — adding a new provider (SerpAPI, Tavily, Perplexity) doesn't bump the schema.
+
+Current usage (Exa is the only provider in Wedge 1):
+
+```python
+# Operator-facing DiscoveryProposed dataclass — both surfaces available
+p.provider_response_id          # convenience top-level mirror
+p.provider_specific["response_id"]  # canonical write location
+```
+
+What goes in `provider_specific`:
+
+- `response_id` — Exa's per-result id (the canonical write target).
+- Future Exa-specific data — `autoprompt_string`, `subpages`, `exa_filter`, etc. join here as the adapter learns to pass them through.
+
+**Backward-compat read order** (used by `_hydrate_proposed` for cached rows):
+
+1. `provider_specific["response_id"]` if present (canonical, new emitters).
+2. Top-level `provider_response_id` as fallback (v6-v8 events).
+3. `None` if neither.
+
+The `provider_response_id` top-level field on the payload is now an Optional-None default for new emissions — kept on the schema for v6-v8 read compatibility.
+
 ## 24h cache (`discovery_cache` table)
 
 Per spec §6.5. Same `(query, investigation_id, num_results, category, include_domains, exclude_domains, start/end_published_date)` tuple within 24h short-circuits to the cached proposals. **No event re-emission on a cache hit** — the audit trail recorded what was considered on the first call.
@@ -82,12 +107,31 @@ There is no silent fallback to a different provider. The operator sees the failu
 - Does NOT learn the curated news list. Operator edits `substrate.constants.CURATED_NEWS_TIER_3` directly.
 - Does NOT support multi-provider fan-out (one Exa-only adapter today). Spec §17.5 defers this until a second provider lands.
 
+## Retention CLI (`retention rollup` / `retention summary`)
+
+Per spec §14.1, discovery events older than 30 days roll up into the `discovery_summary` DuckDB table; the source JSONL files are then truncated. Operator surfaces:
+
+```
+# Read-only preview — what would be rolled up at the current retention threshold
+python -m acquisition.search.exa retention rollup --dry-run
+
+# Real rollup — writes to discovery_summary, truncates source JSONL
+python -m acquisition.search.exa retention rollup [--retention-days 30]
+
+# Inspect the recent summary rows
+python -m acquisition.search.exa retention summary [--days 7] [--json]
+```
+
+The rollup is conservative — files containing even one event newer than the cutoff are kept whole. Idempotent via `ON CONFLICT DO UPDATE` so re-running against the same window doesn't double-count.
+
 ## Testing
 
 ```
 python -m pytest tests/test_acquisition_search_exa.py -q
 ```
 
-39 tests cover: legal-gate placeholder acknowledgment, tier heuristic (15 cases), ExaClient retry / error handling against `httpx.MockTransport`, discover happy path / budget reservation / budget exceeded / budget override, promote_discovery (ingested / rejected_by_legal_gate / fetch_failed / tier override), reject_discovery, find_similar, discovery_id stability.
+Tests cover: legal-gate placeholder acknowledgment, tier heuristic, ExaClient retry / error handling against `httpx.MockTransport`, discover happy path / budget reservation / budget exceeded / budget override, promote_discovery (ingested / rejected_by_legal_gate / fetch_failed / tier override), reject_discovery, find_similar, discovery_id stability + cross-query distinction (Deviation A).
 
-Cache + weekly-report integration: see `tests/test_acquisition_search_exa_cache.py` and `tests/test_weekly_report_acquisition_section.py`.
+End-to-end integration test for spec §6.10 (discover → promote → real ingest_url → real DuckDB writes, with idempotent re-run via url_alias short-circuit): see `tests/test_exa_full_flow_integration.py`.
+
+Cache, weekly-report, legal-gate, Wedge 2, Wedge 3 primitive, CLIs, spec gaps, spec deviations: see the corresponding `tests/test_acquisition_search_exa_*.py`, `tests/test_acquisition_urls_browserbase.py`, `tests/test_legal_gate.py`, `tests/test_clis_exa_and_legal_gate.py`, `tests/test_spec_gaps.py`, `tests/test_spec_deviations.py`.
