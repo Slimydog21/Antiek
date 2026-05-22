@@ -107,13 +107,13 @@ UTF-8 JSON. The canonical TipTap document. A TipTap doc is:
 ```
 
 Each block is a TipTap node whose `attrs.block_id` matches a row in the
-substrate's `notebook_blocks` table. The closed block taxonomy (six
+substrate's `per_doc_notebook_blocks` table. The closed block taxonomy (six
 types, see `services/notebooks/blocks.py`) maps 1:1 to TipTap node types
 named `antiek_<block_type>` (e.g. `antiek_highlight_card`).
 
 **This file is the source of truth for the document body.** The
 `blocks_index` in the manifest is a denormalisation; substrate-resident
-data (`notebook_blocks.content_json`) is rebuildable from this file.
+data (`per_doc_notebook_blocks.content_json`) is rebuildable from this file.
 
 ### 2.3 edges.jsonl
 

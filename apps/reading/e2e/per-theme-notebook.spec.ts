@@ -94,7 +94,7 @@ test.describe("per-theme notebook (SPR-11)", () => {
     // ── 6. Delete the source notebook for doc A ──
     // The destructive action is operator-only and not surfaced in
     // the UI; we cleanup via the test DB harness (out of band).
-    // The harness must DELETE FROM notebook_blocks WHERE notebook_id
+    // The harness must DELETE FROM per_doc_notebook_blocks WHERE notebook_id
     // matches doc A's. After that, reload the theme.
     // (Harness call elided; the test runner ensures the delete
     // happens between this and the next assertion block.)
