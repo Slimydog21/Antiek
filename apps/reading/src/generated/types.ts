@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 9;
+export const EVENT_SCHEMA_VERSION = 12;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -112,6 +112,12 @@ export const ActionType = {
   FEDERATION_OUTBOUND_CITATION_EMITTED: "federation.outbound_citation.emitted",
   FEDERATION_INBOUND_CITATION_ACCEPTED: "federation.inbound_citation.accepted",
   FEDERATION_INBOUND_CITATION_REFUSED: "federation.inbound_citation.refused",
+  VISUAL_FRAME_IDENTIFIED: "visual.frame_identified",
+  VISUAL_CLAIMS_EXTRACTED: "visual.claims_extracted",
+  VISUAL_ROLE_FAILED: "visual.role_failed",
+  AI_ACTION_APPLIED: "ai.action.applied",
+  AI_ACTION_UNDONE: "ai.action.undone",
+  DP_ROUTED: "dp.routed",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -1729,6 +1735,120 @@ export interface FederationInboundCitationRefusedPayload {
 }
 
 /**
+ * Emitted when the substrate picks a frame for visual analysis.
+ * ``frame_source`` is "still" for image documents, "video" for an
+ * extracted video frame. ``frame_timestamp_ms`` is set only for
+ * video sources; None for stills. The audit trail records WHAT the
+ * role was asked to look at — the actual image bytes never appear
+ * in payloads (they live in the document store).
+ */
+export interface VisualFrameIdentifiedPayload {
+  action_type: "visual.frame_identified";
+  document_id: string;
+  frame_source: "still" | "video";
+  page_or_frame_id: string;
+  frame_timestamp_ms?: number | null;
+  frame_width_px?: number | null;
+  frame_height_px?: number | null;
+}
+
+/**
+ * Emitted when the visual role returns a parsed ``VisualResult``.
+ * The full claim text rides for downstream attribution; the bbox
+ * is normalized [0, 1] coords. ``frame_summary`` is the role's one-
+ * sentence summary.
+ */
+export interface VisualClaimsExtractedPayload {
+  action_type: "visual.claims_extracted";
+  document_id: string;
+  page_or_frame_id: string;
+  frame_summary: string;
+  claim_count: number;
+  high_confidence_count: number;
+  uncited_observation_count: number;
+}
+
+/**
+ * Emitted when the dispatch call to the visual role fails OR the
+ * parser refuses the role's output. ``failure_kind`` discriminates;
+ * ``detail`` is a short operator-readable string. NEVER includes
+ * the raw model output (could leak unstructured prose) — the
+ * parser's error class names land here instead.
+ */
+export interface VisualRoleFailedPayload {
+  action_type: "visual.role_failed";
+  document_id: string;
+  page_or_frame_id: string;
+  failure_kind: "dispatch_error" | "parse_validation" | "provider_unavailable";
+  detail?: string;
+}
+
+/**
+ * Emitted by the AI sidecar (Max-style ubiquitous AI per §5.5)
+ * whenever the AI applies a UI-mutating action on behalf of the
+ * operator. Carries enough state to invert the action:
+ * 
+ * - ``target_kind`` + ``target_id`` say what was changed.
+ * - ``prev_state`` + ``next_state`` are opaque JSON snapshots the
+ *   undo handler diffs to produce the inverse.
+ * - ``operator_prompt`` is the natural-language ask that triggered
+ *   the action — so the operator can read what they asked for.
+ * 
+ * The undo path replays the inverse: if ``ai.action.applied`` set
+ * a notebook block from X to Y, the undo POST sets it back from Y
+ * to X and emits ``ai.action.undone`` linking back via
+ * ``inverted_event_id``.
+ */
+export interface AIActionAppliedPayload {
+  action_type: "ai.action.applied";
+  target_kind: "notebook_block" | "notebook" | "master_md_section" | "claim" | "watch_for_later_question" | "investigation_chase" | "ui_layout";
+  target_id: string;
+  operator_prompt: string;
+  prev_state?: Record<string, unknown>;
+  next_state?: Record<string, unknown>;
+  prev_state_hash: string;
+  summary?: string;
+}
+
+/**
+ * Emitted when the operator clicks "undo" on the AI sidecar.
+ * 
+ * Links to the ``ai.action.applied`` event being inverted via
+ * ``inverted_event_id``. The undo handler is responsible for
+ * actually re-applying ``prev_state`` to the substrate; this event
+ * just records that the operator chose to revert.
+ */
+export interface AIActionUndonePayload {
+  action_type: "ai.action.undone";
+  inverted_event_id: string;
+  target_kind: "notebook_block" | "notebook" | "master_md_section" | "claim" | "watch_for_later_question" | "investigation_chase" | "ui_layout";
+  target_id: string;
+  reason?: "operator_undo" | "automated_rollback";
+}
+
+/**
+ * Emitted by the DP shuffler whenever a telemetry signal passes
+ * through randomized response (§13.3 + §16.2).
+ * 
+ * Records the surface, the configured ε, and whether the value was
+ * flipped — *without* recording the original or flipped value
+ * (that would defeat the point). The aggregator downstream consumes
+ * only the noisy stream + the registered ε to debias.
+ * 
+ * The Trust Center reads the running sum of recorded ε per surface
+ * per day to publish "X surfaces collect at total ε=Y today" per
+ * §13.7.
+ */
+export interface DPRoutedPayload {
+  action_type: "dp.routed";
+  surface_name: string;
+  epsilon: number;
+  sensitivity: "low" | "medium" | "high" | "forbidden";
+  was_flipped: boolean;
+  stage?: "local_randomized" | "aggregated";
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1813,7 +1933,13 @@ export type TypedPayload =
   | FederationPartnerRevokedPayload
   | FederationOutboundCitationEmittedPayload
   | FederationInboundCitationAcceptedPayload
-  | FederationInboundCitationRefusedPayload;
+  | FederationInboundCitationRefusedPayload
+  | VisualFrameIdentifiedPayload
+  | VisualClaimsExtractedPayload
+  | VisualRoleFailedPayload
+  | AIActionAppliedPayload
+  | AIActionUndonePayload
+  | DPRoutedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1841,6 +1967,8 @@ export interface Event {
 }
 
 export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([
+  "ai.action.applied",
+  "ai.action.undone",
   "artifact.generated",
   "artifact.interacted",
   "audit.finding_emitted",
@@ -1867,6 +1995,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "distillation.requested",
   "document.loaded",
   "document.region_selected",
+  "dp.routed",
   "evidence.retrieve.delivered",
   "evidence.retrieve.requested",
   "federation.inbound_citation.accepted",
@@ -1922,6 +2051,9 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "user.edit_distillation",
   "user.reject_distillation",
   "verifier.lookup",
+  "visual.claims_extracted",
+  "visual.frame_identified",
+  "visual.role_failed",
 ]);
 
 export const WRESTLING_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([

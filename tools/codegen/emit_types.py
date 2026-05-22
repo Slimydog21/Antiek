@@ -222,6 +222,16 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.FederationOutboundCitationEmittedPayload,
     schema_module.FederationInboundCitationAcceptedPayload,
     schema_module.FederationInboundCitationRefusedPayload,
+    # Sprint 30+ thread 4 — visual role audit trail.
+    schema_module.VisualFrameIdentifiedPayload,
+    schema_module.VisualClaimsExtractedPayload,
+    schema_module.VisualRoleFailedPayload,
+    # PostHog Wedge 4 — Max-style ubiquitous AI sidecar with undo
+    # affordance through the event log (§5.5).
+    schema_module.AIActionAppliedPayload,
+    schema_module.AIActionUndonePayload,
+    # Sprint 19 — DP shuffler substrate plumbing (§13.3 + §16.2).
+    schema_module.DPRoutedPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
@@ -347,6 +357,12 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
                 "emit list. Add it to NESTED_MODELS in tools/codegen/emit_types.py."
             )
         return name
+
+    # Bare ``dict`` (no type args) — opaque JSON snapshots like
+    # AIActionAppliedPayload.prev_state/next_state. JSON object keys
+    # are strings; value type is unknown by design.
+    if tp is dict:
+        return "Record<string, unknown>"
 
     origin = get_origin(tp)
     args = get_args(tp)
