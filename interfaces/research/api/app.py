@@ -4679,6 +4679,9 @@ def create_app(
         register_share_bundle_routes as _register_share_bundle,
     )
     from .users import register_user_routes as _register_users
+    from .admin_reward_proxy import (
+        register_admin_reward_proxy_routes as _register_admin_reward_proxy,
+    )
     _register_library(app)
     _register_voice(app)
     _register_cross_doc_links(app, embedder=wrestling_embedder)
@@ -4686,6 +4689,10 @@ def create_app(
     _register_themes(app)
     _register_share_bundle(app)
     _register_users(app)
+    # The startup sweep runs the 3 reward-proxy backfills once per
+    # boot. Operators can additionally poll POST /api/admin/reward-
+    # proxy/run on a schedule.
+    _register_admin_reward_proxy(app, run_on_startup=True)
 
     return app
 

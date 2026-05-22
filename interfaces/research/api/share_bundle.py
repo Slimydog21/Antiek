@@ -63,11 +63,22 @@ def _resolve_pdf_bytes(
     Reads ``documents.raw_bytes_path`` (added by the 2026-05-22
     substrate migration) and slurps the file. Raises HTTPException
     on missing column / row / file.
+
+    Lazy-fetch fallback (added 2026-05-22 follow-up): if
+    ``raw_bytes_path`` is NULL but the document's metadata carries a
+    ``pdf_url`` (the arxiv case — extract_arxiv stores the URL but
+    doesn't inline-fetch the bytes), download the PDF on demand, run
+    it through ``raw_bytes_store.store_bytes``, update the document
+    row, and continue. The next share request hits the now-stored
+    path and skips the fetch. arXiv's 3s throttle window from SPR-03's
+    fetcher applies to the lazy-fetch — share-bundle inherits the
+    same rate-limit posture as ingest.
     """
+    import json as _json
     path = db_path or default_db_path()
     with duckdb.connect(path) as con:
         row = con.execute(
-            "SELECT raw_bytes_path, title, source_uri "
+            "SELECT raw_bytes_path, title, source_uri, metadata, document_type "
             "FROM documents WHERE document_id = ?",
             [document_id],
         ).fetchone()
@@ -76,24 +87,64 @@ def _resolve_pdf_bytes(
             status_code=404,
             detail={"error": {"code": "document_not_found", "message": document_id}},
         )
-    raw_path, title, source_uri = row[0], row[1], row[2]
+    raw_path, title, source_uri, metadata_json, document_type = row
+
     if not raw_path:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": {
-                    "code": "raw_bytes_path_missing",
-                    "message": (
-                        f"Document {document_id} has no raw_bytes_path. "
-                        "The share-bundle endpoint requires the original "
-                        "bytes; populate documents.raw_bytes_path on "
-                        "ingest (the column landed 2026-05-22). "
-                        "If the document was ingested before the "
-                        "migration, the operator needs to backfill."
-                    ),
+        # Lazy-fetch attempt for arxiv (and any other document whose
+        # metadata carries pdf_url). The substrate has the URL but not
+        # the bytes; fetch + store, then update raw_bytes_path on the
+        # documents row so this branch doesn't re-fire next time.
+        md: dict = {}
+        if isinstance(metadata_json, str) and metadata_json:
+            try:
+                md = _json.loads(metadata_json)
+            except _json.JSONDecodeError:
+                md = {}
+        pdf_url = md.get("pdf_url")
+        if pdf_url:
+            try:
+                pdf_bytes_lazy = _lazy_fetch_pdf(pdf_url)
+            except Exception as exc:  # noqa: BLE001
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": {
+                            "code": "lazy_fetch_failed",
+                            "message": (
+                                f"Document {document_id} has no raw_bytes_path "
+                                f"and lazy-fetch from {pdf_url} failed: {exc}"
+                            ),
+                        },
+                    },
+                ) from exc
+            from services.library.raw_bytes_store import store_bytes
+            stored_path, sha = store_bytes(pdf_bytes_lazy, ext="pdf")
+            # Patch the document row so subsequent share requests + the
+            # rest of the system see the path.
+            with duckdb.connect(path) as con:
+                md["raw_bytes_sha256"] = sha
+                md["raw_bytes_lazy_fetched_from"] = pdf_url
+                con.execute(
+                    "UPDATE documents SET raw_bytes_path=?, metadata=? "
+                    "WHERE document_id=?",
+                    [stored_path, _json.dumps(md), document_id],
+                )
+            raw_path = stored_path
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": {
+                        "code": "raw_bytes_path_missing",
+                        "message": (
+                            f"Document {document_id} has no raw_bytes_path "
+                            f"and no fallback URL in metadata. Re-ingest "
+                            f"after the 2026-05-22 column migration, or "
+                            f"populate raw_bytes_path manually."
+                        ),
+                    },
                 },
-            },
-        )
+            )
     if not os.path.exists(raw_path):
         raise HTTPException(
             status_code=410,
@@ -117,6 +168,19 @@ def _resolve_pdf_bytes(
     if not filename_hint.endswith(".pdf"):
         filename_hint = filename_hint + ".pdf"
     return pdf_bytes, filename_hint
+
+
+def _lazy_fetch_pdf(pdf_url: str) -> bytes:
+    """Fetch a PDF on demand for share-bundle. Goes through the SPR-03
+    hardened fetcher so the arxiv throttle + banned-until sentinel
+    still apply — share-bundle inherits the same rate-limit posture
+    as ingest, not a separate / unthrottled HTTP path.
+    """
+    from services.ingestion.fetcher import fetch
+    result = fetch(pdf_url)
+    if not result.body:
+        raise RuntimeError(f"fetch returned empty body for {pdf_url}")
+    return result.body
 
 
 def register_share_bundle_routes(

@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import wernerDefault from "../../brand/werner/poses/anchor/werner_default_v5_nano_corrected.png";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import { requestMagicLink, useAuth } from "../../lib/auth";
-import { resolvePostLoginDestination } from "../../routing/postLogin";
+import {
+  resolvePostLoginDestination,
+  resolvePostLoginDestinationAsync,
+} from "../../routing/postLogin";
 
 /**
  * Login surface — Antiek's owned login page (H6 ship, 2026-05-21
@@ -39,6 +42,37 @@ export default function Login() {
   // the dual-market routing logic (SPR-06 M4). New users → /library
   // (consumer wedge landing); existing users → last-opened doc. See
   // src/routing/postLogin.ts for the full rationale.
+  //
+  // 2026-05-22 follow-up: prefer the async resolver so the substrate's
+  // is_returning_user signal (substrate/behavior/sessions) flows
+  // through. The async resolver races a 1500ms timeout against the
+  // backend; on timeout / failure it falls back to the sync resolver
+  // (localStorage proxy). To avoid a render-during-state-set anti-
+  // pattern, we kick the async resolution from an effect; the sync
+  // resolver is the immediate redirect for the case where the
+  // substrate is reachable and fast.
+  useEffect(() => {
+    if (state.status !== "authenticated") return;
+    let cancelled = false;
+    void resolvePostLoginDestinationAsync({
+      nextParam: searchParams.get("next"),
+      userId: state.identity.user_id,
+    }).then((dest) => {
+      if (cancelled) return;
+      navigate(dest.path, { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status]);
+
+  // Synchronous fallback: if the effect hasn't fired yet (e.g.,
+  // SSR-rehydrated state, or a hot reload), still resolve via
+  // localStorage so the user doesn't sit on a blank page waiting for
+  // the substrate. The async effect's navigate() supersedes this when
+  // it lands. Render-time navigate is safe here because react-router
+  // queues navigations across this commit boundary.
   if (state.status === "authenticated") {
     const dest = resolvePostLoginDestination({
       nextParam: searchParams.get("next"),
