@@ -61,4 +61,9 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
 
   // S10 — example route migrated as a panel
   Stats: lazy(() => import("../modes/Stats")),
+
+  // 2026-05-22 — SPR-11 follow-up. ThemesIndex is mountable as a
+  // panel (e.g. by the future Sprint 19 Brainstorming Workstation)
+  // or as a route at /wrestle/themes — same component, two surfaces.
+  ThemesIndex: lazy(() => import("../modes/Notebook/ThemesIndex")),
 };

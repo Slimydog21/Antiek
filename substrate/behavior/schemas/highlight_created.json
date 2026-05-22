@@ -24,7 +24,18 @@
       "end_offset": { "type": "integer" },
       "passage_text": { "type": ["string", "null"] },
       "color": { "type": ["string", "null"] },
-      "tag": { "type": ["string", "null"] }
+      "tag": { "type": ["string", "null"] },
+      "bbox": {
+        "comment": "Added 2026-05-22: PDF user-space coordinates [x0,y0,x1,y1] of the highlight selection rect. Optional — pre-2026-05-22 emitters did not include it. SPR-10 sidecar visual reanchor reads this; absence falls back to text-only restore.",
+        "type": ["array", "null"],
+        "minItems": 4,
+        "maxItems": 4,
+        "items": { "type": "number" }
+      },
+      "page": {
+        "comment": "Added 2026-05-22: 1-based PDF page index where the highlight sits.",
+        "type": ["integer", "null"]
+      }
     }
   }
 }

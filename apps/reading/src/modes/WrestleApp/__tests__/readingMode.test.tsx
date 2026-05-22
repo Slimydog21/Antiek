@@ -100,7 +100,7 @@ afterEach(() => {
   window.sessionStorage.clear();
 });
 
-describe.skip("WrestleApp reading-mode defaults [INTEGRATION-SKIP: PanelHost shell deferred]", () => {
+describe.skip("WrestleApp reading-mode defaults [INTEGRATION-SKIP: tests assume PDF-loaded shell; renderApp() doesn't load one in PanelHost-land]", () => {
   it("defaults a new user to 'reader'", () => {
     renderApp();
     const shell = screen.getByTestId("wrestle-shell");

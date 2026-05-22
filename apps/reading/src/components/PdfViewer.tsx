@@ -266,6 +266,14 @@ export default function PdfViewer({
           start_offset: charStart,
           end_offset: charEnd,
           passage_text: excerpt,
+          // 2026-05-22 schema addition. bbox is in page-local
+          // coordinates from getBoundingClientRect (PDF user-space
+          // when the PdfViewer's render-scale is 1, scaled
+          // otherwise). The renderState.pageNum is the 1-based
+          // page index. SPR-10 sidecar restore uses these to
+          // visually re-anchor highlights on the receiving PDF.
+          bbox,
+          page: renderState.pageNum,
         },
         documentId,
       });

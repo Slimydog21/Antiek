@@ -562,7 +562,16 @@ def _gather_highlights(
             continue
         highlight_id = action.get("highlight_id") or f"hl-from-{event_id}"
         bbox = action.get("bbox")
-        if isinstance(bbox, dict):
+        # 2026-05-22: the schema now allows bbox as either a 4-tuple
+        # array [x0, y0, x1, y1] (PdfViewer emits this form) OR a
+        # dict {x0, y0, x1, y1} (legacy / SPR-10 internal form). Accept
+        # both shapes; serialize as the dict form into the sidecar.
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            try:
+                x0, y0, x1, y1 = (float(v) for v in bbox)
+            except (TypeError, ValueError):
+                x0 = y0 = x1 = y1 = 0.0
+        elif isinstance(bbox, dict):
             x0 = float(bbox.get("x0", 0.0))
             y0 = float(bbox.get("y0", 0.0))
             x1 = float(bbox.get("x1", 0.0))

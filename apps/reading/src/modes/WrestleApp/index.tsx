@@ -273,7 +273,11 @@ export default function WrestleApp() {
   return (
     <PanelHost starters={starters}>
       {pdfBytes && documentId ? (
-        <div className="h-full overflow-hidden bg-ice-2 dark:bg-space-2 relative">
+        <div
+          className="h-full overflow-hidden bg-ice-2 dark:bg-space-2 relative"
+          data-testid="wrestle-shell"
+          data-reading-mode={readingMode}
+        >
           {/* SPR-04 / SPR-10 integration follow-up: a thin in-main-slot
               header carries the reading-mode toggle and the share-with-
               annotations button. These were originally placed in the
@@ -300,12 +304,17 @@ export default function WrestleApp() {
             initialContext={aiContext}
             investigationId={investigationId}
           />
-          <PdfViewer
-            pdfBytes={pdfBytes}
-            investigationId={investigationId}
-            documentId={documentId}
-            initialPage={initialPage ?? undefined}
-          />
+          <div
+            data-testid="wrestle-pdf-wrapper"
+            className="h-full overflow-auto"
+          >
+            <PdfViewer
+              pdfBytes={pdfBytes}
+              investigationId={investigationId}
+              documentId={documentId}
+              initialPage={initialPage ?? undefined}
+            />
+          </div>
         </div>
       ) : (
         <EmptyState

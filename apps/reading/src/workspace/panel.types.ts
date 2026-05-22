@@ -45,7 +45,11 @@ export type PanelKind =
   | "AISidecar"
   | "CommandPalette"
   | "ProjectTree"
-  | "Stats";
+  | "Stats"
+  // 2026-05-22 — SPR-11 follow-up. ThemesIndex registered as a panel
+  // kind so the (not-yet-spec'd) Sprint 19 Brainstorming Workstation
+  // can mount it as a starter without restructuring SPR-11 code.
+  | "ThemesIndex";
 
 export type PanelDescriptor = {
   /** Stable id. e.g. "InvestigationSidebar:default", "Chat:inv-abc:42". */
