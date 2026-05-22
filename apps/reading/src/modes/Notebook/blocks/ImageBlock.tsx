@@ -15,6 +15,34 @@ function ImageNodeView({ node, deleteNode }: NodeViewProps) {
   return (
     <NodeViewWrapper className="my-3" data-block="image">
       <figure className="border-edge border-sun bg-ice-0 dark:bg-charcoal-2 rounded-hog shadow-z1 dark:shadow-z1-night overflow-hidden relative">
+        {/* S7 WP-7.3 acceptance: "open as panel" affordance.
+            For an image, open the src in a lightbox floating panel
+            sized to its natural dimensions (capped by the viewport
+            via PdfViewer's clampRectToViewport in PanelHandle). */}
+        {src && (
+          <button
+            type="button"
+            onClick={() => {
+              import("../../../workspace/WorkspaceStore").then(
+                ({ useWorkspace }) => {
+                  useWorkspace.getState().open(
+                    "ClaimInspector", // generic body renderer
+                    { _imageBlock: true, src, alt, caption },
+                    {
+                      mode: "floating",
+                      title: "Image · lightbox",
+                      id: `lightbox:${src.slice(0, 32)}`,
+                    },
+                  );
+                },
+              );
+            }}
+            className="absolute top-2 right-10 text-[11px] text-ink dark:text-bright bg-ice-0 dark:bg-charcoal-2 border border-ink dark:border-bright rounded px-1.5 py-0.5 leading-none hover:bg-sun/15"
+            title="Open in lightbox panel"
+          >
+            ↗
+          </button>
+        )}
         <button
           type="button"
           onClick={() => deleteNode()}

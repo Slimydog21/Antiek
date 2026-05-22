@@ -36,6 +36,32 @@ function LatexNodeView({ node, deleteNode, updateAttributes }: NodeViewProps) {
             >
               {editing ? "save" : "edit"}
             </button>
+            {/* S7 WP-7.3 acceptance: "open as panel" affordance.
+                For LaTeX, open the source in a full-window scratch
+                NotebookEditor where the operator gets the slash
+                menu + larger writing surface. */}
+            {source && (
+              <button
+                type="button"
+                onClick={() => {
+                  import("../../../workspace/actions").then(
+                    ({ openNotebook }) => {
+                      openNotebook({
+                        kind: "NotebookEditor",
+                        mode: "floating",
+                        notebookId: `latex-scratch-${source.slice(0, 16)}`,
+                        title: "LaTeX scratch",
+                        initialContent: `<antiek-latex source="${source.replace(/"/g, "&quot;")}"></antiek-latex>`,
+                      } as Parameters<typeof openNotebook>[0]);
+                    },
+                  );
+                }}
+                className="text-[11px] text-ink dark:text-bright hover:underline"
+                title="Open in a dedicated editor panel"
+              >
+                open
+              </button>
+            )}
             <button
               type="button"
               onClick={() => deleteNode()}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import LemonCard from "../../components/lemon/LemonCard";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -93,20 +94,23 @@ export default function Backtest() {
 
           {report && (
             <>
-              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-ink dark:text-bright">
-                  Synthesis
-                </h2>
-                <p className="text-sm text-ink dark:text-bright">
-                  {report.target_question}
-                </p>
-                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  {report.synthesis_timestamp} · status={report.status}
-                  {report.implicit_recommendation
-                    ? ` · ${report.implicit_recommendation}`
-                    : ""}
-                </p>
-              </section>
+              {/* S10 row 10.11: synthesis + metric sections use LemonCard. */}
+              <LemonCard
+                elevation="z2"
+                title="Synthesis"
+              >
+                <div className="p-5 space-y-2">
+                  <p className="text-sm text-ink dark:text-bright">
+                    {report.target_question}
+                  </p>
+                  <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                    {report.synthesis_timestamp} · status={report.status}
+                    {report.implicit_recommendation
+                      ? ` · ${report.implicit_recommendation}`
+                      : ""}
+                  </p>
+                </div>
+              </LemonCard>
 
               <section className="grid grid-cols-3 gap-3">
                 <Metric
@@ -211,33 +215,40 @@ function DetailList({
   rows: Record<string, unknown>[];
 }) {
   return (
-    <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-2">
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-sm font-serif text-ink dark:text-bright">{title}</h3>
-        <span className="text-[10px] uppercase font-mono text-shadow-1 dark:text-moonlight">
-          {rows.length}
+    // S10 row 10.11: Backtest data sections use LemonCard.
+    <LemonCard
+      elevation="z1"
+      title={
+        <span className="flex items-baseline justify-between gap-3">
+          <span>{title}</span>
+          <span className="font-sans normal-case tracking-normal text-[10px] text-shadow-1 dark:text-moonlight">
+            {rows.length}
+          </span>
         </span>
+      }
+    >
+      <div className="p-4 space-y-2">
+        <p className="text-xs text-ink-soft dark:text-starlight">{description}</p>
+        {rows.length === 0 ? (
+          <p className="text-xs italic text-shadow-1 dark:text-moonlight">None.</p>
+        ) : (
+          <ul className="space-y-1 text-[11px] font-mono text-ink dark:text-bright">
+            {rows.slice(0, 50).map((r, i) => (
+              <li
+                key={i}
+                className="truncate border-b border-rule dark:border-charcoal-1 py-1"
+              >
+                {JSON.stringify(r)}
+              </li>
+            ))}
+            {rows.length > 50 && (
+              <li className="text-xs italic text-shadow-1 dark:text-moonlight">
+                … and {rows.length - 50} more not shown
+              </li>
+            )}
+          </ul>
+        )}
       </div>
-      <p className="text-xs text-ink-soft dark:text-starlight">{description}</p>
-      {rows.length === 0 ? (
-        <p className="text-xs italic text-shadow-1 dark:text-moonlight">None.</p>
-      ) : (
-        <ul className="space-y-1 text-[11px] font-mono text-ink dark:text-bright">
-          {rows.slice(0, 50).map((r, i) => (
-            <li
-              key={i}
-              className="truncate border-b border-rule dark:border-charcoal-1 py-1"
-            >
-              {JSON.stringify(r)}
-            </li>
-          ))}
-          {rows.length > 50 && (
-            <li className="text-xs italic text-shadow-1 dark:text-moonlight">
-              … and {rows.length - 50} more not shown
-            </li>
-          )}
-        </ul>
-      )}
-    </section>
+    </LemonCard>
   );
 }

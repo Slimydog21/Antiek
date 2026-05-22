@@ -32,6 +32,35 @@ function QuestionCardNodeView({ node, deleteNode }: NodeViewProps) {
             </span>
           )}
         </p>
+        {/* S7 WP-7.3 acceptance: each block exposes a "contextual open
+            as panel" affordance. For a question card, opening as a
+            panel chases the question — opens BrainstormStation routed
+            with the question text as the active parked item. */}
+        {text && (
+          <button
+            type="button"
+            onClick={() => {
+              // Chase the question via the Chase panel (RW S5 flow).
+              import("../../../workspace/WorkspaceStore").then(
+                ({ useWorkspace }) => {
+                  useWorkspace.getState().open(
+                    "Chase",
+                    { question: text },
+                    {
+                      mode: "floating",
+                      title: "Chase",
+                      id: `chase:${text.slice(0, 32)}`,
+                    },
+                  );
+                },
+              );
+            }}
+            className="text-[10px] font-mono text-aurora hover:underline shrink-0 mt-1"
+            title="Chase this question in a floating panel"
+          >
+            chase
+          </button>
+        )}
         <button
           type="button"
           onClick={() => deleteNode()}
