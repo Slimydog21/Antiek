@@ -1,27 +1,47 @@
 # Ansible managed.
 #
-# Cloudflare Tunnel config for api.antiek.ai. Replaces the previous
-# grey-cloud direct-IP exposure (where Caddy terminated TLS on the
-# public Hetzner IP). Cloudflare now terminates TLS at the edge; this
-# tunnel forwards the cleartext payload to uvicorn on 127.0.0.1:8001.
+# Cloudflare Tunnel config for api.antiek.ai.
 #
-# Substrate stays bound to 127.0.0.1 — never sees the public internet.
-# Public attack surface on Hetzner reduced to port 22 (SSH) only.
+# Topology (as of pass-9 frontend deploy):
 #
-# Why no Caddy in the path anymore:
-#   The tunnel itself implements long-running connection support
-#   (originRequest below) and Cloudflare handles TLS at the edge.
-#   Caddy's reverse_proxy/TLS termination are both redundant now.
+#   Cloudflare edge (TLS)
+#         │
+#         ▼ cloudflared tunnel (encrypted)
+#   127.0.0.1:443  ─ Caddy ─┬─ /<api-prefix>/* → 127.0.0.1:8001 (uvicorn)
+#                           └─ everything else  → /var/www/antiek-app
+#                                                 (reading-app SPA)
+#
+# Why traffic goes through Caddy (not direct to uvicorn):
+#   The Caddyfile.j2 splits API routes from the static SPA. If the
+#   tunnel forwarded directly to uvicorn, EVERY request — including
+#   `/` for the SPA — would land at FastAPI's auth middleware and
+#   bounce with operator_auth_required. By routing through Caddy on
+#   localhost:443, the SPA serves and the API still gets reverse-
+#   proxied.
+#
+# Substrate stays bound to 127.0.0.1:8001 — never sees the public
+# internet. Caddy on 127.0.0.1:443 (loopback only) is the single
+# entry point the tunnel hits.
 
 tunnel: {{ cloudflared_tunnel_id }}
 credentials-file: /etc/cloudflared/{{ cloudflared_tunnel_id }}.json
 
 ingress:
   - hostname: api.antiek.ai
-    service: http://127.0.0.1:8001
+    service: https://127.0.0.1:443
     originRequest:
-      # Match the substrate's longest single-role timeout (600s)
-      # with slack for sync/teardown — matches the systemd unit's
+      # Force SNI = api.antiek.ai so Caddy picks the right cert.
+      # Without this, the tunnel connects with SNI "127.0.0.1" (the
+      # literal target host), Caddy doesn't have a cert for that,
+      # handshake fails → 502.
+      originServerName: api.antiek.ai
+      # noTLSVerify because Caddy's Let's Encrypt cert is real-world
+      # valid for api.antiek.ai but the cloudflared HTTP/2 stack
+      # sometimes still rejects loopback. Safe — the connection
+      # never leaves the VM.
+      noTLSVerify: true
+      # Match the substrate's longest single-role timeout (600s) with
+      # slack for sync/teardown — matches the systemd unit's
       # --timeout-keep-alive 900s.
       connectTimeout: 30s
       tlsTimeout: 10s

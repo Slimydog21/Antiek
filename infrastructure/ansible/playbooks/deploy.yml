@@ -131,6 +131,41 @@
         recurse: true
       tags: [frontend, caddy]
 
+    # ── Cloudflare Tunnel ──────────────────────────────────────────────
+    # The tunnel terminates Cloudflare-edge TLS + forwards the
+    # cleartext payload to the VM. As of pass-9 frontend deploy, the
+    # tunnel forwards to Caddy on 127.0.0.1:443 (NOT to uvicorn
+    # directly). Caddy then path-splits API vs SPA.
+    - name: read existing tunnel ID from VM
+      ansible.builtin.shell: |
+        # Tunnel ID is the name of the credentials JSON file (UUID).
+        ls /etc/cloudflared/ | grep -E '^[0-9a-f-]+\.json$' | sed 's/\.json$//'
+      register: tunnel_id_lookup
+      changed_when: false
+      tags: [cloudflared]
+
+    - name: set cloudflared_tunnel_id fact
+      ansible.builtin.set_fact:
+        cloudflared_tunnel_id: "{{ tunnel_id_lookup.stdout | trim }}"
+      tags: [cloudflared]
+
+    - name: re-render cloudflared config.yml
+      ansible.builtin.template:
+        src: ../templates/cloudflared-config.yml.j2
+        dest: /etc/cloudflared/config.yml
+        owner: root
+        group: root
+        mode: "0644"
+      register: cloudflared_config
+      tags: [cloudflared]
+
+    - name: restart cloudflared if config changed
+      ansible.builtin.systemd:
+        name: cloudflared
+        state: restarted
+      when: cloudflared_config.changed
+      tags: [cloudflared]
+
     - name: re-render Caddyfile
       ansible.builtin.template:
         src: ../templates/Caddyfile.j2
@@ -178,6 +213,114 @@
         group: "{{ antiek_group }}"
         mode: "0750"
       tags: [backup]
+
+    # ── 3.5 Debug: what does Caddy think the route table is? ────────────
+    - name: debug — fetch live Caddy config JSON
+      ansible.builtin.command:
+        cmd: curl -sf http://localhost:2019/config/apps/http/servers/srv0/routes
+      register: caddy_routes
+      changed_when: false
+      tags: [caddy, debug]
+
+    - name: debug — print Caddy route summary
+      ansible.builtin.debug:
+        var: caddy_routes.stdout
+      tags: [caddy, debug]
+
+    - name: debug — inspect cloudflared config + service
+      ansible.builtin.shell: |
+        echo "=== /etc/cloudflared listing ==="
+        ls -la /etc/cloudflared/ 2>/dev/null || echo "no /etc/cloudflared"
+        echo "=== config.yml ==="
+        cat /etc/cloudflared/config.yml 2>/dev/null
+        echo "=== systemctl status cloudflared ==="
+        systemctl is-active cloudflared 2>/dev/null
+      register: cf_inspect
+      changed_when: false
+      tags: [cloudflared, debug]
+
+    - name: debug — print cloudflared state
+      ansible.builtin.debug:
+        var: cf_inspect.stdout_lines
+      tags: [cloudflared, debug]
+
+    - name: debug — tail caddy access log
+      ansible.builtin.shell: |
+        tail -3 /var/log/caddy/access.log 2>/dev/null || echo "no access log yet"
+      register: caddy_log
+      changed_when: false
+      tags: [caddy, debug]
+
+    - name: debug — print caddy access log
+      ansible.builtin.debug:
+        var: caddy_log.stdout_lines
+      tags: [caddy, debug]
+
+    - name: debug — make a public-side curl + check if it landed in Caddy log
+      ansible.builtin.shell: |
+        sleep 1
+        echo "=== before request, last log line ==="
+        tail -1 /var/log/caddy/access.log 2>/dev/null
+        echo "=== curling api.antiek.ai/ from VM ==="
+        curl -sk -o /dev/null "https://api.antiek.ai/" -w "HTTP %{http_code} type=%{content_type}\n"
+        sleep 1
+        echo "=== after request, last log line ==="
+        tail -1 /var/log/caddy/access.log 2>/dev/null
+      register: public_test
+      changed_when: false
+      tags: [caddy, debug]
+
+    - name: debug — print public test
+      ansible.builtin.debug:
+        var: public_test.stdout_lines
+      tags: [caddy, debug]
+
+    - name: debug — netstat to see what Caddy binds to
+      ansible.builtin.shell: |
+        ss -tlnp 2>&1 | grep -E ':80|:443|:8001' | head
+      register: caddy_bind
+      changed_when: false
+      tags: [caddy, debug]
+
+    - name: debug — print bind info
+      ansible.builtin.debug:
+        var: caddy_bind.stdout_lines
+      tags: [caddy, debug]
+
+    - name: debug — curl Caddy via 127.0.0.1 and via host IP
+      ansible.builtin.shell: |
+        set +e
+        echo "=== via 127.0.0.1:443 ==="
+        curl -sk --resolve {{ api_domain }}:443:127.0.0.1 "https://{{ api_domain }}/" -o /tmp/r1.body -w "HTTP %{http_code} type=%{content_type} size=%{size_download}\n"
+        echo "  body (200): $(head -c 200 /tmp/r1.body)"
+        echo "=== via private IP ==="
+        IP=$(hostname -I | awk '{print $1}')
+        echo "host IP = $IP"
+        curl -sk --resolve {{ api_domain }}:443:$IP "https://{{ api_domain }}/" -o /tmp/r2.body -w "HTTP %{http_code} type=%{content_type} size=%{size_download}\n"
+        echo "  body (200): $(head -c 200 /tmp/r2.body)"
+        echo "=== /index.html via 127.0.0.1 ==="
+        curl -sk --resolve {{ api_domain }}:443:127.0.0.1 "https://{{ api_domain }}/index.html" -o /tmp/r3.body -w "HTTP %{http_code} type=%{content_type} size=%{size_download}\n"
+        echo "  body (200): $(head -c 200 /tmp/r3.body)"
+      register: caddy_direct
+      changed_when: false
+      tags: [caddy, debug]
+
+    - name: debug — print direct Caddy response
+      ansible.builtin.debug:
+        var: caddy_direct.stdout_lines
+      tags: [caddy, debug]
+
+    - name: debug — ls /var/www/antiek-app
+      ansible.builtin.command:
+        cmd: ls -la /var/www/antiek-app/
+      register: dist_ls
+      changed_when: false
+      tags: [frontend, debug]
+
+    - name: debug — print dist listing
+      ansible.builtin.debug:
+        var: dist_ls.stdout
+      tags: [frontend, debug]
 
     # ── 4. Restart the substrate ────────────────────────────────────────
     - name: restart antiek
