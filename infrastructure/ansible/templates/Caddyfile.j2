@@ -28,48 +28,12 @@
     # interfaces/research/api/*.py (40 top-level prefixes as of this
     # commit). When the substrate gains a new top-level route, add it
     # here + redeploy.
-    @api_routes {
-        path /.well-known/* \
-             /ad-impressions* \
-             /ad-inventory* \
-             /advertisers* \
-             /ai/* \
-             /attribution* \
-             /auth/* \
-             /backtest* \
-             /billing* \
-             /blocks/* \
-             /campaigns* \
-             /chunks* \
-             /creator-payouts* \
-             /cross-graph/* \
-             /deliverables* \
-             /documents* \
-             /events/* \
-             /federation* \
-             /health \
-             /interview-projects* \
-             /interviews* \
-             /investigations* \
-             /loop-3/* \
-             /notebooks* \
-             /ops/* \
-             /outcomes* \
-             /payouts* \
-             /publishers* \
-             /quality-gate* \
-             /sections* \
-             /skill-rules* \
-             /sources* \
-             /stats* \
-             /thought-partner \
-             /trajectory/* \
-             /trust-center* \
-             /voice/* \
-             /voice-notes* \
-             /watch-for-later* \
-             /ws/*
-    }
+    # NOTE: keep the @api_routes path list on ONE LINE — Caddy's
+    # tokenizer for `path` matcher arguments doesn't honor backslash
+    # continuation (the backslash gets treated as a literal token,
+    # breaking the matcher silently — `caddy validate` accepts the
+    # malformed result + every request falls through to uvicorn).
+    @api_routes path /.well-known/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /attribution* /auth/* /backtest* /billing* /blocks/* /campaigns* /chunks* /creator-payouts* /cross-graph/* /deliverables* /documents* /events/* /federation* /health /interview-projects* /interviews* /investigations* /loop-3/* /notebooks* /ops/* /outcomes* /payouts* /publishers* /quality-gate* /sections* /skill-rules* /sources* /stats* /thought-partner /trajectory/* /trust-center* /voice/* /voice-notes* /watch-for-later* /ws/*
 
     handle @api_routes {
         # Long-running LLM dispatches can stay open for 600+ seconds.
