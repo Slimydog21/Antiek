@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { PanelHost } from "../../workspace/PanelHost";
 import {
   launchParkedQuestion,
   listWatchForLater,
@@ -73,34 +74,54 @@ export default function BrainstormStation() {
     [navigate, reload],
   );
 
+  // S10 row 10.8 — BrainstormStation wraps the main parked-question
+  // view in PanelHost with the spec's two side panels as starters.
+  // The watch-list panel self-fetches (mirrors the parent's `parked`
+  // state independently); the thought-partner panel surfaces a CTA
+  // to ⌘/ the AISidecar (the actual thought-partner pane).
   return (
-    <div className="flex flex-col h-screen">
-      <div className="grid grid-cols-[340px_1fr_320px] flex-1 min-h-0">
-        <aside className="border-r border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 overflow-y-auto">
-          <WatchForLaterFolder
-            questions={parked}
-            loading={loading}
-            error={error}
-            selectedId={selected?.question_id ?? null}
-            onSelect={setSelected}
+    <PanelHost
+      starters={[
+        {
+          kind: "BrainstormWatchList",
+          mode: "docked-left",
+          title: "Watch for later",
+          id: "brainstorm:watchlist",
+        },
+        {
+          kind: "BrainstormThoughtPartner",
+          mode: "docked-right",
+          title: "Thought partner",
+          id: "brainstorm:thought-partner",
+        },
+      ]}
+    >
+      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+        {selected ? (
+          <ParkedQuestion
+            question={selected}
+            launching={launching}
+            onLaunch={() => handleLaunch(selected)}
           />
-        </aside>
-        <main className="flex flex-col min-h-0 bg-ice-0 dark:bg-charcoal-2 overflow-y-auto">
-          {selected ? (
-            <ParkedQuestion
-              question={selected}
-              launching={launching}
-              onLaunch={() => handleLaunch(selected)}
+        ) : (
+          <EmptyState parkedCount={parked.length} />
+        )}
+        {/* Inline watch-for-later kept for operators on small screens
+            where the dock auto-collapses. Empty rendering when the
+            list is empty avoids a duplicate empty-state. */}
+        {parked.length > 0 && (
+          <div className="md:hidden border-t border-rule dark:border-charcoal-1">
+            <WatchForLaterFolder
+              questions={parked}
+              loading={loading}
+              error={error}
+              selectedId={selected?.question_id ?? null}
+              onSelect={setSelected}
             />
-          ) : (
-            <EmptyState parkedCount={parked.length} />
-          )}
-        </main>
-        <aside className="border-l border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 overflow-y-auto">
-          <ThoughtPartnerPlaceholder />
-        </aside>
-      </div>
-    </div>
+          </div>
+        )}
+      </main>
+    </PanelHost>
   );
 }
 
@@ -134,24 +155,6 @@ function EmptyState({ parkedCount }: { parkedCount: number }) {
   );
 }
 
-function ThoughtPartnerPlaceholder() {
-  return (
-    <div className="p-4 space-y-3">
-      <h3 className="text-sm font-semibold text-ink dark:text-bright">
-        Thought partner
-      </h3>
-      <p className="text-xs text-shadow-1 dark:text-moonlight leading-relaxed">
-        Talk to your notes. Slot insights like Legos. Challenge them.
-      </p>
-      <div className="border border-dashed border-rule dark:border-charcoal-1 rounded-md p-4 text-xs text-ink-mute dark:text-moonlight italic">
-        Sprint 18 — the `thought_partner` role and Lego-block
-        insight slotting from your private graph ship here.
-      </div>
-      <div className="border border-dashed border-rule dark:border-charcoal-1 rounded-md p-4 text-xs text-ink-mute dark:text-moonlight italic">
-        Sprint 18 — voice-note input: talk through a thought, the
-        system transcribes, extracts insights + open questions,
-        parks the questions in this folder by default.
-      </div>
-    </div>
-  );
-}
+// ThoughtPartnerPlaceholder superseded by ThoughtPartnerPanel
+// (registered as PanelKind="BrainstormThoughtPartner" + opened as a
+// docked-right starter via PanelHost).

@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { stringAttr } from "./attrHelpers";
 
 /**
  * Question-card block — captures an emergent question that the
@@ -81,8 +82,8 @@ export const QuestionCardBlock = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      parked_question_id: { default: null },
-      text: { default: null },
+      parked_question_id: stringAttr("parked_question_id"),
+      text: stringAttr("text"),
     };
   },
   parseHTML() {

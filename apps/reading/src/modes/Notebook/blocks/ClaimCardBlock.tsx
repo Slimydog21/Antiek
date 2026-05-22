@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { stringAttr } from "./attrHelpers";
 
 import LemonCard from "../../../components/lemon/LemonCard";
 import { openClaimInspector } from "../../../workspace/actions";
@@ -63,8 +64,8 @@ export const ClaimCardBlock = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      claim_id: { default: null },
-      investigation_id: { default: null },
+      claim_id: stringAttr("claim_id"),
+      investigation_id: stringAttr("investigation_id"),
     };
   },
   parseHTML() {

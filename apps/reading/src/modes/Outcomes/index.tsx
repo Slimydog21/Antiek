@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { PanelHost } from "../../workspace/PanelHost";
 
 /**
  * Outcomes surface (master-spec §13.8 + Phase 8 input).
@@ -116,9 +117,18 @@ export default function Outcomes() {
     };
   }, [outcomes]);
 
+  // S10 row 10.13 — Outcomes/:id wraps the grading surface in
+  // PanelHost. The spec called for "left = sources, right = trace"
+  // but the page's actual data is a single-form grading view —
+  // there's no separate sources or trace dataset available here.
+  // We wrap with NO starters so the operator can open ProjectTree
+  // / AISidecar / etc. via shortcuts but the main grading flow
+  // stays a single column. A future cycle that surfaces backtest
+  // sources + replay trace inline can add the corresponding
+  // PanelKinds + starters.
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+    <PanelHost>
+      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
           <header className="space-y-2">
             <h1 className="text-2xl font-serif text-ink dark:text-bright">
@@ -230,7 +240,7 @@ export default function Outcomes() {
           </section>
         </div>
       </main>
-    </div>
+    </PanelHost>
   );
 }
 

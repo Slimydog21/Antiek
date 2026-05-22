@@ -100,4 +100,8 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
 
   // S7 WP-7.3 — ImageBlock "open as panel" target
   Lightbox: lazy(() => import("../components/Lightbox")),
+
+  // S10 row 10.8 — BrainstormStation panels
+  BrainstormWatchList: lazy(() => import("../modes/BrainstormStation/WatchForLaterPanel")),
+  BrainstormThoughtPartner: lazy(() => import("../modes/BrainstormStation/ThoughtPartnerPanel")),
 };

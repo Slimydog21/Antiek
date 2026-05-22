@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { stringAttr } from "./attrHelpers";
 
 import LemonCard from "../../../components/lemon/LemonCard";
 
@@ -48,10 +49,10 @@ export const CrossDocLinkBlock = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      bridge_id: { default: null },
-      from_doc: { default: null },
-      to_doc: { default: null },
-      bridge: { default: null },
+      bridge_id: stringAttr("bridge_id"),
+      from_doc: stringAttr("from_doc"),
+      to_doc: stringAttr("to_doc"),
+      bridge: stringAttr("bridge"),
     };
   },
   parseHTML() {

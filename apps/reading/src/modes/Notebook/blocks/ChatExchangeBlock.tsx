@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { stringAttr } from "./attrHelpers";
 
 import LemonCard from "../../../components/lemon/LemonCard";
 
@@ -71,9 +72,9 @@ export const ChatExchangeBlock = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      exchange_id: { default: null },
-      user_text: { default: null },
-      assistant_text: { default: null },
+      exchange_id: stringAttr("exchange_id"),
+      user_text: stringAttr("user_text"),
+      assistant_text: stringAttr("assistant_text"),
     };
   },
   parseHTML() {

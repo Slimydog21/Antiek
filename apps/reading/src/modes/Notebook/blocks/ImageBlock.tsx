@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { stringAttr } from "./attrHelpers";
 
 /**
  * Image block — inline image with caption. Source resolves via the
@@ -79,9 +80,9 @@ export const ImageBlock = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      src: { default: null },
-      alt: { default: null },
-      caption: { default: null },
+      src: stringAttr("src"),
+      alt: stringAttr("alt"),
+      caption: stringAttr("caption"),
     };
   },
   parseHTML() {

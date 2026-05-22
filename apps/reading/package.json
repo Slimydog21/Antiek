@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:check": "npm run build && tsx scripts/check_bundle.ts",
+    "bench:pdf-panel": "tsx scripts/bench_pdf_panel.ts",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "storybook": "storybook dev -p 6006",

@@ -2,6 +2,8 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 
+import { stringAttr } from "./attrHelpers";
+
 /** Inline note block — a single note from the operator or the agent. */
 function NoteNodeView({ node, deleteNode }: NodeViewProps) {
   const text = (node.attrs.text as string | null) ?? "";
@@ -36,10 +38,12 @@ export const NoteBlock = Node.create({
   group: "block",
   atom: true,
   draggable: true,
+  // Explicit parseHTML/renderHTML per attribute. AI-tool-call
+  // dispatched <antiek-note text="…"> round-trips losslessly.
   addAttributes() {
     return {
-      note_id: { default: null },
-      text: { default: null },
+      note_id: stringAttr("note_id"),
+      text: stringAttr("text"),
     };
   },
   parseHTML() {

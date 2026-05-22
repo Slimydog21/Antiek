@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { stringAttr } from "./attrHelpers";
 import { useState } from "react";
 
 /**
@@ -100,7 +101,7 @@ export const LatexBlock = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      source: { default: null },
+      source: stringAttr("source"),
     };
   },
   parseHTML() {

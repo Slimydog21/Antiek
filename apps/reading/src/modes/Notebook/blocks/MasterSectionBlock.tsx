@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { stringAttr } from "./attrHelpers";
 
 /**
  * Master-section block — embeds a synthesis fragment (a section of
@@ -45,8 +46,8 @@ export const MasterSectionBlock = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      synthesis_id: { default: null },
-      section: { default: null },
+      synthesis_id: stringAttr("synthesis_id"),
+      section: stringAttr("section"),
     };
   },
   parseHTML() {

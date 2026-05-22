@@ -1,8 +1,10 @@
 # PDF-inside-floating-panel · performance budget
 
 **Spec:** `docs/ui_redesign_posthog/sprint_06_wrestle.html` WP-6.6.
-**Status:** scaffold landed in S6 commit (this file + `apps/reading/scripts/bench_pdf_panel.ts`).
-The real Playwright harness runs as a SDET-pass step before S12 cutover.
+**Status:** real Playwright harness landed in this commit
+(`apps/reading/scripts/bench_pdf_panel.ts`). Operator-runnable via
+`npm run bench:pdf-panel` after `npx playwright install chromium`
+(one-shot). Results append below as a history table.
 
 ## Acceptance criteria
 

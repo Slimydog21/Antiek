@@ -691,10 +691,19 @@ class ThoughtPartnerRequest(BaseModel):
     AISidecar posts a free-form prompt; the substrate runs the
     ``thought_partner`` role parser over a deterministic response
     until a real dispatch tier wires through. Returns the shape +
-    text the parser produced."""
+    text the parser produced.
+
+    `system_context` (UI-redesign S8 WP-8.4) is the serialised
+    workspace state the operator's client ships so the model can
+    reference what panels are currently visible + emit structured
+    actions back. The substrate threads this verbatim into the
+    model's system message when dispatch tier wiring lands; the
+    Sprint 21 deterministic scaffold below simply accepts the field
+    so the client contract is stable before the model wiring."""
 
     prompt: str
     investigation_id: Optional[str] = None
+    system_context: Optional[str] = None
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -3992,21 +4001,45 @@ def create_app(
         until the dispatch tier wires through, this returns a
         deterministic CHALLENGE-shaped reply so the AISidecar surface
         is unblocked. The parser at ``roles/thought_partner/parser.py``
-        owns the shape vocabulary; this endpoint stays a thin shim."""
+        owns the shape vocabulary; this endpoint stays a thin shim.
+
+        When the dispatch tier lands, ``req.system_context`` (the
+        operator's serialised workspace state from
+        ``aiActions.workspaceContextPrompt``) is threaded into the
+        model's system message and the model's reply is returned
+        unchanged (the @@actions block parses + dispatches client-
+        side, never on the substrate)."""
         if not req.prompt.strip():
             raise HTTPException(
                 status_code=400, detail="prompt must not be empty",
             )
-        # Deterministic CHALLENGE reply per the parser shape set. Real
-        # dispatch tier wiring lands when ``thought_partner`` joins the
-        # active role pool; until then this surface satisfies the UI
-        # contract without faking LLM output.
+        # Deterministic CHALLENGE reply per the parser shape set.
+        # ``req.system_context`` is accepted + reserved for when the
+        # dispatch tier wires through; the scaffold acknowledges
+        # receipt by including a tiny @@actions sentinel so the UI's
+        # tool-call protocol can be smoke-tested end-to-end without
+        # a real model. The sentinel opens the operator's existing
+        # InvestigationSidebar (a safe no-op for already-open panels
+        # given the idempotent panel ids).
+        scaffold_text = (
+            "What's the one observation that, if false, would "
+            "make this whole question moot? Start there."
+        )
+        if req.system_context:
+            # Include the @@actions fence ONLY when the client opted
+            # in via system_context — older clients without the
+            # protocol won't see it.
+            scaffold_text += (
+                "\n\n@@actions\n"
+                '[\n'
+                '  {"kind": "toast", "level": "info",\n'
+                '   "message": "Thought-partner scaffold: real dispatch tier pending."}\n'
+                ']\n'
+                "@@end"
+            )
         return ThoughtPartnerResponseBody(
             shape="challenge",
-            text=(
-                "What's the one observation that, if false, would "
-                "make this whole question moot? Start there."
-            ),
+            text=scaffold_text,
         )
 
     # ── Sprint 17 voice upload endpoint (§11.5) ──
