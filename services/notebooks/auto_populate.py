@@ -1,7 +1,7 @@
 """Auto-populator: Tier-1 behavior events → per-document notebook blocks.
 
 SPR-08 M3. Reads ``behavior_events`` for one ``(user_id, document_id)``
-span and upserts blocks into ``notebook_blocks`` idempotently. Same
+span and upserts blocks into ``per_doc_notebook_blocks`` idempotently. Same
 event range MUST produce the same blocks; the test in
 ``tests/test_auto_populate.py::test_idempotent_against_real_events``
 proves this on fixtures pulled from the actual behavior store.

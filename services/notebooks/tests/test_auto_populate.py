@@ -303,7 +303,7 @@ def test_reward_hook_block_via_check_reward_join(
 ):
     """After population, ``check_reward_join(event_id)`` finds the
     block. This is the M7 "block found via behavior_event →
-    notebook_blocks join" verification gate."""
+    per_doc_notebook_blocks join" verification gate."""
     _grant(combined_db)
     eid = _emit_highlight(queue=behavior_queue)
     assert behavior_queue.flush(timeout_s=5.0)

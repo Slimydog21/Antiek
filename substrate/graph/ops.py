@@ -127,6 +127,7 @@ def insert_document(
     raw_text: Optional[str] = None,
     metadata: Optional[Any] = None,
     on_conflict: OnConflict = "error",
+    raw_bytes_path: Optional[str] = None,
 ) -> str:
     """Insert one document row. Returns the document_id.
 
@@ -141,6 +142,12 @@ def insert_document(
       - ``"ignore"``: silently skip if a row with that ``document_id``
         already exists. Used by the wrestling bridge to keep
         ``document.loaded`` handling idempotent.
+
+    ``raw_bytes_path`` (added 2026-05-22): filesystem path written by
+    ``services/library/raw_bytes_store.store_bytes`` during ingest.
+    Used by SPR-10 share-bundle endpoint to retrieve the original
+    PDF/HTML/EPUB bytes. NULL for sources where bytes aren't reachable
+    (e.g., pasted text).
     """
     _assert_write_locked(con)
     if not 1 <= source_tier <= 5:
@@ -150,12 +157,13 @@ def insert_document(
     con.execute(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
-        " source_tier, document_type, investigation_id, raw_text, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " source_tier, document_type, investigation_id, raw_text, metadata, "
+        " raw_bytes_path) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             document_id, source_uri, title, author, published_at,
             int(source_tier), document_type, investigation_id, raw_text,
-            _maybe_json(metadata),
+            _maybe_json(metadata), raw_bytes_path,
         ],
     )
     return document_id
@@ -176,10 +184,18 @@ def insert_chunk(
     embedding: Optional[Sequence[float]] = None,
     token_count: int = 0,
     chunk_id: Optional[str] = None,
+    page: Optional[int] = None,
+    bbox: Optional[dict] = None,
 ) -> str:
     """Insert one chunk row. If ``chunk_id`` is not provided, a
     content-addressed id is derived from the chunk text (matches the
     Researchmaxx SHA-256 convention). Returns the chunk_id.
+
+    ``page`` and ``bbox`` (added 2026-05-22) are optional PDF geometry.
+    For non-PDF callers they default to None — the chunks columns are
+    nullable. PDF callers route through
+    ``processing.chunking.pdf_chunker.chunk_pdf_extraction`` which
+    produces ``PageTaggedChunk`` carrying the geometry.
 
     No typed event today — chunk insertion is a processing-layer
     artifact; if RL trajectory analytics needs per-chunk events later
@@ -189,16 +205,27 @@ def insert_chunk(
     cid = chunk_id or content_addressed_id("chunk", text)
     if _exists(con, "chunks", "chunk_id", cid):
         # Idempotent — content-addressed ids make duplicate inserts a
-        # no-op rather than a CHECK violation.
+        # no-op rather than a CHECK violation. We do NOT update page /
+        # bbox on a dedup hit: the first writer's geometry wins.
+        # Re-chunkers that need to update geometry should call the
+        # substrate/voice rechunk worker pattern (read-modify-write
+        # with chunker_version).
         return cid
+    bbox_json: Optional[str] = None
+    if bbox is not None:
+        import json as _json
+        bbox_json = _json.dumps(bbox)
     con.execute(
         "INSERT INTO chunks "
-        "(chunk_id, document_id, chunk_index, section_path, text, embedding, token_count) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(chunk_id, document_id, chunk_index, section_path, text, "
+        " embedding, token_count, page, bbox) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             cid, document_id, int(chunk_index), section_path, text,
             list(embedding) if embedding is not None else None,
             int(token_count),
+            int(page) if page is not None else None,
+            bbox_json,
         ],
     )
     return cid

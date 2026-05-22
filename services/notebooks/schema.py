@@ -3,7 +3,7 @@
 Migrations (applied in order):
 
 - ``0001_per_doc_notebook.sql`` — ``notebook_documents`` +
-  ``notebook_blocks`` tables (SPR-08 M1, M6).
+  ``per_doc_notebook_blocks`` tables (SPR-08 M1, M6).
 - ``0002_notebook_blocks.sql`` — provenance + save log (SPR-08 M6, M7).
 - ``0003_themes.sql`` — Tier-3 per-theme notebook (SPR-11 M1):
   ``themes`` + ``theme_blocks`` tables.
@@ -105,7 +105,7 @@ def list_notebook_tables(con: "duckdb.DuckDBPyConnection") -> list[str]:
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_schema='main' "
         "  AND table_name IN ('notebook_documents', "
-        "                     'notebook_blocks', "
+        "                     'per_doc_notebook_blocks', "
         "                     'notebook_block_events', "
         "                     'notebook_save_log', "
         "                     'themes', "

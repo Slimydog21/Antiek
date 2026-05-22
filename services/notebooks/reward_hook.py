@@ -95,7 +95,7 @@ def _table_present(db_path: str, name: str) -> bool:
 REQUIRED_TABLES: tuple[str, ...] = (
     "behavior_events",
     "notebook_documents",
-    "notebook_blocks",
+    "per_doc_notebook_blocks",
 )
 
 
@@ -115,13 +115,13 @@ def check_reward_join(
     event — that's the steady-state for un-notebooked events.
 
     The join goes through ``notebook_block_events`` (the normalised
-    table) rather than parsing ``notebook_blocks.source_event_ids``;
+    table) rather than parsing ``per_doc_notebook_blocks.source_event_ids``;
     the JSON-array path is a performance trap on large notebooks.
     """
     path = db_path or default_db_path()
     if not (
         _table_present(path, "notebook_block_events")
-        and _table_present(path, "notebook_blocks")
+        and _table_present(path, "per_doc_notebook_blocks")
     ):
         return []
     con = _connect_for_read(path)
@@ -129,7 +129,7 @@ def check_reward_join(
         rows = con.execute(
             "SELECT nb.block_id, nb.notebook_id, nb.block_type, nb.document_id "
             "FROM notebook_block_events nbe "
-            "JOIN notebook_blocks nb USING (block_id) "
+            "JOIN per_doc_notebook_blocks nb USING (block_id) "
             "WHERE nbe.event_id = ?",
             [event_id],
         ).fetchall()
@@ -214,7 +214,7 @@ def run_medium_backfill(
         COUNT(*) AS ref_count,
         MIN(nb.created_at) AS first_ref_at
       FROM notebook_documents nd
-      JOIN notebook_blocks nb ON nb.notebook_id = nd.notebook_id
+      JOIN per_doc_notebook_blocks nb ON nb.notebook_id = nd.notebook_id
       WHERE nb.document_id IS NOT NULL
       GROUP BY 1, 2
     )

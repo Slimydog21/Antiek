@@ -4,7 +4,7 @@
 --
 -- Two tables:
 --   notebook_documents — one row per (user_id, document_id)
---   notebook_blocks    — children of a notebook; created by the
+--   per_doc_notebook_blocks    — children of a notebook; created by the
 --                        auto-populator from Tier-1 events
 --
 -- Distinct from the Sprint 18 Wedge 2 ``notebooks`` table the
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS notebook_documents (
     title           TEXT,                       -- nullable; defaults to doc title at first save
 
     -- TipTap document JSON. Source of truth for the rich-text
-    -- envelope; ``notebook_blocks`` is the structured per-block
+    -- envelope; ``per_doc_notebook_blocks`` is the structured per-block
     -- index used by the auto-populator + reward join. The two MUST
     -- stay consistent — persistence.py is the only writer.
     content_json    TEXT NOT NULL DEFAULT '{}',
@@ -51,9 +51,9 @@ CREATE INDEX IF NOT EXISTS idx_notebook_documents_user_doc
 
 
 -- ----------------------------------------------------------------
--- notebook_blocks — child rows; auto-populator + reward join read
+-- per_doc_notebook_blocks — child rows; auto-populator + reward join read
 -- ----------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS notebook_blocks (
+CREATE TABLE IF NOT EXISTS per_doc_notebook_blocks (
     block_id        TEXT PRIMARY KEY,           -- blk-<12hex>-<ms>
     notebook_id     TEXT NOT NULL,
     block_type      TEXT NOT NULL,              -- closed set; see services/notebooks/blocks.py
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS notebook_blocks (
 
 -- Order-by selector for the per-notebook list view.
 CREATE INDEX IF NOT EXISTS idx_notebook_blocks_notebook_pos
-    ON notebook_blocks (notebook_id, position);
+    ON per_doc_notebook_blocks (notebook_id, position);
 
 -- Reward-join selector (used by substrate/behavior/workers/reward_medium.py).
 -- The canonical join in REWARD_PROXY.md scans by (user_id, document_id);
@@ -102,4 +102,4 @@ CREATE INDEX IF NOT EXISTS idx_notebook_blocks_notebook_pos
 -- table on notebook_id. The document_id denormalisation lets a single-
 -- table scan find candidate blocks first.
 CREATE INDEX IF NOT EXISTS idx_notebook_blocks_doc
-    ON notebook_blocks (document_id);
+    ON per_doc_notebook_blocks (document_id);

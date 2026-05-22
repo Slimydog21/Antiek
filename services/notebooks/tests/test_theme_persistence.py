@@ -212,7 +212,7 @@ def test_stale_block_placeholder_after_source_delete(
     # document being removed / re-imported / auto-populator rebuild).
     con = duckdb.connect(combined_db)
     con.execute(
-        "DELETE FROM notebook_blocks WHERE block_id = ?", [source_ids[1]]
+        "DELETE FROM per_doc_notebook_blocks WHERE block_id = ?", [source_ids[1]]
     )
     con.close()
 
@@ -242,7 +242,7 @@ def test_dismiss_stale_hides_row(
     )
     # Delete source.
     con = duckdb.connect(combined_db)
-    con.execute("DELETE FROM notebook_blocks WHERE block_id = ?", [src_id])
+    con.execute("DELETE FROM per_doc_notebook_blocks WHERE block_id = ?", [src_id])
     con.close()
 
     loaded = tp.load_theme_by_id(theme.theme_id)
@@ -271,7 +271,7 @@ def test_remove_block_keeps_source(
     # Source survives.
     con = duckdb.connect(combined_db)
     row = con.execute(
-        "SELECT block_id FROM notebook_blocks WHERE block_id = ?", [src_id]
+        "SELECT block_id FROM per_doc_notebook_blocks WHERE block_id = ?", [src_id]
     ).fetchone()
     con.close()
     assert row is not None, "remove_block must NOT cascade to source"

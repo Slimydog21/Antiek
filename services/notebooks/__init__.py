@@ -22,7 +22,7 @@ Substrate boundary
 This package READS Tier-1 events (operator role) but never mutates
 ``behavior_events`` directly — emits go through
 ``substrate.behavior.api.emit_behavior_event``. The auto-populator
-writes ONLY to ``notebook_documents`` + ``notebook_blocks``.
+writes ONLY to ``notebook_documents`` + ``per_doc_notebook_blocks``.
 """
 
 from .blocks import (

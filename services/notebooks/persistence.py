@@ -5,7 +5,7 @@ The contract:
 - ``NotebookPersistence`` is the protocol any backend MUST implement.
 - ``JSONPersistence`` is the SPR-08 concrete implementation: writes
   the TipTap document JSON into ``notebook_documents.content_json``
-  plus a normalised row per block into ``notebook_blocks``. This
+  plus a normalised row per block into ``per_doc_notebook_blocks``. This
   remains the substrate-resident storage shape — auto-populator,
   reward hook, FastAPI handlers all read these tables.
 - ``AntiekPersistence`` (SPR-09) wraps ``JSONPersistence`` and ALSO
@@ -86,7 +86,7 @@ def new_block_id() -> str:
 
 @dataclass
 class BlockRecord:
-    """One row out of ``notebook_blocks``. Mutable on purpose — the
+    """One row out of ``per_doc_notebook_blocks``. Mutable on purpose — the
     auto-populator builds these incrementally before writing."""
 
     block_id: str
@@ -321,7 +321,7 @@ class JSONPersistence:
                 return None
             blocks_rows = con.execute(
                 f"SELECT {', '.join(_BLOCK_COLUMNS)} "
-                f"FROM notebook_blocks "
+                f"FROM per_doc_notebook_blocks "
                 f"WHERE notebook_id = ? "
                 f"ORDER BY position, created_at",
                 [row[0]],
@@ -345,7 +345,7 @@ class JSONPersistence:
                 return None
             blocks_rows = con.execute(
                 f"SELECT {', '.join(_BLOCK_COLUMNS)} "
-                f"FROM notebook_blocks "
+                f"FROM per_doc_notebook_blocks "
                 f"WHERE notebook_id = ? "
                 f"ORDER BY position, created_at",
                 [row[0]],
@@ -398,14 +398,14 @@ class JSONPersistence:
             if kept_ids:
                 placeholders = ",".join("?" * len(kept_ids))
                 con.execute(
-                    f"DELETE FROM notebook_blocks "
+                    f"DELETE FROM per_doc_notebook_blocks "
                     f"WHERE notebook_id = ? "
                     f"  AND block_id NOT IN ({placeholders})",
                     [record.notebook_id, *kept_ids],
                 )
             else:
                 con.execute(
-                    "DELETE FROM notebook_blocks WHERE notebook_id = ?",
+                    "DELETE FROM per_doc_notebook_blocks WHERE notebook_id = ?",
                     [record.notebook_id],
                 )
 
@@ -479,14 +479,14 @@ class JSONPersistence:
         try:
             if demoted:
                 con.execute(
-                    "UPDATE notebook_blocks "
+                    "UPDATE per_doc_notebook_blocks "
                     "SET demoted_at = CURRENT_TIMESTAMP "
                     "WHERE block_id = ? AND demoted_at IS NULL",
                     [block_id],
                 )
             else:
                 con.execute(
-                    "UPDATE notebook_blocks "
+                    "UPDATE per_doc_notebook_blocks "
                     "SET demoted_at = NULL "
                     "WHERE block_id = ?",
                     [block_id],
@@ -502,7 +502,7 @@ class JSONPersistence:
         try:
             row = con.execute(
                 f"SELECT {', '.join(_BLOCK_COLUMNS)} "
-                f"FROM notebook_blocks WHERE block_id = ?",
+                f"FROM per_doc_notebook_blocks WHERE block_id = ?",
                 [block_id],
             ).fetchone()
         finally:
@@ -518,14 +518,14 @@ class JSONPersistence:
     ) -> None:
         """Insert-or-update one block. Caller holds the write lock."""
         existing = con.execute(
-            "SELECT block_id FROM notebook_blocks WHERE block_id = ?",
+            "SELECT block_id FROM per_doc_notebook_blocks WHERE block_id = ?",
             [block.block_id],
         ).fetchone()
         source_ids_json = json.dumps(list(block.source_event_ids))
         content_json = json.dumps(block.content_json or {})
         if existing is None:
             con.execute(
-                "INSERT INTO notebook_blocks "
+                "INSERT INTO per_doc_notebook_blocks "
                 "(block_id, notebook_id, block_type, source_event_ids, "
                 " document_id, content_json, position, demoted_at, "
                 " edited_at) "
@@ -544,7 +544,7 @@ class JSONPersistence:
             )
         else:
             con.execute(
-                "UPDATE notebook_blocks "
+                "UPDATE per_doc_notebook_blocks "
                 "SET block_type = ?, "
                 "    source_event_ids = ?, "
                 "    document_id = ?, "

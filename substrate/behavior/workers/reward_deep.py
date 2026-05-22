@@ -5,7 +5,7 @@ Joins the four-table chain documented in REWARD_PROXY.md §Worker 3:
 
     behavior_events
         ↓ source_event_ids on
-    notebook_blocks
+    per_doc_notebook_blocks
         ↓ notebook_id on
     deliverable_citations
         ↓ deliverable_id on
@@ -48,7 +48,7 @@ def _connect_for_read(db_path: str) -> "duckdb.DuckDBPyConnection":
 # Schema requirements before the worker can run.
 REQUIRED_TABLES: tuple[str, ...] = (
     "notebook_documents",
-    "notebook_blocks",
+    "per_doc_notebook_blocks",
     "deliverables",
     "deliverable_citations",
 )
@@ -90,7 +90,7 @@ WITH source_event_rows AS (
     SELECT
         nb.notebook_id,
         TRIM(BOTH chr(34) FROM CAST(j.value AS TEXT)) AS source_event_id
-    FROM notebook_blocks nb,
+    FROM per_doc_notebook_blocks nb,
          json_each(nb.source_event_ids) AS j
 ),
 event_to_published AS (

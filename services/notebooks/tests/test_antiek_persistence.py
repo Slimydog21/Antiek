@@ -86,7 +86,7 @@ def test_antiek_persistence_writes_archive_on_save(combined_db):
 
 
 def test_antiek_persistence_substrate_rows_still_authoritative(combined_db):
-    """The substrate rows (notebook_documents + notebook_blocks) remain
+    """The substrate rows (notebook_documents + per_doc_notebook_blocks) remain
     the operational source of truth — auto-populator + reward hook
     read from them. The archive is the portable artifact alongside."""
     with tempfile.TemporaryDirectory() as archive_root:

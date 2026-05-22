@@ -4678,12 +4678,14 @@ def create_app(
     from .share_bundle import (
         register_share_bundle_routes as _register_share_bundle,
     )
+    from .users import register_user_routes as _register_users
     _register_library(app)
     _register_voice(app)
     _register_cross_doc_links(app, embedder=wrestling_embedder)
     _register_notebooks(app)
     _register_themes(app)
     _register_share_bundle(app)
+    _register_users(app)
 
     return app
 

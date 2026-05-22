@@ -90,6 +90,45 @@ def register_voice_routes(
     async def post_voice_anchor(
         request: Request, body: AnchorRequest,
     ) -> AnchorResponse:
+        # Compute voice_note_id deterministically BEFORE calling save
+        # so we can store the audio bytes at the canonical path AND
+        # pass that path back into the documents-row insert, in one
+        # commit. ``_stable_voice_note_id`` is the same algorithm
+        # save_anchored_voice_note uses; the deterministic match means
+        # the audio file and the document row reference each other.
+        from datetime import datetime as _dt, timezone as _tz
+        recorded_at = _dt.now(_tz.utc)
+        voice_note_id = anchor_service._stable_voice_note_id(
+            operator_id=body.user_id, recorded_at=recorded_at,
+        )
+
+        # Store audio FIRST so the path is known by the time the
+        # documents row gets the metadata stamp. Failure here is
+        # non-fatal — the document + anchor still save with
+        # audio_blob_path=None.
+        audio_blob_path: Optional[str] = None
+        audio_stored = False
+        audio_note: Optional[str] = None
+        if body.audio_b64:
+            try:
+                audio_blob_path = store_audio_b64(
+                    voice_note_id=voice_note_id,
+                    audio_b64=body.audio_b64,
+                    ext="opus",
+                )
+                audio_stored = True
+                audio_note = audio_blob_path
+                _log.info(
+                    "voice/anchor: stored audio for %s at %s",
+                    voice_note_id, audio_blob_path,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.warning(
+                    "voice/anchor: audio store failed (%s); transcript "
+                    "saved without audio.", exc,
+                )
+                audio_note = f"audio_store_failed: {exc}"
+
         try:
             result = anchor_service.save_anchored_voice_note(
                 transcript=body.transcript,
@@ -100,10 +139,13 @@ def register_voice_routes(
                     "x1": body.bbox.x1, "y1": body.bbox.y1,
                 },
                 operator_id=body.user_id,
+                recorded_at=recorded_at,
                 duration_seconds=body.duration_seconds,
                 language=body.language,
                 title=body.title,
                 db_path=db_path,
+                voice_note_id=voice_note_id,
+                audio_blob_path=audio_blob_path,
             )
         except anchor_service.SaveAnchoredVoiceNoteError as exc:
             raise HTTPException(
@@ -117,30 +159,6 @@ def register_voice_routes(
             ) from exc
 
         chunk_id = getattr(result.anchor, "chunk_id", None)
-        audio_stored = False
-        audio_note: Optional[str] = None
-        if body.audio_b64:
-            # Audio-blob store landed in the 2026-05-22 follow-up.
-            # Persist under ~/.antiek/audio/<voice_note_id>.opus and
-            # surface success in the response.
-            try:
-                stored_path = store_audio_b64(
-                    voice_note_id=result.voice_note_id,
-                    audio_b64=body.audio_b64,
-                    ext="opus",
-                )
-                audio_stored = True
-                audio_note = stored_path
-                _log.info(
-                    "voice/anchor: stored %d bytes of audio at %s",
-                    len(body.audio_b64), stored_path,
-                )
-            except Exception as exc:  # noqa: BLE001
-                _log.warning(
-                    "voice/anchor: audio store failed (%s); transcript "
-                    "saved without audio.", exc,
-                )
-                audio_note = f"audio_store_failed: {exc}"
         return AnchorResponse(
             voice_note_id=result.voice_note_id,
             anchor_id=result.anchor.anchor_id,

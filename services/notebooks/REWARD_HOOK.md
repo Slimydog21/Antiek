@@ -22,12 +22,12 @@ non-empty.
 
 Three things make the SPR-01 stub real:
 
-1. **`notebook_documents` + `notebook_blocks` populated.** The
+1. **`notebook_documents` + `per_doc_notebook_blocks` populated.** The
    per-document notebook surface auto-creates rows from Tier-1
-   events. `notebook_blocks.document_id` is denormalised so the
+   events. `per_doc_notebook_blocks.document_id` is denormalised so the
    reward join is single-table after one filter.
 
-2. **`notebook_blocks.source_event_ids`** carries the originating
+2. **`per_doc_notebook_blocks.source_event_ids`** carries the originating
    event id(s) for every block. Stored JSON-encoded TEXT[] for
    cross-engine portability (same convention as
    `substrate/behavior/schema.py`'s state/action columns).
@@ -53,7 +53,7 @@ WITH per_doc_refs AS (
     COUNT(*) AS ref_count,
     MIN(nb.created_at) AS first_ref_at
   FROM notebook_documents nd
-  JOIN notebook_blocks nb USING (notebook_id)
+  JOIN per_doc_notebook_blocks nb USING (notebook_id)
   WHERE nb.document_id IS NOT NULL
   GROUP BY 1, 2
 )
@@ -78,7 +78,7 @@ must be added; for SPR-08 the filter is redundant.
 
 ### Demoted blocks count
 
-Demoted blocks still appear in `notebook_blocks` (demote is a soft-
+Demoted blocks still appear in `per_doc_notebook_blocks` (demote is a soft-
 delete via `demoted_at`). They participate in the reward join — the
 demote itself is signal, not deletion. A future tuning may exclude
 demoted blocks from the count or shape them negatively; today they

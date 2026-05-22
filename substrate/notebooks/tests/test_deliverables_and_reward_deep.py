@@ -20,29 +20,16 @@ if _REPO_ROOT not in sys.path:
 def db_path(tmp_path, monkeypatch):
     """Set up the DB required by the reward_deep join.
 
-    NOTE on a real latent SPR-08 schema collision: substrate/graph/
-    schema.py creates a ``notebook_blocks`` table (Sprint-3 deliverable-
-    creation shape: block_index, ref_id, content_json). SPR-08's
-    migrations also create ``notebook_blocks`` with a different shape
-    (source_event_ids, position, demoted_at). In production both
-    schemas race; the graph schema wins via ``CREATE TABLE IF NOT
-    EXISTS`` and SPR-08's INSERTs would fail against the wrong columns.
-
-    This fixture works around the collision by DROPPING the graph
-    schema's notebook_blocks after ensure_initialized, then applying
-    SPR-08's schema. Production will need a SPR-08 follow-up that
-    renames the table (e.g. to ``per_doc_notebook_blocks``) — that
-    rename touches all of SPR-08 + SPR-11 source-event_ids consumers
-    and is out of scope here. Flagged in the gap audit.
+    There was a SPR-08 schema collision: substrate/graph/schema.py and
+    services/notebooks/migrations/0001 both declared ``notebook_blocks``
+    with INCOMPATIBLE shapes. The 2026-05-22 rename moved SPR-08's
+    table to ``per_doc_notebook_blocks``; the collision is gone, this
+    fixture no longer needs the DROP hack.
     """
     p = str(tmp_path / "graph.duckdb")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", p)
     from substrate.graph import ensure_initialized
     ensure_initialized(p)
-    # Drop the conflicting graph-schema notebook_blocks so SPR-08's
-    # version can install with its source_event_ids + position columns.
-    with duckdb.connect(p) as con:
-        con.execute("DROP TABLE IF EXISTS notebook_blocks")
     from substrate.behavior.schema import init_behavior_schema_at_path
     init_behavior_schema_at_path(p)
     from substrate.notebooks.deliverables import init_deliverables_schema_at_path
@@ -96,7 +83,7 @@ def _insert_notebook_with_block(
             [notebook_id, user_id, document_id],
         )
         con.execute(
-            "INSERT INTO notebook_blocks "
+            "INSERT INTO per_doc_notebook_blocks "
             "(block_id, notebook_id, block_type, source_event_ids, "
             " content_json, position, document_id) "
             "VALUES (?, ?, 'highlight_card', ?, '{}', 1.0, ?)",

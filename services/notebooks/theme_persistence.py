@@ -119,7 +119,7 @@ class ThemeBlockRecord:
 
     # Renderer-only fields, populated by ``load_theme`` from JOINs.
     # Not persisted. ``is_stale`` is True when source_block_id is set
-    # but the referenced notebook_blocks row no longer exists (the
+    # but the referenced per_doc_notebook_blocks row no longer exists (the
     # source document or block was deleted).
     is_stale: bool = False
     source_document_title: Optional[str] = None
@@ -415,7 +415,7 @@ class ThemePersistence:
         try:
             src = con.execute(
                 "SELECT block_type, content_json, notebook_id, document_id "
-                "FROM notebook_blocks WHERE block_id = ?",
+                "FROM per_doc_notebook_blocks WHERE block_id = ?",
                 [source_block_id],
             ).fetchone()
             if src is None:
@@ -664,7 +664,7 @@ class ThemePersistence:
     ) -> list[ThemeBlockRecord]:
         """Load theme_blocks in sort_order AND detect staleness.
 
-        Stale detection uses a LEFT JOIN against ``notebook_blocks``:
+        Stale detection uses a LEFT JOIN against ``per_doc_notebook_blocks``:
         if ``source_block_id`` is set but the LEFT-joined row is NULL,
         the source has been deleted and we flip ``is_stale = True``.
         The renderer uses the cached ``content_json`` to show a
@@ -684,7 +684,7 @@ class ThemePersistence:
             f"            THEN 1 ELSE 0 END AS is_stale, "
             f"       nd.title AS source_notebook_title "
             f"FROM theme_blocks tb "
-            f"LEFT JOIN notebook_blocks nb "
+            f"LEFT JOIN per_doc_notebook_blocks nb "
             f"  ON nb.block_id = tb.source_block_id "
             f"LEFT JOIN notebook_documents nd "
             f"  ON nd.notebook_id = tb.source_notebook_id "

@@ -65,6 +65,16 @@ class ExtractedDocument:
     paywalled: bool = False
     ocr_required: bool = False
     metadata: dict = field(default_factory=dict)
+    # 2026-05-22: PDFs carry through the full PdfExtraction so the
+    # page-tagging chunker (processing/chunking/pdf_chunker.py) can
+    # stamp page+bbox onto every chunk. None for non-PDF formats.
+    pdf_extraction: Optional[object] = None
+    # 2026-05-22: raw source bytes if the fetcher had them. The
+    # pipeline routes these through services/library/raw_bytes_store
+    # and stamps documents.raw_bytes_path. None when the source was
+    # extracted from an already-text format (e.g., pasted markdown).
+    raw_bytes: Optional[bytes] = None
+    raw_bytes_ext: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +167,8 @@ def _extract_html(
             "content_type_header": fetched.content_type,
             "status_code": fetched.status_code,
         },
+        raw_bytes=fetched.body,
+        raw_bytes_ext="html",
     )
 
 
@@ -185,6 +197,14 @@ def _extract_pdf(
             "page_count": len(extraction.pages),
             "word_count": extraction.word_count,
         },
+        # PDF extraction is preserved so the chunker can stamp
+        # page+bbox geometry per-chunk (added 2026-05-22).
+        pdf_extraction=extraction,
+        # The raw PDF bytes also ride through so the pipeline can
+        # store them in the content-addressed raw-bytes store and
+        # populate documents.raw_bytes_path.
+        raw_bytes=fetched.body,
+        raw_bytes_ext="pdf",
     )
 
 
@@ -224,6 +244,8 @@ def _extract_epub(
             "chapters": extraction.chapters,
             "language": extraction.language,
         },
+        raw_bytes=fetched.body,
+        raw_bytes_ext="epub",
     )
 
 
@@ -291,7 +313,19 @@ def _write_to_substrate(
         policy_id=f"services/ingestion/{doc.content_type}",
     )
 
-    chunks: list[Chunk] = chunk_markdown(text)
+    # PDF content gets routed through the page-tagging chunker decorator
+    # so chunks land with chunks.page + chunks.bbox populated (SPR-02
+    # voice anchor + SPR-07 gutter cite-jump both depend on this). Non-PDF
+    # content still uses chunk_markdown — those formats don't have a
+    # native page concept, so page=None / bbox=None is honest.
+    page_tagged: list = []
+    chunks: list[Chunk] = []
+    if doc.content_type == ct.PDF and doc.pdf_extraction is not None:
+        from processing.chunking.pdf_chunker import chunk_pdf_extraction
+        page_tagged = chunk_pdf_extraction(doc.pdf_extraction)
+        chunks = [pt.chunk for pt in page_tagged]
+    else:
+        chunks = chunk_markdown(text)
     chunks_written = 0
     emb = embedder if embedder is not None else default_embedding_provider()
 
@@ -305,6 +339,25 @@ def _write_to_substrate(
         "imported_at": datetime.now(timezone.utc).isoformat(),
         "user_id": user_id,
     })
+
+    # Stash raw bytes in the content-addressed store and capture the
+    # path for insert_document. Skip when no bytes were captured (e.g.,
+    # pasted-text formats) or when the format produced empty body.
+    raw_bytes_path: Optional[str] = None
+    if doc.raw_bytes:
+        from services.library.raw_bytes_store import store_bytes
+        try:
+            raw_bytes_path, _sha = store_bytes(
+                doc.raw_bytes,
+                ext=doc.raw_bytes_ext or "bin",
+            )
+            meta["raw_bytes_sha256"] = _sha
+        except Exception as exc:  # noqa: BLE001
+            # Bytes store failure (disk full, permission, etc.) must
+            # not block the ingest — the rest of the substrate write
+            # still succeeds with raw_bytes_path = None, and a future
+            # backfill can re-store.
+            meta["raw_bytes_store_error"] = str(exc)
 
     with connect_write(resolved_db_path, purpose=f"ingestion/{doc.content_type}") as con:
         insert_document(
@@ -320,8 +373,17 @@ def _write_to_substrate(
             raw_text=text,
             metadata=meta,
             on_conflict="ignore",
+            raw_bytes_path=raw_bytes_path,
         )
         for i, chunk in enumerate(chunks):
+            # When we routed through chunk_pdf_extraction above, the
+            # per-chunk geometry rides alongside in ``page_tagged``.
+            page: Optional[int] = None
+            bbox: Optional[dict] = None
+            if page_tagged:
+                pt = page_tagged[i]
+                page = pt.page
+                bbox = pt.bbox
             chunk_id = insert_chunk(
                 con,
                 document_id=document_id,
@@ -330,6 +392,8 @@ def _write_to_substrate(
                 section_path=chunk.section or None,
                 embedding=emb.encode(chunk.text),
                 token_count=chunk.token_count,
+                page=page,
+                bbox=bbox,
             )
             chunks_written += 1
             label = chunk.text.strip().splitlines()[0] if chunk.text.strip() else ""

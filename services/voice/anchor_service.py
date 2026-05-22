@@ -126,6 +126,7 @@ def _insert_voice_note_document(
     title: Optional[str],
     language: Optional[str],
     source_tier: int,
+    audio_blob_path: Optional[str] = None,
 ) -> None:
     """Write the voice_note row into ``documents``.
 
@@ -164,6 +165,22 @@ def _insert_voice_note_document(
     body_lines.append("")
     body_lines.append(transcript.strip())
     raw_text = "\n".join(body_lines)
+    md: dict = {
+        "operator_id": operator_id,
+        "duration_seconds": duration_seconds,
+        "language": language,
+        "transcription_source": "whisper",
+        "recorded_at": recorded_at.isoformat(),
+    }
+    if audio_blob_path:
+        # SPR-10 sidecar gather reads ``content_json.audio_blob_path``
+        # to find audio bytes. The metadata blob is canonical state
+        # here; the voice REST route computes the path before calling
+        # this function (because voice_note_id is deterministic from
+        # operator_id + recorded_at), stores the bytes under that path,
+        # then passes the path back in so the document row remembers
+        # it.
+        md["audio_blob_path"] = audio_blob_path
     insert_document(
         con,
         document_id=voice_note_id,
@@ -175,13 +192,7 @@ def _insert_voice_note_document(
         published_at=recorded_at,
         investigation_id=None,
         raw_text=raw_text,
-        metadata={
-            "operator_id": operator_id,
-            "duration_seconds": duration_seconds,
-            "language": language,
-            "transcription_source": "whisper",
-            "recorded_at": recorded_at.isoformat(),
-        },
+        metadata=md,
         on_conflict="ignore",
     )
 
@@ -197,6 +208,7 @@ def save_anchored_voice_note(
     document_id: str,
     page: int,
     bbox: BBox,
+    audio_blob_path: Optional[str] = None,
     operator_id: str = "__operator__",
     recorded_at: Optional[datetime] = None,
     duration_seconds: float = 0.0,
@@ -264,6 +276,7 @@ def save_anchored_voice_note(
                     title=title,
                     language=language,
                     source_tier=source_tier,
+                    audio_blob_path=audio_blob_path,
                 )
                 anchor = create_anchor(
                     con,

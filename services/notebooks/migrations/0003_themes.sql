@@ -5,7 +5,7 @@
 -- Tier-3 of the locked three-tier notes model (master spec
 -- §13.6, locked 2026-05-21):
 --   Tier 1 = behavior_events (substrate)
---   Tier 2 = notebook_documents + notebook_blocks (SPR-08, 0001/0002)
+--   Tier 2 = notebook_documents + per_doc_notebook_blocks (SPR-08, 0001/0002)
 --   Tier 3 = themes + theme_blocks (this migration)
 --
 -- A theme is a hand-curated rollup across multiple per-doc notebooks.
@@ -59,7 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_themes_user
 -- operator-authored prose
 -- ----------------------------------------------------------------
 --
--- source_block_id is a soft FK into notebook_blocks. We deliberately
+-- source_block_id is a soft FK into per_doc_notebook_blocks. We deliberately
 -- do NOT declare a foreign-key constraint here:
 --
 --   1. The per-doc notebook's auto-populator may delete + re-insert
@@ -81,11 +81,11 @@ CREATE TABLE IF NOT EXISTS theme_blocks (
 
     -- Source per-doc notebook block. NULL for prose blocks authored
     -- inside the theme itself (Tier-3 framing). Non-NULL otherwise.
-    source_block_id     TEXT,                   -- soft FK -> notebook_blocks
+    source_block_id     TEXT,                   -- soft FK -> per_doc_notebook_blocks
     source_notebook_id  TEXT,                   -- soft FK -> notebook_documents
     source_document_id  TEXT,                   -- denormalised for back-link rendering
 
-    -- Block type at promote time. Mirrors notebook_blocks.block_type
+    -- Block type at promote time. Mirrors per_doc_notebook_blocks.block_type
     -- vocabulary (the 6 closed-set Tier-2 types) plus 'prose' for
     -- operator-authored theme-internal framing.
     block_type          TEXT NOT NULL,
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS theme_blocks (
     -- Fractional ordering. Drag-to-reorder rewrites this; nothing
     -- else mutates it. Two blocks may briefly share a position
     -- during a pending write — the renderer treats ties as
-    -- insertion-order stable (same convention as notebook_blocks).
+    -- insertion-order stable (same convention as per_doc_notebook_blocks).
     sort_order          DOUBLE NOT NULL DEFAULT 0.0,
 
     -- When the operator dismisses a stale placeholder, we soft-

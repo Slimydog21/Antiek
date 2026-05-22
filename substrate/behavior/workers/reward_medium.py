@@ -5,7 +5,7 @@ notebook references — see ``substrate/behavior/REWARD_PROXY.md``
 §"Worker 2".
 
 Pre-SPR-08 this module was a documented stub; SPR-08's per-document
-notebook surface populates ``notebook_documents`` + ``notebook_blocks``,
+notebook surface populates ``notebook_documents`` + ``per_doc_notebook_blocks``,
 which makes the canonical join real. The body below delegates to
 ``services.notebooks.reward_hook.run_medium_backfill`` — the
 service-layer module that owns the join semantics. This keeps the
@@ -35,7 +35,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.behavior.schema import default_db_path  # type: ignore[no-redef]
 
 
-REQUIRED_TABLES: tuple[str, ...] = ("notebook_documents", "notebook_blocks")
+REQUIRED_TABLES: tuple[str, ...] = ("notebook_documents", "per_doc_notebook_blocks")
 """Tables this worker joins against. If any are missing, the worker
 returns ``status='deferred'`` rather than crashing — keeps cron
 logs readable while SPR-08 is still rolling out."""

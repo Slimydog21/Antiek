@@ -2,14 +2,14 @@
 -- 0002_notebook_blocks.sql
 -- Wrestle Evolution SPR-08 · M6 · Block-event provenance index
 --
--- 0001 created notebook_blocks with the source_event_ids JSON column.
+-- 0001 created per_doc_notebook_blocks with the source_event_ids JSON column.
 -- This migration adds:
 --
 --   1. notebook_block_events — a normalised many-to-many table so
 --      the reward_medium join in substrate/behavior/REWARD_PROXY.md
 --      can avoid parsing the source_event_ids JSON array on every
 --      pass.  The auto-populator writes to both this table AND
---      keeps source_event_ids on notebook_blocks (denormalisation
+--      keeps source_event_ids on per_doc_notebook_blocks (denormalisation
 --      for renderer convenience — the API responses ship the array
 --      in-line).
 --
