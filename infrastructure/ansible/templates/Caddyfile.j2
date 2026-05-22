@@ -23,24 +23,27 @@
 # cloud) so the ACME challenge hits Caddy directly.
 
 {{ api_domain }} {
-    # ── 1. API prefixes (reverse-proxied to uvicorn) ──────────────────
-    # The list was extracted from every `@app.X("/foo")` decorator in
-    # interfaces/research/api/*.py (40 top-level prefixes as of this
-    # commit). When the substrate gains a new top-level route, add it
-    # here + redeploy.
-    # NOTE: keep the @api_routes path list on ONE LINE — Caddy's
-    # tokenizer for `path` matcher arguments doesn't honor backslash
-    # continuation (the backslash gets treated as a literal token,
-    # breaking the matcher silently — `caddy validate` accepts the
-    # malformed result + every request falls through to uvicorn).
+    # ── Path-based routing via `route` ────────────────────────────────
+    # `route` preserves the order of inner directives; without it,
+    # Caddy reorders by global default (file_server runs LAST,
+    # reverse_proxy runs early). Inside `route`, the first matching
+    # directive wins.
+    #
+    # Strategy:
+    #   1. If the path is a known API prefix → reverse_proxy uvicorn.
+    #   2. Else → serve from /var/www/antiek-app with SPA fallback.
+    #
+    # The API prefix list comes from every `@app.X("/foo")` decorator
+    # in interfaces/research/api/*.py (40 top-level prefixes). Keep
+    # this list ONE-LINE — Caddy's tokenizer for `path` matcher
+    # arguments doesn't honor backslash line continuation.
     @api_routes path /.well-known/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /attribution* /auth/* /backtest* /billing* /blocks/* /campaigns* /chunks* /creator-payouts* /cross-graph/* /deliverables* /documents* /events/* /federation* /health /interview-projects* /interviews* /investigations* /loop-3/* /notebooks* /ops/* /outcomes* /payouts* /publishers* /quality-gate* /sections* /skill-rules* /sources* /stats* /thought-partner /trajectory/* /trust-center* /voice/* /voice-notes* /watch-for-later* /ws/*
 
-    handle @api_routes {
-        # Long-running LLM dispatches can stay open for 600+ seconds.
-        # The 900s window matches the systemd unit's
-        # --timeout-keep-alive. Without this Caddy's default ~30s
-        # timeout would 504 mid-call.
-        reverse_proxy localhost:{{ uvicorn_port }} {
+    route {
+        # 1. API → uvicorn (long-running LLM dispatches can stay open
+        #    for 600+ seconds; 900s timeouts match the systemd unit's
+        #    --timeout-keep-alive)
+        reverse_proxy @api_routes localhost:{{ uvicorn_port }} {
             transport http {
                 read_timeout 900s
                 write_timeout 900s
@@ -50,35 +53,20 @@
             header_up X-Forwarded-For {remote_host}
             header_up X-Forwarded-Proto {scheme}
         }
-    }
 
-    # WebSockets: Caddy auto-detects `Upgrade: websocket` and proxies
-    # them indefinitely. The substrate's /ws/events endpoint needs this
-    # for the live event tail to work. The /ws/* prefix is in
-    # @api_routes above; no further config needed.
-
-    # ── 2. Frontend SPA (default handle) ──────────────────────────────
-    # The redesigned reading app is built with Vite to static HTML+JS
-    # +CSS in apps/reading/dist, then rsynced to {{ frontend_dist_dir }}.
-    #
-    # try_files makes React Router work: /wrestle/<doc> or /inv/<id>
-    # don't exist on disk, but Caddy serves index.html for any miss
-    # and the client routes from there.
-    handle {
+        # 2. Everything else → static SPA (redesigned reading app
+        #    built from apps/reading/dist, rsync'd into
+        #    {{ frontend_dist_dir }}). try_files makes React Router
+        #    work: /wrestle/<doc> or /inv/<id> don't exist on disk;
+        #    Caddy serves index.html and the client routes from
+        #    there.
         root * {{ frontend_dist_dir }}
         try_files {path} /index.html
         file_server
-
-        # Hashed bundle files (`*-AbCd123.js`) are content-addressed —
-        # Vite changes the hash on every change, so cache forever.
-        @hashed_assets path_regexp ^/assets/.+-[A-Za-z0-9_-]{6,}\.(js|css|woff2?|png|svg|jpg|webp)$
-        header @hashed_assets Cache-Control "public, max-age=31536000, immutable"
-
-        # index.html must never cache long — operators see new builds
-        # on every reload.
-        @html path /index.html /
-        header @html Cache-Control "no-store, must-revalidate"
     }
+
+    # WebSockets ride /ws/* through @api_routes; Caddy auto-detects
+    # Upgrade: websocket and proxies indefinitely.
 
     # ── 3. Cross-cutting ──────────────────────────────────────────────
     # Compress text / JSON / static responses on the fly.

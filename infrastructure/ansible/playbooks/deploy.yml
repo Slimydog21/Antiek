@@ -147,10 +147,26 @@
       changed_when: false
       tags: [caddy]
 
-    - name: reload caddy if Caddyfile changed
+    # `caddy reload` (vs systemctl reload) fails LOUDLY on bad
+    # config. systemctl reload sends SIGUSR1 + trusts caddy to apply;
+    # if the hot-reload errors AFTER the signal, systemd reports
+    # success anyway and the old config stays live.
+    - name: caddy reload (synchronous; fails loud on bad config)
+      ansible.builtin.command:
+        cmd: caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+        chdir: /etc/caddy
+      when: caddyfile.changed
+      changed_when: true
+      tags: [caddy]
+
+    # Belt-and-braces: full restart so the route table is rebuilt
+    # from scratch (Caddy hot-reload occasionally leaves stale
+    # routes after big topology changes like adding `route`
+    # blocks). ~1s of downtime, acceptable.
+    - name: caddy restart (force-flush route table)
       ansible.builtin.systemd:
         name: caddy
-        state: reloaded
+        state: restarted
       when: caddyfile.changed
       tags: [caddy]
 
