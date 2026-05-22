@@ -20,6 +20,24 @@ import type { CustomProjectConfig } from "lost-pixel";
 export const config: CustomProjectConfig = {
   storybookShots: {
     storybookUrl: "./storybook-static",
+    /**
+     * S11 acceptance — multi-breakpoint screenshot matrix.
+     *
+     * Spec wording: "Lost-Pixel baselines updated for breakpoint
+     * screenshots (≥ 1280, 1024, 768)."
+     *
+     * lost-pixel takes a `breakpoints: number[]` array under
+     * storybookShots; each entry is a viewport WIDTH in pixels. The
+     * tool re-renders every story at every width + writes baselines
+     * to `.lostpixel/baseline/<story>--<width>.png` (the width is
+     * suffixed automatically). The default 1280 stays as the primary
+     * baseline; 1024 + 768 catch the lg / md tier breakpoints from
+     * `useViewportTier`. We exclude < 768 from the matrix — the sm
+     * tier renders the "open a larger screen" splash, not the
+     * workspace shell, so a screenshot at 600px would only show the
+     * splash.
+     */
+    breakpoints: [1280, 1024, 768],
   },
   imagePathBaseline: ".lostpixel/baseline",
   imagePathCurrent: ".lostpixel/current",
@@ -27,9 +45,11 @@ export const config: CustomProjectConfig = {
   generateOnly: false,
   // S12 ceiling: 0.4% per-shot delta. Tighter than S2's 1% advisory.
   threshold: 0.004,
-  // Skip known-flaky stories. The framer-motion spring on workspace-demo
-  // produces sub-1% inter-run diffs that aren't real regressions.
+  // Skip known-flaky stories at every breakpoint. The framer-motion
+  // spring on workspace-demo produces sub-1% inter-run diffs that
+  // aren't real regressions.
   filterShot: ({ shotName }: { shotName?: string }) => {
-    return shotName !== "workspace-demo--scene";
+    if (!shotName) return true;
+    return !shotName.startsWith("workspace-demo--scene");
   },
 };

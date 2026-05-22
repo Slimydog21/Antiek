@@ -1,0 +1,157 @@
+/*
+ * Werner pose animation principles (brand § 10).
+ *
+ * One keyframe set per pose. Every animation honors
+ * `prefers-reduced-motion: reduce` by collapsing to a static frame —
+ * no animation runs when the operator has asked the OS to reduce
+ * motion. CSS-only so the spec rules are visible in DevTools + the
+ * compiled bundle is byte-for-byte deterministic.
+ *
+ * Pose: Tobogganing
+ *   ~6 fps wobble: rotate -3° / +3° at 200ms; speed lines flicker.
+ *   Use: loading spinner, streaming-investigation banner.
+ *
+ * Pose: Waddle
+ *   3-frame loop (left, both, right), 300ms total + 2° bob.
+ *   Use: route-navigation transitions.
+ *
+ * Pose: Sleeping
+ *   Belly breathes: scaleY 1.0 ↔ 1.04 over 2.4s; zZz drift + fade.
+ *   Use: idle screen.
+ *
+ * Pose: Thinking
+ *   Aurora dots pulse opacity 0.5 ↔ 1.0 right-to-left, 1.2s cycle.
+ *   Use: AISidecar "thinking…" state.
+ *
+ * Pose: Caught a fish
+ *   One-shot: flipper raise + sparkle scale 0 → 1 → 0 over 800ms.
+ *   Use: investigation-complete celebration.
+ */
+
+/* ─── Tobogganing wobble ─────────────────────────────────────────── */
+@keyframes werner-toboggan-wobble {
+  0%   { transform: rotate(-3deg); }
+  16%  { transform: rotate(3deg); }
+  33%  { transform: rotate(-3deg); }
+  50%  { transform: rotate(3deg); }
+  66%  { transform: rotate(-3deg); }
+  83%  { transform: rotate(3deg); }
+  100% { transform: rotate(-3deg); }
+}
+@keyframes werner-toboggan-speedlines {
+  0%, 100% { opacity: 0.35; }
+  20%      { opacity: 0.85; }
+  60%      { opacity: 0.25; }
+}
+.werner-toboggan {
+  animation: werner-toboggan-wobble 1200ms steps(6, end) infinite;
+  transform-origin: 50% 70%;
+}
+.werner-toboggan-speedlines {
+  animation: werner-toboggan-speedlines 600ms ease-in-out infinite;
+}
+
+/* ─── Waddle cycle ───────────────────────────────────────────────── */
+@keyframes werner-waddle-body {
+  0%   { transform: rotate(-2deg) translateY(0); }
+  50%  { transform: rotate(0deg) translateY(-1px); }
+  100% { transform: rotate(2deg) translateY(0); }
+}
+.werner-waddle {
+  animation: werner-waddle-body 300ms linear infinite alternate;
+  transform-origin: 50% 100%;
+}
+@keyframes werner-waddle-foot-l {
+  0%, 33%   { transform: translateY(0); }
+  50%       { transform: translateY(-2px); }
+  100%      { transform: translateY(0); }
+}
+@keyframes werner-waddle-foot-r {
+  0%        { transform: translateY(0); }
+  50%       { transform: translateY(0); }
+  66%       { transform: translateY(-2px); }
+  100%      { transform: translateY(0); }
+}
+.werner-waddle-foot-l { animation: werner-waddle-foot-l 300ms linear infinite; }
+.werner-waddle-foot-r { animation: werner-waddle-foot-r 300ms linear infinite; }
+
+/* ─── Sleeping breathing + zZz drift ──────────────────────────────── */
+@keyframes werner-sleep-breath {
+  0%, 100% { transform: scaleY(1.0); }
+  50%      { transform: scaleY(1.04); }
+}
+@keyframes werner-zzz-drift {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translate(6px, -16px); opacity: 0; }
+}
+.werner-sleep-body {
+  animation: werner-sleep-breath 2400ms ease-in-out infinite;
+  transform-origin: 50% 70%;
+}
+.werner-zzz {
+  animation: werner-zzz-drift 2400ms ease-out infinite;
+}
+.werner-zzz-2 { animation-delay: 800ms; }
+.werner-zzz-3 { animation-delay: 1600ms; }
+
+/* ─── Thinking dots (right-to-left aurora pulse) ──────────────────── */
+@keyframes werner-thinking-dot {
+  0%, 60%, 100% { opacity: 0.45; }
+  20%           { opacity: 1.0; }
+}
+.werner-thinking-dot-1 { animation: werner-thinking-dot 1200ms ease-in-out infinite; }
+.werner-thinking-dot-2 { animation: werner-thinking-dot 1200ms ease-in-out infinite; animation-delay: 200ms; }
+.werner-thinking-dot-3 { animation: werner-thinking-dot 1200ms ease-in-out infinite; animation-delay: 400ms; }
+.werner-thinking-dot-4 { animation: werner-thinking-dot 1200ms ease-in-out infinite; animation-delay: 600ms; }
+
+/* ─── Caught-a-fish (one-shot) ────────────────────────────────────── */
+@keyframes werner-fish-flipper {
+  0%   { transform: rotate(0deg); }
+  40%  { transform: rotate(-22deg); }
+  80%  { transform: rotate(-12deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes werner-fish-sparkle {
+  0%   { transform: scale(0); opacity: 0; }
+  35%  { transform: scale(1); opacity: 1; }
+  75%  { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(0.7); opacity: 0; }
+}
+.werner-fish-flipper {
+  animation: werner-fish-flipper 800ms ease-out forwards;
+  transform-origin: 50% 50%;
+}
+.werner-fish-sparkle {
+  animation: werner-fish-sparkle 800ms ease-out forwards;
+  transform-origin: 50% 50%;
+}
+
+/* ─── Reduced-motion guard ────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .werner-toboggan,
+  .werner-toboggan-speedlines,
+  .werner-waddle,
+  .werner-waddle-foot-l,
+  .werner-waddle-foot-r,
+  .werner-sleep-body,
+  .werner-zzz,
+  .werner-thinking-dot-1,
+  .werner-thinking-dot-2,
+  .werner-thinking-dot-3,
+  .werner-thinking-dot-4,
+  .werner-fish-flipper,
+  .werner-fish-sparkle {
+    animation: none !important;
+  }
+  /* Static fallback frames — slight rotation so the operator can still
+     tell a Werner is animating in spirit, just without motion. */
+  .werner-toboggan { transform: rotate(0deg); }
+  .werner-waddle { transform: rotate(0deg); }
+  .werner-zzz { opacity: 0.7; }
+  .werner-thinking-dot-1,
+  .werner-thinking-dot-2,
+  .werner-thinking-dot-3,
+  .werner-thinking-dot-4 { opacity: 0.8; }
+  .werner-fish-sparkle { opacity: 1; transform: scale(1); }
+}

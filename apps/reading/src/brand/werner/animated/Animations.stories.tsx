@@ -1,0 +1,80 @@
+import type { Meta, StoryObj } from "@storybook/react";
+
+import {
+  WernerCaughtAFish,
+  WernerSleeping,
+  WernerThinking,
+  WernerTobogganSpinner,
+  WernerWaddle,
+} from ".";
+
+const meta = {
+  title: "Brand / Werner / Animations",
+  parameters: { layout: "fullscreen" },
+  tags: ["autodocs"],
+} satisfies Meta;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+const Cell = ({
+  label,
+  pose,
+  hint,
+}: {
+  label: string;
+  pose: React.ReactNode;
+  hint: string;
+}) => (
+  <div className="flex flex-col items-center justify-end gap-2 bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog p-6 min-h-[180px]">
+    <div className="flex-1 flex items-center justify-center">{pose}</div>
+    <div className="text-xs font-mono uppercase tracking-wider text-ink-soft dark:text-starlight">
+      {label}
+    </div>
+    <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight text-center">
+      {hint}
+    </div>
+  </div>
+);
+
+export const AllPoses: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — animated poses
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        Brand spec § 10. Every animation honours
+        <code className="font-mono">prefers-reduced-motion: reduce</code> via
+        the CSS guard.
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <Cell
+          label="Tobogganing"
+          hint="streaming-investigation banner · loading spinner"
+          pose={<WernerTobogganSpinner size={64} />}
+        />
+        <Cell
+          label="Thinking"
+          hint="AISidecar 'thinking…' state"
+          pose={<WernerThinking size={56} />}
+        />
+        <Cell
+          label="Caught a fish"
+          hint="investigation-complete toast · one-shot"
+          pose={<WernerCaughtAFish size={72} />}
+        />
+        <Cell
+          label="Sleeping"
+          hint="idle screen · empty-state"
+          pose={<WernerSleeping size={120} />}
+        />
+        <Cell
+          label="Waddle"
+          hint="route-navigation transition"
+          pose={<WernerWaddle size={48} />}
+        />
+      </div>
+    </div>
+  ),
+};

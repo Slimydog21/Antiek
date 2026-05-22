@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../lib/api";
+import { WernerThinking } from "../brand/werner/animated";
+import {
+  dispatchAiAction,
+  parseAssistantReply,
+  workspaceContextPrompt,
+} from "./ai/aiActions";
+import type { DispatchedAction } from "./ai/aiActions";
 
 /**
  * Ubiquitous AI Sidecar (PostHog Wedge 4, master-spec §5.6 + §4.6).
@@ -55,6 +62,18 @@ export default function AISidecar() {
   const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
   const [pending, setPending] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /**
+   * Actions the AI has dispatched against this workspace. Each entry
+   * is a side-effecting record with an `undo` handle; the operator
+   * sees them as clickable pills + can reverse any action whose
+   * reversal makes sense (close-what-was-opened, restore-mode, etc).
+   *
+   * The log is per-mount — closing + reopening the sidecar resets it.
+   * Persisting the log would tempt undo on actions whose state has
+   * already drifted; we keep it as a short transparency surface.
+   */
+  const [aiLog, setAiLog] = useState<DispatchedAction[]>([]);
 
   const period = useMemo_period();
 
@@ -132,17 +151,22 @@ export default function AISidecar() {
     setPending(true);
     setReply(null);
     try {
+      // S8 WP-8.4 — ship workspace context as part of the request so
+      // the assistant can reference what's currently visible to the
+      // operator. The substrate's /thought-partner endpoint passes
+      // `system_context` through to the underlying model as a
+      // pre-prompt (substrate-side concern; we add to the request
+      // optimistically — older deployments ignore the field).
       const resp = await apiFetch("/thought-partner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investigation_id: "__sidecar__",
           prompt: draft,
+          system_context: workspaceContextPrompt(),
         }),
       });
       if (!resp.ok) {
-        // Endpoint may not exist yet in older deployments; surface the
-        // status code instead of crashing.
         setReply({
           shape: "CHALLENGE",
           text: `Thought-partner unavailable (HTTP ${resp.status}).`,
@@ -150,10 +174,24 @@ export default function AISidecar() {
         return;
       }
       const data = await resp.json();
+      const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
+      // S8 WP-8.4 acceptance: "When the AI asks 'open this PDF', it
+      // dispatches a workspace open() action." Parse the structured
+      // @@actions block out of the reply, dispatch each, and surface
+      // the executed actions as a transparency log below the prose.
+      const { prose, actions, parseErrors } = parseAssistantReply(rawText);
       setReply({
         shape: data.shape ?? "SYNTHESIS",
-        text: data.text ?? data.body ?? JSON.stringify(data),
+        text: prose,
       });
+      if (actions.length > 0) {
+        const dispatched = actions.map((a) => dispatchAiAction(a));
+        setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
+      }
+      if (parseErrors.length > 0 && import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn("[ai] action parse errors:", parseErrors);
+      }
     } catch (e: unknown) {
       setReply({
         shape: "CHALLENGE",
@@ -227,9 +265,16 @@ export default function AISidecar() {
               type="button"
               onClick={sendThoughtPartner}
               disabled={pending || !draft.trim()}
-              className="w-full px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
+              className="w-full px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {pending ? "Thinking…" : "Send"}
+              {pending ? (
+                <>
+                  <WernerThinking size={20} label="" />
+                  <span>Thinking…</span>
+                </>
+              ) : (
+                "Send"
+              )}
             </button>
             {reply && (
               <div className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1 bg-ice-1 dark:bg-charcoal-2">
@@ -239,6 +284,44 @@ export default function AISidecar() {
                 <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap">
                   {reply.text}
                 </p>
+              </div>
+            )}
+
+            {/* S8 WP-8.4 — AI action transparency log. Every workspace
+                action the assistant dispatched in this session shows up
+                here as a pill the operator can read + undo. Empty
+                until the assistant actually emits an @@actions block. */}
+            {aiLog.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                  AI did
+                </p>
+                <ul className="space-y-1">
+                  {aiLog.map((rec, idx) => (
+                    <li
+                      key={`${rec.at}-${idx}`}
+                      className="flex items-center gap-2 border border-rule dark:border-charcoal-1 rounded px-2 py-1 bg-ice-0 dark:bg-charcoal-2"
+                    >
+                      <span className="flex-1 text-[11px] text-ink dark:text-bright truncate">
+                        {rec.label}
+                      </span>
+                      {rec.undo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            rec.undo?.();
+                            setAiLog((prev) =>
+                              prev.filter((r) => r !== rec),
+                            );
+                          }}
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15"
+                        >
+                          undo
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </section>
