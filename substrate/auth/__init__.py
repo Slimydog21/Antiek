@@ -11,6 +11,7 @@ Operator identity resolution itself lives in
 """
 
 from substrate.auth.email_provider import (
+    AgentMailEmailProvider,
     EmailDeliveryFailure,
     EmailProvider,
     EmailRecord,
@@ -31,6 +32,7 @@ from substrate.auth.magic_link import (
 )
 
 __all__ = [
+    "AgentMailEmailProvider",
     "EmailDeliveryFailure",
     "EmailProvider",
     "EmailRecord",
