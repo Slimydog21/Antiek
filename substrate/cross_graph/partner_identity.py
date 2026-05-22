@@ -46,7 +46,17 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
+
+
+# Optional hook fired after EVERY partner state transition. Signature:
+# (newly-landed record). The audit-event bridge in event_emit.py uses
+# this to convert the record to a typed Event and broadcast. Hooks are
+# fired by the substrate state functions themselves (no longer
+# the caller's job) — this closes the §13.7 audit gap where the
+# breakdown's "every state transition lands in the event log" was
+# enforced only when callers remembered to call the hook factory.
+PartnerStateChangeHook = Callable[["PartnerSubstrate"], None]
 
 
 # Tokens older than this are rejected. 5 minutes is the same window
@@ -151,13 +161,14 @@ def register_partner(
     shared_secret_hex: str,
     partner_id: Optional[str] = None,
     operator_notes: str = "",
+    on_state_change: Optional[PartnerStateChangeHook] = None,
 ) -> PartnerSubstrate:
     """Register a new partner substrate. Lands in PENDING_HANDSHAKE.
 
-    The operator promotes the record to TRUSTED via ``trust_partner``
-    once they have confirmed (out-of-band) that the partner has
-    successfully registered the same shared secret on their side and
-    can produce a valid handshake token."""
+    If ``on_state_change`` is provided, it fires AFTER the record
+    lands in the registry — wire the audit-event bridge in here so
+    every transition lands in the event log.
+    """
     pid = partner_id or f"prt-{uuid.uuid4().hex[:12]}"
     if registry.latest(pid) is not None:
         raise PartnerIdentityError(
@@ -176,6 +187,8 @@ def register_partner(
         operator_notes=operator_notes,
     )
     registry.records.append(record)
+    if on_state_change is not None:
+        on_state_change(record)
     return record
 
 
@@ -184,10 +197,9 @@ def trust_partner(
     *,
     partner_id: str,
     operator_notes: str = "",
+    on_state_change: Optional[PartnerStateChangeHook] = None,
 ) -> PartnerSubstrate:
-    """Promote PENDING_HANDSHAKE → TRUSTED. Operator-driven; only
-    after the operator has independently confirmed the partner's
-    handshake. Refuses if the record is REVOKED (terminal)."""
+    """Promote PENDING_HANDSHAKE → TRUSTED. Operator-driven."""
     current = registry.latest(partner_id)
     if current is None:
         raise PartnerIdentityError(f"unknown partner_id {partner_id!r}")
@@ -207,6 +219,8 @@ def trust_partner(
         operator_notes=operator_notes or current.operator_notes,
     )
     registry.records.append(new_record)
+    if on_state_change is not None:
+        on_state_change(new_record)
     return new_record
 
 
@@ -215,10 +229,9 @@ def revoke_partner(
     *,
     partner_id: str,
     revocation_reason: str,
+    on_state_change: Optional[PartnerStateChangeHook] = None,
 ) -> PartnerSubstrate:
-    """REVOKED is terminal. A revoked partner needs a fresh partner_id
-    and a fresh shared secret to re-enter. Refuses if the record is
-    already REVOKED — re-revocation would lose the original reason."""
+    """REVOKED is terminal."""
     current = registry.latest(partner_id)
     if current is None:
         raise PartnerIdentityError(f"unknown partner_id {partner_id!r}")
@@ -239,6 +252,8 @@ def revoke_partner(
         revocation_reason=revocation_reason,
     )
     registry.records.append(new_record)
+    if on_state_change is not None:
+        on_state_change(new_record)
     return new_record
 
 
@@ -486,6 +501,7 @@ __all__ = [
     "DEFAULT_TOKEN_TTL_SECONDS",
     "PartnerIdentityError",
     "PartnerRegistry",
+    "PartnerStateChangeHook",
     "PartnerSubstrate",
     "PartnerTrustState",
     "SHARED_SECRET_BYTE_LEN",

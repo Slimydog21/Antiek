@@ -1028,6 +1028,17 @@ def create_app(
     register_advertiser_routes(app)
     from .federation import register_federation_routes
     register_federation_routes(app)
+    # Sprint 23-24 phase 1+2 — ad-impression emission + targeted
+    # inventory select. Substrate primitives live in
+    # substrate/ad_inventory/{ad_bidding,intent_targeting,payout}.
+    from .ad_impressions import register_ad_impression_routes
+    register_ad_impression_routes(app)
+    # Sprint 23-24 phase 4 — creator payouts dashboard data source.
+    from .creator_payouts import register_creator_payouts_routes
+    register_creator_payouts_routes(app)
+    # Sprint 23-24 phase 5 — advertiser campaign performance.
+    from .campaigns import register_campaign_routes
+    register_campaign_routes(app)
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
     # Expose for tests and admin endpoints.

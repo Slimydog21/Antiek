@@ -683,6 +683,45 @@ CREATE INDEX IF NOT EXISTS idx_federation_nonces_partner
 """
 
 
+# Sprint 23-24 phase 4 — KYC state machine (master-spec §9.5). Gates
+# settlement of any payout strictly above the $10 floor. Append-only
+# log; latest() per recipient_ref drives the can_settle gate.
+ANTIEK_GRAPH_SCHEMA_V5_KYC_SQL = """
+CREATE TABLE IF NOT EXISTS kyc_status (
+    attempt_id              TEXT PRIMARY KEY,
+    recipient_ref           TEXT NOT NULL,
+    state                   TEXT NOT NULL CHECK (state IN (
+        'not_started', 'invited', 'in_progress',
+        'completed', 'expired', 'rejected'
+    )),
+    last_state_change_at    TIMESTAMP NOT NULL,
+    operator_notes          TEXT NOT NULL DEFAULT '',
+    rejection_reason        TEXT,
+    stripe_account_ref      TEXT,
+    row_inserted_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_kyc_status_recipient_ref
+    ON kyc_status(recipient_ref, row_inserted_at);
+CREATE INDEX IF NOT EXISTS idx_kyc_status_state
+    ON kyc_status(state);
+
+-- Sprint 23-24 phase 4 — annual tax report log. One row per
+-- (recipient_ref, tax_year) joining payout totals; emitted-at is the
+-- moment the operator generated the 1099 export.
+CREATE TABLE IF NOT EXISTS tax_reports (
+    report_id               TEXT PRIMARY KEY,
+    recipient_ref           TEXT NOT NULL,
+    tax_year                INTEGER NOT NULL,
+    total_payout_usd_cents  INTEGER NOT NULL,
+    above_1099_threshold    BOOLEAN NOT NULL,
+    csv_export_path         TEXT,
+    emitted_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tax_reports_recipient_year
+    ON tax_reports(recipient_ref, tax_year);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -706,6 +745,9 @@ def init_database(con: LockedConnection) -> None:
     # Sprint 23-24 + 30+ Phase 3 persistence — federation partners,
     # advertisers, nonce ledger. Append-only state logs.
     con.execute(ANTIEK_GRAPH_SCHEMA_V4_PHASE3_SQL)
+    # Sprint 23-24 phase 4 — KYC state machine + tax_reports for
+    # §9.5 settlement gate + 1099 export.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V5_KYC_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:
