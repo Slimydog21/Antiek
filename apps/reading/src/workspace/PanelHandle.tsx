@@ -265,10 +265,15 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
         </button>
       </div>
 
-      {/* Resize grip (bottom-right). Floating only. */}
+      {/* Resize grip (bottom-right). Floating only.
+          Uses `title` not `aria-label` — axe rejects aria-label on
+          roleless divs (`aria-prohibited-attr`). A separator role
+          requires aria-required-attr (valuenow/min/max). Resize
+          grip isn't a true ARIA control; native `title` is the
+          right semantic for a tooltip-only affordance. */}
       {resizable && panel.mode === "floating" && (
         <div
-          aria-label="Resize panel"
+          title="Resize panel"
           onPointerDown={onResizeDown}
           onPointerMove={onResizeMove}
           onPointerUp={onResizeUp}

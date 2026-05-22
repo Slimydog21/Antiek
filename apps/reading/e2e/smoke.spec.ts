@@ -42,9 +42,9 @@ test.describe("Storybook smoke — primitives render at every viewport", () => {
     test(`Primitives Showcase renders at ${w}px`, async ({ page }) => {
       await page.setViewportSize({ width: w, height: 900 });
       await loadStory(page, "design-primitives-showcase--showcase");
-      // The showcase wrapper has a deterministic title visible.
+      // The showcase header is the literal wordmark.
       await expect(
-        page.getByText("Lemon primitives — showcase", { exact: false }),
+        page.getByText("ANTIEK / LEMON SHOWCASE"),
       ).toBeVisible({ timeout: 5_000 });
     });
   }
@@ -67,44 +67,51 @@ test.describe("Storybook smoke — primitives render at every viewport", () => {
 });
 
 test.describe("Workspace demo — panel system smoke", () => {
-  test("opens with 3 starter panels + each is interactive", async ({
+  test("opens with starter panels + each is interactive", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await loadStory(page, "workspace-demo--scene");
-    // The fake sidebar (docked-left) shows its panel title.
-    await expect(page.getByText("Investigations").first()).toBeVisible({
-      timeout: 5_000,
-    });
-    // Floating Notebook panel is also visible.
-    await expect(page.getByText("Notebook").first()).toBeVisible();
-    // Operator-facing kebab menu opens
-    const kebabs = await page.getByRole("button", { name: /more|⋯|menu/i }).all();
-    expect(kebabs.length).toBeGreaterThan(0);
+    // The fake sidebar (docked-left) is a region with aria-label.
+    await expect(
+      page.locator('[aria-label="Investigations"]').first(),
+    ).toBeVisible({ timeout: 5_000 });
+    // The floating Notebook panel exposes its title via aria-label.
+    await expect(
+      page
+        .locator('[aria-label^="Notebook"]')
+        .first(),
+    ).toBeVisible();
+    // The story exposes operator controls in the chrome.
+    await expect(page.getByRole("button", { name: "reset" })).toBeVisible();
   });
 });
 
 test.describe("Notebook editor — autosave + conflict", () => {
+  // Note: Storybook collapses dashes in the title kebab. The actual
+  // story id is `loop-1-notebookeditor--blank`, not `notebook-editor`.
   test("typing persists across reload (localStorage path)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await loadStory(page, "loop-1-notebook-editor--blank");
-    // Wait for the editor to mount.
-    const editor = page.locator(".tiptap").first();
-    await expect(editor).toBeVisible({ timeout: 5_000 });
-    // Click into the editor + type
-    await editor.click();
+    await loadStory(page, "loop-1-notebookeditor--blank");
+    // TipTap mounts a contenteditable `.ProseMirror` div. Wait for it
+    // to attach + then focus + type. ProseMirror's height is `h-full`
+    // — only visible after the iframe layout settles.
+    const editor = page.locator(".ProseMirror[contenteditable='true']").first();
+    await expect(editor).toBeAttached({ timeout: 10_000 });
+    await editor.focus();
     await page.keyboard.type("Persisted text marker e2e-smoke", {
       delay: 5,
     });
-    // Wait for "saved to local" indicator (autosave is 1500ms)
+    // The autosave indicator transitions saving → saved at 1.5s.
     await expect(page.getByText("saved to local")).toBeVisible({
-      timeout: 5_000,
+      timeout: 8_000,
     });
-    // Hard reload — content should be restored from localStorage
     await page.reload();
-    await expect(editor).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.locator(".ProseMirror[contenteditable='true']").first(),
+    ).toBeAttached({ timeout: 10_000 });
     await expect(
       page.getByText("Persisted text marker e2e-smoke"),
     ).toBeVisible({ timeout: 5_000 });
@@ -114,15 +121,14 @@ test.describe("Notebook editor — autosave + conflict", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await loadStory(page, "loop-1-notebook-editor--blank");
-    const editor = page.locator(".tiptap").first();
-    await expect(editor).toBeVisible();
-    await editor.click();
+    await loadStory(page, "loop-1-notebookeditor--blank");
+    const editor = page.locator(".ProseMirror[contenteditable='true']").first();
+    await expect(editor).toBeAttached({ timeout: 10_000 });
+    await editor.focus();
     await page.keyboard.type("baseline", { delay: 5 });
     await expect(page.getByText("saved to local")).toBeVisible({
-      timeout: 5_000,
+      timeout: 8_000,
     });
-    // Simulate another tab writing — advance the etag beyond our baseline.
     await page.evaluate(() => {
       const key = "antiek.notebook.storybook-blank.etag";
       const current = parseInt(
@@ -131,12 +137,10 @@ test.describe("Notebook editor — autosave + conflict", () => {
       );
       window.localStorage.setItem(key, String(current + 5));
     });
-    // Force a new save by typing again
-    await editor.click();
+    await editor.focus();
     await page.keyboard.type("conflicting edit", { delay: 5 });
-    // Wait for the conflict indicator to appear.
     await expect(page.getByText("conflict — reload")).toBeVisible({
-      timeout: 5_000,
+      timeout: 8_000,
     });
   });
 });

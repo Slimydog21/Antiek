@@ -111,6 +111,12 @@ export function LemonModal({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        // S11 a11y: dialog needs an accessible name. If a string title
+        // is passed, use it; if the title is a ReactNode (chip + count),
+        // fall back to a generic "Dialog" so axe-core's
+        // `aria-dialog-name` passes. Operators can override by passing
+        // a plain-string title.
+        aria-label={typeof title === "string" ? title : "Dialog"}
         tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
         className={

@@ -10,7 +10,7 @@ function NoteNodeView({ node, deleteNode }: NodeViewProps) {
   return (
     <NodeViewWrapper className="my-2" data-block="note">
       <div className="border-l-edge border-sun bg-sun/10 pl-3 py-2 pr-4 rounded-r flex items-start gap-2">
-        <span className="text-sun-deep dark:text-sun font-mono text-[10px] uppercase tracking-wider shrink-0 mt-1">
+        <span className="text-ink dark:text-sun font-mono text-[10px] font-bold uppercase tracking-wider shrink-0 mt-1">
           note
         </span>
         <p className="flex-1 font-serif text-[15px] leading-relaxed text-ink dark:text-bright">

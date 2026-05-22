@@ -39,7 +39,9 @@ export const surface: Record<Mode, readonly string[]> = {
     "#DCE5ED", // 4  ice-4       divider band
     "#C2D1DD", // 5  glacial-1   subdued surface
     "#9AB0C0", // 6  glacial-2   disabled / muted
-    "#64778A", // 7  shadow-1    secondary text
+    // S11 a11y: darkened from #64778A so opacity-blended descendants
+    // still hit WCAG AA 4.5:1 against ice-0/ice-1 backgrounds.
+    "#4F5F70", // 7  shadow-1    secondary text
     "#384858", // 8  shadow-2    low-emphasis ink
     "#0F1419", // 9  ink         primary text + hard borders
   ],

@@ -32,7 +32,7 @@ function ClaimCardNodeView({ node, deleteNode }: NodeViewProps) {
                     openClaimInspector({ claimId, investigationId });
                   }
                 }}
-                className="text-[11px] text-sun-deep dark:text-sun hover:underline"
+                className="text-[11px] font-bold text-ink dark:text-sun hover:underline"
               >
                 Inspect
               </button>

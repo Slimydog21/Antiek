@@ -23,7 +23,12 @@ export default {
         "ice-4": "#DCE5ED",
         "glacial-1": "#C2D1DD",
         "glacial-2": "#9AB0C0",
-        "shadow-1": "#64778A",
+        // shadow-1 was #64778A → 4.59:1 on white; opacity-blended
+        // descendants (panels with 95% opacity) dropped to 4.17 +
+        // failed the a11y audit. Darkened to #4F5F70 → 6.32:1 on
+        // white, ~5.4:1 even with 95% panel opacity. Brand-acceptable;
+        // the visual difference is one Munsell step darker.
+        "shadow-1": "#4F5F70",
         "shadow-2": "#384858",
         ink: "#0F1419",
 

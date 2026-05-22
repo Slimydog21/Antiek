@@ -103,9 +103,9 @@ export function NotebookEditor({
     open: false,
     query: "",
   });
-  const [saved, setSaved] = useState<"idle" | "saving" | "saved" | "conflict">(
-    "idle",
-  );
+  const [saved, setSaved] = useState<
+    "idle" | "saving" | "saved" | "offline" | "conflict"
+  >("idle");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Etag the operator's local edits are based on. Bumped on every
   // successful save. If another tab writes between our reads, the
@@ -176,19 +176,35 @@ export function NotebookEditor({
           writeStored(notebookId, e.getHTML(), etagRef.current);
           etagRef.current += 1;
         } catch (err) {
-          // Offline / network error → fall back to localStorage so
-          // the draft survives. Surface a soft warning only once per
-          // session via the toast (not on every keystroke).
+          // Offline / network error vs. true etag conflict are
+          // semantically different states — the operator sees them
+          // differently.
+          //
+          // Offline (substrate unreachable, 4xx, 5xx): the local etag
+          // advances + the draft survives in localStorage. Indicator
+          // shows "saved to local" so the operator knows the file
+          // isn't lost.
+          //
+          // Conflict (writeStored returned null because another tab
+          // raced ahead of our baseline etag): the local write was
+          // refused. Indicator shows "conflict — reload" + a toast.
           const nextEtag = writeStored(notebookId, e.getHTML(), etagRef.current);
-          if (nextEtag !== null) {
+          if (nextEtag === null) {
+            setSaved("conflict");
+            toast.err(
+              "Notebook conflict: another tab edited this notebook. Reload to see the latest.",
+            );
+          } else {
             etagRef.current = nextEtag;
+            setSaved("offline");
+            if (import.meta.env.DEV) {
+              // eslint-disable-next-line no-console
+              console.warn(
+                "[notebook] substrate unreachable; draft saved locally:",
+                err instanceof Error ? err.message : err,
+              );
+            }
           }
-          setSaved("conflict");
-          toast.err(
-            err instanceof Error
-              ? `Notebook offline: ${err.message}. Draft saved locally.`
-              : "Notebook offline. Draft saved locally.",
-          );
         }
       }, 1500);
     },
@@ -265,10 +281,12 @@ export function NotebookEditor({
         {saved === "saving"
           ? "saving…"
           : saved === "saved"
-            ? "saved to local"
-            : saved === "conflict"
-              ? "conflict — reload"
-              : ""}
+            ? "saved"
+            : saved === "offline"
+              ? "saved to local"
+              : saved === "conflict"
+                ? "conflict — reload"
+                : ""}
       </div>
     </div>
   );

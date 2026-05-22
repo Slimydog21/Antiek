@@ -44,19 +44,39 @@ function parseArgs(): Args {
  *  surfaces. Add new entries when a panel or route gets a story.
  *  Each entry is a story id (the slug Storybook uses in iframe URLs). */
 const STORIES: string[] = [
-  // S1 — every Lemon primitive
+  // S1 — every Lemon primitive. Story ids verified against
+  // storybook-static/index.json — Storybook collapses some kebab
+  // segments (`LemonTextarea` → `lemon-textarea`) but exact slugs
+  // matter; a typoed id renders the "No Preview" placeholder which
+  // has zero violations and produces a vacuous PASS.
   "design-primitives-showcase--showcase",
   "lemon-button--grid",
+  "lemon-button--with-icons",
+  "lemon-button--disabled",
+  "lemon-button--full-width",
   "lemon-card--default",
   "lemon-card--colours",
+  "lemon-card--elevations",
+  "lemon-card--with-footer",
   "lemon-modal--default",
+  "lemon-modal--sizes",
+  "lemon-modal--with-form",
   "lemon-input--basic",
-  "lemon-textarea--basic",
-  "lemon-tag--variants",
-  "lemon-select--basic",
+  "lemon-input--disabled",
+  "lemon-input--sizes",
+  "lemon-textarea--empty",
+  "lemon-textarea--auto-grow",
+  "lemon-tag--all-colours",
+  "lemon-tag--removable",
+  "lemon-tag--with-dot",
+  "lemon-select--placeholder",
+  "lemon-select--full-width",
+  "lemon-select--model-picker",
   "lemon-dropdown--panel-actions",
-  "lemon-table--investigations",
-  "lemon-toast--variants",
+  "lemon-dropdown--align-right",
+  "lemon-table--investigations-list",
+  "lemon-table--empty",
+  "lemon-toast--playground",
   // S0 — design tokens
   "design-moodboard--palette-day-off-whites-glacials",
   "design-moodboard--palette-night-majestic-night-sky",
@@ -67,8 +87,10 @@ const STORIES: string[] = [
   // Werner brand
   "brand-werner-animations--all-poses",
   // S5 + S6 + S7 — mode panels
-  "loop-1-notebook-editor--blank",
-  "loop-1-notebook-editor--with-sample-content",
+  "loop-1-notebookeditor--blank",
+  "loop-1-notebookeditor--with-sample-content",
+  // Workspace demo
+  "workspace-demo--scene",
 ];
 
 type AxeViolation = {
@@ -108,13 +130,18 @@ async function main() {
   }
 
   const browser = await chromium.launch({ headless: true });
-  const ctx = await browser.newContext({
-    viewport: { width: 1280, height: 900 },
-  });
-  const page = await ctx.newPage();
 
+  // FRESH PAGE per story — reusing one page across stories causes
+  // DOM bleed: a violation from the prior story's residual DOM
+  // sometimes shows up under the next story's URL (Storybook's
+  // iframe replaces #storybook-root rather than full-navigating,
+  // so portaled content (modals, toasts, dropdowns) can linger).
   const results: StoryResult[] = [];
   for (const story of STORIES) {
+    const ctx = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+    });
+    const page = await ctx.newPage();
     const url =
       args.storybook +
       "/iframe.html?args=&id=" +
@@ -122,7 +149,7 @@ async function main() {
       "&viewMode=story";
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 });
-      await page.waitForTimeout(300); // let the story render
+      await page.waitForTimeout(1500); // let the story render
       // Storybook hosts each story inside an iframe. Some axe rules
       // fire on the IFRAME WRAPPER, not the Antiek code:
       //   - scrollable-region-focusable: the iframe scrollport itself
@@ -159,6 +186,13 @@ async function main() {
       console.log(
         `  ${story}  ${violations.length === 0 ? "✓" : "⚠ " + violations.length}`,
       );
+      if (process.env.A11Y_AUDIT_VERBOSE) {
+        for (const v of violations) {
+          if (v.impact === "serious" || v.impact === "critical") {
+            console.log("       ", v.id, v.impact);
+          }
+        }
+      }
     } catch (e: unknown) {
       results.push({
         story,
@@ -166,6 +200,8 @@ async function main() {
         error: e instanceof Error ? e.message : String(e),
       });
       console.log(`  ${story}  ✗ load error`);
+    } finally {
+      await ctx.close();
     }
   }
 
