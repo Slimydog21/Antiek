@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 
 import TrajectoryReplay from "../../components/TrajectoryReplay";
 import type { Event } from "../../generated/types";
-import { apiFetch } from "../../lib/api";
+import { API_BASE, apiFetch } from "../../lib/api";
+import { PanelHost } from "../../workspace/PanelHost";
 
 /**
  * Trajectory replay route (PostHog Wedge 5, master-spec §14.1).
@@ -35,7 +36,7 @@ export default function Replay() {
     setError(null);
     try {
       const resp = await apiFetch(
-        `/trajectory/${encodeURIComponent(investigationId)}`,
+        `${API_BASE}/trajectory/${encodeURIComponent(investigationId)}`,
       );
       if (!resp.ok) {
         throw new Error(
@@ -57,13 +58,23 @@ export default function Replay() {
     void reload();
   }, [reload]);
 
-  // WebSocket live tail. Same-origin ws URL; in dev the Vite proxy
-  // forwards /ws/events to the FastAPI backend.
+  // WebSocket live tail. In dev (API_BASE empty) the Vite proxy
+  // forwards /ws/events to the FastAPI backend. In prod the API
+  // lives on api.antiek.ai so we have to construct an explicit
+  // cross-origin ws URL — same Set-Cookie story as apiFetch.
   useEffect(() => {
     if (!investigationId) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws/events?investigation_id=${encodeURIComponent(investigationId)}`;
+    let wsBase: string;
+    if (API_BASE) {
+      // Production: convert https://api.antiek.ai → wss://api.antiek.ai
+      wsBase = API_BASE.replace(/^http/, "ws");
+    } else {
+      // Dev / same-origin: use the page origin so Vite proxy forwards.
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      wsBase = `${protocol}//${window.location.host}`;
+    }
+    const url = `${wsBase}/ws/events?investigation_id=${encodeURIComponent(investigationId)}`;
 
     let cancelled = false;
     let ws: WebSocket | null = null;
@@ -117,9 +128,23 @@ export default function Replay() {
     };
   }, [investigationId]);
 
+  // S10 row 10.14 — Replay wraps the main trajectory view in
+  // PanelHost with the step-list panel docked-left.
+  const starters = investigationId
+    ? [
+        {
+          kind: "ReplayStepList" as const,
+          mode: "docked-left" as const,
+          title: "Steps",
+          id: `replay:${investigationId}:steps`,
+          props: { investigationId },
+        },
+      ]
+    : [];
+
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+    <PanelHost starters={starters}>
+      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
             <h1 className="text-2xl font-serif text-ink dark:text-bright">
@@ -164,6 +189,6 @@ export default function Replay() {
           )}
         </div>
       </main>
-    </div>
+    </PanelHost>
   );
 }

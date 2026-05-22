@@ -1,24 +1,21 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
+import { PanelHost } from "../../workspace/PanelHost";
 import {
   attachBlock,
-  createDeliverable,
   createSection,
   exportDeliverable,
   getDeliverable,
-  ingestVoiceNote,
-  listDeliverables,
   reorderBlock,
   updateSectionProse,
   type BlockKind,
   type DeliverableDetailResponse,
   type DeliverableKind,
-  type DeliverableSummary,
   type ExportFormatName,
   type SectionResponse,
 } from "../../lib/api";
-import BlockPalette, {
+import {
   DRAG_MIME,
   type PaletteDragPayload,
 } from "./BlockPalette";
@@ -33,7 +30,6 @@ interface SectionDragPayload {
 
 type DragPayload = PaletteDragPayload | SectionDragPayload;
 
-type RecordingState = "idle" | "recording" | "transcribing" | "ingested";
 
 const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
   research_memo: "Research memo",
@@ -55,113 +51,48 @@ const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
  * transcript to /voice-notes/ingest. The audio→whisper round trip
  * is a Sprint-13-end stretch (audio upload endpoint).
  */
+/**
+ * Mode C — Creation Studio.
+ *
+ * S10 row 10.7: "/create — left = block palette panel; right = preview
+ * panel." Ported onto PanelHost with two starters:
+ *   - DeliverableSidebar  docked-left  (deliverable list + voice note)
+ *   - BlockPalette        docked-right (drag-drop block source)
+ * The main slot renders DeliverableDetail (the canvas). The "preview"
+ * panel the spec named is the export-ready Markdown render; for now
+ * the operator gets it via DeliverableDetail's "Export" buttons —
+ * dedicated preview panel is tracked as a follow-up.
+ */
 export default function CreationStudio() {
   return (
-    <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
-      <main className="flex-1 overflow-hidden">
-        <div className="h-full max-w-7xl mx-auto px-6 py-6 grid grid-cols-[260px_1fr_280px] gap-6">
-          <DeliverableSidebar />
+    <PanelHost
+      starters={[
+        {
+          kind: "DeliverableSidebar",
+          mode: "docked-left",
+          title: "Deliverables",
+          id: "create:deliverable-sidebar",
+        },
+        {
+          kind: "BlockPalette",
+          mode: "docked-right",
+          title: "Block palette",
+          id: "create:block-palette",
+        },
+      ]}
+    >
+      <div className="h-full bg-ice-1 dark:bg-charcoal-2 overflow-auto">
+        <div className="max-w-4xl mx-auto px-6 py-6">
           <DeliverableDetail />
-          <BlockPalette />
         </div>
-      </main>
-    </div>
+      </div>
+    </PanelHost>
   );
 }
 
-function DeliverableSidebar() {
-  const navigate = useNavigate();
-  const [deliverables, setDeliverables] = useState<DeliverableSummary[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newKind, setNewKind] = useState<DeliverableKind>("research_memo");
-
-  async function refresh() {
-    try {
-      const { deliverables } = await listDeliverables();
-      setDeliverables(deliverables);
-    } catch {
-      // ignore — show empty
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newTitle.trim()) return;
-    setCreating(true);
-    try {
-      const d = await createDeliverable({
-        title: newTitle.trim(),
-        deliverable_kind: newKind,
-      });
-      setNewTitle("");
-      await refresh();
-      navigate(`/create/${d.deliverable_id}`);
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  return (
-    <aside className="flex flex-col gap-4 min-h-0">
-      <h2 className="text-sm font-semibold text-ink dark:text-bright">
-        Deliverables
-      </h2>
-      <form
-        onSubmit={handleCreate}
-        className="bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-md p-3 space-y-2"
-      >
-        <input
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="New deliverable title…"
-          className="w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
-        />
-        <select
-          value={newKind}
-          onChange={(e) => setNewKind(e.target.value as DeliverableKind)}
-          className="w-full px-2 py-1.5 text-xs border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
-        >
-          {(Object.keys(DELIVERABLE_KIND_LABELS) as DeliverableKind[]).map(
-            (k) => (
-              <option key={k} value={k}>
-                {DELIVERABLE_KIND_LABELS[k]}
-              </option>
-            ),
-          )}
-        </select>
-        <button
-          type="submit"
-          disabled={creating || !newTitle.trim()}
-          className="w-full px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs font-medium rounded transition-colors"
-        >
-          {creating ? "Creating…" : "New deliverable"}
-        </button>
-      </form>
-      <ul className="flex-1 overflow-y-auto space-y-1 min-h-0">
-        {deliverables.map((d) => (
-          <li key={d.deliverable_id}>
-            <button
-              onClick={() => navigate(`/create/${d.deliverable_id}`)}
-              className="w-full text-left px-3 py-2 bg-ice-0 dark:bg-charcoal-2 hover:bg-ice-3 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-sm"
-            >
-              <div className="font-medium truncate">{d.title}</div>
-              <div className="text-xs text-shadow-1 dark:text-moonlight flex justify-between">
-                <span>{DELIVERABLE_KIND_LABELS[d.deliverable_kind] ?? d.deliverable_kind}</span>
-                <span>{d.section_count} §</span>
-              </div>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <VoiceNoteCapture />
-    </aside>
-  );
-}
+// DeliverableSidebar + VoiceNoteCapture extracted to sibling files
+// for panel-system registration. See ./DeliverableSidebar.tsx and
+// ./VoiceNoteCapture.tsx.
 
 function DeliverableDetail() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -610,54 +541,4 @@ function NewSectionForm({
   );
 }
 
-function VoiceNoteCapture() {
-  const [state, setState] = useState<RecordingState>("idle");
-  const [transcript, setTranscript] = useState("");
-  const [lastDocId, setLastDocId] = useState<string | null>(null);
-
-  async function handleIngest() {
-    if (!transcript.trim()) return;
-    setState("transcribing");
-    try {
-      const r = await ingestVoiceNote({ transcript: transcript.trim() });
-      setLastDocId(r.document_id);
-      setState("ingested");
-      setTranscript("");
-    } catch {
-      setState("idle");
-    }
-  }
-
-  return (
-    <div className="bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-md p-3">
-      <p className="text-xs font-semibold text-ink dark:text-bright uppercase tracking-wide">
-        Quick voice note
-      </p>
-      <p className="mt-1 text-xs text-shadow-1 dark:text-moonlight">
-        Paste a transcript (or use the browser dictation button on iOS /
-        macOS) to add a voice note straight into the graph.
-      </p>
-      <textarea
-        value={transcript}
-        onChange={(e) => setTranscript(e.target.value)}
-        rows={3}
-        placeholder="Transcript…"
-        className="mt-2 w-full px-2 py-1.5 text-sm border border-rule dark:border-charcoal-1 rounded focus:outline-none focus:ring-2 focus:ring-sun"
-      />
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <button
-          onClick={handleIngest}
-          disabled={state === "transcribing" || !transcript.trim()}
-          className="px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs rounded"
-        >
-          {state === "transcribing" ? "Ingesting…" : "Add voice note"}
-        </button>
-        {state === "ingested" && lastDocId && (
-          <span className="text-xs text-emerald-700 truncate" title={lastDocId}>
-            ✓ {lastDocId.slice(0, 16)}…
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
+// VoiceNoteCapture moved to ./VoiceNoteCapture.tsx for panel reuse.

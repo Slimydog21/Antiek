@@ -46,7 +46,13 @@ export type PanelKind =
   | "AISidecar"
   | "CommandPalette"
   | "ProjectTree"
-  | "Stats";
+  | "Stats"
+  | "DeliverableSidebar"
+  | "BlockPalette"
+  | "ReplayStepList"
+  | "InterviewRecording"
+  | "InterviewTranscript"
+  | "InterviewNotes";
 
 export type PanelDescriptor = {
   /** Stable id. e.g. "InvestigationSidebar:default", "Chat:inv-abc:42". */

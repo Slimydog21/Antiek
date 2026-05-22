@@ -85,4 +85,16 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
 
   // S10 — Stats is also rendered as a route → eager.
   Stats,
+
+  // S10 row 10.7 — CreationStudio side panels
+  DeliverableSidebar: lazy(() => import("../modes/CreationStudio/DeliverableSidebar")),
+  BlockPalette: lazy(() => import("../modes/CreationStudio/BlockPalette")),
+
+  // S10 row 10.14 — Replay step timeline panel
+  ReplayStepList: lazy(() => import("../modes/Replay/ReplayStepList")),
+
+  // S10 row 10.10 — Interview tri-pane panels
+  InterviewRecording: lazy(() => import("../modes/Interview/InterviewRecording")),
+  InterviewTranscript: lazy(() => import("../modes/Interview/InterviewTranscript")),
+  InterviewNotes: lazy(() => import("../modes/Interview/InterviewNotes")),
 };

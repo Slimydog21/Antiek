@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
 import { apiFetch } from "../../lib/api";
+import { PanelHost } from "../../workspace/PanelHost";
 
 /**
  * Loop 4 interview surface (master-spec §11.5 + integration_autoresearch §B).
@@ -116,9 +117,45 @@ export default function InterviewMode() {
     }
   };
 
+  // S10 row 10.10 — Interview wraps the main compose surface in
+  // PanelHost. Three starter panels:
+  //   - InterviewRecording  docked-left   (voice capture widget)
+  //   - InterviewTranscript docked-right  (read-only transcript)
+  //   - InterviewNotes      docked-bottom (operator-private scratchpad)
+  // The starters' props are derived from the loaded `detail`; the
+  // main slot keeps the existing compose-form + header rendering.
+  const starters = interviewId
+    ? [
+        {
+          kind: "InterviewRecording" as const,
+          mode: "docked-left" as const,
+          title: "Recording",
+          id: `interview:${interviewId}:recording`,
+          props: {
+            interviewId,
+            consentRecorded: detail?.consent_recorded ?? false,
+          },
+        },
+        {
+          kind: "InterviewTranscript" as const,
+          mode: "docked-right" as const,
+          title: "Transcript",
+          id: `interview:${interviewId}:transcript`,
+          props: { interviewId },
+        },
+        {
+          kind: "InterviewNotes" as const,
+          mode: "docked-bottom" as const,
+          title: "Notes",
+          id: `interview:${interviewId}:notes`,
+          props: { interviewId },
+        },
+      ]
+    : [];
+
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+    <PanelHost starters={starters}>
+      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
             <h1 className="text-2xl font-serif text-ink dark:text-bright">
@@ -271,6 +308,6 @@ export default function InterviewMode() {
           )}
         </div>
       </main>
-    </div>
+    </PanelHost>
   );
 }
