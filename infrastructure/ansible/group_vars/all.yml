@@ -72,6 +72,15 @@ python_version: "3.12"
 uvicorn_port: 8001
 api_domain: "api.antiek.ai"
 
+# ── Frontend (reading-app SPA) ───────────────────────────────────────────────
+# Where the operator's Mac drops the built `apps/reading/dist/` artifact on
+# the VM. Caddy's default `handle` serves this directory with a try_files
+# SPA fallback. The same domain (api.antiek.ai) hosts both API + SPA;
+# Caddy splits by path prefix (see Caddyfile.j2 @api_routes).
+frontend_dist_dir: "/var/www/antiek-app"
+frontend_dist_owner: "{{ antiek_user }}"
+frontend_dist_group: "{{ antiek_group }}"
+
 # ── Caddy ────────────────────────────────────────────────────────────────────
 
 # The Caddy apt repo's signing key + apt source are installed in setup.yml.

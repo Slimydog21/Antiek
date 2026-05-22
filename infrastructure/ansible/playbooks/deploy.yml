@@ -1,16 +1,49 @@
 ---
 # ──────────────────────────────────────────────────────────────────────────
-# Antiek substrate — deploy a code change.
+# Antiek — deploy a code change.
 #
-# Run after pushing a commit to the configured branch. Pulls the latest
-# code, refreshes dependencies, re-renders templates if they changed,
-# restarts the systemd unit, asserts /health is green.
+# Two plays:
+#   1. Phase A (localhost) — build apps/reading/dist locally so the
+#      frontend artifact exists. Skip with --skip-tags frontend.
+#   2. Phase B (antiek_prod) — pull substrate code, refresh deps,
+#      rsync the frontend dist, re-render templates, restart the
+#      service, assert /health is green.
 #
 # Safety: fails the playbook if the health check doesn't return
 # `registered_providers` non-empty. Better to surface a broken deploy
 # immediately than to leave it silently degraded.
 # ──────────────────────────────────────────────────────────────────────────
 
+# Phase A — local frontend build (no SSH needed).
+- name: Antiek frontend — build locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [frontend, build]
+
+  tasks:
+    - name: build apps/reading (vite production bundle)
+      ansible.builtin.command:
+        cmd: npm run build
+        chdir: "{{ playbook_dir }}/../../../apps/reading"
+      changed_when: true
+
+    - name: confirm dist artifact exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../../../apps/reading/dist/index.html"
+      register: dist_stat
+
+    - name: fail if dist/index.html missing
+      ansible.builtin.fail:
+        msg: |
+          Vite build claimed success but
+          apps/reading/dist/index.html doesn't exist. Check the
+          stdout above + retry locally before re-running this
+          playbook.
+      when: not dist_stat.stat.exists
+
+
+# Phase B — substrate + frontend rsync on the VM.
 - name: Antiek substrate — deploy update
   hosts: antiek_prod
   become: true
@@ -62,6 +95,42 @@
       when: antiek_unit.changed
       tags: [systemd]
 
+    # ── Frontend rsync ───────────────────────────────────────────────────
+    # The Phase A play built `apps/reading/dist/` locally. Push it to
+    # the VM via rsync; Caddy serves it from `{{ frontend_dist_dir }}`.
+    # `delete: true` removes stale files left over from a previous
+    # build (Vite's hashed asset names mean old files are dead weight,
+    # not actively-referenced).
+    - name: ensure frontend dist directory exists
+      ansible.builtin.file:
+        path: "{{ frontend_dist_dir }}"
+        state: directory
+        owner: "{{ frontend_dist_owner }}"
+        group: "{{ frontend_dist_group }}"
+        mode: "0755"
+      tags: [frontend, caddy]
+
+    - name: rsync apps/reading/dist → {{ frontend_dist_dir }}
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/../../../apps/reading/dist/"
+        dest: "{{ frontend_dist_dir }}/"
+        delete: true
+        recursive: true
+        rsync_opts:
+          - "--chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r"
+      become_user: root
+      tags: [frontend, caddy]
+
+    - name: ensure caddy can read the dist
+      ansible.builtin.file:
+        path: "{{ frontend_dist_dir }}"
+        state: directory
+        owner: "{{ frontend_dist_owner }}"
+        group: "{{ frontend_dist_group }}"
+        mode: "0755"
+        recurse: true
+      tags: [frontend, caddy]
+
     - name: re-render Caddyfile
       ansible.builtin.template:
         src: ../templates/Caddyfile.j2
@@ -70,6 +139,12 @@
         group: caddy
         mode: "0644"
       register: caddyfile
+      tags: [caddy]
+
+    - name: caddy validate (catch syntax errors before reload)
+      ansible.builtin.command:
+        cmd: caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+      changed_when: false
       tags: [caddy]
 
     - name: reload caddy if Caddyfile changed
@@ -139,3 +214,37 @@
           Deploy verified: substrate is live with providers
           {{ health.json.registered_providers }}.
       tags: [verify]
+
+    # ── Frontend smoke check ────────────────────────────────────────────
+    # GET the root URL through Caddy. Asserts the SPA is served + the
+    # response is text/html (i.e. NOT the JSON 404 a reverse-proxy
+    # miss would produce). Run from localhost for the same reason as
+    # /health — we want to exercise the full TLS + path-split path.
+    - name: GET / (SPA root) from public endpoint
+      ansible.builtin.uri:
+        url: "https://{{ api_domain }}/"
+        return_content: true
+        status_code: 200
+        headers:
+          Accept: "text/html"
+      register: spa_root
+      retries: 6
+      delay: 5
+      until: spa_root.status == 200
+      delegate_to: localhost
+      become: false
+      tags: [verify, frontend]
+
+    - name: assert SPA root returns HTML
+      ansible.builtin.assert:
+        that:
+          - "'text/html' in (spa_root.content_type | default(''))"
+          - "'<!doctype html>' in (spa_root.content | lower)"
+        fail_msg: |
+          GET https://{{ api_domain }}/ returned 200 but the response
+          doesn't look like the reading-app SPA. Likely the
+          @api_routes Caddy matcher consumed `/` by accident, or the
+          dist directory was empty.
+        success_msg: |
+          Frontend verified: SPA serves on https://{{ api_domain }}/.
+      tags: [verify, frontend]
