@@ -369,3 +369,31 @@ def get_anchor_by_voice_note(
     if row is None:
         return None
     return _row_to_anchor(row)
+
+
+def get_anchor_by_id(
+    anchor_id: str,
+    *,
+    db_path: Optional[str] = None,
+) -> Optional[VoiceNoteAnchor]:
+    """Top-level convenience: open a read connection, fetch by anchor_id.
+
+    Used by the ``/api/voice/anchor/{anchor_id}/audio`` route to resolve
+    anchor_id → voice_note_id before hitting the audio_store.
+    """
+    import duckdb
+    path = db_path or _default_db_path()
+    with duckdb.connect(path) as con:
+        row = con.execute(
+            f"SELECT {_SELECT_COLS} FROM voice_note_anchor "
+            "WHERE anchor_id = ? LIMIT 1",
+            [anchor_id],
+        ).fetchone()
+        if row is None:
+            return None
+        return _row_to_anchor(row)
+
+
+def _default_db_path() -> str:
+    from substrate.graph import default_db_path as _dp
+    return _dp()

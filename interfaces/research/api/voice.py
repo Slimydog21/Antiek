@@ -34,6 +34,12 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from services.voice import anchor_service  # noqa: E402
+from services.voice.audio_store import (  # noqa: E402
+    exists as audio_exists,
+    load_audio,
+    path_for as audio_path_for,
+    store_audio_b64,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -84,13 +90,6 @@ def register_voice_routes(
     async def post_voice_anchor(
         request: Request, body: AnchorRequest,
     ) -> AnchorResponse:
-        if body.audio_b64:
-            _log.info(
-                "voice/anchor: audio_b64 received (len=%d) but discarded; "
-                "audio-blob storage gap is documented in SPR-05 handoff.",
-                len(body.audio_b64),
-            )
-
         try:
             result = anchor_service.save_anchored_voice_note(
                 transcript=body.transcript,
@@ -118,16 +117,35 @@ def register_voice_routes(
             ) from exc
 
         chunk_id = getattr(result.anchor, "chunk_id", None)
-        audio_note = (
-            "audio bytes were not stored — substrate audio-blob storage "
-            "does not yet exist (SPR-05 surfaced gap). Transcript saved."
-            if body.audio_b64 else None
-        )
+        audio_stored = False
+        audio_note: Optional[str] = None
+        if body.audio_b64:
+            # Audio-blob store landed in the 2026-05-22 follow-up.
+            # Persist under ~/.antiek/audio/<voice_note_id>.opus and
+            # surface success in the response.
+            try:
+                stored_path = store_audio_b64(
+                    voice_note_id=result.voice_note_id,
+                    audio_b64=body.audio_b64,
+                    ext="opus",
+                )
+                audio_stored = True
+                audio_note = stored_path
+                _log.info(
+                    "voice/anchor: stored %d bytes of audio at %s",
+                    len(body.audio_b64), stored_path,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.warning(
+                    "voice/anchor: audio store failed (%s); transcript "
+                    "saved without audio.", exc,
+                )
+                audio_note = f"audio_store_failed: {exc}"
         return AnchorResponse(
             voice_note_id=result.voice_note_id,
             anchor_id=result.anchor.anchor_id,
             chunk_id=chunk_id,
-            audio_stored=False,
+            audio_stored=audio_stored,
             audio_storage_note=audio_note,
         )
 
@@ -136,17 +154,44 @@ def register_voice_routes(
         tags=["voice"],
     )
     async def get_voice_anchor_audio(anchor_id: str):
-        raise HTTPException(
-            status_code=501,
-            detail={
-                "error": {
-                    "code": "audio_storage_not_implemented",
-                    "message": (
-                        f"Voice-note audio-blob storage is not yet wired "
-                        f"into the substrate. Anchor {anchor_id} exists "
-                        f"but raw audio bytes are not retrievable. "
-                        f"See SPR-05 handoff."
-                    ),
+        """Serve the raw audio bytes for the voice note anchored at
+        ``anchor_id``. Reads from the audio-blob store landed
+        2026-05-22; replaces the SPR-05 501 stub.
+
+        Resolution path:
+          1. anchor_id → voice_note_anchor row → voice_note_id
+          2. voice_note_id → path via audio_store.path_for
+          3. Stream the bytes back as audio/ogg (opus container)
+        """
+        from substrate.voice.anchor_api import get_anchor_by_id
+        anchor = get_anchor_by_id(anchor_id, db_path=db_path)
+        if anchor is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": {"code": "anchor_not_found", "message": anchor_id}},
+            )
+        voice_note_id = anchor.voice_note_id
+        if not audio_exists(voice_note_id):
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": {
+                        "code": "audio_not_stored",
+                        "message": (
+                            f"Anchor {anchor_id} exists but its voice note "
+                            f"{voice_note_id} has no stored audio bytes "
+                            "(transcript-only save, pre-2026-05-22 import, "
+                            "or audio_store write failure at record-time)."
+                        ),
+                    },
                 },
+            )
+        path = audio_path_for(voice_note_id)
+        from fastapi.responses import Response as FastResponse
+        return FastResponse(
+            content=load_audio(path),
+            media_type="audio/ogg",
+            headers={
+                "Content-Disposition": f'inline; filename="{voice_note_id}.opus"',
             },
         )

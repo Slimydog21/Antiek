@@ -56,6 +56,18 @@ def ensure_initialized(db_path: _Optional[str] = None) -> str:
     # the runner tolerates already-exists errors).
     from .migrate import apply as _apply_migrations
     _apply_migrations(db_path=resolved)
+    # 2026-05-22 follow-up: apply the substrate/notebooks publication
+    # overlay (adds deliverables.publication_uri/published_at and the
+    # deliverable_citations join table). Idempotent.
+    try:
+        from substrate.notebooks.deliverables import init_deliverables_schema_at_path
+        init_deliverables_schema_at_path(resolved)
+    except Exception:  # noqa: BLE001
+        # If the deliverables table itself isn't created yet (running
+        # against a pre-v1-schema DB), the migrations runner above
+        # creates it first; this overlay tolerates failure during
+        # bootstrap and the next call will succeed.
+        pass
     return resolved
 
 
