@@ -310,6 +310,46 @@ the data shape.
 
 ---
 
+## D12 — `highlight_removed` event UI affordance
+
+**Status:** ❌ Deferred. Schema only.
+**Unlock criterion:** Operator design decision on whether highlight
+deletion is a first-class user action (e.g., a remove-X button on
+hover, a keyboard Delete on a focused highlight, or a right-click menu
+entry). No UI affordance exists today; highlights persist as
+`behavior_events` rows once created.
+**Spec reference:** Wrestle Evolution spec, taxonomy v2 (added
+2026-05-22 on the `wrestle-evolution/integration` branch). The
+`highlight_removed` entry was added to `BehaviorEventType` because the
+RL trajectory benefits from negative-signal events; but the source UI
+that should produce them does not exist.
+**Blocks-what:** completeness of the SPR-04/SPR-07 behavior-event funnel
+(currently 18 of 19 taxonomy types emit at real call sites; the 19th
+is this one).
+
+This is the only schema-defined event type without a wired emit call
+site. Future agents reading
+`substrate/behavior/schemas/highlight_removed.json` (which lives on the
+`wrestle-evolution/integration` branch until the operator pushes — not
+yet on `origin/main`) will be tempted to grep for a UI hook and add
+one; **do not invent the UI without operator design ratification**. The operator may decide
+highlights are append-only by design (the substrate already supports
+"demote-noise" at the notebook layer; perhaps highlight removal should
+go through the same demote semantics rather than a destructive UI).
+
+**Action when unlocked:** wire the emit at whatever surface the operator
+ratifies — `PdfViewer.tsx::onMouseUp` is the natural sibling location
+(it already emits `highlight_created`); the remove path would be a new
+keymap or context-menu binding. Mirror the rigor #5 documentation
+pattern SPR-04 used for the "Cmd+R vs page-reload" decision: comment
+the decision with operator-rationale so a future maintainer doesn't
+"fix" it by adding a different removal affordance.
+
+**Where this is recorded:** `docs/decisions/wrestle-evolution-spec-2026-05-23.md`
+"Open follow-ups" table, "highlight_removed UI affordance" row.
+
+---
+
 ## Cross-reference: unlock criterion → deferrals it gates
 
 | Unlock criterion | Deferrals that close |
@@ -321,6 +361,7 @@ the data shape.
 | D1 (multi-user) + creator cohort live | D7 (Sprint 25+ ads at scale) |
 | D1 (multi-user) + ≥1 publisher opted in | D8 (Sprint 30+ federation activation) |
 | Operator-discretion polish | D9 (Substack publish), D10 (sync voice), D11 (chase-tree mode) |
+| Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
 
 ---
 
@@ -340,14 +381,14 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
   earliest 2027 H1
 - **D8 (Sprint 30+ federation activation)** — D1 + ≥1 publisher opt-in
   (G3); earliest 2027 H2
-- **D9, D10, D11** — operator-discretion; no calendar binding
+- **D9, D10, D11, D12** — operator-discretion; no calendar binding
 
-**Bottom line:** of the 11 deferrals, **none can be closed this week**;
+**Bottom line:** of the 12 deferrals, **none can be closed this week**;
 **0 close this month** (every deferral is gated on either time, volume,
 ratification, or D1); **3 close in late 2026 to mid-2027** (D1, then D7,
 D8 trail); **3 close in 2027+ at the earliest** (D3, D5, D6 all gated on
-G8); **D4 depends on operator's ratification cadence**; **D9, D10, D11
-are pure polish items with no spec-binding deadline**.
+G8); **D4 depends on operator's ratification cadence**; **D9, D10, D11,
+D12 are operator-discretion items with no spec-binding deadline**.
 
 The pattern matches `operator_gate_actions.md`'s G7→G8 chain:
 **multi-user is the keystone**. D1 closing unblocks the largest cluster
