@@ -71,10 +71,15 @@ dev = [
   "mypy>=1.11",
   "types-PyYAML",
   "types-python-dateutil",
-  # Export-format extras so CI exercises the new PDF/EPUB code paths.
-  "xhtml2pdf>=0.2.13",
-  "ebooklib>=0.18",
 ]
+# NOTE on export extras: xhtml2pdf pulls reportlab → pycairo which needs
+# system libcairo2-dev. We deliberately do NOT include xhtml2pdf or
+# ebooklib in [dev] so default CI installs don't require apt-getting
+# system libraries. The PDF + EPUB tests skipif-import the libs and
+# skip cleanly when not installed; the Substack test passes without
+# them (pure-stdlib markdown emission). Operators who want server-side
+# PDF/EPUB rendering install via ``pip install -e '.[export]'`` plus
+# the matching system libs. Substack export works without the extra.
 
 [project.scripts]
 # Entry point lives at `antiek.cli:main` once we wire it. For now this is
