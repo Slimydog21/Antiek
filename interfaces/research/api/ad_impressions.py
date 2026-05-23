@@ -118,13 +118,14 @@ def _resolve_db_path() -> str:
 def _load_serving_inventory(con) -> tuple[
     list[TargetedInventoryItem], list[AdInventoryItem],
 ]:
-    """Load the serving inventory from the substrate's persisted ad-
-    inventory items. The substrate currently has no `ad_inventory_items`
-    table — inventory is configured in-memory by the operator (via the
-    upcoming AdvertiserConsole UI or by direct CLI). For now this
-    returns empty lists so the endpoint is a structural surface; the
-    operator's inventory-population path lands separately."""
-    return ([], [])
+    """Load the operator-curated active inventory from the V6
+    ``ad_inventory_items`` table. The split (targeted vs flat-fallback)
+    mirrors ``select_targeted_ad``'s contract."""
+    from substrate.ad_inventory.inventory_persistence import (
+        load_serving_for_matcher,
+    )
+
+    return load_serving_for_matcher(con)
 
 
 # ── Routes ─────────────────────────────────────────────────────────

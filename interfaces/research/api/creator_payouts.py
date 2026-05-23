@@ -134,11 +134,19 @@ def register_creator_payouts_routes(app: FastAPI) -> None:
                 initiated_at=initiated_at or "",
             ))
 
-        # Rollover balance — substrate's rollover_ledger is in-memory
-        # by design (the persistent layer is per-recipient ledger
-        # rows in a future schema chunk). Returns 0 here; the operator
-        # CLI exposes the real balance.
-        rollover_balance_cents = 0
+        # Rollover balance — backed by the V6 rollover_ledger table.
+        # Empty / unknown recipient → 0; existing balance → live value.
+        from substrate.rev_share.rollover_persistence import (
+            load_balance_cents,
+        )
+
+        con2 = duckdb.connect(db, read_only=True)
+        try:
+            rollover_balance_cents = load_balance_cents(
+                con2, recipient_ref,
+            )
+        finally:
+            con2.close()
 
         return CreatorPayoutsResponse(
             recipient_ref=recipient_ref,

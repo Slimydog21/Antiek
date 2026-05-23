@@ -54,11 +54,20 @@ class RevShareDecision:
 
 @dataclass
 class PayoutRouter:
-    """Routes attribution-derived revenue to recipients."""
+    """Routes attribution-derived revenue to recipients.
+
+    ``gates_by_decision_id`` records why each decision was admitted
+    (or NOT admitted). Values mirror ``decisions_log.DecisionGate``:
+    "admitted" | "rolled_over" | "gated_kyc" | "gated_fraud".
+
+    The router still emits a decision for every recipient (so the
+    audit trail is complete), but the gate result tells the
+    transfer-initiator whether to actually call Stripe."""
 
     per_document_daily_cap_usd: Decimal = DEFAULT_PER_DOCUMENT_DAILY_CAP_USD
     document_daily_spent_cents: dict[str, int] = field(default_factory=dict)
     decisions: list[RevShareDecision] = field(default_factory=list)
+    gates_by_decision_id: dict[str, str] = field(default_factory=dict)
 
 
 def distribute_session_ad_revenue(
@@ -142,3 +151,79 @@ def enforce_per_document_daily_cap(
     # Cap kicks in.
     router.document_daily_spent_cents[document_id] = cap_cents
     return (available, True)
+
+
+def distribute_with_gates(
+    router: PayoutRouter,
+    *,
+    impression_id: str,
+    ad_revenue_usd_cents: int,
+    attribution_shares: dict[str, float],
+    document_to_recipient: dict[str, tuple["RevShareKind", str, bool]],
+    kyc_registry=None,  # type: Optional[KycRegistry]
+    fraud_verdict=None,  # type: Optional[FraudVerdict]
+) -> list[RevShareDecision]:
+    """Distribute revenue + apply §9.5 KYC settlement gate + §9.7
+    anti-gaming gate.
+
+    Same return shape as ``distribute_session_ad_revenue``, but
+    populates ``router.gates_by_decision_id`` with the gate result
+    per decision. Caller (typically the persistence layer) reads
+    the dict to record ``payout_decisions.gate_result``.
+
+    Gates applied:
+
+      - FraudVerdict.BLOCK → every creator/publisher decision tagged
+        ``gated_fraud``. Platform cut still emitted (Antiek bears
+        the operational cost of the impression regardless).
+      - Below §9.5 floor amount → tagged ``rolled_over``.
+      - At/above §9.5 floor + KYC not COMPLETED → tagged ``gated_kyc``.
+      - Otherwise → ``admitted``.
+
+    Substrate produces the decisions but the gate value tells the
+    transfer initiator whether to actually move money. Gated
+    decisions are still persisted so the operator can audit which
+    impressions were blocked from settlement and why."""
+    # Defer imports to avoid hard coupling at module-load time.
+    from substrate.billing.kyc import (
+        KYC_PAYOUT_FLOOR_USD_CENTS, KycState, can_settle,
+    )
+
+    fraud_blocked = False
+    if fraud_verdict is not None:
+        verdict_kind = getattr(fraud_verdict, "kind", None)
+        if verdict_kind is not None and str(verdict_kind).endswith("BLOCK"):
+            fraud_blocked = True
+
+    decisions = distribute_session_ad_revenue(
+        router,
+        impression_id=impression_id,
+        ad_revenue_usd_cents=ad_revenue_usd_cents,
+        attribution_shares=attribution_shares,
+        document_to_recipient=document_to_recipient,
+    )
+
+    # We tagged nothing inside distribute_session_ad_revenue, so
+    # everything currently reads ADMITTED. Now apply gates by
+    # post-processing.
+    for d in decisions:
+        if d.kind == RevShareKind.PLATFORM:
+            router.gates_by_decision_id[d.decision_id] = "admitted"
+            continue
+        if fraud_blocked:
+            router.gates_by_decision_id[d.decision_id] = "gated_fraud"
+            continue
+        if d.amount_usd_cents <= KYC_PAYOUT_FLOOR_USD_CENTS:
+            router.gates_by_decision_id[d.decision_id] = "rolled_over"
+            continue
+        if kyc_registry is not None:
+            if not can_settle(
+                kyc_registry,
+                recipient_ref=d.recipient_ref,
+                amount_usd_cents=d.amount_usd_cents,
+            ):
+                router.gates_by_decision_id[d.decision_id] = "gated_kyc"
+                continue
+        router.gates_by_decision_id[d.decision_id] = "admitted"
+
+    return decisions

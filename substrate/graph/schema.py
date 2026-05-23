@@ -722,6 +722,88 @@ CREATE INDEX IF NOT EXISTS idx_tax_reports_recipient_year
 """
 
 
+# Sprint 23-24 phase 1+2 — ad inventory persistence + payout decisions
+# log + rollover ledger. Closes the "endpoint exists but data dies on
+# request return" gap from the prior audit.
+ANTIEK_GRAPH_SCHEMA_V6_AD_PERSISTENCE_SQL = """
+-- ============================================================
+-- ad_inventory_items — operator-curated lead-gen inventory
+-- (master-spec §9.4 Option C). Active subset is what the
+-- /ad-inventory/select matcher loads at render time.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS ad_inventory_items (
+    inventory_id              TEXT PRIMARY KEY,
+    advertiser_id             TEXT NOT NULL,
+    advertiser_display_name   TEXT NOT NULL,
+    target_topics             TEXT NOT NULL DEFAULT '',
+    target_sectors            TEXT NOT NULL DEFAULT '',
+    target_sub_sectors        TEXT NOT NULL DEFAULT '',
+    target_audience_intents   TEXT NOT NULL DEFAULT '',
+    cpm_usd_cents             INTEGER NOT NULL CHECK (cpm_usd_cents >= 0),
+    creative_url              TEXT NOT NULL,
+    landing_url               TEXT NOT NULL,
+    active                    BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ad_inventory_items_active
+    ON ad_inventory_items(active);
+CREATE INDEX IF NOT EXISTS idx_ad_inventory_items_advertiser
+    ON ad_inventory_items(advertiser_id);
+
+-- ============================================================
+-- payout_decisions — every RevShareDecision the PayoutRouter emits.
+-- Audit trail under §13.7. Joined against payout_transfers (V4) to
+-- show the full impression → decision → transfer chain.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS payout_decisions (
+    decision_id               TEXT PRIMARY KEY,
+    impression_id             TEXT NOT NULL,
+    kind                      TEXT NOT NULL CHECK (kind IN (
+        'creator', 'publisher', 'platform'
+    )),
+    recipient_ref             TEXT NOT NULL,
+    amount_usd_cents          INTEGER NOT NULL CHECK (amount_usd_cents >= 0),
+    document_id               TEXT,
+    requires_escrow           BOOLEAN NOT NULL DEFAULT FALSE,
+    capped_to_daily_limit     BOOLEAN NOT NULL DEFAULT FALSE,
+    -- KYC gate result at the moment the decision was emitted.
+    -- 'admitted' means the substrate cleared the recipient for
+    -- settlement at this amount; 'rolled_over' means the amount
+    -- was below the §9.5 floor (no KYC required); 'gated_kyc'
+    -- means KYC blocked above-floor settlement; 'gated_fraud'
+    -- means the AntiGamingDetector returned BLOCK.
+    gate_result               TEXT NOT NULL DEFAULT 'admitted'
+        CHECK (gate_result IN (
+            'admitted', 'rolled_over', 'gated_kyc', 'gated_fraud'
+        )),
+    decided_at                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_payout_decisions_impression
+    ON payout_decisions(impression_id);
+CREATE INDEX IF NOT EXISTS idx_payout_decisions_recipient
+    ON payout_decisions(recipient_ref);
+CREATE INDEX IF NOT EXISTS idx_payout_decisions_gate
+    ON payout_decisions(gate_result);
+
+-- ============================================================
+-- rollover_ledger — persistent per-recipient rolling balance.
+-- Survives process restart; backs /creator-payouts/{user_id}'s
+-- rollover_balance_cents (previously hard-coded to 0).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS rollover_ledger (
+    recipient_ref               TEXT PRIMARY KEY,
+    balance_cents               INTEGER NOT NULL DEFAULT 0
+        CHECK (balance_cents >= 0),
+    accrual_started_month       INTEGER,  -- months-since-epoch
+    state                       TEXT NOT NULL DEFAULT 'accruing'
+        CHECK (state IN (
+            'accruing', 'notice_sent', 'settled', 'forfeited'
+        )),
+    last_event_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -748,6 +830,9 @@ def init_database(con: LockedConnection) -> None:
     # Sprint 23-24 phase 4 — KYC state machine + tax_reports for
     # §9.5 settlement gate + 1099 export.
     con.execute(ANTIEK_GRAPH_SCHEMA_V5_KYC_SQL)
+    # Sprint 23-24 phase 1+2 — ad inventory persistence + payout
+    # decisions audit + rollover ledger.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V6_AD_PERSISTENCE_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:

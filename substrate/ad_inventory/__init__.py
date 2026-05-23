@@ -56,6 +56,7 @@ from .payout import (
     PayoutRouter,
     RevShareDecision,
     distribute_session_ad_revenue,
+    distribute_with_gates,
     enforce_per_document_daily_cap,
 )
 
@@ -85,6 +86,7 @@ __all__ = [
     "compute_attribution_option_c",
     "context_from_decomposer_topics",
     "distribute_session_ad_revenue",
+    "distribute_with_gates",
     "enforce_per_document_daily_cap",
     "is_serving",
     "reject_advertiser",
