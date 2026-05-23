@@ -203,6 +203,76 @@ def test_accepts_emitted_at_field():
     assert v.hermes_score.synthesis_count == 1
 
 
+# ── G5 follow-up: synthesizer self-grade fallback ────────────────────
+
+
+def _synthesize_delivered(
+    *,
+    inv: str = "inv-1",
+    recommendation: str = "buy",
+    conviction: float = 0.7,
+    ts: str = "2026-05-20T12:01:00Z",
+) -> dict:
+    return {
+        "event_id": f"evt-syn-{inv}",
+        "investigation_id": inv,
+        "emitted_at": ts,
+        "action_type": "synthesize.delivered",
+        "payload": {
+            "action_type": "synthesize.delivered",
+            "implicit_recommendation": recommendation,
+            "conviction_level": conviction,
+        },
+    }
+
+
+def test_self_grade_fallback_when_no_rubric_scored():
+    """When the rubric chain isn't firing in production (the G5
+    finding), the analyzer falls back to synthesize.delivered's
+    own implicit_recommendation + conviction_level."""
+    events = [
+        _dispatch_synthesis("hermes", "grok-4.3", inv="inv-1"),
+        _synthesize_delivered(inv="inv-1", recommendation="buy", conviction=0.8),
+    ]
+    v = analyse_events(events=events)
+    assert v.hermes_score is not None
+    assert v.hermes_score.verified_count == 1  # self-graded counts as verified
+    assert v.hermes_score.passed_count == 1    # conviction 0.8 ≥ 0.5 → pass
+
+
+def test_self_grade_insufficient_evidence_counts_as_fail():
+    """A synthesis that declined (insufficient_evidence) counts
+    against the provider — the synthesizer self-reported failure."""
+    events = [
+        _dispatch_synthesis("hermes", "grok-4.3", inv="inv-1"),
+        _synthesize_delivered(
+            inv="inv-1",
+            recommendation="insufficient_evidence",
+            conviction=0.05,
+        ),
+    ]
+    v = analyse_events(events=events)
+    assert v.hermes_score is not None
+    assert v.hermes_score.verified_count == 1
+    assert v.hermes_score.passed_count == 0  # insufficient_evidence = fail
+
+
+def test_rubric_scored_overrides_self_grade():
+    """When both rubric.scored and self-grade exist, the explicit
+    rubric wins. Self-grade is a fallback, not a co-signal."""
+    events = [
+        _dispatch_synthesis("hermes", "grok-4.3", inv="inv-1"),
+        # Synthesizer self-grades 0.9
+        _synthesize_delivered(inv="inv-1", recommendation="buy", conviction=0.9),
+        # But the verifier rubric explicitly scored 0.3 → fail
+        _verify_score(0.3, inv="inv-1"),
+    ]
+    v = analyse_events(events=events)
+    assert v.hermes_score is not None
+    assert v.hermes_score.verified_count == 1
+    assert v.hermes_score.passed_count == 0  # rubric.scored 0.3 wins over self-grade
+
+
 # ── Markdown renderer ────────────────────────────────────────────────
 
 

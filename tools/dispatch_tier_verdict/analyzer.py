@@ -178,6 +178,15 @@ def analyse_events(
     # substrate-wide pass threshold; documented in
     # architecture_notes §3.2).
     verify_outcomes: dict[tuple[str, str], list[float]] = {}
+    # Fallback signal — synthesizer self-grade from
+    # synthesize.delivered when no rubric.scored event exists.
+    # Production today emits the synthesis but no rubric scoring
+    # call follows, so we read implicit_recommendation +
+    # conviction_level as the closest substrate signal. The §14.4
+    # protocol assumes verifier pass-rate; this is the best
+    # available proxy until the explicit rubric chain is wired
+    # (G5 follow-up Sprint 21 substrate audit).
+    self_grade_outcomes: dict[tuple[str, str], list[float]] = {}
 
     ts_min: str | None = None
     ts_max: str | None = None
@@ -220,11 +229,50 @@ def analyse_events(
                 continue
             verify_outcomes.setdefault(key, []).append(float(score))
 
+        elif action == "synthesize.delivered":
+            # Self-grade fallback. Read the synthesizer's own
+            # implicit_recommendation + conviction_level fields.
+            # The synthesizer emits these from its own constraint-
+            # compliance pass; treating them as a verifier signal
+            # is an approximation, but it's the only one production
+            # currently produces.
+            if not inv_id:
+                continue
+            key = last_synthesis_per_inv.get(inv_id)
+            if key is None:
+                continue
+            recommendation = payload.get("implicit_recommendation")
+            conviction = payload.get("conviction_level")
+            # Map the synthesis's self-report to a pass-or-fail
+            # score in [0, 1]:
+            # - "insufficient_evidence" recommendation → 0.0 (the
+            #   synthesizer explicitly declined to produce a thesis)
+            # - any other recommendation + conviction_level ≥ 0.5 → 1.0
+            # - conviction_level present but < 0.5 → that value
+            # - no conviction_level → 0.5 (neutral)
+            if recommendation == "insufficient_evidence":
+                self_score = 0.0
+            elif isinstance(conviction, (int, float)):
+                self_score = max(0.0, min(1.0, float(conviction)))
+            else:
+                self_score = 0.5
+            self_grade_outcomes.setdefault(key, []).append(self_score)
+
     PASS_THRESHOLD = 0.5
     scores: list[ProviderScore] = []
     for key, bucket in synthesis_by_key.items():
         provider, model = key
-        outcomes = verify_outcomes.get(key, [])
+        rubric_outcomes = verify_outcomes.get(key, [])
+        # Prefer explicit rubric.scored events; fall back to self-grade
+        # when production doesn't emit them. Mix the two only if
+        # one provider has rubric data and the other doesn't —
+        # in that case the comparison is apples-to-oranges and the
+        # §14.4 verdict gate will reject as insufficient_data, which
+        # is the honest behaviour.
+        if rubric_outcomes:
+            outcomes = rubric_outcomes
+        else:
+            outcomes = self_grade_outcomes.get(key, [])
         verified_count = len(outcomes)
         passed = sum(1 for s in outcomes if s >= PASS_THRESHOLD)
         scores.append(
