@@ -39,10 +39,29 @@
     # arguments doesn't honor backslash line continuation.
     @api_routes path /.well-known/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /attribution* /auth/* /backtest* /billing* /blocks/* /campaigns* /chunks* /creator-payouts* /cross-graph/* /deliverables* /documents* /events/* /federation* /health /interview-projects* /interviews* /investigations* /loop-3/* /notebooks* /ops/* /outcomes* /payouts* /publishers* /quality-gate* /sections* /skill-rules* /sources* /stats* /thought-partner /trajectory/* /trust-center* /voice/* /voice-notes* /watch-for-later* /ws/*
 
+    # ~14 paths overlap between backend API + frontend React Router
+    # (e.g. /investigations, /notebooks, /billing, /sources). Backend
+    # serves JSON; SPA shows a UI page at the same URL. Disambiguate
+    # by Accept header: browser top-level navigation includes
+    # `text/html`; fetch / XHR / WS / asset loads don't.
+    @spa_browser_nav header Accept *text/html*
+
     route {
-        # 1. API → uvicorn (long-running LLM dispatches can stay open
-        #    for 600+ seconds; 900s timeouts match the systemd unit's
-        #    --timeout-keep-alive)
+        # 1. Browser top-level navigation → SPA, regardless of path.
+        #    This is what lets typing /investigations/<uuid> in the
+        #    address bar load the React route — without this rule
+        #    the request matches @api_routes and uvicorn's auth
+        #    middleware bounces with 401.
+        handle @spa_browser_nav {
+            root * {{ frontend_dist_dir }}
+            try_files {path} /index.html
+            file_server
+        }
+
+        # 2. fetch / XHR / WebSocket against an API prefix → uvicorn.
+        #    Long-running LLM dispatches can stay open for 600+s;
+        #    900s timeouts match the systemd unit's
+        #    --timeout-keep-alive.
         reverse_proxy @api_routes localhost:{{ uvicorn_port }} {
             transport http {
                 read_timeout 900s
@@ -54,12 +73,10 @@
             header_up X-Forwarded-Proto {scheme}
         }
 
-        # 2. Everything else → static SPA (redesigned reading app
-        #    built from apps/reading/dist, rsync'd into
-        #    {{ frontend_dist_dir }}). try_files makes React Router
-        #    work: /wrestle/<doc> or /inv/<id> don't exist on disk;
-        #    Caddy serves index.html and the client routes from
-        #    there.
+        # 3. Everything else (asset fetches, fonts, /favicon.ico) →
+        #    static files. try_files only kicks in if the file
+        #    doesn't exist on disk; the browser-nav rule above
+        #    covers SPA-route fallback for top-level loads.
         root * {{ frontend_dist_dir }}
         try_files {path} /index.html
         file_server
