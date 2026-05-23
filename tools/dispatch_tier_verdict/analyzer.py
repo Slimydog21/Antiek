@@ -130,10 +130,20 @@ def _within_window(
         dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
     except ValueError:
         return False
-    if since and dt < since:
-        return False
-    if until and dt > until:
-        return False
+    # Tolerate naive datetimes on the event side (some old fixtures
+    # are tz-less). Assume UTC. The CLI parses --since with explicit
+    # UTC; tests pass aware datetimes; this branch handles only
+    # legacy data.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if since:
+        since_aware = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
+        if dt < since_aware:
+            return False
+    if until:
+        until_aware = until if until.tzinfo else until.replace(tzinfo=timezone.utc)
+        if dt > until_aware:
+            return False
     return True
 
 

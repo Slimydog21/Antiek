@@ -54,13 +54,17 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    def _parse_iso_to_utc(raw: str) -> datetime:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
     since = (
-        datetime.fromisoformat(args.since.replace("Z", "+00:00"))
+        _parse_iso_to_utc(args.since)
         if args.since
         else datetime.now(timezone.utc) - timedelta(days=14)
     )
     until = (
-        datetime.fromisoformat(args.until.replace("Z", "+00:00"))
+        _parse_iso_to_utc(args.until)
         if args.until
         else datetime.now(timezone.utc)
     )
