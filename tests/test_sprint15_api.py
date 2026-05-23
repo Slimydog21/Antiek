@@ -246,13 +246,96 @@ def test_export_json_returns_structured_bundle(temp_substrate):
 
 
 def test_export_unsupported_format_422(temp_substrate):
+    """Format outside the SUPPORTED tuple returns 422. Sprint 15 §3.4
+    landed PDF/EPUB/Substack, so the test asserts a truly unknown
+    format (``xml``) rejects — not PDF, which is now supported."""
     client = _client(temp_substrate)
     did, _ = _make_deliverable_with_section(client)
-    resp = client.get(f"/deliverables/{did}/export?format=pdf")
+    resp = client.get(f"/deliverables/{did}/export?format=xml")
     assert resp.status_code == 422
+    assert "format must be one of" in resp.json()["detail"]
 
 
 def test_export_404_for_unknown_deliverable(temp_substrate):
     client = _client(temp_substrate)
     resp = client.get("/deliverables/dlv-nope/export?format=markdown")
     assert resp.status_code == 404
+
+
+def test_export_substack_omits_h1_title_and_uses_blockquote_kind(temp_substrate):
+    """Substack import flow injects its own H1 from the post title field,
+    so the substack-flavored markdown variant deliberately omits the
+    leading ``# {title}`` line that the standard markdown export emits."""
+    client = _client(temp_substrate)
+    did, sid = _make_deliverable_with_section(client)
+    client.patch(
+        f"/sections/{sid}/prose",
+        json={"prose_text": "Substack-ready prose with em-dashes — preserved."},
+    )
+    resp = client.get(f"/deliverables/{did}/export?format=substack")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["format"] == "substack"
+    assert body["content_encoding"] == "text"
+    assert body["filename"].endswith(".substack.md")
+    # No leading `# Memo` H1
+    assert not body["content"].lstrip().startswith("# ")
+    # Kind label in blockquote, not paragraph
+    assert "> _" in body["content"]
+    # Em-dashes preserved verbatim
+    assert "em-dashes — preserved" in body["content"]
+
+
+def test_export_pdf_returns_base64_pdf_bytes(temp_substrate):
+    """PDF export — Sprint 15 §3.4. xhtml2pdf renders the researcher's-
+    notebook stylesheet to base64-encoded PDF bytes. Verifies the
+    response shape + that the decoded bytes start with the PDF magic
+    number (``%PDF-``)."""
+    try:
+        import xhtml2pdf  # noqa: F401
+    except ImportError:
+        import pytest
+        pytest.skip("xhtml2pdf not installed — pip install -e '.[export]'")
+    client = _client(temp_substrate)
+    did, sid = _make_deliverable_with_section(client)
+    client.patch(f"/sections/{sid}/prose", json={"prose_text": "Body text."})
+    resp = client.get(f"/deliverables/{did}/export?format=pdf")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["format"] == "pdf"
+    assert body["content_encoding"] == "base64"
+    assert body["filename"].endswith(".pdf")
+    import base64
+    decoded = base64.b64decode(body["content"])
+    # PDF files start with the byte sequence ``%PDF-`` (0x25 0x50 0x44 0x46 0x2D).
+    assert decoded.startswith(b"%PDF-"), f"got {decoded[:8]!r}"
+    # Sanity: PDF length is non-trivial — a real-rendered one-section
+    # document is at least a few hundred bytes.
+    assert len(decoded) > 500
+
+
+def test_export_epub_returns_base64_epub_zip(temp_substrate):
+    """EPUB export — Sprint 15 §3.4. ebooklib produces a ZIP file with
+    the EPUB MIME marker. Verifies response shape + ZIP magic number."""
+    try:
+        import ebooklib  # noqa: F401
+    except ImportError:
+        import pytest
+        pytest.skip("ebooklib not installed — pip install -e '.[export]'")
+    client = _client(temp_substrate)
+    did, sid = _make_deliverable_with_section(client)
+    client.patch(f"/sections/{sid}/prose", json={"prose_text": "Chapter prose."})
+    resp = client.get(f"/deliverables/{did}/export?format=epub")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["format"] == "epub"
+    assert body["content_encoding"] == "base64"
+    assert body["filename"].endswith(".epub")
+    import base64
+    decoded = base64.b64decode(body["content"])
+    # EPUB is a ZIP file — starts with the ZIP local file header magic
+    # bytes ``PK\x03\x04``.
+    assert decoded.startswith(b"PK\x03\x04"), f"got {decoded[:8]!r}"
+    # EPUB requires an ``mimetype`` entry as the first uncompressed file
+    # containing ``application/epub+zip``. ebooklib writes this correctly.
+    assert b"application/epub+zip" in decoded[:1024]

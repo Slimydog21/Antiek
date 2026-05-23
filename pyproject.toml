@@ -48,6 +48,14 @@ browserbase = [
   "browserbase>=0.4",
   "playwright>=1.45",
 ]
+# Deliverable export — Sprint 15 §3.4 "PDF, EPUB, Substack" formats.
+# Lazy-imported in the export endpoint; missing deps return a 503 with
+# install hint rather than crashing on import. xhtml2pdf is pure-Python
+# (pulls reportlab); ebooklib is small.
+export = [
+  "xhtml2pdf>=0.2.13",
+  "ebooklib>=0.18",
+]
 
 # Dev / test
 dev = [
@@ -63,6 +71,9 @@ dev = [
   "mypy>=1.11",
   "types-PyYAML",
   "types-python-dateutil",
+  # Export-format extras so CI exercises the new PDF/EPUB code paths.
+  "xhtml2pdf>=0.2.13",
+  "ebooklib>=0.18",
 ]
 
 [project.scripts]

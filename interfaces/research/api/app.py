@@ -382,11 +382,23 @@ class UpdateSectionProseResponse(BaseModel):
 class ExportFormat(BaseModel):
     """Query-side echo of the chosen format. Used in JSON responses for
     /deliverables/{id}/export when the operator wants the raw content
-    delivered as JSON."""
+    delivered as JSON.
 
-    format: Literal["markdown", "html", "json"]
+    Binary formats (``pdf``, ``epub``) ship as base64-encoded strings
+    in ``content`` with ``content_encoding="base64"``. Text formats
+    (``markdown``, ``html``, ``json``, ``substack``) use the default
+    ``content_encoding="text"``. The TS client checks ``content_encoding``
+    before constructing a Blob for download.
+
+    Sprint 15 §3.4 binds these six formats: PDF + EPUB are the
+    operator-deliverable formats; Substack is the publishing-target
+    markdown variant per §8.5.
+    """
+
+    format: Literal["markdown", "html", "json", "pdf", "epub", "substack"]
     content: str
     filename: str
+    content_encoding: Literal["text", "base64"] = "text"
 
 
 # ── Sprint H3: observability ──────────────────────────────────────────
@@ -2111,10 +2123,14 @@ def create_app(
         the Blob API in the browser). The substrate keeps no
         notion of "rendered files" — every export is a fresh derivation
         from the section rows."""
-        if format not in ("markdown", "html", "json"):
+        SUPPORTED = ("markdown", "html", "json", "pdf", "epub", "substack")
+        if format not in SUPPORTED:
             raise HTTPException(
                 status_code=422,
-                detail=f"format must be markdown|html|json, got {format!r}",
+                detail=(
+                    f"format must be one of {'|'.join(SUPPORTED)}, "
+                    f"got {format!r}"
+                ),
             )
         import duckdb
         import json as _json
@@ -2150,6 +2166,25 @@ def create_app(
                 format="markdown", content=content,
                 filename=f"{deliverable_id}.md",
             )
+        if format == "substack":
+            # Substack-flavored markdown variant per §8.5. Substack's
+            # import flow injects its own H1 from the post title field,
+            # so we OMIT the leading `# {title}` line that the standard
+            # markdown export emits. We also preserve em-dashes
+            # verbatim (Substack's editor renders them correctly) and
+            # use ``> `` blockquote for the deliverable kind label so
+            # Substack's reader UI distinguishes metadata from prose.
+            lines: list[str] = [f"> _{kind}_", ""]
+            for idx, sec_title, prose in secs:
+                lines.append(f"## {sec_title or f'Section {idx + 1}'}")
+                lines.append("")
+                lines.append((prose or "_(no prose yet)_").strip())
+                lines.append("")
+            content = "\n".join(lines)
+            return ExportFormat(
+                format="substack", content=content,
+                filename=f"{deliverable_id}.substack.md",
+            )
         if format == "html":
             esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             parts = [
@@ -2171,6 +2206,138 @@ def create_app(
             return ExportFormat(
                 format="html", content=content,
                 filename=f"{deliverable_id}.html",
+            )
+        if format == "pdf":
+            # Sprint 15 §3.4 PDF export. Renders the HTML produced by
+            # the ``html`` branch through xhtml2pdf (pure-Python; pulls
+            # reportlab + Pillow). Base64-encodes the bytes so the
+            # JSON response shape stays uniform with the other formats.
+            #
+            # If xhtml2pdf isn't installed the endpoint returns 503
+            # rather than crashing on import — operator installs via
+            # ``pip install -e '.[export]'`` and retries.
+            try:
+                from xhtml2pdf import pisa  # type: ignore[import-untyped]
+            except ImportError as e:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "PDF export requires the 'export' extra. "
+                        "Install: pip install -e '.[export]'"
+                    ),
+                ) from e
+            import base64
+            import io
+            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            # Researcher's-notebook print stylesheet per master-spec §5.
+            # Serif body font; generous line-height; no SaaS-dashboard
+            # primary blues; @page margins set for A4 with title block.
+            html_parts: list[str] = [
+                "<!doctype html>",
+                "<html><head><meta charset='utf-8'>",
+                f"<title>{esc(title)}</title>",
+                "<style>",
+                "@page { size: A4; margin: 2.5cm 2cm; }",
+                "body { font-family: 'Georgia', 'Times New Roman', serif; ",
+                "       font-size: 11pt; line-height: 1.55; color: #1c1917; }",
+                "h1 { font-size: 22pt; margin-bottom: 0.3em; }",
+                "h2 { font-size: 14pt; margin-top: 1.6em; margin-bottom: 0.5em; }",
+                "p { margin: 0 0 0.8em 0; }",
+                ".kind { font-style: italic; color: #57534e; margin-bottom: 2em; }",
+                "</style></head><body>",
+                f"<h1>{esc(title)}</h1>",
+                f"<p class='kind'>{esc(kind)}</p>",
+            ]
+            for idx, sec_title, prose in secs:
+                heading = sec_title or f"Section {idx + 1}"
+                html_parts.append(f"<h2>{esc(heading)}</h2>")
+                if prose:
+                    for para in prose.split("\n\n"):
+                        html_parts.append(f"<p>{esc(para)}</p>")
+                else:
+                    html_parts.append("<p><em>(no prose yet)</em></p>")
+            html_parts.append("</body></html>")
+            html_src = "\n".join(html_parts)
+            buf = io.BytesIO()
+            result = pisa.CreatePDF(src=html_src, dest=buf)
+            if getattr(result, "err", 0) > 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"PDF rendering failed: {result.err} error(s)",
+                )
+            return ExportFormat(
+                format="pdf",
+                content=base64.b64encode(buf.getvalue()).decode("ascii"),
+                filename=f"{deliverable_id}.pdf",
+                content_encoding="base64",
+            )
+        if format == "epub":
+            # Sprint 15 §3.4 EPUB export. ebooklib produces EPUB3 with
+            # one chapter per deliverable section + an auto-generated
+            # nav.xhtml. Base64-encoded bytes follow the same pattern
+            # as PDF. Same 503 fallback when the extra isn't installed.
+            try:
+                from ebooklib import epub  # type: ignore[import-untyped]
+            except ImportError as e:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "EPUB export requires the 'export' extra. "
+                        "Install: pip install -e '.[export]'"
+                    ),
+                ) from e
+            import base64
+            import tempfile
+            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            book = epub.EpubBook()
+            book.set_identifier(deliverable_id)
+            book.set_title(title)
+            book.set_language("en")
+            chapters = []
+            for idx, sec_title, prose in secs:
+                heading = sec_title or f"Section {idx + 1}"
+                paras = (
+                    "".join(
+                        f"<p>{esc(p)}</p>"
+                        for p in (prose or "").split("\n\n")
+                        if p.strip()
+                    )
+                    or "<p><em>(no prose yet)</em></p>"
+                )
+                chapter = epub.EpubHtml(
+                    title=heading,
+                    file_name=f"section_{idx + 1}.xhtml",
+                    lang="en",
+                    content=(
+                        f"<html><head><title>{esc(heading)}</title></head>"
+                        f"<body><h2>{esc(heading)}</h2>{paras}</body></html>"
+                    ),
+                )
+                book.add_item(chapter)
+                chapters.append(chapter)
+            book.toc = tuple(chapters)
+            book.add_item(epub.EpubNcx())
+            book.add_item(epub.EpubNav())
+            book.spine = ["nav", *chapters]
+            # ebooklib writes to a path, not bytes. Use a tempfile and
+            # read back. Cleanup via ``delete=True`` after read.
+            with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:
+                tmp_path = tmp.name
+            try:
+                epub.write_epub(tmp_path, book, {})
+                with open(tmp_path, "rb") as fh:
+                    epub_bytes = fh.read()
+            finally:
+                import os
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+            return ExportFormat(
+                format="epub",
+                content=base64.b64encode(epub_bytes).decode("ascii"),
+                filename=f"{deliverable_id}.epub",
+                content_encoding="base64",
             )
         # format == "json"
         bundle = {

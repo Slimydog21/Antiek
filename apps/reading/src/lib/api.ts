@@ -689,12 +689,22 @@ export async function updateSectionProse(
   return resp.json();
 }
 
-export type ExportFormatName = "markdown" | "html" | "json";
+export type ExportFormatName =
+  | "markdown"
+  | "html"
+  | "json"
+  | "pdf"
+  | "epub"
+  | "substack";
 
 export interface ExportFormatResponse {
   format: ExportFormatName;
   content: string;
   filename: string;
+  /** "text" for markdown/html/json/substack; "base64" for binary
+   * formats (pdf, epub). When base64, the caller decodes via
+   * ``atob`` and wraps in a Blob with the right MIME for download. */
+  content_encoding: "text" | "base64";
 }
 
 export async function exportDeliverable(
