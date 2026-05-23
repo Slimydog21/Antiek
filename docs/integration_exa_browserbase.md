@@ -1,6 +1,6 @@
 # Antiek × Exa × Browserbase — Web Retrieval & Live Browsing Integration Spec
 
-**Status**: Draft v1, 2026-05-21. AnchorBrowser-vendor verdicts added 2026-05-23 (§5 matrix rows, §9.1 Wedge 4 candidates, §12.10 REJECT, §14.4.1 Plan B, §15.2 cross-reference) — no code changes; mono-vendor Browserbase escalation unchanged.
+**Status**: Draft v1, 2026-05-21. AnchorBrowser-vendor verdicts added 2026-05-23 (§5 matrix rows, §9.1 Wedge 4 candidates, §12.10 REJECT, §14.4.1 Plan B, §15.2 cross-reference). **Pricing-verification sharpen pass 2026-05-23** corrected the cost model in §13.1 (Browserbase billed per browser-HOUR not session-minute — 60× error in prior estimate; Exa raised /search from $5→$7/1k in March 2026), updated §14.4.1 with verified Anchor docs (Web Action Cache + OmniConnect/1Password confirmed, no longer "404'd"), and noted Stagehand v3.6.10's new `agent()` multi-step method (§9.1) which narrows the inspectability argument vs Anchor's `agent.task`. No code changes; mono-vendor Browserbase escalation unchanged.
 **Scope**: Decide where Exa (neural search + cleaned content API) and
 Browserbase (hosted headless Chromium + Stagehand) integrate into Antiek's
 acquisition path, where each is deferred behind unlock criteria, and which
@@ -338,7 +338,7 @@ DEFER).
 | **AnchorBrowser as a dispatch provider** | Add Anchor to `substrate/dispatch/providers/` | <span class="tag reject">REJECT</span> — same as §12.2 (not an LLM) | — |
 | **AnchorBrowser for paywall / robots bypass** | Use Anchor's stealth/anti-bot tooling to access disallowed content | <span class="tag reject">REJECT</span> — same as §12.7 (policy posture is the gate, not the tooling) | — |
 | **AnchorBrowser's MCP server as Antiek's browsing transport** | Use Anchor's MCP surface instead of its SDK | <span class="tag defer">DEFER — no decision needed</span> | Re-evaluate only if Antiek-as-MCP-host (master-spec MCP-first commitment) ratifies first |
-| **AnchorBrowser's Web Action Cache for deterministic re-runs** | Record an agent.task and replay deterministically. The strongest Anchor differentiator IF the docs page (404'd 2026-05-23) stabilizes + cache is exportable for `tools/golden_traces/` | <span class="tag defer">DEFER — docs unverifiable</span> | Re-evaluate when public docs + ≥1 operator-runnable demo exist |
+| **AnchorBrowser's Web Action Cache for deterministic re-runs** | Record an agent.task and replay deterministically. The strongest Anchor differentiator. **Feature confirmed on anchorbrowser.io 2026-05-23** ("Web Action Cache - Agents maintain your workflow as deterministic code, keeping automations always running"). Operator-runnable export semantics still need direct verification | <span class="tag defer">DEFER — feature confirmed, export semantics unverified</span> | Re-evaluate when a 1-day spike confirms export/import works against `tools/golden_traces/` |
 
 ---
 
@@ -890,19 +890,37 @@ the operator mentioned in prior sessions:
   conditional on the operator's research workflow demanding it.
 
 **Vendor candidates for the typed extraction primitive (added
-2026-05-23):**
+2026-05-23; sharpened 2026-05-23 after verifying Stagehand v3.6.10):**
 
-- **Stagehand** (`page.act` + `page.extract` against a typed Pydantic
-  schema) — the original Wedge 4 candidate. Two-method split is
-  inspectable; act/extract steps land in the trajectory individually.
+- **Stagehand v3.6.10** (released 2026-05-20) — exposes four methods:
+  - `act()` — execute individual actions
+  - `extract()` — retrieve structured data with Zod (TS) / Pydantic
+    (Python) schema validation
+  - `observe()` — return candidate locators without acting
+  - **`agent()`** — multi-step task execution (Stagehand's newer
+    multi-step primitive; see e.g. `agent.execute("Get to the latest
+    PR")`). **This narrows the prior "Stagehand is more inspectable
+    than Anchor" argument** — Stagehand now has both single-step
+    (act/extract) AND multi-step (agent) surfaces, same span as
+    Anchor's agent.task.
 - **AnchorBrowser `agent.task(description, outputSchema=...)`** —
-  newer alternative; returns structured data matching a Pydantic schema
-  via an internal agent loop ({browser-use, openai-cua, gemini-
-  computer-use}). Structurally more opaque than Stagehand (`maxSteps=40`
-  black box), which cuts slightly against the trajectory-as-product
-  invariant (master-spec §15.4; spec §12.5). Either vendor satisfies
-  Open Question §17.7 (vendor's own LLM config, not Antiek's dispatch
-  router).
+  returns structured data matching a Pydantic/Zod schema via an
+  internal agent loop. Supported underlying agents: `browser-use`
+  (default), `openai-cua`, `gemini-computer-use`. Configurable
+  `maxSteps` (default 40), `secretValues` for credential injection,
+  `humanIntervention` for human-in-the-loop. Anchor claims 89%
+  WebVoyager score (industry benchmark; spec does not independently
+  verify).
+
+**The inspectability argument (revised):** Stagehand's single-step
+methods (`act`, `extract`) emit per-step trajectory events; Stagehand's
+`agent()` and Anchor's `agent.task` are both multi-step black boxes
+that emit a single completion event. At the *single-step* layer,
+Stagehand is more inspectable; at the *multi-step* layer, the
+trajectory-as-product invariant cuts equally against both.
+
+Either vendor satisfies Open Question §17.7 (vendor's own LLM
+config, not Antiek's dispatch router).
 
 Vendor pick happens at §15.4 unlock — when a concrete surface ratifies.
 Not now. Per §12.10, running both vendors concurrently is REJECT.
@@ -1223,26 +1241,60 @@ before any sprint commit. Re-verify quarterly thereafter.**
 
 ### 13.1 Cost model
 
+**Updated 2026-05-23 pricing-verification sharpen pass.** Prior Q1
+estimates left two material errors: Browserbase billed per browser-
+hour not session-minute (60× too high), and Exa raised /search
+pricing 40% in March 2026.
+
 | Operation | Cost (USD) | Notes |
 |---|---|---|
 | One `httpx` URL fetch | ~$0.0001 | Bandwidth + electricity only |
 | Antiek's own HTML→markdown extract | ~$0 (CPU-only) | Already in `processing/extraction/` |
-| One Exa `/search` call (10 results) | ~$0.005 | $5/1k searches |
-| One Exa `/contents` call (10 URLs, no summary) | ~$0.005 | $5/1k pages |
-| One Exa `/contents` call (10 URLs, with summary) | ~$0.02–0.05 | Summary uses LLM, varies by model |
-| One Exa `findSimilar` call | ~$0.001 | $1/1k calls |
-| One Browserbase session (1 minute, no Stagehand) | ~$0.10 | Per session-minute, rounded up |
-| One Browserbase session (3 minutes, Stagehand-driven) | ~$0.30 + ~$0.005 (LLM calls) | |
+| One Exa `/search` call (10 results) | ~$0.007 | $7/1k requests (March 2026 update: $5→$7) |
+| One Exa Deep Search call (structured outputs) | ~$0.012–0.015 | $12–15/1k requests (new Agentic tier) |
+| One Exa `/contents` call (1 page, no summary) | ~$0.001 | $1/1k pages per content type |
+| One Exa `/contents` AI page summary | ~$0.001/page | $1/1k pages, additive |
+| One Exa `/findSimilar` call | ~$0.001 | $1/1k calls (verify; not currently listed on the public price page) |
+| One Exa Agent call — low/med/high/x-high | $0.025 / $0.10 / $0.50 / $2.00 | Fixed-effort agent modes (new in 2026) |
+| One Exa Agent compute unit (ACU) | $0.0001 | Variable component; charged on top of fixed-effort mode |
+| Exa free tier | up to 1,000 req/month | No card required |
+| One Browserbase session (1 minute, no Stagehand) | ~$0.0017 | **$0.10 per browser-HOUR** (not per minute as the Q1 spec claimed). Per-minute math: $0.10 / 60 |
+| One Browserbase session (3 minutes, Stagehand-driven) | ~$0.005 (browser) + ~$0.005 (LLM calls) | Browser-hour math: 3 min × $0.10/hr × (1/60) |
+| Browserbase free tier | 1 browser hour + 3 concurrent + $5 model credits + 1k Search/Fetch calls | No card required |
+| Browserbase paid plans | $20/mo Developer (100h, then $0.12/hr) or $99/mo Startup (500h, then $0.10/hr) | Operator likely stays on free tier at Wedge-2 volume |
 | One verifier-tier dispatch call (Grok 4.3 via Hermes) | ~$0.005 | Existing; unchanged by Wedges |
 
-**The asymmetries that drive the verdicts:**
-- Exa search ≈ 50× httpx fetch. Cheap enough to be a routine discovery cost.
-- Browserbase session ≈ 1000–5000× httpx fetch. Reserved for escalation.
+**The asymmetries that drive the verdicts (revised 2026-05-23):**
+
+- **Exa search ≈ 70× httpx fetch** (was 50×; March 2026 price rise).
+  Cheap enough to be a routine discovery cost. Note: the spec's
+  free tier alone (1,000 req/month) covers a substantial fraction
+  of operator-scale usage.
+- **Browserbase session ≈ 17× httpx fetch** for a 1-minute session
+  (was claimed 1000-5000×; that estimate was based on wrong billing
+  unit). The cost-asymmetry argument for "escalation, not default"
+  still holds at 17× — but the magnitude is much smaller than the
+  Q1 spec implied. **Default-on Browserbase is still REJECT (§12.3)
+  on TOS+reliability grounds + ingestion-volume arithmetic, not
+  the cost ratio alone.**
+- **Browserbase's free tier (1 browser hour/month) is sufficient
+  for ~60 minutes of escalation/month** — covering ~25 sessions/day
+  for 2-3 days/month if sessions are short. The operator can run
+  Wedge 2 entirely on the free tier at low volume.
 
 ### 13.2 Daily budget caps (default values; configurable)
 
-- `EXA_DAILY_BUDGET_USD`: $5. Sustains ~1k searches/day or ~500 contents calls.
-- `BROWSERBASE_DAILY_BUDGET_USD`: $5. Sustains ~25 escalation sessions/day.
+**Updated 2026-05-23 with verified Browserbase per-hour pricing.**
+
+- `EXA_DAILY_BUDGET_USD`: $5. At $7/1k searches that's ~715
+  searches/day; the operator's full month's Exa free-tier
+  allocation gets exhausted in ~1.4 days of capped spend.
+- `BROWSERBASE_DAILY_BUDGET_USD`: $5. At $0.10/browser-hour that's
+  50 browser-hours/day — **far above operator scale**. Realistic
+  Wedge-2 usage (25 sessions/day × 1 minute each ≈ 25 minutes/day
+  ≈ 0.42 hours) costs ~$0.04/day at paid-tier rates, or $0
+  on the free tier. The $5 cap is generous; consider lowering to
+  $1 once usage data accumulates.
 - Total acquisition budget cap (sum of Exa + Browserbase + future
   providers): $10/day default. Enforced at `acquisition/search/__init__.py`
   level.
@@ -1384,37 +1436,84 @@ pre-building for a hypothetical vendor switch is forbidden. The
 Plan-B contract exists at the spec level so a future PR has a
 defensible shape to land into without re-litigating the verdict.
 
-**Anchor-specific evidence as of 2026-05-23:**
+**Anchor-specific evidence as of 2026-05-23 (verified via direct
+WebFetch of anchorbrowser.io + docs.anchorbrowser.io):**
 
-- *Pricing*: Inconsistent public copy. One page advertises
-  $0.05/browser-hour (~120× cheaper than Browserbase's
-  $0.10/session-minute); home page advertises $50/month Starter
-  with credit/step/instance metering. **Reconcile via direct
-  outreach before any production switch.** At Wedge 2 volume
-  (capped at ~25 sessions/day per `BROWSERBASE_DAILY_BUDGET_USD=$5`),
-  Browserbase's pay-as-you-go-from-$0 dominates either way.
-- *Performance*: The only independent benchmark (Browserless
-  comparison, 2026-Q1) measured Anchor 6.0× slower on connection,
-  1.9× slower on page creation, 2.4× slower on navigation vs the
-  reference. For Wedge 2's ~25-sessions/day occasional-fallback
-  pattern with 60s+ sessions, 6× connection latency is a non-issue.
-  Anchor is the **wrong** primitive for any hypothetical high-
-  throughput case (e.g., a future Wedge-4 at scale or the WP-A3
-  parallel-fan-out problem from the Daytona spec).
-- *Web Action Cache*: Anchor markets record-and-replay for
-  deterministic workflow preservation ("80× less tokens"). The
-  feature's docs page returned 404 on 2026-05-23. **Treat as
-  unverified until docs stabilize.** If verifiable + exportable,
-  this would be the strongest Anchor-only differentiator — would
-  plug into `tools/golden_traces/` for trajectory replay (the
-  Sprint-6 orchestrate.py extraction unlock criterion per the
-  Antiek project context). Re-evaluate when documented.
-- *OmniConnect (1Password)*: Real ergonomic win over Browserbase's
-  raw cookie/localStorage "persistent contexts," but **only
-  relevant for Wedge 4** — logged-in browsing is explicitly
-  excluded from Wedge 2 (§7.5). Differential only if a Wedge-4
-  surface lands AND that surface benefits from delegated 1Password
-  auth over operator-managed cookies.
+- *Pricing — RECONCILED 2026-05-23*: Anchor uses a **subscription +
+  usage hybrid** model, not "inconsistent copy" as the prior pass
+  read it. Both prices apply:
+  - Free tier: $5 credits/month, 5 concurrent browsers, 5 session
+    creations/min, 0.1 credits per task.
+  - **Starter: $50/month subscription** + 25 concurrent browsers +
+    25 session creations/min.
+  - Growth: $2,000/month, 200 concurrent, 100/min.
+  - Enterprise: custom pricing, 500+ concurrent.
+  - Pay-as-you-go on top: $0.01/browser-creation, **$0.05/browser-
+    hour** (billed per full minute), $8/GB proxy, $0.01/AI-step.
+  - Overage: $1.00/credit on Starter/Growth.
+
+  **The cost comparison vs Browserbase at Wedge-2 volume (verified
+  2026-05-23):**
+  | Vendor | Free tier | Wedge-2 monthly cost (25 sessions/day × 1 min) |
+  |---|---|---|
+  | Browserbase | 1 browser-hour, 3 concurrent, no card required | **$0 (under free tier)** at ~12.5h/month |
+  | Anchor | $5 credits/month, 5 concurrent | $50/mo Starter + ~$0.63/mo browser-hours = **~$50.63/mo** |
+
+  Browserbase dominates at Wedge-2 volume by ~$50/mo. The dominance
+  argument in the prior pass was correct; the reasoning is now
+  precise.
+
+- *Performance*: Browserless comparison benchmark (verified
+  2026-05-23 via direct WebFetch of browserless.io/blog/browserless-
+  vs-anchor-browser): Anchor measured **5.96× slower on connection**
+  (5,582ms vs 936ms), **1.91× slower on page creation** (923ms vs
+  482ms), **2.42× slower on navigation** (402ms vs 166ms) vs
+  Browserless reference. For Wedge 2's ~25-sessions/day occasional-
+  fallback pattern with 60s+ sessions, 6× connection latency is a
+  non-issue. Anchor is the **wrong** primitive for any hypothetical
+  high-throughput case (e.g., a future Wedge-4 at scale or the
+  WP-A3 parallel-fan-out problem from the Daytona spec).
+
+- *Web Action Cache — VERIFIED 2026-05-23*: The feature is real and
+  documented on the home page: *"Web Action Cache — Agents maintain
+  your workflow as deterministic code, keeping automations always
+  running."* The prior pass's "docs 404'd" was a stale fetch.
+  Marketing claim of "80× less tokens" on cache hit. **Export/import
+  semantics for `tools/golden_traces/` integration still need
+  operator-runnable verification via a 1-day spike.** If the cache
+  is exportable as a deterministic Playwright script (the operator-
+  intended ratchet), this becomes the strongest Anchor-only
+  differentiator and plausibly flips the Anchor verdict from "Plan
+  B for Wedge 2" to "INTEGRATE NOW for golden-traces deterministic
+  re-runs" — the Sprint-6 orchestrate.py extraction unlock
+  criterion per the Antiek project context. **Flip path requires
+  the spike.**
+
+- *OmniConnect / 1Password partnership — VERIFIED 2026-05-23*:
+  Anchor's home page lists OmniConnect™ as "End to end
+  authentication infrastructure for cloud computer-use agents,"
+  and 1Password is listed as an "Official partner" with logo.
+  Real ergonomic win over Browserbase's raw cookie/localStorage
+  "persistent contexts," but **only relevant for Wedge 4** —
+  logged-in browsing is explicitly excluded from Wedge 2 (§7.5).
+  Differential only if a Wedge-4 surface lands AND that surface
+  benefits from delegated 1Password auth over operator-managed
+  cookies.
+
+- *agent.task surface — VERIFIED 2026-05-23*: Signature is
+  `anchorClient.agent.task(description: string, options: TaskOptions)`.
+  `TaskOptions` carries `url`, `maxSteps` (default 40),
+  `outputSchema` (JSON Schema; Zod→JSON-Schema converter on the TS
+  side; Pydantic on the Python side), `agent` (one of `browser-use`
+  / `openai-cua` / `gemini-computer-use`), `model`, `secretValues`,
+  `humanIntervention`, `detectElements`. Anchor claims 89%
+  WebVoyager score (industry benchmark; not independently verified
+  by this spec).
+
+- *MCP server — VERIFIED 2026-05-23*: Home page lists "SDK, MCP, or
+  any automation platform" as integration options. Anchor exposes
+  an MCP surface; deferred per §5 matrix row pending Antiek's own
+  MCP-host commitment (master-spec MCP-first).
 
 **Trigger conditions for activating Plan B:**
 

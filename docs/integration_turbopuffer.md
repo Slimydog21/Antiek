@@ -1,6 +1,6 @@
 # Antiek × Turbopuffer — Hybrid Search Substrate Integration Spec
 
-**Status**: Draft v1, 2026-05-23. Operator: Faisal.
+**Status**: Draft v1, 2026-05-23. Operator: Faisal. **Pricing-verification sharpen pass 2026-05-23 (same day)** revised §1.3 + §11.1: prior draft claimed "<$5/month at operator scale" + "cheapest acquisition-adjacent service"; verified pricing shows a **$64/month Launch tier floor** with no free or hobby tier. §13.1 unlock-criteria win-threshold tightened from "≥10% on ≥60%" to "≥15% on ≥70%" + cost-commitment affirmation, to justify $768/year against $0/year DuckDB cosine baseline.
 **Scope**: Decide where turbopuffer (serverless vector + BM25 + hybrid
 search infrastructure) integrates into Antiek's retrieval layer,
 where it's deferred behind unlock criteria, and which adoption shapes
@@ -147,34 +147,69 @@ The pattern that fits Wedge 1: one shared `substrate.chunks`
 namespace, filtered per-query by `owner_user_id` once multi-user
 lands.
 
-### 1.3 Pricing model (2026-Q2 estimates; verify before any sprint commit)
+### 1.3 Pricing model (verified 2026-05-23 via direct WebFetch of turbopuffer.com/pricing + /docs/pricing-log)
 
-- **Cold storage**: ~$0.20/GB-month for at-rest namespace data.
-- **Warm cache**: ~$2/GB-month for the working set held in
-  query-accelerator caches. Activated on first query against a
-  namespace; expires on idle.
-- **Writes**: ~$5 per 1M writes.
-- **Reads**: ~$1 per 1M queries.
-- **Free tier**: ≤1M total vectors stored. Antiek's projected
-  substrate scale fits inside the free tier for the operator-only
-  Sprint 17-21 era.
+**This section was materially wrong in the prior draft.** Below is
+the verified pricing as of 2026-05-23; the "<$5/month at operator
+scale" claim and the "cheapest acquisition-adjacent service"
+framing in the prior text were both based on incomplete pricing
+data and are now revised.
 
-For Antiek's projected substrate at single-operator scale
-(~10k-100k chunks, ~768-dim embeddings, ~1k queries/day):
+**There is no Turbopuffer free or hobby tier.** The entry tier
+("Launch") carries a $64/month minimum usage charge regardless of
+actual consumption.
 
-- Storage: <$1/month (within free tier today).
-- Writes: pennies (chunks written once at ingestion; no streaming
-  re-writes).
-- Reads: <$5/month at moderate query rates.
-- Warm cache: depends on query locality.
+| Tier | Monthly minimum | Notes |
+|---|---|---|
+| **Launch** | **$64/month** | Entry tier. Community Slack + email support |
+| Scale | $256/month | Private Slack, 8-5 support hours |
+| Enterprise | ≥$4,096/month + 35% usage premium | 24/7 support, 99.95% uptime SLA |
 
-**The asymmetry that drives the verdicts**: turbopuffer is the
-**cheapest acquisition-adjacent service** Antiek would touch.
-Exa is ~$0.005/search (50× httpx). Browserbase is ~$0.10-0.50/session
-(1000-5000× httpx). A single verifier-tier dispatch call is
-~$0.005. Turbopuffer is ~$0.000001/query — *cheaper than dispatch*.
-**Cost is rarely the constraint here**; the constraint is whether
-it's a better solve than DuckDB cosine for Antiek's actual queries.
+**Per-unit rates (Launch tier, February 2026 update):**
+- **Query rate**: $1/PB queried data (was $5/PB; February 2026
+  reduction). 80% marginal discount on 32-128 GB queried; 96%
+  marginal discount on >128 GB queried.
+- **Minimum billable per query**: 1.28 GB (was 256 MB; February
+  2026 increase).
+- **Namespace pinning (April 2026)**: GB-hours instead of
+  per-query TB-queried pricing. Minimum 64 GB and 10 minutes.
+- **Storage, write, read absolute rates**: not on the public
+  page. The published pricing page references a calculator; rates
+  not extractable here. Operator must visit pricing page to
+  estimate specific cost.
+
+**For Antiek's projected substrate at single-operator scale**
+(~10k-100k chunks, ~768-dim sentence-transformers vectors, ~50
+queries/day):
+
+- The $64/month Launch minimum is the floor — **regardless of
+  actual usage at operator scale, the cost is $64/month, or
+  $768/year**.
+- Per-query cost at the rates above: 50 queries/day × 1.28 GB
+  minimum billable × 30 days = 1,920 GB-queries/month. At $1/PB
+  ($1 / 1,048,576 GB) = ~$0.002/month — far under the $64 floor.
+
+**The asymmetry — REVISED 2026-05-23**: turbopuffer is **NOT the
+cheapest acquisition-adjacent service** at operator scale. With a
+$64/month floor regardless of usage:
+
+| Service | Operator-scale monthly cost |
+|---|---|
+| `httpx` URL fetcher | ~$0 (CPU only) |
+| DuckDB `cosine_similarity_sql` | ~$0 (in-process) |
+| Exa /search | ~$0-7/month (1k free tier, then $7/1k) |
+| Browserbase escalation | ~$0/month (1 browser-hour free tier covers Wedge-2 volume) |
+| **Turbopuffer Launch** | **$64/month MINIMUM** |
+| Browserbase Developer plan | $20/month |
+| Browserbase Startup plan | $99/month |
+
+Turbopuffer's $64/month floor puts it in the same cost class as
+Browserbase's paid plans — and Antiek doesn't even need a
+Browserbase paid plan at Wedge-2 volume. **Cost IS a constraint
+here, not just quality.** The spike (§6.4) must demonstrate
+quality improvement worth $768/year against DuckDB cosine's $0/year —
+not merely "≥10% improvement on ≥60% of queries" (the prior bar).
+See §13.1 below for the tightened unlock criteria.
 
 ### 1.4 What's notable about turbopuffer specifically (vs Pinecone, Weaviate, pgvector)
 
@@ -1020,44 +1055,62 @@ turbopuffer; keep traversal in DuckDB.
 Numbers below are 2026-Q2 estimates. **Confirm current pricing
 before any sprint commit. Re-verify quarterly thereafter.**
 
-### 11.1 Cost model
+### 11.1 Cost model (revised 2026-05-23 via verified pricing fetch)
+
+**This section was materially wrong in the prior draft. Revised.**
 
 | Operation | Cost (USD) | Notes |
 |---|---|---|
-| DuckDB `cosine_similarity_sql` | ~$0 | CPU-only, no external |
-| Turbopuffer cold storage | ~$0.20/GB-month | Per-namespace standing storage |
-| Turbopuffer warm cache | ~$2/GB-month | Activated on first query; expires on idle |
-| Turbopuffer write | ~$5/1M writes | One write per chunk ingestion |
-| Turbopuffer hybrid query | ~$1/1M queries | Per query, regardless of result count |
+| DuckDB `cosine_similarity_sql` | $0 | CPU-only, in-process |
+| Turbopuffer Launch tier | **$64/month MINIMUM**, regardless of usage | Entry tier. No free or hobby tier exists. |
+| Turbopuffer Scale tier | $256/month minimum | Private Slack + 8-5 support |
+| Turbopuffer Enterprise tier | ≥$4,096/month + 35% usage premium | 24/7 + 99.95% uptime SLA |
+| Turbopuffer query rate | $1/PB queried data | February 2026 reduction from $5/PB; 80% off 32-128 GB queried; 96% off >128 GB queried |
+| Turbopuffer min billable per query | 1.28 GB | February 2026 increase from 256 MB |
+| Turbopuffer namespace pinning | GB-hours billing | April 2026; minimum 64 GB and 10 minutes |
 | Embedding compute (operator-side) | $0 (CPU/GPU electricity only) | Same regardless of search backend |
 
 **Antiek's projected cost at single-operator scale** (~10k-100k
 chunks, ~768-dim sentence-transformers vectors, ~50 queries/day):
 
-- Storage: <$1/month (well under free tier today)
-- Writes: <$0.10/month (chunks written once at ingestion)
-- Reads: <$1/month
-- Warm cache: $0 if total namespace ≤ 1GB
+- The **$64/month Launch tier floor** is the dominant cost.
+- Per-query rate at 50 queries/day × 1.28 GB min-billable × 30 days
+  = ~1,920 GB-queries/month. At $1/PB = ~$0.002/month — far below
+  the $64 floor.
+- Storage, writes: not on the public price page; calculator
+  reference only. Assume they exist on top of the $64 floor.
 
-**Total**: <$5/month at current scale.
+**Total at operator scale: $64/month minimum, or $768/year.**
 
-**The asymmetry vs. the Exa spec**:
+**The asymmetry — REVISED 2026-05-23**:
 
-| Service | Per-call cost | vs httpx baseline |
+| Service | Operator-scale monthly cost (verified 2026-05-23) | Notes |
 |---|---|---|
-| One httpx URL fetch | $0.0001 | 1× |
-| One Exa /search call | $0.005 | 50× |
-| One Browserbase session | $0.10-0.50 | 1000-5000× |
-| One turbopuffer hybrid query | $0.000001 | **0.01×** (cheaper than httpx) |
+| `httpx` URL fetcher | $0 | In-process |
+| DuckDB `cosine_similarity_sql` | $0 | In-process |
+| Exa /search (within free tier) | $0 | 1,000 req/month free |
+| Exa /search (above free tier) | $7/1k requests | March 2026 increase from $5/1k |
+| Browserbase escalation (Wedge 2 volume) | $0 | 1 browser-hour/month free tier covers operator scale |
+| **Turbopuffer Launch (operator scale)** | **$64/month minimum, regardless** | No free tier exists |
+| Browserbase Developer | $20/month + overages | Antiek doesn't need this tier at Wedge-2 volume |
+| Browserbase Startup | $99/month + overages | Comparable to Turbopuffer Scale tier |
 
-Turbopuffer is the cheapest acquisition-adjacent service Antiek
-would touch. **Cost is rarely the constraint here**; the question
-is whether hybrid produces measurably better results than cosine.
+**Turbopuffer's $64/month floor puts it in the same cost class as
+Browserbase's paid plans.** Cost IS a constraint here, not just
+quality. The Q1 draft of this spec assumed turbopuffer was
+sub-dollar at operator scale ("cheaper than httpx" / "cost is
+rarely the constraint"); the verified 2026-05-23 pricing
+contradicts that. The spike (§6.4) must demonstrate quality
+improvement worth $768/year against DuckDB cosine's $0/year — not
+merely "≥10% improvement on ≥60% of queries."
 
-### 11.2 Daily budget cap (default; configurable)
+### 11.2 Daily budget cap (default; configurable; revised 2026-05-23)
 
-- `TURBOPUFFER_DAILY_BUDGET_USD`: $5. Sustains ~5M queries/day —
-  far above operator scale.
+- `TURBOPUFFER_DAILY_BUDGET_USD`: $5. Note: the $64/month Launch
+  tier floor dominates regardless of daily-budget enforcement —
+  the cap is for runaway-cost protection on per-query spend, not
+  the subscription floor. Even at $0 daily spend the operator
+  pays $64/month.
 - The combined acquisition-layer cap at
   `acquisition/search/__init__.assert_total_budget_ok` does NOT
   apply (turbopuffer is retrieval, not acquisition). Retrieval
@@ -1066,6 +1119,9 @@ is whether hybrid produces measurably better results than cosine.
   on the next call after threshold. Fallback to cosine is
   automatic — same loud-failure-then-degrade pattern as the
   outage path.
+- **Subscription-floor accountability**: operator-facing monthly
+  cost summary in `weekly_report.py` must surface the $64/month
+  Launch floor as a fixed line item, not just per-query spend.
 
 ### 11.3 Legal envelope
 
@@ -1237,23 +1293,35 @@ breach.
 Each wedge has explicit gates. Crossing them is the ratification
 event.
 
-### 13.1 Wedge 1 (Hybrid search) unlock criteria
+### 13.1 Wedge 1 (Hybrid search) unlock criteria — tightened 2026-05-23
 
-The spike (§6.4) is the single load-bearing gate:
+The spike (§6.4) is the single load-bearing gate. **The 2026-05-23
+pricing-verification pass tightened the win-threshold to reflect
+the $64/month Turbopuffer Launch floor** ($768/year cost-of-entry
+against DuckDB cosine's $0/year). The prior "≥10% on ≥60%" bar
+assumed turbopuffer was sub-dollar at operator scale; that
+assumption is now known to be wrong (§1.3, §11.1).
 
 - [ ] Operator-hand-curated 20 queries representing real research
       questions.
 - [ ] Operator graded the current `cosine_similarity_sql` top-10
       on each query (0-3 scale, sum per query).
 - [ ] Turbopuffer hybrid run against the same 20 queries.
-- [ ] Hybrid scored ≥10% higher than cosine on ≥60% of queries.
+- [ ] **Hybrid scored ≥15% higher than cosine on ≥70% of queries**
+      (was ≥10% on ≥60%; tightened 2026-05-23 to justify the
+      $64/month subscription floor against $0/year DuckDB
+      cosine).
+- [ ] Operator has read this section's cost framing in §11.1 and
+      affirmatively decided the spike-projected quality gain is
+      worth $768/year.
 
-If all four close: Wedge 1 ships per §6.5.
-If hybrid loses on ≥50% of queries: Wedge 1 moves to permanent
+If all five close: Wedge 1 ships per §6.5.
+If hybrid loses on ≥50% of queries OR if the operator declines the
+cost commitment in the fifth criterion: Wedge 1 moves to permanent
 REJECT, documented in §10 with the date and a link to the spike
-data.
-If between (inconclusive): expand to 50 queries and re-run, OR
-DEFER.
+data + the cost-commitment decision.
+If between (inconclusive on quality bar): expand to 50 queries and
+re-run, OR DEFER.
 
 ### 13.2 Wedge 2 (Discovery-event search) unlock criteria
 
