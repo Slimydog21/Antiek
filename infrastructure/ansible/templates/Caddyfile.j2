@@ -82,6 +82,19 @@
         file_server
     }
 
+    # ── Cache-control headers for static assets ───────────────────────
+    # Hashed bundles (`*-AbCd123.js`) are content-addressed — Vite
+    # changes the hash on every change, so caching for 1 year +
+    # immutable is the safe default. The browser-nav rule above
+    # already returns index.html for navigation requests; the
+    # max-age=0 rule below catches direct loads of index.html (e.g.
+    # when reloading inside the SPA shell).
+    @hashed_assets path_regexp ^/assets/.+-[A-Za-z0-9_-]{6,}\.(js|css|woff2?|png|svg|jpg|jpeg|webp|gif|ico)$
+    header @hashed_assets Cache-Control "public, max-age=31536000, immutable"
+
+    @html path /index.html /
+    header @html Cache-Control "no-store, must-revalidate"
+
     # WebSockets ride /ws/* through @api_routes; Caddy auto-detects
     # Upgrade: websocket and proxies indefinitely.
 

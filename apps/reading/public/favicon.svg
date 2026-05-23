@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Antiek">
+  <!-- Antiek favicon. Sun-yellow disc on ink-dark background;
+       the same proportions echo the Werner brand mark (sun
+       behind the penguin). 64×64 base scales cleanly to every
+       browser favicon size. -->
+  <rect width="64" height="64" rx="12" fill="#0F1419"/>
+  <circle cx="32" cy="32" r="18" fill="#FFC93C"/>
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#0F1419" stroke-width="2.5"/>
+</svg>
