@@ -185,7 +185,20 @@ export default function AISidecar() {
         text: prose,
       });
       if (actions.length > 0) {
-        const dispatched = actions.map((a) => dispatchAiAction(a));
+        // Pass AiActionContext so each dispatched action emits a typed
+        // ``ai.action.applied`` event to the substrate event log per
+        // master-spec §5.5 + §13.8 + PostHog Wedge 4. The investigation
+        // bucket is the sidecar's pseudo-id ``__sidecar__`` (same id
+        // used in the /thought-partner request above), giving Wedge 5
+        // trajectory replay a single scrubbable timeline for all
+        // sidecar-driven UI actions. operator_prompt truncated to the
+        // substrate's max_length=2000 to avoid validation rejection on
+        // long pastes.
+        const ctx = {
+          operator_prompt: draft.slice(0, 2000),
+          investigation_id: "__sidecar__",
+        };
+        const dispatched = actions.map((a) => dispatchAiAction(a, ctx));
         setAiLog((prev) => [...dispatched, ...prev].slice(0, 20));
       }
       if (parseErrors.length > 0 && import.meta.env.DEV) {
