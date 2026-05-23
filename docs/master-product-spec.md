@@ -34,6 +34,54 @@ matrix for one external system or framework):
 
 ---
 
+**⚠️ Current-state companion docs** *(this spec is design intent; the
+docs below are the authoritative current execution state)*:
+
+This spec captures the **design intent** — product thesis, conceptual
+primitives, the five surfaces, the sprint sequence, the strategic open
+questions. It does NOT track day-to-day execution state. §3 ("What's
+already built"), §3.4 ("What's NOT yet built"), §14.1 (sprint table
+tense), and §15 (open-question state) are deliberately a **point-in-time
+snapshot dated 2026-05-17 / 2026-05-19** and will drift from `origin/main`
+as execution proceeds.
+
+For current execution state, consult these companion docs in this order:
+
+- **`docs/operator_gate_actions.md`** — the eight binding gates (G1–G8)
+  that engineering cannot close (legal review, publisher opt-in, calendar-
+  bound compounding window, etc.). Each gate has Status / Owner /
+  Blocks-what / Action-needed. **Read first** if you are the operator;
+  this is your action checklist.
+- **`docs/engineering_deferrals.md`** — the eleven deferrals (D1–D11)
+  where engineering deliberately has NOT shipped because the spec defers
+  the work behind an explicit ratification or unlock criterion (Sprint 22
+  multi-user pivot gate, ≥500 graded outcomes for autoresearch Wedge 3,
+  Loop 3 unlock, RLM ratification, etc.). **Read first** if you are an
+  agent considering a new implementation; this is the "don't re-implement
+  this; here's when it unlocks" list.
+- **`docs/decisions/*.md`** — per-decision audit trail for individual
+  verdicts (dispatch-tier verdict, Lemon UI verdict, agentmail deferral,
+  etc.). Cross-referenced from `operator_gate_actions.md` G-entries.
+- **`docs/sprint30_thread_decisions.md`** — Sprint 30+ pre-decided
+  threads.
+- **`docs/soc2_decision.md`** — SOC 2 Type II deferral.
+- **`docs/loop_3_unlock_criteria.md`** — the five sub-gates of G8.
+- **`docs/rlm_integration_spec.md` §6** — the six RLM ratification
+  decisions.
+
+The split is deliberate: the master spec is the **contract** (what the
+product is and why); the companion docs are the **status report** (what's
+shipped, what's gated, what's queued). Updating the master spec when an
+item ships would couple every implementation PR to a spec-edit, which is
+friction the operator chose to avoid. **The companion docs absorb that
+maintenance instead.**
+
+If you find yourself asking "has X been built?" — search `origin/main`
+first, then check `engineering_deferrals.md` to see if X is a deferral.
+Do not rely on §3 / §3.4 of this spec for that question.
+
+---
+
 ## Table of contents
 
 1. [Product thesis](#1-product-thesis)
