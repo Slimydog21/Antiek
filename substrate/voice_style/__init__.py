@@ -24,6 +24,14 @@ It does NOT call an LLM. Production has an `LLMJudgeVoiceStyle`
 variant that's a Protocol; tests stay with the heuristic.
 """
 
+from .ab_runner import (
+    AuditVerdictKind,
+    CohortScore,
+    VoiceImpactAuditResult,
+    VoiceImpactObservation,
+    format_audit_markdown,
+    run_voice_impact_audit,
+)
 from .rubric import (
     Violation,
     ViolationKind,
@@ -37,11 +45,17 @@ from .suppression import (
 )
 
 __all__ = [
+    "AuditVerdictKind",
+    "CohortScore",
     "SuppressionContext",
     "SuppressionVerdict",
     "Violation",
     "ViolationKind",
+    "VoiceImpactAuditResult",
+    "VoiceImpactObservation",
     "VoiceStyleScore",
     "evaluate_inline_suppression",
+    "format_audit_markdown",
+    "run_voice_impact_audit",
     "score_voice_style",
 ]
