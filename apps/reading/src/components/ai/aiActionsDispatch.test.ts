@@ -218,7 +218,7 @@ describe("AI tool-call · full dispatch round-trip", () => {
       "\n@@end";
     const { actions } = parseAssistantReply(reply);
     expect(actions).toHaveLength(3);
-    const records = actions.map(dispatchAiAction);
+    const records = actions.map((a) => dispatchAiAction(a));
     expect(records).toHaveLength(3);
 
     const state = useWorkspace.getState();

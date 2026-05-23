@@ -45,6 +45,8 @@
 
 import type { PanelKind, PanelMode } from "../../workspace/panel.types";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { postTypedEvent } from "../../lib/api";
+import type { AIActionAppliedPayload, AIActionUndonePayload } from "../../generated/types";
 
 // ─── Action schema ───────────────────────────────────────────────────
 
@@ -202,10 +204,145 @@ export type DispatchedAction = {
   at: number;
 };
 
-/** Execute a single parsed action. Returns a DispatchedAction record. */
-export function dispatchAiAction(action: AiAction): DispatchedAction {
+/**
+ * Context required to emit ``ai.action.applied`` events to the substrate
+ * event log per master-spec §5.5 + §13.8 + PostHog Wedge 4. When this
+ * context is provided, ``dispatchAiAction`` fires a typed event after
+ * the action mutates the workspace and wraps the returned ``undo`` to
+ * emit a matching ``ai.action.undone`` on invocation.
+ *
+ * When the context is omitted (legacy callers, tests), the action still
+ * dispatches and the undo still works — only the event-log audit trail
+ * is skipped.
+ */
+export interface AiActionContext {
+  /** The operator's natural-language prompt that triggered the assistant
+   * reply containing this action. Substrate validates min_length=1. */
+  operator_prompt: string;
+  /** Investigation id the AI sidecar session is attached to. Substrate
+   * groups events by investigation. */
+  investigation_id: string;
+}
+
+/** Describes WHICH substrate state the action mutated and what the
+ * before/after snapshots looked like — the bridge data that lets the
+ * substrate event log replay the trajectory. */
+interface AiEventDescriptor {
+  target_kind: AIActionAppliedPayload["target_kind"];
+  target_id: string;
+  prev_state: Record<string, unknown>;
+  next_state: Record<string, unknown>;
+  summary: string;
+}
+
+/** SHA-256 hex via Web Crypto. Browser-only; on Node test envs the
+ * caller falls back to a deterministic stub (see usage in
+ * ``recordAiActionApplied``). */
+async function sha256Hex(s: string): Promise<string> {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    // Test env: emit a non-cryptographic but deterministic placeholder
+    // so the event still validates against the substrate schema.
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    return "stub-" + (h >>> 0).toString(16).padStart(8, "0");
+  }
+  const buf = new TextEncoder().encode(s);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/** Fire-and-forget POST of ``ai.action.applied``. Returns the resulting
+ * event_id (for the undo-event's inverted_event_id) or null on failure. */
+async function recordAiActionApplied(
+  ctx: AiActionContext,
+  desc: AiEventDescriptor,
+): Promise<string | null> {
+  try {
+    const prevJson = JSON.stringify(desc.prev_state);
+    const hash = await sha256Hex(desc.target_kind + ":" + desc.target_id + ":" + prevJson);
+    const payload: AIActionAppliedPayload = {
+      action_type: "ai.action.applied",
+      target_kind: desc.target_kind,
+      target_id: desc.target_id,
+      operator_prompt: ctx.operator_prompt,
+      prev_state: desc.prev_state,
+      next_state: desc.next_state,
+      prev_state_hash: hash,
+      summary: desc.summary,
+    };
+    const resp = await postTypedEvent({
+      investigation_id: ctx.investigation_id,
+      payload,
+      role: "ai_sidecar",
+    });
+    return resp.event_id;
+  } catch {
+    // Event log is best-effort observability; never block the action.
+    return null;
+  }
+}
+
+/** Fire-and-forget POST of ``ai.action.undone``. */
+async function recordAiActionUndone(
+  ctx: AiActionContext,
+  invertedEventId: string,
+  desc: AiEventDescriptor,
+): Promise<void> {
+  try {
+    const payload: AIActionUndonePayload = {
+      action_type: "ai.action.undone",
+      inverted_event_id: invertedEventId,
+      target_kind: desc.target_kind,
+      target_id: desc.target_id,
+      reason: "operator_undo",
+    };
+    await postTypedEvent({
+      investigation_id: ctx.investigation_id,
+      payload,
+      role: "ai_sidecar",
+    });
+  } catch {
+    // Event log is best-effort observability; never block the undo.
+  }
+}
+
+/** Execute a single parsed action. Returns a DispatchedAction record.
+ *
+ * If ``context`` is supplied, the bridge fires ``ai.action.applied``
+ * to the substrate event log after the action mutates state, and
+ * wraps the returned ``undo`` callable to emit ``ai.action.undone``
+ * on invocation per master-spec §5.5 + §13.8. */
+export function dispatchAiAction(
+  action: AiAction,
+  context?: AiActionContext,
+): DispatchedAction {
   const ws = useWorkspace.getState();
   const at = Date.now();
+
+  /** Wrap a result with event-log bridging. Records ai.action.applied
+   * (fire-and-forget) and wraps undo to record ai.action.undone. */
+  const withEventLog = (
+    d: DispatchedAction,
+    descriptor: AiEventDescriptor | null,
+  ): DispatchedAction => {
+    if (!context || !descriptor) return d;
+    const eventIdPromise = recordAiActionApplied(context, descriptor);
+    if (d.undo === null) return d;
+    const originalUndo = d.undo;
+    return {
+      ...d,
+      undo: () => {
+        originalUndo();
+        void eventIdPromise.then((eventId) => {
+          if (eventId) {
+            void recordAiActionUndone(context, eventId, descriptor);
+          }
+        });
+      },
+    };
+  };
 
   switch (action.kind) {
     case "open_panel": {
@@ -214,6 +351,7 @@ export function dispatchAiAction(action: AiAction): DispatchedAction {
         action.id ??
         `ai:${action.panel_kind}:${JSON.stringify(action.props ?? {})}`;
       const wasOpen = Boolean(ws.panels[id]);
+      const prevDescriptor = wasOpen ? ws.panels[id] : null;
       ws.open(
         action.panel_kind,
         (action.props ?? {}) as Record<string, unknown>,
@@ -223,51 +361,101 @@ export function dispatchAiAction(action: AiAction): DispatchedAction {
           title: action.title,
         },
       );
-      return {
-        action,
-        label: `🪟 Opened ${action.panel_kind}${
-          action.title ? " · " + action.title : ""
-        }`,
-        undo: wasOpen ? null : () => useWorkspace.getState().close(id),
-        at,
+      const descriptor: AiEventDescriptor = {
+        target_kind: "ui_layout",
+        target_id: id,
+        prev_state: prevDescriptor
+          ? { open: true, kind: prevDescriptor.kind, mode: prevDescriptor.mode }
+          : { open: false },
+        next_state: {
+          open: true,
+          kind: action.panel_kind,
+          mode: action.mode ?? "floating",
+          title: action.title ?? "",
+        },
+        summary: `open_panel ${action.panel_kind}`,
       };
+      return withEventLog(
+        {
+          action,
+          label: `🪟 Opened ${action.panel_kind}${
+            action.title ? " · " + action.title : ""
+          }`,
+          undo: wasOpen ? null : () => useWorkspace.getState().close(id),
+          at,
+        },
+        descriptor,
+      );
     }
 
     case "focus_panel": {
+      const prevFocus = ws.focusedPanelId;
       ws.focus(action.id);
-      return { action, label: `🎯 Focused ${action.id}`, undo: null, at };
+      const descriptor: AiEventDescriptor = {
+        target_kind: "ui_layout",
+        target_id: action.id,
+        prev_state: { focused_id: prevFocus },
+        next_state: { focused_id: action.id },
+        summary: `focus_panel ${action.id}`,
+      };
+      return withEventLog(
+        { action, label: `🎯 Focused ${action.id}`, undo: null, at },
+        descriptor,
+      );
     }
 
     case "close_panel": {
       const existing = ws.panels[action.id];
       ws.close(action.id);
-      return {
-        action,
-        label: `❌ Closed ${action.id}`,
-        // Best-effort undo: reopen at the previous descriptor.
-        undo: existing
-          ? () =>
-              useWorkspace.getState().open(existing.kind, existing.props, {
-                id: existing.id,
-                mode: existing.mode,
-                title: existing.title,
-              })
-          : null,
-        at,
+      const descriptor: AiEventDescriptor = {
+        target_kind: "ui_layout",
+        target_id: action.id,
+        prev_state: existing
+          ? { open: true, kind: existing.kind, mode: existing.mode }
+          : { open: false },
+        next_state: { open: false },
+        summary: `close_panel ${action.id}`,
       };
+      return withEventLog(
+        {
+          action,
+          label: `❌ Closed ${action.id}`,
+          // Best-effort undo: reopen at the previous descriptor.
+          undo: existing
+            ? () =>
+                useWorkspace.getState().open(existing.kind, existing.props, {
+                  id: existing.id,
+                  mode: existing.mode,
+                  title: existing.title,
+                })
+            : null,
+          at,
+        },
+        descriptor,
+      );
     }
 
     case "set_panel_mode": {
       const before = ws.panels[action.id]?.mode;
       ws.setMode(action.id, action.mode);
-      return {
-        action,
-        label: `↔ ${action.id} → ${action.mode}`,
-        undo: before
-          ? () => useWorkspace.getState().setMode(action.id, before)
-          : null,
-        at,
+      const descriptor: AiEventDescriptor = {
+        target_kind: "ui_layout",
+        target_id: action.id,
+        prev_state: { mode: before ?? null },
+        next_state: { mode: action.mode },
+        summary: `set_panel_mode ${action.id} → ${action.mode}`,
       };
+      return withEventLog(
+        {
+          action,
+          label: `↔ ${action.id} → ${action.mode}`,
+          undo: before
+            ? () => useWorkspace.getState().setMode(action.id, before)
+            : null,
+          at,
+        },
+        descriptor,
+      );
     }
 
     case "add_to_notebook": {
@@ -284,37 +472,52 @@ export function dispatchAiAction(action: AiAction): DispatchedAction {
       const html = aiBlockToHtml(action.block);
       const lsKey = "antiek.notebook." + action.notebook_id;
       const etagKey = lsKey + ".etag";
+      let prevEtag = 0;
+      let nextEtag = 0;
       try {
         const existing = window.localStorage.getItem(lsKey) ?? "<p></p>";
         const current = window.localStorage.getItem(etagKey);
-        const next = (current === null ? 0 : parseInt(current, 10) || 0) + 1;
+        prevEtag = current === null ? 0 : parseInt(current, 10) || 0;
+        nextEtag = prevEtag + 1;
         const appended = existing.replace(
           /<\/body>\s*$/,
           "",
         ) + "\n" + html;
         window.localStorage.setItem(lsKey, appended);
-        window.localStorage.setItem(etagKey, String(next));
+        window.localStorage.setItem(etagKey, String(nextEtag));
         // Same-tab signal: editors keyed by `notebook_id` reload.
         window.dispatchEvent(
           new CustomEvent("antiek:notebook:appended", {
-            detail: { notebookId: action.notebook_id, etag: next },
+            detail: { notebookId: action.notebook_id, etag: nextEtag },
           }),
         );
       } catch {
         // ignore quota; the operator sees the action label without effect
       }
-      return {
-        action,
-        label: `📓 Added a ${action.block.kind} to “${action.notebook_id}”`,
-        // Undo not implemented — TipTap-aware undo would need to
-        // surgically remove the appended fragment; the operator can
-        // delete the block from the notebook directly.
-        undo: null,
-        at,
+      const descriptor: AiEventDescriptor = {
+        target_kind: "notebook",
+        target_id: action.notebook_id,
+        prev_state: { etag: prevEtag },
+        next_state: { etag: nextEtag, block_kind: action.block.kind },
+        summary: `add_to_notebook ${action.notebook_id} +1 ${action.block.kind}`,
       };
+      return withEventLog(
+        {
+          action,
+          label: `📓 Added a ${action.block.kind} to “${action.notebook_id}”`,
+          // Undo not implemented — TipTap-aware undo would need to
+          // surgically remove the appended fragment; the operator can
+          // delete the block from the notebook directly.
+          undo: null,
+          at,
+        },
+        descriptor,
+      );
     }
 
     case "chase_question": {
+      const panelId = `chase:${action.text.slice(0, 32)}`;
+      const wasOpen = Boolean(ws.panels[panelId]);
       ws.open(
         "Chase",
         {
@@ -322,22 +525,36 @@ export function dispatchAiAction(action: AiAction): DispatchedAction {
           investigationId: action.investigation_id,
         },
         {
-          id: `chase:${action.text.slice(0, 32)}`,
+          id: panelId,
           mode: "floating",
           title: "Chase",
         },
       );
-      return {
-        action,
-        label: `🔍 Chasing: “${action.text.slice(0, 48)}${
-          action.text.length > 48 ? "…" : ""
-        }”`,
-        undo: () =>
-          useWorkspace
-            .getState()
-            .close(`chase:${action.text.slice(0, 32)}`),
-        at,
+      const descriptor: AiEventDescriptor = {
+        target_kind: "investigation_chase",
+        target_id: panelId,
+        prev_state: { open: wasOpen },
+        next_state: {
+          open: true,
+          question: action.text,
+          investigation_id: action.investigation_id ?? null,
+        },
+        summary: `chase_question "${action.text.slice(0, 64)}"`,
       };
+      return withEventLog(
+        {
+          action,
+          label: `🔍 Chasing: “${action.text.slice(0, 48)}${
+            action.text.length > 48 ? "…" : ""
+          }”`,
+          undo: () =>
+            useWorkspace
+              .getState()
+              .close(panelId),
+          at,
+        },
+        descriptor,
+      );
     }
 
     case "toast": {
