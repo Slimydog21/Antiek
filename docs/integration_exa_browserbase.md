@@ -1,6 +1,6 @@
 # Antiek × Exa × Browserbase — Web Retrieval & Live Browsing Integration Spec
 
-**Status**: Draft v1, 2026-05-21.
+**Status**: Draft v1, 2026-05-21. AnchorBrowser-vendor verdicts added 2026-05-23 (§5 matrix rows, §9.1 Wedge 4 candidates, §12.10 REJECT, §14.4.1 Plan B, §15.2 cross-reference) — no code changes; mono-vendor Browserbase escalation unchanged.
 **Scope**: Decide where Exa (neural search + cleaned content API) and
 Browserbase (hosted headless Chromium + Stagehand) integrate into Antiek's
 acquisition path, where each is deferred behind unlock criteria, and which
@@ -331,6 +331,14 @@ DEFER).
 | **Use either to bypass the Sprint 18 retrieval-time legal gate** | "Exa results come from Exa, not from us, so the legal gate doesn't apply" | **REJECT** (with extreme prejudice) | — |
 | **Use Browserbase to bypass robots.txt or paywalls** | Use stealth-fingerprinting to access content the site operator declined to allow | **REJECT** | — |
 | **Bundle a Browserbase session per investigation** | One persistent session per investigation, kept warm | **REJECT (for now)** | — |
+| **AnchorBrowser as Wedge 2 Plan B** | Named-alternative escalation fetcher if Browserbase fails §15.2 acceptance or becomes unavailable. Adapter shape (`_SessionLike` + injectable `page_runner` in `client_browserbase.py`) already accommodates a ~150-LOC port to `client_anchorbrowser.py` — don't write the code now; name the contingency | <span class="tag defer">DEFER (named alternative)</span> | Triggered on Browserbase §15.2 failure or unavailability |
+| **AnchorBrowser `agent.task` as Wedge 4 candidate** | `agent.task(description, outputSchema=...)` returning structured data — 1:1 analog to Stagehand's `page.act` + `page.extract`. Listed alongside Stagehand; vendor pick happens at §15.4 unlock, not now | <span class="tag defer">DEFER (listed alongside Stagehand)</span> | Conditional on §15.4 surface ratification |
+| **AnchorBrowser running in parallel with Browserbase** | Concurrent dual-vendor escalation — Browserbase for some URLs, Anchor for others | <span class="tag reject">REJECT</span> — see §12.10 | — |
+| **AnchorBrowser as the default URL fetcher** | Replace httpx with Anchor | <span class="tag reject">REJECT</span> — same as §12.3 | — |
+| **AnchorBrowser as a dispatch provider** | Add Anchor to `substrate/dispatch/providers/` | <span class="tag reject">REJECT</span> — same as §12.2 (not an LLM) | — |
+| **AnchorBrowser for paywall / robots bypass** | Use Anchor's stealth/anti-bot tooling to access disallowed content | <span class="tag reject">REJECT</span> — same as §12.7 (policy posture is the gate, not the tooling) | — |
+| **AnchorBrowser's MCP server as Antiek's browsing transport** | Use Anchor's MCP surface instead of its SDK | <span class="tag defer">DEFER — no decision needed</span> | Re-evaluate only if Antiek-as-MCP-host (master-spec MCP-first commitment) ratifies first |
+| **AnchorBrowser's Web Action Cache for deterministic re-runs** | Record an agent.task and replay deterministically. The strongest Anchor differentiator IF the docs page (404'd 2026-05-23) stabilizes + cache is exportable for `tools/golden_traces/` | <span class="tag defer">DEFER — docs unverifiable</span> | Re-evaluate when public docs + ≥1 operator-runnable demo exist |
 
 ---
 
@@ -869,9 +877,9 @@ For ONE specific surface where:
 - A keyed scraper (typed Playwright selectors) would be too brittle to
   maintain.
 
-…build a Stagehand-driven extractor as a single typed adapter under
-`acquisition/<source_name>/adapter.py`. Concrete candidates the operator
-mentioned in prior sessions:
+…build a Stagehand- *or* Anchor-driven extractor as a single typed
+adapter under `acquisition/<source_name>/adapter.py`. Concrete candidates
+the operator mentioned in prior sessions:
 
 - **SEC EDGAR full-text search** (logged-out but JS-heavy and slow to
   scrape conventionally) — though EDGAR also has a direct API; if so,
@@ -880,6 +888,24 @@ mentioned in prior sessions:
   API too. Prefer API.
 - **One specific academic database paywalled per-institution** —
   conditional on the operator's research workflow demanding it.
+
+**Vendor candidates for the typed extraction primitive (added
+2026-05-23):**
+
+- **Stagehand** (`page.act` + `page.extract` against a typed Pydantic
+  schema) — the original Wedge 4 candidate. Two-method split is
+  inspectable; act/extract steps land in the trajectory individually.
+- **AnchorBrowser `agent.task(description, outputSchema=...)`** —
+  newer alternative; returns structured data matching a Pydantic schema
+  via an internal agent loop ({browser-use, openai-cua, gemini-
+  computer-use}). Structurally more opaque than Stagehand (`maxSteps=40`
+  black box), which cuts slightly against the trajectory-as-product
+  invariant (master-spec §15.4; spec §12.5). Either vendor satisfies
+  Open Question §17.7 (vendor's own LLM config, not Antiek's dispatch
+  router).
+
+Vendor pick happens at §15.4 unlock — when a concrete surface ratifies.
+Not now. Per §12.10, running both vendors concurrently is REJECT.
 
 The wedge is *conditional* because Antiek does not currently have a
 ratified specific surface. Until one is named, the wedge is "designed,
@@ -1148,6 +1174,46 @@ This rejection forecloses a fun-sounding demo (the agent uses
 Stagehand to do the operator's review work) that would actually be
 a category error.
 
+### 12.10 REJECT: AnchorBrowser running in parallel with Browserbase
+
+*(Added 2026-05-23 alongside the AnchorBrowser vendor verdicts.)*
+
+**One provider per layer.** The discipline is codified in the
+Daytona integration spec §2 ("one provider per acquisition layer,
+swap via adapter") and applies symmetrically here. The same
+discipline governs `runtime/db_lock.py` (one writer per substrate
+file) and `substrate/dispatch/providers/` (one provider per tier,
+with **named** fallback chains — not concurrent dual-vendor).
+
+Running Browserbase and Anchor as parallel concurrent escalation
+paths would:
+
+- **Double the TOS surface.** Two policy docs, two outage modes,
+  two billing relationships, two DPAs.
+- **Force routing logic at `_try_browserbase_escalation`.** "Which
+  provider for which URL?" That decision has no principled answer
+  — both vendors target the same JS-rendered-SPA failure mode the
+  httpx primary can't reach. The binary `fallback_to_browserbase:
+  bool` flag is the right shape; a `fallback_to_<vendor>` enum is
+  the wrong shape.
+- **Create silent-fallback temptation** ("Browserbase failed, try
+  Anchor"), which violates spec §14.4 (`Failure is loud:
+  BrowserbaseProviderError raises explicitly; no silent fallback
+  to a different provider`).
+
+The defensible posture is **mono-vendor with a named Plan B** —
+§14.4.1 names AnchorBrowser as that Plan B. If Browserbase fails
+the §15.2 acceptance criteria or becomes unavailable, the operator
+makes a *single, deliberate, audited* switch — adapter swap, not
+concurrent fan-out. Same shape as the dispatch router's
+verify-tier fallback (Hermes bridge spec, commit `cd602c9`):
+named fallback, not concurrent.
+
+This rejection is reversible only if the underlying substrate
+shape changes — e.g., if a future Wedge 4 surface genuinely
+benefits from running both vendors against the same page for
+cross-validation. That's hypothetical and not in scope today.
+
 ---
 
 ## 13. Cost, legal, and safety envelope
@@ -1284,6 +1350,89 @@ changes, or service incidents will happen.
   total acquisition failure.
 - Failure is loud: `BrowserbaseProviderError` raises explicitly; no
   silent fallback to a different provider.
+- **Named Plan B exists** — see §14.4.1 below.
+
+### 14.4.1 AnchorBrowser as named Plan B (added 2026-05-23)
+
+If Browserbase fails the §15.2 acceptance criteria, becomes
+unavailable, or its pricing / TOS becomes incompatible with
+Antiek's operator-only single-operator posture, **AnchorBrowser is
+the named alternative escalation vendor**. The adapter seam in
+`acquisition/urls/client_browserbase.py` was already designed for
+vendor swap:
+
+- `_SessionLike` Protocol with two methods (`connect_url`,
+  `close`) — vendor-agnostic.
+- Injectable `session_factory: Callable[[], _SessionLike]` — tests
+  already substitute it.
+- Injectable `page_runner` returning `(html_bytes, final_url,
+  status_code)` — vendor's CDP behavior is contained in the
+  default runner.
+
+A future `acquisition/urls/client_anchorbrowser.py` is a ~150-LOC
+near-mechanical port: same Protocol, same runner shape, different
+`_default_session_factory` (Anchor's `anchor.Anchor().sessions.create(...)`
+in place of Browserbase's `Browserbase().sessions.create(...)`),
+same robots/budget/semaphore plumbing. The closed Literal
+`fallback_fetcher: Literal["browserbase"]` in
+`FetchFallbackEscalatedPayload` (§7.3) is the only schema surface
+that widens — one Pydantic edit + one TS codegen run, schema bump
+v9 → v10.
+
+**This is documented now, not coded now.** Per master-spec §16,
+pre-building for a hypothetical vendor switch is forbidden. The
+Plan-B contract exists at the spec level so a future PR has a
+defensible shape to land into without re-litigating the verdict.
+
+**Anchor-specific evidence as of 2026-05-23:**
+
+- *Pricing*: Inconsistent public copy. One page advertises
+  $0.05/browser-hour (~120× cheaper than Browserbase's
+  $0.10/session-minute); home page advertises $50/month Starter
+  with credit/step/instance metering. **Reconcile via direct
+  outreach before any production switch.** At Wedge 2 volume
+  (capped at ~25 sessions/day per `BROWSERBASE_DAILY_BUDGET_USD=$5`),
+  Browserbase's pay-as-you-go-from-$0 dominates either way.
+- *Performance*: The only independent benchmark (Browserless
+  comparison, 2026-Q1) measured Anchor 6.0× slower on connection,
+  1.9× slower on page creation, 2.4× slower on navigation vs the
+  reference. For Wedge 2's ~25-sessions/day occasional-fallback
+  pattern with 60s+ sessions, 6× connection latency is a non-issue.
+  Anchor is the **wrong** primitive for any hypothetical high-
+  throughput case (e.g., a future Wedge-4 at scale or the WP-A3
+  parallel-fan-out problem from the Daytona spec).
+- *Web Action Cache*: Anchor markets record-and-replay for
+  deterministic workflow preservation ("80× less tokens"). The
+  feature's docs page returned 404 on 2026-05-23. **Treat as
+  unverified until docs stabilize.** If verifiable + exportable,
+  this would be the strongest Anchor-only differentiator — would
+  plug into `tools/golden_traces/` for trajectory replay (the
+  Sprint-6 orchestrate.py extraction unlock criterion per the
+  Antiek project context). Re-evaluate when documented.
+- *OmniConnect (1Password)*: Real ergonomic win over Browserbase's
+  raw cookie/localStorage "persistent contexts," but **only
+  relevant for Wedge 4** — logged-in browsing is explicitly
+  excluded from Wedge 2 (§7.5). Differential only if a Wedge-4
+  surface lands AND that surface benefits from delegated 1Password
+  auth over operator-managed cookies.
+
+**Trigger conditions for activating Plan B:**
+
+1. Browserbase fails §15.2 unlock criteria (e.g., concurrency cap
+   fails to enforce, budget cap fails to fire, the operator's
+   JS-rendered-SPA validation refuses to recover content).
+2. Browserbase becomes unavailable for ≥7 consecutive days (the
+   spec's `HybridSearchDegraded` / `FetchFallbackEscalated` event
+   log surfaces the outage rate).
+3. Browserbase pricing changes by ≥2× upward (operator-side
+   decision, audit-visible via the weekly report).
+4. Browserbase's TOS becomes incompatible with Antiek's posture
+   (multi-user pivot at Sprint 22+ is the likeliest trigger).
+
+**When a trigger fires:** ship the `client_anchorbrowser.py` port,
+bump the `fallback_fetcher` Literal, run §15.2's unlock criteria
+against Anchor instead. The mono-vendor invariant holds — Anchor
+*replaces* Browserbase; both never run concurrently (§12.10).
 
 ### 14.5 The verifier-tier corroboration honeypot (Wedge 3)
 
@@ -1347,6 +1496,13 @@ Each wedge has explicit gates. Crossing them is the ratification event.
 - [ ] Operator has flipped `fallback_to_browserbase=True` on a known
       JS-rendered SPA fixture and confirmed the recovery + cost
       logging.
+
+**If §15.2 fails to ratify** — Browserbase loses on one or more
+criteria — the named Plan B is AnchorBrowser per §14.4.1. The
+adapter seam already accommodates the port; the spec contract is
+the load-bearing artifact for a future replacement PR. Per §12.10,
+the replacement is mono-vendor (Anchor *replaces* Browserbase; no
+concurrent dual-vendor escalation).
 
 ### 15.3 Wedge 3 (verifier `/contents` lookup) unlock criteria
 
