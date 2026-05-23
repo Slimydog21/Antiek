@@ -651,6 +651,35 @@ async def _run_phase_6(
         )
         if isinstance(delivered.payload, SynthesizeDeliveredPayload):
             ctx.synthesis = delivered.payload
+            # Inline rubric pass — §14.4 wire-up per G5 follow-up
+            # 2026-05-23. Closes the unwireable measurement gate
+            # by emitting rubric.scored for every synthesis. Pure-
+            # function, deterministic, ~1ms; never blocks the
+            # phase. See substrate/synthesis_rubric/ for the
+            # rationale.
+            try:
+                from substrate.synthesis_rubric import score_synthesis
+                from middleware.outcomes import emit_rubric_scored
+                rubric = score_synthesis(ctx.synthesis)
+                emit_rubric_scored(
+                    investigation_id=ctx.investigation_id,
+                    synthesis_id=f"syn-{ctx.investigation_id}",
+                    rubric_id="synthesis-deterministic-v1",
+                    final_score=rubric.composite,
+                    deterministic_score=rubric.composite,
+                    judged_score=None,
+                    notes=rubric.notes or (
+                        f"voice={rubric.voice_style:.2f} "
+                        f"conviction={rubric.conviction:.2f} "
+                        f"citation_density={rubric.citation_density:.2f} "
+                        f"constraint={rubric.constraint_compliance:.2f}"
+                    ),
+                )
+            except Exception:  # noqa: BLE001 — never block on rubric
+                # The rubric is observability; a failure must not
+                # break the orchestrator. Swallow + continue; the
+                # next G5 re-run will surface the missing event.
+                pass
     return await _drive_phase(ctx, phase=6, work=work())
 
 
