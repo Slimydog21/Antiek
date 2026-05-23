@@ -1,0 +1,86 @@
+# {{ ansible_managed }}
+#
+# systemd unit for the continuous-research daemon (master-spec §7.3 +
+# §7.4). Scans the trajectory event log for unresolved evidentiary
+# gaps across investigations and spawns follow-on chases when budget
+# allows.
+#
+# This unit is INDEPENDENT of the main `antiek` service: the daemon
+# reads the event log but never writes to the DuckDB it reads. All
+# spawned investigations are submitted to the substrate via the
+# in-process API the same way an operator would — so the
+# single-writer invariant holds (the substrate's uvicorn is still
+# the only DuckDB writer). The daemon is a READ-side cron loop, not
+# a parallel writer.
+#
+# Budget cap per §16 ("Letting the daemon's chase budget exceed
+# $5/day by default… Cost runaway is the failure mode that turns
+# Antiek into a $5000/month surprise charge"). Enforced via
+# ANTIEK_DAEMON_BUDGET_USD_PER_DAY which the daemon checks on every
+# tick before spawning.
+
+[Unit]
+Description=Antiek continuous-research daemon (§7.3 + §7.4)
+After=network-online.target antiek.service
+Wants=network-online.target
+Requires=antiek.service
+
+[Service]
+Type=simple
+User={{ antiek_user }}
+Group={{ antiek_group }}
+WorkingDirectory={{ antiek_install_dir }}
+
+# Same secrets file the main service uses; the daemon needs
+# OPENROUTER_API_KEY (or whichever dispatch provider) to spawn
+# investigations.
+EnvironmentFile={{ antiek_secrets_file }}
+
+Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"
+Environment="ANTIEK_STATE_DIR={{ antiek_state_dir }}"
+Environment="ANTIEK_DUCKDB_PATH={{ antiek_state_dir }}/antiek.duckdb"
+Environment="ANTIEK_EVENT_LOG_DIR={{ antiek_state_dir }}/research_events"
+Environment="HF_HOME={{ antiek_state_dir }}/cache/hf"
+Environment="SENTENCE_TRANSFORMERS_HOME={{ antiek_state_dir }}/cache/sentence-transformers"
+Environment="TORCH_HOME={{ antiek_state_dir }}/cache/torch"
+
+# Daemon-specific configuration. Override via secrets.env to tune.
+# - ANTIEK_DAEMON_SLEEP_SECONDS: how often the daemon scans the log
+# - ANTIEK_DAEMON_EXPECTED_COST_USD: cost-per-spawn estimate used
+#   for budget gating
+# - ANTIEK_DAEMON_BUDGET_USD_PER_DAY: §16 hard cap on total spawn
+#   spend per UTC day. Default 5; the daemon refuses to spawn once
+#   today's running total approaches the cap.
+Environment="ANTIEK_DAEMON_SLEEP_SECONDS=60"
+Environment="ANTIEK_DAEMON_EXPECTED_COST_USD=0.50"
+Environment="ANTIEK_DAEMON_BUDGET_USD_PER_DAY=5.0"
+
+# ── THE LOAD-BEARING LINE ────────────────────────────────────────────
+# The daemon's main loop. Reads event log, picks highest-scored
+# unresolved gap, spawns a chase via the substrate's API, sleeps,
+# repeats. The Python entry point is at orchestration/continuous/
+# __main__.py — invoked here via `python -m`.
+ExecStart={{ antiek_install_dir }}/.venv/bin/python -m orchestration.continuous
+
+Restart=on-failure
+RestartSec=30s
+
+StandardOutput=journal
+StandardError=journal
+
+# ── Hardening (matches the main antiek service) ──────────────────────
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ antiek_state_dir }} /tmp /var/tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

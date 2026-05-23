@@ -89,11 +89,34 @@
       register: antiek_unit
       tags: [systemd]
 
-    - name: systemd daemon-reload if unit changed
+    - name: re-render antiek-continuous-research.service (§7.3 + §7.4 daemon)
+      ansible.builtin.template:
+        src: ../templates/antiek-continuous-research.service.j2
+        dest: /etc/systemd/system/antiek-continuous-research.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_continuous_unit
+      tags: [systemd, continuous]
+
+    - name: systemd daemon-reload if either unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed
+      when: antiek_unit.changed or antiek_continuous_unit.changed
       tags: [systemd]
+
+    - name: enable antiek-continuous-research.service
+      ansible.builtin.systemd:
+        name: antiek-continuous-research.service
+        enabled: true
+      tags: [systemd, continuous]
+
+    - name: restart antiek-continuous-research if unit changed
+      ansible.builtin.systemd:
+        name: antiek-continuous-research.service
+        state: restarted
+      when: antiek_continuous_unit.changed
+      tags: [systemd, continuous]
 
     # ── Frontend rsync ───────────────────────────────────────────────────
     # The Phase A play built `apps/reading/dist/` locally. Push it to
