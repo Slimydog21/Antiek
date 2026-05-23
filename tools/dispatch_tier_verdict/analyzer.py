@@ -120,7 +120,10 @@ def _within_window(
     since: datetime | None,
     until: datetime | None,
 ) -> bool:
-    ts = record.get("created_at") or record.get("ts")
+    # The substrate emits events with `emitted_at`. Older test
+    # fixtures used `created_at` / `ts`; accept all three so the
+    # analyzer works against both shapes.
+    ts = record.get("emitted_at") or record.get("created_at") or record.get("ts")
     if not isinstance(ts, str):
         return False
     try:
@@ -172,7 +175,7 @@ def analyse_events(
     for ev in iterator:
         if not _within_window(ev, since=since, until=until):
             continue
-        ts = ev.get("created_at") or ev.get("ts")
+        ts = ev.get("emitted_at") or ev.get("created_at") or ev.get("ts")
         if isinstance(ts, str):
             ts_min = ts if ts_min is None or ts < ts_min else ts_min
             ts_max = ts if ts_max is None or ts > ts_max else ts_max

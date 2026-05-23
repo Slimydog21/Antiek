@@ -183,6 +183,26 @@ def test_window_filters_out_old_events():
     assert v.opus_score.synthesis_count == 1  # only the late one
 
 
+def test_accepts_emitted_at_field():
+    """Production event log uses `emitted_at`, not `created_at`."""
+    ev = {
+        "event_id": "evt-1",
+        "investigation_id": "inv-1",
+        "emitted_at": "2026-05-20T12:00:00Z",
+        "action_type": "dispatch.call",
+        "payload": {
+            "action_type": "dispatch.call",
+            "tier": "synthesis",
+            "provider": "hermes",
+            "model": "grok-4.3",
+            "cost_usd": 0.005,
+        },
+    }
+    v = analyse_events(events=[ev])
+    assert v.hermes_score is not None
+    assert v.hermes_score.synthesis_count == 1
+
+
 # ── Markdown renderer ────────────────────────────────────────────────
 
 
