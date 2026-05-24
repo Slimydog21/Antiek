@@ -1,0 +1,6 @@
+{
+  "generated_at": "2026-05-25T00:00:00+00:00",
+  "lint": "mypy_strict_substrate_core",
+  "schema_version": 1,
+  "violations": []
+}
