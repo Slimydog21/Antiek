@@ -1,0 +1,63 @@
+id: phase8-skill-patch-gate-in-shadow-mode
+observed_at: 2026-05-14
+source: project_researchmaxx_phase_a.md
+agent: operator-manual
+phase: skill_growth
+failure_type: gate_inert
+
+context_summary: |
+  The Phase 8 SkillPatchGate at compounding/skill_growth/gate.py is
+  in shadow mode by construction: it computes the accept/reject
+  decision based on backtest delta vs. epsilon, but applies the
+  patch regardless. The §6.4 calibration protocol in
+  integration_autoresearch.md requires a shadow-mode period of
+  ≥10 investigations + operator manual review + ε tuning before
+  flipping to enforcing. As of 2026-05-14 the calibration data has
+  not been collected — the gate has not actually enforced once.
+
+input:
+  prompt: |
+    Apply skill patch <candidate> to the current investigation;
+    backtest delta -0.06 (below epsilon=0.02 threshold).
+  env:
+    ANTIEK_PHASE8_MODE: "shadow"
+
+expected_behavior: |
+  In shadow mode the gate should (a) compute the decision, (b)
+  record it via PatchOutcome including the would-have-rejected
+  rationale, (c) APPLY the patch anyway, (d) emit a structured
+  event the operator can use to calibrate ε. The discipline is
+  intentional — shadow mode collects data; enforcing mode acts on
+  it. The failure here is meta: the operator has not yet completed
+  the calibration loop, so the gate has been inert as a quality
+  signal since deployment.
+
+actual_failure: |
+  Per memory: "Phase 8 is agent-driven not automated; compounding
+  loop has not closed once on real data." The shadow-mode period
+  has produced data but the operator-review pass has not happened.
+  Without review, ε is still at its 0.02 placeholder; without
+  enforcing mode, no patch has ever been rejected on quality
+  grounds. The compounding loop is mechanically possible but has
+  no quality backstop.
+
+harness_check_that_now_catches: |
+  The SkillPatchGate itself catches this when flipped to enforcing
+  — the surface exists. The gap is process: the calibration loop
+  per integration_autoresearch.md §6.4 is operator action, not a
+  code mechanism. A useful adjacent harness would be:
+  ``orchestration/audit/phase8_calibration_status.py`` that reports
+  "<N> shadow decisions collected; <M> operator-reviewed; current ε
+  agreement = <pct>%" so the operator sees calibration progress
+  without manual inspection.
+
+fix_commit: GAP
+
+notes: |
+  This fixture is included even though it's not a single-incident
+  bug — it's a STANDING condition. The point of fixturing it is to
+  make "the gate is in shadow mode" surface in the regression
+  library as a known incomplete mitigation, alongside the truly
+  incidental failures. When the operator flips to enforcing, mark
+  this fixture's fix_commit with the flip SHA and add notes
+  documenting which decisions retroactively would have changed.
