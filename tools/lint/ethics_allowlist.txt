@@ -1,0 +1,73 @@
+# Sprint-ethics lint allowlist. Files where the trigger-term mention
+# does NOT require an Ethics articulation block.
+#
+# Format: file paths or directories (trailing slash) relative to repo
+# root, one per line, with optional inline justification.
+#
+# The forward-only policy (docs/decisions/sprint_ethics_articulation.md)
+# means existing sprint/spec documents predating SPR-08 are exempt —
+# they get retrofitted lazily when they're next edited. New documents
+# touching §9.0 surfaces MUST have the block.
+
+# This lint's own decision record describes the lint's trigger terms;
+# the document IS about ethics but doesn't itself need the block.
+docs/decisions/sprint_ethics_articulation.md
+
+# The template document — quoting the field labels doesn't itself
+# require a block.
+docs/templates/sprint_ethics_block.md
+
+# The trigger-terms file & this allowlist file aren't scanned (.txt
+# extension), but if they were renamed to .md they'd land here. Left as
+# a hint for future maintainers.
+
+# Forward-only: all docs/decisions/*.md and docs/integration_*.md and
+# docs/operator_*.md and docs/master-*.md predating 2026-05-24 are
+# grandfathered. Their next edit triggers retrofit; new files don't
+# get this exemption.
+docs/decisions/
+docs/integration_autoresearch.md
+docs/integration_exa_browserbase.md
+docs/integration_posthog.md
+docs/integration_prime_intellect.md
+docs/integration_turbopuffer.md
+docs/integration_notdiamond.md
+docs/master-product-spec.md
+docs/operator_gate_actions.md
+docs/OPERATOR_ACTIONS.md
+docs/rlm_integration_spec.md
+docs/daytona_integration_spec.md
+docs/sprint_track_reconciliation.md
+docs/architecture_notes.md
+docs/quack_spec.md
+docs/soc2_decision.md
+docs/sprint23_red_team.md
+docs/sprint23_red_team_internal_baseline.md
+docs/sprint30_thread_decisions.md
+docs/sprint30_thread_decisions_2026_05_21.md
+docs/phase2_execution_audit_2026_05_22.md
+docs/phase2_execution_audit_v2_2026_05_22.md
+docs/phase2_execution_audit_v3_2026_05_23.md
+docs/phase2_execution_audit_v4_2026_05_23.md
+docs/loop_3_unlock_criteria.md
+docs/infrastructure_prompt.md
+# Pre-SPR-08 specs dirs that mention trigger terms.
+specs/wrestle-evolution/
+specs/posthog-vendor/
+specs/turbopuffer-wedge-1/
+specs/kimi-rigor/
+# DDIA-execution spec — references trigger terms in run-of-sprint docs.
+# Each sprint page describes the substrate boundary; per SPR-08 forward-
+# only policy, the DDIA spec sprints predate this lint at write time.
+specs/ddia-execution/
+
+# Pre-SPR-08 documentation that mentions trigger terms. Forward-only
+# policy — these are grandfathered at this lint's landing time
+# (2026-05-24). Retrofit lazily on next edit.
+docs/trust_center_public.md
+docs/sprint-breakdown.html
+docs/engineering_deferrals.md
+docs/sprints/
+docs/html/
+docs/ui_redesign_posthog/
+docs/voice_style.md

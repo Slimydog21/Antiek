@@ -110,6 +110,7 @@ def _log_write_event(
     duration_s: float,
     success: bool,
     error: Optional[str] = None,
+    _grace_s: float = 5.0,
 ) -> None:
     """Append one row to the `write_log` table on a fresh, briefly-locked
     connection.
@@ -120,6 +121,16 @@ def _log_write_event(
     coordinator-respecting connection rather than reusing the caller's
     handle — the spec requires the log write not extend the caller's
     critical section, and the caller may have already committed/closed.
+
+    ``_grace_s`` is the max time we'll wait for the brief flock needed
+    to write the log row. Default 5.0 (success path; minor contention
+    acceptable). The TIMEOUT path passes 0.0 so logging is truly
+    fire-and-forget — otherwise an idle timeout (e.g., 0.4s) could
+    effectively become ``timeout_s + grace_s`` while another holder
+    still holds the original lock, violating I2 (bounded wait). See
+    ``docs/decisions/db_lock_invariants.md`` F2;
+    ``tests/test_db_lock_chaos.py::test_acquire_timeout_raises`` is
+    the regression test.
 
     Best-effort: any exception is swallowed (with stderr breadcrumb). The
     main pipeline must NEVER fail because the log table is missing or
@@ -137,10 +148,21 @@ def _log_write_event(
         # log entry rather than block the caller's clean exit.
         lock_path = _lock_path_for(db_path)
         fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
-        deadline = time.monotonic() + 5.0  # 5s grace
+        deadline = time.monotonic() + _grace_s
         acquired = False
         try:
-            while True:
+            # _grace_s <= 0: single-shot fire-and-forget. The timeout
+            # path passes 0.0 here so logging never extends the
+            # caller's bounded-wait (I2).
+            if _grace_s <= 0.0:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                except OSError as e:
+                    if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+                        return
+                    raise
+            while not acquired:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     acquired = True
@@ -292,6 +314,13 @@ def connect_write(
                     # Record the failed-acquire in write_log so timeout events
                     # are observable. Log AFTER closing the fd so we don't
                     # contend with the lock-holder.
+                    #
+                    # _grace_s=0.0 is mandatory here: the lock-holder is
+                    # almost certainly still holding (that's why we timed
+                    # out), so a polling grace would block bounded-wait
+                    # (I2). Fire-and-forget — if we can't grab the lock
+                    # immediately for the log row, drop it. See SPR-01
+                    # (DDIA-execution) and tests/test_db_lock_chaos.py.
                     os.close(fd)
                     elapsed = time.monotonic() - acquire_start
                     _log_write_event(
@@ -300,6 +329,7 @@ def connect_write(
                         elapsed,
                         success=False,
                         error=f"WriteLockTimeout after {timeout_s}s",
+                        _grace_s=0.0,
                     )
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
