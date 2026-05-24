@@ -38,3 +38,15 @@ __all__ = [
     "render_full_prompt",
     "render_user_template",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=3000,
+    expected_output_tokens=500,
+    spawn_pattern_doc=(
+        'Pass a captured voice note plus context. Returns a single follow-up question to surface the next morning. Single-turn; idempotent.'
+    ),
+)

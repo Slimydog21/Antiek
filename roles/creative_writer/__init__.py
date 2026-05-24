@@ -46,3 +46,15 @@ __all__ = [
     "render_full_prompt",
     "render_user_template",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.crew(
+    expected_input_tokens=8000,
+    expected_output_tokens=4000,
+    spawn_pattern_doc=(
+        'Pass a brief plus stylistic constraints; supports iterative refinement with the caller via additional turns. Returns prose. NOT idempotent: creative variance is the point.'
+    ),
+)

@@ -64,3 +64,15 @@ __all__ = [
     "render_user_template",
     "render_full_prompt",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=6000,
+    expected_output_tokens=2000,
+    spawn_pattern_doc=(
+        'Pass a sub-question plus retrieval params. Returns ranked evidence rows (chunk_id + score + snippet). Single-turn; idempotent given a fixed retrieval cursor.'
+    ),
+)

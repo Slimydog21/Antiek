@@ -75,3 +75,15 @@ __all__ = [
     "render_full_prompt",
     "render_user_template",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=4000,
+    expected_output_tokens=1000,
+    spawn_pattern_doc=(
+        'Pass a visual-spec brief. Returns a single visual artifact (diagram description or image-gen prompt). Single-turn; operator iterates by re-invoking with revised brief.'
+    ),
+)

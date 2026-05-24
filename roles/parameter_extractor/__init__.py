@@ -61,3 +61,15 @@ __all__ = [
     # converter
     "parameters_to_constraints",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=4000,
+    expected_output_tokens=600,
+    spawn_pattern_doc=(
+        'Pass a sub-question plus its constraints. Returns extracted structured parameters for downstream retrieval. Single-turn; this is the role WP-A3 surfaced as the loky-semaphore failure site — kept polecat-shaped to keep fan-out cheap.'
+    ),
+)

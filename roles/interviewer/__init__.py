@@ -43,3 +43,15 @@ __all__ = [
     "render_full_prompt",
     "render_user_template",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.crew(
+    expected_input_tokens=6000,
+    expected_output_tokens=1500,
+    spawn_pattern_doc=(
+        'Multi-turn interview conversation. Caller hands transcript-so-far; role emits the next question. Cross-turn state lives in the transcript the caller maintains.'
+    ),
+)

@@ -84,3 +84,15 @@ __all__ = [
     "paraphrase_clean",
     "propose_examples_from_rows",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=4000,
+    expected_output_tokens=1500,
+    spawn_pattern_doc=(
+        'Pass a top-level research question plus the domain frame. Returns typed sub-questions (ParsedSubQuestion). Single-turn; parser + paraphrase check guarantee a stable shape.'
+    ),
+)

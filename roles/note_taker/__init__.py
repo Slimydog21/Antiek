@@ -30,3 +30,15 @@ __all__ = [
     "ExtractedNote",
     "parse_notes_response",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=5000,
+    expected_output_tokens=1500,
+    spawn_pattern_doc=(
+        'Pass a chunk of source text. Returns typed notes (extracts + minor annotations). Single-turn; idempotent on the chunk content.'
+    ),
+)

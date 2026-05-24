@@ -84,3 +84,15 @@ __all__ = [
     "render_full_prompt",
     "build_revision_prefix",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.crew(
+    expected_input_tokens=16000,
+    expected_output_tokens=4000,
+    spawn_pattern_doc=(
+        'Pass a constraint-checked evidence set plus the target question. Returns synthesis prose. May iterate with the caller across rubric-driven revision cycles.'
+    ),
+)

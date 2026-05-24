@@ -31,3 +31,15 @@ __all__ = [
     "ThoughtPartnerResponse",
     "parse_thought_partner_response",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.crew(
+    expected_input_tokens=12000,
+    expected_output_tokens=3000,
+    spawn_pattern_doc=(
+        'Multi-turn design conversation. Pass current artifact + question; the role pushes back, asks clarifying questions, and helps the operator think. Not idempotent — the conversation IS the value.'
+    ),
+)

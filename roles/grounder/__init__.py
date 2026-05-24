@@ -27,3 +27,15 @@ __all__ = [
     "GroundingVerdict",
     "parse_grounder_response",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=8000,
+    expected_output_tokens=1500,
+    spawn_pattern_doc=(
+        'Pass a draft claim plus candidate supporting chunks. Returns a grounding decision (supported / partially / refuted) with cited chunk IDs. Single-turn; no further chunks are fetched.'
+    ),
+)

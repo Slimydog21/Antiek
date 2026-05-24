@@ -63,3 +63,15 @@ __all__ = [
     "render_user_template",
     "render_full_prompt",
 ]
+
+
+# SPR-03: role-shape metadata (see substrate/role_shape.py)
+from substrate.role_shape import RoleMetadata
+
+__role_metadata__ = RoleMetadata.polecat(
+    expected_input_tokens=5000,
+    expected_output_tokens=1200,
+    spawn_pattern_doc=(
+        'Pass a node + neighborhood subset. Returns a typed list of candidate connections to other nodes with confidence scores. Single-turn; the caller materializes the neighborhood from the graph.'
+    ),
+)
