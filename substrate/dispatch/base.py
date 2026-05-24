@@ -14,6 +14,54 @@ Two concerns separated:
 Adapters live in ``substrate/dispatch/providers/``. The router in
 ``router.py`` calls ``Provider.call(...)`` and ``Provider.normalize_usage(raw)``
 and never reaches into provider-specific shapes.
+
+Idempotency contract (DDIA-execution SPR-02, 2026-05-24)
+========================================================
+
+Every provider adapter MUST honor the following clauses. The cd602c9
+verify-tier chaos test (``tests/test_dispatch_fallback_chain.py``)
+defends I-DISPATCH-3 + I-DISPATCH-4 end-to-end; the other clauses are
+defended by ``tests/test_dispatch_idempotency_contract.py``.
+
+I-DISPATCH-1 — Idempotency under retry
+    A successful ``Provider.call(...)`` with the same input MUST be
+    safe to retry. Stateless API calls satisfy this trivially. When
+    per-call side effects appear (tool callbacks, file uploads), the
+    adapter MUST forward / synthesize an idempotency key.
+
+I-DISPATCH-2 — Failure mode taxonomy
+    Adapters classify failures via ``ProviderError.retryable``:
+        retryable=True   → transient (network, 5xx, rate-limit); router
+                           may walk the fallback chain.
+        retryable=False  → permanent (auth, model-not-found, content
+                           policy); router does NOT retry.
+
+I-DISPATCH-3 — Verify-tier fallback ordering preserved
+    ``router.py`` walks ``TierConfig.fallback`` in declaration order.
+    Adapters MUST NOT reorder. The order reflects operator bets
+    (Hermes-primary for flash/pro/verify; OpenRouter-primary for
+    synthesis during the Sprint-17 measurement window per master-spec
+    §14.4). Silent reordering breaks the dispatch-verdict instrumentation.
+
+I-DISPATCH-4 — OAuth-refresh → 503 translation rule
+    The Hermes bridge (owned by Hermes Agent, NOT Antiek — see memory
+    ``project_antiek_hermes_bridge.md``) returns HTTP 503 when its
+    underlying provider's OAuth refresh fails. The Antiek-side Hermes
+    adapter MUST map this to ``ProviderError(retryable=True)`` so the
+    router falls through to the next chain member. Any other
+    translation breaks the cd602c9 chaos-test contract.
+
+I-DISPATCH-5 — Latency reported on failure
+    ``ProviderError`` MUST be raised with ``latency_ms`` populated.
+    Cost reports use this for time-attribution even on failure.
+
+I-DISPATCH-6 — No cost computation in the adapter
+    Adapters MUST NOT compute ``cost_usd``. Pricing lives in ONE
+    place: ``router.py`` consumes ``NormalizedUsage`` + ``TierConfig.
+    pricing``. The boundary lint (DDIA-execution SPR-03) enforces
+    this at the import level.
+
+Canonical record: ``docs/decisions/dispatch_idempotency_contract.md``.
 """
 
 from __future__ import annotations

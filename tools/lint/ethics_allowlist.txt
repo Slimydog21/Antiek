@@ -71,3 +71,7 @@ docs/sprints/
 docs/html/
 docs/ui_redesign_posthog/
 docs/voice_style.md
+
+# Parallel operator-stream sprint workspaces that pre-date SPR-08.
+# Forward-only retrofits on next edit.
+specs/kimi-execute/
