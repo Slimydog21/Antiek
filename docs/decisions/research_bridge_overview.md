@@ -45,19 +45,27 @@ UPDATE/DELETE), enforced by source grep tests.
 - **CLI**: `python -m tools.research_bridge_cli` — list/show/paste/
   detect/extract/find-gaps/gaps-show/gaps-list/signal/would-run/
   eval-precision/dogfood-report.
-- **Frontend kit**: `apps/reading/src/modes/research_bridge/` —
-  ResearchBlock, BlockShelf, DropTarget, PromptCard, GapFinderPage,
-  typed api_client, hooks. Composed on the Lemon kit; zero new deps.
+- **Frontend kit + surfaces**: `apps/reading/src/modes/research_bridge/`
+  — kit (ResearchBlock, BlockShelf, DropTarget, PromptCard), pages
+  (PastePage = front door, GapFinderPage = mode B), the
+  ResearchBridgeHome shell (Paste | Gap-finder tabs), typed
+  api_client, hooks. Composed on the Lemon kit; zero new deps.
 
-## To integrate the frontend page
+## To integrate the frontend
 
-One line in the app's route table:
+One line in the app's route table — mount the home shell, which
+wires its own HTTP client and routes between the Paste and
+Gap-finder tabs:
 
 ```tsx
-const GapFinderPage = lazy(() => import("./modes/research_bridge/GapFinderPage"));
-// <Route path="/research-bridge" element={
-//   <GapFinderPage client={createHttpClient()} /> } />
+const ResearchBridgeHome = lazy(() => import("./modes/research_bridge/ResearchBridgeHome"));
+// <Route path="/research-bridge" element={<ResearchBridgeHome />} />
 ```
+
+The shell builds the real client (`createHttpClient()`) internally;
+pass a `client` prop only in tests/stories. A paste saved on the
+Paste tab is immediately in scope on the Gap-finder tab — both read
+`/research/pastes`.
 
 ## Tests
 
