@@ -33,17 +33,25 @@ actual_failure: |
   hours; operator manual intervention required.
 
 harness_check_that_now_catches: |
-  GAP — the canonical mitigation per the memory entry is "PDF
-  endpoint + S2 fallback work" and a banned_until sentinel. The
-  sentinel needs to live in a shared store (DuckDB write_log table
-  or a file under ~/.antiek/) that survives across processes and is
-  consulted before every request. The PDF/S2 fallback exists in code
-  but the throttle integration is uneven.
+  acquisition/arxiv/throttle.py — cross-process min-interval rate
+  limiter (flock-serialized read-modify-write of a shared
+  ~/.antiek/arxiv_throttle.state timestamp; wall-clock so it's
+  comparable across processes and survives restart). Closes the root
+  cause: the in-process-only throttle that let a second process ignore
+  the first's request history and trip the limiter. Wired into
+  acquisition/arxiv/client.py::_http_get (own-client path) alongside
+  the ban sentinel from acquisition/arxiv/ban_state.py. Prevention
+  (throttle) + re-trigger-stop (ban sentinel) are both closed.
+  tests/test_arxiv_throttle.py proves real cross-thread serialization
+  and the "second process honors the shared timestamp" property.
 
-fix_commit: GAP
+fix_commit: hashimoto-eng/e2-arxiv-throttle
 
 notes: |
-  See also: arxiv-missing-ssl-env, undersized-metadata-cache,
-  banned-until-sentinel-absent. The 2026-05-17 memory entry
-  consolidates all four into a single arxiv-ingestion-failures
-  cluster — fixing them in sequence is the right move.
+  Closed by the throttle + ban-sentinel pair. The (c) PDF/S2 fallback
+  ROUTING — what the caller does when ArxivBanned is raised — is the
+  remaining sliver, tracked as a caller change (the ArxivBanned
+  exception is the seam). Prevention and re-trigger-stop, the
+  load-bearing halves, are now mechanical. See also:
+  arxiv-missing-ssl-env (closed), banned-until-sentinel-absent
+  (closed), undersized-metadata-cache (open).

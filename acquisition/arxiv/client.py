@@ -25,7 +25,7 @@ from typing import Iterable, List, Optional
 
 import httpx
 
-from acquisition.arxiv import ban_state
+from acquisition.arxiv import ban_state, throttle
 
 
 class ArxivBanned(RuntimeError):
@@ -244,9 +244,14 @@ def _http_get(
         r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
     else:
         # Guard 2 — only when we own the client; injected clients (tests)
-        # bring their own transport and cert config.
+        # are mocks that don't hit the real server, so neither
+        # cross-process throttling nor cert config applies. Throttle
+        # FIRST (space the request across processes so we never trip
+        # arXiv's 1-req/3s limiter — the in-process-only throttle was
+        # the root cause), then ensure a CA bundle is resolvable.
         from runtime.ssl_bootstrap import ensure_ssl_certs
 
+        throttle.acquire()
         ensure_ssl_certs()
         with httpx.Client() as c:
             r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
