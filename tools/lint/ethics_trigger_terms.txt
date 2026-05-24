@@ -1,0 +1,21 @@
+# Sprint-ethics-lint trigger terms. Case-insensitive whole-word match.
+# A spec/sprint document under specs/ that mentions any of these terms
+# must include the ethics articulation block (or "Ethics N/A —" with a
+# justification).
+#
+# Edit this file → operator review required. See
+# docs/decisions/sprint_ethics_articulation.md.
+
+publisher
+consent
+legal_gate
+advertiser
+attribution
+Bartz
+Hachette
+MDL
+opt-in
+opt-out
+autoresearch_output
+ip_holder
+payout

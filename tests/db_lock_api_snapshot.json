@@ -1,0 +1,136 @@
+{
+  "Any": {
+    "kind": "class",
+    "members": {},
+    "module": "typing"
+  },
+  "DEFAULT_TIMEOUT_S": {
+    "kind": "value",
+    "type": "int"
+  },
+  "FlockWriteCoordinator": {
+    "kind": "class",
+    "members": {
+      "acquire_write_context": {
+        "kind": "method",
+        "signature": "(self, purpose: 'str')"
+      }
+    },
+    "module": "runtime.db_lock"
+  },
+  "Iterable": {
+    "kind": "callable",
+    "signature": "(*args, **kwargs)"
+  },
+  "LockedConnection": {
+    "kind": "class",
+    "members": {
+      "close": {
+        "kind": "method",
+        "signature": "(self)"
+      }
+    },
+    "module": "runtime.db_lock"
+  },
+  "Optional": {
+    "kind": "callable",
+    "signature": "(*args, **kwds)"
+  },
+  "Protocol": {
+    "kind": "class",
+    "members": {},
+    "module": "typing"
+  },
+  "Sequence": {
+    "kind": "callable",
+    "signature": "(*args, **kwargs)"
+  },
+  "WriteContext": {
+    "kind": "class",
+    "members": {
+      "commit": {
+        "kind": "method",
+        "signature": "(self) -> 'None'"
+      },
+      "execute": {
+        "kind": "method",
+        "signature": "(self, sql: 'str', params: 'Optional[Sequence[Any]]' = None) -> 'Any'"
+      },
+      "executemany": {
+        "kind": "method",
+        "signature": "(self, sql: 'str', params_list: 'Iterable[Sequence[Any]]') -> 'Any'"
+      },
+      "query": {
+        "kind": "method",
+        "signature": "(self, sql: 'str', params: 'Optional[Sequence[Any]]' = None) -> 'Any'"
+      },
+      "rollback": {
+        "kind": "method",
+        "signature": "(self) -> 'None'"
+      }
+    },
+    "module": "runtime.db_lock"
+  },
+  "WriteCoordinator": {
+    "kind": "class",
+    "members": {
+      "acquire_write_context": {
+        "kind": "method",
+        "signature": "(self, purpose: 'str')"
+      }
+    },
+    "module": "runtime.db_lock"
+  },
+  "WriteCoordinatorTimeout": {
+    "kind": "class",
+    "members": {
+      "add_note": {
+        "kind": "method",
+        "signature": "(self, note, /)"
+      },
+      "with_traceback": {
+        "kind": "method",
+        "signature": "(self, tb, /)"
+      }
+    },
+    "module": "runtime.db_lock"
+  },
+  "WriteLockTimeout": {
+    "kind": "class",
+    "members": {
+      "add_note": {
+        "kind": "method",
+        "signature": "(self, note, /)"
+      },
+      "with_traceback": {
+        "kind": "method",
+        "signature": "(self, tb, /)"
+      }
+    },
+    "module": "runtime.db_lock"
+  },
+  "annotations": {
+    "kind": "value",
+    "type": "_Feature"
+  },
+  "connect_read": {
+    "kind": "callable",
+    "signature": "(db_path: 'str') -> \"'duckdb.DuckDBPyConnection'\""
+  },
+  "connect_write": {
+    "kind": "callable",
+    "signature": "(db_path: 'str', *, timeout_s: 'float' = 300, poll_interval_s: 'float' = 0.25, purpose: 'str' = '') -> 'LockedConnection'"
+  },
+  "connect_write_retrying": {
+    "kind": "callable",
+    "signature": "(db_path: 'str', *, timeout_s: 'float' = 300, poll_interval_s: 'float' = 0.25, max_retries: 'int' = 3, retry_delay_s: 'float' = 60.0, purpose: 'str' = '') -> 'LockedConnection'"
+  },
+  "is_locked": {
+    "kind": "callable",
+    "signature": "(db_path: 'str') -> 'bool'"
+  },
+  "runtime_checkable": {
+    "kind": "callable",
+    "signature": "(cls)"
+  }
+}
