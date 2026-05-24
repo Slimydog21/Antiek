@@ -43,11 +43,24 @@ Example::
 
 The module is fully ``mypy --strict`` clean and depends only on stdlib +
 ``pydantic>=2.7`` (already in core deps).
+
+Examples (run as doctests via ``pytest --doctest-modules substrate/results.py``):
+
+    >>> from substrate.results import Ok, Err, is_ok, is_err
+    >>> Ok(value=42).unwrap()
+    42
+    >>> Err(error="boom").unwrap_or(99)
+    99
+    >>> is_ok(Ok(value=1)), is_err(Ok(value=1))
+    (True, False)
+    >>> Ok(value=3).map(lambda x: x * 2).unwrap()
+    6
 """
 
 from __future__ import annotations
 
-from typing import Any, Callable, Generic, Literal, TypeVar, Union
+from collections.abc import Callable
+from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -124,16 +137,16 @@ class Ok(BaseModel, Generic[T]):
     # Combinators                                                        #
     # ------------------------------------------------------------------ #
 
-    def map(self, fn: Callable[[T], U]) -> "Ok[U]":
+    def map(self, fn: Callable[[T], U]) -> Ok[U]:
         """Apply ``fn`` to the inner value; return a new Ok wrapping the
         result. Err passes through unchanged via the sibling method."""
         return Ok(value=fn(self.value))
 
-    def map_err(self, fn: Callable[[Any], Any]) -> "Ok[T]":
+    def map_err(self, fn: Callable[[Any], Any]) -> Ok[T]:
         """No-op on Ok — Err carries the error and Ok doesn't."""
         return self
 
-    def and_then(self, fn: Callable[[T], "Result[U, E]"]) -> "Result[U, E]":
+    def and_then(self, fn: Callable[[T], Result[U, E]]) -> Result[U, E]:
         """Monadic bind — chain a fallible operation onto a successful result.
         ``fn`` returns a Result; we delegate to it. The classic ``?`` operator
         in Rust collapses to nested ``and_then`` calls in this idiom."""
@@ -178,23 +191,25 @@ class Err(BaseModel, Generic[E]):
     # Combinators                                                        #
     # ------------------------------------------------------------------ #
 
-    def map(self, fn: Callable[[Any], Any]) -> "Err[E]":
+    def map(self, fn: Callable[[Any], Any]) -> Err[E]:
         """No-op on Err — the value isn't there to map."""
         return self
 
-    def map_err(self, fn: Callable[[E], F]) -> "Err[F]":
+    def map_err(self, fn: Callable[[E], F]) -> Err[F]:
         """Apply ``fn`` to the inner error; return a new Err. Useful for
         translating error variants (e.g., adapter error → SubstrateError)."""
         return Err(error=fn(self.error))
 
-    def and_then(self, fn: Callable[[Any], "Result[U, E]"]) -> "Err[E]":
+    def and_then(self, fn: Callable[[Any], Result[U, E]]) -> Err[E]:
         """Short-circuit — the chain stops at the first Err."""
         return self
 
 
 # The Result alias. mypy reads the ``tag`` literal as the discriminator and
-# narrows correctly inside ``match`` blocks.
-Result = Union[Ok[T], Err[E]]
+# narrows correctly inside ``match`` blocks. PEP 604 ``|`` syntax works
+# at module scope from Python 3.10+; T and E are the module-level TypeVars
+# already defined above.
+Result = Ok[T] | Err[E]
 
 
 # ---------------------------------------------------------------------- #
@@ -205,9 +220,9 @@ Result = Union[Ok[T], Err[E]]
 # ---------------------------------------------------------------------- #
 
 
-def is_ok(result: "Result[T, E]") -> bool:
+def is_ok(result: Result[T, E]) -> bool:
     return isinstance(result, Ok)
 
 
-def is_err(result: "Result[T, E]") -> bool:
+def is_err(result: Result[T, E]) -> bool:
     return isinstance(result, Err)

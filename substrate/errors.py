@@ -18,11 +18,22 @@ Variants are alphabetical by ``kind`` to make the union readable. New
 variants extend the union; do not reorder for "logical grouping" — the
 alphabetical convention is the schelling point that prevents merge
 conflicts when two sessions add variants in parallel.
+
+Examples (run as doctests via ``pytest --doctest-modules substrate/errors.py``):
+
+    >>> from substrate.errors import BudgetExceeded, WriterContended
+    >>> err = BudgetExceeded(cap=100, attempted=150)
+    >>> err.kind
+    'budget_exceeded'
+    >>> err.cap, err.attempted, err.units
+    (100, 150, 'tokens')
+    >>> WriterContended(resource='syntheses', timeout_s=300.0).kind
+    'writer_contended'
 """
 
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -124,10 +135,10 @@ class WriterContended(_ErrorBase):
     timeout_s: float = 0.0
 
 
-SubstrateError = Union[
-    BudgetExceeded,
-    SchemaMismatch,
-    UpstreamUnavailable,
-    VerifierTimeout,
-    WriterContended,
-]
+SubstrateError = (
+    BudgetExceeded
+    | SchemaMismatch
+    | UpstreamUnavailable
+    | VerifierTimeout
+    | WriterContended
+)

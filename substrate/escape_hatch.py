@@ -50,6 +50,19 @@ Example — decorator form::
 The ``reason`` is a free-form string but should be specific enough that
 grepping production logs for the substring lets the operator find the
 audit entry. Format suggestion: ``<surface>-<why-bypass-is-needed>``.
+
+Examples (run as doctests via ``pytest --doctest-modules substrate/escape_hatch.py``):
+
+    >>> from substrate.escape_hatch import (
+    ...     escape_hatch, counter_snapshot, reset_counters_for_tests,
+    ... )
+    >>> reset_counters_for_tests()
+    >>> with escape_hatch(reason="docexample-counter-test"):
+    ...     _ = 1 + 1
+    >>> with escape_hatch(reason="docexample-counter-test"):
+    ...     _ = 2 + 2
+    >>> counter_snapshot()["docexample-counter-test"]
+    2
 """
 
 from __future__ import annotations
@@ -145,7 +158,7 @@ class _EscapeHatch(contextlib.ContextDecorator):
         # forms in practice. The repr is best-effort; it's purely for log
         # enrichment so an off-by-one frame isn't a correctness issue.
         _record(self.reason, _caller_repr(2))
-        return None
+        return
 
     def __exit__(self, *exc_info: Any) -> None:
         # Do not suppress exceptions raised inside the hatch — the bypass
