@@ -1,0 +1,48 @@
+id: undersized-metadata-cache
+observed_at: 2026-05-17
+source: project_researchmaxx_arxiv.md
+agent: claude
+phase: acquisition_arxiv
+failure_type: cache_thrash
+
+context_summary: |
+  The arxiv metadata cache was sized for a single-paper-at-a-time
+  workflow (~100 entries). Phase A's parallel fan-out hit dozens of
+  papers per minute; the cache evicted entries faster than they
+  could be re-used, producing a 90%+ cache-miss rate. Every miss
+  re-hit export.arxiv.org, contributing to the 429 ban (see
+  fixture arxiv-429-export-ban).
+
+input:
+  prompt: |
+    Ingest the 40 most-recent papers from the cs.LG arxiv listing in
+    parallel. Use the metadata cache to avoid re-fetching.
+  env:
+    ANTIEK_ARXIV_CACHE_SIZE: "100"
+
+expected_behavior: |
+  The metadata cache should be sized to the cohort the operator
+  routinely hits (≥1000 entries) and tracked via cache_hits /
+  cache_misses metrics so a regression is visible. The size should
+  be configurable via env so the operator can crank it up without
+  a code change.
+
+actual_failure: |
+  Cache thrashed at 100 entries. 90%+ miss rate. Every miss
+  re-fetched. Re-fetch storm contributed to the 429 ban. Operator
+  noticed only after the ban took the daemon offline for an hour.
+
+harness_check_that_now_catches: |
+  GAP — cache size is hardcoded somewhere in the arxiv adapter, no
+  metrics surface, no env override. A small refactor would expose
+  ANTIEK_ARXIV_CACHE_SIZE + emit cache_hits / cache_misses to the
+  event log; the §14.4 inline rubric (SPR-E7's craft surface) does
+  not cover acquisition-path metrics.
+
+fix_commit: GAP
+
+notes: |
+  Sister fixture to arxiv-429-export-ban. Fixing the cache size
+  reduces the rate of re-fetches; fixing the throttle prevents
+  the ban from re-triggering. Both are independent mitigations
+  for the same incident class.

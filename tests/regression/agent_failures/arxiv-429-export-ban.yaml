@@ -1,0 +1,49 @@
+id: arxiv-429-export-ban
+observed_at: 2026-05-17
+source: project_researchmaxx_arxiv.md
+agent: claude
+phase: acquisition_arxiv
+failure_type: rate_limited
+
+context_summary: |
+  The arxiv ingestion path hit a 429 rate-limit ban from
+  export.arxiv.org. The ban was IP-scoped (not API-key-scoped) and
+  persisted for hours. Antiek's throttle was in-process only — a
+  second invocation from another shell ignored the first's
+  rate-limit history and re-triggered the ban.
+
+input:
+  prompt: |
+    Ingest the latest arxiv listings for cs.LG since 2026-05-15 via
+    the export.arxiv.org bulk endpoint.
+  env:
+    ANTIEK_ARXIV_QPS: "1.0"
+
+expected_behavior: |
+  The arxiv client should (a) maintain a cross-process throttle
+  shared via file or DuckDB sentinel, (b) on receiving 429, persist a
+  banned-until timestamp that subsequent invocations honor without
+  re-attempting, (c) fall back to the PDF endpoint or Semantic
+  Scholar (S2) when export.arxiv.org is banned.
+
+actual_failure: |
+  In-process throttle only → second shell re-attempted within the
+  ban window → ban extended further. No banned_until sentinel
+  persisted to disk. Eventually all arxiv ingestion paused for
+  hours; operator manual intervention required.
+
+harness_check_that_now_catches: |
+  GAP — the canonical mitigation per the memory entry is "PDF
+  endpoint + S2 fallback work" and a banned_until sentinel. The
+  sentinel needs to live in a shared store (DuckDB write_log table
+  or a file under ~/.antiek/) that survives across processes and is
+  consulted before every request. The PDF/S2 fallback exists in code
+  but the throttle integration is uneven.
+
+fix_commit: GAP
+
+notes: |
+  See also: arxiv-missing-ssl-env, undersized-metadata-cache,
+  banned-until-sentinel-absent. The 2026-05-17 memory entry
+  consolidates all four into a single arxiv-ingestion-failures
+  cluster — fixing them in sequence is the right move.

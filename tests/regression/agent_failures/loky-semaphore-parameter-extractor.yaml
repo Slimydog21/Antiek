@@ -1,0 +1,53 @@
+id: loky-semaphore-parameter-extractor
+observed_at: 2026-05-14
+source: project_researchmaxx_phase_a.md
+agent: claude
+phase: parameter_extraction
+failure_type: subprocess_died
+
+context_summary: |
+  Phase A WP-A3 execution surfaced a process-mortality failure at the
+  parameter_extractor stage. The agent path was attempting to fan
+  parameter extraction out across worker processes via loky; when an
+  external kill (CTRL-C, OOM, etc.) hit the parent, loky leaked its
+  semaphore tracker and orphaned the worker pool. Subsequent agent
+  invocations would hang waiting on the dead semaphore.
+
+input:
+  prompt: |
+    Extract dispatch parameters for the synthesis request below using
+    the parallel parameter_extractor pool.
+    <synthesis_request truncated for fixture>
+  env:
+    ANTIEK_PARAM_EXTRACTOR_WORKERS: "4"
+    PYTHONUNBUFFERED: "1"
+
+expected_behavior: |
+  The parameter_extractor should either (a) complete the extraction
+  with a typed result, or (b) raise a typed exception the orchestrator
+  catches and records. Worker-pool lifecycle is the
+  parameter_extractor's responsibility — the calling agent should not
+  see leaked semaphores.
+
+actual_failure: |
+  External kill of the parent process → loky semaphore tracker leak →
+  worker pool zombied. Next agent invocation hangs indefinitely. No
+  typed exception ever reaches the orchestrator. The compounding loop
+  cannot make progress.
+
+harness_check_that_now_catches: |
+  GAP — there is currently no mechanism that periodically reaps stale
+  loky semaphore trackers or asserts that the worker pool is alive
+  before a parameter_extractor invocation. The phase_runner's
+  verify_phase catches missing outputs but does not detect a hung
+  call. Mitigation candidate: timeout wrapper around
+  parameter_extractor with explicit pool teardown on signal.
+
+fix_commit: GAP
+
+notes: |
+  The Phase A handoff (2026-05-14) flagged this as a real failure
+  mode. The compounding loop has not closed once on real data per
+  the same memory; this fixture documents one reason why. A real
+  mitigation should land before Phase 8 SkillPatchGate flips to
+  enforcing.

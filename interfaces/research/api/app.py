@@ -1051,6 +1051,12 @@ def create_app(
     # Sprint 23-24 phase 5 — advertiser campaign performance.
     from .campaigns import register_campaign_routes
     register_campaign_routes(app)
+    # SPR-01..05 (2026-05-24) — Deep Research Bridge.
+    # Spec: ~/specs/antiek-deep-research-bridge/. Adds /research/pastes,
+    # /research/gaps, signal + answer routes. Substrate-additive; the
+    # frontend kit lives at apps/reading/src/modes/research_bridge/.
+    from .research_bridge import register_research_bridge_routes
+    register_research_bridge_routes(app)
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
     # Expose for tests and admin endpoints.

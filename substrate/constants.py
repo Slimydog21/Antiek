@@ -375,6 +375,48 @@ PROCESS_SKILL_PROPOSAL_THRESHOLD: Final[int] = 3
 
 
 # ============================================================
+# Section I — Yao ablation discipline
+# ============================================================
+#
+# Lineage: doctrine D-13 (``doctrine/doctrine-13-ablation-discipline.html``)
+# distilled from ``doctrine/raw/2026-05-24-yao-shunyu.md`` anchors
+# [ABLATION-DISCIPLINE], [WALL-VS-BUG], [FIX-BUG-OVER-TRICKS].
+#
+# The values below tune ``substrate/eval/ablation.run_ablation``. They
+# are intentionally conservative: ablation results that come back
+# "factor_related" should be defensible without further analysis, and
+# the "inconclusive" branch should fire whenever the measurement is
+# under-powered rather than silently rounding up to "noise".
+
+# Sigma threshold separating "factor_related" from "noise". 2σ is the
+# operator-defensible default: it admits a one-sided false positive rate
+# of roughly 2.5% under Gaussian noise, which is tight enough that
+# operators will trust the verdict but loose enough that real signals
+# at small sample sizes are visible. Raising to 3σ is appropriate for
+# production-gate ablations; lowering below 2σ erodes the verdict's
+# value (the harness becomes a vibes-confirmer). Tests assert the value
+# explicitly so a silent default change here trips them.
+ABLATION_VERDICT_SIGMA: Final[float] = 2.0
+
+# Minimum sample count for sample-derived noise estimation. Below this,
+# ``statistics.stdev`` either raises (n<2) or returns a value the
+# operator should not rely on. Two is the floor; three or more is
+# better but we don't force it — the operator's hypothesis can carry
+# an explicit noise_estimate if replicate sampling is impractical.
+ABLATION_MIN_SAMPLES_FOR_NOISE: Final[int] = 2
+
+# Noise / delta floor used to distinguish "effectively zero" from
+# "actually zero" in floating-point measurements. Chosen so that two
+# measurements that round-trip through float64 with no transformations
+# come out exactly equal but two measurements derived from independent
+# pipelines (each with their own FP accumulation) differ by less than
+# this floor only when no real signal is present. Lower than 1e-12 risks
+# false "factor_related" verdicts driven by FP noise; higher than 1e-6
+# starts hiding real small-but-meaningful effects from operators.
+ABLATION_INCONCLUSIVE_NOISE_FLOOR: Final[float] = 1e-9
+
+
+# ============================================================
 # Bookkeeping
 # ============================================================
 
@@ -386,5 +428,9 @@ PROCESS_SKILL_PROPOSAL_THRESHOLD: Final[int] = 3
 #                         (2026-05-16). Adopts Sections A–G verbatim;
 #                         adds Section H Antiek-specific values; folds
 #                         DeepBlu-lineage claim classes into Section D.
+# 0.1.0 → 0.1.1:          adds Section I (Yao ablation discipline) for
+#                         the SPR-01 ablation harness landing in
+#                         ``substrate/eval/ablation.py`` (2026-05-24,
+#                         specs/yao-engineering/ Wave 1).
 
-ANTIEK_PARAM_VERSION: Final[str] = "0.1.0"
+ANTIEK_PARAM_VERSION: Final[str] = "0.1.1"

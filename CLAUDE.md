@@ -81,6 +81,31 @@ Auth: magic-link via AgentMail. Per
 - The §16 REJECT list is canonical: no Daytona/Modal/Pulumi/etc, no
   PostHog vendor tone, no ε > 10 on DP claims, no premature scaling.
 
+<!-- BEGIN: agent-failure-regression (managed by SPR-E2 of antiek-hashimoto-engineering) -->
+- **Agent-failure regression library.** Every observed agent failure
+  (a production path that produced wrong/surprising output) gets a YAML
+  fixture at `tests/regression/agent_failures/<slug>.yaml` BEFORE the
+  fix lands. The fixture must fail (or be GAP-marked) until the
+  mitigation ships. See `tests/regression/agent_failures/README.md`
+  for the onboarding flow. Programmatic failure logging via
+  `orchestration.agent_failure_log.record()` (JSONL append-only at
+  `~/.antiek/agent_failures.jsonl`, daily rotation, concurrent-write
+  safe). Five fixtures currently in the library — all GAP-marked,
+  documenting the Phase A loky-semaphore failure + four arxiv-ingestion
+  failures + the Phase 8 SkillPatchGate's standing shadow-mode condition.
+<!-- END: agent-failure-regression -->
+
+<!-- BEGIN: craft-signature (managed by SPR-E7 of antiek-hashimoto-engineering) -->
+- **Craft signature: inline-rubric latency.** `substrate.synthesis_rubric.scorer.score_synthesis`
+  p95 must stay within 10% of the locked baseline (194.85 μs at git
+  `640a31c`, 2026-05-24). CI fails on regression via
+  `python -m benchmarks.rubric_latency --check-regression`. Every other
+  perf dimension is explicitly "good enough" — see `docs/craft_signature.md`
+  for the policy + the locked numbers. To re-mint the baseline after a
+  deliberate perf change: `python -m benchmarks.rubric_latency --update-baseline`
+  (operator-only; do not run in CI).
+<!-- END: craft-signature -->
+
 ## What changed in the 2026-05-23 session
 
 | Commit | What |
