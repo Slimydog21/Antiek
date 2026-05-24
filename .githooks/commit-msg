@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""
+Antiek commit-msg hook — agent-provenance enforcement.
+
+Fires on every commit. Two distinct behaviors:
+
+1.  Operator commits (no ``Co-Authored-By: Claude`` trailer):
+    exit 0 silently. The hook is invisible to the operator's
+    own workflow.
+
+2.  Agent commits (message contains ``Co-Authored-By: Claude``):
+    require a ``Prompt-Hash: <sha256 hex>`` trailer. If the
+    trailer is absent, the hook either auto-injects it (when
+    the environment variable ``ANTIEK_AGENT_PROMPT`` is set —
+    typical when an agent harness invokes ``git commit``) or
+    blocks the commit with a clear error (when the env is
+    unset — typical when an operator is committing manually).
+
+The prompt itself is persisted to ``prompts/<sha256>.md`` so a
+future maintainer reading an agent commit can reconstruct the
+context the agent saw. Hashimoto's framing: *the pull request is
+meaningless without the prompt*.
+
+The script is written in Python rather than bash because:
+
+- multi-line prompt content with arbitrary characters is robust
+  to read from an env var via ``os.environ[...]`` but a chore in
+  bash (quoting, IFS, $'\n' literals);
+- the hash + file write are atomic in a few lines of stdlib;
+- the hook is unit-testable as a function call from pytest
+  (see ``tests/test_provenance_hook.py``).
+
+Cost: a single ``python3`` start-up per commit (~80–120ms on a
+warm cache). Acceptable for the volume Antiek sees.
+
+Spec: ``~/specs/antiek-hashimoto-engineering/sprint-e6-provenance.html``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+# Match the trailer the agent harness emits. The exact spelling is
+# locked: ``Co-Authored-By:`` (hyphens, that capitalisation) followed
+# by ``Claude``. Anchored at line start; tolerant of trailing model
+# suffix ("Claude Opus 4.7" etc.).
+CO_AUTHORED_RE = re.compile(r"^Co-Authored-By:\s+Claude\b", re.MULTILINE | re.IGNORECASE)
+
+# Existing Prompt-Hash trailer. 64 lowercase hex chars (sha256 length).
+PROMPT_HASH_RE = re.compile(r"^Prompt-Hash:\s+([0-9a-f]{64})\s*$", re.MULTILINE)
+
+# Prompt-file front-matter shape. The fields are stable; downstream
+# tooling reads them (the ``antiek agent log`` CLI; SPR-E2's regression
+# library cross-references the hash).
+PROMPT_FRONT_MATTER = (
+    "---\n"
+    "captured_at: {captured_at}\n"
+    "agent: claude\n"
+    "branch: {branch}\n"
+    "commit_template: true\n"
+    "---\n"
+)
+
+
+def normalize_prompt(text: str) -> str:
+    """Trim leading/trailing whitespace from a prompt for hashing.
+
+    The point of normalisation is dedupe-stability: a maintainer who
+    re-pastes the same prompt with an extra trailing newline must
+    still produce the same hash. We do NOT collapse internal
+    whitespace — that would lose semantic information.
+    """
+    return text.strip()
+
+
+def compute_hash(prompt: str) -> str:
+    """sha256 hex of UTF-8-encoded normalised prompt."""
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
+def current_branch(repo_root: Path) -> str:
+    """Return the short branch name or ``detached`` if in detached HEAD."""
+    result = subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    name = result.stdout.strip()
+    return name if name else "detached"
+
+
+def write_prompt_file(prompts_dir: Path, digest: str, normalized_prompt: str, branch: str) -> Path:
+    """Write ``prompts/<digest>.md`` if not already present.
+
+    Returns the path either way. The hook is dedupe-only — identical
+    prompts produce one file. If a prior commit on a different branch
+    wrote the file, this call is a no-op.
+    """
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+    prompt_file = prompts_dir / f"{digest}.md"
+    if prompt_file.exists():
+        return prompt_file
+    captured_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    body = (
+        PROMPT_FRONT_MATTER.format(captured_at=captured_at, branch=branch)
+        + "\n"
+        + normalized_prompt.rstrip("\n")
+        + "\n"
+    )
+    # Atomic-ish write: write to a temp sibling then rename. Avoids a
+    # half-written file if the process is killed mid-write (rare but
+    # the cost is negligible).
+    tmp = prompt_file.with_suffix(".md.tmp")
+    tmp.write_text(body, encoding="utf-8")
+    tmp.replace(prompt_file)
+    return prompt_file
+
+
+def append_trailer(msg: str, digest: str) -> str:
+    """Append the ``Prompt-Hash:`` trailer to a commit message string."""
+    if msg and not msg.endswith("\n"):
+        msg += "\n"
+    # If the message already ends with one or more trailer lines (e.g.
+    # Co-Authored-By:), append directly. If it ends with body prose,
+    # ensure a blank line separates body from trailers per the
+    # well-known convention. We detect "trailer block at end" by
+    # checking the last non-empty line.
+    lines = msg.rstrip("\n").splitlines()
+    last_nonempty = next((ln for ln in reversed(lines) if ln.strip()), "")
+    in_trailer_block = ":" in last_nonempty and not last_nonempty.startswith(" ")
+    if msg.rstrip("\n") and not in_trailer_block:
+        msg += "\n"
+    return msg + f"Prompt-Hash: {digest}\n"
+
+
+def process_commit_message(
+    msg_path: Path,
+    *,
+    repo_root: Path,
+    env_prompt: str | None,
+) -> tuple[int, str]:
+    """Core hook logic. Returns ``(exit_code, summary_for_stderr)``.
+
+    Pure-function-ish: side effects are limited to writing the prompt
+    file and rewriting ``msg_path``. Both are tested in
+    ``tests/test_provenance_hook.py`` by parametrising over a tmp_path
+    fixture so the hook can be exercised without spinning up a real
+    git repo on every test.
+    """
+    try:
+        msg = msg_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return 1, f"commit-msg hook: message file not found: {msg_path}"
+
+    # Operator commit — bail silently.
+    if not CO_AUTHORED_RE.search(msg):
+        return 0, ""
+
+    # Already tagged — idempotent exit.
+    if PROMPT_HASH_RE.search(msg):
+        return 0, ""
+
+    # Co-Authored-By: Claude present, no trailer, no prompt env →
+    # block with instructions.
+    if not env_prompt:
+        instructions = (
+            "commit-msg hook: this commit declares Co-Authored-By: Claude\n"
+            "but the message has no Prompt-Hash: trailer and the\n"
+            "ANTIEK_AGENT_PROMPT environment variable is unset.\n"
+            "\n"
+            "Either:\n"
+            "  1. Export the prompt before committing:\n"
+            "       export ANTIEK_AGENT_PROMPT=\"<the prompt the agent saw>\"\n"
+            "       git commit -m '...'\n"
+            "  2. Or remove the Co-Authored-By: Claude trailer if this\n"
+            "     commit is truly operator-only.\n"
+            "\n"
+            "Spec: ~/specs/antiek-hashimoto-engineering/sprint-e6-provenance.html"
+        )
+        return 1, instructions
+
+    normalized = normalize_prompt(env_prompt)
+    if not normalized:
+        return 1, (
+            "commit-msg hook: ANTIEK_AGENT_PROMPT is set but blank after\n"
+            "stripping whitespace. Refusing to commit an empty prompt."
+        )
+
+    digest = compute_hash(normalized)
+    branch = current_branch(repo_root)
+    write_prompt_file(repo_root / "prompts", digest, normalized, branch)
+
+    new_msg = append_trailer(msg, digest)
+    msg_path.write_text(new_msg, encoding="utf-8")
+    return 0, ""
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="commit-msg", add_help=False)
+    parser.add_argument("commit_msg_file", type=Path)
+    args = parser.parse_args(argv[1:])
+
+    # Resolve repo root. Use the env var ``GIT_DIR`` if set (git
+    # already exports it during hook execution), else ``git
+    # rev-parse``. Both paths return the repo top-level reliably.
+    repo_root_str = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    repo_root = Path(repo_root_str)
+
+    env_prompt = os.environ.get("ANTIEK_AGENT_PROMPT")
+    exit_code, message = process_commit_message(
+        args.commit_msg_file,
+        repo_root=repo_root,
+        env_prompt=env_prompt,
+    )
+    if message:
+        print(message, file=sys.stderr)
+    return exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

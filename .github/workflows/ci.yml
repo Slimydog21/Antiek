@@ -65,6 +65,16 @@ jobs:
           # that no current test depends on.
           pip install -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
 
+      - name: Smoke-test hook installer
+        # CI doesn't make commits, so we don't need hooks active here.
+        # We do want to detect a regression in scripts/install_hooks.sh
+        # itself — quoting bugs, missing chmod, etc. — before an
+        # operator clones and hits the same problem. Idempotent, so
+        # running on every CI run is cheap. Spec: SPR-E6 §M2.
+        run: |
+          ./scripts/install_hooks.sh
+          test -x .githooks/commit-msg
+
       - name: Run pytest
         env:
           # Tests should NEVER hit real provider APIs. The dispatch

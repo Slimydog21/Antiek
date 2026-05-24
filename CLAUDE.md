@@ -81,6 +81,29 @@ Auth: magic-link via AgentMail. Per
 - The §16 REJECT list is canonical: no Daytona/Modal/Pulumi/etc, no
   PostHog vendor tone, no ε > 10 on DP claims, no premature scaling.
 
+<!-- BEGIN: agent-provenance (managed by SPR-E6 of antiek-hashimoto-engineering) -->
+- **Agent provenance.** Commits that carry a `Co-Authored-By: Claude`
+  trailer must also carry a `Prompt-Hash: <sha256>` trailer; the
+  `.githooks/commit-msg` hook enforces this and persists the prompt
+  to `prompts/<hash>.md`. **Before committing as Claude**, export the
+  prompt verbatim so the hook can record it:
+  ```
+  export ANTIEK_AGENT_PROMPT="$(cat << 'EOF'
+  <the prompt the operator gave you>
+  EOF
+  )"
+  git commit -m "..."
+  ```
+  Without the env var, the hook blocks the commit with a clear error.
+  Operator commits (no Co-Authored-By: Claude) are unaffected.
+  - One-time setup after clone: `./scripts/install_hooks.sh`
+  - List recent agent commits: `python -m tools.agent_commits list --since=7d`
+  - Show a commit's prompt: `python -m tools.agent_commits show <sha-or-hash>`
+  - The `prompts/` directory is append-only — see `prompts/README.md`
+    for the redaction protocol (commit body must contain
+    `REDACT-PROMPTS:` to be allowed by `tests/test_prompts_append_only.py`).
+<!-- END: agent-provenance -->
+
 ## What changed in the 2026-05-23 session
 
 | Commit | What |
