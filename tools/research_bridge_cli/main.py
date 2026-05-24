@@ -493,7 +493,7 @@ def _cmd_would_run(args: argparse.Namespace) -> int:
 def _cmd_eval_precision(args: argparse.Namespace) -> int:
     from pathlib import Path
     from substrate.research_bridge.eval import (
-        SubstringJudge, load_labelled_pastes, score_against_labels,
+        SubstringJudge, build_llm_judge, load_labelled_pastes, score_against_labels,
     )
     labels_path = Path(args.labels)
     try:
@@ -504,6 +504,18 @@ def _cmd_eval_precision(args: argparse.Namespace) -> int:
     if not labels:
         print(f"no labelled pastes in {labels_path}", file=sys.stderr)
         return 4
+
+    # Judge selection. 'substring' is the deterministic baseline;
+    # 'llm' is the real semantic judge (routes through dispatch) that
+    # gives SPR-06 a meaningful precision number. Operator hand-labels
+    # rarely match extractions by substring, so 'llm' is the right
+    # choice for the actual S3 gate read.
+    if args.judge == "llm":
+        from substrate.research_bridge.llm_dispatch import build_dispatch_llm_callable
+        judge = build_llm_judge(build_dispatch_llm_callable())
+    else:
+        judge = SubstringJudge
+
     db = ensure_research_bridge_initialized()
     con = duckdb.connect(db, read_only=True)
 
@@ -514,7 +526,7 @@ def _cmd_eval_precision(args: argparse.Namespace) -> int:
 
     try:
         rep = score_against_labels(
-            labels, extracted_for_doc=_extracted_for, judge=SubstringJudge,
+            labels, extracted_for_doc=_extracted_for, judge=judge,
         )
     finally:
         con.close()
@@ -783,7 +795,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_eval = sub.add_parser("eval-precision", help="Compute precision vs labels (SPR-06 S3 gate)")
     p_eval.add_argument("--labels", required=True)
-    p_eval.add_argument("--judge", default="substring", choices=["substring"])
+    p_eval.add_argument("--judge", default="substring", choices=["substring", "llm"],
+                        help="'substring' = deterministic baseline (CI/tests); "
+                             "'llm' = real semantic judge via dispatch (SPR-06 S3 read)")
     p_eval.add_argument("--json", action="store_true")
     p_eval.set_defaults(func=_cmd_eval_precision)
 

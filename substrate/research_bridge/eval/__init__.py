@@ -10,6 +10,7 @@ from .scoring import (
     SubstringJudge,
     score_against_labels,
 )
+from .judge_llm import JUDGE_VERSION, build_llm_judge
 
 __all__ = [
     "LabelledPaste",
@@ -19,4 +20,6 @@ __all__ = [
     "SemanticJudge",
     "SubstringJudge",
     "score_against_labels",
+    "JUDGE_VERSION",
+    "build_llm_judge",
 ]

@@ -27,6 +27,7 @@ import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import Replay from "./modes/Replay";
+import ResearchBridge from "./modes/ResearchBridge";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
@@ -82,6 +83,7 @@ function AuthenticatedRoutes() {
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
+        <Route path="/research-bridge" element={<ResearchBridge />} />
         <Route path="/create" element={<CreationStudio />} />
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
