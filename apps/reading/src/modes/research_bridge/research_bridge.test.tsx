@@ -49,6 +49,16 @@ function makeClient(overrides: Partial<ResearchBridgeClient> = {}) {
   };
 
   const client: ResearchBridgeClient = {
+    async postDetect(rawText) {
+      // Deterministic stub: anything mentioning "AlphaSense"/"sell-side"
+      // detects as alphasense; else anthropic. Enough for UI tests.
+      const isAlpha = /alphasense|sell-side|earnings call/i.test(rawText);
+      return {
+        source: isAlpha ? "alphasense" : "anthropic",
+        confidence: 0.82, parser_version: 1,
+        per_source: { chatgpt: 0.1, anthropic: isAlpha ? 0.2 : 0.82, grok: 0.1, alphasense: isAlpha ? 0.82 : 0.2 },
+      };
+    },
     async listPastes() { return { count: MOCK_BLOCKS.length, pastes: MOCK_BLOCKS }; },
     async postFindGaps(req) {
       calls.findGaps++;
@@ -330,6 +340,76 @@ describe("GapFinderPage", () => {
     await waitFor(() => screen.getByText("Verifier productisation timeline"));
     fireEvent.click(screen.getByRole("button", { name: /would run/i }));
     await waitFor(() => expect(screen.getByText(/Signal save failed/i)).toBeTruthy());
+  });
+});
+
+
+describe("PastePage", () => {
+  beforeEach(() => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+  });
+
+  it("renders the textarea + Save disabled when empty", async () => {
+    const { client } = makeClient();
+    const { PastePage } = await import("./PastePage");
+    render(<PastePage client={client} />);
+    await waitFor(() => screen.getByLabelText("Paste textarea"));
+    const save = screen.getByRole("button", { name: /Save as/i }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+  });
+
+  it("saves a paste + offers Extract now", async () => {
+    const stub = makeClient();
+    const { PastePage } = await import("./PastePage");
+    render(<PastePage client={stub.client} />);
+    const ta = await screen.findByLabelText("Paste textarea");
+    fireEvent.change(ta, { target: { value: "A".repeat(50) } });
+    fireEvent.click(screen.getByRole("button", { name: /Save as/i }));
+    await waitFor(() => screen.getByRole("button", { name: "Extract now" }));
+    expect(stub.pasted).toHaveLength(1);
+  });
+
+  it("calls onPasteSaved with the new document id", async () => {
+    const stub = makeClient();
+    const onPasteSaved = vi.fn();
+    const { PastePage } = await import("./PastePage");
+    render(<PastePage client={stub.client} onPasteSaved={onPasteSaved} />);
+    const ta = await screen.findByLabelText("Paste textarea");
+    fireEvent.change(ta, { target: { value: "B".repeat(50) } });
+    fireEvent.click(screen.getByRole("button", { name: /Save as/i }));
+    await waitFor(() => expect(onPasteSaved).toHaveBeenCalledTimes(1));
+    expect(onPasteSaved.mock.calls[0][0]).toBe(stub.pasted[0].document_id);
+  });
+});
+
+
+describe("ResearchBridgeHome", () => {
+  beforeEach(() => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+  });
+
+  it("shows the Paste tab by default + switches to Gap-finder", async () => {
+    const { client } = makeClient();
+    const { ResearchBridgeHome } = await import("./ResearchBridgeHome");
+    render(<ResearchBridgeHome client={client} />);
+    // Paste tab content
+    await waitFor(() => screen.getByLabelText("Paste textarea"));
+    // Switch to gaps
+    fireEvent.click(screen.getByRole("button", { name: /Switch to Gap-finder tab/i }));
+    await waitFor(() => screen.getByText(/No gap-finder run yet/i));
+  });
+});
+
+
+describe("useDetect hook (live preview)", () => {
+  it("debounce: shows detected source on the paste page after typing", async () => {
+    const stub = makeClient();
+    const { PastePage } = await import("./PastePage");
+    render(<PastePage client={stub.client} />);
+    const ta = await screen.findByLabelText("Paste textarea");
+    // Text long enough to clear minChars (200), with an AlphaSense tell.
+    fireEvent.change(ta, { target: { value: "sell-side coverage. ".repeat(20) } });
+    await waitFor(() => screen.getByText(/detected/i), { timeout: 2000 });
   });
 });
 

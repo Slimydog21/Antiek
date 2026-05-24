@@ -26,15 +26,21 @@ export type { PromptCardProps } from "./PromptCard";
 export { GapFinderPage } from "./GapFinderPage";
 export type { GapFinderPageProps } from "./GapFinderPage";
 
+export { PastePage } from "./PastePage";
+export type { PastePageProps } from "./PastePage";
+
+export { ResearchBridgeHome } from "./ResearchBridgeHome";
+export type { ResearchBridgeHomeProps } from "./ResearchBridgeHome";
+
 export { createHttpClient } from "./api_client";
 export type {
-  ResearchBridgeClient, PasteRequest, PasteResponse, ListPastesResponse,
-  ExtractRequest, ExtractResponse, ListItemsResponse, FindGapsRequest,
-  FindGapsResponse, GapClusterPayload, GapPromptPayload, GapRunPayload,
-  WouldRunPercentageResponse,
+  ResearchBridgeClient, DetectResponse, PasteRequest, PasteResponse,
+  ListPastesResponse, ExtractRequest, ExtractResponse, ListItemsResponse,
+  FindGapsRequest, FindGapsResponse, GapClusterPayload, GapPromptPayload,
+  GapRunPayload, WouldRunPercentageResponse,
 } from "./api_client";
 
 export {
-  useExtract, useFindGaps, usePasteBack, usePastes, usePostPaste, useSignals,
+  useDetect, useExtract, useFindGaps, usePasteBack, usePastes, usePostPaste, useSignals,
 } from "./hooks";
 export type { AsyncState, PasteBackResult, SignalType, UsePastesOptions } from "./hooks";

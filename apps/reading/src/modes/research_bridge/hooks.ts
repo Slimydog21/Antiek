@@ -6,8 +6,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
-  ExtractResponse, FindGapsRequest, FindGapsResponse, GapPromptPayload,
-  ListPastesResponse, PasteRequest, PasteResponse, ResearchBridgeClient,
+  DetectResponse, ExtractResponse, FindGapsRequest, FindGapsResponse,
+  GapPromptPayload, ListPastesResponse, PasteRequest, PasteResponse,
+  ResearchBridgeClient,
 } from "./api_client";
 
 export type AsyncState<T> =
@@ -57,6 +58,55 @@ export function usePastes(opts: UsePastesOptions) {
 
   return { state, refresh };
 }
+
+/**
+ * useDetect — debounced live source-detection preview for the paste
+ * page. The operator types/pastes; after ``debounceMs`` of quiet, we
+ * call ``/research/detect`` (no write) and surface the detected
+ * provider + per-source scores. Below ``minChars`` we don't call at
+ * all — short text can't be classified, and we don't want to spam
+ * the endpoint on every keystroke.
+ *
+ * The re-entrant guard ensures that if the operator keeps typing,
+ * a stale in-flight detection never clobbers a newer one.
+ */
+export function useDetect(
+  client: ResearchBridgeClient,
+  opts: { debounceMs?: number; minChars?: number } = {},
+) {
+  const { debounceMs = 400, minChars = 200 } = opts;
+  const [state, setState] = useState<AsyncState<DetectResponse>>({ kind: "idle" });
+  const guard = useLatestCallId();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const detect = useCallback((rawText: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    if (rawText.trim().length < minChars) {
+      setState({ kind: "idle" });
+      return;
+    }
+    timer.current = setTimeout(async () => {
+      const callId = guard.next();
+      setState({ kind: "loading" });
+      try {
+        const data = await client.postDetect(rawText);
+        if (guard.isLatest(callId)) setState({ kind: "ok", data });
+      } catch (e) {
+        if (guard.isLatest(callId)) setState({ kind: "error", error: e as Error });
+      }
+    }, debounceMs);
+  }, [client, guard, debounceMs, minChars]);
+
+  const reset = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    setState({ kind: "idle" });
+  }, []);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  return { state, detect, reset };
+}
+
 
 export function usePostPaste(client: ResearchBridgeClient) {
   const [state, setState] = useState<AsyncState<PasteResponse>>({ kind: "idle" });

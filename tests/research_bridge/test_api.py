@@ -129,6 +129,23 @@ def test_get_paste_404(api_client: TestClient) -> None:
     assert r.status_code == 404
 
 
+def test_detect_preview_does_not_write(api_client: TestClient, fixture_text) -> None:
+    text = fixture_text("alphasense")
+    r = api_client.post("/research/detect", json={"raw_text": text})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "alphasense"
+    assert 0.0 <= body["confidence"] <= 1.0
+    assert set(body["per_source"].keys()) == {"chatgpt", "anthropic", "grok", "alphasense"}
+    # No write: the paste list is still empty.
+    assert api_client.get("/research/pastes").json()["count"] == 0
+
+
+def test_detect_empty_rejected(api_client: TestClient) -> None:
+    r = api_client.post("/research/detect", json={"raw_text": ""})
+    assert r.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # /research/pastes/{id}/extract — SPR-02
 # ---------------------------------------------------------------------------

@@ -20,6 +20,7 @@ from substrate.research_bridge import (
     GapFinderError,
     PasteEmptyError,
     PasteTooLargeError,
+    detect_source,
     ensure_research_bridge_initialized,
     extract_paste,
     find_gaps,
@@ -39,6 +40,17 @@ from substrate.research_bridge.llm_dispatch import build_dispatch_llm_callable
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
+
+class DetectRequest(BaseModel):
+    raw_text: str = Field(..., min_length=1)
+
+
+class DetectResponse(BaseModel):
+    source: str
+    confidence: float
+    parser_version: int
+    per_source: dict[str, float]
 
 
 class PasteRequest(BaseModel):
@@ -237,6 +249,21 @@ router = APIRouter(prefix="/research", tags=["research_bridge"])
 def _open_read(db_path: str):
     import duckdb
     return duckdb.connect(db_path, read_only=True)
+
+
+@router.post("/detect", response_model=DetectResponse)
+def post_detect(req: DetectRequest) -> DetectResponse:
+    """Run source detection WITHOUT writing. Powers the paste page's
+    live-preview affordance: the operator sees the detected provider
+    (and the per-source scores when it's ambiguous) before committing
+    the paste. Mirrors the CLI ``detect`` subcommand over HTTP."""
+    result = detect_source(req.raw_text)
+    return DetectResponse(
+        source=result.source,
+        confidence=result.confidence,
+        parser_version=result.parser_version,
+        per_source=dict(result.per_source),
+    )
 
 
 @router.post("/pastes", response_model=PasteResponse, status_code=201)

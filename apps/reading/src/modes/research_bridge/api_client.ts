@@ -11,6 +11,13 @@ import type {
   ExtractedItemPayload, ResearchBlockSummary, ResearchSource,
 } from "./types";
 
+export interface DetectResponse {
+  source: ResearchSource;
+  confidence: number;
+  parser_version: number;
+  per_source: Record<string, number>;
+}
+
 export interface PasteRequest {
   raw_text: string;
   operator_label?: string | null;
@@ -115,6 +122,7 @@ export interface WouldRunPercentageResponse {
 }
 
 export interface ResearchBridgeClient {
+  postDetect(rawText: string): Promise<DetectResponse>;
   postPaste(req: PasteRequest): Promise<PasteResponse>;
   listPastes(opts?: { limit?: number; source?: ResearchSource; sessionId?: string }): Promise<ListPastesResponse>;
   postExtract(documentId: string, req?: ExtractRequest): Promise<ExtractResponse>;
@@ -141,6 +149,14 @@ export function createHttpClient(
   const base = options.baseUrl ?? API_BASE;
 
   return {
+    async postDetect(rawText) {
+      const r = await f(`${base}/research/detect`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ raw_text: rawText }),
+      });
+      return _ok<DetectResponse>(r);
+    },
     async postPaste(req) {
       const r = await f(`${base}/research/pastes`, {
         method: "POST",
