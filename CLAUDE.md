@@ -58,6 +58,24 @@ action on the 5 remaining gates. Before you suggest new engineering work:
    2026-05-23 verdict in `docs/operator_gate_actions.md`); custom-domain
    upgrade is deferred.
 
+<!-- BEGIN: invariants-pointer (managed by SPR-E1 of antiek-hashimoto-engineering) -->
+The six rules above are **mechanically enforced** by
+`substrate/invariants.py` + `tests/test_invariants.py`. Each is
+registered as an `Invariant` with id, rationale, source, and (where
+applicable) named exemptions for documented architectural carve-outs.
+
+- Standalone report: `./.venv/bin/python -m substrate.invariants`
+- Pytest: `./.venv/bin/python -m pytest tests/test_invariants.py -v`
+- Add a new invariant: append one `Invariant` instance + its check
+  helper in `substrate/invariants.py`. Tests parametrize automatically.
+
+Do **not** edit `substrate/` (especially `runtime/db_lock.py`,
+`substrate/synthesis_rubric/scorer.py`, or `pyproject.toml`'s direct
+dependencies) without re-running the invariants suite. Last invariants
+update: 2026-05-24 (SPR-E1 of
+`~/specs/antiek-hashimoto-engineering/`).
+<!-- END: invariants-pointer -->
+
 ## What's running on prod
 
 - `antiek.service` — FastAPI substrate at `https://api.antiek.ai`

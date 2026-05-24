@@ -22,6 +22,14 @@ VERIFY_TIER = "verify"
 # threshold can't drift across runs.
 PASS_RATE_GAP_THRESHOLD_PP = 5.0
 
+# Substrate-wide synthesis pass threshold. The composite rubric score
+# must be ≥ this value for a synthesis to count as "passed" against
+# the §14.4 verdict gate. Matched by ``substrate.synthesis_rubric.scorer.PASS_THRESHOLD``
+# and enforced as invariant I-005 in ``substrate/invariants.py``; changes
+# here must update both sites in the same commit. The number itself
+# comes from master-spec §13.9.
+PASS_THRESHOLD = 0.5
+
 # Canonical provider names per substrate/dispatch/config.yaml. Keep
 # the verdict report stable across runs by normalising aliases.
 _PROVIDER_ALIASES: dict[str, str] = {
@@ -258,7 +266,8 @@ def analyse_events(
                 self_score = 0.5
             self_grade_outcomes.setdefault(key, []).append(self_score)
 
-    PASS_THRESHOLD = 0.5
+    # PASS_THRESHOLD is module-level (see line 23ish above); enforced
+    # to match scorer.PASS_THRESHOLD by invariant I-005.
     scores: list[ProviderScore] = []
     for key, bucket in synthesis_by_key.items():
         provider, model = key
