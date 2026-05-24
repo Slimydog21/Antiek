@@ -150,6 +150,20 @@ def run_invariants(scope: str, strict: bool = False) -> StageResult:
                 ["./.venv/bin/python", "-m", "substrate.invariants"])
 
 
+def run_perf(scope: str, strict: bool = False) -> StageResult:
+    """Run the ARE-12 hot-path benchmark harness. Writes per-run JSON
+    to tools/benchmarks/hot_paths/results/. Skips if the harness
+    package is absent on this branch."""
+    harness_main = PROJECT_ROOT / "tools" / "benchmarks" / "hot_paths" / "__main__.py"
+    if not harness_main.exists():
+        return StageResult(
+            name="perf", rc=-1, elapsed_s=0.0,
+            skipped_reason="tools/benchmarks/hot_paths/ absent on this branch",
+        )
+    return _run("perf",
+                ["./.venv/bin/python", "-m", "tools.benchmarks.hot_paths", "--save"])
+
+
 RUNNERS = {
     "lint": run_lint,
     "types": run_types,
@@ -157,8 +171,13 @@ RUNNERS = {
     "doctest": run_doctest,
     "props": run_props,
     "invariants": run_invariants,
+    "perf": run_perf,
 }
 
+# perf is intentionally NOT in ALL_ORDER — benchmarks run on a
+# different cadence than correctness checks (you don't run them on
+# every PR; you run them when you want a perf snapshot or before a
+# perf-sensitive change). Invoke explicitly: `antiek check perf`.
 ALL_ORDER = ("lint", "types", "tests", "doctest", "props", "invariants")
 
 
