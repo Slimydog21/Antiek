@@ -1,0 +1,7 @@
+[extension]
+id = "example_edit_validator"
+version = "1.0.0"
+description = "Post-hook on edit_validator that records touched paths per commit. Template for plugging in ruff/mypy/black."
+
+[declared_seams]
+edit_validator = "post"

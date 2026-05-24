@@ -1,0 +1,7 @@
+[extension]
+id = "example_token_counter"
+version = "1.0.0"
+description = "Pre-hook on token_count that replaces the substrate len/4 heuristic with a word-count approximation. Template for swapping in tiktoken/anthropic.count_tokens."
+
+[declared_seams]
+token_count = "pre"
