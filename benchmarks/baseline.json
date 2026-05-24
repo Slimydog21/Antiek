@@ -1,0 +1,30 @@
+{
+  "result": {
+    "p50_us": 129.833,
+    "p95_us": 194.84614999999997,
+    "p99_us": 213.83966999999998,
+    "max_us": 313.291,
+    "mean_us": 132.373394,
+    "samples": 500,
+    "warmup": 10,
+    "corpus_size": 100,
+    "git_sha": "640a31c",
+    "captured_at": "2026-05-24T18:44:23.148465Z"
+  },
+  "corpus_summary": {
+    "fixture_count": 100,
+    "seed": 20260524,
+    "recipe_distribution": {
+      "voice_good": 37,
+      "voice_sloppy": 63,
+      "conviction_low": 34,
+      "conviction_high": 66,
+      "citation_density_low": 41,
+      "citation_density_high": 59,
+      "constraint_satisfied": 54,
+      "constraint_violated": 46,
+      "insufficient_evidence": 20
+    }
+  },
+  "notes": "Antiek craft signature per docs/craft_signature.md. CI's --check-regression mode compares the current p95 against this baseline and exits 2 if regressed by more than 10% (default). Update this file with --update-baseline only after a deliberate perf change has been reviewed."
+}

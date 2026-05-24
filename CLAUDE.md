@@ -81,6 +81,17 @@ Auth: magic-link via AgentMail. Per
 - The §16 REJECT list is canonical: no Daytona/Modal/Pulumi/etc, no
   PostHog vendor tone, no ε > 10 on DP claims, no premature scaling.
 
+<!-- BEGIN: craft-signature (managed by SPR-E7 of antiek-hashimoto-engineering) -->
+- **Craft signature: inline-rubric latency.** `substrate.synthesis_rubric.scorer.score_synthesis`
+  p95 must stay within 10% of the locked baseline (194.85 μs at git
+  `640a31c`, 2026-05-24). CI fails on regression via
+  `python -m benchmarks.rubric_latency --check-regression`. Every other
+  perf dimension is explicitly "good enough" — see `docs/craft_signature.md`
+  for the policy + the locked numbers. To re-mint the baseline after a
+  deliberate perf change: `python -m benchmarks.rubric_latency --update-baseline`
+  (operator-only; do not run in CI).
+<!-- END: craft-signature -->
+
 ## What changed in the 2026-05-23 session
 
 | Commit | What |
