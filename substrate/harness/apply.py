@@ -1,4 +1,4 @@
-"""apply_harness — compose a working substrate session from a fork."""
+"""apply_harness -- compose a working substrate session from a fork."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""HarnessDiff — semantic diff between two HarnessSnapshots."""
+"""HarnessDiff -- semantic diff between two HarnessSnapshots."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Conversation substrate — event-sourced agent conversation with hash-addressed checkpoints and branches."""
+"""Conversation substrate -- event-sourced agent conversation with hash-addressed checkpoints and branches."""
 
 from substrate.conversation.branch import BranchLineage, create_branch, list_branches
 from substrate.conversation.checkpoint import (

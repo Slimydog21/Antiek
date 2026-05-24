@@ -1,4 +1,4 @@
-"""BoundedQueue — capacity-limited FIFO with watermark back-pressure."""
+"""BoundedQueue -- capacity-limited FIFO with watermark back-pressure."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for substrate/queue — bounded FIFO with watermark back-pressure."""
+"""Tests for substrate/queue -- bounded FIFO with watermark back-pressure."""
 
 from __future__ import annotations
 

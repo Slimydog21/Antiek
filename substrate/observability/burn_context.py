@@ -1,4 +1,4 @@
-"""Burn telemetry context — propagates call identity via ContextVar."""
+"""Burn telemetry context -- propagates call identity via ContextVar."""
 
 from __future__ import annotations
 

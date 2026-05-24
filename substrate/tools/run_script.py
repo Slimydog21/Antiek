@@ -1,4 +1,4 @@
-"""run_script — execute operator-or-agent-supplied TypeScript in a deno sandbox."""
+"""run_script -- execute operator-or-agent-supplied TypeScript in a deno sandbox."""
 
 from __future__ import annotations
 

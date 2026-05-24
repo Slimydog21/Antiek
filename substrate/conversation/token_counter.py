@@ -1,4 +1,4 @@
-"""Token counting — Hook-extensible counter with len/4 fallback."""
+"""Token counting -- Hook-extensible counter with len/4 fallback."""
 
 from __future__ import annotations
 

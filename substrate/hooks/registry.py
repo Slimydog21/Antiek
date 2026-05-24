@@ -1,4 +1,4 @@
-"""HookRegistry — the runtime registry of declared seams and attached hooks."""
+"""HookRegistry -- the runtime registry of declared seams and attached hooks."""
 
 from __future__ import annotations
 

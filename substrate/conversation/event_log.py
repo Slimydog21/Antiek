@@ -1,4 +1,4 @@
-"""EventLog — append-only per-session JSONL writer."""
+"""EventLog -- append-only per-session JSONL writer."""
 
 from __future__ import annotations
 

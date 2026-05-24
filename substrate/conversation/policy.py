@@ -1,4 +1,4 @@
-"""CompactionPolicy + CompactionConfig — operator-controllable compaction knobs."""
+"""CompactionPolicy + CompactionConfig -- operator-controllable compaction knobs."""
 
 from __future__ import annotations
 

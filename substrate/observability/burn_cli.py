@@ -1,4 +1,4 @@
-"""``antiek burn`` CLI — report / raw / export against per-project burn store."""
+"""``antiek burn`` CLI -- report / raw / export against per-project burn store."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for substrate.quality_gate — §13.9 public-notes ingest gate."""
+"""Tests for substrate.quality_gate -- §13.9 public-notes ingest gate."""
 
 from __future__ import annotations
 

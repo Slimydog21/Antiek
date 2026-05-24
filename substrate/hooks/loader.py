@@ -1,4 +1,4 @@
-"""Extension loader — discovers and loads per-project + operator-global extensions."""
+"""Extension loader -- discovers and loads per-project + operator-global extensions."""
 
 from __future__ import annotations
 

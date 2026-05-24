@@ -1,4 +1,4 @@
-"""Bounded queue substrate — capacity + watermark back-pressure primitive."""
+"""Bounded queue substrate -- capacity + watermark back-pressure primitive."""
 
 from substrate.queue.bounded import (
     BoundedQueue,

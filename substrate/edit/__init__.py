@@ -1,4 +1,4 @@
-"""Edit substrate — transactional file edits with commit-boundary validation."""
+"""Edit substrate -- transactional file edits with commit-boundary validation."""
 
 from substrate.edit.transaction import (
     CommitResult,

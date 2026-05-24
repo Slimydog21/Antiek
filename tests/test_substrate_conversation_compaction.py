@@ -1,4 +1,4 @@
-"""Tests for substrate/conversation/compaction — policy, trigger, lossy algorithm."""
+"""Tests for substrate/conversation/compaction -- policy, trigger, lossy algorithm."""
 
 from __future__ import annotations
 

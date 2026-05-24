@@ -1,4 +1,4 @@
-"""Checkpoint — content-hashed snapshot of the first N events of a session."""
+"""Checkpoint -- content-hashed snapshot of the first N events of a session."""
 
 from __future__ import annotations
 

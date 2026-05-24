@@ -1,4 +1,4 @@
-"""Hook contract — Protocol classes for the three lifecycle stages."""
+"""Hook contract -- Protocol classes for the three lifecycle stages."""
 
 from __future__ import annotations
 

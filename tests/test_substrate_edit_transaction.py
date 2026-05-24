@@ -1,4 +1,4 @@
-"""Tests for substrate/edit/transaction — the no-mid-flight invariant headlines."""
+"""Tests for substrate/edit/transaction -- the no-mid-flight invariant headlines."""
 
 from __future__ import annotations
 

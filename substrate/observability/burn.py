@@ -1,4 +1,4 @@
-"""Burn telemetry — per-LLM-call cost ledger backed by per-project SQLite."""
+"""Burn telemetry -- per-LLM-call cost ledger backed by per-project SQLite."""
 
 from __future__ import annotations
 

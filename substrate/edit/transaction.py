@@ -1,4 +1,4 @@
-"""EditTransaction — batch edits + commit-boundary validation."""
+"""EditTransaction -- batch edits + commit-boundary validation."""
 
 from __future__ import annotations
 

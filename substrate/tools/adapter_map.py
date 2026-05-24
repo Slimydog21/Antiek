@@ -1,4 +1,4 @@
-"""Adapter import-map builder — discovers extension-provided TS adapters."""
+"""Adapter import-map builder -- discovers extension-provided TS adapters."""
 
 from __future__ import annotations
 

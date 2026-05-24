@@ -1,4 +1,4 @@
-"""Deno preflight — detect deno binary + version before run_script first call."""
+"""Deno preflight -- detect deno binary + version before run_script first call."""
 
 from __future__ import annotations
 

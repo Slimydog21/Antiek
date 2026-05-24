@@ -1,4 +1,4 @@
-"""Harness — per-project extension package + CLI capstone."""
+"""Harness -- per-project extension package + CLI capstone."""
 
 from substrate.harness.apply import HarnessApplyResult, apply_harness
 from substrate.harness.fork import (

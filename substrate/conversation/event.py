@@ -1,4 +1,4 @@
-"""Event — the atomic unit of the conversation log."""
+"""Event -- the atomic unit of the conversation log."""
 
 from __future__ import annotations
 

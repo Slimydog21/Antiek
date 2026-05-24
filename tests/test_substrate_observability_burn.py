@@ -1,4 +1,4 @@
-"""Tests for substrate/observability/burn — recorder, decorator, context, CLI."""
+"""Tests for substrate/observability/burn -- recorder, decorator, context, CLI."""
 
 from __future__ import annotations
 

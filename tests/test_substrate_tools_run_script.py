@@ -1,4 +1,4 @@
-"""Tests for substrate/tools — sandbox, preflight, adapter_map, run_script."""
+"""Tests for substrate/tools -- sandbox, preflight, adapter_map, run_script."""
 
 from __future__ import annotations
 

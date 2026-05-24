@@ -1,4 +1,4 @@
-"""HarnessSnapshot — captured externally-visible substrate surface."""
+"""HarnessSnapshot -- captured externally-visible substrate surface."""
 
 from __future__ import annotations
 

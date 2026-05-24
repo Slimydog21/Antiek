@@ -1,4 +1,4 @@
-"""HarnessFork — scaffold a per-project extension package."""
+"""HarnessFork -- scaffold a per-project extension package."""
 
 from __future__ import annotations
 

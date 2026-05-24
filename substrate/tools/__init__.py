@@ -1,4 +1,4 @@
-"""Substrate tools — primitives exposed as agent-callable tools."""
+"""Substrate tools -- primitives exposed as agent-callable tools."""
 
 from substrate.tools.run_script import RunScriptDisabled, run_script
 from substrate.tools.run_script_preflight import DenoPreflight, preflight

@@ -1,4 +1,4 @@
-"""Tests for substrate/conversation — event, event_log, checkpoint, branch, CLI."""
+"""Tests for substrate/conversation -- event, event_log, checkpoint, branch, CLI."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""@track_burn — decorator that wraps an LLM call site and records its cost."""
+"""@track_burn -- decorator that wraps an LLM call site and records its cost."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Branch — atomic copy of a session's events up to a checkpoint."""
+"""Branch -- atomic copy of a session's events up to a checkpoint."""
 
 from __future__ import annotations
 

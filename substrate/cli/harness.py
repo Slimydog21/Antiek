@@ -1,4 +1,4 @@
-"""``antiek harness`` CLI — fork / apply / diff / status."""
+"""``antiek harness`` CLI -- fork / apply / diff / status."""
 
 from __future__ import annotations
 

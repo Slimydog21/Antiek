@@ -1,4 +1,4 @@
-"""Compaction — context-pressure handler with STRICT/LOSSY/INTERACTIVE policies."""
+"""Compaction -- context-pressure handler with STRICT/LOSSY/INTERACTIVE policies."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from substrate.observability.burn import BurnEvent, BurnRecorder
 from substrate.observability.burn_context import current_burn_context
 
 
-_COMPACTION_MARKER = "[compacted by antiek at position {position} — {n_summarized} messages removed]"
+_COMPACTION_MARKER = "[compacted by antiek at position {position} -- {n_summarized} messages removed]"
 
 
 class ContextPressureTooHigh(RuntimeError):

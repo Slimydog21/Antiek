@@ -1,4 +1,4 @@
--- substrate/observability/burn — append-only per-LLM-call cost ledger.
+-- substrate/observability/burn -- append-only per-LLM-call cost ledger.
 CREATE TABLE IF NOT EXISTS burn_events (
     event_id              INTEGER PRIMARY KEY AUTOINCREMENT,
     ts                    TEXT    NOT NULL,

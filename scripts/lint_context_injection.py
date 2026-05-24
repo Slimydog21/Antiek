@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""lint_context_injection — surface substrate code paths that mutate context behind callers."""
+"""lint_context_injection -- surface substrate code paths that mutate context behind callers."""
 
 from __future__ import annotations
 

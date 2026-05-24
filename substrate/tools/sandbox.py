@@ -1,4 +1,4 @@
-"""SandboxPolicy + ScriptResult — capability-based sandbox configuration."""
+"""SandboxPolicy + ScriptResult -- capability-based sandbox configuration."""
 
 from __future__ import annotations
 

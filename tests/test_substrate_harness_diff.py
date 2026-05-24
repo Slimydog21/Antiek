@@ -1,4 +1,4 @@
-"""Tests for substrate/harness_diff — snapshot capture, save/load, semantic diff."""
+"""Tests for substrate/harness_diff -- snapshot capture, save/load, semantic diff."""
 
 from __future__ import annotations
 

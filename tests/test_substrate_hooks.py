@@ -1,4 +1,4 @@
-"""Tests for substrate/hooks/ — registry, contract, loader, isolation."""
+"""Tests for substrate/hooks/ -- registry, contract, loader, isolation."""
 
 from __future__ import annotations
 

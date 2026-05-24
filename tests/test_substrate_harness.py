@@ -1,4 +1,4 @@
-"""Tests for substrate/harness — fork creation + apply composition + CLI."""
+"""Tests for substrate/harness -- fork creation + apply composition + CLI."""
 
 from __future__ import annotations
 
