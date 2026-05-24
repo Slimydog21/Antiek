@@ -22,6 +22,11 @@ mechanism (§9) is the strategically consequential layer.
    sprint sequences (master-spec 11→22 + UI-redesign 0→12).
 4. **`docs/decisions/`** — one markdown per closed gate or binding
    decision. Quick browse here tells you what's been settled.
+5. **`docs/philosophy/`** — interview-derived canonical axioms binding
+   across sessions. `yegge.md` covers the heresy-detection / role-shape
+   / spawn-orchestration axes (Yegge Dec 2025 interview); future
+   per-interview canon files land here as siblings. Read before
+   designing in any covered axis.
 
 ## Don't propose engineering until you read this
 
