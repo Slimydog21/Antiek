@@ -2,48 +2,101 @@ import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import type { PanelKind } from "../../workspace/panel.types";
 import { LemonTag } from "../lemon/LemonTag";
 import { usePinned } from "./pinnedStore";
 
 /**
- * ProjectTree — the dockable navigation panel. Three sections:
+ * ProjectTree — the persistent CONTENT column (portfolio-shell IA).
  *
- *   ▾ Pinned     items the operator explicitly pinned (persist in S9)
- *   ▾ Recent     last N investigations + documents + notebooks (auto)
- *   ▾ All        list-view links to the index routes
+ * You navigate the nouns you've made, not the tools that make them.
+ * Folders mirror the substrate's artifact types:
  *
- * Click an item            → router navigate (route-mode swap)
- * Cmd/Ctrl+Click           → open as a floating panel (workspace open)
- * Right-click              → context menu (pin / float / copy link)
+ *   ▾ Pinned          items the operator explicitly pinned (persist S9)
+ *   ▾ Investigations  chase trees (parent → children, indented)
+ *   ▾ Notebooks       literate documents
+ *   ▾ Documents       the source corpus
+ *   ▾ Deliverables    Creation-studio outputs
+ *   ▾ Interviews      acquisition transcripts
  *
- * S4 ships static mock data via constants below — the live data flows
- * (useInvestigationList + useDocuments + useNotebooks) plug in during
- * the S5/S6/S7 mode ports. The architecture (sections + interactions)
- * is what's load-bearing in S4; data is swappable.
+ * Click an item   → router navigate (route-mode swap)
+ * Cmd/Ctrl+Click  → open as a floating panel (where a panel exists)
+ *
+ * Mock data below; the live hooks (useInvestigationList + useDocuments
+ * + useNotebooks) plug into the same folder shape during the per-mode
+ * data ports. The folder architecture is what's load-bearing.
  */
-type NodeKind = "investigation" | "document" | "notebook";
+type NodeKind =
+  | "investigation"
+  | "document"
+  | "notebook"
+  | "deliverable"
+  | "interview";
 
 type TreeNode = {
   kind: NodeKind;
   id: string;
   title: string;
   status?: "running" | "done" | "failed";
+  children?: TreeNode[];
 };
 
-const MOCK_RECENT: TreeNode[] = [
-  { kind: "investigation", id: "nvda-q4", title: "NVDA Q4 risk model", status: "running" },
-  { kind: "investigation", id: "web-gaming-2026", title: "Web gaming 2026", status: "done" },
-  { kind: "investigation", id: "kalshi-liquidity", title: "Kalshi liquidity gate", status: "done" },
-  { kind: "document", id: "kalshi-paper", title: "Kalshi liquidity preprint.pdf" },
-  { kind: "notebook", id: "synth-nvda", title: "NVDA synthesis · draft 2" },
+type Folder = { key: string; label: string; nodes: TreeNode[] };
+
+const FOLDERS: Folder[] = [
+  {
+    key: "investigations",
+    label: "Investigations",
+    nodes: [
+      {
+        kind: "investigation",
+        id: "web-gaming-2026",
+        title: "Web gaming 2026",
+        status: "running",
+        children: [
+          { kind: "investigation", id: "rosebud-retention", title: "Rosebud retention diligence" },
+          { kind: "investigation", id: "roblox-ad-load", title: "Roblox ad-load ceiling" },
+        ],
+      },
+      { kind: "investigation", id: "ducklake-iceberg", title: "DuckLake vs Iceberg", status: "done" },
+      { kind: "investigation", id: "rl-reward-shaping", title: "RL reward-shaping survey", status: "done" },
+    ],
+  },
+  {
+    key: "notebooks",
+    label: "Notebooks",
+    nodes: [
+      { kind: "notebook", id: "web-gaming-memo", title: "Web-gaming memo draft" },
+      { kind: "notebook", id: "substrate-notes", title: "Substrate design notes" },
+    ],
+  },
+  {
+    key: "documents",
+    label: "Documents",
+    nodes: [
+      { kind: "document", id: "nilo-deck", title: "Nilo Series-A deck.pdf" },
+      { kind: "document", id: "roblox-10k", title: "Roblox 10-K FY25" },
+    ],
+  },
+  {
+    key: "deliverables",
+    label: "Deliverables",
+    nodes: [{ kind: "deliverable", id: "web-gaming-ic-memo", title: "Web-gaming IC memo" }],
+  },
+  {
+    key: "interviews",
+    label: "Interviews",
+    nodes: [{ kind: "interview", id: "nilo-founder", title: "Founder call — Nilo" }],
+  },
 ];
 
-const ALL_LINKS: Array<{ to: string; label: string }> = [
-  { to: "/investigations", label: "All investigations" },
-  { to: "/documents", label: "All documents" },
-  { to: "/notebooks", label: "All notebooks" },
-  { to: "/sources", label: "All sources" },
-];
+const ICON: Record<NodeKind, string> = {
+  investigation: "⌕",
+  document: "📄",
+  notebook: "❍",
+  deliverable: "✎",
+  interview: "🎙",
+};
 
 const routeForNode = (n: TreeNode): string => {
   switch (n.kind) {
@@ -53,19 +106,35 @@ const routeForNode = (n: TreeNode): string => {
       return `/wrestle/${n.id}`;
     case "notebook":
       return `/notebook/${n.id}`;
+    case "deliverable":
+      return `/create/${n.id}`;
+    case "interview":
+      return `/interview/${n.id}`;
   }
 };
 
-const panelKindForNode = (n: TreeNode) => {
+/** Panel kind for cmd-click float, where one exists. */
+const panelKindForNode = (n: TreeNode): PanelKind | null => {
   switch (n.kind) {
     case "investigation":
-      return "Trajectory" as const;
+      return "Trajectory";
     case "document":
-      return "PdfViewer" as const;
+      return "PdfViewer";
     case "notebook":
-      return "Notebook" as const;
+      return "Notebook";
+    default:
+      return null;
   }
 };
+
+const nodeKey = (n: TreeNode) => `${n.kind}:${n.id}`;
+
+/** Flatten one level deep so Pinned can surface children too. */
+function flatten(nodes: TreeNode[]): TreeNode[] {
+  return nodes.flatMap((n) => [n, ...(n.children ?? [])]);
+}
+
+const ALL_NODES = FOLDERS.flatMap((f) => flatten(f.nodes));
 
 export function ProjectTree() {
   const navigate = useNavigate();
@@ -73,23 +142,22 @@ export function ProjectTree() {
   const togglePin = usePinned((s) => s.toggle);
   const openPanel = useWorkspace((s) => s.open);
 
-  const pinnedKey = (n: TreeNode) => `${n.kind}:${n.id}`;
-
-  // Show pinned nodes by reading them out of the mocks; in production
-  // these come from the live hooks (S5+).
-  const pinnedNodes = MOCK_RECENT.filter((n) => pinned.has(pinnedKey(n)));
-  const recentNodes = MOCK_RECENT.filter((n) => !pinned.has(pinnedKey(n)));
+  const pinnedNodes = ALL_NODES.filter((n) => pinned.has(nodeKey(n)));
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     pinned: true,
-    recent: true,
-    all: true,
+    investigations: true,
+    notebooks: true,
+    documents: true,
+    deliverables: false,
+    interviews: false,
   });
 
   const onItemClick = (n: TreeNode, e: React.MouseEvent) => {
-    if (e.metaKey || e.ctrlKey) {
+    const kind = panelKindForNode(n);
+    if ((e.metaKey || e.ctrlKey) && kind) {
       e.preventDefault();
-      openPanel(panelKindForNode(n), { id: n.id }, { mode: "floating", title: n.title });
+      openPanel(kind, { id: n.id }, { mode: "floating", title: n.title });
       return;
     }
     navigate(routeForNode(n));
@@ -106,58 +174,52 @@ export function ProjectTree() {
       >
         {pinnedNodes.length === 0 ? (
           <p className="px-3 py-2 text-[12px] italic text-ink-mute dark:text-moonlight">
-            Pin an item from Recent to keep it close.
+            Pin an item to keep it close.
           </p>
         ) : (
           pinnedNodes.map((n) => (
             <NodeRow
-              key={pinnedKey(n)}
+              key={nodeKey(n)}
               node={n}
               pinned
               onClick={(e) => onItemClick(n, e)}
-              onPin={() => togglePin(pinnedKey(n))}
+              onPin={() => togglePin(nodeKey(n))}
             />
           ))
         )}
       </Section>
 
-      {/* Recent */}
-      <Section
-        label="Recent"
-        expanded={expanded.recent}
-        onToggle={() => setExpanded((s) => ({ ...s, recent: !s.recent }))}
-        count={recentNodes.length}
-      >
-        {recentNodes.map((n) => (
-          <NodeRow
-            key={pinnedKey(n)}
-            node={n}
-            pinned={false}
-            onClick={(e) => onItemClick(n, e)}
-            onPin={() => togglePin(pinnedKey(n))}
-          />
-        ))}
-      </Section>
-
-      {/* All */}
-      <Section
-        label="All"
-        expanded={expanded.all}
-        onToggle={() => setExpanded((s) => ({ ...s, all: !s.all }))}
-        count={ALL_LINKS.length}
-      >
-        {ALL_LINKS.map((l) => (
-          <button
-            key={l.to}
-            type="button"
-            onClick={() => navigate(l.to)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left"
-          >
-            <span className="opacity-50">›</span>
-            <span>{l.label}</span>
-          </button>
-        ))}
-      </Section>
+      {/* Content folders */}
+      {FOLDERS.map((folder) => (
+        <Section
+          key={folder.key}
+          label={folder.label}
+          expanded={expanded[folder.key]}
+          onToggle={() => setExpanded((s) => ({ ...s, [folder.key]: !s[folder.key] }))}
+          count={folder.nodes.length}
+        >
+          {folder.nodes.map((n) => (
+            <div key={nodeKey(n)}>
+              <NodeRow
+                node={n}
+                pinned={pinned.has(nodeKey(n))}
+                onClick={(e) => onItemClick(n, e)}
+                onPin={() => togglePin(nodeKey(n))}
+              />
+              {n.children?.map((c) => (
+                <NodeRow
+                  key={nodeKey(c)}
+                  node={c}
+                  pinned={pinned.has(nodeKey(c))}
+                  indent
+                  onClick={(e) => onItemClick(c, e)}
+                  onPin={() => togglePin(nodeKey(c))}
+                />
+              ))}
+            </div>
+          ))}
+        </Section>
+      ))}
     </div>
   );
 }
@@ -199,11 +261,13 @@ function Section({
 function NodeRow({
   node,
   pinned,
+  indent,
   onClick,
   onPin,
 }: {
   node: TreeNode;
   pinned: boolean;
+  indent?: boolean;
   onClick: (e: React.MouseEvent) => void;
   onPin: () => void;
 }) {
@@ -212,22 +276,20 @@ function NodeRow({
     done: "aurora",
     failed: "danger",
   };
-  const icon: Record<NodeKind, string> = {
-    investigation: "⌕",
-    document: "📄",
-    notebook: "❍",
-  };
 
   return (
     <div className="flex items-center group">
       <button
         type="button"
         onClick={onClick}
-        className="flex-1 flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left min-w-0"
-        title="Click to open. Cmd/Ctrl+Click to open as floating panel."
+        className={
+          "flex-1 flex items-center gap-2 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left min-w-0 " +
+          (indent ? "pl-7 pr-3" : "px-3")
+        }
+        title="Click to open. Cmd/Ctrl+Click to open as a floating panel."
       >
         <span aria-hidden="true" className="text-ink-mute dark:text-moonlight shrink-0">
-          {icon[node.kind]}
+          {indent ? "↳" : ICON[node.kind]}
         </span>
         <span className="truncate flex-1">{node.title}</span>
         {node.status && (

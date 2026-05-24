@@ -1,12 +1,17 @@
+import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { NavRail } from "./components/navigation/NavRail";
+import { ProductsLauncher } from "./components/navigation/ProductsLauncher";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
 import { PanelLayout } from "./workspace/PanelLayout";
+import { useWorkspace } from "./workspace/WorkspaceStore";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
+
+const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 
 /**
  * AppShell — the top-level chrome for the redesigned UI.
@@ -59,6 +64,24 @@ export function AppShell({ children }: Props) {
   // per-investigation snapshot back to localStorage debounced at 250 ms.
   useWorkspaceHydration();
 
+  // Portfolio-shell IA: the content tree is the persistent second
+  // column, not just a ⌘B afterthought. Open it once on first mount if
+  // nothing has opened it yet (runs after hydration so a restored layout
+  // wins). The operator can still close it with ⌘B for the session.
+  const treeBootstrapped = useRef(false);
+  useEffect(() => {
+    if (treeBootstrapped.current) return;
+    treeBootstrapped.current = true;
+    const ws = useWorkspace.getState();
+    if (!ws.panels[PROJECT_TREE_PANEL_ID]) {
+      ws.open(
+        "ProjectTree",
+        {},
+        { mode: "docked-left", title: "Project", id: PROJECT_TREE_PANEL_ID },
+      );
+    }
+  }, []);
+
   return (
     <div className="h-screen w-screen flex bg-ice-2 dark:bg-space-2 text-ink dark:text-bright overflow-hidden">
       {/* Always-visible icon rail */}
@@ -71,6 +94,9 @@ export function AppShell({ children }: Props) {
           <PanelLayout mainSlot={children} />
         </div>
       </div>
+
+      {/* Products launcher overlay — opened from the rail's ⊞ button */}
+      <ProductsLauncher />
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { useWorkspace } from "../../workspace/WorkspaceStore";
@@ -8,23 +8,29 @@ import { useViewportTier } from "../../workspace/useViewportTier";
 /**
  * NavRail — always-visible 60-px icon column on the far left.
  *
- * Top:    primary modes (Research, Wrestle, Create, Brainstorm,
- *         Notebooks, Sources).
- * Middle: ProjectTree toggle — opens the docked-left ProjectTree
- *         panel via the workspace store, mirroring ⌘B.
- * Footer: Privacy, Pricing, Operator, Trust, Settings (per master
- *         spec §4 NavRail layout table).
+ * Portfolio-shell IA (2026-05-25): the rail no longer lists every mode.
+ * It carries only the *verbs you act through* and the chrome that spans
+ * them. Everything else is demoted to the Products launcher (⊞) and the
+ * command palette (⌘K). See `docs/ui_redesign_posthog/redesign_v1_portfolio.html`
+ * and master-spec §5.6.
  *
- * Icons are inline SVG (S11 replaced the S4 emoji glyphs). Tooltips
- * use the native title attr for hover + screen-reader nav. Active
- * route gets the sun-yellow accent + ink left-edge bar.
+ *   Top:    Werner home · Search (⌘K) · New
+ *   Mid:    the FIVE pinned surfaces — Research, Wrestle, Brainstorm,
+ *           Create, Interview (the verbs the work actually runs on)
+ *   Mid:    Products launcher (⊞) — the honest full inventory, grouped
+ *           + demoted · ProjectTree toggle (⌘B) — the content column
+ *   Footer: Trust, Settings
+ *
+ * Notebooks, Sources, Pricing, Privacy, Operator and the ~20 other
+ * surfaces are reachable from the launcher and ⌘K, not the rail.
+ * Active route gets the sun-yellow accent + ink left-edge bar.
  */
 type Item = {
   to: string;
   icon: ReactNode;
   label: string;
   end?: boolean;
-  group: "main" | "middle" | "footer";
+  group: "main" | "footer";
 };
 
 const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
@@ -49,34 +55,31 @@ function I({ d, size = 18 }: { d: string; size?: number }) {
 
 // Icon path constants — single-line SVG paths. Sized to a 24-grid.
 const ICONS = {
-  research: "M3 12 L8 7 L13 12 L18 7 L21 9 M3 12 V20 H21 V12",        // peaks + horizon
-  wrestle:  "M4 5 H20 V19 H4 Z M4 9 H20 M9 13 H15 M9 16 H13",         // doc with lines
-  create:   "M5 19 L12 5 L19 19 M9 14 H15",                            // triangular A
-  brainstorm: "M6 14 a6 6 0 1 1 12 0 M9 14 V18 H15 V14 M11 21 H13",   // lightbulb
-  notebook: "M4 4 H18 V20 H4 Z M4 4 V20 H6 V4 M9 9 H15 M9 13 H14",    // bound notebook
-  sources:  "M3 7 H21 M3 12 H21 M3 17 H21 M7 4 V20 M17 4 V20",        // grid
-  projects: "M3 6 H10 L12 4 H21 V18 H3 Z M6 10 H18 M6 14 H15",        // folder w/ rows
-  privacy:  "M12 3 L5 6 V12 C5 16 8 19 12 21 C16 19 19 16 19 12 V6 Z", // shield
-  pricing:  "M3 8 H21 V18 H3 Z M3 8 L5 4 H19 L21 8 M9 13 H15",        // wallet
-  operator: "M6 4 H18 V20 H6 Z M9 8 H15 M9 12 H15 M9 16 H13",         // device
-  trust:    "M12 3 L21 7 V13 C21 17 17 20 12 21 C7 20 3 17 3 13 V7 Z M9 12 L11 14 L15 10", // shield+check
-  settings: "M12 8 a4 4 0 1 1 0 8 a4 4 0 1 1 0 -8 M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5", // gear
+  search:    "M11 11 m-7 0 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0 M21 21 L17 17", // magnifier
+  plus:      "M12 5 V19 M5 12 H19",                                          // new
+  research:  "M3 12 L8 7 L13 12 L18 7 L21 9 M3 12 V20 H21 V12",              // peaks + horizon
+  wrestle:   "M5 4 H17 L19 6 V20 H5 Z M8 9 H16 M8 13 H16 M8 17 H13",         // doc with lines
+  brainstorm:"M9 18 H15 M10 21 H14 M12 3 a6 6 0 0 1 4 10.5 c-.7 .7 -1 1.3 -1 2.5 H9 c0 -1.2 -.3 -1.8 -1 -2.5 A6 6 0 0 1 12 3 z", // bulb
+  create:    "M5 19 L12 5 L19 19 M9 14 H15",                                 // triangular A
+  interview: "M9 3 h6 v8 a3 3 0 0 1 -6 0 Z M6 11 a6 6 0 0 0 12 0 M12 17 v4 M9 21 h6", // mic
+  launcher:  "M3 3 H10 V10 H3 Z M14 3 H21 V10 H14 Z M3 14 H10 V21 H3 Z M14 14 H21 V21 H14 Z", // grid
+  projects:  "M3 6 H10 L12 4 H21 V18 H3 Z M6 10 H18 M6 14 H15",              // folder w/ rows
+  trust:     "M12 3 L21 7 V13 C21 17 17 20 12 21 C7 20 3 17 3 13 V7 Z M9 12 L11 14 L15 10", // shield+check
+  settings:  "M12 8 a4 4 0 1 1 0 8 a4 4 0 1 1 0 -8 M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5", // gear
 };
 
+/** The five surfaces — the verbs the work runs on. Interview is promoted
+ * (acquisition channel); Notebooks + Sources demote to the launcher. */
 const ITEMS: Item[] = [
-  { to: "/",             icon: <I d={ICONS.research} />,   label: "Research",   end: true,  group: "main" },
-  { to: "/wrestle",      icon: <I d={ICONS.wrestle} />,    label: "Wrestle",                group: "main" },
-  { to: "/create",       icon: <I d={ICONS.create} />,     label: "Create",                 group: "main" },
-  { to: "/brainstorm",   icon: <I d={ICONS.brainstorm} />, label: "Brainstorm",             group: "main" },
-  { to: "/notebooks",    icon: <I d={ICONS.notebook} />,   label: "Notebooks",              group: "main" },
-  { to: "/sources",      icon: <I d={ICONS.sources} />,    label: "Sources",                group: "main" },
+  { to: "/",           icon: <I d={ICONS.research} />,   label: "Research",   end: true, group: "main" },
+  { to: "/wrestle",    icon: <I d={ICONS.wrestle} />,    label: "Wrestle",               group: "main" },
+  { to: "/brainstorm", icon: <I d={ICONS.brainstorm} />, label: "Brainstorm",            group: "main" },
+  { to: "/create",     icon: <I d={ICONS.create} />,     label: "Create",                group: "main" },
+  { to: "/interviews", icon: <I d={ICONS.interview} />,  label: "Interview",             group: "main" },
 
-  // Footer (governance + meta routes).
-  { to: "/privacy",      icon: <I d={ICONS.privacy} />,    label: "Privacy",                group: "footer" },
-  { to: "/pricing",      icon: <I d={ICONS.pricing} />,    label: "Pricing",                group: "footer" },
-  { to: "/operator",     icon: <I d={ICONS.operator} />,   label: "Operator",               group: "footer" },
-  { to: "/trust",        icon: <I d={ICONS.trust} />,      label: "Trust",                  group: "footer" },
-  { to: "/settings",     icon: <I d={ICONS.settings} />,   label: "Settings",               group: "footer" },
+  // Footer (governance + meta — the rest live in the launcher / ⌘K).
+  { to: "/trust",      icon: <I d={ICONS.trust} />,      label: "Trust",                 group: "footer" },
+  { to: "/settings",   icon: <I d={ICONS.settings} />,   label: "Settings",              group: "footer" },
 ];
 
 function WernerMarkInline() {
@@ -93,10 +96,32 @@ function WernerMarkInline() {
   );
 }
 
+/** Bare action button styled like a rail item (no route). */
+function RailAction({
+  title,
+  onClick,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="h-10 mx-1.5 flex items-center justify-center rounded relative text-ice-2/70 hover:text-ice-1 hover:bg-white/10"
+    >
+      {children}
+    </button>
+  );
+}
+
 /**
- * Middle group — ProjectTree toggle. Lives between the primary modes
- * and the footer per master spec §4 NavRail layout. Toggling the panel
- * goes through the workspace store (same path ⌘B uses).
+ * ProjectTree toggle — opens/closes the docked-left content column.
+ * Same path ⌘B uses (workspace store, panel id shortcuts:projecttree).
  */
 function ProjectTreeToggleItem() {
   const isOpen = useWorkspace((s) => Boolean(s.panels[PROJECT_TREE_PANEL_ID]));
@@ -112,11 +137,7 @@ function ProjectTreeToggleItem() {
           open(
             "ProjectTree",
             {},
-            {
-              mode: "docked-left",
-              title: "Project",
-              id: PROJECT_TREE_PANEL_ID,
-            },
+            { mode: "docked-left", title: "Project", id: PROJECT_TREE_PANEL_ID },
           );
       }}
       className={
@@ -139,12 +160,10 @@ function ProjectTreeToggleItem() {
 }
 
 export function NavRail() {
+  const navigate = useNavigate();
   const main = ITEMS.filter((i) => i.group === "main");
   const footer = ITEMS.filter((i) => i.group === "footer");
   const tier = useViewportTier();
-  // S11 acceptance: below md tier the NavRail collapses to a hamburger.
-  // The operator can pop the rail open for navigation, and any nav
-  // click auto-closes it. At md+ the rail is always visible.
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const isMobile = tier === "sm" || tier === "md";
   const showRail = !isMobile || !collapsed;
@@ -185,7 +204,7 @@ export function NavRail() {
           ✕
         </button>
       )}
-      {/* Werner mark — pinned to top */}
+      {/* Werner mark — pinned to top, links home */}
       <NavLink
         to="/"
         end
@@ -198,15 +217,42 @@ export function NavRail() {
         <WernerMarkInline />
       </NavLink>
 
-      <nav className="flex-1 py-2 flex flex-col gap-1">
+      {/* Search + New — chrome that spans every surface */}
+      <div className="pt-2 flex flex-col gap-1">
+        <RailAction
+          title="Search · ⌘K"
+          onClick={() => window.dispatchEvent(new Event("antiek:palette:toggle"))}
+        >
+          <I d={ICONS.search} />
+        </RailAction>
+        <RailAction title="New investigation · ⌘N" onClick={() => navigate("/")}>
+          <I d={ICONS.plus} size={20} />
+        </RailAction>
+      </div>
+
+      <div className="my-2 mx-3 border-t border-white/10" aria-hidden="true" />
+
+      {/* The five surfaces */}
+      <nav className="flex flex-col gap-1">
         {main.map((it) => (
           <NavRailItem key={it.to} {...it} />
         ))}
-
-        {/* Middle group — ProjectTree toggle, separated by a thin rule. */}
-        <div className="my-2 mx-3 border-t border-white/10" aria-hidden="true" />
-        <ProjectTreeToggleItem />
       </nav>
+
+      <div className="my-2 mx-3 border-t border-white/10" aria-hidden="true" />
+
+      {/* Products launcher + content-tree toggle */}
+      <div className="flex flex-col gap-1">
+        <RailAction
+          title="All products…"
+          onClick={() => window.dispatchEvent(new Event("antiek:launcher:toggle"))}
+        >
+          <I d={ICONS.launcher} />
+        </RailAction>
+        <ProjectTreeToggleItem />
+      </div>
+
+      <div className="flex-1" />
 
       <nav className="border-t border-white/10 py-2 flex flex-col gap-1">
         {footer.map((it) => (
