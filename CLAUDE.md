@@ -22,6 +22,11 @@ mechanism (§9) is the strategically consequential layer.
    sprint sequences (master-spec 11→22 + UI-redesign 0→12).
 4. **`docs/decisions/`** — one markdown per closed gate or binding
    decision. Quick browse here tells you what's been settled.
+5. **`docs/federation/`** — `CONTRACT.md` consolidates the federation
+   design intent (PULL-only signed slices, receiver-only writes, §13.9
+   quality gate at ingestion). Read before touching `substrate/federation/`.
+   `ADAPTERS.md` is intentionally empty; see file for why Hermes is NOT
+   an in-Antiek adapter.
 
 ## Don't propose engineering until you read this
 
