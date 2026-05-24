@@ -199,22 +199,63 @@ def test_closed_fixtures_name_existing_harness(path: Path) -> None:
     if not _is_closed(fx):
         pytest.skip(f"{path.stem} is an open GAP; not enforced here")
     harness_desc = str(fx["harness_check_that_now_catches"])
-    # Look for file-path-like strings and assert they exist.
-    # File-path tokens contain ``/`` and end in ``.py`` (or similar).
-    candidates: list[str] = []
-    for token in harness_desc.replace(",", " ").replace("(", " ").replace(")", " ").split():
-        if "/" in token and ("." in token):
-            candidates.append(token.strip(".,:;"))
+    candidates = _repo_source_paths(harness_desc)
     if not candidates:
-        # Field describes a mechanism but doesn't cite a file path —
-        # acceptable as long as it isn't an obvious typo (e.g. "GAP").
+        # Field describes a mechanism but doesn't cite a repo source
+        # path — acceptable as long as it isn't an obvious typo.
         return
     for c in candidates:
-        path_obj = REPO_ROOT / c
-        assert path_obj.exists(), (
+        assert (REPO_ROOT / c).exists(), (
             f"{path.name}: harness_check_that_now_catches names {c!r} but "
             f"that file does not exist in the repo"
         )
+
+
+# Top-level source directories a fixture's harness field may cite.
+# A token is only treated as a must-exist repo path when it starts
+# with one of these AND ends in .py. This deliberately ignores
+# absolute paths (``~/.antiek/...`` runtime state), ``file.py::symbol``
+# qualifiers, and prose that merely contains a dot.
+_REPO_SOURCE_ROOTS = (
+    "substrate/",
+    "acquisition/",
+    "middleware/",
+    "orchestration/",
+    "interfaces/",
+    "compounding/",
+    "processing/",
+    "runtime/",
+    "tools/",
+    "tests/",
+    "benchmarks/",
+    "scripts/",
+    "docs/",
+)
+
+
+def _repo_source_paths(text: str) -> list[str]:
+    """Extract repo-relative ``*.py`` source paths a fixture cites.
+
+    Precision over recall: we only validate tokens that unambiguously
+    name a tracked source file (start with a known top-level dir, end
+    in ``.py``). A ``client.py::_http_get`` qualifier is trimmed to
+    ``client.py``'s path; a ``~/.antiek/state.json`` runtime path is
+    ignored (it's not a source file and won't exist in the repo); prose
+    like "the §7 daemon" is ignored.
+    """
+    found: list[str] = []
+    raw = text.replace(",", " ").replace("(", " ").replace(")", " ")
+    for token in raw.split():
+        tok = token.strip(".,:;`'\"")
+        # Trim a ``::symbol`` qualifier (file.py::func → file.py).
+        if "::" in tok:
+            tok = tok.split("::", 1)[0]
+        if not tok.endswith(".py"):
+            continue
+        if not any(tok.startswith(root) for root in _REPO_SOURCE_ROOTS):
+            continue
+        found.append(tok)
+    return found
 
 
 def test_open_gaps_are_visible() -> None:

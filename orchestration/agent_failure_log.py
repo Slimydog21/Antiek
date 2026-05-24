@@ -134,7 +134,13 @@ def _maybe_rotate(active: Path) -> None:
         first_date = row.get("observed_at", "")[:10]  # YYYY-MM-DD
     except json.JSONDecodeError:
         return
-    today_str = date.today().isoformat()
+    # Compare UTC-to-UTC. ``observed_at`` is written in UTC (see
+    # _now_iso); the rotation boundary must use the UTC date too. Using
+    # ``date.today()`` (LOCAL date) would fire a spurious rotation
+    # whenever local time and UTC straddle midnight — archiving the
+    # current day's records mid-stream. (Surfaced 2026-05-25 when the
+    # session crossed the UTC/local date boundary.)
+    today_str = datetime.now(timezone.utc).date().isoformat()
     if first_date == today_str or not first_date:
         return
     archive_dir = _archive_dir_for(active)

@@ -35,17 +35,23 @@ actual_failure: |
   hit during the ban every time.
 
 harness_check_that_now_catches: |
-  GAP — would need a small ban_state.py module that writes to
-  ~/.antiek/arxiv_banned_until and exposes ``is_banned() -> bool``
-  + ``mark_banned(until: datetime)``. Integrate into the arxiv
-  HTTP client factory. The fallback paths (PDF, S2) already exist
-  per the same memory entry; only the sentinel + the integration
-  are missing.
+  acquisition/arxiv/ban_state.py — cross-process sentinel
+  (is_banned / mark_banned / remaining / clear; file-backed at
+  ~/.antiek/arxiv_banned_until.json; atomic write-temp-then-rename;
+  fail-open on corrupt read; never-shorten-an-existing-ban). Wired
+  into acquisition/arxiv/client.py::_http_get as two guards:
+  (1) raise ArxivBanned BEFORE issuing a request while the ban is in
+  effect; (2) persist the ban on a 429 response.
+  tests/test_arxiv_ban_state.py + tests/test_arxiv_client_ban_guard.py
+  prove the re-trigger loop is broken — a 429 bans, the next call
+  short-circuits without touching the network.
 
-fix_commit: GAP
+fix_commit: hashimoto-eng/e2-gap-closures
 
 notes: |
-  This is the LOAD-BEARING fix in the arxiv cluster. Without the
-  sentinel, the throttle (arxiv-429-export-ban) and the cache size
-  (undersized-metadata-cache) just shift the ban around without
-  preventing it. Fix this first.
+  This was the LOAD-BEARING fix in the arxiv cluster. Closed by the
+  SPR-E2 GAP-closure follow-up. The sentinel + guard make the ban
+  observable and non-self-perpetuating. The remaining piece — routing
+  to the PDF/S2 fallback when ArxivBanned is raised — is a caller
+  change tracked separately (the ArxivBanned exception is the seam
+  for it).

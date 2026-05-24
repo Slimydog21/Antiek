@@ -25,6 +25,25 @@ from typing import Iterable, List, Optional
 
 import httpx
 
+from acquisition.arxiv import ban_state
+
+
+class ArxivBanned(RuntimeError):
+    """Raised when a persisted 429 ban is still in effect.
+
+    Carries the remaining ban time so the caller can log it and route
+    to the PDF endpoint or Semantic Scholar fallback instead of
+    re-hitting export.arxiv.org during the ban window. Raising BEFORE
+    the request is the whole point — it's what breaks the
+    re-trigger loop documented in
+    tests/regression/agent_failures/banned-until-sentinel-absent.yaml.
+    """
+
+    def __init__(self, message: str, *, remaining_seconds: float) -> None:
+        super().__init__(message)
+        self.remaining_seconds = remaining_seconds
+
+
 _ATOM_NS = {"a": "http://www.w3.org/2005/Atom"}
 _OPENSEARCH_NS = "{http://a9.com/-/spec/opensearch/1.1/}"
 
@@ -194,13 +213,50 @@ def _http_get(
 ) -> bytes:
     """One GET. Caller can inject an ``httpx.Client`` with a
     ``MockTransport`` for tests; otherwise we build a short-lived
-    client."""
+    client.
+
+    Two harness guards wrap the request (closing the arxiv-ingestion
+    regression fixtures):
+
+    1. **Ban guard (pre-request).** If a 429 ban is still in effect per
+       ``ban_state``, raise ``ArxivBanned`` BEFORE issuing the request.
+       This is the load-bearing fix — re-hitting export.arxiv.org during
+       a ban extends it. The caller routes to a fallback instead.
+    2. **SSL bootstrap (pre-request, only when building our own
+       client).** Ensure a CA bundle is resolvable so a python.org
+       Python without system certs fails loud with a remedy rather than
+       a buried SSLCertVerificationError. Skipped when a client is
+       injected (tests own their transport).
+    3. **429 capture (post-response).** On a 429, persist the ban
+       sentinel so subsequent calls short-circuit, then re-raise.
+    """
+    # Guard 1 — honor an in-effect ban before touching the network.
+    remaining = ban_state.remaining()
+    if remaining is not None:
+        raise ArxivBanned(
+            f"export.arxiv.org is rate-limit-banned for ~{int(remaining.total_seconds())}s more; "
+            f"route to the PDF endpoint or Semantic Scholar fallback instead of re-hitting it",
+            remaining_seconds=remaining.total_seconds(),
+        )
+
     headers = {"User-Agent": DEFAULT_USER_AGENT}
     if client is not None:
         r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
     else:
+        # Guard 2 — only when we own the client; injected clients (tests)
+        # bring their own transport and cert config.
+        from runtime.ssl_bootstrap import ensure_ssl_certs
+
+        ensure_ssl_certs()
         with httpx.Client() as c:
             r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+    # Guard 3 — capture a 429 into the shared sentinel so the next
+    # caller (this process or another) short-circuits at Guard 1.
+    if r.status_code == 429:
+        ban_state.mark_banned(reason=f"429 from {url}")
+        r.raise_for_status()  # raises httpx.HTTPStatusError
+
     r.raise_for_status()
     return r.content
 

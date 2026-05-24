@@ -37,16 +37,21 @@ actual_failure: |
   the operator had to debug from the stderr.
 
 harness_check_that_now_catches: |
-  GAP — Antiek would need a startup self-check that asserts
-  ssl.create_default_context().get_ca_certs() returns a non-empty
-  set, OR explicit certifi pinning in the HTTP client factory. The
-  Prime Intellect memory entry documents the same root cause
-  (python.org-3.11 + missing certs); a single ssl-bootstrap helper
-  could centralise the fix.
+  runtime/ssl_bootstrap.py — ensure_ssl_certs() resolves a CA bundle
+  (already-configured SSL_CERT_FILE → default-context CA certs →
+  certifi fallback) or raises SSLConfigMissing WITH the operator
+  remedy in the message. assert_certs_available() is the pure
+  startup self-check. Critically it NEVER downgrades to verify=False
+  — the only outcomes are resolve-a-bundle or fail-loud. Wired into
+  acquisition/arxiv/client.py::_http_get (called once before building
+  our own httpx.Client; skipped when a client is injected).
+  tests/test_ssl_bootstrap.py covers every branch + the
+  never-downgrade security property.
 
-fix_commit: GAP
+fix_commit: hashimoto-eng/e2-gap-closures
 
 notes: |
-  This is the same root cause that affects Prime CLI per the
-  reference_prime_intellect_lab memory entry. A unified
-  ssl_bootstrap helper in runtime/ would close both at once.
+  Same root cause as the Prime CLI issue (reference_prime_intellect_lab
+  memory: python.org Python + missing certs). The ssl_bootstrap helper
+  lives in runtime/ so any HTTP-making path can call it — the Prime
+  integration can reuse it when it lands.
