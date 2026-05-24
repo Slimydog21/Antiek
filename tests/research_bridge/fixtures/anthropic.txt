@@ -1,0 +1,18 @@
+The on-policy RL market for code agents has, since mid-2024, settled into a recognisable three-layer structure: a thin substrate layer that owns the compute and the trajectory-collection plumbing, a verifier layer that determines what counts as a successful trajectory, and an applied-vendor layer that packages the first two into developer-facing surfaces. The substrate layer is the most consequential to track. However, the verifier ecosystem is what currently determines who can ship.
+
+**The substrate question**
+
+Prime Intellect is the named incumbent at the substrate layer. Their public-beta release of `prime rl run` in October 2024 [Citation: Prime Intellect, "Public beta — prime rl run", 2024] is the most-cited reference point, and the underlying compute model — borrowed instance hours on partner GPU pools — is the architecture other entrants will be measured against. Importantly, the substrate layer is capital-intensive in a way the verifier layer is not; this is the structural reason the incumbents in each layer differ. That said, capital-intensity does not automatically grant the substrate layer pricing power; the open-weight verifier ecosystem is permissive enough that a substrate provider with an inferior runtime can still be cleanly substituted.
+
+**The verifier ecosystem**
+
+The dominant open-weight verifier toolkit at present is the `verifiers` package bundled with Prime Intellect's `prime` CLI. The unrelated PyPI registration of the same name is a name-squat with no functioning code [1] — agents searching for "verifiers" on PyPI alone routinely fail this disambiguation. Notably, Anthropic-internal verifier work has appeared in three 2024 papers but has not been productised, which leaves a window for open-weight tooling to consolidate around a single canonical stack [2].
+
+**Applied vendors**
+
+On balance, the applied-vendor layer is the most diffuse — Cursor, Continue.dev, and Sourcegraph's Cody have all begun publishing RL-tuning posts, but the public material is light on the precise interface contract each holds with its substrate provider. To be clear, this opacity is not unusual for new infrastructure categories at this stage; it usually clears within 12-18 months as one or two reference architectures consolidate.
+
+Crucially, the question of whether the substrate or verifier layer is the more defensible business is still genuinely open. The honest read is that both layers have plausible moat stories and the market has not yet expressed a preference.
+
+[1] PyPI registry, package `verifiers`. Last release was a stub README; no working module.
+[2] Anthropic published three relevant arXiv preprints in Q4 2024 (2410.05678, 2411.08901, 2412.02345) without corresponding product launches.

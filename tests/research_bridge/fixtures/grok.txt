@@ -1,0 +1,20 @@
+TL;DR: The on-policy RL market for code agents has split into three layers since mid-2024 — substrate, verifiers, applied vendors. Prime Intellect dominates substrate; verifier ecosystem is consolidating around the `verifiers` package they bundle; applied vendors are still finding their interfaces.
+
+Here's what I dug up across the public web and X posts.
+
+Diving in: the substrate layer is where the real capital concentration sits. As of [2024-10] Prime Intellect had shipped `prime rl run` to public beta. https://x.com/PrimeIntellect/status/1849823498234 — operator-facing announcement. The borrowed-GPU-pool compute model is the structural choice everyone else gets benchmarked against.
+
+Let me note the verifier layer is the more interesting strategic surface. There's a `verifiers` package on PyPI that is NOT the same as the one Prime bundles — this name-squat catches anyone searching naively. https://twitter.com/karpathy/status/1839203848293 flagged this in October.
+
+Applied vendors:
+- Cursor (closed-weight stack, won't say which substrate)
+- Continue.dev (open about their pipeline, supports custom RL providers)
+- Sourcegraph Cody (started publishing RL-tuning posts Q3 2024)
+
+What I'd want to verify before betting on this:
+
+1. Substrate revenue concentration — is Prime Intellect actually capturing the spend, or are smaller providers eating it from below?
+2. Verifier-toolkit consolidation timeline — months or years?
+3. Anthropic's internal verifier work — when does it ship as a product (if ever)?
+
+References from X: https://x.com/PrimeIntellect/status/1849823498234, https://twitter.com/karpathy/status/1839203848293, https://x.com/cursor_ai/status/1842938472037

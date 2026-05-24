@@ -1,0 +1,34 @@
+## Deep research: the on-policy RL market for code agents, 2024-2026
+
+The market for on-policy reinforcement-learning training of code-completion agents has fragmented into three identifiable layers since mid-2024. This report synthesises public filings, conference proceedings, and product-launch coverage to map the layer boundaries and identify the incumbents in each.
+
+### Layer 1 — substrate providers
+
+The substrate layer comprises infrastructure firms that host the compute, the trajectory-collection telemetry, and the policy-update primitives. Prime Intellect [1] is the visible incumbent; their `prime rl run` CLI shipped to public beta in October 2024 [2]. Modal Labs offers an adjacent product line under "RL pipelines" [3] though their roadmap statements through Q4 2024 explicitly defer on-policy RL until 2026.
+
+### Layer 2 — verifier ecosystems
+
+The verifier layer determines what counts as a successful trajectory. The dominant open-weight verifier toolkit at present is `verifiers` (the package bundled with Prime Intellect's prime CLI, not the unrelated PyPI name-squat [4]). Coding-task verifiers from Anthropic's research org appeared in three 2024 papers [5][6][7] but have not shipped as a product.
+
+### Layer 3 — applied vendors
+
+Applied vendors integrate substrate + verifiers into specific code-completion experiences. Cursor and Continue.dev are the public-tier examples [8][9]; Sourcegraph's Cody began publishing RL-tuning blog posts in Q3 2024 [10].
+
+### Open questions
+
+- What fraction of the Tier-1 substrate spend is captured by Prime Intellect versus the long tail?
+- Does Modal's deferred entry signal a category-defining structural concern, or just a roadmap choice?
+- How quickly does verifier-tooling parity arrive between open-weight and Anthropic-internal stacks?
+
+### References
+
+[1] Prime Intellect, "INTELLECT-1 Technical Report", arXiv:2412.01234 (December 2024)
+[2] Prime Intellect blog, "Public beta — prime rl run", October 14 2024
+[3] Modal Labs blog, "RL pipelines roadmap", September 2024
+[4] PyPI registry, package `verifiers` (NB: not the Prime Intellect bundle)
+[5] Anthropic, "Constitutional AI for coding tasks", arXiv:2410.05678
+[6] Anthropic, "Verifier scaling laws", arXiv:2411.08901
+[7] Anthropic, "Code-RL with self-play", arXiv:2412.02345
+[8] Cursor blog, "How we tune Cursor's tab model", August 2024
+[9] Continue.dev docs, "Custom RL providers"
+[10] Sourcegraph engineering blog, "Cody RL tuning", September 2024

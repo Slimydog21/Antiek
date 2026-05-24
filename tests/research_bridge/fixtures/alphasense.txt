@@ -1,0 +1,31 @@
+Report: Prime Intellect Inc. (NASDAQ: PRIM) — Q3 2024 Earnings Call Analysis
+
+Summary
+Prime Intellect (PRIM) reported Q3 2024 results on October 28 2024. Revenue of $42.3M came in 8% above consensus estimate ($39.2M). Adjusted gross margin expanded to 67%, up 320bps year-over-year. Management raised FY2024 guidance to $165-170M (consensus: $158M).
+
+Buy / Hold / Sell consensus (sell-side): 9 Buy / 4 Hold / 1 Sell. Price target range: $42 - $78. Current price: $51.20.
+
+Sell-side commentary
+
+Goldman Sachs (Buy, PT $72): "Substrate-layer thesis intact; RL pipeline revenue accelerating into Q4. We model 38% Q4 sequential growth on Compute Marketplace launch announced on the earnings call." — Goldman Sachs research note, October 29 2024.
+
+Morgan Stanley (Overweight, PT $65): "PRIM's borrowed-GPU-pool compute model continues to surprise on margin. Our channel checks at three Tier-1 cloud providers confirm utilisation at 71% on average across PRIM's footprint, well above the 60% benchmark we use for healthy capacity allocation."
+
+JPMorgan (Neutral, PT $48): "We see the on-policy RL substrate as commodifying within 18-24 months as open-weight verifier tooling consolidates. PRIM's pricing power is real today but the moat story compresses with each new substrate entrant. We model a 14% revenue CAGR through 2026, below Street consensus of 22%."
+
+Citi (Buy, PT $58): "Q3 print clean. The Compute Marketplace launch is the strategic story we've been waiting for. 10-Q footnote 8 disclosed that 31% of Q3 revenue came from the verifier toolkit license (up from 22% in Q2)."
+
+Barclays (Hold, PT $52): "Stock is fairly valued at 28x forward earnings. We struggle to underwrite the next leg of multiple expansion without clarity on Anthropic's internal verifier program shipping as a product."
+
+Key disclosures from the 10-Q and the earnings call transcript
+
+- Revenue concentration: top-3 customers = 41% of Q3 revenue (vs. 38% in Q2). Concentration narrative remains a watch-item.
+- Free cash flow: $14.2M, positive for the third consecutive quarter.
+- Capex guidance: $48-52M for FY2024, up from $40-45M prior.
+- Investor day scheduled for January 22 2025; management indicated they will disclose Compute Marketplace customer commitments.
+
+Risks
+- 8-K filed October 30 disclosed a senior engineering departure to a stealth-mode competitor.
+- Customer concentration > 40% triggers a soft-cap covenant on the revolving credit facility (disclosed in the S-1 amendment from August 2024).
+
+Source: AlphaSense aggregation of Q3 2024 earnings call transcript, sell-side research notes, 10-Q footnotes, and 8-K filing dated 2024-10-30.
