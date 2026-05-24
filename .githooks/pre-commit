@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — Antiek heresy gates.
+#
+# Activated per-clone with ``git config core.hooksPath .githooks`` (the
+# operator's ``scripts/install_hooks.sh`` does this once it lands from
+# ``are/wave-1-substrate-additive``).
+#
+# Calls ``python -m tools.heresy_detectors.run_all`` with the staged
+# Python files. The runner exits non-zero on any blocking violation
+# (H-001/2/3); warn-only detectors (H-004 at Wave 1) print to stderr
+# but never block on their own.
+#
+# Operator override: ``ANTIEK_HERESY_SKIP=1 git commit ...`` bypasses
+# (loudly — the runner prints a notice so the skip is auditable).
+#
+# Spec: ~/specs/antiek-yegge-execute/sprint-02-heresy-registry.html
+
+set -e
+
+# Collect staged Python files (added, copied, modified, renamed) — not
+# deleted (we can't check the contents of something that's gone).
+staged="$(git diff --cached --name-only --diff-filter=ACMR -- '*.py')"
+
+if [ -z "$staged" ]; then
+  # Nothing to check; let the commit through unimpeded.
+  exit 0
+fi
+
+# Pick a Python interpreter. Prefer the project venv if present (it has
+# the right Python version and is what CI uses); fall back to ``python3``
+# on PATH (covers fresh clones before venv setup).
+if [ -x "./.venv/bin/python" ]; then
+  python_bin="./.venv/bin/python"
+else
+  python_bin="python3"
+fi
+
+# Pass the staged files. The runner respects ANTIEK_HERESY_SKIP itself
+# so we don't need to short-circuit here.
+# shellcheck disable=SC2086  # word-splitting on file list is intentional
+$python_bin -m tools.heresy_detectors.run_all $staged
