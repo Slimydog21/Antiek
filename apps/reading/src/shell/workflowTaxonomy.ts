@@ -235,6 +235,33 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/notebooks",
   },
+  // Read's Spotify-for-books surfaces (merged from read/spotify-for-books at
+  // the product consolidation — mapped here so the completeness check passes).
+  {
+    id: "Library",
+    workflow: "read",
+    label: "Library",
+    blurb: "Servable book/document library — the Spotify-for-books shelf.",
+    built: true,
+    route: "/library",
+  },
+  {
+    id: "Reading",
+    workflow: "read",
+    label: "Reader",
+    blurb: "Full-text book reader (deny-by-default servability gate).",
+    built: true,
+    route: "/read/:documentId",
+  },
+  // DRW glass-box monitor (research workflow; merged with the DRW product).
+  {
+    id: "DeepResearchWorkspace",
+    workflow: "research",
+    label: "Deep Research Workspace",
+    blurb: "Glass-box monitor for cascaded parallel researches (DRW SPR-09).",
+    built: true,
+    route: "/deep-research",
+  },
 
   // ── WRITE ─────────────────────────────────────────────────────────
   // Create (the section-based studio) folds into Write. The Write SPR-03/04
