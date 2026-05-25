@@ -9,7 +9,8 @@ import WorkflowStub from "./WorkflowStub";
  * NavRail (SPR-04) — the four-workflow content-first rail.
  *
  * Stories cover the SPR-04 acceptance surface:
- *   - the rail itself (exactly four workflows + Search/New/⊞ + footer),
+ *   - the rail itself (exactly four workflows + Search/New + a single
+ *     "More" footer affordance — the ⊞ launcher),
  *   - each workflow's content-first tree (zone 2),
  *   - the scene chrome (zone 3 action bar + tabs),
  *   - the honest "not yet" stub state.
@@ -31,14 +32,14 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The rail alone — exactly four workflows + Search/New/⊞ + footer. */
+/** The rail alone — exactly four workflows + Search/New + a "More" footer. */
 export const FourWorkflowRail: Story = {
   render: () => (
     <div className="h-screen flex bg-ice-2 dark:bg-space-2">
       <NavRail />
       <div className="flex-1 flex items-center justify-center text-ink-soft dark:text-moonlight text-sm">
-        Four workflows: Research · Read · Write · Speak. Click ⊞ for the
-        full inventory; ⌕ for ⌘K.
+        Four workflows: Research · Read · Write · Speak. Click ⊞ "More" for
+        the full inventory + Operator/Trust/Settings; ⌕ for ⌘K.
       </div>
     </div>
   ),

@@ -35,18 +35,23 @@ import { ProductsLauncher } from "./ProductsLauncher";
  *   │ Write  │
  *   │ Speak  │
  *   ├────────┤
- *   │  ⊞     │  Products launcher — the honest full inventory of all
- *   │        │  ~39 modes, grouped + demoted. Keeps the rail at four.
- *   ├────────┤
- *   │ Oper   │  footer — shared/operator/trust/settings
- *   │ Trust  │
- *   │ Settgs │
+ *   │  ⋯     │  "More" — the SINGLE non-workflow affordance. Opens the
+ *   │  More  │  ProductsLauncher, which holds the honest full inventory
+ *   │        │  (every mode) AND the operator surfaces: Operator, Trust,
+ *   │        │  Settings, and the shared bucket. One click reaches any
+ *   │        │  of them.
  *   └────────┘
  *
- * Exactly four workflow entries — not 37, not 5. Deep modes live in the
- * launcher + ⌘K, never on the rail. The workflow set is read from the
- * taxonomy (WORKFLOW_ORDER), so the rail can't drift from the source of
- * truth.
+ * Exactly four workflow entries — not 8, not 5. Everything else (deep
+ * modes, Operator, Trust, Settings, the shared bucket) lives behind the
+ * single "More" affordance + ⌘K, never on the rail. The workflow set is
+ * read from the taxonomy (WORKFLOW_ORDER), so the rail can't drift from
+ * the source of truth.
+ *
+ * Operator/Trust/Settings reachability after the demotion: each is a
+ * `built: true` routed entry in the shared bucket of MODE_TAXONOMY, so
+ * the ProductsLauncher renders + links it. More → click Operator / Trust
+ * / Settings = one click in. ⌘K reaches them too.
  */
 const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 
@@ -79,11 +84,9 @@ const WF_ICONS: Record<Exclude<Workflow, "shared">, string> = {
 const UTIL_ICONS = {
   search: "M11 4 a7 7 0 1 1 0 14 a7 7 0 1 1 0 -14 M16 16 L21 21", // magnifier
   plus: "M12 5 V19 M5 12 H19", // +
-  launcher: "M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z", // ⊞ grid
-  operator: "M6 4 H18 V20 H6 Z M9 8 H15 M9 12 H15 M9 16 H13", // device
-  trust: "M12 3 L21 7 V13 C21 17 17 20 12 21 C7 20 3 17 3 13 V7 Z M9 12 L11 14 L15 10", // shield+check
-  settings:
-    "M12 8 a4 4 0 1 1 0 8 a4 4 0 1 1 0 -8 M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5", // gear
+  // "More" — the single non-workflow affordance. A grid glyph reads as
+  // "all products / everything else", which is exactly what it opens.
+  more: "M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z", // ⊞ grid
 };
 
 function WernerMarkInline() {
@@ -261,43 +264,23 @@ export function NavRail() {
               onClick={() => selectWorkflow(wf)}
             />
           ))}
-
-          {/* Products launcher — the honest full inventory. */}
-          <div className="my-2 mx-3 border-t border-white/10" aria-hidden="true" />
-          <RailButton
-            icon={<I d={UTIL_ICONS.launcher} />}
-            label="All products"
-            title="All products — full inventory (every mode)"
-            active={launcherOpen}
-            onClick={() => setLauncherOpen(true)}
-          />
         </nav>
 
-        {/* Footer — shared / operator / trust / settings. */}
+        {/* Footer — the SINGLE "More" affordance. Opens the
+            ProductsLauncher, which carries the full mode inventory AND
+            the operator surfaces (Operator / Trust / Settings + the
+            shared bucket). The three separate footer buttons are gone:
+            the rail now shows exactly four workflows + More. */}
         <nav
           className="border-t border-white/10 py-2 flex flex-col gap-1"
-          aria-label="Operator and settings"
+          aria-label="More"
         >
           <RailButton
-            icon={<I d={UTIL_ICONS.operator} />}
-            label="Operator"
-            title="Operator dashboard"
-            active={pathname === "/operator"}
-            onClick={() => navigate("/operator")}
-          />
-          <RailButton
-            icon={<I d={UTIL_ICONS.trust} />}
-            label="Trust"
-            title="Trust Center"
-            active={pathname.startsWith("/trust")}
-            onClick={() => navigate("/trust")}
-          />
-          <RailButton
-            icon={<I d={UTIL_ICONS.settings} />}
-            label="Settings"
-            title="Settings"
-            active={pathname === "/settings"}
-            onClick={() => navigate("/settings")}
+            icon={<I d={UTIL_ICONS.more} />}
+            label="More"
+            title="More — all products, Operator, Trust, Settings"
+            active={launcherOpen}
+            onClick={() => setLauncherOpen(true)}
           />
         </nav>
       </aside>

@@ -5,7 +5,8 @@
  * build (the same harness the smoke suite uses — no live substrate
  * needed):
  *
- *   - the rail presents EXACTLY four workflows + Search + New + ⊞,
+ *   - the rail presents EXACTLY four workflows + Search + New + a single
+ *     "More" affordance (the ⊞ launcher, now in the footer),
  *   - selecting a workflow re-scopes the content-first project tree
  *     (Research nouns ≠ Read nouns),
  *   - the scene chrome renders a per-workflow action bar + tabs,
@@ -31,16 +32,21 @@ test.describe("SPR-04 — four-workflow navigation IA", () => {
     await loadStory(page, "shell-navrail-spr-04--four-workflow-rail");
 
     const workflows = page.locator('[data-testid="navrail-workflows"] button');
-    // Four workflows + the ⊞ products launcher button = 5 buttons in the
-    // workflows nav region. The four workflow labels must each be present
-    // via their sr-only label / title.
+    // The workflows nav region holds EXACTLY the four workflows — the ⊞
+    // launcher is now the single "More" affordance in the footer, not in
+    // this region. The four workflow labels must each be present via
+    // their sr-only label / title.
     for (const label of ["Research", "Read", "Write", "Speak"]) {
       await expect(
         page.locator(`button[title^="${label} —"]`),
       ).toBeVisible({ timeout: 5_000 });
     }
-    // Exactly five buttons in the workflows region (4 workflows + ⊞).
-    await expect(workflows).toHaveCount(5);
+    // Exactly four buttons in the workflows region — not five, not 37.
+    await expect(workflows).toHaveCount(4);
+    // ...plus a single "More" affordance outside the region.
+    await expect(
+      page.locator('button[title^="More —"]'),
+    ).toBeVisible({ timeout: 5_000 });
   });
 
   test("the content tree re-scopes per workflow (Research nouns ≠ Read nouns)", async ({
