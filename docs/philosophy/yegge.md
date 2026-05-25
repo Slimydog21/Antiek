@@ -3,7 +3,8 @@
 Source: Steve Yegge × Pragmatic Engineer interview, December 2025.
 Stimulus pasted by operator 2026-05-24; brainstormed in
 `~/specs/antiek-yegge-sharpen/` (per-axis chambers); executed in
-`~/specs/antiek-yegge-execute/` (12 sprints, 3 shipped at canon-time).
+`~/specs/antiek-yegge-execute/` (12 sprints; 5 shipped at canon v2 time —
+SPR-02 + SPR-03 + SPR-09 + SPR-11 + SPR-12, the substrate-fit subset).
 
 This file is the **canonical truth set** for Yegge-derived design
 decisions in Antiek. Each truth has a stable ID
@@ -187,27 +188,155 @@ is the minimum-viable-sentence threshold.
 
 ---
 
-## Pending validation (truths a future SPR could promote)
+## T-Yegge-009 — Agent-loved REST envelope is additive; new routes adopt, legacy migrates later
 
-These are truths that the brainstorming chambers at
-`~/specs/antiek-yegge-sharpen/` surface but no shipped sprint has
-validated yet. Listed here as a checklist for future SPR-12-style passes.
+Antiek's REST surface for new routes uses
+`ResponseEnvelope[T] = {ok: bool, data?: T, error?: {code, message, details}}`.
+The error-code set is **closed** (11 entries; expanding requires a
+deliberate code-review touch on the constant) so that agent callers
+can match on `error.code` rather than parsing strings. Failure paths
+raise `EnvelopedHTTPException` so the central exception handler short-circuits
+the dependency stack cleanly; the canonical failure shape comes from
+one place. Legacy routes are intentionally NOT wrapped in the same
+sprint that ships the convention — the operator has in-flight
+parallel work on `app.py` + route modules, and a wrap-everything
+migration would create guaranteed merge conflicts with zero
+functional benefit. Migration is future-batch.
 
-- **Token burn is a first-class metric, never estimated.** Awaits SPR-05
-  (`feature/yegge-spr-05-token-burn-middleware`), which Wave-2-fit
-  ruled out for this batch because it requires a separate sprint to
-  fit cleanly into Antiek's event_log RL-trajectory semantics.
-- **Workers ≥100ms run-time must be first-class registered.** Awaits
-  SPR-04 (worker registry).
-- **Slot-machine `spawn_variants` requires verifier + external-kill.**
-  Awaits SPR-07.
-- **Operator attention is a finite resource defended by `OperatorAttentionBudget`.**
-  Awaits SPR-08.
-- **Agent-loved REST envelope: `{ok, data?, error?}` + idempotency-key.**
-  Awaits SPR-09 (scoped to new + top-3 existing routes).
-- **Notebook IS the face; voice/persona deferred.** Awaits SPR-10.
-- **Federation contract is aspirational; Hermes is the reference adapter.**
-  Awaits SPR-11.
+**Validated by:** SPR-09, commit `611eb6d`,
+`interfaces/research/api/envelope.py` (ERROR_CODES closed-set test at
+`tests/test_yegge_api_envelope.py::test_error_codes_set_is_closed`).
 
-Each is a candidate for promotion to a T-Yegge-NNN entry once the
-corresponding sprint ships.
+**Reverse if:** FastAPI ships a built-in envelope convention that
+matches Antiek's needs; deprecation note + convention shift.
+
+**See also:** T-Yegge-010 (idempotency); SPR-09's README at
+`interfaces/research/api/README_yegge_spr09.md` for the convention
+paste-templates.
+
+---
+
+## T-Yegge-010 — Idempotency: in-process, per-route, no cross-restart replay
+
+POST/PUT routes opting in require an `Idempotency-Key` header;
+cached responses keyed by `(route_id, key)`; replays return
+`error.code="IDEMPOTENCY_REPLAY"` with the prior response in
+`details`. The cache is **in-process only** (not persisted across
+restarts) — deliberately, so a stale replay from a different code
+revision cannot return the wrong shape after a deploy. Per-route
+namespacing means the same key on different routes does not collide.
+TTL default 24h + max 10000 entries (env-configurable;
+FIFO eviction at capacity).
+
+**Validated by:** SPR-09, commit `611eb6d`,
+`interfaces/research/api/idempotency.py`. Per-route isolation +
+TTL + eviction tests in `tests/test_yegge_api_envelope.py`.
+
+**Reverse if:** a route legitimately needs cross-restart replay
+(none today). Persistent storage adds operational surface and the
+"stale replay across deploys" risk; current call is conservative.
+
+**See also:** T-Yegge-009 (envelope).
+
+---
+
+## T-Yegge-011 — Federation is PULL-only with signed manifests + receiver-side quality gate
+
+The federation contract is the substrate's design choice for
+multi-instance knowledge exchange: receivers fetch (never push),
+manifests are signed (HMAC-SHA256 scaffold, Ed25519-swap-ready
+interface), each item content-addressed (sha256), receivers verify
+signature + run the §13.9 quality gate + write only PASS items into
+the receiver's own DB. The single-writer invariant
+(`CLAUDE.md` critical invariant §1) survives by construction —
+federation moves *artifacts* between substrates, never write
+permissions.
+
+This truth is the **substrate-fit rebuttal** to the brainstorming
+chamber's proposed "message envelope + idempotency-key +
+conflict-resolution clause" contract: PULL-only sidesteps all three
+(no inbound writes → no conflicts; content-addressed manifests →
+natural idempotency; `SliceManifest` IS the envelope). Documented
+in `docs/federation/CONTRACT.md` with the rejection rationale
+explicit.
+
+**Validated by:** SPR-11, commit `b36f29b`,
+`docs/federation/CONTRACT.md` + `docs/federation/ADAPTERS.md` +
+the substrate at `substrate/federation/{__init__,protocol,signing,slice}.py`
+(shipped pre-canon; this truth catches the canon up to the code).
+
+**Reverse if:** partner relationships shift to "push artifacts when
+generated" semantics (e.g., real-time collaboration). That would
+require a new write-side invariant; today no partner has expressed
+this need and the Sprint 30+ thread (`docs/sprint30_thread_decisions.md`
+§2 Thread 1) gates partner relationships explicitly.
+
+**See also:** T-Yegge-002 (single-writer); T-Yegge-012 (substrate-fit
+discipline).
+
+---
+
+## T-Yegge-012 — Substrate-fit wins over spec fidelity; document the rejection
+
+This is the meta-truth. SPR-01, SPR-04, SPR-05, SPR-07, SPR-08, SPR-10
+were authored against an event_log assumed-to-be-generic; reality is
+the event_log is the RL-trajectory store with a 60+-entry ActionType
+enum scoped to investigations. SPR-11's brainstormed contract assumed a
+multi-writer federation; reality is PULL-only-with-quality-gate. SPR-03
+assumed class-based role decorators; reality is package-shaped roles
+needing module-level constants. In every case the substrate-fit answer
+is different from the spec answer — and the substrate-fit answer wins.
+
+The discipline: **when the spec disagrees with the substrate, the
+substrate is the truth and the spec gets a documented rejection with
+the substrate-fit reason.** SPR-11's CONTRACT.md does this explicitly
+in its "Why no message envelope / idempotency-key / conflict-resolution
+clause" section. SPR-03's commit message does this for the
+package-level-metadata reframing. This canon entry generalizes the
+discipline.
+
+**Validated by:** the entire SPR-02..SPR-12 shipped batch. Five sprints
+delivered against twelve specced; the seven not-delivered are documented
+in the "Pending validation" section below with the substrate-fit reason
+for the deferral.
+
+**Reverse if:** a future stimulus produces a spec that survives substrate
+contact cleanly — at which point the spec was substrate-fit from the
+start and this canon entry was an over-correction. The audit lives in
+the per-sprint PR descriptions; the operator can confirm or refute.
+
+---
+
+## Pending validation (truths the brainstorming surfaces; substrate-fit
+defers)
+
+The remaining seven sprints from the brainstorm are deferred. Each has
+a substrate-fit reason that's stronger than "not yet implemented."
+
+- **SPR-01 — Event-log schema delta for `token_burn` + `worker_identity`
+  event types.** Antiek's `event_log` is the RL-trajectory store scoped
+  to `investigation_id` with a 60+-entry ActionType taxonomy
+  (`substrate/schemas/events.py`). Adding `token_burn` and
+  `worker_identity` as peer event-types would semantically pollute the
+  trajectory store. The right answer is either (a) attach token usage
+  to the existing `ROLE_CALL_END` span as a payload field, or (b) add
+  a separate telemetry store with its own primitives. Either way is a
+  larger design conversation than a one-sprint commit.
+- **SPR-04 — Worker identity & registry.** Same substrate misfit:
+  worker identity in Antiek is per-investigation, not global.
+  A registry primitive would need to integrate with the existing
+  `investigation_id`-scoped event_log.
+- **SPR-05 — Token-burn middleware + dashboard.** Awaits SPR-01.
+- **SPR-06 — Bitter-lesson sunset batch 1.** Risky without a dedicated
+  operator-blessed sunset list; the operator's continuous-research
+  daemon path is the highest-risk surface for unilateral removals.
+- **SPR-07 — `spawn_variants` slot-machine primitive.** Awaits SPR-04.
+- **SPR-08 — Operator attention budget + digest queue.** Awaits SPR-05
+  signals.
+- **SPR-10 — Recursive-summarization notebook cell.** Awaits SPR-04
+  worker identity for grouping live workers.
+
+Each candidate's path forward is recorded in the PR descriptions of
+the shipped sprints + the SPR-12 v2 commit. A future stimulus or an
+operator-blessed design conversation can convert any of these into a
+T-Yegge-NNN entry once the substrate-fit shape is clear.
