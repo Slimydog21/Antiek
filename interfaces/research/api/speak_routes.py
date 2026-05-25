@@ -275,6 +275,32 @@ async def get_economics(project_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+@speak_router.get("/gates")
+async def gates() -> dict:
+    """Read-only activation readiness: what blocks Speak's public-
+    publishing / disbursement / public-ecosystem / RL paths, and the
+    OPERATOR action that closes each gate.
+
+    This endpoint NEVER closes a gate. There is intentionally no
+    counterpart that flips one: closing a gate is an out-of-band
+    operator action (a counsel decision, a KYC step, a deliberate env
+    flip post-sign-off). The whole safety architecture — consent before
+    publish, accrue-not-disburse, single-operator — rests on these
+    staying operator-owned, so the API only ever REPORTS them."""
+    from substrate.speak import gate_status
+
+    report = gate_status.gate_report()
+    return {
+        "all_satisfied": all(g.satisfied for g in report),
+        "gates": [
+            {"id": g.id, "capability": g.capability, "satisfied": g.satisfied,
+             "env_flag": g.env_flag, "while_blocked": g.while_blocked,
+             "operator_closure": g.operator_closure}
+            for g in report
+        ],
+    }
+
+
 @speak_router.post("/projects/{project_id}/invites", response_model=InviteResponse, status_code=201)
 async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
     if not (req.informant_email or req.informant_handle):

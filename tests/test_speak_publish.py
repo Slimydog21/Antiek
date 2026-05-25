@@ -171,3 +171,55 @@ def test_public_book_split_persists(db):
             con, project_id=p.project_id, book_format="paperback", page_count=150,
         )
         assert quote.payer == "split"
+
+
+# ── provider seam is vendor-agnostic (drop-in) but fulfillment stays off ─
+
+
+def test_stub_provider_registered():
+    assert "stub" in physical_book.available_providers()
+    assert physical_book.get_provider("stub").name == "stub"
+
+
+def test_order_routes_to_registered_provider_by_name(db):
+    class _FakeVendor:
+        name = "fakepod"
+
+        def quote(self, *, book_format, page_count):
+            from decimal import Decimal
+            return Decimal("99.99")  # distinctive price proves routing
+
+    physical_book.register_provider(_FakeVendor())
+    try:
+        with _con(db) as con:
+            p = project.create_project(con, title="Bio", publish_intent="private_never_published")
+            quote = physical_book.order_physical_book(
+                con, project_id=p.project_id, book_format="paperback", page_count=10,
+                provider_name="fakepod",
+            )
+            assert quote.provider == "fakepod"
+            assert str(quote.cost_usd) == "99.99"  # the vendor's pricing, no rework
+    finally:
+        physical_book._PROVIDERS.pop("fakepod", None)
+
+
+def test_unknown_provider_name_rejected(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Bio")
+        with pytest.raises(ValueError):
+            physical_book.order_physical_book(
+                con, project_id=p.project_id, book_format="paperback", page_count=10,
+                provider_name="no-such-vendor",
+            )
+
+
+def test_fulfill_refused_no_live_vendor(db):
+    # The chokepoint that proves nothing prints/ships before a vendor is
+    # chosen: the stub can't fulfill, so fulfill() refuses.
+    with _con(db) as con:
+        p = project.create_project(con, title="Bio", publish_intent="private_never_published")
+        quote = physical_book.order_physical_book(
+            con, project_id=p.project_id, book_format="paperback", page_count=10,
+        )
+        with pytest.raises(physical_book.PodVendorUnconfigured):
+            physical_book.fulfill(con, order_id=quote.order_id)

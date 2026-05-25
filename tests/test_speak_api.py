@@ -363,6 +363,42 @@ def test_invitee_speak_bad_token_404(client, monkeypatch):
     assert r.status_code == 404
 
 
+def test_gates_report_default_all_blocked(client, monkeypatch):
+    for v in ("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "ANTIEK_SPEAK_PUBLIC_ECOSYSTEM",
+              "ANTIEK_LOOP3_UNLOCKED"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.delenv("ANTIEK_STRIPE_PROVIDER", raising=False)  # mock
+    data = client.get("/speak/gates").json()
+    assert data["all_satisfied"] is False
+    assert len(data["gates"]) == 4
+    ids = {g["id"] for g in data["gates"]}
+    assert ids == {"G2+G3", "G7", "G8"}
+    for g in data["gates"]:
+        assert g["satisfied"] is False
+        assert g["env_flag"] and g["operator_closure"] and g["while_blocked"]
+
+
+def test_gates_report_reflects_flags(client, monkeypatch):
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
+    monkeypatch.setenv("ANTIEK_LOOP3_UNLOCKED", "1")
+    monkeypatch.delenv("ANTIEK_STRIPE_PROVIDER", raising=False)  # disbursement still mock
+    gates = client.get("/speak/gates").json()["gates"]
+
+    def sat(needle: str) -> bool:
+        return next(g["satisfied"] for g in gates if needle in g["capability"])
+
+    assert sat("Public publishing") is True       # flag set
+    assert sat("disbursement") is False            # Stripe still mock → blocked
+    assert sat("RL-tuned interviewer") is True     # ANTIEK_LOOP3_UNLOCKED=1
+    assert sat("Public interview ecosystem") is False  # G7 not flipped
+
+
+def test_no_endpoint_closes_a_gate(client):
+    # The gate surface is read-only by design: POST /speak/gates must not
+    # exist (closing a gate is an operator action, never an API call).
+    assert client.post("/speak/gates", json={}).status_code in (404, 405)
+
+
 def test_list_projects(client):
     # Fresh DB → empty list.
     r = client.get("/speak/projects")

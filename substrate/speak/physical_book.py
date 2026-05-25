@@ -58,6 +58,52 @@ class StubPhysicalBookProvider:
             Decimal("0.01")
         )
 
+    # NOTE: deliberately NO ``fulfill`` method. A provider that can
+    # actually print + ship implements ``fulfill``; the stub can't, so
+    # ``physical_book.fulfill`` refuses (see PodVendorUnconfigured). This
+    # is the same shape as the TTS/openai_tts stub: the seam exists, the
+    # capability is gated until a real vendor lands.
+
+
+class PodVendorUnconfigured(RuntimeError):
+    """Raised on any attempt to actually FULFILL (print + ship) an order
+    while no live POD vendor is configured. The spec rejects live POD
+    fulfillment for v1 (pick a vendor first); this is the structural
+    guarantee that nothing prints/ships before that operator decision."""
+
+
+# ---------------------------------------------------------------------------
+# Provider registry — proves the seam is vendor-AGNOSTIC: a real adapter
+# (Lulu / IngramSpark / …) registers by name and orders route to it with
+# NO change to order_physical_book. We register the stub; we do NOT ship
+# a speculative vendor adapter (the spec says pick the vendor first).
+# ---------------------------------------------------------------------------
+
+_PROVIDERS: dict[str, PhysicalBookProvider] = {}
+
+
+def register_provider(provider: PhysicalBookProvider) -> None:
+    """Register a POD provider by its ``name``. The drop-in point for a
+    future vendor adapter — no call site changes."""
+    _PROVIDERS[provider.name] = provider
+
+
+def get_provider(name: str) -> PhysicalBookProvider:
+    if name not in _PROVIDERS:
+        raise ValueError(
+            f"unknown POD provider {name!r}; registered: {sorted(_PROVIDERS)}"
+        )
+    return _PROVIDERS[name]
+
+
+def available_providers() -> list[str]:
+    return sorted(_PROVIDERS)
+
+
+# The stub is always registered; a real vendor adds itself via
+# register_provider() once the operator picks one.
+register_provider(StubPhysicalBookProvider())
+
 
 @dataclass(frozen=True)
 class BookOrderQuote:
@@ -78,14 +124,20 @@ def order_physical_book(
     page_count: int,
     publication_id: Optional[str] = None,
     provider: Optional[PhysicalBookProvider] = None,
+    provider_name: Optional[str] = None,
 ) -> BookOrderQuote:
     """Shape + cost-quote a physical-book order against the provider
     interface. Allocates the payer per the matrix. Records a 'quoted'
-    order — never fulfilled (no live vendor)."""
+    order — never fulfilled (no live vendor).
+
+    Provider selection (all routes through the same code — vendor-
+    agnostic): an explicit ``provider`` instance wins; else
+    ``provider_name`` is looked up in the registry; else the stub."""
     ensure_speak_schema(con)
     if book_format not in _FORMATS:
         raise ValueError(f"unknown book_format: {book_format!r}")
-    provider = provider or StubPhysicalBookProvider()
+    if provider is None:
+        provider = get_provider(provider_name) if provider_name else StubPhysicalBookProvider()
 
     policy = economics_mode.policy_for_project(con, project_id)
     # Public → split economics persist; private-never-published → creator.
@@ -109,3 +161,29 @@ def order_physical_book(
         order_id=order_id, project_id=project_id, book_format=book_format,
         provider=provider.name, cost_usd=cost, payer=payer, fulfilled=False,
     )
+
+
+def fulfill(con: Any, *, order_id: str) -> None:
+    """Attempt to actually PRINT + SHIP a quoted order. Refused
+    (``PodVendorUnconfigured``) unless the order's provider implements a
+    real ``fulfill`` — which the stub does not, and which no provider
+    does today (the spec defers live POD until a vendor is chosen). This
+    is the seam a future vendor adapter completes; until then, ordering
+    is quote-only and this is the single chokepoint that proves nothing
+    ships prematurely."""
+    ensure_speak_schema(con)
+    row = con.execute(
+        "SELECT provider FROM speak_book_orders WHERE order_id = ?", [order_id]
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"book order {order_id!r} not found")
+    provider = get_provider(row[0])
+    vendor_fulfill = getattr(provider, "fulfill", None)
+    if not callable(vendor_fulfill):
+        raise PodVendorUnconfigured(
+            f"provider {row[0]!r} cannot fulfill orders — no live POD vendor "
+            "is configured. Ordering is quote-only until the operator picks a "
+            "vendor and a fulfilling adapter is registered (spec: defer live "
+            "POD to v2)."
+        )
+    vendor_fulfill(con, order_id=order_id)  # pragma: no cover — no such provider today
