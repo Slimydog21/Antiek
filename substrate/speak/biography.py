@@ -108,7 +108,13 @@ def assemble_outline(
         )
         for c in project_claims(con, project_id)
     ]
-    composer = composer or SpeakOutlineComposer(con)
+    if composer is None:
+        # Write SPR-01 has landed: compose through its canonical outline_blocks
+        # layer (which supersedes section_blocks) instead of forking onto the
+        # legacy substrate. Lazy import avoids the write_composer ↔ biography
+        # cycle. Falls back to SpeakOutlineComposer if Write is unavailable.
+        from .write_composer import default_outline_composer
+        composer = default_outline_composer(con, investigation_id=f"speak-biography-{project_id}")
     if deliverable_id is None:
         deliverable_id = insert_deliverable(
             con, title=title, deliverable_kind="biography_section"
