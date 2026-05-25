@@ -103,21 +103,36 @@ function WernerMarkInline() {
   );
 }
 
-/** A rail button (workflow, util, or footer). Mirrors the prior rail's
- *  visual language: sun-yellow active fill + ink left-edge bar. */
+/** Rail button for workflows (the four dominant doors), utilities, and More.
+ *  Variant gives workflows stronger weight (visible persistent labels below
+ *  glyph, taller presence, stronger inactive color using ice tokens) so the
+ *  eye lands on the four doors first. Utilities and More stay muted/icon-only
+ *  and read as secondary/overflow. Single extension to the existing button
+ *  (no parallel component). All Lemon tokens. */
 function RailButton({
   icon,
   label,
   active,
   onClick,
   title,
+  variant = "utility",
 }: {
   icon: ReactNode;
   label: string;
   active?: boolean;
   onClick: () => void;
   title: string;
+  variant?: "workflow" | "utility" | "more";
 }) {
+  const isWorkflow = variant === "workflow";
+  const color = active
+    ? "bg-sun text-ink"
+    : isWorkflow
+    ? "text-ice-2/80 hover:text-ice-1 hover:bg-white/10"
+    : "text-ice-2/50 hover:text-ice-2/70 hover:bg-white/5";
+  const layout = isWorkflow
+    ? "min-h-12 py-1 flex-col items-center justify-center"
+    : "h-10 items-center justify-center";
   return (
     <button
       type="button"
@@ -125,21 +140,29 @@ function RailButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={
-        "h-10 mx-1.5 flex items-center justify-center rounded relative " +
-        (active
-          ? "bg-sun text-ink"
-          : "text-ice-2/70 hover:text-ice-1 hover:bg-white/10")
+        "mx-1.5 flex rounded relative " +
+        layout +
+        " " +
+        color
       }
     >
       {active && (
         <span
           aria-hidden="true"
-          className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-ink"
+          className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-ink"
         />
       )}
       <span className="leading-none" aria-hidden="true">
         {icon}
       </span>
+      {isWorkflow && (
+        <span
+          className="text-[10px] leading-[11px] mt-0.5 font-medium tracking-tight text-center w-full"
+          aria-hidden="true"
+        >
+          {label}
+        </span>
+      )}
       <span className="sr-only">{label}</span>
     </button>
   );
@@ -200,7 +223,7 @@ export function NavRail() {
     <>
       <aside
         className={
-          "w-[60px] shrink-0 h-full flex flex-col bg-ink dark:bg-void border-r-edge border-sun " +
+          "w-[72px] shrink-0 h-full flex flex-col bg-ink dark:bg-void border-r-edge border-sun " +
           (isMobile ? "absolute top-0 left-0 z-40 shadow-z3" : "") +
           (showRail ? "" : " hidden")
         }
@@ -218,7 +241,7 @@ export function NavRail() {
           </button>
         )}
 
-        {/* Werner mark — pinned to top, returns to the Research home. */}
+        {/* Werner mark pinned to top, returns to the Research home. */}
         <button
           type="button"
           title="Antiek · Werner"
@@ -228,27 +251,31 @@ export function NavRail() {
           <WernerMarkInline />
         </button>
 
-        {/* Utility group — Search + New(tree). */}
-        <nav className="pt-2 flex flex-col gap-1" aria-label="Utilities">
+        {/* Utility cluster (Search + New/tree) — visually subordinate to the
+            four doors: smaller icons, muted tokens, grouped above the
+            divider. Not workflow destinations. */}
+        <nav className="pt-1 flex flex-col gap-0.5" aria-label="Utilities">
           <RailButton
-            icon={<I d={UTIL_ICONS.search} />}
+            icon={<I d={UTIL_ICONS.search} size={15} />}
             label="Search"
             title="Search · ⌘K"
             onClick={openSearch}
+            variant="utility"
           />
           <RailButton
-            icon={<I d={UTIL_ICONS.plus} />}
+            icon={<I d={UTIL_ICONS.plus} size={15} />}
             label="New / Project tree"
             title="Toggle the project tree (⌘B)"
             active={treeOpen}
             onClick={toggleTree}
+            variant="utility"
           />
         </nav>
 
         <div className="my-2 mx-3 border-t border-white/10" aria-hidden="true" />
 
-        {/* THE FOUR WORKFLOWS (zone 1). Read from WORKFLOW_ORDER so the
-            rail can never drift from the taxonomy. */}
+        {/* THE FOUR WORKFLOWS (zone 1). Read from WORKFLOW_ORDER only.
+            Variant + visible labels + stronger weight make doors dominant. */}
         <nav
           className="flex-1 flex flex-col gap-1"
           aria-label="Workflows"
@@ -259,28 +286,28 @@ export function NavRail() {
               key={wf}
               icon={<I d={WF_ICONS[wf]} />}
               label={WORKFLOWS[wf].label}
-              title={`${WORKFLOWS[wf].label} — ${WORKFLOWS[wf].tagline}`}
+              title={`${WORKFLOWS[wf].label} - ${WORKFLOWS[wf].tagline}`}
               active={activeWorkflow === wf}
               onClick={() => selectWorkflow(wf)}
+              variant="workflow"
             />
           ))}
         </nav>
 
-        {/* Footer — the SINGLE "More" affordance. Opens the
-            ProductsLauncher, which carries the full mode inventory AND
-            the operator surfaces (Operator / Trust / Settings + the
-            shared bucket). The three separate footer buttons are gone:
-            the rail now shows exactly four workflows + More. */}
+        {/* Footer: single More affordance (overflow). Distinct from doors
+            because icon-only + muted + footer position. Opens launcher with
+            Operator/Trust/Settings + all deep modes. One click reachability. */}
         <nav
           className="border-t border-white/10 py-2 flex flex-col gap-1"
           aria-label="More"
         >
           <RailButton
-            icon={<I d={UTIL_ICONS.more} />}
+            icon={<I d={UTIL_ICONS.more} size={15} />}
             label="More"
-            title="More — all products, Operator, Trust, Settings"
+            title="More - all products, Operator, Trust, Settings"
             active={launcherOpen}
             onClick={() => setLauncherOpen(true)}
+            variant="more"
           />
         </nav>
       </aside>
