@@ -48,7 +48,6 @@ from pathlib import Path
 from typing import Any
 
 from tools.lints.baseline import (
-    BaselineSchema,
     ViolationKey,
     compute_keys,
     filter_to_new_only,
@@ -58,10 +57,14 @@ from tools.lints.baseline import (
 )
 from tools.lints.no_raise_in_substrate_writers import (
     Violation,
+)
+from tools.lints.no_raise_in_substrate_writers import (
     scan_paths as scan_no_raise,
 )
 from tools.lints.unannotated_bypass import (
     BypassViolation,
+)
+from tools.lints.unannotated_bypass import (
     scan_paths as scan_bypass,
 )
 

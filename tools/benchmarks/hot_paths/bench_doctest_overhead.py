@@ -12,7 +12,6 @@ import doctest
 
 from tools.benchmarks.hot_paths._harness import BenchResult, measure
 
-
 # A representative doctest block — the same shape as the exemplars
 # added to substrate/results.py.
 _DOCTEST_SOURCE = """

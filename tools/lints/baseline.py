@@ -68,7 +68,7 @@ class BaselineSchema:
     violations: list[ViolationKey]
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> "BaselineSchema":
+    def from_json(cls, data: dict[str, Any]) -> BaselineSchema:
         if data.get("schema_version") != SCHEMA_VERSION:
             raise ValueError(
                 f"baseline schema_version is "

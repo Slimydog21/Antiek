@@ -1,13 +1,6 @@
 {
-  "generated_at": "2026-05-24T19:32:07.431734+00:00",
+  "generated_at": "2026-05-25T17:02:48.592691+00:00",
   "lint": "no_raise_in_substrate_writers",
   "schema_version": 1,
-  "violations": [
-    {
-      "col": 12,
-      "kind": "raise:EscapeHatchInvalidReason",
-      "line": 149,
-      "path": "substrate/escape_hatch.py"
-    }
-  ]
+  "violations": []
 }

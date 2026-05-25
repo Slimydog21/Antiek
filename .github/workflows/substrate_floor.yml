@@ -69,7 +69,12 @@ jobs:
 
       - name: mypy --strict (Wave 1 substrate + lints + cli)
         run: |
-          mypy --strict $SCOPE_FILES tools/lints/baseline.py tools/lints/cli_with_baseline.py
+          # --explicit-package-bases --namespace-packages: tools/lints/ has an
+          # __init__.py but tools/ does not, so mypy otherwise resolves
+          # baseline.py under two module names ("lints.baseline" and
+          # "tools.lints.baseline") and aborts ("source file found twice").
+          mypy --strict --explicit-package-bases --namespace-packages \
+            $SCOPE_FILES tools/lints/baseline.py tools/lints/cli_with_baseline.py
 
       - name: Lint enforce — no_raise (against committed baseline)
         run: |
