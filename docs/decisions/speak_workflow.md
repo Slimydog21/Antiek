@@ -116,10 +116,11 @@ answers, **claims** (the explicit answer→claim bridge — third-party
 tagging is a confirmed judgment, never inferred), corroborate,
 subject-consent, contributors, draft, publish, book-orders, takedowns.
 Domain exceptions map to HTTP (consent/G7 → 403, publish/disburse → 409,
-not-found → 404). `tests/test_speak_api.py` (6 tests) runs the full
-operator journey end-to-end through the REAL wired app (TestClient over
-`create_app`) + every gate refusal — this IS a true end-to-end for the
-API; the only thing still missing is a browser UI PAGE.
+not-found → 404). `tests/test_speak_api.py` runs the full operator +
+invitee journeys end-to-end through the REAL wired app (TestClient over
+`create_app`) + every gate refusal — a true end-to-end for the API. The
+browser UI surfaces that call it now exist too (see the two sections
+below).
 
 ## The GapSource seam paid off
 
@@ -131,14 +132,50 @@ Speak's consent-aware local source). Zero changes to Speak's call sites
 or tests; all 8 SPR-04 tests stayed green. This is the contract-first
 design doing its job.
 
+## UI surfaces (built 2026-05-25, continuation)
+
+The browser surfaces now exist, wired to the `/speak` REST API:
+- **`modes/SpeakIndex`** — project list + create form (publish-intent
+  surfaces the legal-gate note).
+- **`modes/Speak`** (operator console) — per-project workspace: economics,
+  the live Invites surface, and corroborate / draft / publish / book-order
+  controls, each surfacing its specific gate-refusal reason. Routes
+  `/speak` + `/speak/:projectId` (authed).
+
+## Invitee surface — token-authorized, unauthenticated (the demand side)
+
+The product thesis is "send a link to friends and family." That page is
+**`modes/SpeakInvite`** at the **unauthenticated** route
+`/speak/invite/:token` (top-level, before the `RequireAuth` catch-all).
+
+Architectural call: an invitee is a SOURCE, not an account (real
+contributor accounts are gated on G7), so the URL TOKEN is the
+credential. A dedicated token-authorized API surface
+(`/speak/invite/{token}` — landing / consent / answer / followups /
+decline) is keyed by token, never a caller-supplied interview_id,
+verifies the token resolves, and operates only on that one interview —
+SEPARATE from the operator-authed `/speak/...` endpoints. The
+operator-auth middleware lets the `/speak/invite/` prefix through (the
+token authorizes, not an operator session); a test asserts the operator
+surface stays auth-gated while the invitee surface is reachable. Lock
+discipline: token-resolve under one write lock, released before
+`resume()`/`submit_answer()` acquire their own (no nesting). Consent is
+scoped + honest in the UI (`record` required to take part;
+`attribute`/`publish` optional, declining publish shown as "still helps,
+just not public"). `tests/test_speak_api.py` now runs the invitee flow
+end-to-end (12 tests total).
+
 ## Deferred (NOT built — honest scope)
 
-- **Browser UI page for the authoring/publishing journey.** The REST
-  surface it would call now EXISTS and is end-to-end tested
-  (`test_speak_api.py`); only the React page is missing.
-  `e2e/speak-biography.spec.ts` smoke-tests the extant Speak surfaces
-  (Invites, transcript correction) and `test.skip`s the full *browser*
-  journey with that reason.
+- **Voice capture for invitees + a running-server browser e2e.** The
+  invitee answer flow is text-first (what you type IS the corrected
+  transcript, SPR-02 M5); a record→auto-transcribe→correct loop for
+  invitees needs the `/voice` upload path token-gated too. The full
+  operator + invitee journeys are end-to-end tested in
+  `test_speak_api.py` (TestClient); the Storybook e2es
+  (`speak-biography.spec.ts`, `speak-publish.spec.ts`) smoke the UI
+  surfaces and `test.skip` the live-API browser journey (Storybook has
+  no live `/speak` server).
 - **Live POD fulfillment.** `physical_book.StubPhysicalBookProvider`
   quotes a cost and fulfils NOTHING. A vendor adapter (Lulu/IngramSpark)
   drops into the `PhysicalBookProvider` seam later.
