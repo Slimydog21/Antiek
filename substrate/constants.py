@@ -21,7 +21,7 @@ vocabulary, and the DeepBlu-lineage claim classes.
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, NamedTuple
 
 
 # ============================================================
@@ -188,6 +188,104 @@ RELATION_TO_CLAIM_CLASS: Final[dict[str, str]] = {
     # fundamental_capability — from extractor vocabulary ("constrains").
     "constrains": "fundamental_capability",
 }
+
+
+# ── DRW SPR-01 — controlled relation vocabulary for insight/question nodes ──
+# The graph's ``edges.relation`` column is free-form TEXT, but the two new
+# atomic node types (insight, question) earn a *closed* relation set so
+# structural gap detection (SPR-07) can query by relation name without
+# guessing at spelling drift. Promotion code references these constants —
+# never a hardcoded string — so a typo is a NameError, not a silent
+# orphan edge.
+#
+# Every edge is node->node (``edges.source_node_id`` / ``target_node_id``
+# are both NOT NULL FKs to ``nodes``). Two provenance facts therefore do
+# NOT appear here as relations, because their target is not a node:
+#   * the *investigation* an insight/question came from — carried by the
+#     ``GRAPH_NODE_INSERTED`` event envelope's ``investigation_id`` and in
+#     node ``metadata`` (the spec's "derived_from"/"raised_by" intent);
+#   * the *document/chunk* that grounds an insight — carried by the
+#     edge's own ``source_document_id`` / ``chunk_id`` columns on a
+#     ``supported_by`` edge (so the spec's "supported_by -> document"
+#     intent is preserved without a phantom document node).
+class InsightQuestionRelation(NamedTuple):
+    relation: str
+    source_type: str            # node_type the edge originates from
+    target_types: tuple[str, ...]  # node_types the edge may point at
+    why: str
+
+
+# All non-insight/question node types, for relations that may point at any
+# substantive node (e.g. a question can ask about any graph entity).
+_ALL_SUBSTANTIVE_NODE_TYPES: Final[tuple[str, ...]] = (
+    "entity", "organization", "person", "property",
+    "metric", "mechanism", "claim", "method", "constraint",
+)
+
+INSIGHT_QUESTION_RELATIONS: Final[tuple[InsightQuestionRelation, ...]] = (
+    InsightQuestionRelation(
+        "supported_by", "insight", _ALL_SUBSTANTIVE_NODE_TYPES,
+        "An insight is evidenced by the claim/entity nodes it rests on; the "
+        "edge also carries source_document_id + chunk_id for the originating "
+        "source. The primary, near-universal case is insight -> claim.",
+    ),
+    InsightQuestionRelation(
+        "contradicts", "insight", ("claim", "insight"),
+        "An insight stands against a claim or another insight. SPR-07 reads "
+        "this relation to surface contradictions as structural gaps.",
+    ),
+    InsightQuestionRelation(
+        "refines", "insight", ("insight",),
+        "A living note's newer version refines the one it supersedes "
+        "(SPR-03). Lets the reading surface show note lineage without "
+        "losing the prior text from the graph.",
+    ),
+    InsightQuestionRelation(
+        "asks_about", "question", _ALL_SUBSTANTIVE_NODE_TYPES + ("insight",),
+        "What a question concerns — any substantive node or an insight. "
+        "SPR-07 finds 'unanswered question' gaps by questions whose "
+        "asks_about target has no resolving insight.",
+    ),
+    InsightQuestionRelation(
+        "resolved_by", "question", ("insight",),
+        "The insight that answers a question. Document-level resolution "
+        "rides on the edge's source_document_id; insight resolution is the "
+        "node->node case here.",
+    ),
+)
+
+# Fast membership + validation surface for the promotion functions.
+INSIGHT_QUESTION_RELATION_NAMES: Final[frozenset[str]] = frozenset(
+    r.relation for r in INSIGHT_QUESTION_RELATIONS
+)
+_INSIGHT_QUESTION_RELATION_BY_NAME: Final[dict[str, InsightQuestionRelation]] = {
+    r.relation: r for r in INSIGHT_QUESTION_RELATIONS
+}
+
+
+def validate_insight_question_edge(
+    relation: str, source_type: str, target_type: str
+) -> None:
+    """Raise ``ValueError`` if ``(relation, source_type, target_type)`` is
+    not in the controlled vocabulary. The promotion functions call this so
+    a malformed edge fails loudly at write time rather than landing a
+    silently-untraversable relation in the graph."""
+    spec = _INSIGHT_QUESTION_RELATION_BY_NAME.get(relation)
+    if spec is None:
+        raise ValueError(
+            f"unknown insight/question relation {relation!r}; allowed: "
+            f"{sorted(INSIGHT_QUESTION_RELATION_NAMES)}"
+        )
+    if source_type != spec.source_type:
+        raise ValueError(
+            f"relation {relation!r} originates from {spec.source_type!r}, "
+            f"not {source_type!r}"
+        )
+    if target_type not in spec.target_types:
+        raise ValueError(
+            f"relation {relation!r} cannot point at a {target_type!r} node; "
+            f"allowed targets: {spec.target_types}"
+        )
 
 
 # ============================================================
@@ -372,6 +470,101 @@ DOMAIN_SKILLS: Final[tuple[str, ...]] = (
 # How many times a process pattern must be re-derived before the
 # orchestrator proposes codifying it as a process skill.
 PROCESS_SKILL_PROPOSAL_THRESHOLD: Final[int] = 3
+
+
+# ============================================================
+# Section I — Read workflow: servable-corpus legal gate (§9.0 / §9.10)
+# ============================================================
+#
+# The Read workflow ("Spotify for books") serves book full text ONLY for
+# content whose license permits it. The binding minimum (master-spec §9.0
+# retrieval-time gating + §9.10 publisher consent) is encoded as a
+# deny-by-default gate over the EXISTING ``documents.content_class``
+# column — the same column the chunk-search G1 gate keys off in
+# ``substrate/graph/search.py``. There is deliberately NO second
+# servability column: a parallel status would drift from G1, and a gate
+# that can drift is a gate that fails open. Servability is DERIVED from
+# content_class (+ a book-level takedown override), never stored
+# authoritatively beside it.
+#
+# Legal lineage: *Hachette v. Internet Archive* (2nd Cir. 2024) killed
+# the structural fair-use defence for aggregate-and-serve; *Bartz v.
+# Anthropic* (~$1.5B settlement) priced post-serve damages far above
+# the cost of pre-serve gating. The lesson encoded here: serve full text
+# only for public-domain, platform-authored, or publisher-opted-in
+# content, and deny by default for everything else (including unknown /
+# NULL provenance and anything aggregated from online).
+
+# Content classes whose FULL TEXT may be served by the Read workflow.
+# This is an ALLOWLIST (deny-by-default), intentionally STRICTER than the
+# chunk-search gate's denylist in search.py (where NULL content_class
+# passes as legacy/grandfathered). Serving a whole book full-text is a
+# higher-liability act than returning a ≤500-char research snippet, so
+# unknown / NULL / restricted content resolves to metadata-only here.
+#
+# Maps to the documents.content_class vocabulary (schema.py V2 §18):
+#   public_domain             → out-of-copyright; servable
+#   user_owned                → platform/operator-authored (Write workflow); servable
+#   user_public_contribution  → user-posted to public graph (§13.9); servable
+#   opt_in_licensed           → publisher claimed via §9.10 opt-in; servable
+# Everything else (restricted_pending_opt_in, NULL, unrecognised) is
+# gated to metadata-only and never served full text.
+SERVABLE_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
+    "public_domain",
+    "user_owned",
+    "user_public_contribution",
+    "opt_in_licensed",
+})
+
+# The documents.content_class value that means "gated": withheld from
+# full-text serving AND from the ad/attribution chunk-retrieval path,
+# but retrievable on private_research / operator_only paths (master-spec
+# §9.0). MUST be a member of search.py's RESTRICTED_CONTENT_CLASSES — the
+# two name the same gate state from the write side and the read side.
+# This is the deny-by-default landing zone for any book with unknown or
+# unestablished rights (including "aggregated from online").
+GATED_DEFAULT_CONTENT_CLASS: Final[str] = "restricted_pending_opt_in"
+
+# The content_class a book is moved to on takedown. It is the SAME gate
+# state as the gated default — a removal demand restricts the content
+# exactly as an unknown-rights book is restricted — but the two are kept
+# as distinct named constants because they document distinct intents, and
+# takedown additionally sets the book_assets.taken_down flag (which the
+# servability projection treats as TAKEN_DOWN, not merely gated). Reusing
+# the existing restricted gate means no new gating mechanism is
+# introduced; the original content_class is saved on the book_assets row
+# so takedown is reversible (master-spec §9.10 30-day removal SLA; Bartz
+# pre-serve-takedown discipline).
+TAKEDOWN_CONTENT_CLASS: Final[str] = GATED_DEFAULT_CONTENT_CLASS
+
+# The presentation vocabulary the library + reader surfaces render. These
+# are DERIVED from (content_class, taken_down) by
+# substrate.books.servability.servability_of — they are not a stored
+# column. The order is the deny-by-default reading order: the first three
+# serve full text, the last two do not.
+BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (
+    "public_domain",       # out-of-copyright; full text servable
+    "platform_authored",   # operator/Write-workflow authored; servable
+    "publisher_opted_in",  # publisher claimed via §9.10 opt-in; servable
+    "gated_metadata_only",  # default: metadata/snippet only, full text withheld
+    "taken_down",          # removed on demand; full text purged
+)
+
+# The default servability for a freshly-ingested book with no established
+# license — including anything aggregated "from online" with unknown
+# rights. Deny-by-default is the whole point of this gate.
+BOOK_DEFAULT_SERVABILITY: Final[str] = "gated_metadata_only"
+
+# Max characters of body text returned for a NON-servable (gated) book.
+# This is the legally load-bearing line between "snippet view" and
+# "full-text serving": *Authors Guild v. Google* (2d Cir. 2015) upheld
+# bounded snippet view of in-copyright books as fair use, while *Hachette
+# v. Internet Archive* (2024) enjoined serving full text. A gated book
+# therefore returns at most this many characters; a servable book returns
+# the whole body. Zero would mean "metadata only, no body at all" — we
+# keep a small snippet because the Google precedent blesses it and it
+# makes the library useful without crossing the line.
+SERVE_SNIPPET_MAX_CHARS: Final[int] = 500
 
 
 # ============================================================
