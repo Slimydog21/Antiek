@@ -239,6 +239,30 @@ class CascadeSession:
             out.append(ResearchState(iid, leaf.sub_question, st, leaf.question_node_id))
         return out
 
+    def is_complete(self) -> bool:
+        """True once every research has reached a terminal state. The robust
+        completion signal for a poll-drain consumer (e.g. the SSE transport),
+        which does not depend on the single-consumer ``stream()`` draining the
+        queue."""
+        return all(RunState(s.state).is_terminal() for s in self.status())
+
+    def drain_nowait(self) -> List[StepEvent]:
+        """Pop all currently-buffered StepEvents without blocking (skips the
+        internal sentinel). Lets a transport poll-and-drain the multiplexed
+        stream and decide termination via ``is_complete`` — robust to a
+        request/response server that only advances the loop while a request is
+        in flight (the poller's ``await asyncio.sleep`` gives the research
+        tasks loop time)."""
+        out: List[StepEvent] = []
+        while True:
+            try:
+                item = self._out.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if item is not _SESSION_DONE:
+                out.append(item)
+        return out
+
 
 # ---------------------------------------------------------------------------
 # M6 — recovery: reconstruct a session purely from the event log
