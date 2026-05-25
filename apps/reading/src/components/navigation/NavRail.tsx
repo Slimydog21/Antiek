@@ -51,6 +51,7 @@ function I({ d, size = 18 }: { d: string; size?: number }) {
 const ICONS = {
   research: "M3 12 L8 7 L13 12 L18 7 L21 9 M3 12 V20 H21 V12",        // peaks + horizon
   wrestle:  "M4 5 H20 V19 H4 Z M4 9 H20 M9 13 H15 M9 16 H13",         // doc with lines
+  library:  "M12 6 C9 4 5 4 3 5 V19 C5 18 9 18 12 20 C15 18 19 18 21 19 V5 C19 4 15 4 12 6 Z M12 6 V20", // open book
   create:   "M5 19 L12 5 L19 19 M9 14 H15",                            // triangular A
   brainstorm: "M6 14 a6 6 0 1 1 12 0 M9 14 V18 H15 V14 M11 21 H13",   // lightbulb
   notebook: "M4 4 H18 V20 H4 Z M4 4 V20 H6 V4 M9 9 H15 M9 13 H14",    // bound notebook
@@ -65,6 +66,7 @@ const ICONS = {
 
 const ITEMS: Item[] = [
   { to: "/",             icon: <I d={ICONS.research} />,   label: "Research",   end: true,  group: "main" },
+  { to: "/library",      icon: <I d={ICONS.library} />,    label: "Read",                   group: "main" },
   { to: "/wrestle",      icon: <I d={ICONS.wrestle} />,    label: "Wrestle",                group: "main" },
   { to: "/create",       icon: <I d={ICONS.create} />,     label: "Create",                 group: "main" },
   { to: "/brainstorm",   icon: <I d={ICONS.brainstorm} />, label: "Brainstorm",             group: "main" },
