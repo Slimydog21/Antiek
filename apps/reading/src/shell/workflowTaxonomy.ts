@@ -441,6 +441,20 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     sharedReason: "Cross-substrate governance (Phase 3); not workflow-scoped.",
   },
   {
+    // antiek-unified SPR-05 (gate ledger + roadmap) + SPR-07 (cost + consent).
+    // One coordination surface spanning all four workflows — gate state, the
+    // 45-sprint roadmap, unified cost, and per-IP-holder escrow/consent. Read-
+    // only governance, so it lives in the shared bucket, not one workflow.
+    id: "Coordination",
+    workflow: "shared",
+    label: "Coordination",
+    blurb: "Gate ledger · roadmap · unified cost · escrow/consent (read-only).",
+    built: true,
+    route: "/coordination",
+    sharedReason:
+      "Cross-workflow governance (gates, roadmap, cost, escrow/consent); spans all four workflows.",
+  },
+  {
     id: "CrossGraphCitations",
     workflow: "shared",
     label: "Cross-graph citations",

@@ -9,6 +9,7 @@ import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
 import BrainstormStation from "./modes/BrainstormStation";
 import Coordination from "./modes/Coordination";
+import CostConsent from "./modes/Coordination/CostConsent";
 import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
@@ -104,6 +105,11 @@ function AuthenticatedRoutes() {
             + 45-sprint roadmap). Slots into the SPR-04 shared/operator bucket
             when the four-workflow NavRail lands; reachable directly meanwhile. */}
         <Route path="/coordination" element={<Coordination />} />
+        {/* antiek-unified SPR-07 — read-only unified cost + consent surface.
+            Reads cost from the dispatch event log, escrow from the IP-holder
+            ledger, gate state from the SPR-05 gate ledger. No disbursement
+            path lives here. Slots into the SPR-04 shared/operator bucket. */}
+        <Route path="/coordination/cost-consent" element={<CostConsent />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
         <Route path="/replay/:investigationId" element={<Replay />} />
