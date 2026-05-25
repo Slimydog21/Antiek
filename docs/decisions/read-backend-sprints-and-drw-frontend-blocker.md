@@ -4,8 +4,33 @@
 **Branch:** `read/wave-1-legal-spine`
 **Source spec:** `specs/read/` (9 sprints, 4 waves)
 **Status:** SPR-01 complete; SPR-05/06/08/09 **backend** complete; the four
-React-frontend sprints (SPR-02/03/04/07) are blocked on the unbuilt DRW
-shared reading surface.
+React-frontend sprints (SPR-02/03/04/07) *were* blocked on the unbuilt DRW
+shared reading surface — **blocker LIFTED 2026-05-25: DRW SPR-10 landed
+(`1381577` + `2438f61`). See "Update" below.**
+
+## Update — DRW SPR-10 landed; the frontend blocker is lifted (2026-05-25)
+
+The DRW reading surface this doc was blocked on now exists:
+
+- **DRW SPR-10 transport** (`1381577`): `interfaces/research/api/reading_routes.py`
+  — document + versions, content-anchored notes, living-note challenge,
+  document-scoped gaps.
+- **DRW SPR-10 UI** (`2438f61`): `apps/reading/src/modes/DeepResearchReading/`
+  — the highlight/note/position primitives Read's reader was waiting on:
+  `anchor.ts` (whitespace-normalized content anchoring with stale detection —
+  the edit-robust analog of the planned `usePosition.ts`), `DocumentView.tsx`
+  (raw_text + inline insight/question highlights + edit→version), `NoteCard.tsx`
+  (the note rail + challenge), `GapSidebar.tsx`, `useLiveNotes.ts`. The DRW
+  monitor (`d007ff4`) + the cascade transport (`dd8100f`) provide the
+  spin-research hand-off (`/deep-research?plan=…`).
+
+So Read's surface-blocked sprints can now build: **SPR-02/03** against the
+servable-corpus API (already the contract) + the DRW reading-surface
+primitives; **SPR-07** against the DRW note/spin affordances. **Honest
+caveat:** those primitives are currently DRW-named (`modes/DeepResearchReading/`),
+not yet a shared library — Read either reuses them in place or a small
+extraction-to-shared-component is the clean first step. The backend-first split
+recorded below stands; the React halves are now unblocked, not done.
 
 ## What's built (this session)
 
