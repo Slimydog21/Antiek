@@ -223,6 +223,56 @@ def test_read_pdf_word_count_sums_pages(stub_reader_factory):
     assert r.word_count == 5
 
 
+def test_read_pdf_no_outline_yields_empty_toc(stub_reader_factory):
+    """Most scanned/auto-generated PDFs carry no outline; the reader must
+    degrade to an empty TOC, not crash (the _StubReader has no outline)."""
+    stub_reader_factory(pages=["body text here that is long enough"], meta={})
+    r = read_pdf(b"any")
+    assert r.toc == []
+
+
+def test_read_pdf_extracts_nested_outline(monkeypatch):
+    """Read SPR-01 M1: the reader flattens pypdf's nested bookmark
+    outline into ordered TocEntry rows with nesting levels + resolved
+    page indices, and degrades gracefully on an unresolvable destination."""
+
+    class _Dest:
+        def __init__(self, title):
+            self.title = title
+
+    class _OutlineReader:
+        # outline: Chapter 1 (p0) → [1.1 Intro (p2)], Chapter 2 (unresolvable)
+        ch1, sub, ch2 = _Dest("Chapter 1"), _Dest("1.1 Intro"), _Dest("Chapter 2")
+
+        def __init__(self, _source=None):
+            self._page_of = {id(self.ch1): 0, id(self.sub): 2}  # ch2 missing
+
+        @property
+        def pages(self):
+            return [_StubPage("page one body"), _StubPage("p2"), _StubPage("p3")]
+
+        @property
+        def metadata(self):
+            return SimpleNamespace(get=lambda k: None)
+
+        @property
+        def outline(self):
+            return [self.ch1, [self.sub], self.ch2]
+
+        def get_destination_page_number(self, dest):
+            if id(dest) not in self._page_of:
+                raise ValueError("unresolvable destination")
+            return self._page_of[id(dest)]
+
+    monkeypatch.setattr("acquisition.books.reader.PdfReader", _OutlineReader)
+    r = read_pdf(b"any")
+    assert [(t.title, t.page_index, t.level) for t in r.toc] == [
+        ("Chapter 1", 0, 0),
+        ("1.1 Intro", 2, 1),
+        ("Chapter 2", None, 0),  # unresolvable destination surfaced, not dropped
+    ]
+
+
 # ---------------------------------------------------------------------------
 # C. book_doc_id
 # ---------------------------------------------------------------------------

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Karpathy deep-lens — substrate reconciliation beneath the four-workflow flywheel</title>
+<style>
+:root{--color-primary:#1d4aff;--color-primary-dark:#1330b0;--color-accent:#f9bd2b;--color-accent-dark:#d99e10;--color-success:#1a7f4f;--color-warning:#c47a00;--color-danger:#c63d24;--color-info:#0e6ea0;--color-black:#151515;--color-ink:#2c2c2c;--color-muted:#6b6b6b;--color-line:#cfcfcf;--color-bg:#fafaf7;--color-bg-card:#ffffff;--color-bg-soft:#f3f1ea;--color-bg-code:#1c1c1c;--color-bg-code-text:#e8e8e0;--tag-blue:#e5ecff;--tag-yellow:#fdf1cf;--tag-green:#d9efe2;--tag-orange:#fce3cd;--tag-red:#f7d5cd;--tag-grey:#ebebe6;--radius:6px;--radius-sm:4px;--border:2px solid var(--color-black);--border-thin:1px solid var(--color-line);--shadow-card:4px 4px 0 0 var(--color-black);--shadow-card-sm:2px 2px 0 0 var(--color-black)}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;font-size:15px;line-height:1.55;color:var(--color-ink);background:var(--color-bg);-webkit-font-smoothing:antialiased}
+.page{max-width:1240px;margin:0 auto;padding:32px 28px 80px 28px}
+header.hero{border:var(--border);border-radius:var(--radius);background:var(--color-bg-card);box-shadow:var(--shadow-card);padding:28px 28px 24px 28px;margin-bottom:28px}
+header.hero .eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--color-muted);font-weight:600;margin:0 0 6px 0}
+header.hero h1{margin:0 0 6px 0;font-size:30px;line-height:1.15;font-weight:800;color:var(--color-black);letter-spacing:-.01em}
+header.hero .tagline{margin:0 0 16px 0;font-size:16px;color:var(--color-ink)}
+header.hero .meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+section.block{border:var(--border);border-radius:var(--radius);background:var(--color-bg-card);box-shadow:var(--shadow-card);padding:24px 24px 20px 24px;margin:0 0 22px 0}
+section.block>h2{margin:0 0 6px 0;font-size:22px;font-weight:800;color:var(--color-black)}
+section.block>h2+.lede{margin:0 0 18px 0;color:var(--color-muted);font-size:14px}
+section.block h3{margin:22px 0 8px 0;font-size:15px;font-weight:700;color:var(--color-black);text-transform:uppercase;letter-spacing:.04em}
+section.block p{margin:0 0 12px 0}section.block p:last-child{margin-bottom:0}
+section.block ul,section.block ol{margin:0 0 12px 0;padding-left:22px}section.block li{margin-bottom:4px}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--color-black);background:var(--tag-grey);color:var(--color-black);white-space:nowrap}
+.tag--blue{background:var(--tag-blue)}.tag--yellow{background:var(--tag-yellow)}.tag--green{background:var(--tag-green)}.tag--orange{background:var(--tag-orange)}.tag--red{background:var(--tag-red)}.tag--grey{background:var(--tag-grey)}
+.tag .dot{width:8px;height:8px;border-radius:50%;background:var(--color-black);display:inline-block}
+.tag--green .dot{background:var(--color-success)}.tag--yellow .dot{background:var(--color-accent-dark)}.tag--orange .dot{background:var(--color-warning)}.tag--red .dot{background:var(--color-danger)}.tag--blue .dot{background:var(--color-primary)}
+table.spec{width:100%;border-collapse:collapse;margin:4px 0 12px 0;font-size:13.5px}
+table.spec th,table.spec td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:var(--border-thin)}
+table.spec th{font-weight:700;color:var(--color-black);background:var(--color-bg-soft);border-bottom:2px solid var(--color-black);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+table.spec tr:last-child td{border-bottom:none}
+table.spec td code{font-size:12px}
+pre,code{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace}
+code{background:var(--color-bg-soft);border:1px solid var(--color-line);border-radius:var(--radius-sm);padding:1px 5px;font-size:12.5px}
+pre{background:var(--color-bg-code);color:var(--color-bg-code-text);border:2px solid var(--color-black);border-radius:var(--radius);padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.5;margin:8px 0 14px 0}
+pre code{background:transparent;border:none;padding:0;font-size:inherit;color:inherit}
+.callout{border-left:4px solid var(--color-black);border-top:1px solid var(--color-line);border-right:1px solid var(--color-line);border-bottom:1px solid var(--color-line);background:var(--color-bg-soft);padding:12px 14px;border-radius:var(--radius-sm);margin:10px 0 14px 0;font-size:14px}
+.callout strong{color:var(--color-black)}
+.callout--warn{border-left-color:var(--color-warning);background:#fff5dd}.callout--danger{border-left-color:var(--color-danger);background:#fde7e0}.callout--info{border-left-color:var(--color-primary);background:var(--tag-blue)}.callout--success{border-left-color:var(--color-success);background:var(--tag-green)}
+.dep-graph{font-family:ui-monospace,SFMono-Regular,monospace;background:var(--color-bg-soft);border:var(--border-thin);border-radius:var(--radius-sm);padding:14px 16px;font-size:12.5px;line-height:1.55;white-space:pre;overflow-x:auto}
+.rigor{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:10px}
+.rigor-card{border:2px solid var(--color-black);border-radius:var(--radius-sm);padding:14px 14px 12px 14px;background:var(--color-bg-soft)}
+.rigor-card .label{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:var(--color-black);color:var(--color-bg);padding:2px 8px;border-radius:3px;margin-bottom:8px}
+.rigor-card h4{margin:0 0 6px 0;font-size:15px;color:var(--color-black);font-weight:700}
+.rigor-card p{margin:0;font-size:13.5px;color:var(--color-ink);line-height:1.5}
+.milestone{display:grid;grid-template-columns:36px 1fr;gap:12px;padding:14px 0;border-bottom:var(--border-thin)}
+.milestone:last-child{border-bottom:none}
+.milestone .num{width:32px;height:32px;border:2px solid var(--color-black);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;background:var(--color-accent);font-size:14px}
+.milestone .title{font-size:16px;font-weight:700;color:var(--color-black);margin-bottom:4px}
+.milestone .desc{font-size:14px;margin:4px 0 8px 0;color:var(--color-ink)}
+.milestone .criteria{margin:6px 0 0 0;padding:10px 12px;background:var(--color-bg-soft);border-left:3px solid var(--color-primary);border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13.5px}
+.milestone .criteria ul{margin:4px 0 0 0;padding-left:18px}
+.milestone .files{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+.milestone .files .file{background:var(--color-bg-soft);border:1px solid var(--color-line);border-radius:var(--radius-sm);padding:2px 8px;font-family:ui-monospace,SFMono-Regular,monospace;color:var(--color-ink)}
+footer.spec-footer{margin-top:32px;padding-top:18px;border-top:var(--border-thin);font-size:12px;color:var(--color-muted)}
+a{color:var(--color-primary);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}a:hover{color:var(--color-primary-dark)}
+.muted{color:var(--color-muted)}.mono{font-family:ui-monospace,SFMono-Regular,monospace}
+</style>
+</head>
+<body>
+<main class="page">
+
+  <header class="hero">
+    <p class="eyebrow">Substrate reconciliation · KARPATHY-DEEP-LENS · committed (anti-sweep)</p>
+    <h1>Karpathy deep-lens, reconciled against the four-workflow vision</h1>
+    <p class="tagline">The Karpathy <em>Deep Dive into LLMs</em> lens produced six truths and a 10-sprint execution draft. Reconciled against the unified Research·Read·Write·Speak vision, the canonical tech-stack owners, and the sibling <code>karpathy-engineering</code> spec, <strong>nine of ten collapse</strong> — owned by <code>substrate/loop_3/</code>, gated behind G8, duplicated by a sibling spec, or rejected by my own W4. What survives is the one layer nothing owns: <strong>uniform role-parser provenance validation</strong>. The distinctive RL payload is real but G8-gated; it is specced here as a single gated package, not built.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>1 ungated survivor</span>
+      <span class="tag tag--yellow"><span class="dot"></span>1 G8-gated package</span>
+      <span class="tag tag--grey">8 reconciled with named owners</span>
+      <span class="tag tag--grey">2026-05-25</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>What this spec is now</h2>
+    <p class="lede">A reconciliation, not an execution backlog. The genius is recognizing what's already owned and refusing to fork it.</p>
+    <p>Lineage: the Karpathy <em>Deep Dive into LLMs like ChatGPT</em> talk (post-training, RL, cognition), distilled into six truths at the philosophy canon <a href="../../../../specs/antiek-karpathy-deep-lens/index.html"><code>~/specs/antiek-karpathy-deep-lens/</code></a> (which survives, outside the repo). An in-session 10-sprint execution draft was written against that lens, then <strong>swept</strong> by a parallel-stream branch operation while untracked in <code>specs/</code> — the exact collision <code>CLAUDE.md</code> warns about. This reconciliation is re-created and committed.</p>
+    <p>Between the draft and now, the operator crystallized the product into four workflows (Research · Read · Write · Speak), the <code>antiek-unified</code> integration capstone froze a tech-stack ledger with <strong>one canonical owner per layer, enforced mechanically</strong>, and the sibling <code>karpathy-engineering</code> spec (the <em>Intro to LLMs</em> lens) already collapsed its nine candidate sprints to two. Re-grounding the deep-lens draft against that reality is the whole job — and the honest result is that <strong>the deep-lens's distinctive payload is the RL layer, which is owned by <code>substrate/loop_3/</code> and gated behind G8</strong>: the gate the operator controls and that no engineering sprint may fire.</p>
+    <div class="callout callout--danger">
+      <strong>The anti-pattern this spec exists to refuse.</strong> Executing ten substrate sprints against an essentially-complete codebase with named owners. Building <code>substrate/rewards/</code> next to <code>substrate/loop_3/verifiers_env.py</code>, or <code>substrate/trajectory/</code> next to <code>trajectory_harvest.py</code>, is a second owner per layer — a CI failure under the unified invariant and a divergence bug in waiting. Where the lens and the four-product reality disagree about who owns a layer, <strong>reality wins.</strong>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>The reconciliation matrix — all 10 draft sprints</h2>
+    <p class="lede">Each draft sprint against the canonical owner. Read against the unified rule: one owner per layer, every workflow a consumer, never a fork.</p>
+    <table class="spec">
+      <thead><tr><th style="width:7%">Draft</th><th style="width:20%">Deep-lens concern (truth)</th><th style="width:16%">Verdict</th><th style="width:33%">Why</th><th style="width:24%">Owner / evidence</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>SPR-01</strong></td><td>Prompt lint (W2 tokens-to-think / W4)</td>
+          <td><span class="tag tag--red"><span class="dot"></span>REJECTED (forks a layer)</span></td>
+          <td>A parallel <code>tools/prompt_lint/</code> runner is a second lint owner. The structural-integrity lint family owns this; a prompt-anti-pattern rule, if wanted, joins it — it is not a new runner. Prompt single-source is already <code>karpathy-engineering</code> SPR-01.</td>
+          <td><code>tools/lint/</code> (the lint owner); <code>karpathy-engineering</code> SPR-01</td>
+        </tr>
+        <tr>
+          <td><strong>SPR-02</strong></td><td>Context-reachable docs manifest (W3)</td>
+          <td><span class="tag tag--red"><span class="dot"></span>REJECTED (no consumer)</span></td>
+          <td>An observability nicety no product in the four-workflow vision demands. "Which docs reach the context pack" is answerable by reading the assembler; a startup event per boot is noise without a consumer. Premature instrumentation.</td>
+          <td>None — not a layer in the vision</td>
+        </tr>
+        <tr>
+          <td><strong>SPR-03</strong></td><td>prompt_version on dispatch (W3)</td>
+          <td><span class="tag tag--yellow"><span class="dot"></span>FOLDS into karpathy-engineering SPR-01</span></td>
+          <td>A version stamp is a property of the role program. The role single-source collapse already designs <code>program.md</code> YAML frontmatter that carries <code>VERSION</code>; dispatch reads it. A separate <code>prompt_version</code> field on the dispatch payload duplicates that source of truth.</td>
+          <td><code>karpathy-engineering</code> SPR-01 frontmatter; <code>substrate/dispatch/router.py</code></td>
+        </tr>
+        <tr>
+          <td><strong>SPR-04</strong></td><td>Verifiable reward catalog (W5)</td>
+          <td><span class="tag tag--grey"><span class="dot"></span>OWNED → loop_3, GATED G8</span></td>
+          <td>The reward/verifier layer is <code>substrate/loop_3/verifiers_env.py</code> (<code>VerifierReward</code>, <code>build_env_from_trajectory</code>) + <code>rubric_verifier.score_against_ground_truth</code>. A new <code>substrate/rewards/</code> is a second owner. The 7 named verifiable rewards ARE genuine content the scaffold lacks — but populating it is RL work, gated G8 (capture-not-train). Re-homed into the gated package below.</td>
+          <td><code>substrate/loop_3/verifiers_env.py</code> (scaffold confirmed); eval owned by <code>antiek-eval-discipline</code></td>
+        </tr>
+        <tr>
+          <td><strong>SPR-05</strong></td><td>Generalized ID/provenance validation (W4)</td>
+          <td><span class="tag tag--green"><span class="dot"></span>KEEP → the sole survivor</span></td>
+          <td>The crown jewel of this lens. Grounder validates <code>located_chunk_id</code> against the actual search set, but only in the grounder bridge — every other role parser (note_taker source_event_ids, parameter_extractor node refs, cross_doc question_id) trusts model-emitted IDs. Nothing owns uniform output-side ID validation. It is ungated, deterministic (W4: keep it in code, not the model), and serves the provenance moat all four workflows assume.</td>
+          <td>Unowned today; <code>roles/grounder/parser.py</code> does it locally; the provenance invariant is in every product README</td>
+        </tr>
+        <tr>
+          <td><strong>SPR-06</strong></td><td>"I don't know" golden-trace track (W4)</td>
+          <td><span class="tag tag--grey"><span class="dot"></span>OWNED → loop_3 + eval, GATED G8</span></td>
+          <td>Refusal-target training data is RL/eval territory. <code>substrate/loop_3/</code> harvests trajectories; <code>antiek-eval-discipline</code> owns eval signal. Capture-not-train means the data path waits on G8. Re-homed into the gated package.</td>
+          <td><code>substrate/loop_3/trajectory_harvest.py</code>; <code>antiek-eval-discipline</code></td>
+        </tr>
+        <tr>
+          <td><strong>SPR-07</strong></td><td>Interrogation-set generator (W4)</td>
+          <td><span class="tag tag--grey"><span class="dot"></span>OWNED → loop_3 + eval, GATED G8</span></td>
+          <td>The Meta-Llama-3 boundary-probing procedure produces RL training data. Same owner, same gate as SPR-06. A useful tool — at G8-time, as part of the gated package, not now.</td>
+          <td><code>substrate/loop_3/</code>; <code>antiek-eval-discipline/generate.py</code> (an interrogation generator likely already lives here)</td>
+        </tr>
+        <tr>
+          <td><strong>SPR-08</strong></td><td>Three judges: temporal, tier, supersession (W6)</td>
+          <td><span class="tag tag--red"><span class="dot"></span>REJECTED (contradicts my own W4)</span></td>
+          <td>Temporal staleness, source-tier k-of-N, and supersession are <em>already deterministic middleware</em> (<code>middleware/temporal/</code>, <code>middleware/source_tier/</code>, <code>middleware/supersession/</code>). Wrapping deterministic checks in LLM judges directly contradicts deep-lens W4: deterministic, character/rule-level work belongs in code, never the model. The middleware already owns these axes correctly. An LLM judge here is strictly worse — slower, gameable, non-deterministic.</td>
+          <td><code>middleware/{temporal,source_tier,supersession}/</code> (already deterministic owners)</td>
+        </tr>
+        <tr>
+          <td><strong>SPR-09</strong></td><td>Versioned prompts SFT/RL (W6)</td>
+          <td><span class="tag tag--grey"><span class="dot"></span>OWNED → loop_3/unlock_gate, GATED G8</span></td>
+          <td>The SFT-vs-RL phase distinction only matters once RL training exists. The phase selector is meaningless until G8 opens. The SFT prompt is just today's prompt (owned by <code>karpathy-engineering</code> SPR-01's <code>program.md</code>). The RL variant is a G8-time concern.</td>
+          <td><code>substrate/loop_3/unlock_gate.py</code> (G8); <code>karpathy-engineering</code> SPR-01</td>
+        </tr>
+        <tr>
+          <td><strong>SPR-10</strong></td><td>Per-step reward shaping in trajectory export (W5)</td>
+          <td><span class="tag tag--grey"><span class="dot"></span>OWNED → loop_3, GATED G8</span></td>
+          <td><code>trajectory_harvest.harvest_trajectory_for_prime_rl</code> + <code>HarvestedTrajectory</code> own trajectory export for Prime RL. A new <code>substrate/trajectory/</code> is a second owner. Per-step reward shaping (the DeepSeek-R1 insight) is a genuine extension to the harvest format — but it is RL work, gated G8. Re-homed into the gated package.</td>
+          <td><code>substrate/loop_3/trajectory_harvest.py</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="callout callout--success"><strong>1 KEEP (ungated) · 4 owned-by-loop_3-gated-G8 · 1 folds-into-sibling · 1 forks-a-layer · 2 rejected (no consumer / contradicts W4).</strong> Nine of ten reconciled with a named owner. That ratio is the deliverable as much as the survivor is — it is the proof that the deep-lens fits the vision without forking it.</div>
+  </section>
+
+  <section class="block">
+    <h2>The surviving sprint (ungated)</h2>
+    <p class="lede">Uniform role-parser provenance validation. One sprint, executable now, serving all four workflows' provenance moat.</p>
+
+    <div class="milestone">
+      <div class="num">S</div>
+      <div>
+        <div class="title">SPR-01 · Uniform role-parser ID/provenance validation</div>
+        <p class="desc">Generalize the grounder's "validate the model-emitted ID against the canonical set, treat a miss as a failure not a fact" pattern into a single shared validator that every role parser uses. Today only the grounder bridge does this, only for <code>located_chunk_id</code>. Every other parser that surfaces a model-emitted reference (note_taker <code>source_event_ids</code>, parameter_extractor node/edge endpoints, cross_doc <code>question_id</code>, connector edge refs) trusts the model. A hallucinated ID becomes a fake provenance edge — silently poisoning the graph that is the moat.</p>
+        <div class="criteria">
+          <strong>Acceptance criteria</strong>
+          <ul>
+            <li>One shared helper (<code>substrate/provenance/validate_refs.py</code> — under the provenance-graph owner, not a new top-level layer) exposing <code>validate_ref(candidate, canonical_set) -&gt; str | None</code> and a list variant; pure, deterministic, no model in the loop.</li>
+            <li>The grounder bridge is refactored to call it (behaviour bit-identical; existing grounder tests pass unchanged).</li>
+            <li>Each remaining ID-emitting parser validates against its canonical set; a hallucinated reference is dropped/flagged, never written as a provenance edge.</li>
+            <li>An adversarial test per refactored parser: model returns a fabricated ID → parser rejects it; ≥3 such cases that no current check catches.</li>
+            <li>A <code>tools/lint/</code> rule (joining the existing lint owner, not a new runner) flags any new parser that surfaces a model-emitted <code>*_id</code> without routing it through the validator.</li>
+          </ul>
+        </div>
+        <div class="files">
+          <span class="file">substrate/provenance/validate_refs.py</span>
+          <span class="file">roles/grounder/parser.py (refactor)</span>
+          <span class="file">roles/note_taker/parser.py</span>
+          <span class="file">roles/parameter_extractor/…</span>
+          <span class="file">interfaces/research/api/cross_doc.py</span>
+          <span class="file">tools/lint/ (new rule)</span>
+        </div>
+      </div>
+    </div>
+
+    <h3>Why this is the survivor, and hard to vary</h3>
+    <p>It is the only deep-lens concern that is (a) <strong>ungated</strong> — pure deterministic validation, no RL, no G8; (b) <strong>unowned</strong> — grounder does it locally, nobody does it uniformly; (c) <strong>demanded by the vision</strong> — "every claim cites a node, no orphan prose" is the Write/Read/Speak provenance moat; and (d) <strong>consistent with its own lens</strong> — W4 says ID/character-level work stays in code. Every other deep-lens sprint fails at least one of those tests.</p>
+  </section>
+
+  <section class="block">
+    <h2>The G8-gated package (specced, not built)</h2>
+    <p class="lede">The deep-lens's distinctive RL payload, re-homed onto <code>substrate/loop_3/</code>. One package, executed only when the operator opens G8. Specced now so it's ready; built never-before-G8.</p>
+    <div class="milestone">
+      <div class="num">G8</div>
+      <div>
+        <div class="title">SPR-02 (gated) · loop_3 verifiable-reward + per-step + interrogation extensions</div>
+        <p class="desc">When and only when <code>substrate/loop_3/unlock_gate.py</code> reports G8 open, three extensions land <em>inside</em> <code>substrate/loop_3/</code> — never as parallel modules:</p>
+        <div class="criteria">
+          <strong>The three extensions (all to existing loop_3 owners)</strong>
+          <ul>
+            <li><strong>Populate <code>verifiers_env.py</code>'s scaffold</strong> with the 7 named verifiable rewards from deep-lens W5: grounder-pass, cross-doc-match, constraint-convergence, claim-survival, schema-conformance, id-validity (reuses SPR-01's validator), attribution-coverage. Each is a pure event-log function — no LLM judge (W5: verifiable means no model in the reward).</li>
+            <li><strong>Add per-step reward shaping to <code>trajectory_harvest.py</code></strong> (the DeepSeek-R1 insight from W5): attach per-event marginal reward to <code>HarvestedTrajectory</code> so RL sees per-step gradient, not just final-answer reward.</li>
+            <li><strong>Add the "I don't know" / interrogation data path</strong>: the Meta-Llama-3 boundary-probing procedure (W4) feeds refusal-target trajectories into the harvest, coordinated with <code>antiek-eval-discipline/generate.py</code> (the likely existing owner) to avoid a second generator.</li>
+          </ul>
+          <strong>Hard gate</strong>
+          <ul>
+            <li>The package is inert behind <code>unlock_gate</code>. No file in it runs before G8. The W5 verdict is absolute: RLHF-style neural reward models are rejected as terminal training signal; only the verifiable catalog populates the env.</li>
+          </ul>
+        </div>
+        <div class="files">
+          <span class="file">substrate/loop_3/verifiers_env.py (extend)</span>
+          <span class="file">substrate/loop_3/trajectory_harvest.py (extend)</span>
+          <span class="file">substrate/loop_3/unlock_gate.py (gate check)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Tech-stack ledger alignment</h2>
+    <p class="lede">How the two surviving items map to the unified ledger's canonical owners — each <em>hardens</em> a layer, never forks it.</p>
+    <table class="spec">
+      <thead><tr><th style="width:26%">Item</th><th style="width:30%">Ledger layer it touches</th><th style="width:44%">How it respects one-owner-per-layer</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SPR-01 provenance validation</strong></td><td>Provenance graph (cross-cutting) + structural-integrity lints (<code>tools/lint/</code>)</td><td>Adds a shared validator under the provenance owner + one lint rule under the lint owner. No new top-level layer; no parallel runner. The graph stays the single provenance source; this just stops fabricated edges entering it.</td></tr>
+        <tr><td><strong>SPR-02 (gated) RL extensions</strong></td><td>RL / training (<code>substrate/loop_3/</code>)</td><td>Three edits to the three existing loop_3 owners (verifiers_env, trajectory_harvest, unlock_gate). Zero new modules. Honors the ledger's "Capture now, train later; all training gated by G8" invariant verbatim.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Four-workflow service map</h2>
+    <p class="lede">The "fits the vision" proof: each surviving item is cross-cutting substrate the four workflows consume, never a product internal.</p>
+    <table class="spec">
+      <thead><tr><th style="width:24%">Item</th><th>Research</th><th>Read</th><th>Write</th><th>Speak</th></tr></thead>
+      <tbody>
+        <tr><td><strong>SPR-01 provenance validation</strong></td><td>synthesis claims cite chunks; gap nodes reference real evidence</td><td>passage-research notes cite real source ids</td><td>every lego block references a real insight/question node (the moat)</td><td>interview-derived claims cite real transcript events</td></tr>
+        <tr><td><strong>SPR-02 (gated) RL</strong></td><td>research-loop verifiable rewards (when G8)</td><td>—</td><td>authoring-trajectory rewards (Write is a loop_3 consumer)</td><td>interview-trajectory rewards (Speak is a loop_3 consumer)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Rigor — five values, applied to this reconciliation</h2>
+    <div class="rigor">
+      <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Most of my own draft was wrong</h4><p>The 10-sprint draft was written before reading the unified ledger. Nine sprints forked owned layers. Saying so plainly — and keeping only the one survivor — is the honest result, not a face-saving "execute everything."</p></div>
+      <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelmanned each collapsed sprint</h4><p>Every REJECT/OWNED verdict names the specific owner and evidence (module path, sibling spec, gate). A row is only collapsed when a concrete owner is shown — not waved away.</p></div>
+      <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Verdicts grounded in the live codebase</h4><p>verifiers_env confirmed a bare scaffold; grounder validation confirmed bridge-local; middleware confirmed to already own the three judge axes; the swept directory confirmed by filesystem. No verdict rests on memory alone.</p></div>
+      <div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read the sibling before re-deriving</h4><p><code>karpathy-engineering</code> already collapsed the Intro lens 9→2; reading it first prevented re-litigating settled owners and surfaced the <code>program.md</code> frontmatter that absorbs SPR-03/09.</p></div>
+      <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Committed this time</h4><p>The draft was swept because it was untracked in <code>specs/</code>. This reconciliation is committed immediately with the agent-provenance trailer, per <code>CLAUDE.md</code>'s explicit lesson.</p></div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Decision log</h2>
+    <table class="spec">
+      <thead><tr><th style="width:30%">Decision</th><th style="width:40%">Why</th><th style="width:22%">Reverse if…</th><th style="width:8%">Date</th></tr></thead>
+      <tbody>
+        <tr><td>Collapse the 10-sprint draft to 1 ungated survivor + 1 gated package</td><td>The unified ledger names owners for the reward/trajectory/verifier/lint layers; the deep-lens RL payload is owned by loop_3 and gated G8. Executing 10 sprints forks owned layers — the opposite of genius against an essentially-complete codebase.</td><td>A row's named owner proves not to deliver — reopen that row, not all ten.</td><td class="mono">2026-05-25</td></tr>
+        <tr><td>SPR-05 (provenance validation) is the crown jewel, not SPR-04 (rewards)</td><td>Provenance validation is ungated, unowned, demanded by the moat, and W4-consistent. The reward catalog is genuine but G8-gated and loop_3-owned. Ungated-and-unowned beats gated-and-owned for "what to build now."</td><td>A product spec adds an explicit provenance-validation sprint (then this folds in).</td><td class="mono">2026-05-25</td></tr>
+        <tr><td>Reject the three LLM judges outright</td><td>temporal/source_tier/supersession are already deterministic middleware. An LLM judge over a deterministic check contradicts the deep-lens's own W4 and is strictly worse (slower, gameable). The lens must not violate itself.</td><td>A genuinely non-deterministic judgment axis appears that no middleware can compute — then spec a judge for that axis only.</td><td class="mono">2026-05-25</td></tr>
+        <tr><td>Re-home the RL payload into loop_3 as a gated package, don't drop it</td><td>The verifiable-reward catalog + per-step shaping + interrogation data are the deep-lens's distinctive value. They are real and worth keeping — as G8-time extensions to existing owners, specced and inert, not as parallel modules built now.</td><td>G8 opens — execute the package inside loop_3.</td><td class="mono">2026-05-25</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Rejected alternatives</h2>
+    <table class="spec">
+      <thead><tr><th style="width:30%">Alternative</th><th style="width:40%">Why rejected</th><th style="width:30%">Reconsider if…</th></tr></thead>
+      <tbody>
+        <tr><td>Execute all 10 draft sprints</td><td>Nine fork owned layers (loop_3 reward/trajectory/verifier, tools/lint, middleware) or fire G8. Mass execution against a scope-complete codebase with one-owner-per-layer is a divergence-bug generator.</td><td>The matrix is wrong about an owner — verify per row.</td></tr>
+        <tr><td>Build <code>substrate/rewards/</code> + <code>substrate/trajectory/</code> as new modules</td><td>Second owner per layer; CI failure under the unified conformance gate; the exact thing the ledger forbids.</td><td>loop_3 is retired as the RL owner (not in the vision).</td></tr>
+        <tr><td>Keep the three judges as a "deterministic-judge" compromise</td><td>If a judge is deterministic, it IS middleware — there's no role for an LLM. The middleware already exists. The compromise is just the middleware with extra latency.</td><td>Never, for these three axes.</td></tr>
+        <tr><td>Fold the survivor into <code>karpathy-engineering</code></td><td>That spec is the Intro lens (role single-source + injection boundary). Provenance output-validation is a distinct deep-lens concern (untrusted model <em>output</em>, not input). Different lens, different direction.</td><td><code>karpathy-engineering</code> grows an output-validation sprint — then merge.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Open questions</h2>
+    <table class="spec">
+      <thead><tr><th style="width:42%">Question</th><th style="width:34%">Current assumption</th><th style="width:24%">Who resolves</th></tr></thead>
+      <tbody>
+        <tr><td>Does <code>antiek-eval-discipline/generate.py</code> already implement the interrogation generator (SPR-07)?</td><td>Likely — it owns eval signal generation. The gated package coordinates with it rather than building a second generator. Verify at G8-time.</td><td>G8 executing instance + eval-discipline owner</td></tr>
+        <tr><td>Is the provenance validator's home <code>substrate/provenance/</code> or an existing graph module?</td><td><code>substrate/provenance/</code> if no graph-validation module exists; otherwise extend the existing one. SPR-01 milestone 1 confirms against the live tree before creating a file.</td><td>SPR-01 executing instance</td></tr>
+        <tr><td>Should the W2 "tokens-to-think / intermediate-output" discipline become a lint, or is it pure prompt-authoring guidance?</td><td>Guidance, not a lint — it is too semantic for a regex and overlaps <code>karpathy-engineering</code> SPR-01's prompt review. Tracked, not specced.</td><td>Operator + prompt-review practice</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="spec-footer">
+    Sharpened 2026-05-25 against <code>specs/antiek-unified/</code> + the four product specs + sibling <code>specs/karpathy-engineering/</code>. Philosophy lineage: <a href="../../../../specs/antiek-karpathy-deep-lens/index.html"><code>~/specs/antiek-karpathy-deep-lens/</code></a> (Karpathy <em>Deep Dive into LLMs</em>). Committed this time.
+  </footer>
+
+</main>
+</body>
+</html>

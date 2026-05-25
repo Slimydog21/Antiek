@@ -1,0 +1,121 @@
+# Substrate Floor — ARE-11 of the Antiek Rust-Execution Spec
+# (~/specs/antiek-rust-execution/). The minimum quality gate that every
+# PR touching substrate/ must pass. Each step is independent so the
+# operator sees which gate failed.
+#
+# Scope: today's gate runs ONLY against the Wave-1 substrate modules
+# I authored (substrate/results.py, substrate/errors.py,
+# substrate/escape_hatch.py). The baselines under
+# tools/lints/baselines/ grandfather their current violation set;
+# new PRs to these files must not introduce NEW lint violations.
+#
+# Extending scope: edit the SCOPE_FILES env var below and re-capture
+# the baselines via:
+#   python -m tools.lints.cli_with_baseline capture no_raise \
+#     --paths <new-paths> --baseline-file tools/lints/baselines/no_raise.json
+#   python -m tools.lints.cli_with_baseline capture bypass \
+#     --paths <new-paths> --baseline-file tools/lints/baselines/bypass.json
+# Then commit the updated baseline files in the same PR.
+
+name: substrate-floor
+
+on:
+  pull_request:
+    paths:
+      - 'substrate/results.py'
+      - 'substrate/errors.py'
+      - 'substrate/escape_hatch.py'
+      - 'tools/lints/**'
+      - 'tools/antiek_cli/**'
+      - 'tests/test_results.py'
+      - 'tests/test_errors.py'
+      - 'tests/test_escape_hatch.py'
+      - 'tests/test_lints_*.py'
+      - 'tests/test_antiek_cli.py'
+      - 'tests/test_benchmark_harness.py'
+      - 'tests/properties/**'
+      - 'tools/benchmarks/**'
+      - '.github/workflows/substrate_floor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'substrate/results.py'
+      - 'substrate/errors.py'
+      - 'substrate/escape_hatch.py'
+
+jobs:
+  substrate-quality-gate:
+    runs-on: ubuntu-latest
+    env:
+      SCOPE_FILES: substrate/results.py substrate/errors.py substrate/escape_hatch.py
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (core + dev + hypothesis opt-in)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install hypothesis  # opt-in dep; matches Wave 2 ADR
+
+      - name: ruff (Wave 1 substrate + tooling)
+        run: |
+          ruff check $SCOPE_FILES tools/lints/ tools/antiek_cli/ tools/benchmarks/
+
+      - name: mypy --strict (Wave 1 substrate + lints + cli)
+        run: |
+          # --explicit-package-bases --namespace-packages: tools/lints/ has an
+          # __init__.py but tools/ does not, so mypy otherwise resolves
+          # baseline.py under two module names ("lints.baseline" and
+          # "tools.lints.baseline") and aborts ("source file found twice").
+          mypy --strict --explicit-package-bases --namespace-packages \
+            $SCOPE_FILES tools/lints/baseline.py tools/lints/cli_with_baseline.py
+
+      - name: Lint enforce — no_raise (against committed baseline)
+        run: |
+          python -m tools.lints.cli_with_baseline enforce no_raise \
+            --paths $SCOPE_FILES \
+            --baseline-file tools/lints/baselines/no_raise.json \
+            --check-stale
+
+      - name: Lint enforce — bypass (against committed baseline)
+        run: |
+          python -m tools.lints.cli_with_baseline enforce bypass \
+            --paths $SCOPE_FILES \
+            --baseline-file tools/lints/baselines/bypass.json \
+            --check-stale
+
+      - name: Unit tests — Wave 1 + Wave 2 + Wave 3 + Wave 4
+        run: |
+          pytest \
+            tests/test_results.py \
+            tests/test_errors.py \
+            tests/test_escape_hatch.py \
+            tests/test_lints_no_raise.py \
+            tests/test_lints_unannotated_bypass.py \
+            tests/test_lints_baseline.py \
+            tests/test_lints_cli_with_baseline.py \
+            tests/test_antiek_cli.py \
+            tests/test_benchmark_harness.py \
+            -v
+
+      - name: Property tests (hypothesis)
+        run: |
+          pytest tests/properties/ -v
+
+      - name: Doctests on Wave 1 substrate modules
+        run: |
+          pytest --doctest-modules $SCOPE_FILES -v
+
+      - name: Substrate invariants (skip if module absent on this branch)
+        run: |
+          if [ -f substrate/invariants.py ]; then
+            python -m substrate.invariants
+          else
+            echo "::notice::substrate/invariants.py absent on this branch — skipping invariants check"
+          fi

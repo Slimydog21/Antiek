@@ -126,6 +126,8 @@ def insert_document(
     investigation_id: Optional[str] = None,
     raw_text: Optional[str] = None,
     metadata: Optional[Any] = None,
+    content_class: Optional[str] = None,
+    ip_holder_id: Optional[str] = None,
     on_conflict: OnConflict = "error",
 ) -> str:
     """Insert one document row. Returns the document_id.
@@ -135,6 +137,15 @@ def insert_document(
     and a graph-level ``GRAPH_DOCUMENT_INSERTED`` would be redundant.
     If we later need a graph-scoped admission signal that's distinct
     from the surface-loaded event, we add it here as a new ActionType.
+
+    ``content_class`` and ``ip_holder_id`` are the master-spec §9.0
+    retrieval-time gate columns (schema.py V2). They default to ``None``
+    so existing callers are unchanged; the gate in
+    ``substrate/graph/search.py`` treats NULL content_class as legacy/
+    grandfathered for chunk search, while the Read full-text serve gate
+    (``substrate/books/serve.py``) is deny-by-default and treats NULL as
+    metadata-only. The Read ingest path (``substrate/books/ingest.py``)
+    always sets both — never relying on the NULL fallthrough.
 
     ``on_conflict``:
       - ``"error"`` (default): a duplicate ``document_id`` raises.
@@ -150,15 +161,92 @@ def insert_document(
     con.execute(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
-        " source_tier, document_type, investigation_id, raw_text, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " source_tier, document_type, investigation_id, raw_text, metadata, "
+        " content_class, ip_holder_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             document_id, source_uri, title, author, published_at,
             int(source_tier), document_type, investigation_id, raw_text,
-            _maybe_json(metadata),
+            _maybe_json(metadata), content_class, ip_holder_id,
         ],
     )
     return document_id
+
+
+# Secondary indexes on the documents gate columns. DuckDB 1.5.2 cannot
+# UPDATE a secondary-indexed column on a row that is the target of a
+# foreign key (chunks + book_assets both reference documents.document_id):
+# it rejects the implied delete-half of its delete+reinsert update path
+# with "key still referenced by a foreign key". Unindexed columns
+# (raw_text, title) update fine. update_document_gate_columns works around
+# this by dropping the affected index(es), running the UPDATE, and
+# recreating them — atomic under the single write lock.
+_GATE_COLUMN_INDEXES: dict[str, str] = {
+    "content_class": "idx_documents_content_class",
+    "ip_holder_id": "idx_documents_ip_holder",
+}
+
+
+def update_document_gate_columns(
+    con: LockedConnection,
+    document_id: str,
+    *,
+    content_class: Optional[str] = None,
+    ip_holder_id: Optional[str] = None,
+    set_content_class: bool = False,
+    set_ip_holder_id: bool = False,
+    null_raw_text: bool = False,
+) -> None:
+    """Mutate a document's retrieval-time gate columns post-ingest.
+
+    Use the ``set_*`` flags to update a column to a value (including
+    ``None``); a column is left untouched unless its flag is True. This is
+    the ONLY sanctioned way to change ``content_class`` / ``ip_holder_id``
+    on a document that already has chunks or a book_assets row — a raw
+    ``UPDATE documents SET content_class=…`` fails on DuckDB 1.5.2 (see the
+    comment above ``_GATE_COLUMN_INDEXES``).
+
+    ``null_raw_text=True`` additionally nulls ``raw_text`` (the takedown
+    purge). raw_text is unindexed, so it doesn't need the index dance, but
+    it rides the same single UPDATE for atomicity.
+
+    All of this runs on the passed ``LockedConnection`` so it inherits the
+    single-writer lock; the index drop/recreate is invisible to readers
+    (DuckDB DDL is transactional).
+    """
+    _assert_write_locked(con)
+    sets: list[str] = []
+    params: list[Any] = []
+    touched_indexed: list[str] = []
+    if set_content_class:
+        sets.append("content_class = ?")
+        params.append(content_class)
+        touched_indexed.append("content_class")
+    if set_ip_holder_id:
+        sets.append("ip_holder_id = ?")
+        params.append(ip_holder_id)
+        touched_indexed.append("ip_holder_id")
+    if null_raw_text:
+        sets.append("raw_text = NULL")
+    if not sets:
+        return
+    params.append(document_id)
+
+    indexes = [_GATE_COLUMN_INDEXES[c] for c in touched_indexed]
+    for idx in indexes:
+        con.execute(f"DROP INDEX IF EXISTS {idx}")
+    try:
+        con.execute(
+            f"UPDATE documents SET {', '.join(sets)} WHERE document_id = ?",
+            params,
+        )
+    finally:
+        # Recreate even if the UPDATE raised, so a failed mutation never
+        # leaves the table without its gate indexes.
+        for col, idx in zip(touched_indexed, indexes):
+            con.execute(
+                f"CREATE INDEX IF NOT EXISTS {idx} ON documents({col})"
+            )
 
 
 # ---------------------------------------------------------------------------

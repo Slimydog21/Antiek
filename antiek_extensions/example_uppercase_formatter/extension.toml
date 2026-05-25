@@ -1,0 +1,7 @@
+[extension]
+id = "example_uppercase_formatter"
+version = "1.0.0"
+description = "Post-hook on message_formatter that uppercases system message content. Canonical extension shape — copy as a starting template."
+
+[declared_seams]
+message_formatter = "post"

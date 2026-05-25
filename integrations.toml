@@ -1,0 +1,258 @@
+# Antiek external-integration registry.
+#
+# One table per vendor or external dependency that crosses Antiek's
+# boundary. Hashimoto's "default-deny / vouching" lens encoded as
+# config: every integration carries a tier, a voucher, and (for
+# Tier 2) a sunset_date. The CI gate at scripts/check_integration_tiers.py
+# walks the codebase and asserts the imports match the declared tiers.
+#
+# Tier ladder:
+#
+#   0 — spec only. Documented in docs/integration_<vendor>.md; no
+#       code may import the package. Catches drift between docs and
+#       reality (a "we'll get to it" integration silently sprouting
+#       a call site).
+#   1 — local prototype. Imports allowed under experiments/, scripts/spike_*,
+#       or tools/ but not under substrate/, acquisition/, middleware/,
+#       interfaces/, orchestration/, compounding/, processing/. Adoption
+#       to Tier 2 requires the operator to add the file path to
+#       prod_call_sites and set sunset_date.
+#   2 — prod call-site with sunset. Every import site must appear in
+#       prod_call_sites. sunset_date is the operator's commitment to
+#       either promote (Tier 3) or remove the integration by that date.
+#       Default sunset window: 90 days from vouched_at.
+#   3 — adopted indefinitely. Vouched-by operator; appears in the
+#       PROD_VENDORS frozenset in substrate/integrations.py. No sunset.
+#
+# Adding a new integration: append a [<vendor>] table here, fill all
+# required fields, and either (a) ensure the imports match the tier,
+# or (b) register an inline ``# tier-allow: <reason>`` exception that
+# the CI script will log to tier_overrides.log.
+#
+# Spec: ~/specs/antiek-hashimoto-engineering/sprint-e3-vouching.html
+# Round-1 philosophy: ~/specs/antiek-philosophy/rounds/round-01-hashimoto/sprint-04-vouching.html
+
+
+# ============================================================
+# Tier 3 — foundational substrate / adopted indefinitely
+# ============================================================
+
+[duckdb]
+package = "duckdb"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "Substrate DB engine. The single-writer flock in runtime/db_lock.py exists to coordinate against this. CLAUDE.md invariant #1."
+spec_doc = "docs/master-product-spec.md"
+
+[pydantic]
+package = "pydantic"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "Schema-as-code spine. Substrate event log + every API surface is Pydantic-modeled. Cross-version drift in model_json_schema() output is what the codegen-staleness CI step catches."
+spec_doc = "docs/master-product-spec.md"
+
+[pydantic_settings]
+package = "pydantic_settings"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "BaseSettings for env-var-driven config (ANTIEK_OPERATOR_TOKEN, ANTIEK_EMAIL_PROVIDER, etc.)."
+spec_doc = "docs/master-product-spec.md"
+
+[fastapi]
+package = "fastapi"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "FastAPI substrate at api.antiek.ai. Uvicorn --workers 1 per CLAUDE.md invariant #1."
+spec_doc = "docs/master-product-spec.md"
+
+[uvicorn]
+package = "uvicorn"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "ASGI runner for the FastAPI substrate; --workers 1 is the only-writer enforcement."
+spec_doc = "docs/master-product-spec.md"
+
+[httpx]
+package = "httpx"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "HTTP client for every outbound vendor call. async-first matches dispatch's concurrency model."
+spec_doc = "docs/master-product-spec.md"
+
+[tenacity]
+package = "tenacity"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "Retry/backoff policy primitive. Used through dispatch and acquisition; the canonical place to encode backoff."
+spec_doc = "docs/master-product-spec.md"
+
+[structlog]
+package = "structlog"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "Structured logger that survives substrate→FastAPI→log-aggregator round trip."
+spec_doc = "docs/master-product-spec.md"
+
+[pyyaml]
+package = "yaml"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "YAML reader for dispatch config + ansible playbooks."
+spec_doc = "docs/master-product-spec.md"
+
+[python_dateutil]
+package = "dateutil"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "Robust ISO-8601 + relative-date parsing for the §14.4 verdict window math."
+spec_doc = "docs/master-product-spec.md"
+
+[orjson]
+package = "orjson"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-16"
+justification = "Fast JSON encoder for the event-log JSONL files and HTTP responses."
+spec_doc = "docs/master-product-spec.md"
+
+
+# ============================================================
+# Tier 3 — named vendor integrations, in production
+# ============================================================
+
+[hermes]
+package = "hermes"  # internal HTTP bridge, not a PyPI package
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-18"
+justification = "LLM bridge owned by Hermes Agent; xAI OpenAI-compat at api.x.ai/v1. OAuth-refresh→503 is the one translation rule. verify-tier fallback + chaos test landed in commit cd602c9. Per project-antiek-hermes-bridge memory."
+spec_doc = "docs/integration_hermes.md"  # may not exist; verdict from memory
+
+[agentmail]
+package = "agentmail"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-23"
+justification = "Magic-link email provider per CLAUDE.md. Configured via ANTIEK_EMAIL_PROVIDER env. Per infrastructure/runbooks/agentmail-setup.md."
+spec_doc = "infrastructure/runbooks/agentmail-setup.md"
+
+[exa]
+package = "exa"
+tier = 3
+voucher = "slimydog"
+vouched_at = "2026-05-21"
+justification = "Discovery layer for the acquisition/search path. Per docs/integration_exa_browserbase.md and project-antiek-exa-browserbase-spec memory; Wedge 1 INTEGRATE NOW. 46 file references in tracked code."
+spec_doc = "docs/integration_exa_browserbase.md"
+
+
+# ============================================================
+# Tier 2 — prod call-site with sunset clock
+# ============================================================
+
+[browserbase]
+package = "browserbase"
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-05-21"
+sunset_date = "2026-08-19"
+justification = "Ingestion-escalation fallback inside acquisition/urls/. 90-day default sunset; promote to Tier 3 once Wedge 2 ratifies after legal gate clears, or demote if AnchorBrowser Plan-B becomes primary."
+prod_call_sites = [
+    "acquisition/urls/client_browserbase.py",
+]
+spec_doc = "docs/integration_exa_browserbase.md"
+
+
+# ============================================================
+# Tier 1 — local prototype (imports under tools/ or scripts/ ok)
+# ============================================================
+
+[posthog]
+package = "posthog"
+tier = 1
+voucher = "slimydog"
+vouched_at = "2026-05-18"
+justification = "Single measured carve-out from §16 REJECT list per CLAUDE.md. Server-side only; env-gated via substrate/observability/posthog.py shim (not yet shipped — file is the planned-only home). Ratify-or-remove gate at Sprint 20 per docs/decisions/sprint20_posthog_ratification.md. Promote to Tier 2 once the shim ships and the env enables it in prod."
+spec_doc = "docs/integration_posthog.md"
+
+
+# ============================================================
+# Tier 0 — spec only; NO production import allowed
+# ============================================================
+
+[notdiamond]
+package = "notdiamond"
+tier = 0
+voucher = ""
+vouched_at = "2026-05-24"
+justification = "Draft spec only at ~/specs/antiek-notdiamond/. ND advisory layer above dispatch; 8 sprints / 4 waves; not yet wired. Per project-antiek-notdiamond-spec memory."
+spec_doc = "~/specs/antiek-notdiamond/"
+
+[turbopuffer]
+package = "turbopuffer"
+tier = 0
+voucher = ""
+vouched_at = "2026-05-23"
+justification = "Draft spec at docs/integration_turbopuffer.md. SPIKE-first sequencing — Wedge 1 needs 1-day spike against 20 hand-curated queries before shipping. Per project-antiek-turbopuffer-spec memory."
+spec_doc = "docs/integration_turbopuffer.md"
+
+[anchorbrowser]
+package = "anchorbrowser"
+tier = 0
+voucher = ""
+vouched_at = "2026-05-23"
+justification = "Named Plan B for browserbase Wedge 2 (not concurrent). §12.10 REJECT for parallel-dual-vendor; §14.4.1 trigger conditions. Adapter shape already accommodates vendor swap. Per project-antiek-anchorbrowser-verdicts memory."
+spec_doc = "docs/integration_exa_browserbase.md"
+
+[prime_intellect]
+package = "prime"
+tier = 0
+voucher = ""
+vouched_at = "2026-05-17"
+justification = "Draft at docs/integration_prime_intellect.md. INTEGRATE F+D in Sprint 10; REJECT Prime-as-dispatch-provider and Hub publishing; DEFER `prime rl run` until loop_3_unlock_criteria.md passes. Per project-antiek-prime-spec memory."
+spec_doc = "docs/integration_prime_intellect.md"
+
+[ducklake]
+package = "ducklake"
+tier = 0
+voucher = ""
+vouched_at = "2026-05-18"
+justification = "Two-graph architecture decision per master-spec v3 sharpening; data repository layer. Not yet implemented. Per project-antiek-master-spec-v3 memory."
+spec_doc = "docs/master-product-spec.md"
+
+[modal]
+package = "modal"
+tier = 0
+voucher = ""
+vouched_at = "2026-05-24"
+justification = "Hard REJECT per CLAUDE.md §16 and master-spec §16 REJECT list. Listed here so the tier-check CI catches an accidental import; the existing 'modal' substring matches in code are 'multi-modal' and UI modal dialogs, not the SDK."
+spec_doc = "docs/master-product-spec.md (§16 REJECT)"
+
+[daytona]
+package = "daytona"
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-05-25"
+sunset_date = "2026-08-23"
+justification = "Promoted 0→2 by the operator's 2026-05-25 §16 research-fan-out exemption (docs/decisions/s16-research-fanout-exemption.md). Scoped to research-runner fan-out ONLY via runtime/remote_exec/ — NOT general dispatch (Hermes-primary stays per §16). The Daytona SDK (daytona_sdk) is optional + lazy-imported (mirrors browserbase, Tier 2 above); the prod call site below is the runner factory's local import of the in-tree provider module. 90-day sunset: promote to Tier 3 once the operator's live smoke (infrastructure/runbooks/remote-exec-fanout.md) confirms remote-exec beats the host-local ceiling, or demote to Tier 0 (revert to host-local-first) if it proves fragile/expensive per the decision record's reconsider-if."
+prod_call_sites = [
+    "runtime/remote_exec/factory.py",
+]
+spec_doc = "docs/decisions/s16-research-fanout-exemption.md"
+
+[pulumi]
+package = "pulumi"
+tier = 0
+voucher = ""
+vouched_at = "2026-05-24"
+justification = "Hard REJECT per CLAUDE.md §16."
+spec_doc = "docs/master-product-spec.md (§16 REJECT)"

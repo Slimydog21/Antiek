@@ -1,0 +1,60 @@
+id: speak-duckdb-fk-blocks-interview-update
+observed_at: 2026-05-25
+source: project_antiek_unified_vision.md
+agent: claude
+phase: speak_async_interview
+failure_type: fk_constraint_blocks_parent_update
+
+context_summary: |
+  While building the Speak workflow's async interview (SPR-02), the
+  Speak schema initially declared DB-level foreign keys from its child
+  tables (speak_consent, speak_invites, speak_contributors) to
+  interviews(interview_id). DuckDB then REFUSED to UPDATE an interviews
+  row — even when the primary key was unchanged — with a
+  ConstraintException ("key is still referenced by a foreign key in a
+  different table"). This is DuckDB's documented FK limitation. Because
+  the async interview (and the invitee answer flow) update
+  interviews.transcript_turns + status on every turn, a single
+  consent row made the whole interview undriveable: submitting an
+  answer crashed at the transcript write.
+
+input:
+  prompt: |
+    Submit a voice-note answer to an interview that has a recorded
+    scoped-consent row, appending the turn to interviews.transcript_turns.
+  env:
+    ANTIEK_EVENTS_DISABLED: "1"
+
+expected_behavior: |
+  Recording consent for an interview must not make that interview's row
+  un-updatable. The Speak child tables (speak_consent, speak_invites,
+  speak_contributors, etc.) reference interviews by COLUMN NAME +
+  audit-event provenance, NOT by a DB-level FK constraint — matching the
+  existing substrate/graph/ops.py convention ("DuckDB does not enforce cross-table
+  FKs strictly"). Appending a transcript turn must succeed.
+
+actual_failure: |
+  duckdb.ConstraintException: Constraint Error: Violates foreign key
+  constraint because key "interview_id: interview-..." is still
+  referenced by a foreign key in a different table. Raised at the
+  UPDATE interviews SET transcript_turns = ?, status = ? ... statement
+  in substrate/speak/async_interview._save_turns, the moment any
+  speak_consent row existed for that interview.
+
+harness_check_that_now_catches: |
+  The mitigation is in substrate/speak/schema.py: the ANTIEK_SPEAK_SCHEMA_SQL
+  declares NO DB-level FK REFERENCES to interviews / interview_projects /
+  ip_holders (provenance is column-name + audit-event, per substrate/graph/ops.py).
+  The standing sentinel is tests/test_speak_fk_regression.py, which
+  reproduces the exact path (insert interview → insert speak_consent
+  child → UPDATE interviews) and asserts no ConstraintException — it
+  fails the moment a future edit re-adds a parent-referencing FK.
+fix_commit: e1c10ee
+notes: |
+  Sibling of the Phase A loky-semaphore + arxiv fixtures. The general
+  lesson generalises beyond Speak: any DuckDB table whose rows are
+  UPDATEd in place must not be the target of a child-table FK. If a
+  future DuckDB release lifts the limitation, this fixture can be
+  retired (re-introducing FKs would then be safe), but the
+  column-name + audit-event convention is independently preferable for
+  cross-workflow tables that several streams touch.

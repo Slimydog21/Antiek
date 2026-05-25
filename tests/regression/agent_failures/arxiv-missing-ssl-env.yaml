@@ -1,0 +1,52 @@
+id: arxiv-missing-ssl-env
+observed_at: 2026-05-17
+source: project_researchmaxx_arxiv.md
+agent: claude
+phase: acquisition_arxiv
+failure_type: ssl_handshake
+
+context_summary: |
+  The arxiv client failed to establish HTTPS handshake to
+  export.arxiv.org because the python.org-installed Python 3.11
+  ships without a system-wide certificate bundle. The fix is to set
+  SSL_CERT_FILE / SSL_CERT_DIR env vars to the certifi bundle, but
+  these were unset in the Antiek runtime environment. Any
+  certificate-validating call (arxiv, S2, even Hermes) failed
+  silently from the agent's perspective with a SSLCertVerificationError
+  buried two stack frames deep.
+
+input:
+  prompt: |
+    Fetch the arxiv abstract for paper 2511.00001.
+  env:
+    SSL_CERT_FILE: ""
+    SSL_CERT_DIR: ""
+
+expected_behavior: |
+  The arxiv client should either (a) detect the missing cert bundle
+  at startup and refuse to make the call with a clear error
+  pointing at the operator's "Install Certificates.command"
+  instruction (the python.org-installed Python ships this), or (b)
+  set the cert path to a known-good bundle (certifi) before the
+  call.
+
+actual_failure: |
+  Silent SSL handshake failure two stack frames deep. The
+  orchestrator received a generic httpx.ConnectError rather than a
+  typed SSLConfigMissing. Recovery loop retried until exhaustion;
+  the operator had to debug from the stderr.
+
+harness_check_that_now_catches: |
+  GAP — Antiek would need a startup self-check that asserts
+  ssl.create_default_context().get_ca_certs() returns a non-empty
+  set, OR explicit certifi pinning in the HTTP client factory. The
+  Prime Intellect memory entry documents the same root cause
+  (python.org-3.11 + missing certs); a single ssl-bootstrap helper
+  could centralise the fix.
+
+fix_commit: GAP
+
+notes: |
+  This is the same root cause that affects Prime CLI per the
+  reference_prime_intellect_lab memory entry. A unified
+  ssl_bootstrap helper in runtime/ would close both at once.

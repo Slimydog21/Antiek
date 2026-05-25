@@ -1,0 +1,51 @@
+id: banned-until-sentinel-absent
+observed_at: 2026-05-17
+source: project_researchmaxx_arxiv.md
+agent: claude
+phase: acquisition_arxiv
+failure_type: missing_sentinel
+
+context_summary: |
+  When export.arxiv.org returned 429 (see fixture
+  arxiv-429-export-ban), Antiek had no place to persist the
+  "banned until <T>" sentinel. The natural store is either DuckDB
+  (write_log table) or a file under ~/.antiek/. Without it, each
+  fresh agent invocation re-checked the endpoint and re-triggered
+  the ban — turning a transient rate limit into an extended outage.
+
+input:
+  prompt: |
+    Resume arxiv ingestion now that the previous 429 should have
+    cleared.
+  env: {}
+
+expected_behavior: |
+  Before any export.arxiv.org request, the client should consult a
+  shared banned_until sentinel. If the current time is before the
+  sentinel, the request short-circuits and routes through the PDF
+  endpoint or S2 fallback. The sentinel survives across processes
+  (writes to a known path; reads with a file-lock-tolerant
+  protocol).
+
+actual_failure: |
+  No sentinel was persisted. Every new shell started fresh and hit
+  export.arxiv.org. The ban window kept resetting; the operator
+  could not tell whether to wait or migrate. The §7 daemon (live on
+  prod) was particularly bad — its cadence ensured the next request
+  hit during the ban every time.
+
+harness_check_that_now_catches: |
+  GAP — would need a small ban_state.py module that writes to
+  ~/.antiek/arxiv_banned_until and exposes ``is_banned() -> bool``
+  + ``mark_banned(until: datetime)``. Integrate into the arxiv
+  HTTP client factory. The fallback paths (PDF, S2) already exist
+  per the same memory entry; only the sentinel + the integration
+  are missing.
+
+fix_commit: GAP
+
+notes: |
+  This is the LOAD-BEARING fix in the arxiv cluster. Without the
+  sentinel, the throttle (arxiv-429-export-ban) and the cache size
+  (undersized-metadata-cache) just shift the ban around without
+  preventing it. Fix this first.

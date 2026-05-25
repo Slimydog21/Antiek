@@ -101,9 +101,17 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE TABLE IF NOT EXISTS nodes (
     node_id          TEXT PRIMARY KEY,
     canonical_label  TEXT NOT NULL,
+    -- DRW SPR-01 adds 'insight' + 'question' (the two atomic units of
+    -- distilled truth). Fresh DBs created from this constant get them
+    -- directly; pre-existing prod DBs are upgraded by
+    -- migrate_v9_insight_question (DuckDB cannot ALTER a CHECK in place,
+    -- so that migration rebuilds the table). Keep this list in lock-step
+    -- with substrate/schemas/events.NodeType and the rebuilt-table CHECK
+    -- in migrate_v9_insight_question._NODES_REBUILD_SQL.
     node_type        TEXT NOT NULL CHECK (node_type IN (
         'entity', 'organization', 'person', 'property',
-        'metric', 'mechanism', 'claim', 'method', 'constraint'
+        'metric', 'mechanism', 'claim', 'method', 'constraint',
+        'insight', 'question'
     )),
     embedding        FLOAT[],
     graph_scope      TEXT NOT NULL CHECK (graph_scope IN (
@@ -348,6 +356,8 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "discovery_cache",
     "url_alias",
     "discovery_summary",
+    "book_assets",
+    "outline_blocks",
 )
 
 
@@ -804,6 +814,143 @@ CREATE TABLE IF NOT EXISTS rollover_ledger (
 """
 
 
+# Read workflow SPR-01 — book_assets. A book IS a document of
+# document_type='book'; this table carries the book-specific structure
+# (TOC, pagination, cover) and the takedown override that the
+# servable-corpus gate reads. Servability itself is NOT stored here — it
+# is derived from documents.content_class (the G1 gate column) by
+# substrate.books.servability. What IS stored: the takedown flag (an
+# override orthogonal to license), the pre-takedown content_class (so
+# takedown is reversible), and the human-readable license basis +
+# provenance that let a future maintainer or counsel defend why a given
+# book was or wasn't served (master-spec §9.0 / §9.10; Hachette / Bartz).
+ANTIEK_GRAPH_SCHEMA_V7_BOOKS_SQL = """
+CREATE TABLE IF NOT EXISTS book_assets (
+    document_id              TEXT PRIMARY KEY REFERENCES documents(document_id),
+    toc_json                 TEXT,                 -- JSON [{title, page_index, level}]
+    page_count               INTEGER NOT NULL DEFAULT 0,
+    pagination_scheme        TEXT NOT NULL DEFAULT 'pdf_page',  -- locator vocabulary
+    cover_uri                TEXT,
+    -- Provenance + the human-readable reason for the document's
+    -- content_class. These exist for defensibility: a book's servability
+    -- decision must survive scrutiny months later.
+    provenance               TEXT,                 -- where the book came from
+    license_basis            TEXT,                 -- why this content_class (prose)
+    -- Takedown override. Orthogonal to content_class so a taken-down
+    -- public-domain book stays public-domain and the action is
+    -- reversible. On takedown the document's content_class is moved to
+    -- restricted_pending_opt_in (reusing the existing G1 gate) and the
+    -- original is saved here.
+    taken_down               BOOLEAN NOT NULL DEFAULT FALSE,
+    taken_down_at            TIMESTAMP,
+    takedown_reason          TEXT,
+    pre_takedown_content_class TEXT,
+    created_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_book_assets_taken_down
+    ON book_assets(taken_down);
+"""
+
+
+# Write workflow SPR-01 — the OutlineBlock composition layer. This is the
+# "lego block" primitive: a unit of meaning placed in an outline section.
+# It SUPERSEDES section_blocks as the composition layer (section_blocks
+# stays as the migration source — see substrate/write/migrate_outline_block.py)
+# and is a strict EXTENSION of the Deliverable/Section/Block model, NOT a
+# parallel store: an outline is deliverables + deliverable_sections
+# (hierarchy via parent_section_id) + outline_blocks (the leaf composition
+# units).
+#
+# Provenance is the moat. ``node_id`` is a SOFT reference (no FK) on
+# purpose:
+#   1. dangling detection — a block whose source node was deleted must be
+#      *detectable and surfaced* (SPR-01 M3), which a hard FK would make
+#      impossible (the row could never exist, or the node could never be
+#      deleted); and
+#   2. forward-compat with DRW SPR-01 — insight/question notes are
+#      event-only today (note.emerged / question.identified) and become
+#      first-class graph nodes later; a soft ref lets a block point at a
+#      note id that is not yet a row in ``nodes``.
+# substrate/write/provenance.py resolves + validates the chain; the DB
+# CHECK enforces the no-orphan-prose invariant structurally (graph_node ⟹
+# node_id present; user-originated ⟹ node_id absent — no fabricated
+# citations).
+ANTIEK_GRAPH_SCHEMA_V8_WRITE_SQL = """
+CREATE TABLE IF NOT EXISTS outline_blocks (
+    outline_block_id  TEXT PRIMARY KEY,
+    section_id        TEXT NOT NULL REFERENCES deliverable_sections(section_id),
+    block_kind        TEXT NOT NULL CHECK (block_kind IN (
+        'insight', 'open_question', 'operator_note', 'claim',
+        'user_authored', 'synthesized'
+    )),
+    provenance_kind   TEXT NOT NULL CHECK (provenance_kind IN (
+        'graph_node', 'user_authored', 'synthesized', 'brainstorm'
+    )),
+    -- Soft reference to the source graph node (NULL for user-originated
+    -- blocks). No FK — see the module note on dangling detection.
+    node_id           TEXT,
+    -- Migration provenance: the original section_blocks (block_kind,
+    -- block_id) this row was migrated from, so the move is auditable and
+    -- reversible. NULL for natively-created outline blocks.
+    source_block_kind TEXT,
+    source_block_id   TEXT,
+    -- Inline content for user_authored / synthesized / brainstorm blocks
+    -- that have no graph node of record. NULL when node-backed.
+    content           TEXT,
+    block_index       INTEGER NOT NULL,
+    -- Clustering key (SPR-01 M4): blocks grouped by shared source document
+    -- or node-embedding similarity share a cluster_id. NULL = unclustered.
+    cluster_id        TEXT,
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata          TEXT,
+    -- The no-orphan-prose invariant, enforced at the DB layer:
+    --   graph_node      ⟹ node_id present (a block claiming graph
+    --                     provenance must name its node);
+    --   user-originated ⟹ node_id absent (no fabricated citation to a
+    --                     source the block did not come from).
+    CHECK (
+        (provenance_kind = 'graph_node' AND node_id IS NOT NULL)
+        OR (provenance_kind <> 'graph_node' AND node_id IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_outline_blocks_section
+    ON outline_blocks(section_id, block_index);
+CREATE INDEX IF NOT EXISTS idx_outline_blocks_node
+    ON outline_blocks(node_id);
+CREATE INDEX IF NOT EXISTS idx_outline_blocks_cluster
+    ON outline_blocks(cluster_id);
+"""
+
+
+# ============================================================
+# V9 — write_log (DRW SPR-01)
+# ============================================================
+# runtime/db_lock.py has written to this table since WP-2, but the
+# CREATE was never landed (the spec referenced a `migrate_v7_write_log.py`
+# that did not exist, and `_log_write_event` was built to no-op
+# gracefully while the table was missing). DRW SPR-01 needs the write
+# observability that `connect_write(purpose="promote_insight")` produces,
+# so the table is created here as the next idempotent versioned block.
+# (V7/V8 numbers are already taken by the parallel Read/Write workflows;
+# this is the next free integer, not a third "V7".) Columns match the
+# INSERT in db_lock._log_write_event exactly.
+ANTIEK_GRAPH_SCHEMA_V9_WRITE_LOG_SQL = """
+CREATE SEQUENCE IF NOT EXISTS seq_write_log_id START 1;
+CREATE TABLE IF NOT EXISTS write_log (
+    log_id       BIGINT PRIMARY KEY DEFAULT nextval('seq_write_log_id'),
+    purpose      TEXT NOT NULL,
+    duration_s   DOUBLE NOT NULL DEFAULT 0.0,
+    success      BOOLEAN NOT NULL DEFAULT TRUE,
+    error        TEXT,
+    logged_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_write_log_purpose ON write_log(purpose);
+CREATE INDEX IF NOT EXISTS idx_write_log_logged_at ON write_log(logged_at);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -833,6 +980,27 @@ def init_database(con: LockedConnection) -> None:
     # Sprint 23-24 phase 1+2 — ad inventory persistence + payout
     # decisions audit + rollover ledger.
     con.execute(ANTIEK_GRAPH_SCHEMA_V6_AD_PERSISTENCE_SQL)
+    # Read workflow SPR-01 — book_assets (TOC/pagination/cover + takedown
+    # override). Servability is derived from documents.content_class, not
+    # stored here. Idempotent (CREATE IF NOT EXISTS).
+    con.execute(ANTIEK_GRAPH_SCHEMA_V7_BOOKS_SQL)
+    # Write workflow SPR-01 — outline_blocks (the OutlineBlock composition
+    # layer; supersedes section_blocks, references graph nodes for
+    # provenance). Idempotent (CREATE IF NOT EXISTS).
+    con.execute(ANTIEK_GRAPH_SCHEMA_V8_WRITE_SQL)
+    # DRW SPR-01 — write_log table (runtime/db_lock has written to it since
+    # WP-2; the CREATE was never landed). Pure idempotent SQL.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V9_WRITE_LOG_SQL)
+    # DRW SPR-01 — promote 'insight' + 'question' to node types. The first
+    # *procedural* migration: DuckDB 1.5.2 cannot ALTER a CHECK constraint in
+    # place, so the nodes table is rebuilt iff the live CHECK is missing the
+    # two types (idempotent — a no-op once applied, and on fresh DBs where V1
+    # already carries them). Runs last: it drops+recreates nodes/edges, and
+    # no table created above FK-references them (outline_blocks.node_id is a
+    # soft ref, no FK). Lives in its own module — detect-and-rebuild logic,
+    # not a static SQL string.
+    from .migrate_v9_insight_question import migrate as _migrate_v9_insight_question
+    _migrate_v9_insight_question(con)
 
 
 def init_database_at_path(db_path: str) -> None:

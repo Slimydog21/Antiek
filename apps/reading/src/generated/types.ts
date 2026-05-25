@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 12;
+export const EVENT_SCHEMA_VERSION = 16;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -118,6 +118,19 @@ export const ActionType = {
   AI_ACTION_APPLIED: "ai.action.applied",
   AI_ACTION_UNDONE: "ai.action.undone",
   DP_ROUTED: "dp.routed",
+  OUTLINE_BLOCK_PLACED: "outline_block.placed",
+  OUTLINE_BLOCK_MOVED: "outline_block.moved",
+  OUTLINE_BLOCK_REMOVED: "outline_block.removed",
+  BOOK_SERVABILITY_CHANGED: "book.servability_changed",
+  BOOK_TAKEN_DOWN: "book.taken_down",
+  EDIT_CAPTURED: "edit.captured",
+  SEAM_RESEARCH_TO_READ: "seam.research_to_read",
+  SEAM_READ_TO_RESEARCH: "seam.read_to_research",
+  SEAM_READ_TO_WRITE: "seam.read_to_write",
+  SEAM_WRITE_TO_READ: "seam.write_to_read",
+  SEAM_SPEAK_TO_WRITE: "seam.speak_to_write",
+  SEAM_SPEAK_TO_READ: "seam.speak_to_read",
+  SEAM_WRITE_TO_SPEAK: "seam.write_to_speak",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -871,7 +884,7 @@ export interface GraphNodeInsertedPayload {
   action_type: "graph.node.inserted";
   node_id: string;
   canonical_label: string;
-  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint";
+  node_type: "entity" | "organization" | "person" | "property" | "metric" | "mechanism" | "claim" | "method" | "constraint" | "insight" | "question";
   graph_scope: "depth" | "cross_domain" | "constraint";
   has_embedding: boolean;
 }
@@ -1849,6 +1862,242 @@ export interface DPRoutedPayload {
 }
 
 /**
+ * A lego block placed into an outline section (substrate/write/).
+ * 
+ * provenance_kind discriminates how the block traces to a source of
+ * truth — the invariant SPR-07 trace-to-source relies on:
+ * 
+ * - 'graph_node'    → ``node_id`` references an insight/question/claim
+ *                     graph node; provenance resolves node → document
+ *                     → chunks. ``content`` is null (the node is the
+ *                     content of record).
+ * - 'user_authored' → the operator wrote it directly. ``node_id`` is
+ *                     null; ``content`` carries the text. No false
+ *                     citation is ever attached.
+ * - 'synthesized'   → produced by generation/synthesis from other
+ *                     blocks. ``node_id`` null.
+ * - 'brainstorm'    → emerged from a brainstorm session (SPR-05);
+ *                     user-originated, ``node_id`` null, traces to the
+ *                     session not an external document.
+ */
+export interface OutlineBlockPlacedPayload {
+  action_type: "outline_block.placed";
+  outline_block_id: string;
+  deliverable_id: string;
+  section_id: string;
+  block_kind: "insight" | "open_question" | "operator_note" | "claim" | "user_authored" | "synthesized";
+  provenance_kind: "graph_node" | "user_authored" | "synthesized" | "brainstorm";
+  node_id?: string | null;
+  block_index: number;
+}
+
+/**
+ * A block reordered within a section or moved to a new section
+ * (reparent). Records both endpoints so the authoring trajectory can
+ * replay the composition edit deterministically.
+ */
+export interface OutlineBlockMovedPayload {
+  action_type: "outline_block.moved";
+  outline_block_id: string;
+  from_section_id: string;
+  to_section_id: string;
+  from_index: number;
+  to_index: number;
+}
+
+/**
+ * A block removed from an outline. The underlying graph node is
+ * untouched — removal is a composition edit, not a graph deletion.
+ * Outlines and folders are views over nodes (the moat), so removing a
+ * block never destroys provenance for any other reference.
+ */
+export interface OutlineBlockRemovedPayload {
+  action_type: "outline_block.removed";
+  outline_block_id: string;
+  section_id: string;
+}
+
+/**
+ * One structured before/after edit in the writing surface.
+ * 
+ * This is the granular replacement for the coarse
+ * ``updateSectionProse`` capture (whole-section ``original_text`` vs
+ * ``prose_text``). The editor (SPR-04) emits one of these per edit at
+ * block / paragraph / sentence granularity, anchored to a stable
+ * locator (``section_id`` + optional ``outline_block_id`` /
+ * ``paragraph_index`` / ``sentence_index``) so the authoring trajectory
+ * (SPR-02) and section/paragraph style prompts (SPR-06) both address
+ * the same units.
+ * 
+ * ``reverted`` is the undo/redo coordination point: a reverted edit is
+ * still captured (the chain of edits is the signal — like Cursor's
+ * accept/edit loop) but is explicitly EXCLUDED from training signal so a
+ * revert is never counted as an endorsement.
+ * 
+ * CAPTURE ≠ TRAINING. These events are written ungated. The reward is
+ * computed post-unlock by ``rubric_verifier`` (itself gated); nothing
+ * here computes a reward or invokes training.
+ */
+export interface EditCapturedPayload {
+  action_type: "edit.captured";
+  deliverable_id: string;
+  section_id: string;
+  outline_block_id?: string | null;
+  granularity: "block" | "paragraph" | "sentence";
+  edit_kind: "insert" | "delete" | "replace" | "reorder";
+  paragraph_index?: number | null;
+  sentence_index?: number | null;
+  before_text?: string | null;
+  after_text?: string | null;
+  reverted?: boolean;
+  session_id?: string | null;
+}
+
+/**
+ * A book's full-text serving eligibility changed. Emitted by
+ * ``substrate/books/`` whenever a content_class transition moves a book
+ * across the servable / metadata-only line (e.g. a publisher claims an
+ * account and a gated book flips to publisher_opted_in). The
+ * from/to statuses are the DERIVED ServabilityStatus values (not the
+ * raw content_class) so the audit reads in the gate's own vocabulary.
+ * 
+ * The ``document_id`` of the affected book rides the Event envelope
+ * (``emit_typed(..., document_id=...)``), so it isn't duplicated here.
+ */
+export interface BookServabilityChangedPayload {
+  action_type: "book.servability_changed";
+  from_status: string;
+  to_status: string;
+  reason: string;
+}
+
+/**
+ * A removal demand was honoured for a book (Read SPR-01 M4). Records
+ * that the full text was purged from the materialized document body and
+ * retrieval was restricted (content_class moved to the existing
+ * restricted_pending_opt_in gate). ``purged_full_text`` is True when a
+ * non-empty raw_text was nulled — distinguishing "took down a book we
+ * were serving" from "took down a metadata-only stub". Pre-serve /
+ * pre-payout takedown is the cheap defence (Bartz).
+ */
+export interface BookTakenDownPayload {
+  action_type: "book.taken_down";
+  reason: string;
+  previous_content_class?: string | null;
+  purged_full_text?: boolean;
+}
+
+/**
+ * research → read. A researched insight surfaces in the reading corpus
+ * (DRW SPR-01 node + Read corpus surface).
+ */
+export interface SeamResearchToReadPayload {
+  entity_id: string;
+  entity_kind?: "insight_node";
+  provenance_ref: string;
+  terminates?: true;
+  action_type: "seam.research_to_read";
+  from_workflow?: "research";
+  to_workflow?: "read";
+}
+
+/**
+ * read → research. A highlighted passage spins a focused investigation
+ * (Read SPR-08 → DRW SPR-05 cascade planner seed).
+ */
+export interface SeamReadToResearchPayload {
+  entity_id: string;
+  entity_kind?: "document_region";
+  provenance_ref: string;
+  terminates?: true;
+  action_type: "seam.read_to_research";
+  from_workflow?: "read";
+  to_workflow?: "research";
+  document_id: string;
+  launched_investigation_id?: string | null;
+}
+
+/**
+ * read → write. An insight node is dragged into an outline section
+ * (Write SPR-03). The block references the node (provenance_kind=graph_node);
+ * it never inlines the insight text.
+ */
+export interface SeamReadToWritePayload {
+  entity_id: string;
+  entity_kind?: "insight_node";
+  provenance_ref: string;
+  terminates?: true;
+  action_type: "seam.read_to_write";
+  from_workflow?: "read";
+  to_workflow?: "write";
+  target_section_id: string;
+}
+
+/**
+ * write → read. Trace a block to its source in the shared reading surface
+ * (Write SPR-07), respecting Read's servability gate.
+ */
+export interface SeamWriteToReadPayload {
+  entity_id: string;
+  entity_kind?: "outline_block";
+  provenance_ref: string;
+  terminates?: true;
+  action_type: "seam.write_to_read";
+  from_workflow?: "write";
+  to_workflow?: "read";
+  source_document_id?: string | null;
+  source_region_id?: string | null;
+}
+
+/**
+ * speak → write. Author a biography from interview-attested claims
+ * (Speak SPR-08). The seam carries the speak_claim id; Write maps it to a
+ * synthesized block (claim_id as provenance link, not a new node).
+ */
+export interface SeamSpeakToWritePayload {
+  entity_id: string;
+  entity_kind?: "speak_claim";
+  provenance_ref: string;
+  terminates?: true;
+  action_type: "seam.speak_to_write";
+  from_workflow?: "speak";
+  to_workflow?: "write";
+  contributor_interview_ids?: string[];
+}
+
+/**
+ * speak → read. A published biography is served back in the corpus
+ * (Speak SPR-09). Registers as platform_authored + speak_derived — the
+ * condition that routes it through the seam-#4 publish gate.
+ */
+export interface SeamSpeakToReadPayload {
+  entity_id: string;
+  entity_kind?: "servable_entry";
+  provenance_ref: string;
+  terminates?: true;
+  action_type: "seam.speak_to_read";
+  from_workflow?: "speak";
+  to_workflow?: "read";
+  publish_gate_passed?: boolean;
+}
+
+/**
+ * write → speak. **PROVISIONAL.** Commission interviews from an outline
+ * gap. Typed so the trajectory can carry it, but the seam is the weakest and
+ * off the SPR-08 critical path; the receiving Speak side is unspecified.
+ */
+export interface SeamWriteToSpeakPayload {
+  entity_id: string;
+  entity_kind?: "question_node";
+  provenance_ref: string;
+  terminates?: true;
+  action_type: "seam.write_to_speak";
+  from_workflow?: "write";
+  to_workflow?: "speak";
+  outline_section_id?: string | null;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -1939,7 +2188,20 @@ export type TypedPayload =
   | VisualRoleFailedPayload
   | AIActionAppliedPayload
   | AIActionUndonePayload
-  | DPRoutedPayload;
+  | DPRoutedPayload
+  | OutlineBlockPlacedPayload
+  | OutlineBlockMovedPayload
+  | OutlineBlockRemovedPayload
+  | EditCapturedPayload
+  | BookServabilityChangedPayload
+  | BookTakenDownPayload
+  | SeamResearchToReadPayload
+  | SeamReadToResearchPayload
+  | SeamReadToWritePayload
+  | SeamWriteToReadPayload
+  | SeamSpeakToWritePayload
+  | SeamSpeakToReadPayload
+  | SeamWriteToSpeakPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -1996,6 +2258,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "document.loaded",
   "document.region_selected",
   "dp.routed",
+  "edit.captured",
   "evidence.retrieve.delivered",
   "evidence.retrieve.requested",
   "federation.inbound_citation.accepted",
@@ -2024,6 +2287,9 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "note.emerged",
   "note.refined",
   "outcome.recorded",
+  "outline_block.moved",
+  "outline_block.placed",
+  "outline_block.removed",
   "page.attribution.computed",
   "parameter_extract.delivered",
   "parameter_extract.requested",
@@ -2038,6 +2304,13 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "rev_share.decided",
   "rlm.bridge.decided",
   "rubric.scored",
+  "seam.read_to_research",
+  "seam.read_to_write",
+  "seam.research_to_read",
+  "seam.speak_to_read",
+  "seam.speak_to_write",
+  "seam.write_to_read",
+  "seam.write_to_speak",
   "skill.auto_patch_applied",
   "skill.auto_patch_skipped",
   "skill_rule.promoted",

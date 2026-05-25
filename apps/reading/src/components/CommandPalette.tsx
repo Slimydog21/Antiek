@@ -11,6 +11,16 @@ import {
 } from "../workspace/persistence";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import {
+  WORKFLOWS,
+  WORKFLOW_ORDER,
+  workflowForPath,
+  type Workflow,
+} from "../shell/workflowTaxonomy";
+import {
+  entryWorkflow as facetEntryWorkflow,
+  rankEntries as facetRankEntries,
+} from "../shell/paletteFacet";
 import LemonButton from "./lemon/LemonButton";
 import { LemonModal } from "./lemon/LemonModal";
 import { toast } from "./lemon/LemonToast";
@@ -42,6 +52,8 @@ interface PaletteRoute {
   title: string;
   subtitle: string;
   path: string;
+  /** SPR-04 — workflow facet, used for grouping + workflow-scoped filter. */
+  workflow?: Workflow;
 }
 
 interface PaletteInvestigation {
@@ -85,6 +97,8 @@ interface PaletteAction {
   title: string;
   subtitle: string;
   run: () => void;
+  /** SPR-04 — workflow facet (e.g. a "go to Read" jump action). */
+  workflow?: Workflow;
 }
 
 export type PaletteEntry =
@@ -252,27 +266,47 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
 ];
 
+/**
+ * SPR-04 — decorate every route entry with its workflow facet, derived
+ * from the taxonomy's path→workflow resolver. Done mechanically rather
+ * than hand-tagging 20+ rows so the facet can't drift from the taxonomy.
+ */
+const ROUTE_INDEX_WITH_FACET: PaletteRoute[] = ROUTE_INDEX.map((r) => ({
+  ...r,
+  workflow: workflowForPath(r.path),
+}));
+
+/**
+ * SPR-04 — workflow-jump commands. Typing "research", "read", "write",
+ * or "speak" surfaces a "Go to <Workflow>" command at the top. These are
+ * the rail's four workflows as palette entries.
+ */
+function buildWorkflowJumps(navigate: (p: string) => void): PaletteAction[] {
+  return WORKFLOW_ORDER.map((wf) => ({
+    kind: "action" as const,
+    id: `wf:goto:${wf}`,
+    title: `Go to ${WORKFLOWS[wf].label}`,
+    subtitle: WORKFLOWS[wf].tagline,
+    workflow: wf,
+    run: () => navigate(WORKFLOWS[wf].defaultRoute),
+  }));
+}
+
+/**
+ * Public re-exports of the pure facet logic. The implementation lives in
+ * src/shell/paletteFacet.ts so it can be unit-tested without importing
+ * this component (which pulls in lib/api + the data layer). Kept here so
+ * existing callers/tests that import from CommandPalette keep working.
+ */
+export function entryWorkflow(e: PaletteEntry): Workflow | undefined {
+  return facetEntryWorkflow(e);
+}
+
 export function rankEntries(
   entries: PaletteEntry[],
   query: string,
 ): PaletteEntry[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return entries;
-  const scored = entries
-    .map((e) => {
-      const hay = `${e.title} ${e.subtitle}`.toLowerCase();
-      // Substring is the strongest signal (rank 0). Otherwise score
-      // by token-match count.
-      if (hay.includes(q)) {
-        return { e, score: hay.indexOf(q) };
-      }
-      const tokens = q.split(/\s+/);
-      const hits = tokens.filter((t) => hay.includes(t)).length;
-      return hits ? { e, score: 1000 - hits * 10 } : null;
-    })
-    .filter((x): x is { e: PaletteEntry; score: number } => x !== null);
-  scored.sort((a, b) => a.score - b.score);
-  return scored.map((s) => s.e);
+  return facetRankEntries(entries, query);
 }
 
 export default function CommandPalette() {
@@ -576,16 +610,22 @@ export default function CommandPalette() {
     return [...actions, ...visiblePanelEntries];
   }, [wsPanels]);
 
+  const workflowJumps = useMemo<PaletteAction[]>(
+    () => buildWorkflowJumps(navigate),
+    [navigate],
+  );
+
   const entries = useMemo<PaletteEntry[]>(
     () => [
+      ...workflowJumps,
       ...workspaceActions,
-      ...ROUTE_INDEX,
+      ...ROUTE_INDEX_WITH_FACET,
       ...investigations,
       ...documents,
       ...notebooks,
       ...parked,
     ],
-    [workspaceActions, investigations, documents, notebooks, parked],
+    [workflowJumps, workspaceActions, investigations, documents, notebooks, parked],
   );
 
   const ranked = useMemo(
@@ -664,9 +704,19 @@ export default function CommandPalette() {
                     {e.subtitle}
                   </p>
                 </div>
-                <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
-                  {e.kind.replace("_", " ")}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {(() => {
+                    const wf = entryWorkflow(e);
+                    return wf && wf !== "shared" ? (
+                      <span className="text-[10px] uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
+                        {WORKFLOWS[wf].label}
+                      </span>
+                    ) : null;
+                  })()}
+                  <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+                    {e.kind.replace("_", " ")}
+                  </span>
+                </div>
               </li>
             ))
           )}

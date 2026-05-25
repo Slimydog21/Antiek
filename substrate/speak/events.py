@@ -1,0 +1,99 @@
+"""Speak workflow — the audit-event vocabulary.
+
+Speak is interview-as-acquisition (specs/speak/): aggregate stakeholder
+interviews into the shared graph, corroborate across interviewees,
+author with Write, publish with Read, and pay contributors their fair
+share. The Speak substrate owns its own DuckDB tables
+(``substrate/speak/schema.py``) as the source of truth; *this* module
+is the append-only audit layer over those single-writer mutations.
+
+Why string constants instead of new ``ActionType`` enum members
+-----------------------------------------------------------------
+``substrate/schemas/events.py`` is a hot, concurrently-edited file (the
+operator's parallel-stream tooling commits big batches; CLAUDE.md
+warns about collisions on mainline files). The ``log_event`` path
+accepts ``str | ActionType`` and ``_coerce`` passes strings through
+unchanged, so a plain string is a first-class action_type — it lands
+in the JSONL/Parquet trajectory identically. We register Speak's
+vocabulary HERE, centrally for the workflow, rather than mutating the
+shared enum. This also keeps the codegen-staleness gate green with no
+TS drift (SPR-01 M7 / SPR-09 M6 requirement: ``check_staleness.py``
+passes). If Speak ships to the TS reading surface and the events need
+TS enum members, promote these into ``ActionType`` in a dedicated,
+codegen-regenerated commit then.
+
+These values are stored in Parquet — they MUST remain stable across
+refactors. Add new ones; never repurpose an existing string.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Optional
+
+# ── The stable Speak action_type vocabulary ────────────────────────────
+# Namespaced ``speak.*`` so they never collide with the central enum.
+SPEAK_PROJECT_CREATED = "speak.project.created"
+SPEAK_INTERVIEW_INVITED = "speak.interview.invited"
+SPEAK_CONSENT_RECORDED = "speak.consent.recorded"
+SPEAK_CONSENT_REVOKED = "speak.consent.revoked"
+SPEAK_THIRD_PARTY_TAGGED = "speak.third_party.tagged"
+SPEAK_SUBJECT_CONSENT_RECORDED = "speak.subject_consent.recorded"
+SPEAK_PUBLISH_BLOCKED = "speak.publish.blocked"
+SPEAK_TAKEDOWN_REQUESTED = "speak.takedown.requested"
+SPEAK_TAKEDOWN_REVERSED = "speak.takedown.reversed"
+SPEAK_CLAIM_MULTIPLY_ATTESTED = "speak.claim.multiply_attested"
+SPEAK_CLAIM_CONTRADICTED = "speak.claim.contradicted"
+SPEAK_CONTRIBUTOR_MAPPED = "speak.contributor.mapped"
+SPEAK_CONTRIBUTION_ACCRUED = "speak.contribution.accrued"
+SPEAK_DISBURSEMENT_BLOCKED = "speak.disbursement.blocked"
+SPEAK_PUBLISHED = "speak.published"
+SPEAK_BOOK_ORDER_QUOTED = "speak.book_order.quoted"
+
+# The full set, for tests + a future enum-promotion audit.
+SPEAK_ACTION_TYPES: frozenset[str] = frozenset({
+    SPEAK_PROJECT_CREATED,
+    SPEAK_INTERVIEW_INVITED,
+    SPEAK_CONSENT_RECORDED,
+    SPEAK_CONSENT_REVOKED,
+    SPEAK_THIRD_PARTY_TAGGED,
+    SPEAK_SUBJECT_CONSENT_RECORDED,
+    SPEAK_PUBLISH_BLOCKED,
+    SPEAK_TAKEDOWN_REQUESTED,
+    SPEAK_TAKEDOWN_REVERSED,
+    SPEAK_CLAIM_MULTIPLY_ATTESTED,
+    SPEAK_CLAIM_CONTRADICTED,
+    SPEAK_CONTRIBUTOR_MAPPED,
+    SPEAK_CONTRIBUTION_ACCRUED,
+    SPEAK_DISBURSEMENT_BLOCKED,
+    SPEAK_PUBLISHED,
+    SPEAK_BOOK_ORDER_QUOTED,
+})
+
+
+def record_speak_event(
+    action_type: str,
+    payload: dict[str, Any],
+    *,
+    project_id: Optional[str] = None,
+    role: Optional[str] = None,
+) -> Optional[str]:
+    """Append one Speak audit event to the trajectory log.
+
+    ``project_id`` becomes the ``investigation_id`` so a project's whole
+    Speak history (consent → corroboration → publish → accrual) is one
+    queryable stream. Returns the event_id, or None when events are
+    disabled (``ANTIEK_EVENTS_DISABLED``). Non-fatal by design — a
+    failed audit write must never abort a substrate mutation that
+    already committed.
+    """
+    if action_type not in SPEAK_ACTION_TYPES:
+        # Cheap guard against typos becoming permanent Parquet strings.
+        raise ValueError(f"unknown Speak action_type: {action_type!r}")
+    from substrate.event_log import log_event
+
+    return log_event(
+        project_id or "speak-unscoped",
+        action_type,
+        payload=payload,
+        role=role,
+    )

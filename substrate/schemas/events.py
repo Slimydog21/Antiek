@@ -283,6 +283,62 @@ class ActionType(str, Enum):
     #    verifiable per-surface ε budget under §13.7.
     DP_ROUTED = "dp.routed"
 
+    # ── Write workflow — outline composition (Write SPR-01). The
+    #    OutlineBlock composition layer (substrate/write/) records every
+    #    lego-block placement / move / removal in an outline so the
+    #    authoring trajectory (Write SPR-02) can reconstruct the
+    #    block-selection steps that precede a draft. These are
+    #    composition edits over deliverable_sections — NOT graph-write
+    #    events; the underlying insight/question/claim node is untouched
+    #    (outlines and folders are views over nodes, per the spec moat).
+    OUTLINE_BLOCK_PLACED = "outline_block.placed"
+    OUTLINE_BLOCK_MOVED = "outline_block.moved"
+    OUTLINE_BLOCK_REMOVED = "outline_block.removed"
+
+    # ── Read workflow — servable-corpus legal gate (Read SPR-01;
+    #    master-spec §9.0 / §9.10). Every change to a book's serving
+    #    eligibility is an auditable event so a future maintainer (or
+    #    counsel) can reconstruct exactly when and why a book was or
+    #    wasn't served — the decision most needing to survive scrutiny.
+    #    book.servability_changed records a content_class transition
+    #    (e.g. gated → publisher_opted_in); book.taken_down records a
+    #    removal demand being honoured (full text purged, retrieval
+    #    restricted). These are gate-state events over documents +
+    #    book_assets, NOT graph-write events.
+    BOOK_SERVABILITY_CHANGED = "book.servability_changed"
+    BOOK_TAKEN_DOWN = "book.taken_down"
+
+    # ── Write workflow — edit capture (Write SPR-02). The editing-as-
+    #    data thesis: the first draft is cheap, the real writing is the
+    #    edit, and those last-mile edits are the highest-value signal —
+    #    both for prompt-level style conditioning (SPR-09) now and for
+    #    the GATED Loop-3 RL/SFT track later. edit.captured records one
+    #    structured before/after edit at block/paragraph/sentence
+    #    granularity. CAPTURE ≠ TRAINING: these events are written
+    #    ungated; the training-bound harvest is hard-gated by
+    #    unlock_gate (G8) and the reward stays None until post-unlock.
+    EDIT_CAPTURED = "edit.captured"
+
+    # ── Cross-workflow seams (antiek-unified SPR-03). Each typed seam
+    #    handoff (substrate/seams/contracts.py) emits one of these when it
+    #    fires. They carry the entity id + kind + provenance ref + the
+    #    terminating-handoff marker — NEVER a copy of the entity. Six
+    #    committed + one provisional (write→speak). These are handoff-audit
+    #    events: they record that a workflow handed an entity (by reference)
+    #    to another workflow; the underlying graph node / claim / document is
+    #    untouched (the seam moves the reference, the products own the
+    #    entity). No seam event carries a successor — the absence of any
+    #    next-handoff field is the no-auto-loop invariant.
+    SEAM_RESEARCH_TO_READ = "seam.research_to_read"
+    SEAM_READ_TO_RESEARCH = "seam.read_to_research"
+    SEAM_READ_TO_WRITE = "seam.read_to_write"
+    SEAM_WRITE_TO_READ = "seam.write_to_read"
+    SEAM_SPEAK_TO_WRITE = "seam.speak_to_write"
+    SEAM_SPEAK_TO_READ = "seam.speak_to_read"
+    # Provisional — write→speak. Typed so the trajectory can carry it if the
+    # operator exercises it, but the seam is off the SPR-08 critical path.
+    SEAM_WRITE_TO_SPEAK = "seam.write_to_speak"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -331,7 +387,38 @@ class ActionType(str, Enum):
 #     through randomized response. Records surface + ε + whether
 #     flipped, never the original value. Trust Center reads the
 #     daily running ε sum from this stream. 2026-05-22.
-EVENT_SCHEMA_VERSION: int = 12
+# v13: Write workflow SPR-01 — OutlineBlock composition layer audit
+#     trail. Three typed events (outline_block.placed / .moved /
+#     .removed) record lego-block composition edits over
+#     deliverable_sections, each carrying the provenance_kind
+#     discriminator (graph_node | user_authored | synthesized |
+#     brainstorm) so the authoring trajectory can replay block
+#     selection and a maintainer can confirm no orphan-prose path.
+#     specs/write/ SPR-01. 2026-05-25.
+# v14: Read workflow SPR-01 — servable-corpus legal-gate audit trail.
+#     Two typed events (book.servability_changed + book.taken_down)
+#     record every transition of a book's full-text serving eligibility,
+#     each carrying the from/to servability status + the reason, so the
+#     deny-by-default gate's decisions are reconstructable from the
+#     trajectory alone. specs/read/ SPR-01. 2026-05-25.
+# v15: Write workflow SPR-02 — edit capture. One typed event
+#     (edit.captured) records a structured before/after edit at
+#     block/paragraph/sentence granularity with a stable locator + a
+#     reverted flag (undo/redo coordination — reverts are captured but
+#     excluded from training signal). The training-bound harvest is
+#     hard-gated by unlock_gate (G8); these capture events are ungated
+#     and the reward stays None until post-unlock. specs/write/ SPR-02.
+#     2026-05-25.
+# v16: antiek-unified SPR-03 — cross-workflow seam handoff audit trail.
+#     Seven typed events (seam.research_to_read / read_to_research /
+#     read_to_write / write_to_read / speak_to_write / speak_to_read +
+#     provisional seam.write_to_speak) record one cross-workflow handoff
+#     each, carrying the entity id + entity_kind + provenance_ref + the
+#     terminating-handoff marker so the flywheel is reconstructable from
+#     the trajectory. Handoff-audit events over existing entities — NOT
+#     graph-write events; the seam moves a reference, never a copy.
+#     specs/antiek-unified/ SPR-03. 2026-05-25.
+EVENT_SCHEMA_VERSION: int = 16
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -875,6 +962,13 @@ class SupersessionCoexistPayload(_PayloadBase):
 # CHECK constraint on ``nodes.node_type`` in substrate/graph/schema.py
 # rejects anything not in this set, so the schema-level and DB-level
 # enforcement agree.
+#
+# ``insight`` + ``question`` (DRW SPR-01) are the two atomic units of
+# distilled truth, promoted from the ``note.emerged`` / ``question.identified``
+# events to first-class graph nodes. They are listed here in lock-step with
+# the DB CHECK after the migrate_v9_insight_question rebuild
+# (substrate/graph/migrate_v9_insight_question.py): both layers must carry
+# the same set or insert_node's payload validation diverges from the DB.
 NodeType = Literal[
     "entity",
     "organization",
@@ -885,6 +979,8 @@ NodeType = Literal[
     "claim",
     "method",
     "constraint",
+    "insight",
+    "question",
 ]
 
 # Closed graph_scope taxonomy. Determines which traversal algorithms
@@ -2566,6 +2662,274 @@ class DPRoutedPayload(_PayloadBase):
     stage: Literal["local_randomized", "aggregated"] = "local_randomized"
 
 
+# ── Write workflow — outline composition (Write SPR-01) ─────────────
+#
+# The OutlineBlock is the "lego block" composition primitive: a unit of
+# meaning placed in an outline section. Its provenance is the moat — a
+# block either references an insight/question/claim graph node
+# (provenance resolvable to a source document) or is explicitly marked
+# user-originated. There is NO third option: a block never carries a
+# fabricated citation to a source it did not come from.
+#
+# block_kind extends (does not replace) the section_blocks vocabulary
+# ('insight' | 'open_question' | 'operator_note' | 'claim') with two
+# Write-native kinds: 'user_authored' (operator wrote it) and
+# 'synthesized' (produced by generation). provenance_kind is the
+# orthogonal trace discriminator — block_kind says *what* it is,
+# provenance_kind says *how it traces to truth*.
+
+
+class OutlineBlockPlacedPayload(_PayloadBase):
+    """A lego block placed into an outline section (substrate/write/).
+
+    provenance_kind discriminates how the block traces to a source of
+    truth — the invariant SPR-07 trace-to-source relies on:
+
+    - 'graph_node'    → ``node_id`` references an insight/question/claim
+                        graph node; provenance resolves node → document
+                        → chunks. ``content`` is null (the node is the
+                        content of record).
+    - 'user_authored' → the operator wrote it directly. ``node_id`` is
+                        null; ``content`` carries the text. No false
+                        citation is ever attached.
+    - 'synthesized'   → produced by generation/synthesis from other
+                        blocks. ``node_id`` null.
+    - 'brainstorm'    → emerged from a brainstorm session (SPR-05);
+                        user-originated, ``node_id`` null, traces to the
+                        session not an external document.
+    """
+
+    action_type: Literal[ActionType.OUTLINE_BLOCK_PLACED] = ActionType.OUTLINE_BLOCK_PLACED
+    outline_block_id: str
+    deliverable_id: str
+    section_id: str
+    block_kind: Literal[
+        "insight", "open_question", "operator_note", "claim",
+        "user_authored", "synthesized",
+    ]
+    provenance_kind: Literal["graph_node", "user_authored", "synthesized", "brainstorm"]
+    node_id: Optional[str] = None
+    block_index: int
+
+
+class OutlineBlockMovedPayload(_PayloadBase):
+    """A block reordered within a section or moved to a new section
+    (reparent). Records both endpoints so the authoring trajectory can
+    replay the composition edit deterministically."""
+
+    action_type: Literal[ActionType.OUTLINE_BLOCK_MOVED] = ActionType.OUTLINE_BLOCK_MOVED
+    outline_block_id: str
+    from_section_id: str
+    to_section_id: str
+    from_index: int
+    to_index: int
+
+
+class OutlineBlockRemovedPayload(_PayloadBase):
+    """A block removed from an outline. The underlying graph node is
+    untouched — removal is a composition edit, not a graph deletion.
+    Outlines and folders are views over nodes (the moat), so removing a
+    block never destroys provenance for any other reference."""
+
+    action_type: Literal[ActionType.OUTLINE_BLOCK_REMOVED] = ActionType.OUTLINE_BLOCK_REMOVED
+    outline_block_id: str
+    section_id: str
+
+
+# ── Read workflow — servable-corpus legal gate (Read SPR-01) ─────────
+
+
+class BookServabilityChangedPayload(_PayloadBase):
+    """A book's full-text serving eligibility changed. Emitted by
+    ``substrate/books/`` whenever a content_class transition moves a book
+    across the servable / metadata-only line (e.g. a publisher claims an
+    account and a gated book flips to publisher_opted_in). The
+    from/to statuses are the DERIVED ServabilityStatus values (not the
+    raw content_class) so the audit reads in the gate's own vocabulary.
+
+    The ``document_id`` of the affected book rides the Event envelope
+    (``emit_typed(..., document_id=...)``), so it isn't duplicated here."""
+
+    action_type: Literal[ActionType.BOOK_SERVABILITY_CHANGED] = ActionType.BOOK_SERVABILITY_CHANGED
+    from_status: str
+    to_status: str
+    reason: str
+
+
+class BookTakenDownPayload(_PayloadBase):
+    """A removal demand was honoured for a book (Read SPR-01 M4). Records
+    that the full text was purged from the materialized document body and
+    retrieval was restricted (content_class moved to the existing
+    restricted_pending_opt_in gate). ``purged_full_text`` is True when a
+    non-empty raw_text was nulled — distinguishing "took down a book we
+    were serving" from "took down a metadata-only stub". Pre-serve /
+    pre-payout takedown is the cheap defence (Bartz)."""
+
+    action_type: Literal[ActionType.BOOK_TAKEN_DOWN] = ActionType.BOOK_TAKEN_DOWN
+    reason: str
+    previous_content_class: Optional[str] = None
+    purged_full_text: bool = False
+
+
+# ── Write workflow — edit capture (Write SPR-02) ────────────────────
+
+
+class EditCapturedPayload(_PayloadBase):
+    """One structured before/after edit in the writing surface.
+
+    This is the granular replacement for the coarse
+    ``updateSectionProse`` capture (whole-section ``original_text`` vs
+    ``prose_text``). The editor (SPR-04) emits one of these per edit at
+    block / paragraph / sentence granularity, anchored to a stable
+    locator (``section_id`` + optional ``outline_block_id`` /
+    ``paragraph_index`` / ``sentence_index``) so the authoring trajectory
+    (SPR-02) and section/paragraph style prompts (SPR-06) both address
+    the same units.
+
+    ``reverted`` is the undo/redo coordination point: a reverted edit is
+    still captured (the chain of edits is the signal — like Cursor's
+    accept/edit loop) but is explicitly EXCLUDED from training signal so a
+    revert is never counted as an endorsement.
+
+    CAPTURE ≠ TRAINING. These events are written ungated. The reward is
+    computed post-unlock by ``rubric_verifier`` (itself gated); nothing
+    here computes a reward or invokes training.
+    """
+
+    action_type: Literal[ActionType.EDIT_CAPTURED] = ActionType.EDIT_CAPTURED
+    deliverable_id: str
+    section_id: str
+    outline_block_id: Optional[str] = None
+    granularity: Literal["block", "paragraph", "sentence"]
+    edit_kind: Literal["insert", "delete", "replace", "reorder"]
+    # Stable intra-section locator (SPR-04 produces these).
+    paragraph_index: Optional[int] = None
+    sentence_index: Optional[int] = None
+    before_text: Optional[str] = None
+    after_text: Optional[str] = None
+    # Whether this edit was subsequently reverted (undo). Captured for
+    # completeness; excluded from training signal.
+    reverted: bool = False
+    # Opaque editing-session id so multi-session trajectories stitch.
+    session_id: Optional[str] = None
+
+
+# ── Cross-workflow seams (antiek-unified SPR-03) ─────────────────────
+#
+# One payload per seam. Every seam payload carries the same four
+# load-bearing fields — the entity reference (entity_id + entity_kind),
+# the provenance reference, and the terminating-handoff marker — plus the
+# (fixed) from/to workflow direction. They mirror substrate/seams/contracts.py;
+# a copied entity would show up here as inlined content, and there is no
+# content field on any of these payloads by design (the seam carries a
+# reference, never a copy). No payload has a successor field — the absence is
+# the no-auto-loop invariant.
+
+
+class _SeamPayloadBase(_PayloadBase):
+    """Shared shape of every seam handoff event. The entity travels by id +
+    kind; ``provenance_ref`` is the originating event/region/source id; there
+    is deliberately no field that inlines the entity's content (a copy) or
+    names a successor handoff (an auto-loop)."""
+
+    entity_id: str
+    entity_kind: Literal[
+        "insight_node",
+        "question_node",
+        "outline_block",
+        "document_region",
+        "servable_entry",
+        "speak_claim",
+    ]
+    provenance_ref: str
+    # Fixed True — a seam event is a single terminating handoff.
+    terminates: Literal[True] = True
+
+
+class SeamResearchToReadPayload(_SeamPayloadBase):
+    """research → read. A researched insight surfaces in the reading corpus
+    (DRW SPR-01 node + Read corpus surface)."""
+
+    action_type: Literal[ActionType.SEAM_RESEARCH_TO_READ] = ActionType.SEAM_RESEARCH_TO_READ
+    from_workflow: Literal["research"] = "research"
+    to_workflow: Literal["read"] = "read"
+    entity_kind: Literal["insight_node"] = "insight_node"
+
+
+class SeamReadToResearchPayload(_SeamPayloadBase):
+    """read → research. A highlighted passage spins a focused investigation
+    (Read SPR-08 → DRW SPR-05 cascade planner seed)."""
+
+    action_type: Literal[ActionType.SEAM_READ_TO_RESEARCH] = ActionType.SEAM_READ_TO_RESEARCH
+    from_workflow: Literal["read"] = "read"
+    to_workflow: Literal["research"] = "research"
+    entity_kind: Literal["document_region"] = "document_region"
+    document_id: str
+    # Result pointer set by the receiving side — the launched session. NOT a
+    # successor-handoff field; it names what this seam launched.
+    launched_investigation_id: Optional[str] = None
+
+
+class SeamReadToWritePayload(_SeamPayloadBase):
+    """read → write. An insight node is dragged into an outline section
+    (Write SPR-03). The block references the node (provenance_kind=graph_node);
+    it never inlines the insight text."""
+
+    action_type: Literal[ActionType.SEAM_READ_TO_WRITE] = ActionType.SEAM_READ_TO_WRITE
+    from_workflow: Literal["read"] = "read"
+    to_workflow: Literal["write"] = "write"
+    entity_kind: Literal["insight_node"] = "insight_node"
+    target_section_id: str
+
+
+class SeamWriteToReadPayload(_SeamPayloadBase):
+    """write → read. Trace a block to its source in the shared reading surface
+    (Write SPR-07), respecting Read's servability gate."""
+
+    action_type: Literal[ActionType.SEAM_WRITE_TO_READ] = ActionType.SEAM_WRITE_TO_READ
+    from_workflow: Literal["write"] = "write"
+    to_workflow: Literal["read"] = "read"
+    entity_kind: Literal["outline_block"] = "outline_block"
+    source_document_id: Optional[str] = None
+    source_region_id: Optional[str] = None
+
+
+class SeamSpeakToWritePayload(_SeamPayloadBase):
+    """speak → write. Author a biography from interview-attested claims
+    (Speak SPR-08). The seam carries the speak_claim id; Write maps it to a
+    synthesized block (claim_id as provenance link, not a new node)."""
+
+    action_type: Literal[ActionType.SEAM_SPEAK_TO_WRITE] = ActionType.SEAM_SPEAK_TO_WRITE
+    from_workflow: Literal["speak"] = "speak"
+    to_workflow: Literal["write"] = "write"
+    entity_kind: Literal["speak_claim"] = "speak_claim"
+    contributor_interview_ids: list[str] = Field(default_factory=list)
+
+
+class SeamSpeakToReadPayload(_SeamPayloadBase):
+    """speak → read. A published biography is served back in the corpus
+    (Speak SPR-09). Registers as platform_authored + speak_derived — the
+    condition that routes it through the seam-#4 publish gate."""
+
+    action_type: Literal[ActionType.SEAM_SPEAK_TO_READ] = ActionType.SEAM_SPEAK_TO_READ
+    from_workflow: Literal["speak"] = "speak"
+    to_workflow: Literal["read"] = "read"
+    entity_kind: Literal["servable_entry"] = "servable_entry"
+    publish_gate_passed: bool = False
+
+
+class SeamWriteToSpeakPayload(_SeamPayloadBase):
+    """write → speak. **PROVISIONAL.** Commission interviews from an outline
+    gap. Typed so the trajectory can carry it, but the seam is the weakest and
+    off the SPR-08 critical path; the receiving Speak side is unspecified."""
+
+    action_type: Literal[ActionType.SEAM_WRITE_TO_SPEAK] = ActionType.SEAM_WRITE_TO_SPEAK
+    from_workflow: Literal["write"] = "write"
+    to_workflow: Literal["speak"] = "speak"
+    entity_kind: Literal["question_node"] = "question_node"
+    outline_section_id: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -2660,6 +3024,19 @@ TypedPayload = Annotated[
         AIActionAppliedPayload,
         AIActionUndonePayload,
         DPRoutedPayload,
+        OutlineBlockPlacedPayload,
+        OutlineBlockMovedPayload,
+        OutlineBlockRemovedPayload,
+        BookServabilityChangedPayload,
+        BookTakenDownPayload,
+        EditCapturedPayload,
+        SeamResearchToReadPayload,
+        SeamReadToResearchPayload,
+        SeamReadToWritePayload,
+        SeamWriteToReadPayload,
+        SeamSpeakToWritePayload,
+        SeamSpeakToReadPayload,
+        SeamWriteToSpeakPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -2761,6 +3138,20 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.AI_ACTION_UNDONE.value,
     # DP shuffler production routing.
     ActionType.DP_ROUTED.value,
+    # Write workflow SPR-01 — outline composition audit trail.
+    ActionType.OUTLINE_BLOCK_PLACED.value,
+    ActionType.OUTLINE_BLOCK_MOVED.value,
+    ActionType.OUTLINE_BLOCK_REMOVED.value,
+    # Write workflow SPR-02 — edit capture.
+    ActionType.EDIT_CAPTURED.value,
+    # antiek-unified SPR-03 — cross-workflow seam handoffs.
+    ActionType.SEAM_RESEARCH_TO_READ.value,
+    ActionType.SEAM_READ_TO_RESEARCH.value,
+    ActionType.SEAM_READ_TO_WRITE.value,
+    ActionType.SEAM_WRITE_TO_READ.value,
+    ActionType.SEAM_SPEAK_TO_WRITE.value,
+    ActionType.SEAM_SPEAK_TO_READ.value,
+    ActionType.SEAM_WRITE_TO_SPEAK.value,
 })
 
 
@@ -3036,4 +3427,13 @@ __all__ = [
     "AIActionUndonePayload",
     # DP shuffler production routing audit (§13.3 + §13.7)
     "DPRoutedPayload",
+    # Write workflow SPR-01 — outline composition (v13 schema bump)
+    "OutlineBlockPlacedPayload",
+    "OutlineBlockMovedPayload",
+    "OutlineBlockRemovedPayload",
+    # Read workflow SPR-01 — servable-corpus legal gate (v14 schema bump)
+    "BookServabilityChangedPayload",
+    "BookTakenDownPayload",
+    # Write workflow SPR-02 — edit capture (v15 schema bump)
+    "EditCapturedPayload",
 ]

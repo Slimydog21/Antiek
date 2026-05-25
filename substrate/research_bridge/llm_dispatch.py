@@ -1,0 +1,46 @@
+"""Production LLM wiring for the research bridge extractor + gap-finder."""
+
+from __future__ import annotations
+
+import os
+from typing import Optional
+
+try:
+    from ..constants import SYSTEM_INVESTIGATION_ID
+    from ..dispatch.router import DispatchConfig, DispatchResult, dispatch
+    from .extractor import LlmCallResult
+except ImportError:  # pragma: no cover
+    import sys
+    _here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.constants import SYSTEM_INVESTIGATION_ID  # type: ignore[no-redef]
+    from substrate.dispatch.router import DispatchConfig, DispatchResult, dispatch  # type: ignore[no-redef]
+    from substrate.research_bridge.extractor import LlmCallResult  # type: ignore[no-redef]
+
+
+DISPATCH_ROLE: str = "note_taker"
+
+
+def build_dispatch_llm_callable(
+    *,
+    investigation_id: Optional[str] = None,
+    role: str = DISPATCH_ROLE,
+    config: Optional[DispatchConfig] = None,
+):
+    """Build an ``LlmCallable`` that routes through dispatch."""
+    inv = investigation_id or SYSTEM_INVESTIGATION_ID
+
+    def _call(prompt: str) -> LlmCallResult:
+        result: DispatchResult = dispatch(
+            prompt, role=role, investigation_id=inv, config=config,
+        )
+        usage = result.usage
+        return LlmCallResult(
+            text=result.text or "",
+            input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+            output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+            cost_usd=float(getattr(result, "cost_usd", 0.0) or 0.0),
+            model_id=f"{result.provider}/{result.model}",
+        )
+
+    return _call

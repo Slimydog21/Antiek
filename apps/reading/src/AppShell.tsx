@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { NavRail } from "./components/navigation/NavRail";
+import { NavRail } from "./shell/NavRail";
+import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
 import { PanelLayout } from "./workspace/PanelLayout";
@@ -68,7 +69,12 @@ export function AppShell({ children }: Props) {
       <div className="flex-1 min-w-0 flex flex-col">
         <Topbar />
         <div className="flex-1 min-h-0">
-          <PanelLayout mainSlot={children} />
+          {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
+              main slot: per-workflow action bar + in-scene tabs sit
+              above the surface, while the Zustand panel workspace
+              continues to dock left/right/bottom + float around it.
+              The mode still mounts as a panel exactly as before. */}
+          <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
         </div>
       </div>
 

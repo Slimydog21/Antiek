@@ -232,6 +232,23 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.AIActionUndonePayload,
     # Sprint 19 — DP shuffler substrate plumbing (§13.3 + §16.2).
     schema_module.DPRoutedPayload,
+    # Write workflow SPR-01 — OutlineBlock composition audit trail.
+    schema_module.OutlineBlockPlacedPayload,
+    schema_module.OutlineBlockMovedPayload,
+    schema_module.OutlineBlockRemovedPayload,
+    # Write workflow SPR-02 — edit capture.
+    schema_module.EditCapturedPayload,
+    # Read workflow SPR-01 — servable-corpus legal-gate audit trail.
+    schema_module.BookServabilityChangedPayload,
+    schema_module.BookTakenDownPayload,
+    # antiek-unified SPR-03 — the six flywheel seams + one provisional seam.
+    schema_module.SeamResearchToReadPayload,
+    schema_module.SeamReadToResearchPayload,
+    schema_module.SeamReadToWritePayload,
+    schema_module.SeamWriteToReadPayload,
+    schema_module.SeamSpeakToWritePayload,
+    schema_module.SeamSpeakToReadPayload,
+    schema_module.SeamWriteToSpeakPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
@@ -306,6 +323,14 @@ def _literal_value_to_ts(value: Any) -> str:
     raise UnsupportedType(f"unsupported Literal value: {value!r} ({type(value).__name__})")
 
 
+def _as_array(elem_ts: str) -> str:
+    """Render ``elem_ts[]``, parenthesizing a top-level union so a union
+    element type binds correctly: ``"a" | "b"`` must become ``("a" | "b")[]``,
+    not the mis-parsed ``"a" | ("b"[])``. (Event payloads never hit this; the
+    contract models — e.g. ``tuple[Literal[...], ...]`` — do.)"""
+    return f"({elem_ts})[]" if " | " in elem_ts else f"{elem_ts}[]"
+
+
 def _python_to_ts(tp: Any, *, field_name: str, model_name: str) -> str:
     """Map a Python type annotation to a TS type expression."""
     is_opt, inner = _is_optional(tp)
@@ -372,14 +397,14 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
 
     if origin is list:
         (elem,) = args
-        return f"{_python_to_ts(elem, field_name=field_name, model_name=model_name)}[]"
+        return _as_array(_python_to_ts(elem, field_name=field_name, model_name=model_name))
 
     if origin is tuple:
-        # Variable-length tuple ``tuple[T, ...]`` not used by our payloads;
-        # fixed-length tuples are.
+        # Variable-length tuple ``tuple[T, ...]`` not used by the event
+        # payloads, but used by the contract models (substrate/contracts/).
         if len(args) == 2 and args[1] is Ellipsis:
             elem = _python_to_ts(args[0], field_name=field_name, model_name=model_name)
-            return f"{elem}[]"
+            return _as_array(elem)
         parts = ", ".join(
             _python_to_ts(a, field_name=field_name, model_name=model_name) for a in args
         )

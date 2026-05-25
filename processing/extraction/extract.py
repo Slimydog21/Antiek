@@ -80,7 +80,14 @@ except ImportError:  # pragma: no cover — direct-script fallback
 # ---------------------------------------------------------------------------
 
 
-# Antiek's 9 NodeType Literal values (must match substrate.schemas.NodeType).
+# The node types document *extraction* can produce. This is a strict
+# SUBSET of substrate.schemas.NodeType: the two DRW SPR-01 additions
+# ('insight', 'question') are first-class node types, but they are
+# promoted only from the note-taker path (note.emerged /
+# question.identified), never emitted by chunk extraction — the extractor
+# reads sources, it does not distil insights. The invariant the test
+# enforces is therefore ANTIEK_NODE_TYPES ⊆ NodeType (no extracted value
+# the payload would reject), not equality.
 # Researchmaxx's "concept" / "market" / "technology" map to "entity" with a
 # metadata note recording the original extracted type so a future expansion
 # of NodeType can recover it.

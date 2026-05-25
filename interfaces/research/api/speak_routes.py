@@ -1,0 +1,600 @@
+"""Speak workflow — the REST surface.
+
+A standalone ``APIRouter`` wiring the ``substrate/speak`` substrate into
+the FastAPI app. Kept in its own module (not inlined into the 5k-line
+``app.py`` factory) for the reason CLAUDE.md names: ``app.py`` is a hot,
+concurrently-edited file. This router is included with ONE line —
+``app.include_router(speak_router)`` — near the end of ``create_app``,
+and is fully testable on its own (a throwaway ``FastAPI`` + ``TestClient``
+need not touch ``app.py``).
+
+Conventions matched from ``app.py``:
+  • db path via ``substrate.graph.default_db_path`` + ``ensure_initialized``;
+  • writes through ``runtime.db_lock.connect_write`` (single-writer);
+  • reads through a read-only DuckDB connection;
+  • auth is the app's global middleware — these handlers carry none.
+
+Domain exceptions map to HTTP status via ``_translate``:
+  • consent / G7 ecosystem refusals → 403;
+  • publish-gate / disbursement refusals → 409;
+  • not-found / bad-input → 404 / 400.
+
+The answer→claim bridge (M-gap closed here): a submitted voice-note
+answer produces a voice-note document + graph nodes (``submit_answer``),
+but whether an utterance asserts a third-party claim ABOUT THE SUBJECT
+is a judgment the system must not guess (SPR-01 rigor: don't infer
+identity from free text). So claims are recorded EXPLICITLY via
+``POST /speak/interviews/{id}/claims`` — by an extraction pass the
+operator confirms — which is what feeds corroboration → authoring →
+economics.
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from decimal import Decimal, InvalidOperation
+from typing import Any, Iterator, Optional
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from orchestration.interview.orchestrator import ConsentRequired
+from runtime.db_lock import connect_write
+from substrate.graph import default_db_path, ensure_initialized
+from substrate.speak import (
+    biography,
+    consent as consent_mod,
+    contributor as contributor_mod,
+    corroboration,
+    economics_mode,
+    invitations,
+    physical_book,
+    project as project_mod,
+    publish as publish_mod,
+    subject_consent as subject_consent_mod,
+    takedown as takedown_mod,
+    third_party,
+)
+from substrate.speak.async_interview import decline, submit_answer, next_followups, resume
+from substrate.speak.consent import ConsentScope, ScopedConsentRequired
+from substrate.speak.contributor import DisbursementBlocked
+from substrate.speak.invitations import PublicEcosystemGated
+from substrate.speak.publish_gate import PublishBlocked
+from substrate.speak.schema import ensure_speak_schema
+
+speak_router = APIRouter(prefix="/speak", tags=["speak"])
+
+
+# ---------------------------------------------------------------------------
+# Plumbing
+# ---------------------------------------------------------------------------
+
+
+def _db() -> str:
+    """Resolve + initialize the graph DB (base schema). Speak tables are
+    ensured per write under the lock."""
+    path = default_db_path()
+    ensure_initialized(path)
+    return path
+
+
+@contextmanager
+def _write(purpose: str) -> Iterator[Any]:
+    db = _db()
+    con = connect_write(db, purpose=purpose)
+    try:
+        ensure_speak_schema(con)
+        yield con
+    finally:
+        con.close()
+
+
+@contextmanager
+def _translate() -> Iterator[None]:
+    """Map Speak domain exceptions onto HTTP status codes."""
+    try:
+        yield
+    except (ScopedConsentRequired, ConsentRequired, PublicEcosystemGated) as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except (PublishBlocked, DisbursementBlocked) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+def _decimal(value: str, field: str) -> Decimal:
+    try:
+        return Decimal(value)
+    except (InvalidOperation, TypeError):
+        raise HTTPException(status_code=400, detail=f"{field} must be a decimal string")
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+
+
+class CreateProjectRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    subject_ref: Optional[str] = None
+    subject_status: str = "unknown"
+    publish_intent: str = "private_never_published"
+    topic_description: Optional[str] = None
+
+
+class ProjectResponse(BaseModel):
+    project_id: str
+    title: str
+    subject_ref: Optional[str]
+    subject_status: str
+    publish_intent: str
+    invitation_mode: str
+
+
+class InviteRequest(BaseModel):
+    informant_email: Optional[str] = None
+    informant_handle: Optional[str] = None
+
+
+class InviteResponse(BaseModel):
+    invite_id: str
+    interview_id: str
+    link: str
+    required_consent_scopes: list[str]
+    status: str
+
+
+class ConsentRequestModel(BaseModel):
+    scopes: list[str] = Field(..., min_length=1)
+
+
+class AnswerRequest(BaseModel):
+    question_id: str
+    transcript: str = Field(..., min_length=1)
+    duration_seconds: float = 0.0
+
+
+class ClaimRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    interview_id: Optional[str] = None
+    about_subject: bool = False
+    subject_ref: Optional[str] = None
+    speaker_is_subject: bool = False
+    confidence: float = 0.5
+
+
+class SubjectConsentRequest(BaseModel):
+    subject_ref: str
+    subject_status: str
+    consent_granted: bool
+    rationale: Optional[str] = None
+
+
+class ContributorRequest(BaseModel):
+    interview_id: str
+    ip_holder_id: Optional[str] = None
+    display_name: Optional[str] = None
+    legal_contact_email: Optional[str] = None
+
+
+class TakedownRequestModel(BaseModel):
+    target_kind: str
+    target_id: str
+    requested_by: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class DraftRequest(BaseModel):
+    public: bool = False
+
+
+class PublishRequest(BaseModel):
+    deliverable_id: Optional[str] = None
+    subject_ref: Optional[str] = None
+    ad_revenue_usd: str = "0"
+    quality_scores: Optional[dict[str, float]] = None
+
+
+class BookOrderRequest(BaseModel):
+    book_format: str
+    page_count: int = Field(..., ge=1)
+    publication_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Operator: project lifecycle
+# ---------------------------------------------------------------------------
+
+
+@speak_router.post("/projects", response_model=ProjectResponse, status_code=201)
+async def create_project(req: CreateProjectRequest) -> ProjectResponse:
+    with _translate(), _write("speak/api:create_project") as con:
+        p = project_mod.create_project(
+            con, title=req.title, subject_ref=req.subject_ref,
+            subject_status=req.subject_status, publish_intent=req.publish_intent,
+            topic_description=req.topic_description,
+        )
+    return ProjectResponse(**p.__dict__)
+
+
+@speak_router.get("/projects")
+async def list_projects() -> dict:
+    """List Speak projects (the operator's project index). Uses a write
+    lock only to ensure the Speak schema exists on a fresh DB; the query
+    itself is a read."""
+    with _translate(), _write("speak/api:list_projects") as con:
+        rows = con.execute(
+            "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
+            "p.publish_intent, p.invitation_mode, "
+            "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id), "
+            "strftime(p.created_at, '%Y-%m-%dT%H:%M:%S') "
+            "FROM speak_projects p "
+            "JOIN interview_projects ip ON ip.project_id = p.project_id "
+            "ORDER BY p.created_at DESC"
+        ).fetchall()
+    return {
+        "count": len(rows),
+        "projects": [
+            {"project_id": r[0], "title": r[1], "subject_ref": r[2],
+             "subject_status": r[3], "publish_intent": r[4],
+             "invitation_mode": r[5], "interview_count": r[6], "created_at": r[7]}
+            for r in rows
+        ],
+    }
+
+
+@speak_router.get("/projects/{project_id}", response_model=ProjectResponse)
+async def get_project(project_id: str) -> ProjectResponse:
+    with _translate(), _write("speak/api:get_project") as con:
+        p = project_mod.get_project(con, project_id)
+    return ProjectResponse(**p.__dict__)
+
+
+@speak_router.get("/projects/{project_id}/economics")
+async def get_economics(project_id: str) -> dict:
+    with _translate(), _write("speak/api:economics") as con:
+        policy = economics_mode.policy_for_project(con, project_id)
+    return {
+        "cell": policy.cell,
+        "inference_margin": str(policy.inference_margin),
+        "split_applies": policy.split_applies,
+        "creator_carries_cost": policy.creator_carries_cost,
+        "requires_publish_consent": policy.requires_publish_consent,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Operator: invitations
+# ---------------------------------------------------------------------------
+
+
+@speak_router.post("/projects/{project_id}/invites", response_model=InviteResponse, status_code=201)
+async def invite(project_id: str, req: InviteRequest) -> InviteResponse:
+    if not (req.informant_email or req.informant_handle):
+        raise HTTPException(status_code=400, detail="informant_email or informant_handle required")
+    with _translate(), _write("speak/api:invite") as con:
+        iv = invitations.invite_stakeholder(
+            con, project_id=project_id,
+            informant_email=req.informant_email, informant_handle=req.informant_handle,
+        )
+    return InviteResponse(
+        invite_id=iv.invite_id, interview_id=iv.interview_id, link=iv.link,
+        required_consent_scopes=[s.value for s in iv.required_consent_scopes],
+        status=iv.status,
+    )
+
+
+@speak_router.get("/projects/{project_id}/invites")
+async def list_invites(project_id: str) -> dict:
+    with _translate(), _write("speak/api:list_invites") as con:
+        rows = invitations.lifecycle(con, project_id)
+    return {"count": len(rows), "invites": rows}
+
+
+@speak_router.get("/invites/resolve")
+async def resolve_invite(token: str) -> InviteResponse:
+    with _translate(), _write("speak/api:resolve") as con:
+        iv = invitations.resolve_token(con, token)
+    if iv is None:
+        raise HTTPException(status_code=404, detail="unknown or expired invite token")
+    return InviteResponse(
+        invite_id=iv.invite_id, interview_id=iv.interview_id, link=iv.link,
+        required_consent_scopes=[s.value for s in iv.required_consent_scopes],
+        status=iv.status,
+    )
+
+
+@speak_router.post("/projects/{project_id}/open-public", status_code=200)
+async def open_public(project_id: str) -> dict:
+    # Gated on G7 — refuses (403) unless ANTIEK_SPEAK_PUBLIC_ECOSYSTEM.
+    with _translate(), _write("speak/api:open_public") as con:
+        invitations.open_public_contribution(con, project_id)
+    return {"project_id": project_id, "invitation_mode": "public"}
+
+
+# ---------------------------------------------------------------------------
+# Invitee: consent + interview
+# ---------------------------------------------------------------------------
+
+
+@speak_router.post("/interviews/{interview_id}/consent", status_code=200)
+async def record_consent(interview_id: str, req: ConsentRequestModel) -> dict:
+    with _translate(), _write("speak/api:consent") as con:
+        scopes = [ConsentScope(s) for s in req.scopes]
+        state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
+    return {"interview_id": interview_id, "granted": sorted(s.value for s in state.granted)}
+
+
+@speak_router.get("/interviews/{interview_id}")
+async def get_interview(interview_id: str) -> dict:
+    with _translate():
+        session = resume(_db(), interview_id)
+    return {
+        "interview_id": session.interview_id,
+        "project_id": session.project_id,
+        "status": session.status,
+        "transcript": session.turns,
+        "pending_questions": session.pending_questions(),
+    }
+
+
+@speak_router.post("/interviews/{interview_id}/answers", status_code=201)
+async def submit_interview_answer(interview_id: str, req: AnswerRequest) -> dict:
+    with _translate():
+        result = submit_answer(
+            _db(), interview_id=interview_id, question_id=req.question_id,
+            transcript=req.transcript, duration_seconds=req.duration_seconds,
+        )
+    return {
+        "interview_id": result.interview_id, "question_id": result.question_id,
+        "document_id": result.document_id, "skipped_reason": result.skipped_reason,
+    }
+
+
+@speak_router.post("/interviews/{interview_id}/followups")
+async def interview_followups(interview_id: str) -> dict:
+    with _translate():
+        fus = next_followups(_db(), interview_id=interview_id)
+    return {"followups": [
+        {"question_id": f.question_id, "text": f.text,
+         "follow_up_for_prior_turn": f.follow_up_for_prior_turn}
+        for f in fus
+    ]}
+
+
+@speak_router.post("/interviews/{interview_id}/claims", status_code=201)
+async def record_interview_claim(interview_id: str, req: ClaimRequest) -> dict:
+    """The answer→claim bridge: record an explicit claim attributed to
+    the interviewee (about_subject / third-party tagging is a confirmed
+    judgment, not an inference). Feeds corroboration + authoring +
+    economics."""
+    with _translate(), _write("speak/api:claim") as con:
+        row = con.execute(
+            "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"interview {interview_id} not found")
+        claim = third_party.record_claim(
+            con, project_id=row[0], interview_id=interview_id, text=req.text,
+            about_subject=req.about_subject, subject_ref=req.subject_ref,
+            speaker_is_subject=req.speaker_is_subject, confidence=req.confidence,
+        )
+    return {"claim_id": claim.claim_id, "is_third_party": claim.is_third_party,
+            "verification": claim.verification}
+
+
+# ---------------------------------------------------------------------------
+# Operator: corroboration, consent, economics, authoring, publishing
+# ---------------------------------------------------------------------------
+
+
+@speak_router.post("/projects/{project_id}/corroborate")
+async def corroborate(project_id: str) -> dict:
+    with _translate(), _write("speak/api:corroborate") as con:
+        clusters = corroboration.corroborate_project(con, project_id)
+    return {"clusters": [
+        {"cluster_id": c.cluster_id, "label": c.label, "confidence": c.confidence,
+         "independent_attesters": c.independent_attesters,
+         "member_claim_ids": c.member_claim_ids}
+        for c in clusters
+    ]}
+
+
+@speak_router.post("/projects/{project_id}/subject-consent", status_code=200)
+async def set_subject_consent(project_id: str, req: SubjectConsentRequest) -> dict:
+    with _translate(), _write("speak/api:subject_consent") as con:
+        subject_consent_mod.record_subject_consent(
+            con, project_id=project_id, subject_ref=req.subject_ref,
+            subject_status=req.subject_status, consent_granted=req.consent_granted,
+            rationale=req.rationale,
+        )
+    return {"project_id": project_id, "subject_ref": req.subject_ref}
+
+
+@speak_router.post("/projects/{project_id}/contributors", status_code=201)
+async def map_contributor(project_id: str, req: ContributorRequest) -> dict:
+    with _translate(), _write("speak/api:contributor") as con:
+        m = contributor_mod.map_contributor(
+            con, interview_id=req.interview_id, project_id=project_id,
+            ip_holder_id=req.ip_holder_id, display_name=req.display_name,
+            legal_contact_email=req.legal_contact_email,
+        )
+    return {"interview_id": m.interview_id, "ip_holder_id": m.ip_holder_id,
+            "holding_bucket": m.holding_bucket}
+
+
+@speak_router.post("/projects/{project_id}/takedowns", status_code=201)
+async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
+    with _translate(), _write("speak/api:takedown") as con:
+        tid = takedown_mod.request_takedown(
+            con, project_id=project_id, target_kind=req.target_kind,
+            target_id=req.target_id, requested_by=req.requested_by, reason=req.reason,
+        )
+    return {"takedown_id": tid, "status": "active"}
+
+
+@speak_router.post("/projects/{project_id}/draft")
+async def draft(project_id: str, req: DraftRequest) -> dict:
+    with _translate(), _write("speak/api:draft") as con:
+        outline = biography.assemble_outline(con, project_id=project_id)
+        d = biography.generate_draft(con, project_id=project_id, outline=outline, public=req.public)
+    return {
+        "deliverable_id": outline.deliverable_id,
+        "prose_text": d.prose_text,
+        "cited_interview_ids": list(d.cited_interview_ids),
+        "excluded_claim_ids": list(d.excluded_claim_ids),
+        "unverified_marked_claim_ids": list(d.unverified_marked_claim_ids),
+        "voice_style_score": d.voice_style_score,
+        "voice_style_ok": d.voice_style_ok,
+    }
+
+
+@speak_router.post("/projects/{project_id}/publish", status_code=201)
+async def publish(project_id: str, req: PublishRequest) -> dict:
+    ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
+    with _translate(), _write("speak/api:publish") as con:
+        result = publish_mod.publish(
+            con, project_id=project_id, deliverable_id=req.deliverable_id,
+            subject_ref=req.subject_ref, ad_revenue_usd=ad_revenue,
+            quality_scores=req.quality_scores,
+        )
+    return {
+        "publication_id": result.publication_id, "visibility": result.visibility,
+        "served": result.served, "servability": result.servability,
+        "content_class": result.content_class,
+        "accrual_lines": [
+            {"interview_id": a.interview_id, "ip_holder_id": a.ip_holder_id,
+             "share_fraction": a.share_fraction, "amount_usd": str(a.amount_usd),
+             "slop_gated": a.slop_gated}
+            for a in result.accrual_lines
+        ],
+    }
+
+
+@speak_router.post("/projects/{project_id}/book-orders", status_code=201)
+async def order_book(project_id: str, req: BookOrderRequest) -> dict:
+    with _translate(), _write("speak/api:book_order") as con:
+        quote = physical_book.order_physical_book(
+            con, project_id=project_id, book_format=req.book_format,
+            page_count=req.page_count, publication_id=req.publication_id,
+        )
+    return {"order_id": quote.order_id, "book_format": quote.book_format,
+            "provider": quote.provider, "cost_usd": str(quote.cost_usd),
+            "payer": quote.payer, "fulfilled": quote.fulfilled}
+
+
+# ---------------------------------------------------------------------------
+# Invitee surface — TOKEN-AUTHORIZED, unauthenticated.
+#
+# The invitee (a subject's friend or family member) is a SOURCE, not an
+# account — that line is what keeps v1 inside the single-operator
+# constraint, and real contributor accounts are gated on G7. Their link
+# carries a token, and the token IS their credential. So these endpoints:
+#   • are keyed by TOKEN, never by a caller-supplied interview_id;
+#   • verify the token resolves (404 otherwise) and operate ONLY on that
+#     one interview;
+#   • live under the /speak/invite/ prefix, which the operator-auth
+#     middleware treats as an open path (the token, not an operator
+#     session, authorizes the request).
+# This is a deliberately separate surface from the operator /speak/...
+# endpoints above; an invitee never touches an operator-authed route.
+# ---------------------------------------------------------------------------
+
+
+class InviteConsentRequest(BaseModel):
+    scopes: list[str] = Field(..., min_length=1)
+
+
+class InviteAnswerRequest(BaseModel):
+    question_id: str
+    transcript: str = Field(..., min_length=1)
+    duration_seconds: float = 0.0
+
+
+def _require_token(con: Any, token: str) -> tuple[str, str]:
+    """Resolve an invite token to (interview_id, project_id) or 404. The
+    token is the invitee's credential — a bad/expired token is the only
+    thing standing between a stranger and this interview, so we fail
+    closed."""
+    iv = invitations.resolve_token(con, token)
+    if iv is None:
+        raise HTTPException(status_code=404, detail="unknown or expired invite link")
+    return iv.interview_id, iv.project_id
+
+
+@speak_router.get("/invite/{token}")
+async def invitee_landing(token: str) -> dict:
+    """One call for the invitee's landing page: the project they've been
+    invited to, the consent scopes the invite asks for, what they've
+    already granted (so a returning invitee skips re-consent), and — once
+    consented — the pending questions + transcript so far."""
+    with _translate(), _write("speak/api:invite_landing") as con:
+        iv = invitations.resolve_token(con, token)
+        if iv is None:
+            raise HTTPException(status_code=404, detail="unknown or expired invite link")
+        interview_id, project_id = iv.interview_id, iv.project_id
+        required = [s.value for s in iv.required_consent_scopes]
+        prow = con.execute(
+            "SELECT ip.title, p.subject_ref, p.subject_status "
+            "FROM speak_projects p JOIN interview_projects ip ON ip.project_id = p.project_id "
+            "WHERE p.project_id = ?", [project_id],
+        ).fetchone()
+        granted = sorted(s.value for s in consent_mod.consent_state(con, interview_id).granted)
+    # resume() acquires its OWN lock — call it AFTER releasing ours (no nesting).
+    session = resume(_db(), interview_id)
+    return {
+        "interview_id": interview_id,
+        "project_id": project_id,
+        "project_title": prow[0] if prow else project_id,
+        "subject_ref": prow[1] if prow else None,
+        "subject_status": prow[2] if prow else None,
+        "required_consent_scopes": required,
+        "granted_consent_scopes": granted,
+        "status": session.status,
+        "pending_questions": session.pending_questions(),
+        "transcript": session.turns,
+    }
+
+
+@speak_router.post("/invite/{token}/consent", status_code=200)
+async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
+    with _translate(), _write("speak/api:invite_consent") as con:
+        interview_id, _ = _require_token(con, token)
+        scopes = [ConsentScope(s) for s in req.scopes]
+        state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
+    return {"interview_id": interview_id, "granted": sorted(s.value for s in state.granted)}
+
+
+@speak_router.post("/invite/{token}/answer", status_code=201)
+async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
+    with _translate(), _write("speak/api:invite_answer_resolve") as con:
+        interview_id, _ = _require_token(con, token)
+    # submit_answer acquires its own lock(s); call outside ours.
+    with _translate():
+        result = submit_answer(
+            _db(), interview_id=interview_id, question_id=req.question_id,
+            transcript=req.transcript, duration_seconds=req.duration_seconds,
+        )
+    return {"interview_id": result.interview_id, "question_id": result.question_id,
+            "document_id": result.document_id, "skipped_reason": result.skipped_reason}
+
+
+@speak_router.post("/invite/{token}/followups")
+async def invitee_followups(token: str) -> dict:
+    with _translate(), _write("speak/api:invite_followups_resolve") as con:
+        interview_id, _ = _require_token(con, token)
+    with _translate():
+        fus = next_followups(_db(), interview_id=interview_id)
+    return {"followups": [
+        {"question_id": f.question_id, "text": f.text,
+         "follow_up_for_prior_turn": f.follow_up_for_prior_turn}
+        for f in fus
+    ]}
+
+
+@speak_router.post("/invite/{token}/decline", status_code=200)
+async def invitee_decline(token: str) -> dict:
+    with _translate(), _write("speak/api:invite_decline_resolve") as con:
+        interview_id, _ = _require_token(con, token)
+    decline(_db(), interview_id)
+    return {"interview_id": interview_id, "status": "declined"}

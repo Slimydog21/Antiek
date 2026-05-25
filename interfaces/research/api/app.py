@@ -925,6 +925,14 @@ def create_app(
             return await call_next(request)
         if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
             return await call_next(request)
+        # Speak invitee surface (specs/speak/): a subject's friend/family
+        # is a SOURCE, not an operator account. Their invite link's TOKEN
+        # is the credential — the /speak/invite/ endpoints verify it and
+        # operate only on the matching interview — so the operator-auth
+        # middleware lets the prefix through. See
+        # interfaces/research/api/speak_routes.py + docs/decisions/speak_workflow.md.
+        if request.url.path.startswith("/speak/invite/"):
+            return await call_next(request)
 
         # Once a path validates the caller, populate request.state with
         # the canonical identity so endpoints can read user_id + scopes
@@ -1040,6 +1048,11 @@ def create_app(
     register_advertiser_routes(app)
     from .federation import register_federation_routes
     register_federation_routes(app)
+    # antiek-unified SPR-05 — read-only coordination surface (gate ledger +
+    # 45-sprint roadmap). A VIEW over docs/operator_gate_actions.md + the five
+    # specs' rosters + SPR-01's dependency DAG; GET-only, no gate-write path.
+    from .coordination import register_coordination_routes
+    register_coordination_routes(app)
     # Sprint 23-24 phase 1+2 — ad-impression emission + targeted
     # inventory select. Substrate primitives live in
     # substrate/ad_inventory/{ad_bidding,intent_targeting,payout}.
@@ -1051,6 +1064,19 @@ def create_app(
     # Sprint 23-24 phase 5 — advertiser campaign performance.
     from .campaigns import register_campaign_routes
     register_campaign_routes(app)
+    # Read SPR-01 — servable-corpus query API. The Library (SPR-02) +
+    # Reader (SPR-03) consume this; the full-text endpoint routes through
+    # the deny-by-default gate in substrate/books/serve.py.
+    from .books import register_book_routes
+    register_book_routes(app)
+    # Read SPR-07 — text-to-speech for voice replies in the conversational
+    # rabbit hole. Gated on the operator OpenAI key (503 without one).
+    from .speech import register_speech_routes
+    register_speech_routes(app)
+    # Read SPR-06 — reader voice-note capture: transcribe + distill (the
+    # corrected-transcript guard + note-taker dispatch).
+    from .read_voice import register_read_voice_routes
+    register_read_voice_routes(app)
 
     bus = broadcaster if broadcaster is not None else EventBroadcaster()
     # Expose for tests and admin endpoints.
@@ -5080,6 +5106,37 @@ def create_app(
             ],
             loop_3_unlock_status=loop_3_status,
         )
+
+    # ── Speak workflow (specs/speak/) — the fourth workflow's REST
+    #    surface. Kept in its own module (interfaces/research/api/
+    #    speak_routes.py) so this hot factory stays mergeable; included
+    #    here with one line. The router carries no auth (the global
+    #    operator-auth middleware above covers it). See
+    #    docs/decisions/speak_workflow.md.
+    from interfaces.research.api.speak_routes import speak_router
+    app.include_router(speak_router)
+
+    # Cross-workflow thread navigation (antiek-unified SPR-06). Read-only:
+    # GET /thread/{node_id} reconstructs an entity's cross-workflow trajectory
+    # from the SPR-03 seam events. A VIEW over existing nodes/edges + seam
+    # events — it writes nothing and adds no node/edge type. Powers the
+    # ThreadBreadcrumb + ThreadJump in apps/reading/src/shell/. See
+    # substrate/seams/thread.py.
+    from interfaces.research.api.thread import make_router as make_thread_router
+    app.include_router(make_thread_router())
+
+    # Write workflow REST surface (specs/write/). Net-new router, same
+    # one-line inclusion discipline as speak_routes so this hot factory
+    # stays mergeable. Wires substrate/write + substrate/edit to HTTP.
+    from interfaces.research.api.write_routes import write_router
+    app.include_router(write_router)
+
+    # Deep Research Workspace transport (specs/deep-research-workspace/
+    # SPR-06). The cascade plan/launch/session-stream/steer/cost surface the
+    # SPR-09 glass-box monitor consumes — same one-line inclusion discipline.
+    # Wires the SPR-05 planner + SPR-02 runner + SPR-06 CascadeSession to HTTP.
+    from interfaces.research.api.cascade_routes import cascade_router
+    app.include_router(cascade_router)
 
     return app
 

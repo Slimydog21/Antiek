@@ -65,6 +65,26 @@ jobs:
           # that no current test depends on.
           pip install -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
 
+      - name: Inline-rubric latency (craft signature — informational on CI)
+        # Antiek's one craft signature per docs/craft_signature.md.
+        # Compares p95 against benchmarks/baseline.json (locked
+        # 2026-05-24 at 194.85us); exits 2 on >10% regression. Catches
+        # the case where a substrate change silently slows the rubric
+        # on the read path of every Phase 6 exit. Spec: SPR-E7.
+        #
+        # INFORMATIONAL on CI (does not block): this is a microsecond
+        # benchmark, and a shared GitHub `ubuntu-latest` runner is ~2x slower
+        # than the hardware the baseline was minted on, so it reports a false
+        # +120% here. CLAUDE.md is explicit that re-minting is "operator-only;
+        # do not run in CI" — so the authoritative enforcement is operator-side
+        # where it is reliable. We still RUN it and surface the numbers as a
+        # warning so a real regression is visible; we just don't fail the gate
+        # on runner noise. (Re-minting to the runner's number would corrupt the
+        # craft signature.)
+        run: |
+          python -m benchmarks.rubric_latency --check-regression \
+            || echo "::warning title=Latency check is informational on CI::p95 over baseline on this shared runner; enforced operator-side per CLAUDE.md (microsecond benchmark, runner ~2x slower than baseline hardware)."
+
       - name: Run pytest
         env:
           # Tests should NEVER hit real provider APIs. The dispatch
@@ -84,6 +104,14 @@ jobs:
         run: |
           python -m pytest tests/ -q -m "not integration"
 
+      - name: Substrate/dispatch boundary check
+        # SPR-03 (DDIA-execution): forbid direct vendor-SDK imports
+        # outside substrate/dispatch/providers/ and the explicit
+        # allowlist. See docs/decisions/substrate_dispatch_boundary.md.
+        # Sub-second on the full tree.
+        run: |
+          python tools/lint/boundary_check.py
+
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
         # substrate/schemas/ without regenerating
@@ -99,6 +127,20 @@ jobs:
             exit 1
           fi
           echo "TS types in sync with Pydantic schemas."
+
+      - name: Contract-conformance gate
+        # antiek-unified SPR-08 M2/M4. The artifact that keeps "four
+        # products are one product" true after the unified spec shipped.
+        # FAILS the PR the moment a product forks a contract (drops/renames
+        # a field that verify_conformance checks) OR the frozen DRW
+        # sprint-lock drifts (a cited DRW sprint no longer resolves —
+        # the seam-#6 silent-renumber risk). Both negatives are exercised
+        # in tests/test_conformance_gate.py (an injected fork + an injected
+        # renumber both fail). Runs as a standalone script so it also works
+        # in pytest-free deploy/hook environments.
+        # See docs/decisions/unified-integration-health.md.
+        run: |
+          python tools/codegen/check_conformance.py
 
   tsc:
     name: tsc
@@ -123,3 +165,23 @@ jobs:
       - name: Type-check
         working-directory: apps/reading
         run: npx tsc --noEmit
+
+      - name: Token lint (pattern not tone — no new hardcoded hex)
+        # frontend-design SPR-01 (harvested from PR #4). Fails the PR on any
+        # NEW raw hex literal outside the token source files (tokens.ts /
+        # tokens.css). Existing literals are grandfathered in
+        # scripts/token_lint_baseline.json; the baseline only ever shrinks.
+        # Turns "every colour is a token" from a review hope into a
+        # mechanical guarantee. Re-mint deliberately with
+        # `npm run lint:tokens:update`; never to silence a regression.
+        working-directory: apps/reading
+        run: npm run lint:tokens
+
+      - name: Bundle budget (S12 WP-12.2)
+        # `vite build` + scripts/check_bundle.ts. Fails the PR if the entry
+        # `index` chunk (≤ 700 KB gz) or the `lemon` primitives chunk
+        # (≤ 60 KB gz) exceeds its gzipped ceiling — the only two chunks
+        # that ship on every page load. Catches a dependency or a fat
+        # import silently ballooning the bundle.
+        working-directory: apps/reading
+        run: npm run build:check

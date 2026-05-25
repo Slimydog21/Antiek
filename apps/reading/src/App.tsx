@@ -8,6 +8,8 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
 import BrainstormStation from "./modes/BrainstormStation";
+import Coordination from "./modes/Coordination";
+import CostConsent from "./modes/Coordination/CostConsent";
 import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
@@ -15,6 +17,7 @@ import Federation from "./modes/Federation";
 import InterviewMode from "./modes/Interview";
 import InterviewIndex from "./modes/InterviewIndex";
 import InvestigationsIndex from "./modes/InvestigationsIndex";
+import Library from "./modes/Library";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
@@ -26,12 +29,17 @@ import OutcomesIndex from "./modes/OutcomesIndex";
 import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
+import BookReader from "./modes/Reading";
 import Replay from "./modes/Replay";
+import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
 import SkillRules from "./modes/SkillRules";
 import Sources from "./modes/Sources";
+import SpeakConsole from "./modes/Speak";
+import SpeakIndex from "./modes/SpeakIndex";
+import SpeakInvite from "./modes/SpeakInvite";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import WrestleApp from "./modes/WrestleApp";
@@ -79,6 +87,8 @@ function AuthenticatedRoutes() {
       <Routes>
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
+        {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace). */}
+        <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
@@ -88,6 +98,8 @@ function AuthenticatedRoutes() {
         <Route path="/notebooks" element={<NotebooksIndex />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
+        <Route path="/library" element={<Library />} />
+        <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/map" element={<Map />} />
@@ -96,11 +108,22 @@ function AuthenticatedRoutes() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/operator" element={<OperatorDashboard />} />
+        {/* antiek-unified SPR-05 — read-only coordination surface (gate ledger
+            + 45-sprint roadmap). Slots into the SPR-04 shared/operator bucket
+            when the four-workflow NavRail lands; reachable directly meanwhile. */}
+        <Route path="/coordination" element={<Coordination />} />
+        {/* antiek-unified SPR-07 — read-only unified cost + consent surface.
+            Reads cost from the dispatch event log, escrow from the IP-holder
+            ledger, gate state from the SPR-05 gate ledger. No disbursement
+            path lives here. Slots into the SPR-04 shared/operator bucket. */}
+        <Route path="/coordination/cost-consent" element={<CostConsent />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
         <Route path="/replay/:investigationId" element={<Replay />} />
         <Route path="/interview/:interviewId" element={<InterviewMode />} />
         <Route path="/interviews" element={<InterviewIndex />} />
+        <Route path="/speak" element={<SpeakIndex />} />
+        <Route path="/speak/:projectId" element={<SpeakConsole />} />
         <Route path="/loop-3" element={<Loop3 />} />
         <Route path="/skill-rules" element={<SkillRules />} />
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
@@ -120,6 +143,10 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/trust" element={<TrustCenter />} />
+        {/* Speak invitee landing — UNAUTHENTICATED (a subject's friend/
+            family is a source, not an account; the URL token is their
+            credential). Must precede the RequireAuth catch-all. */}
+        <Route path="/speak/invite/:token" element={<SpeakInvite />} />
         {/* S9 — popout panel windows render outside AppShell. The
             popout app handles its own chrome; no NavRail/Topbar/
             PanelLayout wrapping. */}

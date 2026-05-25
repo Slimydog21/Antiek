@@ -48,6 +48,19 @@ browserbase = [
   "browserbase>=0.4",
   "playwright>=1.45",
 ]
+# Remote-exec research fan-out — unified SPR-02, behind the §16
+# research-fan-out exemption (docs/decisions/s16-research-fanout-exemption.md).
+# Optional and lazy by the same discipline as [browserbase]: pinned here so
+# the operator installs the SDK only when actually enabling remote-exec
+# (ANTIEK_REMOTE_EXEC_ENABLED=1). The lazy import inside
+# runtime/remote_exec/daytona.py raises RemoteExecUnavailable when the SDK is
+# missing and remote-exec is enabled — loud failure, never silent fallback to
+# host-local that hides the misconfiguration. (Host-local IS the sanctioned
+# fallback, but only via the explicit factory decision, not a swallowed
+# ImportError.)
+remote_exec = [
+  "daytona-sdk>=0.10",
+]
 # Deliverable export — Sprint 15 §3.4 "PDF, EPUB, Substack" formats.
 # Lazy-imported in the export endpoint; missing deps return a 503 with
 # install hint rather than crashing on import. xhtml2pdf is pure-Python
