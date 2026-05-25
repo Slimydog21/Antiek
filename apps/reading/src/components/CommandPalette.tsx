@@ -11,6 +11,14 @@ import {
 } from "../workspace/persistence";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { useActiveWorkflow } from "../shell/activeWorkflow";
+import {
+  WORKFLOWS,
+  WORKFLOW_LABEL,
+  WORKFLOW_HOME,
+  workflowForRoute,
+} from "../shell/workflowTaxonomy";
+import type { Workflow } from "../shell/workflowTaxonomy";
 import LemonButton from "./lemon/LemonButton";
 import { LemonModal } from "./lemon/LemonModal";
 import { toast } from "./lemon/LemonToast";
@@ -252,6 +260,40 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
 ];
 
+/**
+ * Four-workflow IA (SPR-06): explicit "jump to workflow" entries so ⌘K can
+ * switch *workflow*, not only open a mode. Paths are the workflow homes.
+ */
+export const WORKFLOW_ROUTES: PaletteRoute[] = WORKFLOWS.map((w) => ({
+  kind: "route",
+  id: `route:workflow-${w}`,
+  title: `${WORKFLOW_LABEL[w]} workflow`,
+  subtitle: `Jump to the ${WORKFLOW_LABEL[w]} workflow (${WORKFLOW_HOME[w]})`,
+  path: WORKFLOW_HOME[w],
+}));
+
+/**
+ * The workflow an entry belongs to — drives the facet chip + active-first
+ * ordering. Content entries derive from their kind (an investigation is
+ * Research wherever its route points); routes derive from their path; actions
+ * are cross-cutting (null). Functional rationale: the facet is the result's
+ * job-label, so it must come from what the result *is*, not how it's reached.
+ */
+export function workflowForEntry(e: PaletteEntry): Exclude<Workflow, "shared"> | null {
+  switch (e.kind) {
+    case "investigation":
+    case "parked_question":
+      return "research";
+    case "document":
+    case "notebook":
+      return "read";
+    case "route":
+      return workflowForRoute(e.path);
+    case "action":
+      return null;
+  }
+}
+
 export function rankEntries(
   entries: PaletteEntry[],
   query: string,
@@ -292,6 +334,7 @@ export default function CommandPalette() {
   >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
+  const active = useActiveWorkflow((s) => s.active);
 
   const loadIndex = useCallback(async () => {
     try {
@@ -579,6 +622,7 @@ export default function CommandPalette() {
   const entries = useMemo<PaletteEntry[]>(
     () => [
       ...workspaceActions,
+      ...WORKFLOW_ROUTES,
       ...ROUTE_INDEX,
       ...investigations,
       ...documents,
@@ -588,10 +632,18 @@ export default function CommandPalette() {
     [workspaceActions, investigations, documents, notebooks, parked],
   );
 
-  const ranked = useMemo(
-    () => rankEntries(entries, query).slice(0, 12),
-    [entries, query],
-  );
+  // Active-workflow-first ordering when BROWSING (empty query): the current
+  // workflow's entries surface first, so ⌘K opens into the work you're in.
+  // When SEARCHING, pure relevance wins — a text match must never be buried
+  // under an active-workflow entry with a worse name. (Stable partition: the
+  // rank order within each bucket is preserved.)
+  const ranked = useMemo(() => {
+    const r = rankEntries(entries, query);
+    if (query.trim()) return r.slice(0, 12);
+    const here = r.filter((e) => workflowForEntry(e) === active);
+    const rest = r.filter((e) => workflowForEntry(e) !== active);
+    return [...here, ...rest].slice(0, 12);
+  }, [entries, query, active]);
 
   const choose = (entry: PaletteEntry) => {
     if (entry.kind === "action") {
@@ -664,9 +716,16 @@ export default function CommandPalette() {
                     {e.subtitle}
                   </p>
                 </div>
-                <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
-                  {e.kind.replace("_", " ")}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {workflowForEntry(e) && (
+                    <span className="text-[10px] uppercase tracking-wider font-mono text-ink bg-sun/70 px-1.5 py-0.5 rounded">
+                      {WORKFLOW_LABEL[workflowForEntry(e)!]}
+                    </span>
+                  )}
+                  <span className="text-[10px] uppercase tracking-wider font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded">
+                    {e.kind.replace("_", " ")}
+                  </span>
+                </div>
               </li>
             ))
           )}

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../lib/api";
 import { WernerThinking } from "../brand/werner/animated";
+import { useActiveWorkflow } from "../shell/activeWorkflow";
+import { WORKFLOW_LABEL } from "../shell/workflowTaxonomy";
 import {
   dispatchAiAction,
   parseAssistantReply,
@@ -56,6 +58,7 @@ export default function AISidecar() {
   // The legacy toggle paths (⌘J shortcut + custom event) now route
   // through workspace.open / workspace.close via the shortcut module
   // rather than flipping a local boolean. So no `open` state here.
+  const activeWorkflow = useActiveWorkflow((s) => s.active);
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [recentCalls, setRecentCalls] = useState<DispatchEvent[]>([]);
   const [draft, setDraft] = useState<string>("");
@@ -242,6 +245,13 @@ export default function AISidecar() {
             <p className="text-sm font-serif text-ink dark:text-bright">AI sidecar</p>
             <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
               transparent · scoped to your session
+            </p>
+            {/* SPR-06: context-aware — Max knows which workflow you're in.
+                A context-blind assistant does no work the chat box doesn't. */}
+            <p className="text-[11px] font-mono text-ink dark:text-bright">
+              <span className="bg-sun/70 text-ink px-1.5 py-0.5 rounded uppercase tracking-wider">
+                knows: {WORKFLOW_LABEL[activeWorkflow]}
+              </span>
             </p>
           </header>
 
