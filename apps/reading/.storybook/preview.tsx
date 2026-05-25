@@ -16,6 +16,17 @@ import "../src/design/tokens.css";
  * Backgrounds expose the Werner brand surface ramp so authors can
  * preview a story on a card, on the page, on a trough, or on the
  * deep ink. Default is `ice-2` (day page bg).
+ *
+ * SPR-08 fix — opt-out for stories that own their router. A story that
+ * needs a SPECIFIC initial route (Topbar / SceneChrome / the
+ * FourWorkflowShell walk all mount the chrome at a representative path)
+ * must supply its own `<MemoryRouter initialEntries={[…]}>`. Nesting that
+ * inside this global router throws react-router's "You cannot render a
+ * <Router> inside another <Router>" — which silently renders the
+ * Storybook "No Preview" error screen instead of the story (the SPR-05
+ * Topbar + SceneChrome stories were broken exactly this way; the SPR-08
+ * gate caught it). So a story sets `parameters: { router: false }` to tell
+ * this decorator to step aside and let the story bring its own router.
  */
 const preview: Preview = {
   parameters: {
@@ -41,11 +52,15 @@ const preview: Preview = {
     layout: "fullscreen",
   },
   decorators: [
-    (Story) => (
-      <MemoryRouter>
-        <Story />
-      </MemoryRouter>
-    ),
+    (Story, context) => {
+      // A story that brings its own router opts out so the two don't nest.
+      if (context.parameters?.router === false) return <Story />;
+      return (
+        <MemoryRouter>
+          <Story />
+        </MemoryRouter>
+      );
+    },
   ],
 };
 

@@ -10,8 +10,11 @@ import Topbar from "./Topbar";
 const meta = {
   title: "Navigation / Topbar",
   component: Topbar,
-  parameters: { layout: "fullscreen" },
-  tags: ["autodocs"],
+  // `router: false` — these stories own their MemoryRouter (each mounts at a
+  // specific route for breadcrumb output), so the global router steps aside.
+  parameters: { layout: "fullscreen", router: false },
+  // `a11y-audit` opts this story into the test-runner axe gate.
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta<typeof Topbar>;
 
 export default meta;

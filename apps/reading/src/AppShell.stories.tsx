@@ -18,7 +18,8 @@ const meta = {
   title: "Navigation / AppShell",
   component: AppShell,
   parameters: { layout: "fullscreen" },
-  tags: ["autodocs"],
+  // `a11y-audit` opts this story into the test-runner axe gate.
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta<typeof AppShell>;
 
 export default meta;

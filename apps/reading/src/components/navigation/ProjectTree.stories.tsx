@@ -11,7 +11,8 @@ const meta = {
   title: "Navigation / ProjectTree",
   component: ProjectTree,
   parameters: { layout: "padded" },
-  tags: ["autodocs"],
+  // `a11y-audit` opts this story into the test-runner axe gate.
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta<typeof ProjectTree>;
 
 export default meta;

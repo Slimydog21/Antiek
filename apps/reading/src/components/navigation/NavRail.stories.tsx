@@ -10,7 +10,9 @@ const meta = {
   title: "Navigation / NavRail",
   component: NavRail,
   parameters: { layout: "fullscreen" },
-  tags: ["autodocs"],
+  // `a11y-audit` opts this story into the test-runner axe gate
+  // (.storybook/test-runner.ts, selected via `--includeTags a11y-audit`).
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta<typeof NavRail>;
 
 export default meta;

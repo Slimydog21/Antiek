@@ -21,7 +21,14 @@ import { SCENE_REGISTRY } from "./sceneRegistry";
 const meta = {
   title: "Navigation / SceneChrome",
   component: Topbar,
-  parameters: { layout: "fullscreen" },
+  // `router: false` — each story owns its MemoryRouter (mounted at a fixed
+  // route so workflowForRoute resolves the right chrome), so the global router
+  // steps aside instead of nesting (a nested router renders the SB error
+  // screen — the bug SPR-08 caught + fixed).
+  parameters: { layout: "fullscreen", router: false },
+  // `a11y-audit` opts these stories into the test-runner axe gate
+  // (.storybook/test-runner.ts, selected via `--includeTags a11y-audit`).
+  tags: ["a11y-audit"],
 } satisfies Meta<typeof Topbar>;
 
 export default meta;
