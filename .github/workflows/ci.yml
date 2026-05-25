@@ -117,6 +117,20 @@ jobs:
           fi
           echo "TS types in sync with Pydantic schemas."
 
+      - name: Contract-conformance gate
+        # antiek-unified SPR-08 M2/M4. The artifact that keeps "four
+        # products are one product" true after the unified spec shipped.
+        # FAILS the PR the moment a product forks a contract (drops/renames
+        # a field that verify_conformance checks) OR the frozen DRW
+        # sprint-lock drifts (a cited DRW sprint no longer resolves —
+        # the seam-#6 silent-renumber risk). Both negatives are exercised
+        # in tests/test_conformance_gate.py (an injected fork + an injected
+        # renumber both fail). Runs as a standalone script so it also works
+        # in pytest-free deploy/hook environments.
+        # See docs/decisions/unified-integration-health.md.
+        run: |
+          python tools/codegen/check_conformance.py
+
   tsc:
     name: tsc
     runs-on: ubuntu-latest
