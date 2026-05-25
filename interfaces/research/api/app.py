@@ -925,6 +925,14 @@ def create_app(
             return await call_next(request)
         if request.url.path in _OPERATOR_AUTH_OPEN_PATHS:
             return await call_next(request)
+        # Speak invitee surface (specs/speak/): a subject's friend/family
+        # is a SOURCE, not an operator account. Their invite link's TOKEN
+        # is the credential — the /speak/invite/ endpoints verify it and
+        # operate only on the matching interview — so the operator-auth
+        # middleware lets the prefix through. See
+        # interfaces/research/api/speak_routes.py + docs/decisions/speak_workflow.md.
+        if request.url.path.startswith("/speak/invite/"):
+            return await call_next(request)
 
         # Once a path validates the caller, populate request.state with
         # the canonical identity so endpoints can read user_id + scopes

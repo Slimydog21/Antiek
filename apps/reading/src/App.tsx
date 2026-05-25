@@ -34,6 +34,7 @@ import SkillRules from "./modes/SkillRules";
 import Sources from "./modes/Sources";
 import SpeakConsole from "./modes/Speak";
 import SpeakIndex from "./modes/SpeakIndex";
+import SpeakInvite from "./modes/SpeakInvite";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import WrestleApp from "./modes/WrestleApp";
@@ -124,6 +125,10 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/trust" element={<TrustCenter />} />
+        {/* Speak invitee landing — UNAUTHENTICATED (a subject's friend/
+            family is a source, not an account; the URL token is their
+            credential). Must precede the RequireAuth catch-all. */}
+        <Route path="/speak/invite/:token" element={<SpeakInvite />} />
         {/* S9 — popout panel windows render outside AppShell. The
             popout app handles its own chrome; no NavRail/Topbar/
             PanelLayout wrapping. */}

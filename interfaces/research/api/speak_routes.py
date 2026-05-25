@@ -55,7 +55,7 @@ from substrate.speak import (
     takedown as takedown_mod,
     third_party,
 )
-from substrate.speak.async_interview import submit_answer, next_followups, resume
+from substrate.speak.async_interview import decline, submit_answer, next_followups, resume
 from substrate.speak.consent import ConsentScope, ScopedConsentRequired
 from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.invitations import PublicEcosystemGated
@@ -481,3 +481,120 @@ async def order_book(project_id: str, req: BookOrderRequest) -> dict:
     return {"order_id": quote.order_id, "book_format": quote.book_format,
             "provider": quote.provider, "cost_usd": str(quote.cost_usd),
             "payer": quote.payer, "fulfilled": quote.fulfilled}
+
+
+# ---------------------------------------------------------------------------
+# Invitee surface — TOKEN-AUTHORIZED, unauthenticated.
+#
+# The invitee (a subject's friend or family member) is a SOURCE, not an
+# account — that line is what keeps v1 inside the single-operator
+# constraint, and real contributor accounts are gated on G7. Their link
+# carries a token, and the token IS their credential. So these endpoints:
+#   • are keyed by TOKEN, never by a caller-supplied interview_id;
+#   • verify the token resolves (404 otherwise) and operate ONLY on that
+#     one interview;
+#   • live under the /speak/invite/ prefix, which the operator-auth
+#     middleware treats as an open path (the token, not an operator
+#     session, authorizes the request).
+# This is a deliberately separate surface from the operator /speak/...
+# endpoints above; an invitee never touches an operator-authed route.
+# ---------------------------------------------------------------------------
+
+
+class InviteConsentRequest(BaseModel):
+    scopes: list[str] = Field(..., min_length=1)
+
+
+class InviteAnswerRequest(BaseModel):
+    question_id: str
+    transcript: str = Field(..., min_length=1)
+    duration_seconds: float = 0.0
+
+
+def _require_token(con: Any, token: str) -> tuple[str, str]:
+    """Resolve an invite token to (interview_id, project_id) or 404. The
+    token is the invitee's credential — a bad/expired token is the only
+    thing standing between a stranger and this interview, so we fail
+    closed."""
+    iv = invitations.resolve_token(con, token)
+    if iv is None:
+        raise HTTPException(status_code=404, detail="unknown or expired invite link")
+    return iv.interview_id, iv.project_id
+
+
+@speak_router.get("/invite/{token}")
+async def invitee_landing(token: str) -> dict:
+    """One call for the invitee's landing page: the project they've been
+    invited to, the consent scopes the invite asks for, what they've
+    already granted (so a returning invitee skips re-consent), and — once
+    consented — the pending questions + transcript so far."""
+    with _translate(), _write("speak/api:invite_landing") as con:
+        iv = invitations.resolve_token(con, token)
+        if iv is None:
+            raise HTTPException(status_code=404, detail="unknown or expired invite link")
+        interview_id, project_id = iv.interview_id, iv.project_id
+        required = [s.value for s in iv.required_consent_scopes]
+        prow = con.execute(
+            "SELECT ip.title, p.subject_ref, p.subject_status "
+            "FROM speak_projects p JOIN interview_projects ip ON ip.project_id = p.project_id "
+            "WHERE p.project_id = ?", [project_id],
+        ).fetchone()
+        granted = sorted(s.value for s in consent_mod.consent_state(con, interview_id).granted)
+    # resume() acquires its OWN lock — call it AFTER releasing ours (no nesting).
+    session = resume(_db(), interview_id)
+    return {
+        "interview_id": interview_id,
+        "project_id": project_id,
+        "project_title": prow[0] if prow else project_id,
+        "subject_ref": prow[1] if prow else None,
+        "subject_status": prow[2] if prow else None,
+        "required_consent_scopes": required,
+        "granted_consent_scopes": granted,
+        "status": session.status,
+        "pending_questions": session.pending_questions(),
+        "transcript": session.turns,
+    }
+
+
+@speak_router.post("/invite/{token}/consent", status_code=200)
+async def invitee_consent(token: str, req: InviteConsentRequest) -> dict:
+    with _translate(), _write("speak/api:invite_consent") as con:
+        interview_id, _ = _require_token(con, token)
+        scopes = [ConsentScope(s) for s in req.scopes]
+        state = consent_mod.record_consent(con, interview_id=interview_id, scopes=scopes)
+    return {"interview_id": interview_id, "granted": sorted(s.value for s in state.granted)}
+
+
+@speak_router.post("/invite/{token}/answer", status_code=201)
+async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
+    with _translate(), _write("speak/api:invite_answer_resolve") as con:
+        interview_id, _ = _require_token(con, token)
+    # submit_answer acquires its own lock(s); call outside ours.
+    with _translate():
+        result = submit_answer(
+            _db(), interview_id=interview_id, question_id=req.question_id,
+            transcript=req.transcript, duration_seconds=req.duration_seconds,
+        )
+    return {"interview_id": result.interview_id, "question_id": result.question_id,
+            "document_id": result.document_id, "skipped_reason": result.skipped_reason}
+
+
+@speak_router.post("/invite/{token}/followups")
+async def invitee_followups(token: str) -> dict:
+    with _translate(), _write("speak/api:invite_followups_resolve") as con:
+        interview_id, _ = _require_token(con, token)
+    with _translate():
+        fus = next_followups(_db(), interview_id=interview_id)
+    return {"followups": [
+        {"question_id": f.question_id, "text": f.text,
+         "follow_up_for_prior_turn": f.follow_up_for_prior_turn}
+        for f in fus
+    ]}
+
+
+@speak_router.post("/invite/{token}/decline", status_code=200)
+async def invitee_decline(token: str) -> dict:
+    with _translate(), _write("speak/api:invite_decline_resolve") as con:
+        interview_id, _ = _require_token(con, token)
+    decline(_db(), interview_id)
+    return {"interview_id": interview_id, "status": "declined"}

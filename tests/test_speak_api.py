@@ -174,6 +174,81 @@ def test_private_publish_not_served(client):
     assert r.json()["visibility"] == "private"
 
 
+def _token_from_link(link: str) -> str:
+    return link.split("token=", 1)[1]
+
+
+def test_invitee_token_flow(client):
+    # Operator creates a will-be-public project + invites someone.
+    project_id = client.post("/speak/projects", json={
+        "title": "Dad's biography", "subject_ref": "the-dad",
+        "subject_status": "deceased", "publish_intent": "will_be_public",
+    }).json()["project_id"]
+    iv = client.post(f"/speak/projects/{project_id}/invites",
+                     json={"informant_email": "aunt@x.com"}).json()
+    token = _token_from_link(iv["link"])
+
+    # The invitee lands via their TOKEN (no operator account).
+    landing = client.get(f"/speak/invite/{token}").json()
+    assert landing["project_title"] == "Dad's biography"
+    assert "publish" in landing["required_consent_scopes"]
+    assert landing["granted_consent_scopes"] == []  # nothing granted yet
+
+    # They grant scoped consent (record only — declining publish is allowed).
+    r = client.post(f"/speak/invite/{token}/consent", json={"scopes": ["record"]})
+    assert r.status_code == 200
+    assert "record" in r.json()["granted"]
+
+    # Now they can answer; the text they submit is the (corrected) transcript.
+    r = client.post(f"/speak/invite/{token}/answer",
+                    json={"question_id": "q1", "transcript": "He taught me to bake bread before dawn."})
+    assert r.status_code == 201, r.text
+
+    # The landing reflects their contribution.
+    landing2 = client.get(f"/speak/invite/{token}").json()
+    assert "record" in landing2["granted_consent_scopes"]
+    assert any("bread" in t["text"] for t in landing2["transcript"])
+
+
+def test_invitee_answer_requires_consent(client):
+    pid = client.post("/speak/projects", json={"title": "Bio"}).json()["project_id"]
+    iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
+    token = _token_from_link(iv["link"])
+    # Answer before consent → 403 (ConsentRequired surfaced).
+    r = client.post(f"/speak/invite/{token}/answer",
+                    json={"question_id": "q1", "transcript": "before consent"})
+    assert r.status_code == 403
+
+
+def test_invitee_bad_token_404(client):
+    assert client.get("/speak/invite/not-a-real-token").status_code == 404
+    assert client.post("/speak/invite/not-a-real-token/consent",
+                       json={"scopes": ["record"]}).status_code == 404
+    assert client.post("/speak/invite/not-a-real-token/answer",
+                       json={"question_id": "q", "transcript": "x"}).status_code == 404
+
+
+def test_invitee_surface_open_while_operator_endpoints_authed(client, monkeypatch):
+    # Turn operator auth ON. The operator surface must require auth; the
+    # token-gated invitee surface must still be REACHABLE (token is the
+    # credential), returning 404 for a bad token rather than an auth 401.
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "secret-operator-token")
+    operator_resp = client.get("/speak/projects")
+    assert operator_resp.status_code in (401, 403), "operator endpoint must be auth-gated"
+    invitee_resp = client.get("/speak/invite/some-token")
+    assert invitee_resp.status_code not in (401, 403), "invitee surface must be open (token-gated)"
+    assert invitee_resp.status_code == 404  # reached the endpoint; token invalid
+
+
+def test_invitee_decline(client):
+    pid = client.post("/speak/projects", json={"title": "Bio"}).json()["project_id"]
+    iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
+    token = _token_from_link(iv["link"])
+    r = client.post(f"/speak/invite/{token}/decline")
+    assert r.status_code == 200
+    assert r.json()["status"] == "declined"
+
+
 def test_list_projects(client):
     # Fresh DB → empty list.
     r = client.get("/speak/projects")
