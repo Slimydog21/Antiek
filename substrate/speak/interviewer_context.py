@@ -148,7 +148,17 @@ def build_conditioning_context(
     and under-explored subjects to deepen (M4) — with the consent-scope
     privacy filter applied and the whole thing budgeted to ``max_items``.
     """
-    gaps_src = gap_source or SpeakGraphGapSource(con)
+    if gap_source is not None:
+        gaps_src = gap_source
+    else:
+        # DRW SPR-07 has landed: default to the composite source (DRW's
+        # centrality-ranked shared-graph gaps for this project + Speak's
+        # consent-aware project-local source). Lazy import avoids the
+        # drw_gap_source ↔ interviewer_context cycle. With no Speak content
+        # promoted to the shared graph yet, DRW contributes [] and this is
+        # exactly SpeakGraphGapSource — unchanged behavior.
+        from .drw_gap_source import default_gap_source
+        gaps_src = default_gap_source(con)
     gaps = gaps_src.open_questions(project_id, limit=max_items * 3)
 
     # M1 — accumulated insights from OTHER interviewees, consent-filtered.
