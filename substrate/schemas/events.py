@@ -319,6 +319,26 @@ class ActionType(str, Enum):
     #    unlock_gate (G8) and the reward stays None until post-unlock.
     EDIT_CAPTURED = "edit.captured"
 
+    # ── Cross-workflow seams (antiek-unified SPR-03). Each typed seam
+    #    handoff (substrate/seams/contracts.py) emits one of these when it
+    #    fires. They carry the entity id + kind + provenance ref + the
+    #    terminating-handoff marker — NEVER a copy of the entity. Six
+    #    committed + one provisional (write→speak). These are handoff-audit
+    #    events: they record that a workflow handed an entity (by reference)
+    #    to another workflow; the underlying graph node / claim / document is
+    #    untouched (the seam moves the reference, the products own the
+    #    entity). No seam event carries a successor — the absence of any
+    #    next-handoff field is the no-auto-loop invariant.
+    SEAM_RESEARCH_TO_READ = "seam.research_to_read"
+    SEAM_READ_TO_RESEARCH = "seam.read_to_research"
+    SEAM_READ_TO_WRITE = "seam.read_to_write"
+    SEAM_WRITE_TO_READ = "seam.write_to_read"
+    SEAM_SPEAK_TO_WRITE = "seam.speak_to_write"
+    SEAM_SPEAK_TO_READ = "seam.speak_to_read"
+    # Provisional — write→speak. Typed so the trajectory can carry it if the
+    # operator exercises it, but the seam is off the SPR-08 critical path.
+    SEAM_WRITE_TO_SPEAK = "seam.write_to_speak"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -389,7 +409,16 @@ class ActionType(str, Enum):
 #     hard-gated by unlock_gate (G8); these capture events are ungated
 #     and the reward stays None until post-unlock. specs/write/ SPR-02.
 #     2026-05-25.
-EVENT_SCHEMA_VERSION: int = 15
+# v16: antiek-unified SPR-03 — cross-workflow seam handoff audit trail.
+#     Seven typed events (seam.research_to_read / read_to_research /
+#     read_to_write / write_to_read / speak_to_write / speak_to_read +
+#     provisional seam.write_to_speak) record one cross-workflow handoff
+#     each, carrying the entity id + entity_kind + provenance_ref + the
+#     terminating-handoff marker so the flywheel is reconstructable from
+#     the trajectory. Handoff-audit events over existing entities — NOT
+#     graph-write events; the seam moves a reference, never a copy.
+#     specs/antiek-unified/ SPR-03. 2026-05-25.
+EVENT_SCHEMA_VERSION: int = 16
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2785,6 +2814,122 @@ class EditCapturedPayload(_PayloadBase):
     session_id: Optional[str] = None
 
 
+# ── Cross-workflow seams (antiek-unified SPR-03) ─────────────────────
+#
+# One payload per seam. Every seam payload carries the same four
+# load-bearing fields — the entity reference (entity_id + entity_kind),
+# the provenance reference, and the terminating-handoff marker — plus the
+# (fixed) from/to workflow direction. They mirror substrate/seams/contracts.py;
+# a copied entity would show up here as inlined content, and there is no
+# content field on any of these payloads by design (the seam carries a
+# reference, never a copy). No payload has a successor field — the absence is
+# the no-auto-loop invariant.
+
+
+class _SeamPayloadBase(_PayloadBase):
+    """Shared shape of every seam handoff event. The entity travels by id +
+    kind; ``provenance_ref`` is the originating event/region/source id; there
+    is deliberately no field that inlines the entity's content (a copy) or
+    names a successor handoff (an auto-loop)."""
+
+    entity_id: str
+    entity_kind: Literal[
+        "insight_node",
+        "question_node",
+        "outline_block",
+        "document_region",
+        "servable_entry",
+        "speak_claim",
+    ]
+    provenance_ref: str
+    # Fixed True — a seam event is a single terminating handoff.
+    terminates: Literal[True] = True
+
+
+class SeamResearchToReadPayload(_SeamPayloadBase):
+    """research → read. A researched insight surfaces in the reading corpus
+    (DRW SPR-01 node + Read corpus surface)."""
+
+    action_type: Literal[ActionType.SEAM_RESEARCH_TO_READ] = ActionType.SEAM_RESEARCH_TO_READ
+    from_workflow: Literal["research"] = "research"
+    to_workflow: Literal["read"] = "read"
+    entity_kind: Literal["insight_node"] = "insight_node"
+
+
+class SeamReadToResearchPayload(_SeamPayloadBase):
+    """read → research. A highlighted passage spins a focused investigation
+    (Read SPR-08 → DRW SPR-05 cascade planner seed)."""
+
+    action_type: Literal[ActionType.SEAM_READ_TO_RESEARCH] = ActionType.SEAM_READ_TO_RESEARCH
+    from_workflow: Literal["read"] = "read"
+    to_workflow: Literal["research"] = "research"
+    entity_kind: Literal["document_region"] = "document_region"
+    document_id: str
+    # Result pointer set by the receiving side — the launched session. NOT a
+    # successor-handoff field; it names what this seam launched.
+    launched_investigation_id: Optional[str] = None
+
+
+class SeamReadToWritePayload(_SeamPayloadBase):
+    """read → write. An insight node is dragged into an outline section
+    (Write SPR-03). The block references the node (provenance_kind=graph_node);
+    it never inlines the insight text."""
+
+    action_type: Literal[ActionType.SEAM_READ_TO_WRITE] = ActionType.SEAM_READ_TO_WRITE
+    from_workflow: Literal["read"] = "read"
+    to_workflow: Literal["write"] = "write"
+    entity_kind: Literal["insight_node"] = "insight_node"
+    target_section_id: str
+
+
+class SeamWriteToReadPayload(_SeamPayloadBase):
+    """write → read. Trace a block to its source in the shared reading surface
+    (Write SPR-07), respecting Read's servability gate."""
+
+    action_type: Literal[ActionType.SEAM_WRITE_TO_READ] = ActionType.SEAM_WRITE_TO_READ
+    from_workflow: Literal["write"] = "write"
+    to_workflow: Literal["read"] = "read"
+    entity_kind: Literal["outline_block"] = "outline_block"
+    source_document_id: Optional[str] = None
+    source_region_id: Optional[str] = None
+
+
+class SeamSpeakToWritePayload(_SeamPayloadBase):
+    """speak → write. Author a biography from interview-attested claims
+    (Speak SPR-08). The seam carries the speak_claim id; Write maps it to a
+    synthesized block (claim_id as provenance link, not a new node)."""
+
+    action_type: Literal[ActionType.SEAM_SPEAK_TO_WRITE] = ActionType.SEAM_SPEAK_TO_WRITE
+    from_workflow: Literal["speak"] = "speak"
+    to_workflow: Literal["write"] = "write"
+    entity_kind: Literal["speak_claim"] = "speak_claim"
+    contributor_interview_ids: list[str] = Field(default_factory=list)
+
+
+class SeamSpeakToReadPayload(_SeamPayloadBase):
+    """speak → read. A published biography is served back in the corpus
+    (Speak SPR-09). Registers as platform_authored + speak_derived — the
+    condition that routes it through the seam-#4 publish gate."""
+
+    action_type: Literal[ActionType.SEAM_SPEAK_TO_READ] = ActionType.SEAM_SPEAK_TO_READ
+    from_workflow: Literal["speak"] = "speak"
+    to_workflow: Literal["read"] = "read"
+    entity_kind: Literal["servable_entry"] = "servable_entry"
+    publish_gate_passed: bool = False
+
+
+class SeamWriteToSpeakPayload(_SeamPayloadBase):
+    """write → speak. **PROVISIONAL.** Commission interviews from an outline
+    gap. Typed so the trajectory can carry it, but the seam is the weakest and
+    off the SPR-08 critical path; the receiving Speak side is unspecified."""
+
+    action_type: Literal[ActionType.SEAM_WRITE_TO_SPEAK] = ActionType.SEAM_WRITE_TO_SPEAK
+    from_workflow: Literal["write"] = "write"
+    to_workflow: Literal["speak"] = "speak"
+    entity_kind: Literal["question_node"] = "question_node"
+    outline_section_id: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -2885,6 +3030,13 @@ TypedPayload = Annotated[
         BookServabilityChangedPayload,
         BookTakenDownPayload,
         EditCapturedPayload,
+        SeamResearchToReadPayload,
+        SeamReadToResearchPayload,
+        SeamReadToWritePayload,
+        SeamWriteToReadPayload,
+        SeamSpeakToWritePayload,
+        SeamSpeakToReadPayload,
+        SeamWriteToSpeakPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -2992,6 +3144,14 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.OUTLINE_BLOCK_REMOVED.value,
     # Write workflow SPR-02 — edit capture.
     ActionType.EDIT_CAPTURED.value,
+    # antiek-unified SPR-03 — cross-workflow seam handoffs.
+    ActionType.SEAM_RESEARCH_TO_READ.value,
+    ActionType.SEAM_READ_TO_RESEARCH.value,
+    ActionType.SEAM_READ_TO_WRITE.value,
+    ActionType.SEAM_WRITE_TO_READ.value,
+    ActionType.SEAM_SPEAK_TO_WRITE.value,
+    ActionType.SEAM_SPEAK_TO_READ.value,
+    ActionType.SEAM_WRITE_TO_SPEAK.value,
 })
 
 
