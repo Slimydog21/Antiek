@@ -69,10 +69,19 @@ hot shared `schemas/events.py` or `graph/schema.py`). Per sprint:
   does not yet. SPR-08 builds against the `contracts.OutlineComposer`
   Protocol with `biography.SpeakOutlineComposer` as the default (writes
   `section_blocks`); Write's composer drops in later.
-- **DRW (`gap_detection`) — ABSENT.** SPR-04 builds against
-  `contracts.GapSource` with `interviewer_context.SpeakGraphGapSource` as
-  the default (reads gaps from the Speak project graph); DRW SPR-07's
-  centrality-based detector drops in later.
+- **DRW (`gap_detection`) — LANDED + WIRED (2026-05-25, commit `e865fad`).**
+  SPR-04 built against `contracts.GapSource` with
+  `interviewer_context.SpeakGraphGapSource` as the default. DRW SPR-07 has
+  since shipped (`substrate/gap_detection/`), so `substrate/speak/drw_gap_source.py`
+  supplies the contract's intended real implementation: `DRWGapSource`
+  (centrality-ranked, **project-scoped** via `metadata.speak_project_id`) +
+  `CompositeGapSource` (DRW shared-graph gaps + Speak consent-aware
+  project-local), now `build_conditioning_context`'s default via
+  `default_gap_source`. Behavior is unchanged today (DRW contributes `[]`
+  until Speak content is promoted to the shared graph) — and that promotion
+  is deliberately NOT done here: cross-workflow shared-graph visibility is
+  G2/G3-class consent/legal weight, operator-owned. The module defines the
+  convention (`SPEAK_PROJECT_NODE_KEY`) a sanctioned promotion follows.
 
 ## Integration choices worth recovering later
 
