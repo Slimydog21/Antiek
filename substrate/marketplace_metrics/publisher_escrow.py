@@ -8,6 +8,31 @@ working, claim rate should rise over time.
 
 The substrate ip_holders module owns the state machine; this module
 aggregates over its rows.
+
+**Concern + single-writer rule (seam #3).** This module is the escrow
+**reporting / aggregation** surface — ``compute_publisher_escrow`` *reads*
+publisher rows and accruals and returns a :class:`PublisherEscrowReport`. It is
+read-only; it does **not** write escrow.
+
+The seam-#3 collision the four specs left open is "two attribution.py files →
+who writes escrow?" The load-bearing fix is single-writer discipline on the
+escrow *balance*, mirroring the DuckDB single-writer invariant. The single
+escrow-balance writer is ``substrate/ip_holders/__init__.py::accrue_escrow``
+(the only ``SET escrow_balance_usd = …`` statement in the tree), reached today
+only from ``substrate/speak/contributor.py::accrue_contributions``. Both
+attribution concerns (``ad_inventory/attribution.py`` weighting,
+``marketplace_metrics`` impression→ip_holder) feed the single
+``AccrualContract`` shape (``substrate/contracts/accrual.py``); neither writes
+escrow directly. Accrual ≠ disbursement — money leaves escrow only via a path
+hard-gated on G2 (lawyer review) + G3 (publisher opt-in).
+
+Naming nuance (honesty, rigor #4): ``docs/decisions/tech-stack-ledger.md`` and
+the master spec name *this file* the "single escrow writer." In the live code
+this file does not write escrow — it reports it; the actual single writer is
+``ip_holders.accrue_escrow``. The invariant the ledger means (exactly one
+escrow-balance writer) holds and is the one the guard test enforces. See
+``tests/test_seam_single_escrow_writer.py`` and the SPR-03 handoff packet's
+open-questions section.
 """
 
 from __future__ import annotations

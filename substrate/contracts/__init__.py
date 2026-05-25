@@ -62,9 +62,16 @@ from .outline_block import OutlineBlockContract
 from .reading_surface import ReaderSurfaceContract
 from .research_runner import ResearchRunner, StepEvent
 from .servable import ServableEntryContract
+from .voice_pipeline import (
+    VOICE_INGEST_FUNCTION,
+    VOICE_NOTE_DOCUMENT_TYPE,
+    VOICE_PIPELINE_OWNER,
+    VoicePipelineContract,
+)
 
 # Pydantic contract models that go through TS codegen (provisional Protocols —
-# ReaderSurfaceContract — are excluded; they carry behavior, not data).
+# ReaderSurfaceContract, VoicePipelineContract — are excluded; they carry
+# behavior, not data).
 CODEGEN_CONTRACTS: tuple[type, ...] = (
     InsightNodeContract,
     QuestionNodeContract,
@@ -88,6 +95,10 @@ __all__ = [
     "ContextPackContract",
     "AssembledLayerContract",
     "ReaderSurfaceContract",
+    "VoicePipelineContract",
+    "VOICE_PIPELINE_OWNER",
+    "VOICE_NOTE_DOCUMENT_TYPE",
+    "VOICE_INGEST_FUNCTION",
     "OutlineBlockContract",
     "ServableEntryContract",
     "AccrualContract",

@@ -2,7 +2,24 @@
 
 Sprint 16 telemetry computes all three in parallel for A/B analysis.
 Sprint 23-24 Phase 4 payouts use Option B as default; Option C as
-premium tier for high-value pages."""
+premium tier for high-value pages.
+
+**Concern (seam #3 — distinct from the marketplace-metrics one).** This module
+is the **contribution-weighting** attribution: given a rendered page, how is
+its attribution *split* across the source documents (algorithms A / B / C)? It
+produces *shares*, not money, and it does **not** write escrow. The Speak
+contributor split (``substrate/speak/contributor.py``) consumes weighting of
+this kind to size each contributor's slice.
+
+**Single-writer rule (seam #3).** Two attribution concerns are fine; two
+writers to the escrow ledger are not. This module emits/feeds the single
+``AccrualContract`` shape (``substrate/contracts/accrual.py``); it never writes
+escrow. Exactly one code path increments an escrow balance —
+``substrate/ip_holders/__init__.py::accrue_escrow`` (the only
+``SET escrow_balance_usd = …`` in the tree), reached today only from
+``substrate/speak/contributor.py``. ``tests/test_seam_single_escrow_writer.py``
+greps this invariant. See ``docs/decisions/tech-stack-ledger.md`` for the
+ledger naming nuance."""
 
 from __future__ import annotations
 
