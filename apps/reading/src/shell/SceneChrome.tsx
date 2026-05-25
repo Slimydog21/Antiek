@@ -9,6 +9,8 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { WorkflowStub } from "./WorkflowStub";
+import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
+import type { Thread, ThreadHop } from "./threadModel";
 
 /**
  * SceneChrome (SPR-04 zone 3) — the per-workflow scene wrapper.
@@ -96,7 +98,23 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   },
 };
 
-export function SceneChrome({ children }: { children: ReactNode }) {
+export function SceneChrome({
+  children,
+  /**
+   * The cross-workflow thread for the entity currently in focus (SPR-06). When
+   * present, SceneChrome renders the unified ThreadBreadcrumb in the chrome
+   * (zone 3) row — the entity's trajectory across the four workflows. Absent
+   * when no entity is focused (the breadcrumb only appears when there's a
+   * thread to show). The parent supplies it from GET /thread/{node_id}.
+   */
+  thread,
+  /** Fired when a breadcrumb segment is clicked — wire to ThreadJump's jump. */
+  onThreadJump,
+}: {
+  children: ReactNode;
+  thread?: Thread;
+  onThreadJump?: (hop: ThreadHop) => void;
+}) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const wf = workflowForPath(pathname);
@@ -175,6 +193,19 @@ export function SceneChrome({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
+        )}
+
+        {/* SPR-06 — the cross-workflow thread breadcrumb. Shown only when an
+            entity is in focus (a thread to follow). It is the SAME node id at
+            every hop; copies are provenance bugs the breadcrumb refuses to
+            render (see ThreadBreadcrumb). */}
+        {thread && (
+          <div
+            className="border-t border-rule/60 dark:border-charcoal-1 py-1"
+            data-testid="scene-chrome-thread"
+          >
+            <ThreadBreadcrumb thread={thread} onJump={onThreadJump} />
+          </div>
         )}
       </div>
 

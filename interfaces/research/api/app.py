@@ -5103,6 +5103,15 @@ def create_app(
     from interfaces.research.api.speak_routes import speak_router
     app.include_router(speak_router)
 
+    # Cross-workflow thread navigation (antiek-unified SPR-06). Read-only:
+    # GET /thread/{node_id} reconstructs an entity's cross-workflow trajectory
+    # from the SPR-03 seam events. A VIEW over existing nodes/edges + seam
+    # events — it writes nothing and adds no node/edge type. Powers the
+    # ThreadBreadcrumb + ThreadJump in apps/reading/src/shell/. See
+    # substrate/seams/thread.py.
+    from interfaces.research.api.thread import make_router as make_thread_router
+    app.include_router(make_thread_router())
+
     return app
 
 
