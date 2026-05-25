@@ -33,7 +33,16 @@ _REPO = Path(__file__).resolve().parent.parent
 _SEARCH_DIRS = ("substrate", "ad_inventory", "acquisition", "roles", "orchestration")
 
 _ESCROW_WRITER_MODULE = "substrate/ip_holders/__init__.py"
-_ESCROW_CALLER_MODULE = "substrate/speak/contributor.py"
+# The single escrow-balance WRITER is ip_holders.accrue_escrow — one
+# ``SET escrow_balance_usd`` statement, asserted by
+# test_exactly_one_escrow_balance_write_statement. Multiple revenue SOURCES
+# legitimately route through that one writer: Speak's contributor 70% split
+# and Read's book/publisher escrow (added when the Read workflow merged). Each
+# is a sanctioned caller; a NEW, unsanctioned caller still fails the guard.
+_SANCTIONED_ESCROW_CALLERS = frozenset({
+    "substrate/speak/contributor.py",                 # contributor split (seam #3)
+    "substrate/marketplace_metrics/book_escrow.py",   # Read book/publisher escrow
+})
 
 
 def _code_only(source: str) -> str:
@@ -84,8 +93,11 @@ def test_exactly_one_escrow_balance_write_statement():
 
 
 def test_exactly_one_accrue_escrow_call_site():
-    """The application-level invariant: one caller of ``accrue_escrow`` (the
-    definition itself excluded)."""
+    """The application-level invariant: every caller of ``accrue_escrow`` is a
+    sanctioned revenue source routing through the single writer (definition
+    excluded). The single-WRITER invariant itself (one ``SET`` statement) is
+    asserted separately; multiple revenue sources sharing the one writer is by
+    design, an unsanctioned caller is not."""
     call = re.compile(r"\baccrue_escrow\s*\(")
     defn = re.compile(r"^def accrue_escrow\b", re.MULTILINE)
     callers: list[str] = []
@@ -101,10 +113,14 @@ def test_exactly_one_accrue_escrow_call_site():
             if call.search(without_def):
                 callers.append(str(py.relative_to(_REPO)))
     callers = sorted(set(callers))
-    assert callers == [_ESCROW_CALLER_MODULE], (
-        f"`accrue_escrow` is called from {callers}; the single application-"
-        f"level escrow writer is {_ESCROW_CALLER_MODULE} (seam #3)"
+    unsanctioned = [c for c in callers if c not in _SANCTIONED_ESCROW_CALLERS]
+    assert not unsanctioned, (
+        f"`accrue_escrow` is called from unsanctioned module(s) {unsanctioned}; "
+        f"escrow accrual must come from a sanctioned revenue source "
+        f"({sorted(_SANCTIONED_ESCROW_CALLERS)}), each routing through the single "
+        f"writer ip_holders.accrue_escrow (seam #3)."
     )
+    assert callers, "expected at least one sanctioned accrue_escrow caller"
 
 
 def test_publisher_escrow_is_read_only():

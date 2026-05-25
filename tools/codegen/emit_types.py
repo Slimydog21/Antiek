@@ -241,6 +241,14 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     # Read workflow SPR-01 — servable-corpus legal-gate audit trail.
     schema_module.BookServabilityChangedPayload,
     schema_module.BookTakenDownPayload,
+    # antiek-unified SPR-03 — the six flywheel seams + one provisional seam.
+    schema_module.SeamResearchToReadPayload,
+    schema_module.SeamReadToResearchPayload,
+    schema_module.SeamReadToWritePayload,
+    schema_module.SeamWriteToReadPayload,
+    schema_module.SeamSpeakToWritePayload,
+    schema_module.SeamSpeakToReadPayload,
+    schema_module.SeamWriteToSpeakPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
