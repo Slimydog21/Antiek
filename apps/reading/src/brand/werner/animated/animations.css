@@ -127,6 +127,16 @@
   transform-origin: 50% 50%;
 }
 
+/* ─── Idle (rail mark) — light breathing sway, restrained for companion feel ── */
+@keyframes werner-idle-sway {
+  0%, 100% { transform: rotate(-1.5deg) translateY(0); }
+  50%      { transform: rotate(1.5deg) translateY(-0.5px); }
+}
+.werner-idle {
+  animation: werner-idle-sway 4200ms ease-in-out infinite;
+  transform-origin: 50% 65%;
+}
+
 /* ─── Reduced-motion guard ────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .werner-toboggan,
@@ -141,7 +151,8 @@
   .werner-thinking-dot-3,
   .werner-thinking-dot-4,
   .werner-fish-flipper,
-  .werner-fish-sparkle {
+  .werner-fish-sparkle,
+  .werner-idle {
     animation: none !important;
   }
   /* Static fallback frames — slight rotation so the operator can still
@@ -154,4 +165,5 @@
   .werner-thinking-dot-3,
   .werner-thinking-dot-4 { opacity: 0.8; }
   .werner-fish-sparkle { opacity: 1; transform: scale(1); }
+  .werner-idle { transform: rotate(0deg); }
 }

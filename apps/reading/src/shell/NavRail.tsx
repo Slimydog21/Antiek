@@ -12,6 +12,7 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { ProductsLauncher } from "./ProductsLauncher";
+import Werner from "../brand/Werner";
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -88,20 +89,6 @@ const UTIL_ICONS = {
   // "all products / everything else", which is exactly what it opens.
   more: "M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z", // ⊞ grid
 };
-
-function WernerMarkInline() {
-  return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" className="w-7 h-7">
-      <ellipse cx="16" cy="17" rx="9" ry="11" fill="var(--werner-coat)" />
-      <ellipse cx="16" cy="19" rx="5.5" ry="8" fill="var(--werner-belly)" />
-      <circle cx="13" cy="13" r="1.4" fill="var(--werner-eye)" />
-      <circle cx="19" cy="13" r="1.4" fill="var(--werner-eye)" />
-      <path d="M14.5 16 L16 18 L17.5 16 Z" fill="var(--werner-bill)" />
-      <ellipse cx="12.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)" />
-      <ellipse cx="19.5" cy="29" rx="2.5" ry="1" fill="var(--werner-foot)" />
-    </svg>
-  );
-}
 
 /** Rail button for workflows (the four dominant doors), utilities, and More.
  *  Variant gives workflows stronger weight (visible persistent labels below
@@ -248,7 +235,7 @@ export function NavRail() {
           onClick={() => navigate("/")}
           className="h-12 flex items-center justify-center border-b-edge border-sun bg-sun/95 hover:bg-sun"
         >
-          <WernerMarkInline />
+          <Werner mood="idle" size={28} />
         </button>
 
         {/* Utility cluster (Search + New/tree) — visually subordinate to the

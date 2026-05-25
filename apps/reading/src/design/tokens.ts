@@ -118,7 +118,12 @@ export const shadow = {
 
 export type ShadowKey = keyof (typeof shadow)["day"];
 
-/** Werner mascot palette. Bill + feet ARE the brand. */
+/** Werner mascot palette. Bill + feet lock to sun — the single constant that makes the mark the brand.
+
+   These five drive the canonical <Werner mood="..." /> (U-02). The component renders
+   at rail size (28px, mark fidelity) and hero (120px+, character fidelity) from the
+   same geometry. Abstract dot rejected: a stranger must call the rail mark "a cute
+   penguin" not "a dot". See brand/README.md for the four-slot restraint rule. */
 export const werner = {
   day: {
     coat: "#0F1419",
@@ -135,6 +140,10 @@ export const werner = {
     eye: "#DCE2EA",
   },
 } as const;
+
+/** Exactly the four moods the restraint rule permits. Used only in the four named
+   slots; never mid-content, never more than one on screen. */
+export type WernerMood = "idle" | "thinking" | "empty" | "celebrate";
 
 /** Reserved-use accents — use sparingly; never substitute for sun. */
 export const accent = {

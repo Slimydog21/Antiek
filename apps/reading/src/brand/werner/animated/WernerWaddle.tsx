@@ -1,4 +1,5 @@
 import "./animations.css";
+import Werner from "../../Werner";
 
 /**
  * Werner the penguin, waddling — route-navigation transition.
@@ -11,6 +12,9 @@ import "./animations.css";
  * Default size 32 fits between the NavRail icons. The transition
  * helper that owns the "show Werner during nav" lifecycle lives in
  * `useWaddleTransition` (sibling file).
+ *
+ * Core mark delegated to <Werner mood="idle" /> + --werner-* tokens
+ * for any remaining accents. No more parallel geometry fork.
  */
 type Props = { size?: number; label?: string };
 
@@ -25,35 +29,10 @@ export default function WernerWaddle({
       className="inline-block align-middle"
       style={{ width: size, height: size }}
     >
-      <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden="true">
-        <g className="werner-waddle">
-          {/* Body */}
-          <ellipse cx="16" cy="17" rx="9" ry="11" fill="#0F1419" />
-          <ellipse cx="16" cy="19" rx="5.5" ry="8" fill="#EEF1F6" />
-          {/* Eyes — open + forward */}
-          <circle cx="13" cy="13" r="1.4" fill="#0F1419" />
-          <circle cx="19" cy="13" r="1.4" fill="#0F1419" />
-          {/* Bill */}
-          <path d="M14.5 16 L16 18 L17.5 16 Z" fill="#F5DF24" />
-          {/* Feet — alternate up-cycle */}
-          <ellipse
-            cx="12.5"
-            cy="29"
-            rx="2.5"
-            ry="1"
-            fill="#F5DF24"
-            className="werner-waddle-foot-l"
-          />
-          <ellipse
-            cx="19.5"
-            cy="29"
-            rx="2.5"
-            ry="1"
-            fill="#F5DF24"
-            className="werner-waddle-foot-r"
-          />
-        </g>
-      </svg>
+      {/* Core mark now single-source from canonical Werner at rail fidelity.
+          The waddle chrome (body bob + foot lift) is applied via the
+          container class; the penguin geometry itself is no longer forked. */}
+      <Werner mood="idle" size={size} className="werner-waddle" />
     </span>
   );
 }

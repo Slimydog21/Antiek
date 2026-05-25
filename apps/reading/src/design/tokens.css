@@ -41,7 +41,9 @@
   --text-muted: var(--shadow-1);
   --border:     var(--sun);
 
-  /* werner */
+  /* werner — five fills for the single-source <Werner> component.
+     Bill + foot lock to --sun so the mark carries the brand constant at every size.
+     See tokens.ts + brand/README.md (restraint: rail idle, thinking, empty, celebrate only). */
   --werner-coat:  #0F1419;
   --werner-belly: #FBFCFD;
   --werner-bill:  var(--sun);
@@ -101,6 +103,8 @@
 
     --werner-coat:  #0A0D14;
     --werner-belly: #DCE2EA;
+    --werner-bill:  var(--sun);
+    --werner-foot:  var(--sun);
     --werner-eye:   #DCE2EA;
 
     --aurora:  #3FE0DC;

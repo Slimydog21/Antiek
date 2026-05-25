@@ -2,6 +2,12 @@
 
 Werner the penguin lives here.
 
+The single source of truth for the mark in the product is
+`src/brand/Werner.tsx` (mood="idle" | "thinking" | "empty" | "celebrate",
+size-driven fidelity, CSS motion only). The old inline ellipse stack
+in NavRail is gone; the animated pose components remain for legacy
+call sites until U-04 wires the moods.
+
 `brand_werner.html` in `docs/ui_redesign_posthog/` is the canonical
 brand bible (palette, voice, pose meaning, dos + don'ts). This
 directory is the runtime asset side: the Krea-generated pose PNGs,
@@ -64,3 +70,50 @@ first SVG attempt was deemed "not cute enough" by the operator.)
   decision, not a code change — propose via the brand spec first.
 
 Full guide: `docs/ui_redesign_posthog/brand_werner.html`.
+
+## Restraint rule (non-negotiable)
+
+Werner appears in exactly four slots and nowhere else:
+
+- Rail top (mood="idle", 28 px) — the persistent home affordance.
+- AI working states (mood="thinking") — sidecar, start banner.
+- Blank / empty states (mood="empty") — no results, first-run.
+- Core action completed (mood="celebrate", one-shot) — investigation done, save success.
+
+Never mid-content. Never over controls. Never more than one on screen.
+The rule keeps personality from turning into noise; U-05 anti-noise
+guard will reference this file. Adding a fifth surface is a brand
+decision, not an import.
+
+The idle sway is light (4.2 s cycle) and collapses under
+prefers-reduced-motion. All four moods share the same penguin so the
+operator never wonders "which Werner is this."
+
+The numeric choices (tilt -6°, sway 4200 ms, fidelity threshold 48 px,
+bill apex at 15.7 in the 32-unit viewBox, eye r 1.05, head proportions)
+carry hard-to-vary derivations in the JSDoc of Werner.tsx. They were
+cross-checked against live 28 px CanonicalMoods renders; none can move
+by more than a few tenths without destroying either the cute-emperor
+reading at rail size or the deadpan Herzog voice.
+
+Abstract-mark alternative (full balanced steelman). A pure three-ellipse
+plus minimal triangle stack with no penguin intent and no mood/fidelity
+logic would win on bundle size, perfect 16 px favicon legibility, and
+strict logo reductionism — it is the defensible minimalist position and
+would have satisfied a "mark-only, no mascot personality" requirement.
+The thesis that prevailed weighs the companion reading more heavily:
+Werner is the single emperor who broke from the colony and walks into
+the interior toward certain death; the rail mark at 28 px is the surface
+the operator sees constantly and it must transmit that specific quiet,
+deadpan companionship rather than a generic Antarctic dot. An abstract
+mark would sever the emotional through-line at the exact place the
+operator needs it most. The concrete geometry chosen is the smallest
+form that still resolves as "cute emperor penguin with distinct compact
+silhouette and prominent high-contrast yellow bill" at 28 px while
+scaling to 120 px character without caricature. Both minimalism and
+companion theses were evaluated on their merits; the companion reading
+was selected because Antiek is a research workstation whose brand
+promise is quiet fellow-travelling into the unknown, not a generic
+productivity surface. The decision and all derivations are recorded
+here and in Werner.tsx so the next operator can re-litigate with the
+original evidence in hand.

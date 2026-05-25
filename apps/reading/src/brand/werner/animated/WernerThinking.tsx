@@ -1,4 +1,5 @@
 import "./animations.css";
+import Werner from "../../Werner";
 
 /**
  * Werner the penguin, thinking — used as the AISidecar "thinking…"
@@ -8,6 +9,9 @@ import "./animations.css";
  * whole product surface.
  *
  * Sizes target 24 / 40 / 64; 40 is the default (sidecar header).
+ *
+ * Core mark delegated to <Werner mood="thinking" /> + --werner-* tokens
+ * for any remaining accents. No more parallel geometry fork.
  */
 type Props = { size?: number; label?: string };
 
@@ -21,18 +25,9 @@ export default function WernerThinking({
       aria-label={label}
       className="inline-flex items-center gap-2 align-middle"
     >
-      <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden="true">
-        {/* Werner head tilted slightly (curious). */}
-        <ellipse cx="16" cy="17" rx="9" ry="11" fill="#0F1419" />
-        <ellipse cx="16" cy="19" rx="5.5" ry="8" fill="#EEF1F6" />
-        <circle cx="13" cy="13" r="1.4" fill="#0F1419" />
-        <circle cx="19" cy="13" r="1.4" fill="#0F1419" />
-        <path d="M14.5 16 L16 18 L17.5 16 Z" fill="#F5DF24" />
-        <ellipse cx="12.5" cy="29" rx="2.5" ry="1" fill="#F5DF24" />
-        <ellipse cx="19.5" cy="29" rx="2.5" ry="1" fill="#F5DF24" />
-      </svg>
-      {/* Four pulsing aurora dots; rightmost lights first so the
-          motion reads right-to-left toward Werner's bill. */}
+      {/* Core mark now single-source. The four aurora dots remain the
+          pose-specific chrome; they sit beside the delegated Werner. */}
+      <Werner mood="thinking" size={size} />
       <span className="inline-flex items-center gap-1.5">
         <span
           className="block werner-thinking-dot-1 rounded-full"
