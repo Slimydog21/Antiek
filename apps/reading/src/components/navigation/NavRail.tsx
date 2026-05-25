@@ -56,6 +56,7 @@ const ICONS = {
   brainstorm: "M6 14 a6 6 0 1 1 12 0 M9 14 V18 H15 V14 M11 21 H13",   // lightbulb
   notebook: "M4 4 H18 V20 H4 Z M4 4 V20 H6 V4 M9 9 H15 M9 13 H14",    // bound notebook
   sources:  "M3 7 H21 M3 12 H21 M3 17 H21 M7 4 V20 M17 4 V20",        // grid
+  speak:    "M9 6 a3 3 0 0 1 6 0 V11 a3 3 0 0 1 -6 0 Z M6 11 a6 6 0 0 0 12 0 M12 17 V21 M8 21 H16", // microphone
   projects: "M3 6 H10 L12 4 H21 V18 H3 Z M6 10 H18 M6 14 H15",        // folder w/ rows
   privacy:  "M12 3 L5 6 V12 C5 16 8 19 12 21 C16 19 19 16 19 12 V6 Z", // shield
   pricing:  "M3 8 H21 V18 H3 Z M3 8 L5 4 H19 L21 8 M9 13 H15",        // wallet
@@ -72,6 +73,7 @@ const ITEMS: Item[] = [
   { to: "/brainstorm",   icon: <I d={ICONS.brainstorm} />, label: "Brainstorm",             group: "main" },
   { to: "/notebooks",    icon: <I d={ICONS.notebook} />,   label: "Notebooks",              group: "main" },
   { to: "/sources",      icon: <I d={ICONS.sources} />,    label: "Sources",                group: "main" },
+  { to: "/speak",        icon: <I d={ICONS.speak} />,      label: "Speak",                  group: "main" },
 
   // Footer (governance + meta routes).
   { to: "/privacy",      icon: <I d={ICONS.privacy} />,    label: "Privacy",                group: "footer" },

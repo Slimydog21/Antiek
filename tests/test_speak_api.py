@@ -249,6 +249,81 @@ def test_invitee_decline(client):
     assert r.json()["status"] == "declined"
 
 
+class _StubWhisper:
+    """Transcribes anything to a fixed string — hermetic, no API key."""
+    def __init__(self, *a, **k):
+        pass
+
+    def transcribe(self, audio_bytes, *, filename, language=None):
+        class _T:
+            text = "He taught me to bake bread before dawn."
+        return _T()
+
+
+class _NoKeyWhisper:
+    def __init__(self, *a, **k):
+        pass
+
+    def transcribe(self, *a, **k):
+        raise RuntimeError("OPENAI_API_KEY not set; cannot call whisper.")
+
+
+class _FailWhisper:
+    def __init__(self, *a, **k):
+        pass
+
+    def transcribe(self, *a, **k):
+        raise RuntimeError("whisper backend exploded")
+
+
+def _invite_token(client, **proj):
+    pid = client.post("/speak/projects", json={"title": "Bio", **proj}).json()["project_id"]
+    iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
+    return _token_from_link(iv["link"])
+
+
+def test_invitee_transcribe_returns_raw_text(client, monkeypatch):
+    monkeypatch.setattr("acquisition.voice.WhisperTranscriber", _StubWhisper)
+    token = _invite_token(client)
+    r = client.post(f"/speak/invite/{token}/transcribe",
+                    content=b"\x00\x01fake-webm-audio",
+                    headers={"Content-Type": "audio/webm"})
+    assert r.status_code == 200, r.text
+    assert "bread" in r.json()["transcript"]  # raw; the invitee then corrects + submits
+
+
+def test_invitee_transcribe_bad_token_404(client, monkeypatch):
+    monkeypatch.setattr("acquisition.voice.WhisperTranscriber", _StubWhisper)
+    r = client.post("/speak/invite/not-a-token/transcribe", content=b"audio",
+                    headers={"Content-Type": "audio/webm"})
+    assert r.status_code == 404
+
+
+def test_invitee_transcribe_empty_body_400(client, monkeypatch):
+    monkeypatch.setattr("acquisition.voice.WhisperTranscriber", _StubWhisper)
+    token = _invite_token(client)
+    r = client.post(f"/speak/invite/{token}/transcribe", content=b"",
+                    headers={"Content-Type": "audio/webm"})
+    assert r.status_code == 400
+
+
+def test_invitee_transcribe_unconfigured_503(client, monkeypatch):
+    # No OPENAI_API_KEY → 503 so the UI falls back to typing.
+    monkeypatch.setattr("acquisition.voice.WhisperTranscriber", _NoKeyWhisper)
+    token = _invite_token(client)
+    r = client.post(f"/speak/invite/{token}/transcribe", content=b"audio",
+                    headers={"Content-Type": "audio/webm"})
+    assert r.status_code == 503
+
+
+def test_invitee_transcribe_failure_422(client, monkeypatch):
+    monkeypatch.setattr("acquisition.voice.WhisperTranscriber", _FailWhisper)
+    token = _invite_token(client)
+    r = client.post(f"/speak/invite/{token}/transcribe", content=b"audio",
+                    headers={"Content-Type": "audio/webm"})
+    assert r.status_code == 422
+
+
 def test_list_projects(client):
     # Fresh DB → empty list.
     r = client.get("/speak/projects")

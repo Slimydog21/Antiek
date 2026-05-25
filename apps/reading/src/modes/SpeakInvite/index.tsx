@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import VoiceNoteRecorder from "./VoiceNoteRecorder";
 
 /**
  * Speak invitee landing (specs/speak/) — the friends-and-family page.
@@ -256,11 +257,12 @@ export default function SpeakInvite() {
             <p className="font-serif text-[16px] text-ink dark:text-bright mt-1 mb-3">
               {active?.text}
             </p>
+            <VoiceNoteRecorder token={token ?? ""} onTranscript={(t) => setAnswer(t)} />
             <textarea
               value={answer}
               onChange={(e) => setAnswer(e.target.value)}
               rows={5}
-              placeholder="Share whatever comes to mind — a story, a detail, a memory. (You can use your device's voice typing.)"
+              placeholder="Record above, or type — a story, a detail, a memory. Whatever you send is what gets used, so edit it until it's right."
               className="w-full font-serif text-[14px] p-2 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
             />
             <div className="flex items-center gap-3 mt-2">

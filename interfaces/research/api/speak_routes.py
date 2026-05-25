@@ -35,7 +35,7 @@ from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterator, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
@@ -55,7 +55,14 @@ from substrate.speak import (
     takedown as takedown_mod,
     third_party,
 )
-from substrate.speak.async_interview import decline, submit_answer, next_followups, resume
+from substrate.speak.async_interview import (
+    AsrError,
+    decline,
+    next_followups,
+    resume,
+    submit_answer,
+    transcribe,
+)
 from substrate.speak.consent import ConsentScope, ScopedConsentRequired
 from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.invitations import PublicEcosystemGated
@@ -598,3 +605,32 @@ async def invitee_decline(token: str) -> dict:
         interview_id, _ = _require_token(con, token)
     decline(_db(), interview_id)
     return {"interview_id": interview_id, "status": "declined"}
+
+
+@speak_router.post("/invite/{token}/transcribe")
+async def invitee_transcribe(token: str, request: Request) -> dict:
+    """Transcribe an invitee's recorded voice note to RAW text — the
+    'voice-note' in 'async voice-note interview'. The invitee then
+    CORRECTS the transcript and submits it via /answer; we never distill
+    the raw text behind the corrected one (SPR-02 M5). Token-gated.
+
+    Reuses ``WhisperTranscriber`` (no dependency on any operator-authed
+    /voice path). Returns 503 when transcription isn't configured (no
+    OPENAI_API_KEY) so the UI falls back to typing; 422 on a genuine
+    transcription failure (bad audio)."""
+    with _translate(), _write("speak/api:invite_transcribe_resolve") as con:
+        _require_token(con, token)
+    audio = await request.body()
+    if not audio:
+        raise HTTPException(status_code=400, detail="empty audio body")
+    try:
+        text = transcribe(audio, filename="invite-note.webm")
+    except AsrError as exc:
+        msg = str(exc)
+        if "OPENAI_API_KEY" in msg:
+            raise HTTPException(
+                status_code=503,
+                detail="voice transcription isn't configured yet; please type your answer",
+            )
+        raise HTTPException(status_code=422, detail=f"could not transcribe the recording: {msg}")
+    return {"transcript": text}
