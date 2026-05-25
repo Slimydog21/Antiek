@@ -568,6 +568,23 @@ export function landingModeForWorkflow(workflow: Workflow): ModeEntry | undefine
   );
 }
 
+/**
+ * Single source of truth for the rail boundary. Returns true exactly when
+ * the workflow is one of the four members of WORKFLOW_ORDER. The shared
+ * bucket (every operator, admin, settings, governance, trust, billing,
+ * privacy and cross-cutting surface) is false and must never be rendered
+ * by the NavRail. This predicate is the only definition of "rail
+ * destination." The U-01 count guard and the U-03 off-the-rail guard both
+ * import and call it so the two tests agree on the boundary and a future
+ * reclassification cannot create a gap. Change the rail set in one place
+ * only; the guards follow.
+ */
+export function isWorkflowDestination(
+  wf: Workflow,
+): wf is Exclude<Workflow, "shared"> {
+  return WORKFLOW_ORDER.includes(wf as Exclude<Workflow, "shared">);
+}
+
 /** Resolve which workflow a pathname belongs to (for active-rail state). */
 export function workflowForPath(pathname: string): Workflow {
   // Longest-prefix match against routed modes. Strip params for matching.

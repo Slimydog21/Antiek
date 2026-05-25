@@ -23,7 +23,12 @@ import { MemoryRouter } from "react-router-dom";
 
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { NavRail } from "./NavRail";
-import { WORKFLOW_ORDER, WORKFLOWS } from "./workflowTaxonomy";
+import {
+  isWorkflowDestination,
+  modesForWorkflow,
+  WORKFLOW_ORDER,
+  WORKFLOWS,
+} from "./workflowTaxonomy";
 
 const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 const s = () => useWorkspace.getState();
@@ -76,7 +81,7 @@ describe("NavRail → panel mount contract (SPR-04 M6)", () => {
  * A fifth destination or promoted shared entry fails this with U-01 message.
  */
 describe("NavRail four-door canonical + anti-regression guard (U-01 M4)", () => {
-  it("workflow-destination group has exactly WORKFLOW_ORDER.length destinations", () => {
+  it("workflow-destination group has exactly the taxonomy rail destinations (U-01 count guard, now via shared predicate)", () => {
     render(
       <MemoryRouter>
         <NavRail />
@@ -84,33 +89,45 @@ describe("NavRail four-door canonical + anti-regression guard (U-01 M4)", () => 
     );
     const group = screen.getByTestId("navrail-workflows");
     const buttons = group.querySelectorAll(":scope > button");
+    // Derive expected count from the SSOT predicate over the taxonomy list.
+    const railDestinationCount = WORKFLOW_ORDER.filter((wf) =>
+      isWorkflowDestination(wf),
+    ).length;
     expect(
       buttons.length,
-      `the rail is four doors + utilities + More - see U-01. The navrail-workflows group children must equal WORKFLOW_ORDER.length (no fifth door, no operator/shared promoted to rail).`,
-    ).toBe(WORKFLOW_ORDER.length);
+      `the rail is four doors + utilities + More - see U-01. The navrail-workflows group children must equal the number of workflow destinations (no fifth door, no operator/shared promoted to rail).`,
+    ).toBe(railDestinationCount);
+
+    const labels = Array.from(buttons).map(
+      (b) => b.querySelector(".sr-only")?.textContent?.trim() ?? ""
+    );
+    const expected = WORKFLOW_ORDER.map((wf) => WORKFLOWS[wf].label);
+    expect(labels).toEqual(expected);
   });
 
-  it("destinations contain only the four workflow labels; no shared/operator/settings on the rail", () => {
+  it("never renders a shared-bucket destination (operator/admin/settings/governance) on the rail (U-01 guard, now via shared predicate)", () => {
     render(
       <MemoryRouter>
         <NavRail />
       </MemoryRouter>
     );
     const group = screen.getByTestId("navrail-workflows");
-    const buttons = Array.from(group.querySelectorAll(":scope > button"));
-    const labels = buttons.map(
-      (b) => b.querySelector(".sr-only")?.textContent?.trim() ?? ""
+    const labels = Array.from(group.querySelectorAll(".sr-only")).map(
+      (el) => el.textContent?.trim() ?? "",
     );
-    const expected = WORKFLOW_ORDER.map((wf) => WORKFLOWS[wf].label);
-    expect(labels).toEqual(expected);
 
-    const forbidden = ["Operator", "Trust", "Settings", "Login", "Privacy", "Billing"];
-    for (const f of forbidden) {
-      expect(
-        labels.some((l) => l.includes(f)),
-        `rail destination must not include shared entry ${f} - see U-01`,
-      ).toBe(false);
-    }
+    // Taxonomy-driven: the shared bucket is the source list of everything
+    // that must stay behind More. The guard reads both the rendered DOM
+    // and the taxonomy; any leak fails the build.
+    const sharedLabels = modesForWorkflow("shared").map((m) => m.label);
+    const leaked = labels.filter((l) => sharedLabels.includes(l));
+
+    expect(
+      leaked,
+      leaked.length > 0
+        ? `operator/admin lives behind More (see U-01 / shared predicate). Leaked on rail: ${leaked.join(", ")}`
+        : "",
+    ).toHaveLength(0);
   });
 
   it("Search, New, and More are classified as utilities/overflow (outside the workflow-destination group)", () => {
