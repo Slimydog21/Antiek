@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 import { NavRail } from "./components/navigation/NavRail";
 import { ProductsLauncher } from "./components/navigation/ProductsLauncher";
@@ -10,6 +10,8 @@ import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
+import { useActiveWorkflow } from "./shell/activeWorkflow";
+import { workflowForRoute } from "./shell/workflowTaxonomy";
 
 const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 
@@ -57,6 +59,18 @@ export function AppShell({ children }: Props) {
   // is editable, so the operator can still type freely.
   const navigate = useNavigate();
   useWorkspaceShortcuts(navigate);
+
+  // Four-workflow IA (SPR-03): keep the active workflow in sync with the
+  // route, so the rail highlight + the content tree follow navigation — a
+  // deep link or back/forward sets the workflow without a rail click. On a
+  // shared/operator route (workflowForRoute → null) we keep the last
+  // workflow, so the tree still shows meaningful content.
+  const { pathname } = useLocation();
+  const setActiveWorkflow = useActiveWorkflow((s) => s.set);
+  useEffect(() => {
+    const w = workflowForRoute(pathname);
+    if (w) setActiveWorkflow(w);
+  }, [pathname, setActiveWorkflow]);
 
   // S9 — hydrate the workspace from localStorage + URL ?ws= on every
   // route + investigation change. Layering order: global → route →

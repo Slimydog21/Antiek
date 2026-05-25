@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 
 /**
  * ProductsLauncher — the honest, full inventory of every surface,
- * grouped and demoted off the rail. Portfolio-shell IA: the rail shows
- * the five surfaces you act through; everything else lives here (and in
+ * grouped and demoted off the rail. Four-workflow IA: the rail shows
+ * the four workflows you act through; everything else lives here (and in
  * ⌘K). Opened by the rail's ⊞ button via the window event
  * `antiek:launcher:toggle`; closed by Escape or scrim click.
  *
@@ -16,19 +16,20 @@ type Group = { label: string; surface?: boolean; items: Product[] };
 
 const GROUPS: Group[] = [
   {
-    label: "Workspaces — the five surfaces",
+    label: "Workspaces — the four workflows",
     surface: true,
     items: [
-      { to: "/", name: "Research", desc: "Chat-first investigation · Loop 1" },
-      { to: "/wrestle", name: "Wrestle", desc: "Single-document deep read" },
-      { to: "/brainstorm", name: "Brainstorm ★", desc: "Talk to notes · slot Legos" },
-      { to: "/create", name: "Create", desc: "Insight blocks → deliverables" },
-      { to: "/interviews", name: "Interview", desc: "Voice + AI-led acquisition" },
+      { to: "/", name: "Research", desc: "Deep-research workspace · investigations" },
+      { to: "/documents", name: "Read", desc: "Corpus · books · notebooks" },
+      { to: "/create", name: "Write", desc: "Author from insight blocks" },
+      { to: "/interviews", name: "Speak", desc: "Interview-as-acquisition" },
     ],
   },
   {
     label: "Content & analysis",
     items: [
+      { to: "/wrestle", name: "Wrestle", desc: "Single-document deep read (Research)" },
+      { to: "/brainstorm", name: "Brainstorm", desc: "Talk to notes · slot Legos (Research)" },
       { to: "/notebooks", name: "Notebooks", desc: "Literate substrate-backed docs" },
       { to: "/documents", name: "Documents", desc: "The source corpus" },
       { to: "/sources", name: "Sources", desc: "Acquisition + ingestion" },
@@ -107,7 +108,7 @@ export function ProductsLauncher() {
           </button>
         </div>
         <p className="text-[12.5px] text-ink-mute dark:text-moonlight mb-5">
-          Five workspaces do the work. Everything else is here or in ⌘K — kept out of
+          Four workflows do the work. Everything else is here or in ⌘K — kept out of
           your way until you need it.
         </p>
 

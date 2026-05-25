@@ -1,37 +1,37 @@
 import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { useViewportTier } from "../../workspace/useViewportTier";
+import { useActiveWorkflow } from "../../shell/activeWorkflow";
+import type { ActiveWorkflow } from "../../shell/activeWorkflow";
+import {
+  WORKFLOWS,
+  WORKFLOW_LABEL,
+  WORKFLOW_HOME,
+  workflowForRoute,
+} from "../../shell/workflowTaxonomy";
 
 /**
  * NavRail — always-visible 60-px icon column on the far left.
  *
- * Portfolio-shell IA (2026-05-25): the rail no longer lists every mode.
- * It carries only the *verbs you act through* and the chrome that spans
- * them. Everything else is demoted to the Products launcher (⊞) and the
- * command palette (⌘K). See `docs/ui_redesign_posthog/redesign_v1_portfolio.html`
- * and master-spec §5.6.
+ * Four-workflow IA (frontend-design spec, SPR-03). The rail carries exactly
+ * the four workflows — Research · Read · Write · Speak — plus the chrome that
+ * spans them (Search ⌘K, New, the ⊞ products launcher, the content-tree
+ * toggle) and a governance footer (Trust, Settings). The ~31 other modes live
+ * in the launcher + ⌘K, never the rail.
  *
- *   Top:    Werner home · Search (⌘K) · New
- *   Mid:    the FIVE pinned surfaces — Research, Wrestle, Brainstorm,
- *           Create, Interview (the verbs the work actually runs on)
- *   Mid:    Products launcher (⊞) — the honest full inventory, grouped
- *           + demoted · ProjectTree toggle (⌘B) — the content column
- *   Footer: Trust, Settings
- *
- * Notebooks, Sources, Pricing, Privacy, Operator and the ~20 other
- * surfaces are reachable from the launcher and ⌘K, not the rail.
- * Active route gets the sun-yellow accent + ink left-edge bar.
+ * Functional rationale: the rail answers one question — "which work?" — and
+ * the product is four kinds of work, so the rail is four entries. A fifth
+ * entry, or a submenu expanding a workflow into its modes, would be form
+ * without a distinct function. Selecting a workflow sets the active-workflow
+ * state (the content tree + scene read it) and routes to that workflow's home;
+ * the active highlight is derived from the route, so a deep link (/inv/x)
+ * lights Research without a click. Hard to vary: move a function off the rail
+ * and the "which work" question loses its single answer.
  */
-type Item = {
-  to: string;
-  icon: ReactNode;
-  label: string;
-  end?: boolean;
-  group: "main" | "footer";
-};
+type FooterItem = { to: string; icon: ReactNode; label: string };
 
 const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 
@@ -58,28 +58,26 @@ const ICONS = {
   search:    "M11 11 m-7 0 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0 M21 21 L17 17", // magnifier
   plus:      "M12 5 V19 M5 12 H19",                                          // new
   research:  "M3 12 L8 7 L13 12 L18 7 L21 9 M3 12 V20 H21 V12",              // peaks + horizon
-  wrestle:   "M5 4 H17 L19 6 V20 H5 Z M8 9 H16 M8 13 H16 M8 17 H13",         // doc with lines
-  brainstorm:"M9 18 H15 M10 21 H14 M12 3 a6 6 0 0 1 4 10.5 c-.7 .7 -1 1.3 -1 2.5 H9 c0 -1.2 -.3 -1.8 -1 -2.5 A6 6 0 0 1 12 3 z", // bulb
-  create:    "M5 19 L12 5 L19 19 M9 14 H15",                                 // triangular A
-  interview: "M9 3 h6 v8 a3 3 0 0 1 -6 0 Z M6 11 a6 6 0 0 0 12 0 M12 17 v4 M9 21 h6", // mic
+  read:      "M3 5 C5 4 9 4 12 6 C15 4 19 4 21 5 V19 C19 18 15 18 12 20 C9 18 5 18 3 19 Z M12 6 V20", // open book
+  write:     "M4 20 H8 L19 9 L15 5 L4 16 Z M13 7 L17 11",                    // pencil
+  speak:     "M9 3 h6 v8 a3 3 0 0 1 -6 0 Z M6 11 a6 6 0 0 0 12 0 M12 17 v4 M9 21 h6", // mic
   launcher:  "M3 3 H10 V10 H3 Z M14 3 H21 V10 H14 Z M3 14 H10 V21 H3 Z M14 14 H21 V21 H14 Z", // grid
   projects:  "M3 6 H10 L12 4 H21 V18 H3 Z M6 10 H18 M6 14 H15",              // folder w/ rows
   trust:     "M12 3 L21 7 V13 C21 17 17 20 12 21 C7 20 3 17 3 13 V7 Z M9 12 L11 14 L15 10", // shield+check
   settings:  "M12 8 a4 4 0 1 1 0 8 a4 4 0 1 1 0 -8 M12 2 V5 M12 19 V22 M2 12 H5 M19 12 H22 M5 5 L7 7 M17 17 L19 19 M5 19 L7 17 M17 7 L19 5", // gear
 };
 
-/** The five surfaces — the verbs the work runs on. Interview is promoted
- * (acquisition channel); Notebooks + Sources demote to the launcher. */
-const ITEMS: Item[] = [
-  { to: "/",           icon: <I d={ICONS.research} />,   label: "Research",   end: true, group: "main" },
-  { to: "/wrestle",    icon: <I d={ICONS.wrestle} />,    label: "Wrestle",               group: "main" },
-  { to: "/brainstorm", icon: <I d={ICONS.brainstorm} />, label: "Brainstorm",            group: "main" },
-  { to: "/create",     icon: <I d={ICONS.create} />,     label: "Create",                group: "main" },
-  { to: "/interviews", icon: <I d={ICONS.interview} />,  label: "Interview",             group: "main" },
+/** Workflow → its rail icon. */
+const WORKFLOW_ICON: Record<ActiveWorkflow, ReactNode> = {
+  research: <I d={ICONS.research} />,
+  read: <I d={ICONS.read} />,
+  write: <I d={ICONS.write} />,
+  speak: <I d={ICONS.speak} />,
+};
 
-  // Footer (governance + meta — the rest live in the launcher / ⌘K).
-  { to: "/trust",      icon: <I d={ICONS.trust} />,      label: "Trust",                 group: "footer" },
-  { to: "/settings",   icon: <I d={ICONS.settings} />,   label: "Settings",              group: "footer" },
+const FOOTER: FooterItem[] = [
+  { to: "/trust", icon: <I d={ICONS.trust} />, label: "Trust" },
+  { to: "/settings", icon: <I d={ICONS.settings} />, label: "Settings" },
 ];
 
 function WernerMarkInline() {
@@ -115,6 +113,42 @@ function RailAction({
       className="h-10 mx-1.5 flex items-center justify-center rounded relative text-ice-2/70 hover:text-ice-1 hover:bg-white/10"
     >
       {children}
+    </button>
+  );
+}
+
+/** One of the four workflows. Highlights when the route derives to it. */
+function WorkflowRailItem({ workflow }: { workflow: ActiveWorkflow }) {
+  const navigate = useNavigate();
+  const setActive = useActiveWorkflow((s) => s.set);
+  const { pathname } = useLocation();
+  const isActive = workflowForRoute(pathname) === workflow;
+  const label = WORKFLOW_LABEL[workflow];
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-current={isActive ? "page" : undefined}
+      onClick={() => {
+        setActive(workflow);
+        navigate(WORKFLOW_HOME[workflow]);
+      }}
+      className={
+        "h-10 mx-1.5 flex items-center justify-center rounded relative " +
+        (isActive ? "bg-sun text-ink" : "text-ice-2/70 hover:text-ice-1 hover:bg-white/10")
+      }
+    >
+      {isActive && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-ink"
+        />
+      )}
+      <span className="leading-none" aria-hidden="true">
+        {WORKFLOW_ICON[workflow]}
+      </span>
+      <span className="sr-only">{label}</span>
     </button>
   );
 }
@@ -159,10 +193,21 @@ function ProjectTreeToggleItem() {
   );
 }
 
-export function NavRail() {
+/** New — scoped to the active workflow (never a blind "/" route). */
+function NewItem() {
   const navigate = useNavigate();
-  const main = ITEMS.filter((i) => i.group === "main");
-  const footer = ITEMS.filter((i) => i.group === "footer");
+  const active = useActiveWorkflow((s) => s.active);
+  return (
+    <RailAction
+      title={`New in ${WORKFLOW_LABEL[active]} · ⌘N`}
+      onClick={() => navigate(WORKFLOW_HOME[active])}
+    >
+      <I d={ICONS.plus} size={20} />
+    </RailAction>
+  );
+}
+
+export function NavRail() {
   const tier = useViewportTier();
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const isMobile = tier === "sm" || tier === "md";
@@ -204,7 +249,7 @@ export function NavRail() {
           ✕
         </button>
       )}
-      {/* Werner mark — pinned to top, links home */}
+      {/* Werner mark — pinned to top, links home (Research) */}
       <NavLink
         to="/"
         end
@@ -217,7 +262,7 @@ export function NavRail() {
         <WernerMarkInline />
       </NavLink>
 
-      {/* Search + New — chrome that spans every surface */}
+      {/* Search + New — chrome that spans every workflow */}
       <div className="pt-2 flex flex-col gap-1">
         <RailAction
           title="Search · ⌘K"
@@ -225,17 +270,15 @@ export function NavRail() {
         >
           <I d={ICONS.search} />
         </RailAction>
-        <RailAction title="New investigation · ⌘N" onClick={() => navigate("/")}>
-          <I d={ICONS.plus} size={20} />
-        </RailAction>
+        <NewItem />
       </div>
 
       <div className="my-2 mx-3 border-t border-white/10" aria-hidden="true" />
 
-      {/* The five surfaces */}
-      <nav className="flex flex-col gap-1">
-        {main.map((it) => (
-          <NavRailItem key={it.to} {...it} />
+      {/* The four workflows */}
+      <nav className="flex flex-col gap-1" aria-label="Workflows">
+        {WORKFLOWS.map((w) => (
+          <WorkflowRailItem key={w} workflow={w} />
         ))}
       </nav>
 
@@ -254,43 +297,37 @@ export function NavRail() {
 
       <div className="flex-1" />
 
-      <nav className="border-t border-white/10 py-2 flex flex-col gap-1">
-        {footer.map((it) => (
-          <NavRailItem key={it.to} {...it} />
+      <nav className="border-t border-white/10 py-2 flex flex-col gap-1" aria-label="Governance">
+        {FOOTER.map((it) => (
+          <NavLink
+            key={it.to}
+            to={it.to}
+            title={it.label}
+            className={({ isActive }) =>
+              "h-10 mx-1.5 flex items-center justify-center rounded relative " +
+              (isActive
+                ? "bg-sun text-ink"
+                : "text-ice-2/70 hover:text-ice-1 hover:bg-white/10")
+            }
+          >
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-ink"
+                  />
+                )}
+                <span className="leading-none" aria-hidden="true">
+                  {it.icon}
+                </span>
+                <span className="sr-only">{it.label}</span>
+              </>
+            )}
+          </NavLink>
         ))}
       </nav>
     </aside>
-  );
-}
-
-function NavRailItem({ to, icon, label, end }: Item) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      title={label}
-      className={({ isActive }) =>
-        "h-10 mx-1.5 flex items-center justify-center rounded relative " +
-        (isActive
-          ? "bg-sun text-ink"
-          : "text-ice-2/70 hover:text-ice-1 hover:bg-white/10")
-      }
-    >
-      {({ isActive }) => (
-        <>
-          {isActive && (
-            <span
-              aria-hidden="true"
-              className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r bg-ink"
-            />
-          )}
-          <span className="leading-none" aria-hidden="true">
-            {icon}
-          </span>
-          <span className="sr-only">{label}</span>
-        </>
-      )}
-    </NavLink>
   );
 }
 

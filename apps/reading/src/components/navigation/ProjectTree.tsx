@@ -5,26 +5,26 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import type { PanelKind } from "../../workspace/panel.types";
 import { LemonTag } from "../lemon/LemonTag";
 import { usePinned } from "./pinnedStore";
+import { useActiveWorkflow } from "../../shell/activeWorkflow";
+import type { ActiveWorkflow } from "../../shell/activeWorkflow";
+import { WORKFLOW_LABEL } from "../../shell/workflowTaxonomy";
 
 /**
- * ProjectTree — the persistent CONTENT column (portfolio-shell IA).
+ * ProjectTree — the persistent CONTENT column, scoped to the active workflow
+ * (frontend-design spec, SPR-04). You navigate the nouns you've made, not the
+ * tools that make them; and you see the nouns of the workflow you're in.
  *
- * You navigate the nouns you've made, not the tools that make them.
- * Folders mirror the substrate's artifact types:
+ * Functional rationale: "where is my work?" is answered per workflow —
+ * Research shows investigations + chase trees, Read shows the corpus +
+ * notebooks, Write shows deliverables, Speak shows interview projects. A flat
+ * all-folders list could be otherwise; a workflow-scoped tree could not,
+ * without losing the legibility the four-workflow rail promises. Folders whose
+ * product isn't built render an HONEST empty state naming the owning sprint —
+ * never a fake row (a seeded sample would do negative work).
  *
- *   ▾ Pinned          items the operator explicitly pinned (persist S9)
- *   ▾ Investigations  chase trees (parent → children, indented)
- *   ▾ Notebooks       literate documents
- *   ▾ Documents       the source corpus
- *   ▾ Deliverables    Creation-studio outputs
- *   ▾ Interviews      acquisition transcripts
- *
- * Click an item   → router navigate (route-mode swap)
- * Cmd/Ctrl+Click  → open as a floating panel (where a panel exists)
- *
- * Mock data below; the live hooks (useInvestigationList + useDocuments
- * + useNotebooks) plug into the same folder shape during the per-mode
- * data ports. The folder architecture is what's load-bearing.
+ * Mock data below; the live hooks (useInvestigationList + useDocuments +
+ * useNotebooks) plug into the same folder shape during the per-mode data
+ * ports. The folder architecture + workflow-scoping is what's load-bearing.
  */
 type NodeKind =
   | "investigation"
@@ -41,12 +41,21 @@ type TreeNode = {
   children?: TreeNode[];
 };
 
-type Folder = { key: string; label: string; nodes: TreeNode[] };
+type Folder = {
+  key: string;
+  label: string;
+  workflow: ActiveWorkflow;
+  nodes: TreeNode[];
+  /** Honest empty state for an unbuilt product surface (names the owning sprint). */
+  emptyNote?: string;
+};
 
 const FOLDERS: Folder[] = [
+  // ---- Research ----
   {
     key: "investigations",
     label: "Investigations",
+    workflow: "research",
     nodes: [
       {
         kind: "investigation",
@@ -62,31 +71,59 @@ const FOLDERS: Folder[] = [
       { kind: "investigation", id: "rl-reward-shaping", title: "RL reward-shaping survey", status: "done" },
     ],
   },
-  {
-    key: "notebooks",
-    label: "Notebooks",
-    nodes: [
-      { kind: "notebook", id: "web-gaming-memo", title: "Web-gaming memo draft" },
-      { kind: "notebook", id: "substrate-notes", title: "Substrate design notes" },
-    ],
-  },
+  // ---- Read ----
   {
     key: "documents",
     label: "Documents",
+    workflow: "read",
     nodes: [
       { kind: "document", id: "nilo-deck", title: "Nilo Series-A deck.pdf" },
       { kind: "document", id: "roblox-10k", title: "Roblox 10-K FY25" },
     ],
   },
   {
+    key: "notebooks",
+    label: "Notebooks",
+    workflow: "read",
+    nodes: [
+      { kind: "notebook", id: "web-gaming-memo", title: "Web-gaming memo draft" },
+      { kind: "notebook", id: "substrate-notes", title: "Substrate design notes" },
+    ],
+  },
+  {
+    key: "library",
+    label: "Library",
+    workflow: "read",
+    nodes: [],
+    emptyNote: "No books yet — the library ships in the Read spec.",
+  },
+  // ---- Write ----
+  {
     key: "deliverables",
     label: "Deliverables",
+    workflow: "write",
     nodes: [{ kind: "deliverable", id: "web-gaming-ic-memo", title: "Web-gaming IC memo" }],
   },
   {
+    key: "blocks",
+    label: "Block repository",
+    workflow: "write",
+    nodes: [],
+    emptyNote: "Insight blocks browse here — ships in the Write spec.",
+  },
+  // ---- Speak ----
+  {
     key: "interviews",
-    label: "Interviews",
+    label: "Interview projects",
+    workflow: "speak",
     nodes: [{ kind: "interview", id: "nilo-founder", title: "Founder call — Nilo" }],
+  },
+  {
+    key: "contributors",
+    label: "Contributors",
+    workflow: "speak",
+    nodes: [],
+    emptyNote: "Contributor economics ship in the Speak spec.",
   },
 ];
 
@@ -141,17 +178,15 @@ export function ProjectTree() {
   const pinned = usePinned((s) => s.pinned);
   const togglePin = usePinned((s) => s.toggle);
   const openPanel = useWorkspace((s) => s.open);
+  const active = useActiveWorkflow((s) => s.active);
 
   const pinnedNodes = ALL_NODES.filter((n) => pinned.has(nodeKey(n)));
+  const folders = FOLDERS.filter((f) => f.workflow === active);
 
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    pinned: true,
-    investigations: true,
-    notebooks: true,
-    documents: true,
-    deliverables: false,
-    interviews: false,
-  });
+  // Default-expand the populated folders of the active workflow; collapse empties.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ pinned: true });
+  const isExpanded = (key: string, fallback: boolean) =>
+    key in expanded ? expanded[key] : fallback;
 
   const onItemClick = (n: TreeNode, e: React.MouseEvent) => {
     const kind = panelKindForNode(n);
@@ -165,11 +200,16 @@ export function ProjectTree() {
 
   return (
     <div className="text-[13px] text-ink dark:text-bright">
-      {/* Pinned */}
+      {/* Active-workflow label — tells the user which work's nouns these are */}
+      <div className="px-3 pt-2 pb-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute dark:text-moonlight">
+        {WORKFLOW_LABEL[active]}
+      </div>
+
+      {/* Pinned (universal, across workflows) */}
       <Section
         label="Pinned"
-        expanded={expanded.pinned}
-        onToggle={() => setExpanded((s) => ({ ...s, pinned: !s.pinned }))}
+        expanded={isExpanded("pinned", true)}
+        onToggle={() => setExpanded((s) => ({ ...s, pinned: !isExpanded("pinned", true) }))}
         count={pinnedNodes.length}
       >
         {pinnedNodes.length === 0 ? (
@@ -189,37 +229,48 @@ export function ProjectTree() {
         )}
       </Section>
 
-      {/* Content folders */}
-      {FOLDERS.map((folder) => (
-        <Section
-          key={folder.key}
-          label={folder.label}
-          expanded={expanded[folder.key]}
-          onToggle={() => setExpanded((s) => ({ ...s, [folder.key]: !s[folder.key] }))}
-          count={folder.nodes.length}
-        >
-          {folder.nodes.map((n) => (
-            <div key={nodeKey(n)}>
-              <NodeRow
-                node={n}
-                pinned={pinned.has(nodeKey(n))}
-                onClick={(e) => onItemClick(n, e)}
-                onPin={() => togglePin(nodeKey(n))}
-              />
-              {n.children?.map((c) => (
-                <NodeRow
-                  key={nodeKey(c)}
-                  node={c}
-                  pinned={pinned.has(nodeKey(c))}
-                  indent
-                  onClick={(e) => onItemClick(c, e)}
-                  onPin={() => togglePin(nodeKey(c))}
-                />
-              ))}
-            </div>
-          ))}
-        </Section>
-      ))}
+      {/* The active workflow's content folders */}
+      {folders.map((folder) => {
+        const fallback = folder.nodes.length > 0; // populated folders open by default
+        return (
+          <Section
+            key={folder.key}
+            label={folder.label}
+            expanded={isExpanded(folder.key, fallback)}
+            onToggle={() =>
+              setExpanded((s) => ({ ...s, [folder.key]: !isExpanded(folder.key, fallback) }))
+            }
+            count={folder.nodes.length}
+          >
+            {folder.nodes.length === 0 ? (
+              <p className="px-3 py-2 text-[12px] italic text-ink-mute dark:text-moonlight">
+                {folder.emptyNote ?? "Empty."}
+              </p>
+            ) : (
+              folder.nodes.map((n) => (
+                <div key={nodeKey(n)}>
+                  <NodeRow
+                    node={n}
+                    pinned={pinned.has(nodeKey(n))}
+                    onClick={(e) => onItemClick(n, e)}
+                    onPin={() => togglePin(nodeKey(n))}
+                  />
+                  {n.children?.map((c) => (
+                    <NodeRow
+                      key={nodeKey(c)}
+                      node={c}
+                      pinned={pinned.has(nodeKey(c))}
+                      indent
+                      onClick={(e) => onItemClick(c, e)}
+                      onPin={() => togglePin(nodeKey(c))}
+                    />
+                  ))}
+                </div>
+              ))
+            )}
+          </Section>
+        );
+      })}
     </div>
   );
 }
