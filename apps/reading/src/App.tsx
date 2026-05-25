@@ -31,6 +31,7 @@ import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
 import Replay from "./modes/Replay";
+import DeepResearchReading from "./modes/DeepResearchReading";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import Settings from "./modes/Settings";
@@ -94,6 +95,8 @@ function AuthenticatedRoutes() {
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
         {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
+        {/* DRW SPR-10 — the reading surface (notes take themselves; spin-research). */}
+        <Route path="/deep-research/read/:documentId" element={<DeepResearchReading />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />

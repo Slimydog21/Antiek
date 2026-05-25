@@ -17,7 +17,8 @@
  * not reach for Daytona.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
@@ -59,6 +60,28 @@ function Workspace() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+
+  // Hand-off from the reading surface (SPR-10): /deep-research?plan=<rootId>
+  // loads an already-seeded plan so the operator reviews + approves + launches
+  // it here. Loaded once per plan id.
+  const planParam = searchParams.get("plan");
+  useEffect(() => {
+    if (!planParam) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await getPlan(planParam);
+        if (!cancelled) {
+          setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
+          setSessionId(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [planParam]);
 
   const guard = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
