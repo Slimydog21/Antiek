@@ -379,6 +379,39 @@ produces cited prose into the editor; no redeploy of logic needed.
 
 ---
 
+## D14 — Speak live print-on-demand fulfillment
+
+**Status:** ⚠️ Seam drop-in-ready; live fulfillment deferred.
+`substrate/speak/physical_book.py` ships a vendor-AGNOSTIC provider
+registry (`register_provider` / `get_provider` / `available_providers`)
++ a gated `fulfill()` that raises `PodVendorUnconfigured`.
+`StubPhysicalBookProvider` quotes a unit cost and fulfils NOTHING;
+ordering is quote-only.
+**Unlock criterion:** the operator picks a POD vendor AND a fulfilling
+adapter (one that implements `fulfill`) is registered. Physical-book
+demand proven first, per the spec's rejected-alternative note.
+**Spec reference:** `specs/speak/` SPR-09 (provider-agnostic ordering
+hook) + the master spec's REJECT of full POD fulfillment in v1.
+**Blocks-what:** nothing — the economics (payer per the matrix) + the
+quote path work today; only printing/shipping is gated.
+
+The `fulfill()` chokepoint is the structural guarantee that nothing
+prints or ships before the vendor decision: no registered provider
+exposes a `fulfill` method, so every fulfillment attempt refuses
+(`tests/test_speak_publish.py::test_fulfill_refused_no_live_vendor`).
+
+**Action when unlocked:** implement `<Vendor>Provider` satisfying
+`PhysicalBookProvider` PLUS a `fulfill(con, *, order_id)` method, then
+`register_provider(<Vendor>Provider())`. Orders route to it by name and
+`physical_book.fulfill` dispatches to its `fulfill` — no change to
+`order_physical_book` or the economics. Closed by: `43b0926` shipped the
+seam; this entry closes when a vendor adapter lands.
+
+**Where this is recorded:** `docs/decisions/speak_workflow.md`
+"Deferred" section ("Live POD fulfillment").
+
+---
+
 ## Cross-reference: unlock criterion → deferrals it gates
 
 | Unlock criterion | Deferrals that close |
@@ -391,6 +424,7 @@ produces cited prose into the editor; no redeploy of logic needed.
 | D1 (multi-user) + ≥1 publisher opted in | D8 (Sprint 30+ federation activation) |
 | Operator-discretion polish | D9 (Substack publish), D10 (sync voice), D11 (chase-tree mode) |
 | Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
+| Operator picks a POD vendor + registers a fulfilling adapter | D14 (Speak live print-on-demand) |
 
 ---
 

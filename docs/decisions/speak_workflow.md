@@ -163,24 +163,69 @@ discipline: token-resolve under one write lock, released before
 scoped + honest in the UI (`record` required to take part;
 `attribute`/`publish` optional, declining publish shown as "still helps,
 just not public"). `tests/test_speak_api.py` now runs the invitee flow
-end-to-end (12 tests total).
+end-to-end (23 API tests total).
+
+## Voice loop, hardening + gate surface (2026-05-25, continuation)
+
+Four commits closed the invitee VOICE experience and locked the
+invariants — all on already-committed deps (no parallel-stream coupling):
+
+- **Voice notes for invitees + nav** (`ce7938e`). Token-gated
+  `POST /speak/invite/{token}/transcribe` reuses `WhisperTranscriber`
+  (503 when unconfigured) + a `VoiceNoteRecorder` that records →
+  transcribes → fills the answer box, which the invitee CORRECTS before
+  submit (distill-from-corrected, SPR-02 M5). A microphone "Speak" entry
+  in NavRail's main group — the fourth workflow is now discoverable.
+- **Spoken turn-taking** (`3c5c2a1`). Token-gated
+  `POST /speak/invite/{token}/speak` reuses the committed
+  `OpenAITTSProvider.synthesize` (the same provider Read SPR-07's
+  `/speech/tts` uses — one TTS path, not a fork; 503 without a key). A
+  "🔊 hear this question" control completes the ASYNC two-way voice
+  loop: hear the question ↔ answer by voice. (Real-time roundtrip + the
+  dispatch-tier `openai_tts.call()` stub stay deferred — see D10.)
+- **Invariant hardening** (`82c0ed5`). The CLAUDE.md-mandated agent-
+  failure fixture for the DuckDB-FK-blocks-`interviews`-UPDATE gotcha
+  (`tests/regression/agent_failures/speak-duckdb-fk-blocks-interview-update.yaml`
+  + `tests/test_speak_fk_regression.py`; fix_commit `e1c10ee`) + hypothesis
+  property tests locking the binding split rule, corroboration≠truth, the
+  independence guard, and the fair split
+  (`tests/properties/test_speak_properties.py`).
+- **Gate-readiness surface + POD seam** (`43b0926`). `GET /speak/gates`
+  REPORTS each gate's status / what it unlocks / the operator closure
+  action — and NEVER closes one (a test asserts `POST /speak/gates` →
+  404/405). The `PhysicalBookProvider` seam gained a vendor-agnostic
+  registry (drop a vendor in by name, no call-site change) + a gated
+  `fulfill()` raising `PodVendorUnconfigured` — the chokepoint proving
+  nothing prints/ships before a vendor is chosen.
+
+Judgment recorded explicitly: G2/G3/G7/G8 were NOT closed in code (that
+would bypass counsel + the consent/accrual architecture), and no live
+POD vendor was wired (the spec rejects v1 POD). The honest engineering
+*around* each — the readiness report + the drop-in seam — is what
+shipped. ~169 Speak tests green; tsc clean; codegen in sync; pushed to
+`origin/read/workflow-execution`.
 
 ## Deferred (NOT built — honest scope)
 
-- **Voice capture for invitees + a running-server browser e2e.** The
-  invitee answer flow is text-first (what you type IS the corrected
-  transcript, SPR-02 M5); a record→auto-transcribe→correct loop for
-  invitees needs the `/voice` upload path token-gated too. The full
-  operator + invitee journeys are end-to-end tested in
+- **A running-server browser e2e** (voice capture for invitees: ✅ BUILT
+  `ce7938e`/`3c5c2a1` — token-gated transcribe + speak + recorder UI).
+  The full operator + invitee journeys are end-to-end tested in
   `test_speak_api.py` (TestClient); the Storybook e2es
   (`speak-biography.spec.ts`, `speak-publish.spec.ts`) smoke the UI
   surfaces and `test.skip` the live-API browser journey (Storybook has
-  no live `/speak` server).
-- **Live POD fulfillment.** `physical_book.StubPhysicalBookProvider`
-  quotes a cost and fulfils NOTHING. A vendor adapter (Lulu/IngramSpark)
-  drops into the `PhysicalBookProvider` seam later.
-- **Live spoken turn-taking / TTS.** Out of scope per SPR-02;
-  `openai_tts.py` still raises `NotImplementedError`.
+  no live `/speak` server). Only a running-server browser e2e remains.
+- **Live POD fulfillment.** Still deferred (spec rejects v1 POD until a
+  vendor is chosen) — but the seam is now drop-in ready: a vendor-
+  agnostic registry + a gated `fulfill()` (`43b0926`). Tracked as
+  `engineering_deferrals.md` **D14**. `StubPhysicalBookProvider` quotes
+  and fulfils NOTHING; a Lulu/IngramSpark adapter registers by name with
+  no call-site change.
+- **Real-time spoken turn-taking.** The ASYNC spoken loop (hear question
+  ↔ voice answer) is ✅ BUILT (`3c5c2a1`, reusing the committed
+  `OpenAITTSProvider.synthesize`). What remains deferred is the
+  REAL-TIME roundtrip (talk-to-the-AI, ~3–5s latency) and the dispatch-
+  tier `openai_tts.call()` (still `NotImplementedError`) — see
+  `engineering_deferrals.md` **D10** (sync voice model).
 
 ## Operator-gated, not code (the unlocks)
 
