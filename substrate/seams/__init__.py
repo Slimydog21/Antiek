@@ -59,6 +59,13 @@ from .servability_gate import (
     serves_full_text,
     speak_publish_gate_passed,
 )
+from .thread import (
+    Thread,
+    ThreadHop,
+    ThreadStub,
+    assert_single_canonical_entity,
+    reconstruct_thread,
+)
 
 __all__ = [
     # the six committed seams
@@ -82,4 +89,10 @@ __all__ = [
     "speak_publish_gate_passed",
     "gate_speak_derived_entry",
     "serves_full_text",
+    # SPR-06 cross-workflow thread navigation (a VIEW over seam events + edges)
+    "Thread",
+    "ThreadHop",
+    "ThreadStub",
+    "reconstruct_thread",
+    "assert_single_canonical_entity",
 ]
