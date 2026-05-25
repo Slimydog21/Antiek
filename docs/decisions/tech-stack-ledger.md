@@ -65,14 +65,26 @@ genuinely cannot express (then extend the owner, still not fork it).
 
 ---
 
-## Single escrow writer — `marketplace_metrics/publisher_escrow.py` (seam #3)
+## Single escrow-balance writer — `substrate/ip_holders/accrue_escrow` (seam #3)
 
-**Decision.** Two `attribution.py` modules are fine — they compute distinct
-things (`ad_inventory/attribution.py` = contribution weighting;
-`marketplace_metrics/attribution.py` = impression → ip_holder). But exactly
-**one** module writes escrow: `marketplace_metrics/publisher_escrow.py`. Both
-attribution concerns emit the single `AccrualContract` shape
-(`substrate/contracts/accrual.py`); the escrow writer consumes it.
+**Decision.** Attribution modules that *compute* shares are fine to have more
+than one (`ad_inventory/attribution.py` = contribution weighting; a future
+`marketplace_metrics/attribution.py` = impression → ip_holder — note: only
+`ad_inventory/attribution.py` exists in the tree today). But exactly **one**
+function *writes* the escrow balance: `substrate/ip_holders/accrue_escrow`
+(the only `SET escrow_balance_usd = …`), reached only from
+`speak/contributor.py`. Both attribution concerns emit the single
+`AccrualContract` shape (`substrate/contracts/accrual.py`); the balance writer
+consumes it. `marketplace_metrics/publisher_escrow.py` is the read-only
+*reporting* view (`compute_publisher_escrow → PublisherEscrowReport`), not a
+writer.
+
+> **Correction (post-SPR-03 verification, 2026-05-25):** the master spec and
+> this ledger's first draft named `marketplace_metrics/publisher_escrow.py`
+> "the single escrow writer." That was wrong — it is reporting-only. SPR-03's
+> single-escrow-writer guard verified the live writer is
+> `ip_holders.accrue_escrow`; the *invariant* (exactly one balance writer) is
+> unchanged, only the named owner is corrected.
 
 **Rationale.** Renaming an attribution module away is churn; the real risk is
 two writers to the escrow ledger. Naming the single escrow writer is the

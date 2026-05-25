@@ -16,7 +16,7 @@ product-spec sprint pages (`specs/{deep-research-workspace,read,write,speak}/`)
 | `ResearchRunner` (+ `StepEvent`) | DRW SPR-02 | Research (+ unified SPR-02 remote-exec) | committed | re-export of `runtime/research_runner/protocol.py` |
 | `OutlineBlockContract` | Write SPR-01 | Write (+ Speak via Write authoring) | committed | `substrate/write/outline_block.py` (L76-93) |
 | `ServableEntryContract` | Read SPR-01 (+ `provenance_class` from this sprint) | Read, Speak | committed | `constants.BOOK_SERVABILITY_STATUSES` (L545-551); seam #4 |
-| `AccrualContract` | Read SPR-09 / Speak SPR-07 (single escrow writer) | Read, Speak | committed | `speak/contributor.py::AccrualLine` + `marketplace_metrics/publisher_escrow.py`; seam #3 |
+| `AccrualContract` | Read SPR-09 / Speak SPR-07 | Read, Speak | committed | `speak/contributor.py::AccrualLine`; single escrow-balance writer = `ip_holders.accrue_escrow` (NOT publisher_escrow.py — reporting only; corrected post-SPR-03); seam #3 |
 | `InterviewerResultContract` | Speak interviewer | Speak, Write | provisional | (Speak interviewer shape not fully pinned) |
 | `ConsentContract` | Speak SPR-01 | Speak, Read (seam #4) | provisional | `substrate/speak/` consent + rights gate |
 | `EconomicsCellContract` | Speak SPR-07 | Speak, cost surface (SPR-07 unified) | committed | economics matrix (`CREATOR_REV_SHARE` 70% public) |

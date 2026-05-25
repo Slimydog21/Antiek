@@ -8,8 +8,14 @@ separate:
 
 The real risk is never "two attribution modules"; it is **two writers to
 escrow**. So this contract names the single shape both concerns emit, and the
-decision record pins the single escrow *writer*:
-``marketplace_metrics/publisher_escrow.py`` (seam #3).
+decision record pins the single escrow-balance *writer*:
+``substrate/ip_holders/accrue_escrow`` — the only function that mutates
+``escrow_balance_usd`` (``SET escrow_balance_usd = escrow_balance_usd + ?``),
+reached only from ``speak/contributor.py`` (seam #3). NOTE:
+``marketplace_metrics/publisher_escrow.py`` is the read-only *reporting* view
+(``compute_publisher_escrow`` returns a ``PublisherEscrowReport``), not the
+writer — corrected after SPR-03 verified the live code; the master spec /
+SPR-01 first-draft naming of it as "the single escrow writer" was wrong.
 
 **Accrual ≠ disbursement.** Money accrues into per-ip-holder escrow from day
 one — even with zero buyers, in which case the amount is honestly ``0`` and the
@@ -20,11 +26,13 @@ only *leaves* escrow via a disbursement path that is hard-gated on **G2**
 ``disbursable`` and fixes it ``False`` — there is no field a producer can set
 to make an accrual disbursable; that is a gate decision, not a data flag.
 
-Canonical unit is **integer cents** — the single escrow writer's unit
-(``publisher_escrow.compute_publisher_escrow`` works in cents, verified
-L53-59). The Speak path quantizes its ``Decimal`` USD to cents at the escrow
-boundary, so both concerns converge on one integer wire shape (avoids float
-drift and the Decimal-in-TypeScript problem).
+Canonical unit is **integer cents** — a deliberate *wire-shape* choice for the
+contract that avoids float drift and the Decimal-in-TypeScript problem. The
+live balance writer (``ip_holders.accrue_escrow``) takes ``Decimal`` USD and
+the Speak path stores ``Decimal`` USD; both quantize to cents at the contract
+boundary. The publisher-escrow *report* also works in cents, confirming cents
+is a natural ledger unit. Both attribution concerns converge on this one
+integer wire shape.
 """
 
 from __future__ import annotations
