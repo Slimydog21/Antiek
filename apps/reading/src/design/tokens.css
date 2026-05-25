@@ -23,7 +23,10 @@
   --ice-4:      #DCE5ED;
   --glacial-1:  #C2D1DD;
   --glacial-2:  #9AB0C0;
-  --shadow-1:   #64778A;
+  /* S11 a11y: darkened #64778A → #4F5F70 (6.32:1 on white) so opacity-
+     blended descendants clear WCAG AA. Reconciled with tokens.ts +
+     tailwind.config.js (the canonical source) in SPR-01. */
+  --shadow-1:   #4F5F70;
   --shadow-2:   #384858;
   --ink:        #0F1419;
 
@@ -47,7 +50,9 @@
 
   /* accent (reserved) */
   --aurora:  #16C2C2;
-  --emperor: #E33C2D;
+  /* S11 a11y: darkened #E33C2D → #CE3623 (4.51:1 with white text).
+     Reconciled with tokens.ts + tailwind.config.js in SPR-01. */
+  --emperor: #CE3623;
 
   /* chunky offset shadows */
   --shadow-z1:   3px 3px 0 0 var(--ink);

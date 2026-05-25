@@ -23,7 +23,9 @@ const meta = {
   // The global Storybook preview already wraps every story in a
   // MemoryRouter, so we don't add a second (nested) router here.
   parameters: { layout: "fullscreen" },
-  tags: ["autodocs"],
+  // `a11y-audit` opts this story into the test-runner axe gate
+  // (.storybook/test-runner.ts, selected via `--includeTags a11y-audit`).
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta<typeof NavRail>;
 
 export default meta;

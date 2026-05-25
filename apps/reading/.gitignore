@@ -10,3 +10,8 @@ storybook-static/
 .lostpixel/diff/
 test-results/
 playwright-report/
+
+# node_modules is a SYMLINK in dev worktrees; the trailing-slash
+# `node_modules/` pattern above matches a real dir but NOT a symlink to
+# one, so match it bare too (keeps `git add -A` from staging the link).
+node_modules

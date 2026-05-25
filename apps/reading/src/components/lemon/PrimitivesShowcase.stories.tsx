@@ -24,7 +24,9 @@ import {
 const meta = {
   title: "Design / Primitives Showcase",
   parameters: { layout: "fullscreen" },
-  tags: ["autodocs"],
+  // `a11y-audit` keeps the original S11 intent (audit every primitive) in the
+  // SPR-08 test-runner axe gate, alongside the shell chrome.
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta;
 
 export default meta;

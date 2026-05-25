@@ -154,3 +154,23 @@ jobs:
       - name: Type-check
         working-directory: apps/reading
         run: npx tsc --noEmit
+
+      - name: Token lint (pattern not tone — no new hardcoded hex)
+        # frontend-design SPR-01 (harvested from PR #4). Fails the PR on any
+        # NEW raw hex literal outside the token source files (tokens.ts /
+        # tokens.css). Existing literals are grandfathered in
+        # scripts/token_lint_baseline.json; the baseline only ever shrinks.
+        # Turns "every colour is a token" from a review hope into a
+        # mechanical guarantee. Re-mint deliberately with
+        # `npm run lint:tokens:update`; never to silence a regression.
+        working-directory: apps/reading
+        run: npm run lint:tokens
+
+      - name: Bundle budget (S12 WP-12.2)
+        # `vite build` + scripts/check_bundle.ts. Fails the PR if the entry
+        # `index` chunk (≤ 700 KB gz) or the `lemon` primitives chunk
+        # (≤ 60 KB gz) exceeds its gzipped ceiling — the only two chunks
+        # that ship on every page load. Catches a dependency or a fat
+        # import silently ballooning the bundle.
+        working-directory: apps/reading
+        run: npm run build:check

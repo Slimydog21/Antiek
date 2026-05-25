@@ -18,7 +18,11 @@ const meta = {
   title: "Navigation / AppShell",
   component: AppShell,
   parameters: { layout: "fullscreen" },
-  tags: ["autodocs"],
+  // `a11y-audit` opts this story into the test-runner axe gate
+  // (.storybook/test-runner.ts, selected via `--includeTags a11y-audit`).
+  // AppShell is the composed full-chrome story — auditing it covers the
+  // NavRail + Topbar + SceneChrome chrome in one pass.
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta<typeof AppShell>;
 
 export default meta;

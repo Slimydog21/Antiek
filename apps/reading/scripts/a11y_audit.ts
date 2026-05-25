@@ -166,11 +166,15 @@ async function main() {
       // are noise rather than signal.
       const axe = new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"])
+        // Kept identical to .storybook/test-runner.ts by hand — change one,
+        // change both. (empty-heading is Storybook's own hidden error-message
+        // <h1> inside iframe.html, never Antiek shell code.)
         .disableRules([
           "scrollable-region-focusable",
           "landmark-one-main",
           "region",
           "page-has-heading-one",
+          "empty-heading",
         ]);
       const r = await axe.analyze();
       const violations: AxeViolation[] = r.violations.map((v) => ({

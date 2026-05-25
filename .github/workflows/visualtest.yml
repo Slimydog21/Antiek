@@ -66,9 +66,21 @@ jobs:
           retention-days: 7
 
   axe-core:
-    # S11 acceptance: axe-core finds zero serious/critical violations on
-    # the primitive stories. Runs axe-core against the rendered
-    # Storybook over http-server, gated to the Lemon primitives folder.
+    # S11 + SPR-08 acceptance: axe-core finds zero serious/critical
+    # violations on the audited stories — the shell chrome (NavRail,
+    # Topbar, ProjectTree, ProductsLauncher, AppShell) + the Lemon
+    # primitives. Runs the @storybook/test-runner against the static
+    # Storybook over http-server, scoped by the `a11y-audit` story tag.
+    #
+    # SPR-08 fixed two real breakages here (harvested from PR #8):
+    #   1. The runner removed `--include`; the modern story filter is
+    #      `--includeTags`. The old invocation failed on every run.
+    #   2. The runner does NOT run axe on its own — addon-a11y only
+    #      surfaces violations in the SB UI, it never asserts. The axe
+    #      assertion is wired by the `postVisit` hook in
+    #      `.storybook/test-runner.ts`; without it this step ran stories
+    #      but checked nothing. The version is pinned (no `@latest`) so a
+    #      future runner release can't silently move the flag again.
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     defaults:
@@ -91,16 +103,20 @@ jobs:
       - name: Build Storybook
         run: npm run build-storybook
 
-      - name: Run axe-core against primitive stories
+      - name: Run axe-core against the a11y-audit stories
         run: |
           npx -y http-server -p 6006 -s storybook-static &
           SERVER_PID=$!
           sleep 3
-          # @storybook/test-runner runs axe via the addon-a11y test hook.
-          # We scope to the Design/Primitives Showcase + each Lemon story.
-          npx -y @storybook/test-runner@latest \
+          # The test-runner picks up .storybook/test-runner.ts (the axe
+          # postVisit hook). `--includeTags a11y-audit` selects the shell
+          # chrome + primitive stories tagged for the audit; index-json
+          # mode is auto-detected for SB 8. The hook throws on any
+          # serious/critical axe violation, failing the job.
+          npx -y @storybook/test-runner@0.24.4 \
             --url http://localhost:6006 \
-            --include "Design/Primitives Showcase" \
-            --include "Components/Lemon/**" \
+            --index-json \
+            --includeTags a11y-audit \
+            --maxWorkers 2 \
             || (kill $SERVER_PID; exit 1)
           kill $SERVER_PID || true
