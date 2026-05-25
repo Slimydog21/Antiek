@@ -81,6 +81,24 @@ Auth: magic-link via AgentMail. Per
 - The §16 REJECT list is canonical: no Daytona/Modal/Pulumi/etc, no
   PostHog vendor tone, no ε > 10 on DP claims, no premature scaling.
 
+<!-- BEGIN: s16-research-fanout-exemption (unified SPR-02; operator-ratified 2026-05-25) -->
+- **§16 exemption — research fan-out only.** The operator ratified one
+  scoped carve-out on 2026-05-25: *research-runner fan-out* (and only that)
+  may execute on an external provider via `runtime/remote_exec/`, so a DRW
+  cascade can run N sub-question researches genuinely concurrently off-host
+  rather than capped at the host VM. Daytona is the one implementation
+  behind the `RemoteExecProvider` interface. Everything else in the §16
+  REJECT line above is **unchanged**: dispatch stays Hermes-primary (no
+  Daytona/Modal/Prime as a dispatch provider for non-research inference);
+  the DuckDB single-writer invariant is untouched (remote researches append
+  only to their own per-investigation event logs — the serialized host
+  funnel through `runtime/db_lock` remains the sole graph writer); ε > 10
+  on DP claims and premature scaling stay rejected. Host-local
+  (`HostLocalRunner`) is the automatic fallback when remote-exec is disabled
+  or the provider is unavailable. Rationale + reconsider-if:
+  `docs/decisions/s16-research-fanout-exemption.md`.
+<!-- END: s16-research-fanout-exemption -->
+
 <!-- BEGIN: agent-failure-regression (managed by SPR-E2 of antiek-hashimoto-engineering) -->
 - **Agent-failure regression library.** Every observed agent failure
   (a production path that produced wrong/surprising output) gets a YAML

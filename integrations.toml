@@ -239,11 +239,15 @@ spec_doc = "docs/master-product-spec.md (§16 REJECT)"
 
 [daytona]
 package = "daytona"
-tier = 0
-voucher = ""
-vouched_at = "2026-05-24"
-justification = "Hard REJECT per CLAUDE.md §16. All Daytona contact previously routed via runtime/remote_exec/ per the deferred Daytona integration spec; current verdict is REJECT."
-spec_doc = "docs/daytona_integration_spec.md (verdict: REJECT)"
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-05-25"
+sunset_date = "2026-08-23"
+justification = "Promoted 0→2 by the operator's 2026-05-25 §16 research-fan-out exemption (docs/decisions/s16-research-fanout-exemption.md). Scoped to research-runner fan-out ONLY via runtime/remote_exec/ — NOT general dispatch (Hermes-primary stays per §16). The Daytona SDK (daytona_sdk) is optional + lazy-imported (mirrors browserbase, Tier 2 above); the prod call site below is the runner factory's local import of the in-tree provider module. 90-day sunset: promote to Tier 3 once the operator's live smoke (infrastructure/runbooks/remote-exec-fanout.md) confirms remote-exec beats the host-local ceiling, or demote to Tier 0 (revert to host-local-first) if it proves fragile/expensive per the decision record's reconsider-if."
+prod_call_sites = [
+    "runtime/remote_exec/factory.py",
+]
+spec_doc = "docs/decisions/s16-research-fanout-exemption.md"
 
 [pulumi]
 package = "pulumi"
