@@ -14,17 +14,26 @@
 import type { TraceTargetResponse } from "../writeApi";
 
 export type TraceAction =
-  | { type: "open_reader"; documentId: string; servableOnly: boolean; detail: string }
+  | {
+      type: "open_reader";
+      documentId: string;
+      /** First cited chunk — the reader anchors to its span (?chunk=). */
+      chunkId: string | null;
+      servableOnly: boolean;
+      detail: string;
+    }
   | { type: "session"; detail: string }
   | { type: "node_only"; detail: string }
   | { type: "unavailable"; detail: string };
 
 export function traceActionFor(target: TraceTargetResponse): TraceAction {
+  const chunkId = target.chunk_ids.length > 0 ? target.chunk_ids[0] : null;
   switch (target.kind) {
     case "source_span":
       return {
         type: "open_reader",
         documentId: target.document_id ?? "",
+        chunkId,
         servableOnly: false,
         detail: target.detail,
       };
@@ -34,6 +43,7 @@ export function traceActionFor(target: TraceTargetResponse): TraceAction {
       return {
         type: "open_reader",
         documentId: target.document_id ?? "",
+        chunkId,
         servableOnly: true,
         detail: target.detail,
       };

@@ -51,7 +51,12 @@ export function useTrace(): UseTraceResult {
         const target = await getTraceTarget(detail.outlineBlockId);
         const action = traceActionFor(target);
         if (action.type === "open_reader" && action.documentId) {
-          navigate(`/read/${encodeURIComponent(action.documentId)}`);
+          // Anchor to the exact cited span when a chunk is known (?chunk=);
+          // the reader resolves it to a page. Falls back to the document.
+          const query = action.chunkId
+            ? `?chunk=${encodeURIComponent(action.chunkId)}`
+            : "";
+          navigate(`/read/${encodeURIComponent(action.documentId)}${query}`);
           setState(null);
         } else {
           setState(action);

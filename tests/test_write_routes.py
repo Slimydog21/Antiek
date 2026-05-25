@@ -221,3 +221,22 @@ def test_generate_empty_section_returns_gap(client, seed):
     r = client.post(f"/write/sections/{seed['section_id']}/generate")
     assert r.status_code == 200
     assert r.json()["status"] == "gap"  # never fabricated prose
+
+
+def test_generate_without_credential_fails_gracefully(client, seed, monkeypatch):
+    """With creative_writer wired into the dispatch config but NO provider
+    credential present, generation of a section WITH blocks must degrade to
+    a clean 503 ('generation unavailable') — never a 500/crash, and never
+    fabricated prose. This proves the code consumes the credential
+    correctly; supplying the secret itself is the operator's action."""
+    for k in ("OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "DEEPSEEK_API_KEY",
+              "XIAOMI_API_KEY", "HERMES_API_KEY", "XAI_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    # Attach a real block so generation is attempted (not the gap path).
+    client.post("/write/blocks", json={
+        "section_id": seed["section_id"], "block_kind": "insight",
+        "provenance_kind": "graph_node", "node_id": seed["node"], "block_index": 0,
+    })
+    r = client.post(f"/write/sections/{seed['section_id']}/generate")
+    assert r.status_code == 503  # graceful, not a crash
+    assert "unavailable" in r.json()["detail"].lower()

@@ -22,6 +22,16 @@ describe("traceActionFor", () => {
     expect(a).toMatchObject({ type: "open_reader", documentId: "doc-1", servableOnly: false });
   });
 
+  it("carries the first cited chunk so the reader anchors to the span", () => {
+    const a = traceActionFor(target({ kind: "source_span", chunk_ids: ["chunk-7", "chunk-9"] }));
+    expect(a).toMatchObject({ type: "open_reader", chunkId: "chunk-7" });
+  });
+
+  it("chunkId is null when no chunk is cited", () => {
+    const a = traceActionFor(target({ kind: "source_span", chunk_ids: [] }));
+    expect(a).toMatchObject({ type: "open_reader", chunkId: null });
+  });
+
   it("opens the reader as servable-only for a gated source (no leak)", () => {
     const a = traceActionFor(target({
       kind: "servable_snippet", full_text_allowed: false,

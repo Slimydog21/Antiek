@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
 import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
+import { getChunk } from "../../lib/api";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
+import { findPageForChunkText } from "./anchorToChunk";
 import ResearchThis from "./ResearchThis";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
@@ -71,6 +73,31 @@ export default function BookReader() {
     [body],
   );
   const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
+
+  // Chunk-span anchor: when opened with ``?chunk=<chunk_id>`` (e.g. from a
+  // Write trace-to-source), resolve the chunk to its text and jump to the
+  // page that contains it — landing on the EXACT cited span, not just the
+  // document. Best-effort: a chunk that doesn't resolve or isn't located
+  // leaves the saved position untouched (never throws, never misleads).
+  const [searchParams] = useSearchParams();
+  const chunkAnchor = searchParams.get("chunk");
+  useEffect(() => {
+    if (!chunkAnchor || pages.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const chunk = await getChunk(chunkAnchor);
+        if (cancelled || !chunk.text) return;
+        const target = findPageForChunkText(pages, chunk.text);
+        if (target >= 0) setPageIndex(target);
+      } catch {
+        /* anchor is best-effort; fall back to the saved position */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chunkAnchor, pages, setPageIndex]);
 
   // Reader ad-impression flushing (SPR-05). A stable session id per mount;
   // the hook tracks focused dwell and flushes the page's slots on change.
