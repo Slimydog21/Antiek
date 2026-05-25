@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
 import BrainstormStation from "./modes/BrainstormStation";
+import Coordination from "./modes/Coordination";
 import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
@@ -99,6 +100,10 @@ function AuthenticatedRoutes() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/operator" element={<OperatorDashboard />} />
+        {/* antiek-unified SPR-05 — read-only coordination surface (gate ledger
+            + 45-sprint roadmap). Slots into the SPR-04 shared/operator bucket
+            when the four-workflow NavRail lands; reachable directly meanwhile. */}
+        <Route path="/coordination" element={<Coordination />} />
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
         <Route path="/replay/:investigationId" element={<Replay />} />

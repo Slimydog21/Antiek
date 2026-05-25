@@ -1048,6 +1048,11 @@ def create_app(
     register_advertiser_routes(app)
     from .federation import register_federation_routes
     register_federation_routes(app)
+    # antiek-unified SPR-05 — read-only coordination surface (gate ledger +
+    # 45-sprint roadmap). A VIEW over docs/operator_gate_actions.md + the five
+    # specs' rosters + SPR-01's dependency DAG; GET-only, no gate-write path.
+    from .coordination import register_coordination_routes
+    register_coordination_routes(app)
     # Sprint 23-24 phase 1+2 — ad-impression emission + targeted
     # inventory select. Substrate primitives live in
     # substrate/ad_inventory/{ad_bidding,intent_targeting,payout}.
