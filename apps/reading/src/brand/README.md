@@ -42,7 +42,7 @@ werner/
 
 ## Naming + usage
 
-Components in `src/components/navigation/NavRail.tsx` use an inline
+Components in `src/shell/NavRail.tsx` use an inline
 SVG mark (the abstract little penguin head). For full hero rendering
 (login splash, README, social cards), use the PNG files directly
 via `<img src={...} />`.
