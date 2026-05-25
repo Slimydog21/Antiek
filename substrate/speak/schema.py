@@ -26,9 +26,16 @@ from typing import Any
 # ---------------------------------------------------------------------------
 # The schema. Grouped by sprint so a maintainer can map a table to its
 # spec milestone. FK targets (interview_projects, interviews, ip_holders,
-# deliverables) live in substrate/graph/schema.py — we reference, not
-# redefine. DuckDB does not enforce cross-table FKs strictly here, but the
-# REFERENCES clauses document intent and the column names match.
+# deliverables) live in substrate/graph/schema.py.
+#
+# We deliberately do NOT declare DB-level FK constraints to those parent
+# tables. DuckDB's FK support is partial: a declared FK blocks UPDATEs to
+# the *referenced* (parent) row even when the key is unchanged (its
+# documented FK limitation). interviews rows ARE updated (transcript_turns,
+# status), so a speak_consent→interviews FK would deadlock the async
+# interview. The codebase already notes "DuckDB does not enforce cross-
+# table FKs strictly" (graph/ops.py). Provenance is held by matching
+# column names + the audit-event trail, not by a DB-level constraint.
 # ---------------------------------------------------------------------------
 
 ANTIEK_SPEAK_SCHEMA_SQL = """
@@ -39,7 +46,7 @@ ANTIEK_SPEAK_SCHEMA_SQL = """
 -- publish INTENT (which drives consent scope + economics) and the SUBJECT
 -- of the biography (whose living/deceased status gates public publishing).
 CREATE TABLE IF NOT EXISTS speak_projects (
-    project_id        TEXT PRIMARY KEY REFERENCES interview_projects(project_id),
+    project_id        TEXT PRIMARY KEY,
     publish_intent    TEXT NOT NULL DEFAULT 'private_never_published'
         CHECK (publish_intent IN ('private_never_published', 'will_be_public')),
     -- Invitation dimension. 'public' (open contribution ecosystem) is
@@ -61,7 +68,7 @@ CREATE TABLE IF NOT EXISTS speak_projects (
 -- the consent scopes the invite must capture, matched to publish intent.
 CREATE TABLE IF NOT EXISTS speak_invites (
     invite_id               TEXT PRIMARY KEY,
-    interview_id            TEXT NOT NULL REFERENCES interviews(interview_id),
+    interview_id            TEXT NOT NULL,
     project_id              TEXT NOT NULL,
     token                   TEXT NOT NULL UNIQUE,
     required_consent_scopes TEXT NOT NULL,   -- JSON array ["record","attribute","publish"]
@@ -77,7 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_speak_invites_project ON speak_invites(project_id
 -- independent scopes. An interviewee can consent to be recorded but not
 -- to be named (attribute) and not to be published (publish).
 CREATE TABLE IF NOT EXISTS speak_consent (
-    interview_id   TEXT NOT NULL REFERENCES interviews(interview_id),
+    interview_id   TEXT NOT NULL,
     scope          TEXT NOT NULL CHECK (scope IN ('record', 'attribute', 'publish')),
     granted        BOOLEAN NOT NULL DEFAULT FALSE,
     recorded_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -169,7 +176,7 @@ CREATE TABLE IF NOT EXISTS speak_corroboration_clusters (
     updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS speak_corroboration_members (
-    cluster_id       TEXT NOT NULL REFERENCES speak_corroboration_clusters(cluster_id),
+    cluster_id       TEXT NOT NULL,
     claim_id         TEXT NOT NULL,
     interview_id     TEXT,
     stance           TEXT NOT NULL DEFAULT 'attests' CHECK (stance IN ('attests', 'contradicts')),
@@ -187,9 +194,9 @@ CREATE TABLE IF NOT EXISTS speak_corroboration_members (
 -- An unmapped interviewee accrues to a flagged HOLDING bucket, never to
 -- a wrong payee.
 CREATE TABLE IF NOT EXISTS speak_contributors (
-    interview_id   TEXT PRIMARY KEY REFERENCES interviews(interview_id),
+    interview_id   TEXT PRIMARY KEY,
     project_id     TEXT NOT NULL,
-    ip_holder_id   TEXT REFERENCES ip_holders(ip_holder_id),
+    ip_holder_id   TEXT,
     holding_bucket BOOLEAN NOT NULL DEFAULT FALSE,
     created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
