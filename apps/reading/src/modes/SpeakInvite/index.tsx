@@ -59,6 +59,8 @@ export default function SpeakInvite() {
   const [answer, setAnswer] = useState("");
   const [activeQ, setActiveQ] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [speakNote, setSpeakNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) {
@@ -149,6 +151,38 @@ export default function SpeakInvite() {
       setBusy(false);
     }
   }, [token, activeQ, answer, load]);
+
+  const speakQuestion = useCallback(
+    async (text: string) => {
+      if (!token || !text) return;
+      setSpeaking(true);
+      setSpeakNote(null);
+      try {
+        const r = await apiFetch(`/speak/invite/${encodeURIComponent(token)}/speak`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        if (r.status === 503) {
+          setSpeakNote("Audio isn't available right now — please read the question.");
+          return;
+        }
+        if (!r.ok) {
+          setSpeakNote("Couldn't play the question — please read it.");
+          return;
+        }
+        const blob = await r.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.onended = () => URL.revokeObjectURL(audio.src);
+        await audio.play();
+      } catch {
+        setSpeakNote("Couldn't play the question — please read it.");
+      } finally {
+        setSpeaking(false);
+      }
+    },
+    [token],
+  );
 
   // ── chrome states ──
   if (phase === "loading") {
@@ -251,12 +285,27 @@ export default function SpeakInvite() {
                 </ul>
               </details>
             )}
-            <p className="font-mono text-[10px] uppercase tracking-wider text-sun-deep dark:text-sun">
-              A question for you
-            </p>
-            <p className="font-serif text-[16px] text-ink dark:text-bright mt-1 mb-3">
+            <div className="flex items-center justify-between">
+              <p className="font-mono text-[10px] uppercase tracking-wider text-sun-deep dark:text-sun">
+                A question for you
+              </p>
+              {active?.text && (
+                <button
+                  type="button"
+                  onClick={() => void speakQuestion(active.text)}
+                  disabled={speaking}
+                  className="font-mono text-[10px] text-sun-deep dark:text-sun hover:underline disabled:opacity-40"
+                >
+                  {speaking ? "…" : "🔊 hear this question"}
+                </button>
+              )}
+            </div>
+            <p className="font-serif text-[16px] text-ink dark:text-bright mt-1 mb-1">
               {active?.text}
             </p>
+            {speakNote && (
+              <p className="font-mono text-[10px] text-ink-mute dark:text-moonlight mb-2">{speakNote}</p>
+            )}
             <VoiceNoteRecorder token={token ?? ""} onTranscript={(t) => setAnswer(t)} />
             <textarea
               value={answer}

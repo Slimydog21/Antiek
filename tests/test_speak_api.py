@@ -324,6 +324,45 @@ def test_invitee_transcribe_failure_422(client, monkeypatch):
     assert r.status_code == 422
 
 
+class _StubTts:
+    def __init__(self, *a, **k):
+        pass
+
+    def synthesize(self, text, voice=None):
+        return b"\xff\xf3\x44\x00fake-mp3-audio"  # plausible mp3 header
+
+
+class _NoKeyTts:
+    def __init__(self, *a, **k):
+        pass
+
+    def synthesize(self, text, voice=None):
+        raise RuntimeError("OPENAI_API_KEY missing. Set the env var to enable TTS voice replies.")
+
+
+def test_invitee_speak_returns_audio(client, monkeypatch):
+    monkeypatch.setattr("substrate.dispatch.providers.openai_tts.OpenAITTSProvider", _StubTts)
+    token = _invite_token(client)
+    r = client.post(f"/speak/invite/{token}/speak",
+                    json={"text": "What is your earliest memory of him?"})
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "audio/mpeg"
+    assert r.content  # non-empty audio body
+
+
+def test_invitee_speak_unconfigured_503(client, monkeypatch):
+    monkeypatch.setattr("substrate.dispatch.providers.openai_tts.OpenAITTSProvider", _NoKeyTts)
+    token = _invite_token(client)
+    r = client.post(f"/speak/invite/{token}/speak", json={"text": "Tell me about him."})
+    assert r.status_code == 503
+
+
+def test_invitee_speak_bad_token_404(client, monkeypatch):
+    monkeypatch.setattr("substrate.dispatch.providers.openai_tts.OpenAITTSProvider", _StubTts)
+    r = client.post("/speak/invite/not-a-token/speak", json={"text": "hello"})
+    assert r.status_code == 404
+
+
 def test_list_projects(client):
     # Fresh DB → empty list.
     r = client.get("/speak/projects")

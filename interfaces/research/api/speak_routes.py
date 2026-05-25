@@ -35,7 +35,7 @@ from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterator, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
@@ -634,3 +634,33 @@ async def invitee_transcribe(token: str, request: Request) -> dict:
             )
         raise HTTPException(status_code=422, detail=f"could not transcribe the recording: {msg}")
     return {"transcript": text}
+
+
+class InviteSpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=8000)
+    voice: Optional[str] = None
+
+
+@speak_router.post("/invite/{token}/speak")
+async def invitee_speak(token: str, req: InviteSpeakRequest, request: Request) -> Response:
+    """Speak a question aloud to the invitee — the SPOKEN half of async
+    turn-taking. Together with /transcribe (the spoken answer) this is
+    the two-way voice loop: the invitee can hear the question and reply
+    by voice without reading or typing.
+
+    Token-gated; reuses the committed OpenAITTSProvider (the same one
+    Read SPR-07's /speech/tts uses), so there's one TTS path, not a
+    fork. 503 when no OPENAI_API_KEY (UI falls back to reading) — never
+    burns credits without an operator key."""
+    with _translate(), _write("speak/api:invite_speak_resolve") as con:
+        _require_token(con, token)
+    from substrate.dispatch.providers.openai_tts import OpenAITTSProvider
+
+    provider = OpenAITTSProvider()
+    try:
+        audio = provider.synthesize(req.text, voice=req.voice)
+    except RuntimeError as exc:  # no API key
+        raise HTTPException(status_code=503, detail=f"tts_unavailable: {exc}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return Response(content=audio, media_type="audio/mpeg")
