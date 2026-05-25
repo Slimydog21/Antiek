@@ -1,25 +1,34 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
 
-import { useWorkspace } from "../../workspace/WorkspaceStore";
-import { LemonTag } from "../lemon/LemonTag";
-import { usePinned } from "./pinnedStore";
+import { useWorkspace } from "../workspace/WorkspaceStore";
+import { usePinned } from "../components/navigation/pinnedStore";
+import { LemonTag } from "../components/lemon/LemonTag";
+import {
+  WORKFLOWS,
+  workflowForPath,
+  type Workflow,
+} from "./workflowTaxonomy";
 
 /**
- * ProjectTree — the dockable navigation panel. Three sections:
+ * ProjectTree (SPR-04 zone 2) — the content-first project tree, scoped to
+ * the ACTIVE WORKFLOW's nouns (the objects the operator works on), not the
+ * workflow's tools.
  *
- *   ▾ Pinned     items the operator explicitly pinned (persist in S9)
- *   ▾ Recent     last N investigations + documents + notebooks (auto)
- *   ▾ All        list-view links to the index routes
+ *   Research → Investigations / Chase trees / Outcomes
+ *   Read     → Library / Documents / Notebooks / Sources
+ *   Write    → Deliverables / Block repository
+ *   Speak    → Interview projects / Contributors / Invites
  *
- * Click an item            → router navigate (route-mode swap)
- * Cmd/Ctrl+Click           → open as a floating panel (workspace open)
- * Right-click              → context menu (pin / float / copy link)
+ * The sections are driven by WORKFLOWS[wf].nouns from the taxonomy, so the
+ * tree re-scopes automatically when the rail switches workflows. Within a
+ * section, Recent/Pinned items come from the mock fixtures today and from
+ * the live hooks once each workflow's data layer lands (the architecture —
+ * workflow-scoped nouns + click-to-open / Cmd-click-to-float — is what's
+ * load-bearing here; the data is swappable, same as the pre-SPR-04 tree).
  *
- * S4 ships static mock data via constants below — the live data flows
- * (useInvestigationList + useDocuments + useNotebooks) plug in during
- * the S5/S6/S7 mode ports. The architecture (sections + interactions)
- * is what's load-bearing in S4; data is swappable.
+ * This SUPERSEDES the flat Pinned/Recent/All tree at
+ * components/navigation/ProjectTree.tsx; PanelRegistry now points here.
  */
 type NodeKind = "investigation" | "document" | "notebook";
 
@@ -30,20 +39,39 @@ type TreeNode = {
   status?: "running" | "done" | "failed";
 };
 
-const MOCK_RECENT: TreeNode[] = [
-  { kind: "investigation", id: "nvda-q4", title: "NVDA Q4 risk model", status: "running" },
-  { kind: "investigation", id: "web-gaming-2026", title: "Web gaming 2026", status: "done" },
-  { kind: "investigation", id: "kalshi-liquidity", title: "Kalshi liquidity gate", status: "done" },
-  { kind: "document", id: "kalshi-paper", title: "Kalshi liquidity preprint.pdf" },
-  { kind: "notebook", id: "synth-nvda", title: "NVDA synthesis · draft 2" },
-];
+// Mock recent items, tagged with the workflow noun-section they belong to.
+// Replaced by live hooks per-workflow as each data layer lands.
+const MOCK_RECENT: Record<Exclude<Workflow, "shared">, TreeNode[]> = {
+  research: [
+    { kind: "investigation", id: "nvda-q4", title: "NVDA Q4 risk model", status: "running" },
+    { kind: "investigation", id: "web-gaming-2026", title: "Web gaming 2026", status: "done" },
+    { kind: "investigation", id: "kalshi-liquidity", title: "Kalshi liquidity gate", status: "done" },
+  ],
+  read: [
+    { kind: "document", id: "kalshi-paper", title: "Kalshi liquidity preprint.pdf" },
+    { kind: "notebook", id: "synth-nvda", title: "NVDA synthesis · draft 2" },
+  ],
+  write: [],
+  speak: [],
+};
 
-const ALL_LINKS: Array<{ to: string; label: string }> = [
-  { to: "/investigations", label: "All investigations" },
-  { to: "/documents", label: "All documents" },
-  { to: "/notebooks", label: "All notebooks" },
-  { to: "/sources", label: "All sources" },
-];
+// The "All" links per workflow → the workflow's index routes (nouns).
+const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: string }>> = {
+  research: [
+    { to: "/investigations", label: "All investigations" },
+    { to: "/outcomes", label: "Outcomes audit" },
+  ],
+  read: [
+    { to: "/documents", label: "All documents" },
+    { to: "/notebooks", label: "All notebooks" },
+    { to: "/sources", label: "All sources" },
+  ],
+  write: [{ to: "/create", label: "All deliverables" }],
+  speak: [
+    { to: "/speak", label: "All projects" },
+    { to: "/interviews", label: "All interviews" },
+  ],
+};
 
 const routeForNode = (n: TreeNode): string => {
   switch (n.kind) {
@@ -67,18 +95,28 @@ const panelKindForNode = (n: TreeNode) => {
   }
 };
 
-export function ProjectTree() {
+export function ProjectTree({
+  /** Override the active workflow (Storybook); defaults to the route. */
+  workflow: forced,
+}: {
+  workflow?: Exclude<Workflow, "shared">;
+} = {}) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const routeWf = workflowForPath(pathname);
+  const workflow: Exclude<Workflow, "shared"> =
+    forced ?? (routeWf === "shared" ? "research" : routeWf);
+  const meta = WORKFLOWS[workflow];
+
   const pinned = usePinned((s) => s.pinned);
   const togglePin = usePinned((s) => s.toggle);
   const openPanel = useWorkspace((s) => s.open);
 
   const pinnedKey = (n: TreeNode) => `${n.kind}:${n.id}`;
 
-  // Show pinned nodes by reading them out of the mocks; in production
-  // these come from the live hooks (S5+).
-  const pinnedNodes = MOCK_RECENT.filter((n) => pinned.has(pinnedKey(n)));
-  const recentNodes = MOCK_RECENT.filter((n) => !pinned.has(pinnedKey(n)));
+  const recent = MOCK_RECENT[workflow];
+  const pinnedNodes = recent.filter((n) => pinned.has(pinnedKey(n)));
+  const recentNodes = recent.filter((n) => !pinned.has(pinnedKey(n)));
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     pinned: true,
@@ -96,7 +134,20 @@ export function ProjectTree() {
   };
 
   return (
-    <div className="text-[13px] text-ink dark:text-bright">
+    <div
+      className="text-[13px] text-ink dark:text-bright"
+      data-testid={`project-tree-${workflow}`}
+    >
+      {/* Workflow header — names the active workflow + its nouns. */}
+      <div className="px-3 pt-2.5 pb-2 border-b border-rule dark:border-charcoal-1">
+        <p className="font-serif text-[15px] text-ink dark:text-bright">
+          {meta.label}
+        </p>
+        <p className="font-mono text-[10.5px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mt-0.5">
+          {meta.nouns.join(" · ")}
+        </p>
+      </div>
+
       {/* Pinned */}
       <Section
         label="Pinned"
@@ -128,25 +179,31 @@ export function ProjectTree() {
         onToggle={() => setExpanded((s) => ({ ...s, recent: !s.recent }))}
         count={recentNodes.length}
       >
-        {recentNodes.map((n) => (
-          <NodeRow
-            key={pinnedKey(n)}
-            node={n}
-            pinned={false}
-            onClick={(e) => onItemClick(n, e)}
-            onPin={() => togglePin(pinnedKey(n))}
-          />
-        ))}
+        {recentNodes.length === 0 ? (
+          <p className="px-3 py-2 text-[12px] italic text-ink-mute dark:text-moonlight">
+            No recent {meta.label.toLowerCase()} items yet.
+          </p>
+        ) : (
+          recentNodes.map((n) => (
+            <NodeRow
+              key={pinnedKey(n)}
+              node={n}
+              pinned={false}
+              onClick={(e) => onItemClick(n, e)}
+              onPin={() => togglePin(pinnedKey(n))}
+            />
+          ))
+        )}
       </Section>
 
-      {/* All */}
+      {/* All — workflow-scoped index routes. */}
       <Section
         label="All"
         expanded={expanded.all}
         onToggle={() => setExpanded((s) => ({ ...s, all: !s.all }))}
-        count={ALL_LINKS.length}
+        count={ALL_LINKS[workflow].length}
       >
-        {ALL_LINKS.map((l) => (
+        {ALL_LINKS[workflow].map((l) => (
           <button
             key={l.to}
             type="button"

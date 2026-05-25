@@ -80,8 +80,9 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   AISidecar: lazy(() => import("../components/AISidecar")),
   CommandPalette: lazy(() => import("../components/CommandPalette")),
 
-  // S4 — project-tree side rail panel (NavRail is separate, not a panel)
-  ProjectTree: lazy(() => import("../components/navigation/ProjectTree")),
+  // S4 — project-tree side rail panel (NavRail is separate, not a panel).
+  // SPR-04: now the workflow-scoped content-first tree at shell/.
+  ProjectTree: lazy(() => import("../shell/ProjectTree")),
 
   // S10 — Stats is also rendered as a route → eager.
   Stats,

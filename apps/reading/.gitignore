@@ -8,3 +8,5 @@ storybook-static/
 # Lost-Pixel — baseline IS checked in; current + diff are not.
 .lostpixel/current/
 .lostpixel/diff/
+test-results/
+playwright-report/
