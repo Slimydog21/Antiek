@@ -8,7 +8,7 @@ import {
   generatability,
   type ContextItem,
   type ContextWindowState,
-} from "./contextWindow";
+} from "./contextModel";
 
 /**
  * Pre-outline context window (specs/write/ SPR-08).

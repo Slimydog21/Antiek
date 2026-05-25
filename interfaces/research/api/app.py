@@ -5124,6 +5124,13 @@ def create_app(
     from interfaces.research.api.cascade_routes import cascade_router
     app.include_router(cascade_router)
 
+    # Deep Research Workspace reading surface (specs/deep-research-workspace/
+    # SPR-10). Document + versions, document-anchored notes, living-note
+    # challenge, document-scoped structural gaps. Spin-research reuses
+    # /research/plans. Same one-line inclusion discipline.
+    from interfaces.research.api.reading_routes import reading_router
+    app.include_router(reading_router)
+
     return app
 
 

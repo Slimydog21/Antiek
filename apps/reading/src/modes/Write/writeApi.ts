@@ -143,6 +143,26 @@ export async function generateSection(sectionId: string): Promise<GenerationResu
   );
 }
 
+export interface TraceTargetResponse {
+  kind: "source_span" | "servable_snippet" | "node_only" | "session" | "unavailable";
+  full_text_allowed: boolean;
+  document_id: string | null;
+  document_title: string | null;
+  chunk_ids: string[];
+  servability_status: string | null;
+  detail: string;
+}
+
+/** Resolve a block's trace target (SPR-07). The backend combines
+ * provenance with Read's servability — a gated source returns
+ * full_text_allowed=false (the no-leak gate). */
+export async function getTraceTarget(outlineBlockId: string): Promise<TraceTargetResponse> {
+  return _json<TraceTargetResponse>(
+    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/trace`),
+    "GET /write/blocks/{id}/trace",
+  );
+}
+
 export interface BrainstormEmitBody {
   section_id: string;
   deliverable_id?: string;

@@ -153,6 +153,15 @@ role_tiers:
   parameter_extractor: flash
   connector: pro
   synthesizer: synthesis
+  # Write workflow (specs/write/ SPR-06). The creative_writer role turns
+  # attached OutlineBlocks into section/paragraph prose; it routes to the
+  # synthesis tier (matches roles/creative_writer.CREATIVE_WRITER_TIER —
+  # high context budget + prose temperature). Without this entry the
+  # /write/sections/{id}/generate endpoint 503s ("not in config"); with
+  # it, generation routes and only a missing provider credential stops a
+  # live call. The deterministic citation + voice_style-gate + no-blocks
+  # contract is enforced regardless of which model answers.
+  creative_writer: synthesis
   user_agent: pro
   note_taker: flash
   challenger: pro

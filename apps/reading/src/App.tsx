@@ -9,6 +9,8 @@ import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
 import BrainstormStation from "./modes/BrainstormStation";
 import CreationStudio from "./modes/CreationStudio";
+import { ContextWindow } from "./modes/Write/ContextWindow/ContextWindow";
+import { TraceListener } from "./modes/Write/Trace/TraceListener";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
@@ -79,6 +81,11 @@ function AuthenticatedRoutes() {
   return (
     <AppShell>
       <CommandPalette />
+      {/* Write SPR-07: app-wide trace-to-source listener — a citation
+          click anywhere opens the shared BookReader at its source
+          (gate-respecting), or shows a labeled panel for user-originated /
+          unavailable sources. */}
+      <TraceListener />
       {/* AISidecar is no longer mounted directly here — it lives as
           PanelKind="AISidecar" and is mounted by the panel system
           when the operator opens it via ⌘/ (S8-full refactor). */}
@@ -93,6 +100,8 @@ function AuthenticatedRoutes() {
         <Route path="/create" element={<CreationStudio />} />
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
+        {/* Write SPR-08: the outline-optional pre-outline context window. */}
+        <Route path="/write/context" element={<ContextWindow />} />
         <Route path="/notebooks" element={<NotebooksIndex />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
