@@ -123,3 +123,7 @@ jobs:
       - name: Type-check
         working-directory: apps/reading
         run: npx tsc --noEmit
+
+      - name: Token lint (pattern not tone — no new hardcoded hex)
+        working-directory: apps/reading
+        run: npm run lint:tokens
