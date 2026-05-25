@@ -25,8 +25,24 @@ understanding grows).
 from .prompt import NOTE_TAKER_SYSTEM_PROMPT
 from .parser import ExtractedNote, parse_notes_response
 
+# DRW SPR-03 — the always-on, asynchronous note-taking surface. These turn
+# the wrestling-only note-taker into a pass over every document and every
+# research step, plus living notes that update in place. The pure role
+# logic above (prompt/parser/ExtractedNote) is unchanged and reused.
+from .distill import Distillation, DistilledQuestion, Distiller, DispatchDistiller
+from .document_pass import PassResult, run_document_pass
+from .step_pass import RunNoteDeduper, notes_for_step
+from .living_note import ChallengeResult, apply_refinement, challenge_note
+from .scheduler import AsyncNoteScheduler, SchedulerStats, DEFAULT_DEBOUNCE_S
+
 __all__ = [
     "NOTE_TAKER_SYSTEM_PROMPT",
     "ExtractedNote",
     "parse_notes_response",
+    # SPR-03 always-on note-taking
+    "Distillation", "DistilledQuestion", "Distiller", "DispatchDistiller",
+    "PassResult", "run_document_pass",
+    "RunNoteDeduper", "notes_for_step",
+    "ChallengeResult", "apply_refinement", "challenge_note",
+    "AsyncNoteScheduler", "SchedulerStats", "DEFAULT_DEBOUNCE_S",
 ]
