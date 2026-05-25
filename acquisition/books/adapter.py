@@ -101,6 +101,10 @@ class IngestBookResult:
     skipped_reason: Optional[str] = None
     title: Optional[str] = None
     author: Optional[str] = None
+    # Flattened bookmark outline from the PDF (Read SPR-01). Carried on
+    # the result so the servable-book orchestrator doesn't re-read the PDF
+    # just to recover the TOC.
+    toc: list = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +174,7 @@ def ingest_pdf(
             skipped_reason="low_word_count",
             title=result.title,
             author=result.author,
+            toc=list(result.toc),
         )
 
     resolved_db_path = db_path or default_db_path()
@@ -250,4 +255,95 @@ def ingest_pdf(
         word_count=result.word_count,
         title=result.title,
         author=result.author,
+        toc=list(result.toc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Servable-book orchestrator (Read SPR-01)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class IngestServableBookResult:
+    """What ``ingest_servable_book`` returns: the underlying ingest result
+    plus the resolved servability. ``servable_full_text`` is the derived
+    answer to "may we serve this book's full text" — deny-by-default, so a
+    book ingested with no explicit license comes back False."""
+
+    ingest: IngestBookResult
+    document_id: str
+    servability: str
+    servable_full_text: bool
+
+
+def ingest_servable_book(
+    source: PdfSource,
+    *,
+    investigation_id: str,
+    content_class: Optional[str] = None,
+    rights_holder_name: Optional[str] = None,
+    ip_holder_id: Optional[str] = None,
+    provenance: Optional[str] = None,
+    license_basis: Optional[str] = None,
+    source_tier: int = DEFAULT_BOOK_SOURCE_TIER,
+    source_uri: Optional[str] = None,
+    db_path: Optional[str] = None,
+    embedder: Optional[EmbeddingProvider] = None,
+) -> IngestServableBookResult:
+    """Read a PDF, ingest it as a document, and register it as a
+    Read-workflow book under the servable-corpus gate.
+
+    This is the one-call "drop a book in" path. It lives in the
+    acquisition layer (not substrate) because it reads PDFs and inserts
+    documents; the legal-gate registration is delegated to
+    ``substrate.books.ingest.register_book`` so the deny-by-default
+    classification has exactly one home.
+
+    Pass ``content_class`` only when a license is established
+    (``public_domain``, ``opt_in_licensed``, ``user_owned``). Omit it for
+    anything aggregated with unknown rights — it lands gated.
+    """
+    # substrate is a lower layer than acquisition; importing it here keeps
+    # the dependency arrow pointing the right way (acquisition → substrate).
+    from runtime.db_lock import connect_write
+    from substrate.books.ingest import register_book
+    from substrate.books.model import TocItem
+    from substrate.graph import default_db_path, ensure_initialized
+
+    ingest_result = ingest_pdf(
+        source,
+        investigation_id=investigation_id,
+        source_tier=source_tier,
+        source_uri=source_uri,
+        db_path=db_path,
+        embedder=embedder,
+    )
+
+    resolved_db_path = db_path or default_db_path()
+    ensure_initialized(resolved_db_path)
+
+    toc_items = [
+        TocItem(title=t.title, page_index=t.page_index, level=t.level)
+        for t in ingest_result.toc
+    ]
+    with connect_write(resolved_db_path, purpose="read/books/ingest") as con:
+        asset = register_book(
+            con,
+            document_id=ingest_result.document_id,
+            content_class=content_class,
+            rights_holder_name=rights_holder_name,
+            ip_holder_id=ip_holder_id,
+            toc=toc_items,
+            page_count=ingest_result.page_count,
+            cover_uri=None,
+            provenance=provenance or (source_uri if isinstance(source, str) else "bytes"),
+            license_basis=license_basis,
+        )
+
+    return IngestServableBookResult(
+        ingest=ingest_result,
+        document_id=asset.document_id,
+        servability=asset.servability.value,
+        servable_full_text=asset.servable_full_text,
     )

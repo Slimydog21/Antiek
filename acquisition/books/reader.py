@@ -43,10 +43,27 @@ class PdfPage:
 
 
 @dataclass(frozen=True)
+class TocEntry:
+    """One table-of-contents entry. ``page_index`` is the 0-based page
+    the bookmark targets — the locator scheme is "PDF page index", the
+    same coordinate the ``## Page N`` markdown anchors use (N is
+    ``page_index + 1``). ``level`` is the nesting depth (0 = top-level
+    chapter). ``page_index`` is ``None`` when pypdf can't resolve the
+    destination to a page (malformed outline) — surfaced rather than
+    dropped, per intellectual honesty (rigor #1)."""
+
+    title: str
+    page_index: Optional[int]
+    level: int
+
+
+@dataclass(frozen=True)
 class ReadResult:
     """What ``read_pdf`` returns. ``markdown`` is the chunker-ready
     concatenation; ``pages`` lets advanced callers inspect per-page
-    extraction quality."""
+    extraction quality; ``toc`` is the flattened bookmark outline (empty
+    when the PDF carries no outline — most scanned/auto-generated PDFs
+    don't)."""
 
     title: Optional[str]
     author: Optional[str]
@@ -54,6 +71,7 @@ class ReadResult:
     word_count: int
     markdown: str
     pages: List[PdfPage] = field(default_factory=list)
+    toc: List[TocEntry] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +149,58 @@ def _extract_pages(reader: PdfReader) -> List[PdfPage]:
     return pages
 
 
+def _extract_outline(reader: PdfReader) -> List[TocEntry]:
+    """Flatten pypdf's nested bookmark outline into ordered TocEntry rows.
+
+    pypdf exposes ``reader.outline`` as a tree: a list whose items are
+    either ``Destination`` objects (a bookmark) or nested lists (the
+    children of the immediately-preceding bookmark). We walk it depth-
+    first, recording the nesting ``level``, and resolve each
+    destination's page via ``get_destination_page_number``.
+
+    Defensive throughout: PDFs lie. A missing/locked outline yields an
+    empty list; an unresolvable destination yields an entry with
+    ``page_index=None`` rather than crashing the whole read. This is the
+    "no new parser invented" path — we read the structure the PDF already
+    declares, we don't infer one.
+    """
+    try:
+        raw = reader.outline  # type: ignore[attr-defined]
+    except Exception:
+        return []
+    if not raw:
+        return []
+
+    entries: List[TocEntry] = []
+
+    def _walk(node: object, level: int) -> None:
+        if isinstance(node, list):
+            for item in node:
+                _walk(item, level)
+            return
+        title = getattr(node, "title", None)
+        if not title:
+            return
+        page_index: Optional[int]
+        try:
+            page_index = reader.get_destination_page_number(node)  # type: ignore[arg-type]
+        except Exception:
+            page_index = None
+        entries.append(
+            TocEntry(title=str(title).strip(), page_index=page_index, level=level)
+        )
+
+    # Top level is a flat list; a nested list deepens the level by one and
+    # belongs to the bookmark that preceded it.
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, list):
+                _walk(item, 1)
+            else:
+                _walk(item, 0)
+    return entries
+
+
 def _metadata_field(meta: object, key: str) -> Optional[str]:
     """pypdf returns a dict-ish object; values may have a ``/`` prefix
     or come as ``IndirectObject``. Coerce to a plain string when we
@@ -186,6 +256,7 @@ def read_pdf(
     author = _metadata_field(meta, "/Author")
 
     pages = _extract_pages(reader)
+    toc = _extract_outline(reader)
     markdown_parts: List[str] = []
     if title:
         markdown_parts.append(f"# {title}")
@@ -205,4 +276,5 @@ def read_pdf(
         word_count=sum(p.word_count for p in pages),
         markdown=full,
         pages=pages,
+        toc=toc,
     )

@@ -568,6 +568,51 @@ SERVE_SNIPPET_MAX_CHARS: Final[int] = 500
 
 
 # ============================================================
+# Section J — Read workflow: ad-border economics (SPR-05 / SPR-09)
+# ============================================================
+#
+# "Spotify for books" runs ads at the border of each page window from v1,
+# even with zero buyers, accruing an attention-share ledger to each book's
+# rights holder. Accrual is NOT disbursement: escrow accrues, payout stays
+# gated on G2 (lawyer review) + G3 (publisher opt-in). These constants
+# define the impression/attention semantics precisely so SPR-09's accrual
+# rests on auditable definitions (defensibility).
+
+# Attention ("dwell") is counted only when a slot stays continuously
+# visible for at least this many milliseconds WHILE the tab is focused.
+# Below this, a slot scrolling past is an impression but not attention.
+# Tuned to "a reader actually rested on the border", not a scroll-by.
+READER_ATTENTION_DWELL_MS: Final[int] = 1000
+
+# Border positions that never obstruct the reading column. TOP/BOTTOM are
+# the v1 default (a single reading column with ad rails above/below the
+# page window); LEFT/RIGHT are permitted only on wide viewports where the
+# reading column has margin to spare. The reading column is sacred — an
+# ad never narrows it on a small screen.
+READER_AD_SLOT_POSITIONS: Final[tuple[str, ...]] = ("top", "bottom", "left", "right")
+READER_AD_SLOT_POSITIONS_DEFAULT: Final[tuple[str, ...]] = ("top", "bottom")
+
+# Targeting signal allowlist (SPR-05 M5). Ad targeting may use ONLY these
+# book-metadata signals — never the gated full text of a book, and never
+# anything derived from a reader's private notes. A gated book contributes
+# only its document_type + topic metadata, never its body. This is the
+# privacy + legal-gate boundary for targeting; the DP posture (§16) caps
+# any aggregate claim at ε ≤ 10 (enforced in substrate/dp_shuffler/, not
+# here — this allowlist is the per-impression input boundary).
+READER_TARGETING_SIGNAL_ALLOWLIST: Final[frozenset[str]] = frozenset({
+    "document_type",   # 'book'
+    "topic",           # coarse subject tag from metadata
+    "author",          # surface author for contextual match
+    "servability",     # public_domain / publisher_opted_in / …
+})
+
+# The recipient bucket for ad revenue attributed to a book whose rights
+# holder is unknown (ip_holder_id IS NULL). Revenue accrues here, FLAGGED
+# as unattributed, rather than to a wrong holder — and never disburses.
+UNATTRIBUTED_RIGHTS_BUCKET: Final[str] = "__unattributed__"
+
+
+# ============================================================
 # Bookkeeping
 # ============================================================
 

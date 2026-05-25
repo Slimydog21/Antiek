@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../lib/api";
 import { WernerThinking } from "../brand/werner/animated";
+import { useReplyMode } from "../hooks/useReplyMode";
+import SpokenReply from "./SpokenReply";
 import {
   dispatchAiAction,
   parseAssistantReply,
@@ -62,6 +64,8 @@ export default function AISidecar() {
   const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
   const [pending, setPending] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // Read SPR-07 — the rabbit hole answers in text OR audio per preference.
+  const { mode: replyMode, setMode: setReplyMode } = useReplyMode();
 
   /**
    * Actions the AI has dispatched against this workspace. Each entry
@@ -290,13 +294,37 @@ export default function AISidecar() {
               )}
             </button>
             {reply && (
-              <div className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1 bg-ice-1 dark:bg-charcoal-2">
-                <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-                  {reply.shape}
-                </p>
+              <div className="border border-rule dark:border-charcoal-1 rounded p-2 space-y-1.5 bg-ice-1 dark:bg-charcoal-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                    {reply.shape}
+                  </p>
+                  {/* Reply mode: text (read) or audio (auto-spoken). The
+                      text is always shown; this only governs auto-speak. */}
+                  <div className="flex items-center gap-1" role="group" aria-label="Reply mode">
+                    {(["text", "audio"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        aria-pressed={replyMode === m}
+                        onClick={() => setReplyMode(m)}
+                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                          replyMode === m
+                            ? "bg-ink text-white"
+                            : "text-shadow-1 dark:text-moonlight hover:bg-ice-3 dark:hover:bg-charcoal-1"
+                        }`}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <p className="text-xs text-ink dark:text-bright whitespace-pre-wrap">
                   {reply.text}
                 </p>
+                {reply.text.trim() && (
+                  <SpokenReply text={reply.text} autoPlay={replyMode === "audio"} />
+                )}
               </div>
             )}
 

@@ -232,6 +232,15 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.AIActionUndonePayload,
     # Sprint 19 — DP shuffler substrate plumbing (§13.3 + §16.2).
     schema_module.DPRoutedPayload,
+    # Write workflow SPR-01 — OutlineBlock composition audit trail.
+    schema_module.OutlineBlockPlacedPayload,
+    schema_module.OutlineBlockMovedPayload,
+    schema_module.OutlineBlockRemovedPayload,
+    # Write workflow SPR-02 — edit capture.
+    schema_module.EditCapturedPayload,
+    # Read workflow SPR-01 — servable-corpus legal-gate audit trail.
+    schema_module.BookServabilityChangedPayload,
+    schema_module.BookTakenDownPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
