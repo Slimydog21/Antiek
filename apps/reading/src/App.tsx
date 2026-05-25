@@ -15,6 +15,7 @@ import Federation from "./modes/Federation";
 import InterviewMode from "./modes/Interview";
 import InterviewIndex from "./modes/InterviewIndex";
 import InvestigationsIndex from "./modes/InvestigationsIndex";
+import Library from "./modes/Library";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
@@ -26,7 +27,9 @@ import OutcomesIndex from "./modes/OutcomesIndex";
 import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
+import BookReader from "./modes/Reading";
 import Replay from "./modes/Replay";
+import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
 import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
@@ -82,6 +85,8 @@ function AuthenticatedRoutes() {
       <Routes>
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
+        {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace). */}
+        <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
@@ -91,6 +96,8 @@ function AuthenticatedRoutes() {
         <Route path="/notebooks" element={<NotebooksIndex />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
+        <Route path="/library" element={<Library />} />
+        <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/map" element={<Map />} />

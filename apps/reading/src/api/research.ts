@@ -1,0 +1,183 @@
+/**
+ * Deep Research Workspace API client (DRW SPR-06 transport → SPR-09 UI).
+ *
+ * Mirrors `interfaces/research/api/cascade_routes.py` (prefix `/research`).
+ * The cascade lifecycle: plan → edit → approve → launch → watch → steer.
+ * The frontend never decides launchability or cost — it renders what the
+ * backend's glass-box gate + runner report.
+ */
+
+import { API_BASE, ApiError, apiFetch } from "../lib/api";
+
+// ── Plan tree (mirrors roles/cascade_planner PlanTree.to_dict) ──────────
+
+export interface PlanNode {
+  local_id: string;
+  question: string;
+  rationale: string;
+  focus_boundary: string;
+  budget_usd: number | null;
+  max_depth: number | null;
+  graph_node_id: string | null;
+  children: PlanNode[];
+}
+
+export interface PlanApproval {
+  state: "draft" | "approved";
+  approved_at: string | null;
+  approved_by: string | null;
+  plan_version: number;
+}
+
+export interface PlanTree {
+  root: PlanNode;
+  seed_kind: string;
+  seed_provenance: Record<string, unknown>;
+  approval: PlanApproval;
+  root_investigation_id: string | null;
+}
+
+export interface CreatePlanResponse {
+  root_node_id: string;
+  tree: PlanTree;
+  capped_nodes: string[];
+  over_broad_leaves: string[];
+}
+
+export interface PlanResponse {
+  root_node_id: string;
+  tree: PlanTree;
+  launchable: boolean;
+}
+
+export interface ApproveResponse {
+  root_node_id: string;
+  approval: PlanApproval;
+  launchable: boolean;
+}
+
+// ── Session (mirrors CascadeSession status/cost) ────────────────────────
+
+export type ResearchRunState =
+  | "pending" | "running" | "paused" | "stopping"
+  | "done" | "stopped" | "failed" | "budget_halted";
+
+export const TERMINAL_STATES: ReadonlySet<ResearchRunState> = new Set<ResearchRunState>([
+  "done", "stopped", "failed", "budget_halted",
+]);
+
+export interface ResearchStatus {
+  investigation_id: string;
+  sub_question: string;
+  state: ResearchRunState;
+  question_node_id?: string | null;
+}
+
+export interface SessionCost {
+  per_research: Record<string, number>;
+  session_total_usd: number;
+  aggregate_spent_usd: number;
+  aggregate_cap_usd: number;
+}
+
+export interface SessionStatus {
+  session_id: string;
+  live: boolean;
+  researches: ResearchStatus[];
+  cost?: SessionCost | null;
+  all_terminal?: boolean;
+}
+
+export interface LaunchResponse {
+  session_id: string;
+  researches: { investigation_id: string; sub_question: string; question_node_id: string | null }[];
+  aggregate_cap_usd: number | null;
+}
+
+export type SteerKind = "pause" | "resume" | "stop" | "redirect" | "deepen";
+
+// ── Request helpers ─────────────────────────────────────────────────────
+
+async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
+  if (!resp.ok) {
+    throw new ApiError(`${what} failed: HTTP ${resp.status}`, resp.status, await resp.text());
+  }
+  return resp.json() as Promise<T>;
+}
+
+function post<T>(path: string, body: unknown): Promise<T> {
+  return apiFetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then((r) => jsonOrThrow<T>(r, `POST ${path}`));
+}
+
+function get<T>(path: string): Promise<T> {
+  return apiFetch(`${API_BASE}${path}`).then((r) => jsonOrThrow<T>(r, `GET ${path}`));
+}
+
+// ── Plan lifecycle (SPR-05 over HTTP) ───────────────────────────────────
+
+export function createPlan(req: {
+  problem: string;
+  sub_questions?: string[];
+  max_depth?: number;
+}): Promise<CreatePlanResponse> {
+  return post("/research/plans", req);
+}
+
+export function getPlan(rootId: string): Promise<PlanResponse> {
+  return get(`/research/plans/${encodeURIComponent(rootId)}`);
+}
+
+export function editPlan(rootId: string, edit: {
+  op: "add_child" | "remove" | "reword" | "set_budget" | "split";
+  target_local_id: string;
+  question?: string;
+  budget_usd?: number;
+  max_depth?: number;
+  into?: string[];
+}): Promise<PlanResponse> {
+  return post(`/research/plans/${encodeURIComponent(rootId)}/edit`, edit);
+}
+
+export function approvePlan(rootId: string, approver = "__operator__"): Promise<ApproveResponse> {
+  return post(`/research/plans/${encodeURIComponent(rootId)}/approve`, { approver });
+}
+
+// ── Launch + session (SPR-06) ───────────────────────────────────────────
+
+export function launchPlan(rootId: string, req: {
+  per_research_budget_usd?: number;
+  aggregate_budget_usd?: number | null;
+} = {}): Promise<LaunchResponse> {
+  return post(`/research/plans/${encodeURIComponent(rootId)}/launch`, req);
+}
+
+export function getSession(sessionId: string): Promise<SessionStatus> {
+  return get(`/research/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export function getSessionCost(sessionId: string): Promise<SessionCost> {
+  return get(`/research/sessions/${encodeURIComponent(sessionId)}/cost`);
+}
+
+export function steerResearch(
+  sessionId: string,
+  investigationId: string,
+  kind: SteerKind,
+  payload?: Record<string, unknown>,
+): Promise<{ session_id: string; investigation_id: string; state: ResearchRunState | null }> {
+  return post(
+    `/research/sessions/${encodeURIComponent(sessionId)}/researches/${encodeURIComponent(investigationId)}/steer`,
+    { kind, payload: payload ?? null },
+  );
+}
+
+/** SSE endpoint URL — the finer-grained per-step stream. The SPR-09 monitor
+ * polls `getSession` (the durable, authoritative source) for robustness;
+ * this is here for a future EventSource upgrade to step-level liveness. */
+export function sessionStreamUrl(sessionId: string): string {
+  return `${API_BASE}/research/sessions/${encodeURIComponent(sessionId)}/stream`;
+}
