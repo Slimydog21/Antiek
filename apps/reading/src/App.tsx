@@ -10,6 +10,7 @@ import Billing from "./modes/Billing";
 import BrainstormStation from "./modes/BrainstormStation";
 import CreationStudio from "./modes/CreationStudio";
 import { ContextWindow } from "./modes/Write/ContextWindow/ContextWindow";
+import { Repository } from "./modes/Write/Repository/Repository";
 import { TraceListener } from "./modes/Write/Trace/TraceListener";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
@@ -105,6 +106,10 @@ function AuthenticatedRoutes() {
         <Route path="/brainstorm" element={<BrainstormStation />} />
         {/* Write SPR-08: the outline-optional pre-outline context window. */}
         <Route path="/write/context" element={<ContextWindow />} />
+        {/* Write SPR-03: the block repository — browse/search insight,
+            question + claim blocks across investigations; drag into any
+            open outline (the supply side of the writing workflow). */}
+        <Route path="/write/repository" element={<Repository />} />
         <Route path="/notebooks" element={<NotebooksIndex />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
