@@ -102,3 +102,75 @@ export async function placeBlock(body: PlaceBlockBody): Promise<string> {
   );
   return r.outline_block_id;
 }
+
+export interface PromoteResult {
+  deliverable_id: string;
+  section_id: string;
+  block_ids: string[];
+}
+
+/** Promote a pre-outline context window to a structured outline (SPR-08). */
+export async function promoteContext(body: unknown): Promise<PromoteResult> {
+  return _json<PromoteResult>(
+    await apiFetch(`${API_BASE}/write/context/promote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    "POST /write/context/promote",
+  );
+}
+
+export interface GenerationResult {
+  status: "generated" | "gap" | "gate_failed" | "invalid";
+  section_id: string;
+  prose_text?: string;
+  detail?: string;
+  gate_passed?: boolean | null;
+  all_claims_cited?: boolean | null;
+  unsupported_paragraphs?: number[];
+  fabricated_citations?: string[];
+}
+
+/** Generate a section's prose from its attached blocks (SPR-06). The live
+ * model path may return 503 until creative_writer is wired into dispatch. */
+export async function generateSection(sectionId: string): Promise<GenerationResult> {
+  return _json<GenerationResult>(
+    await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/generate`, {
+      method: "POST",
+    }),
+    "POST /write/sections/{id}/generate",
+  );
+}
+
+export interface BrainstormEmitBody {
+  section_id: string;
+  deliverable_id?: string;
+  insights: string[];
+  questions: string[];
+  data_points: string[];
+}
+
+export interface BrainstormEmitResult {
+  block_ids: string[];
+  insight_count: number;
+  question_count: number;
+  data_count: number;
+  skipped_duplicates: number;
+  flagged_unverified: string[];
+}
+
+/** Emit brainstorm drivers as user-originated OutlineBlocks (SPR-05).
+ * Asserted data points are flagged unverified by the backend. */
+export async function emitBrainstormBlocks(
+  body: BrainstormEmitBody,
+): Promise<BrainstormEmitResult> {
+  return _json<BrainstormEmitResult>(
+    await apiFetch(`${API_BASE}/write/brainstorm/emit-blocks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    "POST /write/brainstorm/emit-blocks",
+  );
+}
