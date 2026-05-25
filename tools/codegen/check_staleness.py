@@ -24,51 +24,72 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent.parent))
 
-from tools.codegen.emit_types import DEFAULT_OUTPUT, render  # noqa: E402
+from tools.codegen import emit_contracts, emit_types  # noqa: E402
+
+# Each codegen target: a label, the pure render function, the on-disk file,
+# the source it's generated from, and the regen command. The events target
+# (emit_types) and the contracts target (emit_contracts, antiek-unified SPR-01)
+# are checked the same way.
+_TARGETS = (
+    (
+        "events",
+        emit_types.render,
+        emit_types.DEFAULT_OUTPUT,
+        "substrate/schemas/events.py",
+        "python tools/codegen/emit_types.py",
+    ),
+    (
+        "contracts",
+        emit_contracts.render,
+        emit_contracts.DEFAULT_OUTPUT,
+        "substrate/contracts/",
+        "python tools/codegen/emit_contracts.py",
+    ),
+)
 
 
-def main() -> int:
+def _check_target(label, render, output, source, regen_cmd) -> int:
     try:
         expected = render()
     except Exception as exc:  # pragma: no cover — surfaces schema bugs
-        print(f"FAIL: schema introspection raised: {exc}", file=sys.stderr)
+        print(f"FAIL [{label}]: schema introspection raised: {exc}", file=sys.stderr)
         return 2
 
-    if not DEFAULT_OUTPUT.exists():
-        print(
-            f"FAIL: {DEFAULT_OUTPUT} does not exist.\n"
-            f"Run: python tools/codegen/emit_types.py",
-            file=sys.stderr,
-        )
+    if not output.exists():
+        print(f"FAIL [{label}]: {output} does not exist.\nRun: {regen_cmd}", file=sys.stderr)
         return 1
 
-    actual = DEFAULT_OUTPUT.read_text(encoding="utf-8")
+    actual = output.read_text(encoding="utf-8")
     if actual != expected:
-        # Show a tiny diff hint so the CI log is useful.
         import difflib
         diff = "".join(
             difflib.unified_diff(
                 actual.splitlines(keepends=True),
                 expected.splitlines(keepends=True),
-                fromfile=str(DEFAULT_OUTPUT),
-                tofile="<expected from schemas>",
+                fromfile=str(output),
+                tofile=f"<expected from {source}>",
                 n=3,
             )
         )
-        # Cap the diff so a wholesale regeneration doesn't flood the log.
         if len(diff) > 4000:
             diff = diff[:4000] + "\n... (diff truncated; regen and commit)\n"
         print(
-            f"FAIL: {DEFAULT_OUTPUT} is stale relative to "
-            "substrate/schemas/events.py.\n\n"
-            f"Run: python tools/codegen/emit_types.py\n\n"
-            f"Diff:\n{diff}",
+            f"FAIL [{label}]: {output} is stale relative to {source}.\n\n"
+            f"Run: {regen_cmd}\n\nDiff:\n{diff}",
             file=sys.stderr,
         )
         return 1
 
-    print(f"OK: {DEFAULT_OUTPUT.relative_to(_HERE.parent.parent)} in sync with schemas.")
+    print(f"OK [{label}]: {output.relative_to(_HERE.parent.parent)} in sync with {source}.")
     return 0
+
+
+def main() -> int:
+    worst = 0
+    for target in _TARGETS:
+        rc = _check_target(*target)
+        worst = max(worst, rc)
+    return worst
 
 
 if __name__ == "__main__":
