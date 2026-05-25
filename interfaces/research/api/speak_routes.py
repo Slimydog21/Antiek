@@ -217,6 +217,32 @@ async def create_project(req: CreateProjectRequest) -> ProjectResponse:
     return ProjectResponse(**p.__dict__)
 
 
+@speak_router.get("/projects")
+async def list_projects() -> dict:
+    """List Speak projects (the operator's project index). Uses a write
+    lock only to ensure the Speak schema exists on a fresh DB; the query
+    itself is a read."""
+    with _translate(), _write("speak/api:list_projects") as con:
+        rows = con.execute(
+            "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
+            "p.publish_intent, p.invitation_mode, "
+            "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id), "
+            "strftime(p.created_at, '%Y-%m-%dT%H:%M:%S') "
+            "FROM speak_projects p "
+            "JOIN interview_projects ip ON ip.project_id = p.project_id "
+            "ORDER BY p.created_at DESC"
+        ).fetchall()
+    return {
+        "count": len(rows),
+        "projects": [
+            {"project_id": r[0], "title": r[1], "subject_ref": r[2],
+             "subject_status": r[3], "publish_intent": r[4],
+             "invitation_mode": r[5], "interview_count": r[6], "created_at": r[7]}
+            for r in rows
+        ],
+    }
+
+
 @speak_router.get("/projects/{project_id}", response_model=ProjectResponse)
 async def get_project(project_id: str) -> ProjectResponse:
     with _translate(), _write("speak/api:get_project") as con:

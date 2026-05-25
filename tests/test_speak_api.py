@@ -172,3 +172,18 @@ def test_private_publish_not_served(client):
     assert r.status_code == 201, r.text
     assert r.json()["served"] is False
     assert r.json()["visibility"] == "private"
+
+
+def test_list_projects(client):
+    # Fresh DB → empty list.
+    r = client.get("/speak/projects")
+    assert r.status_code == 200
+    assert r.json()["count"] == 0
+    # Create two → both listed with their publish intent + interview count.
+    client.post("/speak/projects", json={"title": "Dad's biography"})
+    client.post("/speak/projects", json={"title": "Mom's biography", "publish_intent": "will_be_public"})
+    data = client.get("/speak/projects").json()
+    assert data["count"] == 2
+    titles = {p["title"] for p in data["projects"]}
+    assert titles == {"Dad's biography", "Mom's biography"}
+    assert all("interview_count" in p and "publish_intent" in p for p in data["projects"])

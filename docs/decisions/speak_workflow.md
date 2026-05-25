@@ -64,11 +64,18 @@ hot shared `schemas/events.py` or `graph/schema.py`). Per sprint:
   `substrate.books.servability` shipped (parallel stream) during this
   execution. A public biography is `content_class='user_public_contribution'`
   → `servability_of` → `PLATFORM_AUTHORED` → servable. No fork.
-- **Write (`OutlineBlock`, `creative_writer`).** The `creative_writer`
-  role + `deliverables`/`section_blocks` substrate exist; `substrate/write/`
-  does not yet. SPR-08 builds against the `contracts.OutlineComposer`
-  Protocol with `biography.SpeakOutlineComposer` as the default (writes
-  `section_blocks`); Write's composer drops in later.
+- **Write (`OutlineBlock`, `creative_writer`) — LANDED + WIRED (2026-05-25,
+  commit `44907c0`).** SPR-08 built against the `contracts.OutlineComposer`
+  Protocol with `biography.SpeakOutlineComposer` (legacy `section_blocks`).
+  `substrate/write/` has since shipped, so `substrate/speak/write_composer.py`
+  supplies the contract's real implementation: `WriteOutlineComposer` composes
+  through Write's canonical `outline_blocks` layer (which supersedes
+  `section_blocks`) via `substrate.write.place_block`, now
+  `assemble_outline`'s default (`default_outline_composer`, falls back to the
+  legacy composer if Write is absent). A speak_claim maps to a `synthesized`
+  block with `source_block_id`=claim_id + contributor provenance in metadata —
+  **not** promoted to a shared graph node (same operator-gated consent
+  boundary as the DRW seam). Speak no longer forks onto the legacy substrate.
 - **DRW (`gap_detection`) — LANDED + WIRED (2026-05-25, commit `e865fad`).**
   SPR-04 built against `contracts.GapSource` with
   `interviewer_context.SpeakGraphGapSource` as the default. DRW SPR-07 has

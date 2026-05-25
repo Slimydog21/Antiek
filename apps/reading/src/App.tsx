@@ -32,6 +32,8 @@ import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
 import SkillRules from "./modes/SkillRules";
 import Sources from "./modes/Sources";
+import SpeakConsole from "./modes/Speak";
+import SpeakIndex from "./modes/SpeakIndex";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
 import WrestleApp from "./modes/WrestleApp";
@@ -101,6 +103,8 @@ function AuthenticatedRoutes() {
         <Route path="/replay/:investigationId" element={<Replay />} />
         <Route path="/interview/:interviewId" element={<InterviewMode />} />
         <Route path="/interviews" element={<InterviewIndex />} />
+        <Route path="/speak" element={<SpeakIndex />} />
+        <Route path="/speak/:projectId" element={<SpeakConsole />} />
         <Route path="/loop-3" element={<Loop3 />} />
         <Route path="/skill-rules" element={<SkillRules />} />
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />

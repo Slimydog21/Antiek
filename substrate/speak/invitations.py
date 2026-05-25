@@ -146,17 +146,30 @@ def resolve_token(con: Any, token: str) -> Optional[Invite]:
 
 def lifecycle(con: Any, project_id: str) -> list[dict]:
     """Each invitee's lifecycle status for a project (the operator's
-    invite-tracking view)."""
+    invite-tracking view), with the invite link + the consent scopes the
+    invite captures. LEFT JOIN so an interview without a speak_invite row
+    (e.g. created directly via the async API) still appears."""
+    import json
     rows = con.execute(
-        "SELECT i.interview_id, i.informant_email, i.informant_handle, i.status "
-        "FROM interviews i WHERE i.project_id = ? ORDER BY i.invited_at",
+        "SELECT i.interview_id, i.informant_email, i.informant_handle, i.status, "
+        "s.token, s.required_consent_scopes "
+        "FROM interviews i "
+        "LEFT JOIN speak_invites s ON s.interview_id = i.interview_id "
+        "WHERE i.project_id = ? ORDER BY i.invited_at",
         [project_id],
     ).fetchall()
-    return [
-        {"interview_id": r[0], "informant_email": r[1],
-         "informant_handle": r[2], "status": r[3]}
-        for r in rows
-    ]
+    out: list[dict] = []
+    for r in rows:
+        token = r[4]
+        out.append({
+            "interview_id": r[0],
+            "informant_email": r[1],
+            "informant_handle": r[2],
+            "status": r[3],
+            "link": (f"https://{INVITE_HOST}/{r[0]}?token={token}" if token else None),
+            "required_consent_scopes": (json.loads(r[5]) if r[5] else []),
+        })
+    return out
 
 
 def open_public_contribution(con: Any, project_id: str) -> None:
