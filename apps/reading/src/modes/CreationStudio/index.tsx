@@ -19,6 +19,7 @@ import {
   DRAG_MIME,
   type PaletteDragPayload,
 } from "./BlockPalette";
+import { WriteEditor } from "../Write/Editor/Editor";
 
 interface SectionDragPayload {
   from: "section";
@@ -451,12 +452,18 @@ function ProseEditor({
 
   return (
     <div className="mt-3">
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={Math.max(6, Math.min(20, text.split("\n").length + 1))}
-        className="w-full px-3 py-2 text-sm border border-rule dark:border-charcoal-1 rounded font-serif focus:outline-none focus:ring-2 focus:ring-sun"
-      />
+      {/* SPR-04: the structured TipTap block editor replaces the plain
+          textarea. Granular edit.captured events flow automatically from
+          inside WriteEditor; the coarse prose_text save path below stays
+          for backward-compat with existing deliverables. */}
+      <div className="w-full px-3 py-2 text-sm border border-rule dark:border-charcoal-1 rounded font-serif focus-within:ring-2 focus-within:ring-sun">
+        <WriteEditor
+          deliverableId={section.deliverable_id}
+          sectionId={section.section_id}
+          initialContent={text}
+          onContentChange={setText}
+        />
+      </div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <label className="flex items-center gap-1.5 text-xs text-ink dark:text-bright">
           <input
