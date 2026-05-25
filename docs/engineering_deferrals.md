@@ -350,6 +350,35 @@ the decision with operator-rationale so a future maintainer doesn't
 
 ---
 
+## D13 — Write live draft generation (provider credential)
+
+**Status:** ⚠️ Code-complete; activation operator-gated on a credential.
+`creative_writer` is wired into `substrate/dispatch/config.yaml` (→
+synthesis tier; model `anthropic/claude-opus-4.7` via OpenRouter primary,
+`hermes`/grok fallback), and `POST /write/sections/{id}/generate` routes
+generation. With NO provider key present the endpoint returns a clean 503
+("generation unavailable") — never a crash, never fabricated prose
+(verified: `tests/test_write_routes.py::test_generate_without_credential_fails_gracefully`).
+**Unlock criterion:** Operator sets a provider credential in the env —
+`OPENROUTER_API_KEY` (synthesis primary) and/or a fallback provider key.
+This is a credential, not code.
+**Spec reference:** `specs/write/` SPR-06 (draft generation). The
+deterministic contract — every generated claim cites a block, unsupported
+claims flagged, `voice_style` gate wins, no-blocks→gap — is enforced in
+`substrate/write/draft_generation.py` regardless of which model answers.
+**Blocks-what:** live prose output from attached blocks. The
+editing-as-data capture (SPR-02) does not depend on this — it captures
+whatever the writer edits, generated or hand-written.
+
+The wiring + the credential-graceful failure are verified; only the secret
+is missing, and supplying it is an operator action with no code change.
+
+**Action when unlocked:** set the key in the API service env (a `.env`
+exists at the repo root; production via the systemd unit). Generation then
+produces cited prose into the editor; no redeploy of logic needed.
+
+---
+
 ## Cross-reference: unlock criterion → deferrals it gates
 
 | Unlock criterion | Deferrals that close |
