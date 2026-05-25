@@ -113,8 +113,17 @@ def _decompose(problem: str, max_depth: int):
 
 
 def _research_loop_factory():
-    """The browse loop each investigation runs. Default = SPR-02 demo loop;
-    the real Exa→Browserbase loop drops in here with no route change."""
+    """The browse loop each investigation runs. When ``EXA_API_KEY`` is
+    configured we run the REAL Exa→Browserbase browse loop (search → fetch →
+    distil → notes); otherwise we fall back to the SPR-02 demo loop so the
+    surface still works keyless (and tests, which set no key, stay
+    deterministic). Browserbase escalation degrades gracefully inside the
+    fetch provider when its keys are absent."""
+    if os.environ.get("EXA_API_KEY"):
+        from runtime.research_runner.browse_loop import default_browse_loop
+        real = default_browse_loop()
+        if real is not None:
+            return real
     return make_demo_loop(steps=3, cost_per_step=0.01, emit_note=True)
 
 
