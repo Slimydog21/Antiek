@@ -3,18 +3,20 @@
  *
  * HONEST SCOPE. The biography authoring + publishing LOGIC is fully
  * covered server-side (tests/test_biography_authoring.py,
- * tests/test_speak_publish.py): outline → bounded deepening → draft,
- * corroborated-only publishable, publish-per-mode. What does NOT yet
- * exist is the Speak authoring/publishing UI surface or the REST
- * endpoints that would let Playwright drive the full flow against a
- * running app — that is API wiring, a documented deferral (see
- * docs/decisions/speak_workflow.md).
+ * tests/test_speak_publish.py), and the full operator JOURNEY — project
+ * → invite → consent → answer → claim → corroborate → draft → publish →
+ * book-order — now runs end-to-end through the real wired app in
+ * tests/test_speak_api.py (FastAPI TestClient over the /speak router).
+ * The ONLY thing still missing is the browser UI PAGE that walks that
+ * journey; the REST surface it would call exists
+ * (interfaces/research/api/speak_routes.py).
  *
  * So this spec does two honest things:
- *   1. smoke-tests the Speak surface that DOES exist — the Invites
- *      story — so the e2e harness exercises real Speak UI;
- *   2. marks the full project→draft→publish journey test.skip with the
- *      reason, rather than faking a green check.
+ *   1. smoke-tests the Speak surfaces that DO exist — the Invites +
+ *      transcript-correction stories — so the e2e harness exercises
+ *      real Speak UI;
+ *   2. marks the full browser journey test.skip with the reason (no UI
+ *      page yet), rather than faking a green check.
  *
  * Run against Storybook with `npm run e2e` (STORYBOOK_URL).
  */

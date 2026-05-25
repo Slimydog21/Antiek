@@ -88,13 +88,41 @@ hot shared `schemas/events.py` or `graph/schema.py`). Per sprint:
   discipline + the audit-event trail, per the existing `graph/ops.py`
   convention.
 
+## REST surface (built 2026-05-25, continuation)
+
+`interfaces/research/api/speak_routes.py` — a standalone `APIRouter`
+(`prefix=/speak`) wiring the whole substrate into the FastAPI app, kept
+out of the 5k-line `app.py` factory (collision safety) and included with
+one documented line before `return app`. Carries no auth (the app's
+global operator-auth middleware covers it). Covers the full journey:
+projects, invites (+ token resolve, + G7-gated open-public), consent,
+answers, **claims** (the explicit answer→claim bridge — third-party
+tagging is a confirmed judgment, never inferred), corroborate,
+subject-consent, contributors, draft, publish, book-orders, takedowns.
+Domain exceptions map to HTTP (consent/G7 → 403, publish/disburse → 409,
+not-found → 404). `tests/test_speak_api.py` (6 tests) runs the full
+operator journey end-to-end through the REAL wired app (TestClient over
+`create_app`) + every gate refusal — this IS a true end-to-end for the
+API; the only thing still missing is a browser UI PAGE.
+
+## The GapSource seam paid off
+
+DRW SPR-07's real gap detector landed during this work and wired itself
+into Speak SPR-04 via the `contracts.GapSource` Protocol —
+`interviewer_context.build_conditioning_context` now defaults to
+`drw_gap_source.default_gap_source(con)` (DRW shared-graph gaps +
+Speak's consent-aware local source). Zero changes to Speak's call sites
+or tests; all 8 SPR-04 tests stayed green. This is the contract-first
+design doing its job.
+
 ## Deferred (NOT built — honest scope)
 
-- **Speak REST endpoints + authoring/publishing UI surface.** The
-  orchestration logic is fully tested server-side; wiring it to FastAPI +
-  React is API work. `e2e/speak-biography.spec.ts` smoke-tests the
-  extant Speak surfaces (Invites, transcript correction) and `test.skip`s
-  the full project→draft→publish journey with that reason.
+- **Browser UI page for the authoring/publishing journey.** The REST
+  surface it would call now EXISTS and is end-to-end tested
+  (`test_speak_api.py`); only the React page is missing.
+  `e2e/speak-biography.spec.ts` smoke-tests the extant Speak surfaces
+  (Invites, transcript correction) and `test.skip`s the full *browser*
+  journey with that reason.
 - **Live POD fulfillment.** `physical_book.StubPhysicalBookProvider`
   quotes a cost and fulfils NOTHING. A vendor adapter (Lulu/IngramSpark)
   drops into the `PhysicalBookProvider` seam later.

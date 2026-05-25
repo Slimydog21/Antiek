@@ -5081,6 +5081,15 @@ def create_app(
             loop_3_unlock_status=loop_3_status,
         )
 
+    # ── Speak workflow (specs/speak/) — the fourth workflow's REST
+    #    surface. Kept in its own module (interfaces/research/api/
+    #    speak_routes.py) so this hot factory stays mergeable; included
+    #    here with one line. The router carries no auth (the global
+    #    operator-auth middleware above covers it). See
+    #    docs/decisions/speak_workflow.md.
+    from interfaces.research.api.speak_routes import speak_router
+    app.include_router(speak_router)
+
     return app
 
 
