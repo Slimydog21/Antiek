@@ -176,6 +176,27 @@ def _read_roster_files(spec_dir: Path) -> list[tuple[int, str]]:
     return found
 
 
+def _manifest_rosters() -> dict[str, list[tuple[int, str]]]:
+    """Committed fallback roster (``sprint_rosters.json``, generated from the
+    specs). Used when the live ``specs/`` dirs are not on disk — i.e. on CI and
+    on prod, where the untracked planning specs are absent. The live filesystem
+    (the operator's ``~/Desktop/Antiek/specs``) takes precedence when present so
+    the operator always sees current state; this manifest keeps the roadmap
+    portable and the coordination dashboard non-empty everywhere else. Regenerate
+    it when the rosters change."""
+    import json
+
+    path = Path(__file__).with_name("sprint_rosters.json")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {
+        key: [(int(n), str(slug)) for n, slug in rows]
+        for key, rows in data.get("rosters", {}).items()
+    }
+
+
 def _drw_status(sprint: int) -> SprintStatus:
     """DRW sprint status from the frozen sprint-lock (single source — we don't
     re-derive it)."""
@@ -227,8 +248,15 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
     crit = set(dependency_map.critical_path())
 
     rosters: list[SpecRoster] = []
+    # The live specs/ root takes precedence (the operator's current view). Only
+    # when the root itself is absent — CI and prod, where the untracked planning
+    # specs do not ship — fall back to the committed manifest, so the roadmap is
+    # portable rather than empty. When a root IS present (the real dir or a test
+    # fixture), an absent per-spec dir honestly contributes 0 (no backfill).
+    root_present = root.is_dir()
+    manifest = {} if root_present else _manifest_rosters()
     for spec, dirname, label in _SPEC_DIRS:
-        files = _read_roster_files(root / dirname)
+        files = _read_roster_files(root / dirname) if root_present else manifest.get(spec, [])
         rows: list[SprintRow] = []
         for sprint, slug in files:
             node_id = f"{spec}:{sprint}"
@@ -258,7 +286,11 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
             SpecRoster(spec=spec, label=label, directory=dirname, sprints=tuple(rows))
         )
 
-    superseded_files = _read_roster_files(root / _SUPERSEDED_DIR)
+    superseded_files = (
+        _read_roster_files(root / _SUPERSEDED_DIR)
+        if root_present
+        else manifest.get(_SUPERSEDED_DIR, [])
+    )
 
     return Roadmap(
         rosters=tuple(rosters),
