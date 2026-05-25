@@ -14,6 +14,14 @@ from typing import Any
 
 import pytest
 
+# The pi-execution substrate primitives (substrate.conversation / edit /
+# harness / harness_diff) are an experimental branch NOT merged into the
+# four-workflow product consolidation. Skip this end-to-end suite cleanly when
+# they're absent rather than erroring collection — CI runs the full suite, so a
+# bare import error would show red. The suite runs in full once pi-execution
+# merges.
+pytest.importorskip("substrate.conversation")
+
 from substrate.conversation.compaction import compact as compact_fn
 from substrate.conversation.event import Event
 from substrate.conversation.event_log import EventLog

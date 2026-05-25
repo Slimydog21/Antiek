@@ -75,15 +75,26 @@ from substrate.constants import (
 
 
 class _StubEmbedder:
-    """Returns orthogonal vectors keyed on input length so distinct
-    strings score cosine ≈ 0, never tripping the paraphrase guard."""
+    """Returns a deterministic near-orthogonal vector per text so distinct
+    strings score cosine ≈ 0 (never tripping the paraphrase guard) while an
+    identical string scores 1.0 (a real duplicate SHOULD be flagged).
+
+    Uses a STABLE hash (hashlib) seeding a per-text RNG of Gaussian
+    components — NOT Python's builtin ``hash()``, which is randomized per
+    process (PYTHONHASHSEED). The old one-hot-on-``hash()%64`` design collided
+    two distinct sub-questions onto the same basis vector for some seeds,
+    making the happy-path reward test seed-flaky (passed in isolation, failed
+    under other seeds). Gaussian vectors in 64-dim are near-orthogonal for
+    distinct seeds (E[cosine]=0), so distinct strings stay well below any
+    paraphrase threshold, deterministically."""
 
     def encode(self, text: str) -> list[float]:
-        h = abs(hash(text)) % 1024
-        v = [0.0] * 64
-        v[h % 64] = 1.0
-        v[(h * 7) % 64] = 0.5
-        return v
+        import hashlib
+        import random
+
+        seed = int.from_bytes(hashlib.sha256(text.encode("utf-8")).digest()[:8], "big")
+        rng = random.Random(seed)
+        return [rng.gauss(0.0, 1.0) for _ in range(64)]
 
 
 @pytest.fixture

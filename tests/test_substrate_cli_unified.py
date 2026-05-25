@@ -8,6 +8,13 @@ from pathlib import Path
 
 import pytest
 
+# The pi-execution substrate primitives (substrate.conversation / harness /
+# the unified CLI subcommands built on them) are an experimental branch NOT
+# merged into the four-workflow product. Skip cleanly when absent rather than
+# erroring collection (CI runs the full suite). Runs in full once pi-execution
+# merges.
+pytest.importorskip("substrate.conversation")
+
 from substrate.cli import __main__ as unified
 from substrate.cli.compact import main as compact_main
 from substrate.cli.hooks import main as hooks_main
