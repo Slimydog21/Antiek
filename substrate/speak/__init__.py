@@ -40,6 +40,8 @@ from .events import (
     SPEAK_ACTION_TYPES,
     record_speak_event,
 )
+from .consent import ConsentScope, ScopedConsentRequired
+from .publish_gate import PublishBlocked, PublishDecision
 
 __all__ = [
     "ANTIEK_SPEAK_SCHEMA_SQL",
@@ -47,4 +49,9 @@ __all__ = [
     "ensure_speak_schema",
     "SPEAK_ACTION_TYPES",
     "record_speak_event",
+    # SPR-01 consent & rights gate
+    "ConsentScope",
+    "ScopedConsentRequired",
+    "PublishBlocked",
+    "PublishDecision",
 ]
