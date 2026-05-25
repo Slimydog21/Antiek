@@ -341,6 +341,16 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     sharedReason: "Operator-only control plane spanning all workflows.",
   },
   {
+    id: "Coordination",
+    workflow: "shared",
+    label: "Coordination",
+    blurb: "Gate ledger (G1-G8) + 45-sprint cross-workflow roadmap.",
+    built: true,
+    route: "/coordination",
+    sharedReason:
+      "Cross-workflow coordination view (gates + roadmap span all four workflows); operator-facing, not workflow-scoped. Added by unified SPR-05; mapped here at Wave-3 integration.",
+  },
+  {
     id: "TrustCenter",
     workflow: "shared",
     label: "Trust Center",
