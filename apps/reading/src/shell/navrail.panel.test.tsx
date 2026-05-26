@@ -24,7 +24,6 @@ import { MemoryRouter } from "react-router-dom";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { NavRail } from "./NavRail";
 import {
-  isWorkflowDestination,
   modesForWorkflow,
   WORKFLOW_ORDER,
   WORKFLOWS,
@@ -81,7 +80,7 @@ describe("NavRail → panel mount contract (SPR-04 M6)", () => {
  * A fifth destination or promoted shared entry fails this with U-01 message.
  */
 describe("NavRail four-door canonical + anti-regression guard (U-01 M4)", () => {
-  it("workflow-destination group has exactly the taxonomy rail destinations (U-01 count guard, now via shared predicate)", () => {
+  it("workflow-destination group has exactly four doors (U-01 literal count guard)", () => {
     render(
       <MemoryRouter>
         <NavRail />
@@ -89,14 +88,14 @@ describe("NavRail four-door canonical + anti-regression guard (U-01 M4)", () => 
     );
     const group = screen.getByTestId("navrail-workflows");
     const buttons = group.querySelectorAll(":scope > button");
-    // Derive expected count from the SSOT predicate over the taxonomy list.
-    const railDestinationCount = WORKFLOW_ORDER.filter((wf) =>
-      isWorkflowDestination(wf),
-    ).length;
+    // The literal 4 is intentional and non-derived: deriving the count from
+    // WORKFLOW_ORDER would move with the rail (both map the same list), so a
+    // fifth workflow would stay green. Pinning the literal makes a deliberate
+    // fifth destination redden CI — the load-bearing half of the M4 gate.
     expect(
       buttons.length,
-      `the rail is four doors + utilities + More - see U-01. The navrail-workflows group children must equal the number of workflow destinations (no fifth door, no operator/shared promoted to rail).`,
-    ).toBe(railDestinationCount);
+      `the rail is exactly four doors (Research / Read / Write / Speak) + utilities + More - see U-01. A fifth workflow added to WORKFLOW_ORDER must redden this.`,
+    ).toBe(4);
 
     const labels = Array.from(buttons).map(
       (b) => b.querySelector(".sr-only")?.textContent?.trim() ?? ""

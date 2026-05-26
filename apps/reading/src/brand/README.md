@@ -2,72 +2,62 @@
 
 Werner the penguin lives here.
 
-The single source of truth for the mark in the product is
-`src/brand/Werner.tsx` (mood="idle" | "thinking" | "empty" | "celebrate",
-size-driven fidelity, CSS motion only). The old inline ellipse stack
-in NavRail is gone; the animated pose components remain for legacy
-call sites until U-04 wires the moods.
+The single source of truth for the mark is `src/brand/Werner.tsx` — one
+SVG React component, four moods (`idle` | `thinking` | `empty` |
+`celebrate`), size-driven fidelity, motion in CSS only. Every surface that
+shows Werner renders this component; there is no parallel geometry and no
+raster mark in the product chrome.
 
-`brand_werner.html` in `docs/ui_redesign_posthog/` is the canonical
-brand bible (palette, voice, pose meaning, dos + don'ts). This
-directory is the runtime asset side: the Krea-generated pose PNGs,
-the marks build pipeline, and the in-app components that reference
-them.
+`brand_werner.html` in `docs/ui_redesign_posthog/` is the canonical brand
+bible (palette, voice, pose meaning, dos + don'ts).
+
+## Werner.tsx — the four moods
+
+The same penguin geometry drives all four; each mood adds or moves a small
+amount of chrome, and the JSDoc in `Werner.tsx` records the load-bearing
+numbers (viewBox, bill apex, fidelity threshold, sway timing).
+
+- `idle` — the persistent rail mark (28 px) and the base for the animated
+  wrappers. Carries the light idle sway.
+- `thinking` — head tilts −6°; four aurora dots pulse right-to-left.
+- `empty` — head tilts −6° for blank/first-run states.
+- `celebrate` — one-shot raised flipper + sparkle on a completed action.
+
+Fidelity is size-driven: below 48 px is the clean rail/favicon silhouette;
+at ≥ 48 px the character details (skeptical eye lid, wing curve, toe hints)
+appear. A `MOODS` allowlist plus a dev-only runtime guard reject any fifth
+mood string before it can render.
+
+## Motion (CSS only)
+
+Animation lives in `werner/animated/animations.css`; every wrapper imports
+it. The idle sway is a 4.2 s breathing cycle; the thinking dots pulse on a
+1.2 s stagger; celebrate is an 800 ms one-shot. All of it collapses to a
+static frame under `prefers-reduced-motion: reduce`.
 
 ## What's in here
 
 ```
+Werner.tsx                The single-source mark component.
 werner/
-  poses/                  Krea PNGs — one per pose, plus *_corrected.png
-                          (PIL pass that locks yellow pixels to #F5DF24).
-    anchor/               The "default" and "hero" anchor poses + their
-                          generation candidates (v1 → v5). The picked
-                          winner for each is the v5 file.
-    werner_caught_a_fish_v1{,_corrected}.png
-    werner_head_tilt_v1{,_corrected}.png
-    werner_lost_v1{,_corrected}.png
-    werner_sleeping_v1{,_corrected}.png
-    werner_thinking_v1{,_corrected}.png
-    werner_tobogganing_v1{,_corrected}.png
-  marks/                  Mark derivatives + their build script.
-    build_marks.py        PIL script that produces favicon-32, mark-180
-                          (Apple touch icon), avatar-400, social-card-1200,
-                          and the day/night stack lockup with the Antiek
-                          wordmark.
-    mark-32.png
-    mark-180.png
-    avatar-400.png
-    social-card-1200.png
-    stack-lockup.svg      Werner + the Antiek wordmark, sun-yellow
-                          underline. Used by README hero + the optional
-                          marketing splash.
-  color_correct.py        Single-PNG color-correction helper. Replaces
-                          the Krea-output near-yellows with the locked
-                          #F5DF24 brand sun.
+  animated/               Thin wrappers that compose Werner with motion.
+    animations.css        Every keyframe + the reduced-motion collapse.
+    WernerThinking.tsx    Idle penguin + external aurora thinking dots.
+    WernerWaddle.tsx      Idle penguin with the route-transition waddle.
+    WernerCaughtAFish.tsx / WernerSleeping.tsx / WernerTobogganSpinner.tsx
+    Animations.stories.tsx, index.ts
+  poses/                  Krea-generated reference PNGs (illustration
+                          source for the bible; not loaded by the app).
+    anchor/               The default + hero anchor poses.
+    werner_*_v1_corrected.png   color-corrected pose references.
+  marks/                  Out-of-app mark derivatives (avatar, social card,
+                          Apple touch icon) + build_marks.py + stack-lockup.svg.
+  color_correct.py        PNG color-correction helper (locks near-yellows
+                          to the brand sun #F5DF24).
 ```
 
-## Naming + usage
-
-Components in `src/shell/NavRail.tsx` use an inline
-SVG mark (the abstract little penguin head). For full hero rendering
-(login splash, README, social cards), use the PNG files directly
-via `<img src={...} />`.
-
-The pose PNGs are the source of truth. There is no per-pose React
-component on disk — Werner ships as raster assets to preserve the
-hand-illustrated feel. (The original brand spec called for one TSX
-component per pose; that was pivoted to Krea-generated PNGs after the
-first SVG attempt was deemed "not cute enough" by the operator.)
-
-## Discipline
-
-- **Never recolour** the coat or belly. Bill + feet may shift between
-  day-ember and night-ember; nothing else moves.
-- **Never compose** Werner with other characters or mascots.
-- **Never rotate** the hero pose.
-- **Never animate** Werner. Werner waddles. Werner does not party.
-- The pose library is fixed at 7 + anchor. Adding poses is a brand
-  decision, not a code change — propose via the brand spec first.
+The in-app favicon (`public/favicon.svg`) is the Werner silhouette drawn
+from `Werner.tsx`'s geometry, not a PNG from `marks/`.
 
 Full guide: `docs/ui_redesign_posthog/brand_werner.html`.
 
@@ -89,31 +79,6 @@ The idle sway is light (4.2 s cycle) and collapses under
 prefers-reduced-motion. All four moods share the same penguin so the
 operator never wonders "which Werner is this."
 
-The numeric choices (tilt -6°, sway 4200 ms, fidelity threshold 48 px,
-bill apex at 15.7 in the 32-unit viewBox, eye r 1.05, head proportions)
-carry hard-to-vary derivations in the JSDoc of Werner.tsx. They were
-cross-checked against live 28 px CanonicalMoods renders; none can move
-by more than a few tenths without destroying either the cute-emperor
-reading at rail size or the deadpan Herzog voice.
-
-Abstract-mark alternative (full balanced steelman). A pure three-ellipse
-plus minimal triangle stack with no penguin intent and no mood/fidelity
-logic would win on bundle size, perfect 16 px favicon legibility, and
-strict logo reductionism — it is the defensible minimalist position and
-would have satisfied a "mark-only, no mascot personality" requirement.
-The thesis that prevailed weighs the companion reading more heavily:
-Werner is the single emperor who broke from the colony and walks into
-the interior toward certain death; the rail mark at 28 px is the surface
-the operator sees constantly and it must transmit that specific quiet,
-deadpan companionship rather than a generic Antarctic dot. An abstract
-mark would sever the emotional through-line at the exact place the
-operator needs it most. The concrete geometry chosen is the smallest
-form that still resolves as "cute emperor penguin with distinct compact
-silhouette and prominent high-contrast yellow bill" at 28 px while
-scaling to 120 px character without caricature. Both minimalism and
-companion theses were evaluated on their merits; the companion reading
-was selected because Antiek is a research workstation whose brand
-promise is quiet fellow-travelling into the unknown, not a generic
-productivity surface. The decision and all derivations are recorded
-here and in Werner.tsx so the next operator can re-litigate with the
-original evidence in hand.
+The key numbers (tilt −6°, sway 4.2 s, fidelity threshold 48 px, bill
+apex, eye radius) and the one constraint behind each live in the JSDoc of
+Werner.tsx.

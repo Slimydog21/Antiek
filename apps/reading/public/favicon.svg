@@ -1,9 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Antiek">
-  <!-- Antiek favicon. Sun-yellow disc on ink-dark background;
-       the same proportions echo the Werner brand mark (sun
-       behind the penguin). 64×64 base scales cleanly to every
-       browser favicon size. -->
-  <rect width="64" height="64" rx="12" fill="#0F1419"/>
-  <circle cx="32" cy="32" r="18" fill="#FFC93C"/>
-  <circle cx="32" cy="32" r="18" fill="none" stroke="#0F1419" stroke-width="2.5"/>
+  <!-- Werner the emperor penguin on a sun-yellow square — the brand mark
+       at favicon fidelity. Geometry is Werner.tsx's mark scaled ×2 from the
+       32-unit viewBox; mark fidelity only (no wing/toe strokes — those alias
+       at 16px). Concrete hex resolved from tokens.css; favicons can't use
+       CSS variables. One yellow only (--sun #F5DF24). -->
+  <rect width="64" height="64" rx="12" fill="#F5DF24"/>
+  <!-- Coat — rounded emperor silhouette. -->
+  <ellipse cx="32" cy="35.6" rx="17.2" ry="20.6" fill="#0F1419"/>
+  <!-- Belly. -->
+  <ellipse cx="32" cy="38.4" rx="10.0" ry="14.4" fill="#FBFCFD"/>
+  <!-- Head. -->
+  <ellipse cx="32" cy="21.6" rx="11.6" ry="10.4" fill="#0F1419"/>
+  <!-- Eyes. -->
+  <circle cx="26.2" cy="20.0" r="2.1" fill="#0F1419"/>
+  <circle cx="37.8" cy="20.0" r="2.1" fill="#0F1419"/>
+  <!-- Bill — the brand hook. -->
+  <path d="M28.8 24.6 L32.0 31.4 L35.2 24.6 Z" fill="#F5DF24"/>
+  <!-- Feet. -->
+  <ellipse cx="24.6" cy="56.8" rx="4.4" ry="1.7" fill="#F5DF24"/>
+  <ellipse cx="39.4" cy="56.8" rx="4.4" ry="1.7" fill="#F5DF24"/>
 </svg>

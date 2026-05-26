@@ -18,53 +18,11 @@ import type { WernerMood } from "../design/tokens";
  * enforcement of the four-slot rule. Adding a fifth mood string will throw in
  * development before any visual regression or Storybook render can hide it.
  *
- * Hard-to-vary rationale for every numeric choice (tilt, sway, fidelity, bill/eye
- * coords, proportions). These are not arbitrary; each has a derivation that
- * would require a brand-level decision to change. Tilt angle -6 deg: the
- * smallest integer whose projection at 28 px displaces the crown by ~0.9 device
- * px on a 2× screen — enough for the Herzog skeptical cant to register to the
- * eye without the silhouette reading as "leaning broken" or "cartoon bobble".
- * Zero degrees collapses to generic dot; 12 degrees reads as jaunty caricature
- * that contradicts the deadpan thesis. Sway timing 4200 ms (see animations.css
- * werner-idle-sway): measured average human resting breath cycle during quiet
- * contemplation; 3000 ms feels like a marketing bounce, 5000 ms reads as asleep.
- * The cycle must be long enough that the operator does not perceive "dancing"
- * yet short enough that the idle rail mark still feels alive. Fidelity
- * threshold isCharacter = size >= 48: below 48 the 1.1-unit wing and toe
- * strokes on a 28 px render occupy <1 device px and alias into noise or moiré;
- * 48 px supplies the 24-device-px headroom PostHog-craft requires for secondary
- * marks to remain crisp while 28 px stays the pure rail silhouette. Bill
- * geometry M14.4 12.3 L16.0 15.7 L17.6 12.3 Z: 3.4-unit height chosen so that
- * at 28 px scale factor the yellow triangle renders 3 px tall with a 2.8 px
- * base — the minimum high-contrast equilateral feature the human visual system
- * resolves as "distinct triangular bill" rather than a yellow smudge or dot
- * (James Hawkins / PostHog small-icon threshold studies). Prior 2.3-unit bill
- * rendered ~2 px and failed exactly this test at rail fidelity. Eye centres at
- * 13.1 / 18.9 cy 10.0 r 1.05 and head ellipse rx 5.8 ry 5.2: these lock the
- * compact head-to-body ratio that distinguishes emperor silhouette from a
- * generic stacked-ellipse logo at 16 px favicon size while still scaling
- * cleanly to 120 px character. All five numbers (tilt, sway, threshold,
- * bill apex y, eye r) were cross-checked against the 28 px CanonicalMoods
- * render in Storybook; changing any one by more than 0.5 units or 400 ms
- * either destroys the "cute emperor" reading or violates the deadpan voice.
- *
- * Abstract-mark alternative steelman (balanced, fair). The pure minimal
- * three-ellipse-plus-triangle stack (no named "penguin" intent, no mood
- * logic, no fidelity switch) wins on bundle weight, universal 16 px
- * legibility, and logo purity — it is the honest reductionist choice and
- * would have satisfied a strict "mark-only" requirement. The counter-thesis
- * that prevailed is the companion reading: Werner is the lone walker who
- * left the colony and heads into the interior; the rail mark at 28 px must
- * transmit that specific deadpan personality so the operator feels a quiet
- * fellow-traveller even in the chrome. An abstract dot severs that
- * companionship at the exact surface where the operator spends the most
- * time. The current concrete geometry is the smallest form that still
- * carries the emperor silhouette + prominent bill at rail size; both
- * minimalism and companion theses were weighed on their merits and the
- * companion reading was chosen because the product is a research
- * workstation, not a generic tool. The choice is load-bearing and
- * documented here so a future operator can re-litigate with the original
- * evidence.
+ * Key numbers + the one constraint each. viewBox 0-32. Bill apex y≈15.7,
+ * 3.4u tall so it clears ~3px at 28px (a 2.3u bill smudged at rail size).
+ * isCharacter ≥ 48px: wing/toe strokes alias below it. Idle sway 4.2s, head
+ * tilt -6°: subtle enough not to read as "dancing". Four moods only; the
+ * WernerMood union + the dev guard below enforce it. See brand/README.md.
  */
 
 const MOODS = ["idle", "thinking", "empty", "celebrate"] as const;
@@ -98,12 +56,7 @@ export default function Werner({
   }
 
   const isCharacter = size >= 48; // mark fidelity below, character above
-  const rootClass =
-    mood === "idle"
-      ? "werner-idle"
-      : mood === "celebrate"
-      ? ""
-      : "";
+  const rootClass = mood === "idle" ? "werner-idle" : "";
 
   // Head tilt for thinking and empty carries the Herzog skepticism without caricature.
   const headRotate =

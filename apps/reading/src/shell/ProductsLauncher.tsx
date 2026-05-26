@@ -9,6 +9,16 @@ import {
   type ModeEntry,
 } from "./workflowTaxonomy";
 
+// The bare (param-free) routes the taxonomy declares. A param route's index
+// (everything before "/:") only navigates if it matches one of these — e.g.
+// /skill-rules/:ruleId → /skill-rules is real, so we land on the index
+// instead of misrouting to /operator.
+const BARE_ROUTES = new Set(
+  MODE_TAXONOMY.filter((m) => m.route && !m.route.includes(":")).map(
+    (m) => m.route!,
+  ),
+);
+
 // Local to the launcher surface only. Keeps the taxonomy (the shared source
 // for NavRail, ProjectTree, stubs, palette, and the future M2 rail-destination
 // guard) free of presentation concerns. These are the human labels the
@@ -110,18 +120,26 @@ export function ProductsLauncher({
 
   if (!open) return null;
 
-  /** Built modes navigate; param routes resolve to their index where one
-   *  exists, else the workflow default. Unbuilt modes never navigate. */
+  /** Built modes navigate. A bare route navigates directly. A param route
+   *  resolves to its index (everything before "/:") when that index is a
+   *  real route; for a workflow param route with no real index we fall back
+   *  to the workflow default. A shared param route whose index isn't a real
+   *  route is treated as unbuilt (no navigation) rather than misrouted. */
   const openMode = (m: ModeEntry) => {
     if (!m.built || !m.route) return;
-    // A bare route (no :param) navigates directly; a param route falls
-    // back to the workflow's default landing so we never push a route
-    // with an unresolved :id.
-    const target = m.route.includes(":")
-      ? m.workflow === "shared"
-        ? "/operator"
-        : WORKFLOWS[m.workflow].defaultRoute
-      : m.route;
+    let target: string;
+    if (m.route.includes(":")) {
+      const index = m.route.split("/:")[0];
+      if (BARE_ROUTES.has(index)) {
+        target = index;
+      } else if (m.workflow !== "shared") {
+        target = WORKFLOWS[m.workflow].defaultRoute;
+      } else {
+        return;
+      }
+    } else {
+      target = m.route;
+    }
     navigate(target);
     onClose();
   };

@@ -25,9 +25,9 @@ export default function WernerThinking({
       aria-label={label}
       className="inline-flex items-center gap-2 align-middle"
     >
-      {/* Core mark now single-source. The four aurora dots remain the
-          pose-specific chrome; they sit beside the delegated Werner. */}
-      <Werner mood="thinking" size={size} />
+      {/* Idle penguin (no internal dots — those alias to sub-pixel at 20px);
+          the four external aurora dots beside it are the single thinking signal. */}
+      <Werner mood="idle" size={size} />
       <span className="inline-flex items-center gap-1.5">
         <span
           className="block werner-thinking-dot-1 rounded-full"
