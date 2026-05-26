@@ -118,10 +118,26 @@ def _api_base_url() -> str:
 
 
 def _frontend_base_url() -> str:
-    """Where the API redirects after setting the session cookie. If
-    unset, fall back to same-origin redirects (relative path). If set,
-    the redirect target is ``${frontend_base}${next_path}``."""
-    raw = os.environ.get("ANTIEK_FRONTEND_BASE_URL", "").strip()
+    """Where the API redirects after setting the session cookie.
+
+    The callback runs server-side on the API origin (api.antiek.ai). A
+    relative ``Location: /`` resolves against *that* origin, so the
+    browser would land on api.antiek.ai — the FastAPI host, not the app.
+    To send the user to the Pages frontend we must emit an absolute URL.
+
+    Resolution order:
+      1. ``ANTIEK_FRONTEND_BASE_URL`` — explicit override.
+      2. ``ANTIEK_PUBLIC_BASE_URL`` — the canonical app origin the
+         runbook already sets (``https://antiek.ai``). This is the
+         common single-host config; without it the post-login redirect
+         landed on the API host (the lived bug).
+      3. ``""`` — genuine same-origin / local dev (no public host
+         configured): fall back to a relative redirect.
+    """
+    raw = (
+        os.environ.get("ANTIEK_FRONTEND_BASE_URL", "").strip()
+        or os.environ.get("ANTIEK_PUBLIC_BASE_URL", "").strip()
+    )
     return raw.rstrip("/") if raw else ""
 
 

@@ -261,6 +261,22 @@ def test_cross_origin_callback_redirects_to_frontend(monkeypatch):
     assert r.headers["location"] == "https://antiek.ai/notebooks"
 
 
+def test_public_base_url_drives_absolute_redirect(monkeypatch):
+    """Lived bug: with only ANTIEK_PUBLIC_BASE_URL=https://antiek.ai
+    set (the runbook's single-host config) and no
+    ANTIEK_FRONTEND_BASE_URL, the callback used to emit a relative
+    ``Location: /`` — which the browser resolved against the API
+    origin, landing the operator on api.antiek.ai instead of the app.
+    The redirect must be absolute to the public app host."""
+    monkeypatch.setenv("ANTIEK_PUBLIC_BASE_URL", "https://antiek.ai")
+    monkeypatch.delenv("ANTIEK_FRONTEND_BASE_URL", raising=False)
+    client = _client(monkeypatch)
+    tok = mint_magic_link_token(_OPERATOR)
+    r = client.get(f"/auth/callback?token={tok}&next=/notebooks", follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers["location"] == "https://antiek.ai/notebooks"
+
+
 def test_cookie_domain_set_when_env_configured(monkeypatch):
     """ANTIEK_COOKIE_DOMAIN=.antiek.ai is what lets the cookie cross
     from api.antiek.ai to antiek.ai on the same parent domain."""
