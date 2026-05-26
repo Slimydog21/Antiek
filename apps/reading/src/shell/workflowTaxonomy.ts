@@ -82,7 +82,18 @@ export interface WorkflowMeta {
    * the operator works ON, not the tools. Content-first IA.
    */
   nouns: string[];
-  /** Route the rail navigates to when the workflow is selected. */
+  /**
+   * Route the rail navigates to when the workflow is selected.
+   *
+   * U-04 DOOR CONTRACT — a workflow's `defaultRoute` opens to an ACTION,
+   * not an explanation. The landing must let the user do the workflow's
+   * core thing immediately (Research → start a research; Read → open/add a
+   * book; Write → start composing; Speak → start a remembrance), never a
+   * prose dead-end ("Select or create … to begin") or a bare uploader.
+   * Research's StartResearch (PR #10) is the reference. Each product's
+   * door-fix sprint owns making its own landing satisfy this; the U-04
+   * audit (handoff) records which doors meet it and which are still filed.
+   */
   defaultRoute: string;
   /**
    * If the workflow's primary surface isn't built yet, the sprint it

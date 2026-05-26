@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import WernerThinking from "../../brand/werner/animated/WernerThinking";
+import AIActionFailure from "../../shared/AIActionFailure";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 
 /**
@@ -188,31 +189,16 @@ export default function StartResearch() {
           />
 
           {failed && (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="text-xs font-mono text-emperor flex flex-col gap-2"
-            >
-              <p className="leading-relaxed">
-                The research didn&rsquo;t complete — the engine returned no
-                result. This usually means the model provider isn&rsquo;t
-                configured. Try again, or check provider keys.
-                {failureReason ? (
-                  <span className="block mt-1 text-ink-mute dark:text-moonlight not-italic">
-                    Engine: {failureReason}
-                  </span>
-                ) : null}
-              </p>
-              <div>
-                <LemonButton
-                  variant="secondary"
-                  size="sm"
-                  onClick={onTryAgain}
-                >
-                  Try again
-                </LemonButton>
-              </div>
-            </div>
+            // The presentational failure shell is now the shared
+            // <AIActionFailure> (U-04) — same sentence across all four doors.
+            // Start-flow specifics (re-seeding the question, refocusing, never
+            // routing to the dead /inv/:id) stay in onTryAgain / the navigate
+            // guard above; this component only renders + offers the retry.
+            <AIActionFailure
+              title="The research didn’t complete"
+              reason={failureReason}
+              onRetry={onTryAgain}
+            />
           )}
 
           {error && (
