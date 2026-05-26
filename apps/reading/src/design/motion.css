@@ -1,0 +1,32 @@
+/* ============================================================
+   motion.css — reduced-motion guard for the base interactions (U-05 M3).
+
+   The Lemon press / hover-lift / card-lift / enter primitives are
+   Tailwind `transition-*` utilities (see src/design/motion.ts). Those
+   utilities animate transform/opacity but do NOT switch themselves off
+   under prefers-reduced-motion. This file is the one place that does:
+   when the operator has asked the OS to reduce motion, every transition
+   and CSS animation collapses to near-zero duration so state changes are
+   instant. Function is never lost — the :hover/:active/[data-enter]
+   *end states* still apply, they just stop travelling.
+
+   Werner's pose keyframes (werner/animated/animations.css) have their own,
+   more expressive reduced-motion fallbacks (a static-but-recognisable
+   frame per pose); this guard is the catch-all for everything else. The
+   `!important` is deliberate — it must win over the utility-set duration
+   regardless of class order.
+
+   Source of truth for the timings this overrides: src/design/tokens.ts
+   (the motion scale) + tokens.css (--motion-* vars).
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}

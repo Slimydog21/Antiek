@@ -68,6 +68,16 @@
   --radius-lg: 10px;
   --edge:      2.5px;
 
+  /* motion (U-05) — durations + easings as tokens, never magic numbers.
+     fast = press, base = hover/colour, slow = signature-beat ceiling
+     (== Werner's 800 ms celebrate). See src/design/motion.ts +
+     src/design/motion/README.md. */
+  --motion-fast:  80ms;
+  --motion-base:  150ms;
+  --motion-slow:  800ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-enter:    cubic-bezier(0, 0, 0.2, 1);
+
   /* type */
   --sans:  "Inter", system-ui, -apple-system, sans-serif;
   --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;

@@ -5,6 +5,7 @@ import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import WernerThinking from "../../brand/werner/animated/WernerThinking";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 
 /**
@@ -50,6 +51,11 @@ export default function StartResearch() {
   const start = useStartInvestigation();
   const [question, setQuestion] = useState("");
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // The research-starts signature beat (U-05 M2) — Werner's one-shot
+  // celebrate the moment a research is genuinely under way. Non-blocking:
+  // it only arms a timer; navigation + the live banner below are driven by
+  // their own effects and don't wait on it.
+  const { celebrating, celebrate } = useCelebrate();
 
   const {
     startedId,
@@ -96,6 +102,21 @@ export default function StartResearch() {
     }
   }, [failed, question]);
 
+  // Fire the research-starts beat exactly once, at the transition into the
+  // started-and-not-failed state (an id is back, the run is live). It's
+  // independent of the navigate effect below: `celebrate()` returns
+  // immediately, so the beat never sits between "research is under way" and
+  // the operator seeing it. A failed run never celebrates.
+  const startedAndLive = Boolean(startedId) && !failed;
+  const celebratedRef = useRef(false);
+  useEffect(() => {
+    if (startedAndLive && !celebratedRef.current) {
+      celebratedRef.current = true;
+      celebrate();
+    }
+    if (!startedId) celebratedRef.current = false; // re-arm after reset
+  }, [startedAndLive, startedId, celebrate]);
+
   // Once we have an id, route to the full investigation surface as soon as
   // real activity begins — or after a grace window if the socket is slow.
   // Either way the navigation is to the SAME live feed (TrajectoryView via
@@ -133,7 +154,17 @@ export default function StartResearch() {
           role="status"
           aria-live="polite"
         >
-          <div className="flex items-center justify-center mb-4">
+          {/* The beat sits above the working mark and retires on its own;
+              the thinking penguin behind it carries the ongoing state.
+              pointer-events-none + absolute so it can't gate the surface. */}
+          <div className="relative flex items-center justify-center mb-4">
+            {celebrating && (
+              <CelebrateBurst
+                active
+                size={48}
+                className="absolute inset-0 items-center justify-center"
+              />
+            )}
             <WernerThinking
               size={48}
               label={
