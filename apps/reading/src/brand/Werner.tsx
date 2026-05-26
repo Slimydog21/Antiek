@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import "./werner/animated/animations.css";
 import type { WernerMood } from "../design/tokens";
 
@@ -72,6 +74,9 @@ type Props = {
   size?: number;
   label?: string;
   className?: string;
+  // Positioning passthrough — animated wrappers (e.g. the toboggan spinner)
+  // place the mark absolutely; merged after the intrinsic size box.
+  style?: CSSProperties;
 };
 
 export default function Werner({
@@ -79,6 +84,7 @@ export default function Werner({
   size = 28,
   label,
   className,
+  style,
 }: Props) {
   // Dev runtime guard — throws immediately on any string outside the four.
   // This is the mechanical half of U-02; the visual half lives in the rail
@@ -111,7 +117,7 @@ export default function Werner({
       role="img"
       aria-label={label || `Werner ${mood}`}
       className={className ? `inline-block align-middle ${className}` : "inline-block align-middle"}
-      style={{ width: size, height: size }}
+      style={{ width: size, height: size, ...style }}
     >
       <svg
         viewBox="0 0 32 32"
