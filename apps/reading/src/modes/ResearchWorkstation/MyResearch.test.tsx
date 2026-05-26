@@ -54,6 +54,10 @@ vi.mock("../../api/research", async (orig) => {
       budgetState.current
         ? Promise.resolve(budgetState.current)
         : Promise.reject(new Error("no provider")),
+    // The monitor now hosts the SPR-09 "suggested next" lane; keep it
+    // deterministic + offline here (empty → honest no-result), so these
+    // monitor tests stay a true unit. SuggestedResearch has its own suite.
+    getSuggestions: () => Promise.resolve({ count: 0, suggestions: [] }),
   };
 });
 
@@ -122,6 +126,17 @@ describe("MyResearch — one monitor, plain language (M1)", () => {
     // …and the raw enum tokens never rendered as a status.
     expect(screen.queryByText("in_progress")).toBeNull();
     expect(screen.queryByText("failed")).toBeNull();
+  });
+
+  it("badges a daemon-spawned research 'found by the loop', not an operator one (SPR-09)", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-loop01", question: "Loop launched this", status: "completed", spawned_by_daemon: true }),
+      inv({ investigation_id: "inv-op01", question: "I launched this", status: "completed", spawned_by_daemon: false }),
+    ];
+    renderMonitor();
+    // The loop-launched one carries the distinction badge; exactly one row has it.
+    expect(await screen.findByText("found by the loop")).toBeTruthy();
+    expect(screen.getAllByText("found by the loop").length).toBe(1);
   });
 
   it("groups cascade/chase children under their parent session", () => {

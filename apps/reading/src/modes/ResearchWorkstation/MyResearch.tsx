@@ -45,6 +45,7 @@ import type { InvestigationSummary } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
+import SuggestedResearch from "./SuggestedResearch";
 
 // ── Status → plain language (SPR-02 narration vocabulary) ─────────────────
 //
@@ -242,6 +243,15 @@ export default function MyResearch() {
           onLaunchSeveral={() => navigate("/")}
         />
 
+        {/* SPR-09: the compounding flywheel, surfaced. A calm "what to chase
+            next" lane sourced from the §7 daemon's existing scored gaps — an
+            offer, never a nag (§2.6 curiosity-gated). Read-only to render;
+            chasing one launches through the same capped path. */}
+        <SuggestedResearch
+          variant="lane"
+          canLaunch={auth.status === "authenticated"}
+        />
+
         {error && <ListError error={error} onRetry={refetch} />}
 
         {/* No-key / nothing-yet honest state. The common production reason a
@@ -401,6 +411,15 @@ function ResearchRow({
           </p>
         </Link>
         <div className="flex shrink-0 items-center gap-3">
+          {/* SPR-09 distinction: a research the §7 loop launched autonomously
+              is badged "found by the loop" (translated from its policy_id —
+              the id is never shown), so the user can tell what the loop did on
+              its own from what they launched. */}
+          {summary.spawned_by_daemon && (
+            <LemonTag colour="muted" className="text-[10px]">
+              found by the loop
+            </LemonTag>
+          )}
           <LemonTag dot colour={ps.colour} className="text-[10px]">
             {ps.label}
           </LemonTag>

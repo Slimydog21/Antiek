@@ -13,6 +13,7 @@ import MasterMdViewer from "./MasterMdViewer";
 import NotesPanel from "./NotesPanel";
 import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
+import SuggestedResearch from "./SuggestedResearch";
 import ThinkingStream from "./ThinkingStream";
 
 /**
@@ -156,6 +157,17 @@ function CenterContent({
             investigationId={investigation.id}
             running={false}
             onChase={onChaseQuestion}
+          />
+        </div>
+        {/* SPR-09: the §7 daemon's scored open questions, surfaced beside the
+            answer as threads worth chasing. Read-only to render; chasing one
+            reuses SPR-04's chase gesture (onChaseQuestion → the one
+            ChaseThread panel), so it launches through the same capped path —
+            no second launch mechanism, no auto-spawn. */}
+        <div className="border-t border-rule dark:border-charcoal-1">
+          <SuggestedResearch
+            variant="beside"
+            onChase={(c) => onChaseQuestion({ text: c.text })}
           />
         </div>
         {/* SPR-04 M3: paste/drop a file into THIS research → max-context

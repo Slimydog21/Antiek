@@ -164,6 +164,12 @@ class InvestigationSummary(BaseModel):
     completed_at: Optional[str] = None  # ISO8601, terminal events only
     cost_usd_total: float = 0.0
     parent_investigation_id: Optional[str] = None
+    # SPR-09 (the compounding flywheel): True when this research was spawned by
+    # the §7 continuous daemon (its start event carried the daemon's
+    # ``spawn_policy_id``), False for an operator-launched one. The surface
+    # translates this into the "found by the loop" badge — the raw policy_id is
+    # never sent to the client, only this honest boolean.
+    spawned_by_daemon: bool = False
 
 
 class InvestigationListResponse(BaseModel):
@@ -1569,6 +1575,7 @@ def create_app(
         import os as _os
         from substrate.event_log import default_events_dir
         from substrate.schemas import ActionType
+        from orchestration.continuous.suggestions import policy_is_daemon
 
         events_dir = default_events_dir()
         if not _os.path.isdir(events_dir):
@@ -1619,10 +1626,18 @@ def create_app(
             # terminates a research of its own.
             saw_launched = False
             saw_own_lifecycle = False
+            # SPR-09: was this research spawned by the §7 daemon? True iff its
+            # start/spawned event carried the daemon's spawn policy_id. The raw
+            # policy_id is read here and translated to a boolean — never sent
+            # to the client.
+            spawned_by_daemon = False
 
             for r in rows:
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
+                if at in (start_action, spawned_action):
+                    if policy_is_daemon(r.get("policy_id")):
+                        spawned_by_daemon = True
                 if at in (start_action, spawned_action, completed_action,
                           failed_action, halted_action):
                     saw_own_lifecycle = True
@@ -1683,6 +1698,7 @@ def create_app(
                 completed_at=completed_at,
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
+                spawned_by_daemon=spawned_by_daemon,
             ))
 
         # Derive each session container's status from its leaves (the same
