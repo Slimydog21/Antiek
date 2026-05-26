@@ -26,7 +26,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A failure the engine explained — the reason is shown, framed as a diagnostic. */
+/**
+ * A failure the engine explained — the lead is generic ("the engine reported
+ * a problem"), and the engine's own reason is shown framed below as the
+ * diagnostic. We don't assert a specific cause above the contradicting truth.
+ */
 export const WithReason: Story = {
   args: { reason: "no model provider configured" },
 };

@@ -11,11 +11,17 @@ import LemonButton from "../components/lemon/LemonButton";
  * and calls `onRetry`; it NEVER navigates. The caller owns the route, so a
  * failure can never strand the user on a dead page.
  *
- * Honest about the credential-gated reality: in production the common
- * failure is "an id came back, then the run aborted because no model
- * provider is configured." A reason-less failure therefore says, plainly,
- * that the engine returned no result and the provider may be unconfigured —
- * not a spinning `…` and not a generic "something went wrong."
+ * Honest about the credential-gated reality, and honest in two branches:
+ *  - REASON ABSENT — the common production case is "an id came back, then
+ *    the run aborted with nothing to say." That plausibly means no model
+ *    provider is configured, so we say exactly that ("the engine returned
+ *    no result … the model provider isn't configured") — not a spinning
+ *    `…` and not a generic "something went wrong."
+ *  - REASON PRESENT — the engine told us what went wrong, so we lead
+ *    generically ("the engine reported a problem") and show the real reason
+ *    framed below. We do NOT assert a specific cause (no-provider) when the
+ *    engine's own reason explains it — that would put a likely-wrong guess
+ *    directly above the contradicting truth.
  */
 type Props = {
   /** What was being attempted, in the user's words ("The research didn't complete"). */
@@ -51,13 +57,20 @@ export default function AIActionFailure({
       }
     >
       <p className="leading-relaxed">
-        {title} — the engine returned no result. This usually means the model
-        provider isn&rsquo;t configured. Try again, or check provider keys.
         {reason ? (
-          <span className="block mt-1 text-ink-mute dark:text-moonlight not-italic">
-            Engine: {reason}
-          </span>
-        ) : null}
+          <>
+            {title} — the engine reported a problem. Try again.
+            <span className="block mt-1 text-ink-mute dark:text-moonlight not-italic">
+              Engine: {reason}
+            </span>
+          </>
+        ) : (
+          <>
+            {title} — the engine returned no result. This usually means the
+            model provider isn&rsquo;t configured. Try again, or check
+            provider keys.
+          </>
+        )}
       </p>
       <div>
         <LemonButton variant="secondary" size="sm" onClick={onRetry}>

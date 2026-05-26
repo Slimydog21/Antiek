@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
-import WernerThinking from "../../brand/werner/animated/WernerThinking";
+import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
@@ -165,7 +165,13 @@ export default function StartResearch() {
                 className="absolute inset-0 items-center justify-center"
               />
             )}
-            <WernerThinking
+            {/* The shared <Thinking> (U-04 M3) — the same "AI is working"
+                beat Research, Read, Write, and Speak draw from. Research's
+                live status is the two centered lines below (richer than a
+                single inline string), so we use Thinking for the penguin
+                mark and pass the live label through; the same accessible
+                name (via WernerThinking) is preserved. */}
+            <Thinking
               size={48}
               label={
                 phase === "connecting"

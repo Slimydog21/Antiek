@@ -113,12 +113,18 @@ export interface BannedPattern {
  */
 export const BANNED_PATTERNS: readonly BannedPattern[] = [
   {
+    // Matches the enumerated long-id form (`inv-` + ≥6 hex). Un-bracketed bare
+    // counts and short ids are a documented follow-up, not caught here yet —
+    // no rule change needed now.
     id: "inv-id",
     pattern: /\binv-[0-9a-f]{6,}/gi,
     description: "a raw investigation id (`inv-…`)",
     replacement: "hide the id; say \"research\" (see GLOSSARY: investigation)",
   },
   {
+    // Matches the enumerated bracketed form (`[…chunk…]`). An un-bracketed
+    // count (e.g. "5 chunks" in prose) is a documented follow-up, not caught
+    // here yet — no rule change needed now.
     id: "n-chunks",
     pattern: /\[\s*\{?[^[\]]{0,40}\bchunk(_id)?s?\b[^[\]]{0,40}\]/gi,
     description: "a bracketed chunk count / chunk-id label (`[N chunks]`)",

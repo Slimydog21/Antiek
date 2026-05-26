@@ -55,6 +55,9 @@ export const cardLift =
  * transition runs from the off state to the on state exactly once. The
  * keyframe-free form (transition, not animation) keeps it inside the
  * motion system and out of the anti-noise guard's keyframe net.
+ *
+ * Provided for panel/modal adoption; not yet wired to a consumer in this run
+ * (`press` + `cardLift` are the wired primitives — LemonButton / BookCard).
  */
 export const enter =
   "transition-[opacity,transform] duration-base ease-enter " +
