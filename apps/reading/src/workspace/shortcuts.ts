@@ -14,7 +14,7 @@
  *   ⌘⇧P      same as ⌘K (Linear muscle memory)
  *   ⌘W       close focused floating panel    → workspace.close(focusedPanelId)
  *   ⌘[ / ⌘]  cycle focused panel             → workspace.focus(prev/next)
- *   G then I    /investigations              (chord, 800ms window)
+ *   G then I    /my-research                 (chord, 800ms window)
  *   G then W    /wrestle
  *   G then N    /notebooks
  *
@@ -137,7 +137,8 @@ export function installShortcuts(navigate: NavigateFunction): () => void {
       if (first === "g") {
         if (k === "i") {
           e.preventDefault();
-          navigate("/investigations");
+          // SPR-05: the one multi-research monitor (was /investigations).
+          navigate("/my-research");
           return;
         }
         if (k === "w") {

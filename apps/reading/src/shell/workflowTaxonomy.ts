@@ -156,10 +156,16 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   {
     id: "InvestigationsIndex",
     workflow: "research",
-    label: "Investigations",
-    blurb: "List of past + in-flight investigations.",
+    label: "My research",
+    // SPR-05 fold: the old flat /investigations list is folded into the one
+    // multi-research monitor (MyResearch, a ResearchWorkstation surface). Its
+    // capabilities — list, status, cost, replay — are preserved there. The
+    // /investigations path redirects to /my-research, so the canonical route
+    // for this surface is now /my-research (the component file is retired from
+    // routing, kept on disk so this completeness entry stays honest).
+    blurb: "One calm monitor over every running + completed research (SPR-05).",
     built: true,
-    route: "/investigations",
+    route: "/my-research",
   },
   {
     id: "BrainstormStation",

@@ -225,9 +225,9 @@ const ROUTE_INDEX: PaletteRoute[] = [
   {
     kind: "route",
     id: "route:investigations-index",
-    title: "Investigations index",
-    subtitle: "All investigations + replay links (/investigations)",
-    path: "/investigations",
+    title: "My research",
+    subtitle: "One monitor over every running + completed research (/my-research)",
+    path: "/my-research",
   },
   {
     kind: "route",

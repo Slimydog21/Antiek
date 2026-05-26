@@ -170,11 +170,21 @@ class SteerRequest(BaseModel):
 @cascade_router.get("/budget-defaults")
 async def budget_defaults() -> dict:
     """The per-research spend ceiling the runner uses when the launch request
-    omits one. Read straight off the ``BudgetCap`` contract so the entry UI
-    can show "estimated up to $X for N researches" without hardcoding a number
-    that would drift if the contract default changes."""
+    omits one, plus the host-local concurrency cap. Both read straight off the
+    contracts (``BudgetCap`` + ``host_local.DEFAULT_MAX_CONCURRENCY``) so the
+    entry + monitor UIs can show "estimated up to $X for N researches" and an
+    honest "N running, M queued" without hardcoding a number that would drift
+    if the contract default changes. The concurrency cap is the host-local
+    bound; the §16-gated remote runner raises the practical ceiling only once
+    the operator provisions it."""
+    from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
+
     cap = BudgetCap()
-    return {"per_research_cost_usd": cap.cost_usd, "per_research_max_steps": cap.max_steps}
+    return {
+        "per_research_cost_usd": cap.cost_usd,
+        "per_research_max_steps": cap.max_steps,
+        "host_local_max_concurrency": DEFAULT_MAX_CONCURRENCY,
+    }
 
 
 @cascade_router.post("/plans")

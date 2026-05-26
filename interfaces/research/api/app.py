@@ -1544,9 +1544,28 @@ def create_app(
         discover all unique investigation_ids, then summarizes each
         with its start question + terminal status + cost.
 
+        Includes researches launched as a cascade fan-out (SPR-05): the
+        session parent (``session-…``) and its ``…-leaf-N`` children are
+        NOT ``inv-`` prefixed, but they are real researches the monitor
+        ("launch N at once") must show — so discovery accepts any
+        ``*.jsonl`` whose trajectory is an investigation (carries a
+        start-requested, spawned-from, or terminal lifecycle event),
+        not just the ``inv-`` shape. A cascade leaf records its session
+        parent via ``investigation.spawned_from`` (not the start payload),
+        so the grouping link is read from that event too, and its
+        question is the leaf's ``sub_question``.
+
+        Status honesty (SPR-05 B2/MINOR): a budget-halted chase
+        (``investigation.chase_halted``) is terminal — ``stopped`` — to
+        match ``cascade_session.reconstruct_session``; it must never read
+        as "working"/running forever. A research finished via stop/cancel
+        carries ``outcome`` in its completion payload, surfaced as
+        ``stopped`` so the operator sees an honest end state rather than
+        "done".
+
         Filter by ``status`` to narrow (one of: ``in_progress``,
-        ``completed``, ``failed``). Default limit 50, sorted newest
-        first."""
+        ``completed``, ``failed``, ``stopped``). Default limit 50, sorted
+        newest first."""
         import os as _os
         from substrate.event_log import default_events_dir
         from substrate.schemas import ActionType
@@ -1557,15 +1576,37 @@ def create_app(
 
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
         failed_action = ActionType.INVESTIGATION_FAILED.value
+        halted_action = ActionType.INVESTIGATION_CHASE_HALTED.value
         start_action = ActionType.INVESTIGATION_START_REQUESTED.value
+        spawned_action = ActionType.INVESTIGATION_SPAWNED_FROM.value
+        # The lifecycle markers that identify a trajectory as a research
+        # (as opposed to, e.g., a session-only or non-investigation log).
+        # A cascade session file carries only ``cascade.launched`` and is
+        # surfaced as the grouping parent so its leaves nest under it.
+        investigation_markers = {
+            start_action, spawned_action, completed_action,
+            failed_action, halted_action, "cascade.launched",
+        }
 
         summaries: list[InvestigationSummary] = []
+        # Session-container ids (a cascade.launched file with no research
+        # lifecycle of its own): the grouping parent. Its honest status is the
+        # aggregate of its leaves (working iff a leaf still works), derived in a
+        # post-pass once every row is known — never a bare "working" forever.
+        session_containers: set[str] = set()
         for filename in _os.listdir(events_dir):
-            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
+            if not filename.endswith(".jsonl"):
                 continue
             inv_id = filename[:-len(".jsonl")]
             rows = trajectory(inv_id)
             if not rows:
+                continue
+            # A non-inv- file is only a research if its trajectory says so;
+            # this keeps unrelated logs out of the list while admitting the
+            # cascade session/leaf ids the monitor must show.
+            if not inv_id.startswith("inv-") and not any(
+                r.get("action_type") in investigation_markers for r in rows
+            ):
                 continue
 
             question: Optional[str] = None
@@ -1574,19 +1615,56 @@ def create_app(
             cost_total = 0.0
             terminal_status = "in_progress"
             parent_inv_id: Optional[str] = None
+            # A pure session container has cascade.launched but never starts or
+            # terminates a research of its own.
+            saw_launched = False
+            saw_own_lifecycle = False
 
             for r in rows:
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
+                if at in (start_action, spawned_action, completed_action,
+                          failed_action, halted_action):
+                    saw_own_lifecycle = True
+                if at == "cascade.launched":
+                    saw_launched = True
                 if at == start_action and question is None:
-                    question = payload.get("question")
+                    # A standalone research carries its question + parent here;
+                    # a cascade leaf carries only ``sub_question`` (its parent
+                    # link rides on the separate spawned_from event below).
+                    question = payload.get("question") or payload.get("sub_question")
                     started_at = r.get("emitted_at")
-                    parent_inv_id = payload.get("parent_investigation_id")
+                    if payload.get("parent_investigation_id"):
+                        parent_inv_id = payload.get("parent_investigation_id")
+                elif at == spawned_action:
+                    # The cascade/chase parent link (cascade leaves record it
+                    # here, not in the start payload). Also seeds the question
+                    # + a start time for a leaf whose start_requested lacked one.
+                    parent_inv_id = payload.get("parent_investigation_id") or parent_inv_id
+                    if question is None:
+                        question = payload.get("sub_question")
+                    if started_at is None:
+                        started_at = r.get("emitted_at")
+                elif at == "cascade.launched" and started_at is None:
+                    # The session parent's own row: no start_requested, so take
+                    # its launch time so the group sorts by real freshness.
+                    started_at = r.get("emitted_at")
                 elif at == completed_action:
-                    terminal_status = "completed"
+                    # Stop/cancel finishes through completed with an explicit
+                    # ``outcome`` — surface it honestly as ``stopped`` rather
+                    # than "done" (the M1 vocabulary lists them as distinct).
+                    if payload.get("outcome") in ("stopped", "cancelled"):
+                        terminal_status = "stopped"
+                    else:
+                        terminal_status = "completed"
                     completed_at = r.get("emitted_at")
                 elif at == failed_action:
                     terminal_status = "failed"
+                    completed_at = r.get("emitted_at")
+                elif at == halted_action:
+                    # Budget-halted: terminal (matches reconstruct_session's
+                    # BUDGET_HALTED), shown as stopped — never running forever.
+                    terminal_status = "stopped"
                     completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
                     try:
@@ -1594,8 +1672,8 @@ def create_app(
                     except (TypeError, ValueError):
                         pass
 
-            if status_filter and terminal_status != status_filter:
-                continue
+            if saw_launched and not saw_own_lifecycle:
+                session_containers.add(inv_id)
 
             summaries.append(InvestigationSummary(
                 investigation_id=inv_id,
@@ -1606,6 +1684,34 @@ def create_app(
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
             ))
+
+        # Derive each session container's status from its leaves (the same
+        # all-terminal logic cascade_session.reconstruct_session uses): working
+        # while any leaf works; needs-attention if any leaf failed; else done.
+        # So a session whose fan-out finished never reads "working" forever.
+        if session_containers:
+            children: dict[str, list[str]] = {}
+            for s in summaries:
+                if s.parent_investigation_id in session_containers:
+                    children.setdefault(s.parent_investigation_id, []).append(s.status)
+            for s in summaries:
+                if s.investigation_id not in session_containers:
+                    continue
+                leaf_states = children.get(s.investigation_id, [])
+                if any(st == "in_progress" for st in leaf_states):
+                    s.status = "in_progress"
+                elif any(st == "failed" for st in leaf_states):
+                    s.status = "failed"
+                elif leaf_states:
+                    # All leaves terminal: done if any completed, else stopped
+                    # (every leaf stopped/halted → the session is stopped).
+                    s.status = "completed" if any(
+                        st == "completed" for st in leaf_states) else "stopped"
+                # No leaves discovered yet (race just after launch): leave the
+                # honest "in_progress" the loop set.
+
+        if status_filter:
+            summaries = [s for s in summaries if s.status == status_filter]
 
         # Sort newest-first by started_at (ISO8601 strings sort lexically).
         summaries.sort(

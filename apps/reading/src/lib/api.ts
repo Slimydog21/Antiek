@@ -191,7 +191,7 @@ export async function startInvestigation(
 export interface InvestigationSummary {
   investigation_id: string;
   question: string | null;
-  status: "in_progress" | "completed" | "failed" | "not_found";
+  status: "in_progress" | "completed" | "failed" | "stopped" | "not_found";
   started_at: string | null;
   completed_at: string | null;
   cost_usd_total: number;

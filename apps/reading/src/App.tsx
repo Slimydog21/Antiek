@@ -16,7 +16,6 @@ import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
 import InterviewMode from "./modes/Interview";
 import InterviewIndex from "./modes/InterviewIndex";
-import InvestigationsIndex from "./modes/InvestigationsIndex";
 import Library from "./modes/Library";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
@@ -33,6 +32,7 @@ import BookReader from "./modes/Reading";
 import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
+import MyResearch from "./modes/ResearchWorkstation/MyResearch";
 import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
 import SkillRules from "./modes/SkillRules";
@@ -132,7 +132,16 @@ function AuthenticatedRoutes() {
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
         <Route path="/federation" element={<Federation />} />
         <Route path="/cross-graph/citations" element={<CrossGraphCitations />} />
-        <Route path="/investigations" element={<InvestigationsIndex />} />
+        {/* SPR-05 — the one multi-research monitor. Folds the three split
+            "manage your researches" surfaces (the docked sidebar tree, the
+            /deep-research grid, and the old /investigations flat list) into a
+            single calm home over every running + completed research. The old
+            /investigations path redirects here so there is exactly one door
+            (the experience-spec E-04/E-05 consolidation); the InvestigationsIndex
+            component is retired from routing, its capabilities (start, status,
+            cost, replay) preserved in MyResearch. */}
+        <Route path="/my-research" element={<MyResearch />} />
+        <Route path="/investigations" element={<Navigate to="/my-research" replace />} />
         <Route path="/payouts" element={<PayoutsAudit />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

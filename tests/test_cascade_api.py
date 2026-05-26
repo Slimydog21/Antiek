@@ -84,6 +84,10 @@ def test_budget_defaults_reads_the_contract(client):
     cap = BudgetCap()
     assert body["per_research_cost_usd"] == cap.cost_usd
     assert body["per_research_max_steps"] == cap.max_steps
+    # SPR-05: the monitor reads the real host-local semaphore cap off the
+    # contract for its honest "N running, M queued" — not a hardcoded UI number.
+    from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
+    assert body["host_local_max_concurrency"] == DEFAULT_MAX_CONCURRENCY
 
 
 def test_create_plan_returns_editable_tree(client):
@@ -141,6 +145,117 @@ def test_launch_watch_and_cost(client):
     cost = client.get(f"/research/sessions/{sid}/cost").json()
     assert cost["session_total_usd"] == pytest.approx(0.09)
     assert cost["session_total_usd"] == pytest.approx(sum(cost["per_research"].values()))
+
+
+# --------------------------------------------------------------------------
+# SPR-05 B1 — the cascade fan-out is VISIBLE in the monitor's data source.
+#
+# MyResearch sources from GET /investigations. Before the fix, that endpoint
+# only discovered ``inv-`` files, so a launched cascade's session + leaves
+# (``session-…`` / ``…-leaf-N``) NEVER appeared — exactly the "launch N in one
+# window" the sprint exists for. This test drives the REAL HTTP launch path
+# and asserts the leaves show up in GET /investigations grouped under the
+# session (parent_investigation_id == session_id), connecting the launch path
+# to the monitor's data source — not hand-built rows.
+# --------------------------------------------------------------------------
+
+
+def test_launched_cascade_appears_in_investigations_grouped_under_session(client):
+    root = _make_approved_plan(client, ("alpha", "beta", "gamma"))
+    r = client.post(f"/research/plans/{root}/launch", json={"per_research_budget_usd": 1.0})
+    assert r.status_code == 200, r.text
+    sid = r.json()["session_id"]
+    _poll_until_terminal(client, sid)
+
+    rows = client.get("/investigations", params={"limit": 200}).json()["investigations"]
+    by_id = {row["investigation_id"]: row for row in rows}
+
+    # All three leaves are present…
+    leaf_ids = [f"{sid}-leaf-{i}" for i in range(3)]
+    for lid in leaf_ids:
+        assert lid in by_id, f"cascade leaf {lid} missing from the monitor list"
+        # …grouped under the session (the link the monitor groups by)…
+        assert by_id[lid]["parent_investigation_id"] == sid, by_id[lid]
+        # …carrying the leaf's sub-question (so the row is not "Untitled")…
+        assert by_id[lid]["question"] in ("alpha", "beta", "gamma"), by_id[lid]
+        # …and a real terminal status, not stuck "working".
+        assert by_id[lid]["status"] == "completed", by_id[lid]
+
+    # The session parent is itself a row (so the group has a head to nest
+    # under), discovered despite carrying no ``inv-`` prefix.
+    assert sid in by_id, "cascade session parent missing from the monitor list"
+
+
+# --------------------------------------------------------------------------
+# SPR-05 B2 — a budget-halted research does NOT read as "working" forever.
+#
+# host_local emits investigation.chase_halted (no terminal completed/failed)
+# on a budget halt. The list endpoint must treat that as terminal — matching
+# cascade_session.reconstruct_session's BUDGET_HALTED — so the monitor shows
+# it as "stopped", never a research that runs forever.
+# --------------------------------------------------------------------------
+
+
+def test_budget_halted_cascade_is_not_working_in_investigations(client):
+    # A tiny aggregate cap: the per-research demo loop spends ~0.03 (3×0.01),
+    # so a cap below the second research's launch forces a chase-halt that the
+    # monitor must surface as terminal, not running.
+    root = _make_approved_plan(client, ("a", "b", "c", "d"))
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={"per_research_budget_usd": 1.0, "aggregate_budget_usd": 0.04},
+    )
+    assert r.status_code == 200, r.text
+    sid = r.json()["session_id"]
+    _poll_until_terminal(client, sid)
+
+    rows = client.get("/investigations", params={"limit": 200}).json()["investigations"]
+    cascade_rows = [x for x in rows if x["investigation_id"].startswith(sid)]
+    assert cascade_rows, "cascade researches missing from the monitor list"
+
+    # Not one cascade research is left reading "working"/running — every one is
+    # terminal (completed for those that fit the cap, stopped for the halted).
+    assert all(x["status"] != "in_progress" for x in cascade_rows), cascade_rows
+    # At least one was budget-halted and surfaces as the honest stopped state
+    # (the aggregate cap is small enough to halt a launch).
+    assert any(x["status"] == "stopped" for x in cascade_rows), cascade_rows
+    # The halted state agrees with the reconstruct path (the honest one).
+    from orchestration.cascade_session import reconstruct_session
+    rec = reconstruct_session(sid)
+    halted = {r.investigation_id for r in rec.researches if r.state == "budget_halted"}
+    listed_stopped = {x["investigation_id"] for x in cascade_rows if x["status"] == "stopped"}
+    assert halted <= listed_stopped, (halted, listed_stopped)
+
+
+# --------------------------------------------------------------------------
+# SPR-05 MINOR — a stopped research surfaces as "stopped", not "done".
+#
+# Stop/cancel finishes through investigation.completed with outcome=stopped/
+# cancelled. The list endpoint must read the outcome so the spec's "stop one;
+# reload" gate shows it honestly, not as a completed research.
+# --------------------------------------------------------------------------
+
+
+def test_stopped_research_surfaces_as_stopped_not_done(client):
+    from substrate.event_log import log_event
+    from substrate.schemas import ActionType
+
+    # Synthesize the exact event trail host_local writes for a stopped run:
+    # start_requested → completed{outcome: stopped}. (The mid-flight stop path
+    # itself is covered by test_steer_endpoint_wiring + the runner unit; here we
+    # pin that the LIST endpoint reads the outcome, the M1-vocabulary gap.)
+    iid = "inv-stopped-001"
+    log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
+              payload={"question": "A question the operator stopped"}, role="user_agent")
+    log_event(iid, ActionType.INVESTIGATION_COMPLETED,
+              payload={"outcome": "stopped"}, role="user_agent")
+
+    rows = client.get("/investigations", params={"limit": 200}).json()["investigations"]
+    row = next(x for x in rows if x["investigation_id"] == iid)
+    assert row["status"] == "stopped", row
+    # And the status filter narrows to it.
+    stopped = client.get("/investigations", params={"status": "stopped"}).json()["investigations"]
+    assert any(x["investigation_id"] == iid for x in stopped), stopped
 
 
 # --------------------------------------------------------------------------

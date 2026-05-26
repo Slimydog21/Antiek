@@ -71,7 +71,9 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
     ],
     tabs: [
       { id: "workstation", label: "Workstation", to: "/" },
-      { id: "investigations", label: "Investigations", to: "/investigations" },
+      // SPR-05: the one multi-research monitor (folds the old Investigations
+      // list + the /deep-research grid into a single "manage all" door).
+      { id: "my-research", label: "My research", to: "/my-research" },
       { id: "outcomes", label: "Outcomes", to: "/outcomes" },
     ],
   },

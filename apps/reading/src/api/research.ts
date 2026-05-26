@@ -103,6 +103,12 @@ export type SteerKind = "pause" | "resume" | "stop" | "redirect" | "deepen";
 export interface BudgetDefaults {
   per_research_cost_usd: number;
   per_research_max_steps: number;
+  /** The host-local runner's real bounded-semaphore concurrency cap
+   * (mirrors runtime/research_runner/host_local.DEFAULT_MAX_CONCURRENCY). The
+   * multi-research monitor reads this to show an honest "N running, M queued"
+   * — the surplus past the cap is queued behind the semaphore, never a number
+   * the UI invents. */
+  host_local_max_concurrency: number;
 }
 
 // ── Request helpers ─────────────────────────────────────────────────────

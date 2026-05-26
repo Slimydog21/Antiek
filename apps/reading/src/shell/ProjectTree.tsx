@@ -58,7 +58,8 @@ const MOCK_RECENT: Record<Exclude<Workflow, "shared">, TreeNode[]> = {
 // The "All" links per workflow → the workflow's index routes (nouns).
 const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: string }>> = {
   research: [
-    { to: "/investigations", label: "All investigations" },
+    // SPR-05: one door for "all my research" — the multi-research monitor.
+    { to: "/my-research", label: "All my research" },
     { to: "/outcomes", label: "Outcomes audit" },
   ],
   read: [
