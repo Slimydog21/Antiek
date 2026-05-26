@@ -153,4 +153,44 @@ describe("MasterMdViewer — named-source read (M1)", () => {
       expect(screen.getByText(/source unavailable/)).toBeTruthy(),
     );
   });
+
+  // ── SPR-10 M1 — the IP-holder dimension ("whose work grounds this") ──
+
+  it("shows 'published by X' when the source has a resolved IP holder", async () => {
+    getChunkMock.mockResolvedValue(
+      chunk({ chunk_id: "c1", document_title: "On Growth and Form", ip_holder_name: "MIT Press" }),
+    );
+    render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText(/On Growth and Form/)).toBeTruthy());
+    expect(screen.getByText(/published by MIT Press/)).toBeTruthy();
+  });
+
+  it("invents no owner when ip_holder_name is null (honest unknown)", async () => {
+    getChunkMock.mockResolvedValue(
+      chunk({ chunk_id: "c1", document_title: "On Growth and Form", ip_holder_name: null }),
+    );
+    render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText(/On Growth and Form/)).toBeTruthy());
+    // No fabricated "published by …" when the owner is unknown.
+    expect(screen.queryByText(/published by/)).toBeNull();
+  });
+
+  it("does NOT expose the owner of a restricted source (§9.0 protected attribution)", async () => {
+    // The endpoint withholds ip_holder_name for a non-servable source; the
+    // surface must not show "published by …" on the restricted branch.
+    getChunkMock.mockResolvedValue(
+      chunk({
+        chunk_id: "c1",
+        document_title: "A Restricted Book",
+        text: "",
+        servable: false,
+        servability: "restricted",
+        ip_holder_name: null,
+      }),
+    );
+    render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText(/A Restricted Book/)).toBeTruthy());
+    expect(screen.getByText(/not available to open/)).toBeTruthy();
+    expect(screen.queryByText(/published by/)).toBeNull();
+  });
 });

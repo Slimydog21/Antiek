@@ -146,6 +146,16 @@ class ChunkResponse(BaseModel):
     # False ⇒ ``text`` is withheld and the surface shows "not available
     # to open". Derived from content_class + takedown, never stored.
     servable: bool = True
+    # SPR-10 M1 — "whose work grounds this": the document's IP holder's
+    # display name (e.g. "MIT Press"), or null when no owner is resolved
+    # (honest "unknown owner", never invented). §9.0: a NON-servable
+    # (restricted / taken-down) source does NOT expose its owner — the
+    # protected attribution stays withheld with the body. The lifecycle
+    # word (pre_onboarded … claimed) rides alongside so the surface frames
+    # escrow as opt-in-only (§9.10), never "money waiting" against an
+    # unconsenting rights holder.
+    ip_holder_name: Optional[str] = None
+    ip_holder_status: Optional[str] = None
     # A presentation label for WHY a source is withheld
     # ("restricted" | "taken_down"); null when servable. Lets the surface
     # distinguish the two without re-deriving the gate.
@@ -464,6 +474,13 @@ class AttributionAlgorithmShares(BaseModel):
     document_titles: dict[str, str] = Field(default_factory=dict)
     document_count: int = 0
     claim_count: int = 0
+    # SPR-10 M1 — the provenance chain's last link: document_id → ip_holder_id
+    # (or null = unknown owner, never invented). document_ip_holder_status maps
+    # an ip_holder_id → its lifecycle word (pre_onboarded … claimed), so the
+    # surface can frame escrow as opt-in-only (§9.10). A restricted source never
+    # appears here at all — the §9.0 gate excludes it upstream in compute.py.
+    document_ip_holders: dict[str, Optional[str]] = Field(default_factory=dict)
+    document_ip_holder_status: dict[str, str] = Field(default_factory=dict)
 
 
 class AttributionReportResponse(BaseModel):
@@ -1785,10 +1802,12 @@ def create_app(
                 SELECT c.chunk_id, c.text, c.section_path, c.token_count,
                        c.document_id, d.title, d.source_tier,
                        d.content_class,
-                       COALESCE(b.taken_down, FALSE) AS taken_down
+                       COALESCE(b.taken_down, FALSE) AS taken_down,
+                       h.display_name, h.status
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.document_id
                 LEFT JOIN book_assets b ON d.document_id = b.document_id
+                LEFT JOIN ip_holders h ON d.ip_holder_id = h.ip_holder_id
                 WHERE c.chunk_id = ?
                 """,
                 [chunk_id],
@@ -1824,6 +1843,12 @@ def create_app(
             document_title=row[5],
             source_tier=int(row[6]),
             servable=servable,
+            # §9.0: the IP-holder name is protected attribution — surface it
+            # ONLY for a servable source. A restricted / taken-down source
+            # withholds its owner exactly as it withholds its body, so a
+            # reader can't infer "whose work" from a source we may not serve.
+            ip_holder_name=(row[9] if servable else None),
+            ip_holder_status=(row[10] if servable else None),
             servability=label,
         )
 
@@ -2727,6 +2752,8 @@ def create_app(
                 document_titles=dict(result.document_titles),
                 document_count=result.document_count,
                 claim_count=result.claim_count,
+                document_ip_holders=dict(result.document_ip_holders),
+                document_ip_holder_status=dict(result.document_ip_holder_status),
             )
 
         return AttributionReportResponse(

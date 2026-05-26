@@ -283,3 +283,24 @@ def test_api_unknown_synthesis_404(seeded_substrate):
     client = TestClient(app)
     resp = client.get("/attribution/synthesis/syn-nope")
     assert resp.status_code == 404
+
+
+def test_api_surfaces_ip_holder_maps(seeded_substrate):
+    """SPR-10 M1 — the attribution endpoint carries the provenance chain's last
+    link (document_ip_holders / status). The seeded docs have no owner, so the
+    maps are present but honestly carry null owners — never an invented one."""
+    from interfaces.research.api.app import create_app
+    app = create_app(
+        register_wrestling=False, register_providers=False, cors_origins=[],
+    )
+    client = TestClient(app)
+    body = client.get(
+        f"/attribution/synthesis/{seeded_substrate['synthesis_id']}"
+    ).json()
+    # The maps exist on every algorithm's result.
+    for opt in ("option_a", "option_b", "option_c"):
+        assert "document_ip_holders" in body[opt]
+        assert "document_ip_holder_status" in body[opt]
+    # Seeded docs carry no ip_holder → honest null, no fabricated owner/status.
+    assert all(v is None for v in body["option_b"]["document_ip_holders"].values())
+    assert body["option_b"]["document_ip_holder_status"] == {}

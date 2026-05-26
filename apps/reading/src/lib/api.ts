@@ -445,6 +445,15 @@ export interface ChunkResponse {
    *  False ⇒ the body (`text`) is withheld by the endpoint and the
    *  surface must show "not available to open", never the content. */
   servable: boolean;
+  /** SPR-10 M1 — "whose work grounds this": the source's IP-holder name
+   *  (e.g. "MIT Press"), or null when no owner is resolved (honest
+   *  "unknown owner", never invented). §9.0: a non-servable source
+   *  withholds its owner with its body, so this is null for a restricted /
+   *  taken-down source. */
+  ip_holder_name?: string | null;
+  /** The IP holder's lifecycle word (pre_onboarded … claimed); null when
+   *  no owner or non-servable. Lets the surface frame escrow opt-in-only. */
+  ip_holder_status?: string | null;
   /** Why a source is withheld ("restricted" | "taken_down"); null when
    *  servable. Mirrors interfaces/research/api/app.py:ChunkResponse. */
   servability: string | null;
@@ -927,6 +936,113 @@ export async function getChunk(chunkId: string): Promise<ChunkResponse> {
   if (!resp.ok) {
     throw new ApiError(
       `GET /chunks/{id} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// ── SPR-10: §9 provenance + economics, surfaced (accrual, NOT disbursement) ──
+//
+// The accrual view (Economics/AccrualView) reads two SHIPPED, read-only
+// surfaces and shows them honestly: attribution shares (whose work grounds a
+// synthesis, under the §9.3 algorithms) and the consent/escrow view (what is
+// ACCRUING per IP holder, with every balance labelled gated-on-G2+G3). Neither
+// call can move money — there is no disburse/payout/publish client here.
+
+/** One §9.3 algorithm's per-document attribution result. Mirrors
+ *  interfaces/research/api/app.py:AttributionAlgorithmShares. ``shares`` is
+ *  document_id → share-of-total; the parallel maps carry the human title and
+ *  the provenance chain's last link (ip_holder). A §9.0-restricted source is
+ *  excluded upstream in compute.py — it never appears in any of these maps. */
+export interface AttributionAlgorithmShares {
+  algorithm: "A" | "B" | "C";
+  shares: Record<string, number>;
+  document_titles: Record<string, string>;
+  document_count: number;
+  claim_count: number;
+  /** document_id → ip_holder_id (or null = unknown owner, never invented). */
+  document_ip_holders: Record<string, string | null>;
+  /** ip_holder_id → lifecycle word (pre_onboarded … claimed). */
+  document_ip_holder_status: Record<string, string>;
+}
+
+export interface AttributionReportResponse {
+  synthesis_id: string;
+  target_question: string;
+  option_a: AttributionAlgorithmShares;
+  option_b: AttributionAlgorithmShares;
+  option_c: AttributionAlgorithmShares;
+}
+
+/** GET /attribution/synthesis/{id} — Phase 1 telemetry only; no payout is
+ *  attached to the result. The accrual view defaults to Option B (§9.3
+ *  recommended default). ``emit_event`` defaults false (a read shouldn't write
+ *  the log). */
+export async function getAttributionReport(
+  synthesisId: string,
+): Promise<AttributionReportResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/attribution/synthesis/${encodeURIComponent(synthesisId)}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /attribution/synthesis/{id} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** Why an accrued balance is NOT disbursable. ``disbursable`` is always false
+ *  on this surface — no field flips it, no endpoint disburses. */
+export interface DisbursementGate {
+  disbursable: boolean; // always false
+  open_gate_ids: string[]; // subset of {G2, G3} currently open
+  holder_claimed: boolean;
+  fully_unlocked: boolean;
+  label: string;
+}
+
+export interface IpHolderConsent {
+  ip_holder_id: string;
+  display_name: string;
+  status: string; // pre_onboarded | invited | claimed | opted_out
+  escrow_balance_usd: string; // accruing; "0" is an honest zero
+  gate: DisbursementGate;
+  serves_full_text: boolean | null;
+  servability_note: string | null;
+}
+
+export interface ConsentViewResponse {
+  holders: IpHolderConsent[];
+  escrow_report: {
+    pre_onboarded: number;
+    invited: number;
+    claimed: number;
+    opted_out: number;
+    claim_rate: number;
+    total_escrow_accrued_cents: number;
+    total_escrow_paid_cents: number; // honestly 0 — no payout has run
+    unclaimed_escrow_cents: number;
+    publishers_with_nontrivial_accrual: number;
+  };
+  disbursement_gates_open: string[];
+  total_escrow_accruing_usd: string;
+  any_disbursable: boolean; // false while a legal gate is open
+  gate_source_path: string;
+}
+
+/** GET /coordination/consent — the read-only escrow/consent view. Every
+ *  balance is accruing-not-paid; ``any_disbursable`` is false while a legal
+ *  gate is open. Read-only on the backend (no escrow write, no payout). */
+export async function getConsentView(): Promise<ConsentViewResponse> {
+  const resp = await apiFetch(`${API_BASE}/coordination/consent`);
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /coordination/consent failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

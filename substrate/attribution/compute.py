@@ -12,7 +12,7 @@ This module is the public entry point used by the API and by Phase
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
 import duckdb
@@ -35,13 +35,25 @@ class AttributionResult:
 
     ``shares`` keys are ``document_id``; values are share-of-total
     (sum to 1.0 modulo float rounding). ``document_titles`` is a
-    parallel map for human readability; not load-bearing."""
+    parallel map for human readability; not load-bearing.
+
+    ``document_ip_holders`` / ``document_ip_holder_status`` carry the
+    provenance chain's last link — *whose work grounds this* (§9, SPR-10
+    M1). A document with no resolved owner maps to ``None`` (honest
+    "unknown owner", never invented). The status (``pre_onboarded`` …
+    ``claimed``) lets the surface frame escrow as opt-in-only (§9.10):
+    a ``pre_onboarded`` holder is escrow-framework-eligible, never shown
+    as money waiting against an unconsenting rights holder."""
 
     algorithm: str  # "A" | "B" | "C"
     shares: Mapping[str, float]
     document_titles: Mapping[str, str]
     document_count: int
     claim_count: int
+    # document_id → ip_holder_id (or None when the document has no owner).
+    document_ip_holders: Mapping[str, Optional[str]] = field(default_factory=dict)
+    # ip_holder_id → status word (pre_onboarded | invited | claimed | opted_out).
+    document_ip_holder_status: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -134,14 +146,55 @@ def compute_attribution_for_synthesis(
         if doc_ids:
             placeholders = ",".join("?" for _ in doc_ids)
             doc_rows = con.execute(
-                f"SELECT document_id, source_tier, title FROM documents "
-                f"WHERE document_id IN ({placeholders})",
+                f"SELECT document_id, source_tier, title, content_class, ip_holder_id "
+                f"FROM documents WHERE document_id IN ({placeholders})",
                 list(doc_ids),
             ).fetchall()
         else:
             doc_rows = []
         doc_to_tier: dict[str, int] = {r[0]: int(r[1]) for r in doc_rows}
         doc_to_title: dict[str, str] = {r[0]: (r[2] or "") for r in doc_rows}
+        doc_to_content_class: dict[str, Optional[str]] = {r[0]: r[3] for r in doc_rows}
+        doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}
+
+        # §9.0 retrieval-time gating, on the SURFACED (attribution) path.
+        # A restricted_pending_opt_in document must NOT surface into an
+        # attribution-triggering synthesis — neither its body, nor its
+        # title, nor a share. The same gate that withholds bytes at
+        # /chunks/{id} (app.py) holds here: this is an attribution-eligible
+        # surface, not a privileged (private_research / operator_only) path,
+        # so restricted content is excluded entirely. (SPR-10 M1; mirrors
+        # substrate/graph/search.py RESTRICTED_CONTENT_CLASSES.)
+        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
+
+        restricted_docs = {
+            d for d, cc in doc_to_content_class.items()
+            if cc in RESTRICTED_CONTENT_CLASSES
+        }
+        if restricted_docs:
+            chunk_to_doc = {
+                cid: d for cid, d in chunk_to_doc.items()
+                if d not in restricted_docs
+            }
+            for d in restricted_docs:
+                doc_to_tier.pop(d, None)
+                doc_to_title.pop(d, None)
+                doc_to_ip_holder.pop(d, None)
+
+        # Resolve the ip_holder status word for each surfaced (non-restricted)
+        # owner. Drives the opt-in-only escrow framing on the surface: a
+        # pre_onboarded holder is escrow-framework-eligible, never "money
+        # waiting" (§9.10 / Google Books opt-out rejection).
+        owner_ids = {h for h in doc_to_ip_holder.values() if h}
+        ip_status: dict[str, str] = {}
+        if owner_ids:
+            placeholders = ",".join("?" for _ in owner_ids)
+            for hid, status in con.execute(
+                f"SELECT ip_holder_id, status FROM ip_holders "
+                f"WHERE ip_holder_id IN ({placeholders})",
+                list(owner_ids),
+            ).fetchall():
+                ip_status[hid] = status
     finally:
         con.close()
 
@@ -152,12 +205,18 @@ def compute_attribution_for_synthesis(
     c_shares = attribution_option_c(claims)
 
     def _r(algo: str, shares: dict[str, float]) -> AttributionResult:
+        owners = {k: doc_to_ip_holder.get(k) for k in shares.keys()}
         return AttributionResult(
             algorithm=algo,
             shares=shares,
             document_titles={k: doc_to_title.get(k, "") for k in shares.keys()},
             document_count=len(shares),
             claim_count=len(claims),
+            document_ip_holders=owners,
+            document_ip_holder_status={
+                h: ip_status.get(h, "pre_onboarded")
+                for h in owners.values() if h
+            },
         )
 
     result = SynthesisAttributionResult(

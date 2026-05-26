@@ -190,6 +190,11 @@ interface ResolvedSource {
   /** §9.0: whether clicking may open this source. False ⇒ honest
    *  "not available to open"; the body is already withheld by the API. */
   servable: boolean;
+  /** SPR-10 M1 — "whose work grounds this": the source's IP-holder name
+   *  (e.g. "MIT Press"), or null when the document has no resolved owner
+   *  (honest "unknown owner", never invented). The §9.0 gate withholds the
+   *  owner for a non-servable source, so this is null there too. */
+  ipHolderName: string | null;
 }
 
 /** Derive a "p.NNN" locator from a section_path, when present. */
@@ -217,6 +222,10 @@ function groupByDocument(chunks: ChunkResponse[]): ResolvedSource[] {
       locator,
       representativeChunkId: c.chunk_id,
       servable: c.servable,
+      // §9.0: the endpoint already withholds the owner for a non-servable
+      // source, so this is null there; we never invent it. (`?? null`
+      // tolerates an older endpoint that omits the field entirely.)
+      ipHolderName: c.ip_holder_name ?? null,
     });
   }
   return Array.from(byDoc.values());
@@ -290,6 +299,12 @@ function SourceCitation({
 }) {
   const label = source.title ?? "an untitled source";
   const locator = source.locator ? `, ${source.locator}` : "";
+  // SPR-10 M1 — "whose work grounds this": append the IP holder only when the
+  // endpoint resolved one. Null ⇒ unknown owner, shown by simply not claiming
+  // one (never an invented "published by …"). A non-servable source already
+  // has ipHolderName = null (§9.0 withholds it), so the protected attribution
+  // never leaks onto the restricted branch below.
+  const owner = source.ipHolderName ? `, published by ${source.ipHolderName}` : "";
 
   if (!source.servable) {
     // §9.0: a restricted / taken-down source must NOT open. Show the
@@ -348,6 +363,7 @@ function SourceCitation({
     >
       from {label}
       {locator}
+      {owner}
     </button>
   );
 }

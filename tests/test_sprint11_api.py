@@ -232,6 +232,73 @@ def test_get_chunk_restricted_source_not_opened(temp_substrate):
     assert body["document_title"] == "Title of doc-restricted"
 
 
+def test_get_chunk_servable_source_surfaces_ip_holder(temp_substrate):
+    """SPR-10 M1 — "whose work grounds this": a servable source surfaces its
+    IP holder's display name + lifecycle status so the reader sees published-by
+    on the named source. A null owner stays null (honest unknown, never
+    invented)."""
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(temp_substrate["db_path"])
+    with connect_write(temp_substrate["db_path"], purpose="test") as con:
+        con.execute(
+            "INSERT INTO ip_holders (ip_holder_id, display_name, legal_contact_email, "
+            "status, escrow_balance_usd, metadata) "
+            "VALUES ('ip-mit', 'MIT Press', '', 'pre_onboarded', 0, '{}')",
+        )
+        insert_document(
+            con, document_id="doc-owned", source_tier=1,
+            document_type="academic_paper", title="An Owned Paper",
+            content_class="public_domain", ip_holder_id="ip-mit",
+            on_conflict="ignore",
+        )
+        chunk_id = insert_chunk(
+            con, document_id="doc-owned", chunk_index=0,
+            text="body", section_path="p.1",
+        )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is True
+    assert body["ip_holder_name"] == "MIT Press"
+    assert body["ip_holder_status"] == "pre_onboarded"
+
+
+def test_get_chunk_restricted_source_withholds_ip_holder(temp_substrate):
+    """SPR-10 §9.0 — a restricted source's IP holder is protected attribution:
+    it is withheld with the body, so a reader can't infer "whose work" from a
+    source we may not serve."""
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(temp_substrate["db_path"])
+    with connect_write(temp_substrate["db_path"], purpose="test") as con:
+        con.execute(
+            "INSERT INTO ip_holders (ip_holder_id, display_name, legal_contact_email, "
+            "status, escrow_balance_usd, metadata) "
+            "VALUES ('ip-bigfive', 'A Big Five Publisher', '', 'pre_onboarded', 0, '{}')",
+        )
+        insert_document(
+            con, document_id="doc-restricted-owned", source_tier=2,
+            document_type="book", title="A Restricted Owned Book",
+            content_class="restricted_pending_opt_in", ip_holder_id="ip-bigfive",
+            on_conflict="ignore",
+        )
+        chunk_id = insert_chunk(
+            con, document_id="doc-restricted-owned", chunk_index=0,
+            text="restricted body", section_path="p.1",
+        )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is False
+    assert body["text"] == ""
+    # The owner is withheld too — not just the body.
+    assert body["ip_holder_name"] is None
+    assert body["ip_holder_status"] is None
+
+
 def test_get_chunk_null_content_class_grandfathered(temp_substrate):
     """A NULL content_class research chunk (legacy / the operator's own
     tier-2 paper) passes — exactly as it does in chunk search. The
