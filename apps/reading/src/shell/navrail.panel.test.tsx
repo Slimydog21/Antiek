@@ -17,9 +17,17 @@
  * router because the mounting CONTRACT — what open() does — is what's
  * load-bearing; the rail is a thin caller of it.)
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { NavRail } from "./NavRail";
+import {
+  modesForWorkflow,
+  WORKFLOW_ORDER,
+  WORKFLOWS,
+} from "./workflowTaxonomy";
 
 const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 const s = () => useWorkspace.getState();
@@ -27,6 +35,8 @@ const s = () => useWorkspace.getState();
 beforeEach(() => {
   s().reset();
 });
+
+afterEach(cleanup);
 
 describe("NavRail → panel mount contract (SPR-04 M6)", () => {
   it("the project-tree toggle mounts ProjectTree as a docked-left panel with the stable id", () => {
@@ -59,5 +69,76 @@ describe("NavRail → panel mount contract (SPR-04 M6)", () => {
     expect(panel.kind).toBe("Trajectory");
     expect(panel.mode).toBe("floating");
     expect(s().floatingIds).toContain(id);
+  });
+});
+
+/**
+ * U-01 M4 anti-regression guard.
+ * The rail's top-level destinations are exactly the four workflows sourced
+ * from WORKFLOW_ORDER. Nothing operator/admin lives at rail level.
+ * Search/New/More are utilities/overflow (outside the workflows group).
+ * A fifth destination or promoted shared entry fails this with U-01 message.
+ */
+describe("NavRail four-door canonical + anti-regression guard (U-01 M4)", () => {
+  it("workflow-destination group has exactly four doors (U-01 literal count guard)", () => {
+    render(
+      <MemoryRouter>
+        <NavRail />
+      </MemoryRouter>
+    );
+    const group = screen.getByTestId("navrail-workflows");
+    const buttons = group.querySelectorAll(":scope > button");
+    // The literal 4 is intentional and non-derived: deriving the count from
+    // WORKFLOW_ORDER would move with the rail (both map the same list), so a
+    // fifth workflow would stay green. Pinning the literal makes a deliberate
+    // fifth destination redden CI — the load-bearing half of the M4 gate.
+    expect(
+      buttons.length,
+      `the rail is exactly four doors (Research / Read / Write / Speak) + utilities + More - see U-01. A fifth workflow added to WORKFLOW_ORDER must redden this.`,
+    ).toBe(4);
+
+    const labels = Array.from(buttons).map(
+      (b) => b.querySelector(".sr-only")?.textContent?.trim() ?? ""
+    );
+    const expected = WORKFLOW_ORDER.map((wf) => WORKFLOWS[wf].label);
+    expect(labels).toEqual(expected);
+  });
+
+  it("never renders a shared-bucket destination (operator/admin/settings/governance) on the rail (U-01 guard, now via shared predicate)", () => {
+    render(
+      <MemoryRouter>
+        <NavRail />
+      </MemoryRouter>
+    );
+    const group = screen.getByTestId("navrail-workflows");
+    const labels = Array.from(group.querySelectorAll(".sr-only")).map(
+      (el) => el.textContent?.trim() ?? "",
+    );
+
+    // Taxonomy-driven: the shared bucket is the source list of everything
+    // that must stay behind More. The guard reads both the rendered DOM
+    // and the taxonomy; any leak fails the build.
+    const sharedLabels = modesForWorkflow("shared").map((m) => m.label);
+    const leaked = labels.filter((l) => sharedLabels.includes(l));
+
+    expect(
+      leaked,
+      leaked.length > 0
+        ? `operator/admin lives behind More (see U-01 / shared predicate). Leaked on rail: ${leaked.join(", ")}`
+        : "",
+    ).toHaveLength(0);
+  });
+
+  it("Search, New, and More are classified as utilities/overflow (outside the workflow-destination group)", () => {
+    render(
+      <MemoryRouter>
+        <NavRail />
+      </MemoryRouter>
+    );
+    const group = screen.getByTestId("navrail-workflows");
+    // Only the four workflow buttons live inside the group.
+    expect(group.querySelectorAll("button").length).toBe(WORKFLOW_ORDER.length);
+    // More exists in the rail but is not a workflow destination.
+    expect(screen.getByTitle(/More - all products/)).toBeTruthy();
   });
 });

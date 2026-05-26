@@ -82,7 +82,18 @@ export interface WorkflowMeta {
    * the operator works ON, not the tools. Content-first IA.
    */
   nouns: string[];
-  /** Route the rail navigates to when the workflow is selected. */
+  /**
+   * Route the rail navigates to when the workflow is selected.
+   *
+   * U-04 DOOR CONTRACT — a workflow's `defaultRoute` opens to an ACTION,
+   * not an explanation. The landing must let the user do the workflow's
+   * core thing immediately (Research → start a research; Read → open/add a
+   * book; Write → start composing; Speak → start a remembrance), never a
+   * prose dead-end ("Select or create … to begin") or a bare uploader.
+   * Research's StartResearch (PR #10) is the reference. Each product's
+   * door-fix sprint owns making its own landing satisfy this; the U-04
+   * audit (handoff) records which doors meet it and which are still filed.
+   */
   defaultRoute: string;
   /**
    * If the workflow's primary surface isn't built yet, the sprint it
@@ -566,6 +577,23 @@ export function landingModeForWorkflow(workflow: Workflow): ModeEntry | undefine
   return MODE_TAXONOMY.find(
     (m) => m.workflow === workflow && m.built && Boolean(m.route),
   );
+}
+
+/**
+ * Single source of truth for the rail boundary. Returns true exactly when
+ * the workflow is one of the four members of WORKFLOW_ORDER. The shared
+ * bucket (every operator, admin, settings, governance, trust, billing,
+ * privacy and cross-cutting surface) is false and must never be rendered
+ * by the NavRail. This predicate is the only definition of "rail
+ * destination." The U-01 count guard and the U-03 off-the-rail guard both
+ * import and call it so the two tests agree on the boundary and a future
+ * reclassification cannot create a gap. Change the rail set in one place
+ * only; the guards follow.
+ */
+export function isWorkflowDestination(
+  wf: Workflow,
+): wf is Exclude<Workflow, "shared"> {
+  return WORKFLOW_ORDER.includes(wf as Exclude<Workflow, "shared">);
 }
 
 /** Resolve which workflow a pathname belongs to (for active-rail state). */

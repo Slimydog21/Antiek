@@ -7,6 +7,7 @@ import {
   WernerTobogganSpinner,
   WernerWaddle,
 } from ".";
+import Werner, { type WernerMood } from "../../Werner";
 
 const meta = {
   title: "Brand / Werner / Animations",
@@ -74,6 +75,43 @@ export const AllPoses: Story = {
           hint="route-navigation transition"
           pose={<WernerWaddle size={48} />}
         />
+      </div>
+    </div>
+  ),
+};
+
+/* U-02 — the canonical single-component moods at the three critical sizes.
+   16 px tests favicon legibility. 28 px is the rail. 120 px proves
+   expression. The same SVG source serves both fidelities. */
+const moods: WernerMood[] = ["idle", "thinking", "empty", "celebrate"];
+const sizes = [16, 28, 120];
+
+export const CanonicalMoods: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — canonical moods (U-02)
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        Single source. Rail mark must read "cute penguin" at 28 px.
+        Restraint: only the four slots named in brand/README.md.
+      </p>
+      <div className="space-y-8">
+        {moods.map((m) => (
+          <div key={m}>
+            <div className="uppercase text-[10px] tracking-[1.5px] text-shadow-1 dark:text-moonlight mb-2">
+              {m}
+            </div>
+            <div className="flex items-end gap-8">
+              {sizes.map((s) => (
+                <div key={s} className="flex flex-col items-center gap-1.5">
+                  <Werner mood={m} size={s} />
+                  <div className="font-mono text-[10px] text-ink-mute">{s}px</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   ),

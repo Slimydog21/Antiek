@@ -7,6 +7,9 @@ import "../src/index.css";
 // Werner brand tokens — sun-yellow outlining, day/night surface ramps.
 // Loaded here so every story has --sun, --ink, --ice-2 etc. available.
 import "../src/design/tokens.css";
+// U-05 motion system — the reduced-motion catch-all so stories honour the
+// OS reduce-motion setting exactly as the app does.
+import "../src/design/motion.css";
 
 /**
  * Global Storybook preview config. Wraps every story in a

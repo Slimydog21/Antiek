@@ -175,6 +175,20 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
+    id: "route:settings",
+    title: "Settings",
+    subtitle: "Application settings (/settings)",
+    path: "/settings",
+  },
+  {
+    kind: "route",
+    id: "route:coordination",
+    title: "Coordination",
+    subtitle: "Gate ledger · roadmap · unified cost · escrow/consent (/coordination)",
+    path: "/coordination",
+  },
+  {
+    kind: "route",
     id: "route:loop3",
     title: "Loop 3 checklist",
     subtitle: "RL unlock criteria + env gate (/loop-3)",

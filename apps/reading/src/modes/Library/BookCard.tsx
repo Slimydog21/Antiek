@@ -1,4 +1,5 @@
 import { LemonTag } from "../../components/lemon";
+import { cardLift } from "../../design/motion";
 import type { BookSummary } from "../../api/books";
 import { servabilityLabel } from "../../api/books";
 
@@ -37,7 +38,7 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
       aria-label={`Open ${title}${book.author ? ` by ${book.author}` : ""}`}
     >
       <div
-        className="relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night transition-transform group-hover:-translate-y-0.5 group-hover:shadow-z2"
+        className={`relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night ${cardLift}`}
         style={
           book.cover_uri
             ? undefined

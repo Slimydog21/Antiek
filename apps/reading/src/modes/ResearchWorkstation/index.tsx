@@ -9,6 +9,7 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import HighlightToolbar from "./HighlightToolbar";
 import MasterMdViewer from "./MasterMdViewer";
+import StartResearch from "./StartResearch";
 import TrajectoryView from "./TrajectoryView";
 
 /**
@@ -17,9 +18,11 @@ import TrajectoryView from "./TrajectoryView";
  * Layout shift from the legacy version:
  *   - InvestigationSidebar → docked-left panel (via PanelHost starter)
  *   - ChatInputArea       → docked-bottom panel (when an investigation
- *                            is loaded; the empty state shows an inline
- *                            composer because there's no investigation
- *                            context for the docked Chat panel yet)
+ *                            is loaded; the empty state renders the
+ *                            StartResearch composer because there's no
+ *                            investigation context for the docked Chat
+ *                            panel yet — and a fresh `/` MUST be able to
+ *                            actually start a research)
  *   - ChaseSlideOver      → floating panel opened via workspace action
  *   - Trajectory / MasterMdViewer → main slot (unchanged surface)
  *
@@ -57,31 +60,9 @@ export default function ResearchWorkstation() {
       {investigationId ? (
         <InvestigationCenter investigationId={investigationId} />
       ) : (
-        <EmptyState />
+        <StartResearch />
       )}
     </PanelHost>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="h-full flex items-center justify-center">
-      <div className="max-w-md text-center px-6">
-        <h1 className="text-2xl font-serif text-ink dark:text-bright mb-3">
-          What do you want to research?
-        </h1>
-        <p className="text-sm text-shadow-1 dark:text-moonlight leading-relaxed font-serif">
-          Type a question. The substrate runs a recursive note-taking
-          chain across the corpus, distills insights and open questions,
-          and renders a cited thesis. Highlight anything in the result
-          to chase it further.
-        </p>
-        <p className="text-xs font-mono text-ink-mute dark:text-moonlight mt-6 leading-relaxed">
-          Open the Chat panel from the bottom dock once an investigation
-          is loaded, or pick a recent investigation from the left rail.
-        </p>
-      </div>
-    </div>
   );
 }
 

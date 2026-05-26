@@ -41,7 +41,9 @@
   --text-muted: var(--shadow-1);
   --border:     var(--sun);
 
-  /* werner */
+  /* werner — five fills for the single-source <Werner> component.
+     Bill + foot lock to --sun so the mark carries the brand constant at every size.
+     See tokens.ts + brand/README.md (restraint: rail idle, thinking, empty, celebrate only). */
   --werner-coat:  #0F1419;
   --werner-belly: #FBFCFD;
   --werner-bill:  var(--sun);
@@ -65,6 +67,16 @@
   --radius:    6px;
   --radius-lg: 10px;
   --edge:      2.5px;
+
+  /* motion (U-05) — durations + easings as tokens, never magic numbers.
+     fast = press, base = hover/colour, slow = signature-beat ceiling
+     (== Werner's 800 ms celebrate). See src/design/motion.ts +
+     src/design/motion/README.md. */
+  --motion-fast:  80ms;
+  --motion-base:  150ms;
+  --motion-slow:  800ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-enter:    cubic-bezier(0, 0, 0.2, 1);
 
   /* type */
   --sans:  "Inter", system-ui, -apple-system, sans-serif;
@@ -101,6 +113,8 @@
 
     --werner-coat:  #0A0D14;
     --werner-belly: #DCE2EA;
+    --werner-bill:  var(--sun);
+    --werner-foot:  var(--sun);
     --werner-eye:   #DCE2EA;
 
     --aurora:  #3FE0DC;

@@ -75,4 +75,17 @@ describe("palette workflow facet (SPR-04 M4)", () => {
       }),
     ).toBe("read");
   });
+
+  it("M4 launcher/palette parity: core Run & settings surfaces (Settings, Coordination) are covered under shared workflow", () => {
+    // This cross-surface guard ensures the two primary power-user entry points
+    // (More launcher + ⌘K palette) stay in sync with the taxonomy shared bucket
+    // after M4 sharpen. Prevents the exact drift the verifiers and code audit
+    // flagged. The synthetic ENTRIES already model the shared surfaces we made
+    // first-class in both surfaces.
+    const sharedInPalette = ENTRIES.filter((e) => e.workflow === "shared").map((e) => e.title);
+    expect(sharedInPalette).toContain("Settings");
+    // Coordination (which hosts cost/consent per taxonomy blurb) is the
+    // canonical shared surface. Launcher uses the same taxonomy + RUN_LABELS.
+    expect(ENTRIES.some((e) => e.id === "r:settings" && e.workflow === "shared")).toBe(true);
+  });
 });

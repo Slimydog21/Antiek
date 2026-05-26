@@ -4,18 +4,14 @@ import { ProductsLauncher } from "./ProductsLauncher";
 
 /**
  * ProductsLauncher (SPR-04 zone-1 ⊞) — the honest full surface inventory of
- * EVERY mode, grouped by workflow + a shared/operator section, with each
- * mode's build status shown truthfully. It is the pressure-release valve that
- * lets the rail stay at four workflows: the deep modes live here + in ⌘K,
- * never on the rail.
+ * EVERY mode. Two calm top-level groups (workflow deep modes under their
+ * workflows; run & settings for Operator/Trust/Settings/governance) with
+ * human labels. The pressure-release valve that keeps the rail at exactly
+ * four workflows: everything else lives here + in ⌘K.
  *
  * In the app, NavRail owns the open state and renders this as a controlled
  * component (`<ProductsLauncher open={launcherOpen} onClose={…} />`). The story
  * mounts it `open` directly so the full inventory is the subject.
- *
- * Harvested from PR #8 (caffen/SPR-08) and re-pointed from the deleted
- * `components/navigation/ProductsLauncher` (which self-managed via a window
- * event) to the unified `src/shell/ProductsLauncher` (controlled props).
  */
 const meta = {
   title: "Shell / ProductsLauncher",

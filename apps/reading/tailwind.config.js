@@ -74,6 +74,18 @@ export default {
         hog: "6px",
         "hog-lg": "10px",
       },
+      // Motion scale (U-05) — the named durations + easings the base
+      // interactions use, so `duration-fast/base/slow` replace magic
+      // `duration-75` numbers. Source of truth: src/design/motion.ts.
+      transitionDuration: {
+        fast: "80ms", // press
+        base: "150ms", // hover / colour
+        slow: "800ms", // signature-beat ceiling
+      },
+      transitionTimingFunction: {
+        standard: "cubic-bezier(0.4, 0, 0.2, 1)",
+        enter: "cubic-bezier(0, 0, 0.2, 1)",
+      },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
         // Tighter monospace for trajectory data; reading text stays default sans.
