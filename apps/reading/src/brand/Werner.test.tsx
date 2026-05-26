@@ -11,12 +11,14 @@ import Werner from "./Werner";
 afterEach(cleanup);
 
 describe("Werner mark", () => {
-  it("renders the penguin — role=img with a coat ellipse in the SVG", () => {
+  it("renders the penguin — role=img wrapping the Krea pose <img>", () => {
     const { getByRole, container } = render(<Werner />);
     expect(getByRole("img")).toBeTruthy();
-    // The coat ellipse is the body silhouette; its presence means we drew the
-    // penguin, not an empty wrapper.
-    expect(container.querySelector("ellipse")).toBeTruthy();
+    // The pose <img> with a real src is what proves we drew the cute
+    // penguin art, not an empty wrapper or the retired SVG geometry.
+    const img = container.querySelector("img");
+    expect(img).toBeTruthy();
+    expect(img?.getAttribute("src")).toBeTruthy();
   });
 
   it("throws in dev on a mood outside the four", () => {

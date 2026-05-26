@@ -428,7 +428,7 @@ export default function CommandPalette() {
   useEffect(() => {
     // S8: the workspace shortcuts module (src/workspace/shortcuts.ts)
     // owns the ⌘K binding now and dispatches "antiek:palette:toggle"
-    // so the Topbar search input click + the keyboard handler both
+    // so the NavRail Search button click + the keyboard handler both
     // reach the same code path. We also keep an in-component ⌘K
     // fallback so the palette still works when AppShell isn't the
     // ancestor (e.g. in Storybook stories rendered without AppShell).

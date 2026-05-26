@@ -1,6 +1,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
-import { ContextWindow } from "./ContextWindow";
+// Explicit .tsx extension: this dir also holds a sibling `contextWindow.ts`
+// (the logic module, no `ContextWindow` export). On a case-insensitive
+// filesystem the bare `./ContextWindow` specifier can resolve to that
+// lowercase logic file, breaking the rollup/Storybook build. Pinning the
+// extension makes the component the unambiguous target.
+import { ContextWindow } from "./ContextWindow.tsx";
 
 /**
  * ContextWindow — the pre-outline, outline-optional path (specs/write/

@@ -1,6 +1,8 @@
-import { useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useLocation, useNavigate, type NavigateFunction } from "react-router-dom";
 import type { ReactNode } from "react";
 
+import { createDeliverable } from "../lib/api";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
 import {
   WORKFLOWS,
@@ -39,6 +41,10 @@ type Action = {
   /** Navigate to a route, or dispatch a workspace event. */
   to?: string;
   event?: string;
+  /** A verb that DOES something (create a record) before/instead of
+   *  navigating. Takes precedence over `to`/`event`. The handler owns
+   *  the navigate so it can land on the newly-created entity. */
+  run?: (navigate: NavigateFunction) => Promise<void>;
   primary?: boolean;
 };
 
@@ -83,7 +89,23 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   },
   write: {
     actions: [
-      { id: "new-deliverable", label: "New deliverable", to: "/create", primary: true },
+      {
+        id: "new-deliverable",
+        label: "New deliverable",
+        primary: true,
+        // The button used to only `navigate("/create")`, which lands on
+        // the empty "Select or create a deliverable to begin" canvas and
+        // creates nothing — it read as a dead button. Now it actually
+        // creates a deliverable and opens it. The operator renames the
+        // default title inline; kind defaults to the most common one.
+        run: async (navigate) => {
+          const d = await createDeliverable({
+            title: "Untitled deliverable",
+            deliverable_kind: "research_memo",
+          });
+          navigate(`/create/${d.deliverable_id}`);
+        },
+      },
     ],
   },
   speak: {
@@ -118,6 +140,7 @@ export function SceneChrome({
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const wf = workflowForPath(pathname);
+  const [runningAction, setRunningAction] = useState<string | null>(null);
 
   // Shared/operator routes don't get workflow scene chrome — they render
   // their own surface bare (governance surfaces aren't a workflow scene).
@@ -130,8 +153,17 @@ export function SceneChrome({
   const built = workflowHasBuiltMode(wf);
 
   const runAction = (a: Action) => {
-    if (a.to) navigate(a.to);
-    else if (a.event) window.dispatchEvent(new CustomEvent(a.event));
+    if (a.run) {
+      if (runningAction) return; // guard double-clicks during the await
+      setRunningAction(a.id);
+      void a
+        .run(navigate)
+        .finally(() => setRunningAction(null));
+    } else if (a.to) {
+      navigate(a.to);
+    } else if (a.event) {
+      window.dispatchEvent(new CustomEvent(a.event));
+    }
   };
 
   const tabActive = (t: Tab) =>
@@ -150,21 +182,26 @@ export function SceneChrome({
           </span>
           <div className="flex-1" />
           <div className="flex items-center gap-1.5">
-            {scene.actions.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => runAction(a)}
-                className={
-                  "px-2.5 py-1 rounded text-[12.5px] " +
-                  (a.primary
-                    ? "bg-sun text-ink hover:bg-sun-glow"
-                    : "text-ink-soft dark:text-starlight hover:bg-ice-3 dark:hover:bg-charcoal-1")
-                }
-              >
-                {a.label}
-              </button>
-            ))}
+            {scene.actions.map((a) => {
+              const busy = runningAction === a.id;
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => runAction(a)}
+                  disabled={busy}
+                  aria-busy={busy || undefined}
+                  className={
+                    "px-2.5 py-1 rounded text-[12.5px] disabled:opacity-60 " +
+                    (a.primary
+                      ? "bg-sun text-ink hover:bg-sun-glow"
+                      : "text-ink-soft dark:text-starlight hover:bg-ice-3 dark:hover:bg-charcoal-1")
+                  }
+                >
+                  {busy ? "Creating…" : a.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

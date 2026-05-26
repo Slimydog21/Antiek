@@ -1,17 +1,18 @@
 import { Link, useLocation } from "react-router-dom";
 
-import { LemonInput } from "../lemon/LemonInput";
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
-import { SHORTCUT_EVENTS } from "../../workspace/shortcuts";
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
  *
- * Three regions:
+ * Two regions:
  *   left   breadcrumbs (route-derived; modes can extend via useBreadcrumbs)
- *   center —  spacer
- *   right  search input (⌘K — palette wires in S8); account dropdown
+ *   right  account dropdown
+ *
+ * Search is NOT here — it has one canonical home, the NavRail ⌕ button
+ * (⌘K), which opens the CommandPalette. A second Topbar search box read
+ * as two search affordances; removed.
  *
  * Breadcrumb extension API: a route renders
  *   <BreadcrumbScope crumbs={[…]} />
@@ -102,18 +103,9 @@ export function Topbar() {
         </ol>
       </nav>
 
-      {/* search · palette trigger */}
-      <LemonInput
-        sizing="sm"
-        wrapperClassName="w-[260px] cursor-pointer"
-        placeholder="search · ⌘K"
-        kbdHint="⌘K"
-        iconLeft={<span aria-hidden="true">⌕</span>}
-        readOnly
-        onClick={() => {
-          window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
-        }}
-      />
+      {/* Search lives on the NavRail (⌕ · ⌘K), the single canonical
+          entry to the CommandPalette. The Topbar no longer carries a
+          second search box — one door, not two. */}
 
       {/* account */}
       <LemonDropdown
