@@ -7,10 +7,14 @@ import { parseSynthesis } from "../../lib/synthesisParser";
 import { PanelHost } from "../../workspace/PanelHost";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import type { StarterPanel } from "../../workspace/PanelHost";
+import DistillView from "./DistillView";
 import HighlightToolbar from "./HighlightToolbar";
 import MasterMdViewer from "./MasterMdViewer";
+import NotesPanel from "./NotesPanel";
+import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
-import TrajectoryView from "./TrajectoryView";
+import SuggestedResearch from "./SuggestedResearch";
+import ThinkingStream from "./ThinkingStream";
 
 /**
  * Mode A — Research Workstation (S5 redesign).
@@ -71,12 +75,32 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const centerRef = useRef<HTMLDivElement>(null);
   const openPanel = useWorkspace((s) => s.open);
 
+  // SPR-04 M2: highlight → follow this. A raw highlight has no reserved
+  // escalation id, so we omit it and the substrate mints a fresh child.
   const onChaseThis = useCallback(
     (text: string) => {
       openPanel(
-        "Chase",
+        "ChaseThread",
         { spawnContext: text, parentInvestigationId: investigationId },
-        { mode: "floating", title: "Chase" },
+        { mode: "floating", title: "Follow this" },
+      );
+    },
+    [openPanel, investigationId],
+  );
+
+  // SPR-04 M2: chasing an OPEN QUESTION carries SPR-03's reserved
+  // escalation id when the question escalated — launch INTO it (no
+  // orphan), else mint fresh. One launch path either way.
+  const onChaseQuestion = useCallback(
+    (q: { text: string; reserved_child_investigation_id?: string | null }) => {
+      openPanel(
+        "ChaseThread",
+        {
+          spawnContext: q.text,
+          parentInvestigationId: investigationId,
+          reservedChildId: q.reserved_child_investigation_id ?? null,
+        },
+        { mode: "floating", title: "Follow this" },
       );
     },
     [openPanel, investigationId],
@@ -99,19 +123,79 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
 
   return (
     <div ref={centerRef} className="h-full overflow-y-auto relative">
-      <CenterContent investigation={investigation} />
+      <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
       <HighlightToolbar scopeRef={centerRef} onChaseThis={onChaseThis} />
     </div>
   );
 }
 
-function CenterContent({ investigation }: { investigation: InvestigationState }) {
+function CenterContent({
+  investigation,
+  onChaseQuestion,
+}: {
+  investigation: InvestigationState;
+  onChaseQuestion: (q: {
+    text: string;
+    reserved_child_investigation_id?: string | null;
+  }) => void;
+}) {
   if (
     investigation.status === "completed" ||
     investigation.status === "failed"
   ) {
     const synth = parseSynthesis(investigation.events);
-    if (synth) return <MasterMdViewer synthesis={synth} />;
+    // SPR-03: a completed research's durable product is its insights + open
+    // questions (DistillView, M2), shown alongside the answer prose
+    // (MasterMdViewer, SPR-04's narrative is separate). When there's no
+    // synthesis (the no-key / nothing-distilled case) DistillView carries the
+    // honest no-result state on its own.
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+        {synth ? <MasterMdViewer synthesis={synth} /> : null}
+        <div className="border-t border-rule dark:border-charcoal-1">
+          <DistillView
+            investigationId={investigation.id}
+            running={false}
+            onChase={onChaseQuestion}
+          />
+        </div>
+        {/* SPR-09: the §7 daemon's scored open questions, surfaced beside the
+            answer as threads worth chasing. Read-only to render; chasing one
+            reuses SPR-04's chase gesture (onChaseQuestion → the one
+            ChaseThread panel), so it launches through the same capped path —
+            no second launch mechanism, no auto-spawn. */}
+        <div className="border-t border-rule dark:border-charcoal-1">
+          <SuggestedResearch
+            variant="beside"
+            onChase={(c) => onChaseQuestion({ text: c.text })}
+          />
+        </div>
+        {/* SPR-04 M3: paste/drop a file into THIS research → max-context
+            pack. Absorbed content is citable on the next run / chase. */}
+        <div className="border-t border-rule px-4 py-4 dark:border-charcoal-1">
+          <PasteIngest investigationId={investigation.id} />
+        </div>
+      </div>
+    );
   }
-  return <TrajectoryView investigation={investigation} />;
+  // SPR-02 live view + SPR-03 auto-notes: the plain-language thinking stream on
+  // the left, the notes the async note-taker is taking on the right (M1) — the
+  // user watches notes being taken, not just activity narrated. The raw log
+  // lives one toggle away inside ThinkingStream. No steer controls on this
+  // one-shot `/inv/:id` path — the Loop-1 orchestrator has no steerable runner;
+  // the cascade monitor (DeepResearchWorkspace) is where Stop/redirect/deepen
+  // are wired through a session.
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="min-w-0 flex-1">
+        <ThinkingStream investigation={investigation} />
+      </div>
+      <aside className="hidden w-[320px] shrink-0 flex-col overflow-y-auto border-l border-rule dark:border-charcoal-1 lg:flex">
+        <div className="border-b border-rule bg-ice-1 px-4 py-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+          Notes
+        </div>
+        <NotesPanel investigation={investigation} />
+      </aside>
+    </div>
+  );
 }

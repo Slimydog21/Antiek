@@ -96,6 +96,43 @@ export interface LaunchResponse {
 
 export type SteerKind = "pause" | "resume" | "stop" | "redirect" | "deepen";
 
+/** The per-research spend ceiling the runner applies when launch omits one
+ * (mirrors runtime/research_runner protocol.BudgetCap). The entry UI reads
+ * this to show "estimated up to $X for N researches" — never a hardcoded
+ * number that would drift from the contract. */
+export interface BudgetDefaults {
+  per_research_cost_usd: number;
+  per_research_max_steps: number;
+  /** The host-local runner's real bounded-semaphore concurrency cap
+   * (mirrors runtime/research_runner/host_local.DEFAULT_MAX_CONCURRENCY). The
+   * multi-research monitor reads this to show an honest "N running, M queued"
+   * — the surplus past the cap is queued behind the semaphore, never a number
+   * the UI invents. */
+  host_local_max_concurrency: number;
+}
+
+// ── Suggested next researches (SPR-09 — the compounding flywheel) ───────
+//
+// The §7 continuous daemon already computes scored evidentiary gaps. This is
+// the read-only surface over its output: each suggestion is a plain-language
+// "thread worth chasing", grounded in the research it came from. The client
+// never sees the daemon's vocabulary (evidentiary_gap / chase score /
+// policy_id) — those are translated server-side. `key` is the opaque dedupe
+// handle, never rendered.
+
+export interface Suggestion {
+  key: string;
+  question: string;
+  suggested_retrieval: string | null;
+  seen_in_research_count: number;
+  source_investigation_id: string | null;
+}
+
+export interface SuggestionsResponse {
+  count: number;
+  suggestions: Suggestion[];
+}
+
 // ── Request helpers ─────────────────────────────────────────────────────
 
 async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
@@ -118,6 +155,18 @@ function get<T>(path: string): Promise<T> {
 }
 
 // ── Plan lifecycle (SPR-05 over HTTP) ───────────────────────────────────
+
+export function getBudgetDefaults(): Promise<BudgetDefaults> {
+  return get("/research/budget-defaults");
+}
+
+/** SPR-09: the daemon's scored gaps as suggested next researches. READ-ONLY —
+ * a plain GET that costs nothing; the only spend is an explicit chase, which
+ * goes through `startInvestigation` (the existing capped launch path), not
+ * here. `limit` bounds the displayed count (rank + cap, never a flood). */
+export function getSuggestions(limit = 8): Promise<SuggestionsResponse> {
+  return get(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`);
+}
 
 export function createPlan(req: {
   problem: string;

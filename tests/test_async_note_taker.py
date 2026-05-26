@@ -23,9 +23,11 @@ from roles.note_taker import (
     RunNoteDeduper,
     apply_refinement,
     challenge_note,
+    distillation_for,
     notes_for_step,
     run_document_pass,
 )
+from roles.challenger import ChallengeUnavailable, make_dispatch_resolver, parse_resolution
 from roles.note_taker.parser import ExtractedNote
 from substrate.graph.schema import init_database_at_path
 from substrate.graph.insight_question import insight_node_id, promote_insight
@@ -238,3 +240,158 @@ async def test_scheduler_budget_backpressure_holds_not_drops(env):
     over_budget["ok"] = True             # budget recovers
     await sched.drain()
     assert sched.backlog() == 0 and sched.stats.processed == 1
+
+
+# --------------------------------------------------------------------------
+# SPR-03 surface — M2 read seam (distillation_for)
+# --------------------------------------------------------------------------
+
+
+async def test_distillation_for_reads_insights_questions_with_grounding(env):
+    await run_document_pass(
+        "doc-1", "src", investigation_id="inv-1",
+        distiller=FakeDistiller(insights=["GPUs gate scale."], questions=["What is the moat?"]),
+        chunk_ids=["c1"], events_dir=env["events"],
+    )
+    view = distillation_for("inv-1", db_path=env["db"], events_dir=env["events"])
+    assert [n.text for n in view.insights] == ["GPUs gate scale."]
+    assert [n.text for n in view.questions] == ["What is the moat?"]
+    # Grounding (the document) rides on the node, not re-derived in the surface.
+    assert view.insights[0].source_document_id == "doc-1"
+    assert view.insights[0].confidence == "moderate"
+    assert not view.empty
+
+
+async def test_distillation_for_empty_when_no_notes(env):
+    # No provider / no pass run → honest empty result, never canned content.
+    view = distillation_for("inv-empty", db_path=env["db"], events_dir=env["events"])
+    assert view.empty and view.insights == [] and view.questions == []
+
+
+async def test_distillation_for_reflects_living_note_in_place(env):
+    # A challenge mutates the note; the surface reads the *current* text from
+    # the node row, not the original note.emerged payload.
+    nid = promote_insight(text="Acme is small.", investigation_id="inv-1",
+                          source_document_id="doc-1")
+    challenge_note(nid, "it grew", resolver=lambda cur, ch: "Acme is mid-sized.",
+                   seq=1, investigation_id="inv-1", events_dir=env["events"])
+    view = distillation_for("inv-1", db_path=env["db"], events_dir=env["events"])
+    # The promote emits a GRAPH_NODE_INSERTED the read seam picks up; the text
+    # is the refined one, the count reflects the single refinement.
+    assert [n.text for n in view.insights] == ["Acme is mid-sized."]
+    assert view.insights[0].refinement_count == 1
+
+
+async def test_distillation_for_surfaces_escalated_question(env):
+    nid = promote_insight(text="Margins are healthy.", investigation_id="inv-1",
+                          source_document_id="doc-1")
+    r = challenge_note(nid, "source for margins?", resolver=lambda cur, ch: None,
+                       seq=1, investigation_id="inv-1", events_dir=env["events"])
+    view = distillation_for("inv-1", db_path=env["db"], events_dir=env["events"])
+    escalated = [q for q in view.questions if q.escalated]
+    assert escalated, "the escalated challenge surfaces as an open question"
+    assert escalated[0].reserved_child_investigation_id == r.reserved_child_investigation_id
+
+
+# --------------------------------------------------------------------------
+# SPR-03 — M3 no-duplicate-via-challenge + determinism through the resolver
+# --------------------------------------------------------------------------
+
+
+async def test_challenge_resolves_no_duplicate_node(env):
+    nid = promote_insight(text="Claim v1.", investigation_id="inv-1",
+                          source_document_id="doc-1")
+    before = _insight_count(env["db"])
+    challenge_note(nid, "sharpen it", resolver=lambda cur, ch: "Claim v2.",
+                   seq=1, investigation_id="inv-1", events_dir=env["events"])
+    after = _insight_count(env["db"])
+    assert before == after == 1          # mutated in place, no new node
+    con = connect_read(env["db"])
+    try:
+        assert con.execute(
+            "SELECT canonical_label FROM nodes WHERE node_id=?", [nid]
+        ).fetchone()[0] == "Claim v2."
+    finally:
+        con.close()
+
+
+async def test_living_note_determinism_independent_of_resolver(env):
+    # The seq rule is owned by apply_refinement; a user challenge at the
+    # higher seq wins over a stale background refinement regardless of who the
+    # resolver is. (Drives the shipped rule; resolver supplies content only.)
+    nid = promote_insight(text="Base.", investigation_id="inv-1",
+                          source_document_id="doc-1")
+    # Background refinement lands first at seq=11.
+    apply_refinement(nid, "background-seq-11", seq=11, investigation_id="inv-1",
+                     document_id="doc-1", events_dir=env["events"])
+    # The user challenge arrives at seq=12 via the resolver path.
+    r = challenge_note(nid, "user challenge", resolver=lambda cur, ch: "user-seq-12",
+                       seq=12, investigation_id="inv-1", document_id="doc-1",
+                       events_dir=env["events"])
+    assert r.applied
+    con = connect_read(env["db"])
+    try:
+        assert con.execute(
+            "SELECT canonical_label FROM nodes WHERE node_id=?", [nid]
+        ).fetchone()[0] == "user-seq-12"
+    finally:
+        con.close()
+
+
+def _insight_count(db: str) -> int:
+    con = connect_read(db)
+    try:
+        return con.execute("SELECT count(*) FROM nodes WHERE node_type='insight'").fetchone()[0]
+    finally:
+        con.close()
+
+
+# --------------------------------------------------------------------------
+# SPR-03 — M4 challenger resolver: refine-or-decline parsing + honest no-key
+# --------------------------------------------------------------------------
+
+
+def test_resolver_parse_refine_returns_text():
+    out = parse_resolution(
+        '{"resolution": "refine", "refined_text": "A sharper claim."}',
+        current_text="A claim.",
+    )
+    assert out == "A sharper claim."
+
+
+def test_resolver_parse_needs_research_declines():
+    out = parse_resolution(
+        '{"resolution": "needs_research", "refined_text": ""}',
+        current_text="A claim.",
+    )
+    assert out is None                   # declines → escalation, not a fake edit
+
+
+def test_resolver_parse_noop_refinement_declines():
+    # A "refinement" identical to the note is a no-op dressed as a change.
+    out = parse_resolution(
+        '{"resolution": "refine", "refined_text": "A  CLAIM."}',
+        current_text="A claim.",
+    )
+    assert out is None
+
+
+def test_resolver_parse_malformed_declines():
+    assert parse_resolution("not json at all", current_text="x") is None
+
+
+def test_dispatch_resolver_no_provider_raises_unavailable(monkeypatch):
+    # With no model registered, dispatch raises; the resolver must surface
+    # ChallengeUnavailable (honest no-key) — never silently fabricate text
+    # and never escalate as if the graph couldn't resolve it.
+    import substrate.dispatch as dispatch_pkg
+
+    def _boom(*a, **k):
+        # No provider registered → get_provider raises KeyError; the role
+        # missing from config also raises KeyError. Either is the no-key path.
+        raise KeyError("Provider 'anthropic' is not registered")
+
+    monkeypatch.setattr(dispatch_pkg, "dispatch", _boom)
+    resolver = make_dispatch_resolver("inv-1")
+    with pytest.raises(ChallengeUnavailable):
+        resolver("the note", "the challenge")

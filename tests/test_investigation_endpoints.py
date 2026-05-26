@@ -232,6 +232,90 @@ async def test_get_completed_after_terminal_event(async_client):
     assert body["terminal_payload"] is not None
     assert body["terminal_payload"]["thesis_summary"] == "X is supported."
     assert body["terminal_payload"]["domains_patched"] == ["q-knowledge"]
+    # SPR-11 M3: no rubric.scored event was emitted for this investigation,
+    # so the score is null — honest absent, never a fabricated number.
+    assert body["rubric_score"] is None
+
+
+# ---------------------------------------------------------------------------
+# SPR-11 M3 — inline-rubric score surfaced on GET /investigations/{id}.
+# The endpoint READS the persisted rubric.scored event (it never recomputes
+# the score). Cases: present (with sub-scores), present (free-form note →
+# null sub-scores), absent (covered above).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_surfaces_persisted_rubric_score_with_subscores(async_client):
+    from middleware.outcomes import emit_rubric_scored
+    from substrate.schemas import InvestigationStartRequestedPayload
+
+    emit_typed(
+        "inv-rubric",
+        InvestigationStartRequestedPayload(
+            question="rubric-surface test", context="", topic_slug=None,
+            max_sub_questions=4,
+        ),
+        role="operator",
+    )
+    # Mirror exactly what orchestration/loop_one/orchestrator.py persists:
+    # final_score = composite, sub-scores encoded in the notes string.
+    emit_rubric_scored(
+        investigation_id="inv-rubric",
+        synthesis_id="syn-inv-rubric",
+        rubric_id="synthesis-deterministic-v1",
+        final_score=0.71,
+        deterministic_score=0.71,
+        judged_score=None,
+        notes=(
+            "voice=0.80 conviction=0.50 "
+            "citation_density=1.00 constraint=1.00"
+        ),
+    )
+    r = await async_client.get("/investigations/inv-rubric")
+    body = r.json()
+    score = body["rubric_score"]
+    assert score is not None
+    assert abs(score["composite"] - 0.71) < 1e-6
+    # Sub-scores parsed back out of the persisted note.
+    assert abs(score["voice_style"] - 0.80) < 1e-6
+    assert abs(score["conviction"] - 0.50) < 1e-6
+    assert abs(score["citation_density"] - 1.00) < 1e-6
+    assert abs(score["constraint_compliance"] - 1.00) < 1e-6
+
+
+@pytest.mark.asyncio
+async def test_get_rubric_score_null_subscores_for_freeform_note(async_client):
+    from middleware.outcomes import emit_rubric_scored
+    from substrate.schemas import InvestigationStartRequestedPayload
+
+    emit_typed(
+        "inv-rubric-floor",
+        InvestigationStartRequestedPayload(
+            question="rubric-floor test", context="", topic_slug=None,
+            max_sub_questions=4,
+        ),
+        role="operator",
+    )
+    # The insufficient-evidence floor case: a free-form note, no sub-scores.
+    emit_rubric_scored(
+        investigation_id="inv-rubric-floor",
+        synthesis_id="syn-inv-rubric-floor",
+        rubric_id="synthesis-deterministic-v1",
+        final_score=0.10,
+        deterministic_score=0.10,
+        judged_score=None,
+        notes="synthesizer declined to produce a thesis (insufficient_evidence)",
+    )
+    r = await async_client.get("/investigations/inv-rubric-floor")
+    score = r.json()["rubric_score"]
+    assert score is not None
+    assert abs(score["composite"] - 0.10) < 1e-6
+    # No sub-scores in the note → null, never invented.
+    assert score["voice_style"] is None
+    assert score["conviction"] is None
+    assert score["citation_density"] is None
+    assert score["constraint_compliance"] is None
 
 
 @pytest.mark.asyncio

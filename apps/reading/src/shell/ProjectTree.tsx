@@ -18,7 +18,7 @@ import {
  *   Research → Investigations / Chase trees / Outcomes
  *   Read     → Library / Documents / Notebooks / Sources
  *   Write    → Deliverables / Block repository
- *   Speak    → Interview projects / Contributors / Invites
+ *   Speak    → People to remember / Their people / Voices
  *
  * The sections are driven by WORKFLOWS[wf].nouns from the taxonomy, so the
  * tree re-scopes automatically when the rail switches workflows. Within a
@@ -58,7 +58,8 @@ const MOCK_RECENT: Record<Exclude<Workflow, "shared">, TreeNode[]> = {
 // The "All" links per workflow → the workflow's index routes (nouns).
 const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: string }>> = {
   research: [
-    { to: "/investigations", label: "All investigations" },
+    // SPR-05: one door for "all my research" — the multi-research monitor.
+    { to: "/my-research", label: "All my research" },
     { to: "/outcomes", label: "Outcomes audit" },
   ],
   read: [
@@ -68,8 +69,9 @@ const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: 
   ],
   write: [{ to: "/create", label: "All deliverables" }],
   speak: [
+    // Speak SPR-08 one door: the duplicate "All interviews" link is folded
+    // into the Speak home (interviews live inside a project there now).
     { to: "/speak", label: "All projects" },
-    { to: "/interviews", label: "All interviews" },
   ],
 };
 

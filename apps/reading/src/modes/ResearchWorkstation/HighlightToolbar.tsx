@@ -9,8 +9,10 @@ interface ToolbarState {
 
 /**
  * Floating action toolbar anchored to text selections within a scope
- * element. Shows "Chase this" (active) and "Mark golden" (disabled
- * with tooltip — Sprint 12+ deferred).
+ * element. Shows "Follow this" (active — SPR-04 M2's one-gesture chase
+ * into a child research; the verb the reader reads, no "spawn"/"chase"
+ * substrate vocabulary) and "Mark golden" (disabled with tooltip —
+ * Sprint 12+ deferred).
  *
  * Listens for `selectionchange` events globally, then narrows to
  * selections that are entirely within the configured scope container.
@@ -83,7 +85,7 @@ export default function HighlightToolbar({
         onClick={() => onChaseThis(state.selectedText)}
         className="px-3 py-1.5 hover:bg-shadow-2 transition-colors rounded-l-md"
       >
-        Chase this
+        Follow this
       </button>
       <button
         disabled

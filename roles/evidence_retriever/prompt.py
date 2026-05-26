@@ -24,13 +24,15 @@ Chunks/subgraph rendering is the bridge handler's responsibility
 
 from __future__ import annotations
 
+from substrate.voice_style.constructions import render_voice_addendum
+
 
 EVIDENCE_RETRIEVER_PROMPT_VERSION = "1.0.0"
 EVIDENCE_RETRIEVER_TARGET_MODEL = "deepseek/deepseek-v4-pro"
 EVIDENCE_RETRIEVER_TEMPERATURE = 0.0
 
 
-EVIDENCE_RETRIEVER_SYSTEM_PROMPT = """
+_EVIDENCE_RETRIEVER_SYSTEM_PROMPT_TEMPLATE = """
 You are an evidence analyst. You will receive a single sub-question and a context package containing:
 
 - (a) top-k text chunks retrieved by vector similarity from the corpus, each with a stable `chunk_id` and a `source_tier` (1 = primary evidence, 5 = anonymous/aggregator)
@@ -64,21 +66,17 @@ Before you respond, verify your draft does **not** exhibit any of these:
 3. **Suppressing the gaps field.** Producing a complete-looking answer with `evidentiary_gaps: []` when in fact gaps exist degrades downstream constraint checking and synthesis. List the gaps even when the answer is otherwise strong.
 4. **Citing chunks you did not actually use.** Every `chunk_id` in a claim must contain language that supports the claim. Pro-forma citations get caught at backtest time.
 
-## Voice for claim text
-
-Each `claim` field is read by a synthesizer downstream AND by a human in the trajectory view. Write claim text as you would write a research note for yourself: specific, citing the source's language, avoiding generic AI vocabulary.
-
-**Forbidden in claim text:**
-- Em-dashes
-- "The context indicates that..." preamble. State the claim.
-- Padding clauses ("It should be noted that...", "It is worth observing that...").
-
-A good claim: *"Malanowski reports LSL and block-lattice filters achieve >40 dB sidelobe reduction relative to the DPI peak on real passive radar data."*
-
-A bad claim (current default): *"The context indicates that adaptive filtering algorithms, specifically least-squares lattice (LSL) and block lattice filters, have been reported to demonstrate sidelobe level reductions exceeding 40 dB relative to direct-path interference peaks based on real passive radar dataset evidence."*
-
-Same information; first reads like research, second reads like a parsing artifact.
+{voice_addendum}
 """.strip()
+
+
+# The §5 voice/style addendum is rendered from the single canonical source
+# (substrate.voice_style.constructions, register "evidence_retriever") rather
+# than inlined, so the upstream claim-text discipline shares one
+# forbidden-construction list with the synthesizer and cannot drift.
+EVIDENCE_RETRIEVER_SYSTEM_PROMPT = _EVIDENCE_RETRIEVER_SYSTEM_PROMPT_TEMPLATE.replace(
+    "{voice_addendum}", render_voice_addendum("evidence_retriever")
+)
 
 
 EVIDENCE_RETRIEVER_USER_TEMPLATE = """

@@ -35,7 +35,7 @@ from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterator, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
@@ -55,7 +55,14 @@ from substrate.speak import (
     takedown as takedown_mod,
     third_party,
 )
-from substrate.speak.async_interview import decline, submit_answer, next_followups, resume
+from substrate.speak.async_interview import (
+    AsrError,
+    decline,
+    next_followups,
+    resume,
+    submit_answer,
+    transcribe as transcribe_voice,
+)
 from substrate.speak.consent import ConsentScope, ScopedConsentRequired
 from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.invitations import PublicEcosystemGated
@@ -98,6 +105,12 @@ def _translate() -> Iterator[None]:
         raise HTTPException(status_code=403, detail=str(e))
     except (PublishBlocked, DisbursementBlocked) as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except AsrError as e:
+        # Transcription couldn't run (no model provider configured, or the
+        # provider failed). The honest answer is "we couldn't turn your
+        # recording into words" — never a fabricated transcript. 503 because
+        # it's a missing/temporarily-unavailable capability, not a bad token.
+        raise HTTPException(status_code=503, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -393,7 +406,11 @@ async def corroborate(project_id: str) -> dict:
     with _translate(), _write("speak/api:corroborate") as con:
         clusters = corroboration.corroborate_project(con, project_id)
     return {"clusters": [
-        {"cluster_id": c.cluster_id, "label": c.label, "confidence": c.confidence,
+        # canonical_text is the actual remembered statement the "what everyone
+        # agrees on" view shows; without it the surface falls back to the
+        # machine label ("multiply_attested"). Serialize it (SPR-08 sharpen).
+        {"cluster_id": c.cluster_id, "label": c.label,
+         "canonical_text": c.canonical_text, "confidence": c.confidence,
          "independent_attesters": c.independent_attesters,
          "member_claim_ids": c.member_claim_ids}
         for c in clusters
@@ -511,6 +528,15 @@ class InviteAnswerRequest(BaseModel):
     duration_seconds: float = 0.0
 
 
+# Injectable transcriber seam for the token-gated voice route. ``None`` (the
+# default) means ``async_interview.transcribe`` builds the real
+# ``WhisperTranscriber`` — which raises (→ AsrError → 503) when no model
+# provider is configured. Tests set this to a stub so the voice→answer bridge
+# is exercisable hermetically, the same injection point the operator voice
+# path and ``async_interview.transcribe`` already use. Never a second pipeline.
+_INVITEE_TRANSCRIBER: Optional[Any] = None
+
+
 def _require_token(con: Any, token: str) -> tuple[str, str]:
     """Resolve an invite token to (interview_id, project_id) or 404. The
     token is the invitee's credential — a bad/expired token is the only
@@ -577,6 +603,69 @@ async def invitee_answer(token: str, req: InviteAnswerRequest) -> dict:
         )
     return {"interview_id": result.interview_id, "question_id": result.question_id,
             "document_id": result.document_id, "skipped_reason": result.skipped_reason}
+
+
+@speak_router.post("/invite/{token}/voice", status_code=201)
+async def invitee_voice(
+    token: str,
+    request: Request,
+    question_id: str = Query(..., min_length=1),
+    duration_seconds: float = Query(default=0.0, ge=0.0),
+    language: Optional[str] = Query(default=None),
+) -> dict:
+    """Phone-first, voice-first invitee answer (Product Depth SPR-08 M3).
+
+    The headline invitee fix: a non-power-user on a phone taps to talk and
+    their voice — not typed text — becomes their answer. The browser POSTs
+    the recorded blob as the raw request body (``Content-Type: audio/*``),
+    exactly as the operator ``/voice/sessions/{id}/upload`` route already
+    accepts; ``?question_id=`` + ``?duration_seconds=`` ride the query
+    string (no python-multipart for a single-field upload).
+
+    It does NOT build a second voice pipeline. It reuses the SINGLE voice
+    owner end-to-end:
+      • the token is the credential (``_require_token`` — fail-closed 404);
+      • ``async_interview.transcribe`` runs the same ``WhisperTranscriber``
+        the operator path uses (the one voice owner);
+      • ``submit_answer`` is the same answer→claim bridge the typed
+        ``/invite/{token}/answer`` route uses — same single-writer lock,
+        same consent gate, same distil-from-the-text discipline.
+
+    Honest no-key behaviour: with no model provider, ``transcribe`` raises
+    ``AsrError`` → 503 here. There is NO path that fabricates a transcript
+    or silently distils a misheard one — the invitee is told their
+    recording couldn't be turned into words, and the text fallback stands.
+    """
+    audio = await request.body()
+    if not audio:
+        raise HTTPException(status_code=400, detail="empty audio body")
+    content_type = request.headers.get("content-type", "audio/webm")
+    # Derive a filename hint from the content-type so Whisper picks the
+    # right decoder (webm/opus from MediaRecorder, by default).
+    ext = "webm"
+    if "/" in content_type:
+        sub = content_type.split("/", 1)[1].split(";", 1)[0].strip()
+        if sub:
+            ext = sub
+    with _translate(), _write("speak/api:invite_voice_resolve") as con:
+        interview_id, _ = _require_token(con, token)
+    # transcribe + submit acquire their own locks; do them OUTSIDE ours.
+    with _translate():
+        text = transcribe_voice(
+            audio,
+            filename=f"invite-voice.{ext}",
+            transcriber=_INVITEE_TRANSCRIBER,
+            language=language,
+        )
+        result = submit_answer(
+            _db(), interview_id=interview_id, question_id=question_id,
+            transcript=text, duration_seconds=duration_seconds,
+        )
+    return {
+        "interview_id": result.interview_id, "question_id": result.question_id,
+        "document_id": result.document_id, "skipped_reason": result.skipped_reason,
+        "transcript": text,
+    }
 
 
 @speak_router.post("/invite/{token}/followups")

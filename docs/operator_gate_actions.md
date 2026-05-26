@@ -394,6 +394,46 @@ These auto-cascade once G2 and G3 are checked:
   evidentiary gaps every 60s, spawn-budgeted at $5/day per §16. Live since
   2026-05-23T16:35Z.
 
+### §9 provenance + economics, surfaced — status (Product Depth SPR-10, 2026-05-26)
+
+DOCUMENTATION ONLY — this note closes/changes NO gate. **G2 and G3 stay
+OPEN.** SPR-10 surfaced the §9 layer honestly, up to the gate, never across
+it:
+
+- **Provenance ("whose work grounds this").** A servable source's named-source
+  render now carries the IP holder ("from *Title*, published by X") where one
+  is resolved; a null owner stays honest ("unknown owner", never invented).
+  Surfaced in `compute_attribution_for_synthesis` (document_ip_holders +
+  status), the `GET /attribution/synthesis/{id}` response, and the
+  `GET /chunks/{id}` endpoint.
+- **§9.0 gating on the surfaced path.** A `restricted_pending_opt_in` document
+  no longer surfaces into an attribution-triggering synthesis — no share, no
+  title, no owner (closed a real leak; proven by
+  `tests/test_provenance_economics_surfaced.py`). The chunk endpoint withholds
+  a restricted source's owner with its body (protected attribution).
+- **Accrual view (`apps/reading/src/modes/Economics/AccrualView.tsx`).** Shows
+  what WOULD be owed per contributor (default Option B per §9.3) + the escrow
+  accrual, every figure labelled not-yet-paid; today's balance is honestly
+  $0 (Phase 1 monetisation is the §9.0.1 token model, not IP payouts). Opt-in
+  only: a `pre_onboarded` holder reads as escrow-eligible-on-opt-in, never
+  "money waiting" against an unconsenting rights holder.
+- **NO money path.** There is no disburse / payout / Stripe / publish path on
+  any surfaced module; the one money-adjacent control ("Try a payout") refuses
+  with the open-gate reason (G2 + G3) and moves nothing. Verified against a
+  live attempt (test), not by inspection alone.
+
+**No-key behaviour:** without provider keys, attribution can't compute → the
+accrual view shows the honest no-result state (AIActionFailure: "the model
+provider isn't configured"), never a fabricated owed amount.
+
+**What the keyed use-gate (full first-run capture) needs — OPERATOR-bound:**
+real provider keys set on prod (the same `register_default_providers`
+credentials gate the rest of the AI is on, per the 2026-05-25 UI note). With
+keys: read a synthesis → see whose work grounds a claim → open the accrual
+view → see "would be owed, not yet paid" → attempt a payout → get the honest
+G2/G3 refusal. The disbursement that this view refuses stays gated G2 (lawyer)
++ G3 (publisher opt-in) above — SPR-10 did not touch either.
+
 ### Reference docs for cross-session continuity
 
 - `docs/operator_gate_actions.md` — this file. Update on every gate

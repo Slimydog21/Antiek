@@ -1,20 +1,26 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
-import type { ParsedClaim, ParsedSynthesis, Recommendation } from "../../lib/synthesisParser";
+import type { ChunkResponse } from "../../lib/api";
+import type { ParsedClaim, ParsedSynthesis, QualityScore, Recommendation } from "../../lib/synthesisParser";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
 /**
- * Renders a completed investigation's synthesis as a hybrid markdown +
- * structured-claim-span document. Reading typography (serif body) for
- * the substantive prose; sans-serif chrome for chips and metadata.
+ * Renders a completed investigation's synthesis as a trustworthy
+ * researcher's note: serif body, flowing prose, and — SPR-04 M1 — claim
+ * support shown as NAMED SOURCES resolved through the provenance chain
+ * (claim → chunk → document → title + locator), never the engine's
+ * retrieval unit. A reader sees "from <em>Title</em>, p.12", not a
+ * bracketed chunk count nor a raw chunk id.
  *
- * Hover any claim's chunk-citation chip to expand to a modal with the
- * actual chunk text. Cross-mode deep-link via the modal's "Open in
- * document viewer" button (Sprint 11 day 6).
+ * Source-opening honours the §9.0 retrieval gate: a named source opens
+ * only when its source is servable (the `getChunk` endpoint carries the
+ * verdict + withholds the body for a restricted source); a restricted /
+ * taken-down source shows an honest "not available to open" state and is
+ * never served.
  *
  * Falsification + execution risks are appendix material — collapsed by
  * default per the voice and style discipline (audit metadata, not
@@ -55,14 +61,13 @@ export default function MasterMdViewer({
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  // S7 acceptance — "Add to notebook" from MasterMdViewer.
-                  // Opens the TipTap notebook editor as a floating panel
-                  // pre-seeded with a master-section block referencing
-                  // this synthesis. The block resolves the live synthesis
-                  // at render time per architecture_notes §13.
-                  // Derive a stable notebook id from the question so
-                  // re-opening from the same synthesis focuses the
-                  // existing notebook rather than creating a duplicate.
+                  // Opens the notebook editor as a floating panel, focused
+                  // on a notebook keyed to this answer (re-opening from the
+                  // same answer focuses the existing notebook, not a
+                  // duplicate). The block model + live-synthesis resolution
+                  // are architecture_notes §13; the copy here is plain
+                  // (no "synthesis-section block" / "slash menu" jargon —
+                  // SPR-04 M1 kills the jargon toasts).
                   const nbId =
                     "synthesis-" +
                     (synthesis.question ?? "untitled")
@@ -73,15 +78,20 @@ export default function MasterMdViewer({
                     kind: "NotebookEditor",
                     mode: "floating",
                     notebookId: nbId,
-                    title: "Add to notebook",
+                    title: "Save to notebook",
                   });
-                  toast.ok("Notebook open — paste the synthesis-section block via the slash menu.");
+                  toast.ok("Notebook open — you can drop this answer in.");
                 }}
               >
-                Add to notebook
+                Save to notebook
               </LemonButton>
             </span>
           </div>
+          {/* SPR-11 M3 — a quiet quality cue, read from the persisted inline
+              rubric (never recomputed here). Renders nothing when no score was
+              persisted; flags a low score so the operator knows the answer may
+              want another pass. */}
+          <QualityCue score={synthesis.qualityScore} />
         </header>
 
         {/* Thesis summary — flowing prose */}
@@ -151,47 +161,7 @@ function ClaimBlock({
           confidence={claim.confidence}
           tier={claim.effectiveSourceTier}
         />
-        {claim.chunkIds.map((cid) => (
-          <button
-            key={cid}
-            onClick={(e) => {
-              // S6 acceptance: ⌘-click (or Ctrl-click) opens the source
-              // PDF as a floating panel jumped to the chunk's page,
-              // bypassing the ChunkModal. Plain click keeps the modal
-              // path so the reader can preview the chunk inline first.
-              if (e.metaKey || e.ctrlKey) {
-                e.preventDefault();
-                void (async () => {
-                  try {
-                    const chunk = await getChunk(cid);
-                    // Section paths sometimes encode "p.NNN" or "page NNN".
-                    let page: number | undefined;
-                    const sp = chunk.section_path ?? "";
-                    const m = sp.match(/p\.?\s*(\d+)/i);
-                    if (m) page = parseInt(m[1], 10);
-                    openPdfPanel({
-                      documentId: chunk.document_id,
-                      page,
-                      title: `${chunk.document_id.slice(0, 12)}${page ? ` · p.${page}` : ""}`,
-                    });
-                  } catch (err) {
-                    toast.err(
-                      `Could not load chunk ${cid.slice(0, 8)}: ${
-                        err instanceof Error ? err.message : String(err)
-                      }`,
-                    );
-                  }
-                })();
-                return;
-              }
-              onChunkClick(cid);
-            }}
-            className="text-[10px] font-mono text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
-            title="Click to preview · ⌘-click to open PDF floating"
-          >
-            {shortenChunkId(cid)}
-          </button>
-        ))}
+        <NamedSources chunkIds={claim.chunkIds} onPreview={onChunkClick} />
         {claim.supportingPathIndices.length > 0 && (
           <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
             + {claim.supportingPathIndices.length} cross-domain path
@@ -200,6 +170,206 @@ function ClaimBlock({
         )}
       </div>
     </div>
+  );
+}
+
+// ── Named sources (SPR-04 M1) ────────────────────────────────────────
+//
+// Resolve each cited chunk through the provenance chain (getChunk →
+// document title + locator + §9.0 servability verdict), group the
+// chunks by document, and render one NAMED source per document. This is
+// the chunk-count → named-source translation: the engine's retrieval
+// unit (the chunk) is collapsed into the human unit (the source), so a
+// claim backed by three chunks of one paper reads as one named source,
+// not a bracketed chunk count.
+
+interface ResolvedSource {
+  documentId: string;
+  /** The source's title; null when the document carries no title. */
+  title: string | null;
+  /** A human locator (e.g. "p.12") derived from a chunk's section_path,
+   *  or null when no chunk in the group encodes one. */
+  locator: string | null;
+  /** A representative chunk id for the inline preview + ⌘-open. */
+  representativeChunkId: string;
+  /** §9.0: whether clicking may open this source. False ⇒ honest
+   *  "not available to open"; the body is already withheld by the API. */
+  servable: boolean;
+  /** SPR-10 M1 — "whose work grounds this": the source's IP-holder name
+   *  (e.g. "MIT Press"), or null when the document has no resolved owner
+   *  (honest "unknown owner", never invented). The §9.0 gate withholds the
+   *  owner for a non-servable source, so this is null there too. */
+  ipHolderName: string | null;
+}
+
+/** Derive a "p.NNN" locator from a section_path, when present. */
+function locatorFromSectionPath(sectionPath: string | null): string | null {
+  if (!sectionPath) return null;
+  const m = sectionPath.match(/p\.?\s*(\d+)/i);
+  return m ? `p.${m[1]}` : null;
+}
+
+/** Group resolved chunks by document into named sources, picking the
+ *  first locator found per document. Order follows first appearance so
+ *  the render is stable. */
+function groupByDocument(chunks: ChunkResponse[]): ResolvedSource[] {
+  const byDoc = new Map<string, ResolvedSource>();
+  for (const c of chunks) {
+    const existing = byDoc.get(c.document_id);
+    const locator = locatorFromSectionPath(c.section_path);
+    if (existing) {
+      if (!existing.locator && locator) existing.locator = locator;
+      continue;
+    }
+    byDoc.set(c.document_id, {
+      documentId: c.document_id,
+      title: c.document_title,
+      locator,
+      representativeChunkId: c.chunk_id,
+      servable: c.servable,
+      // §9.0: the endpoint already withholds the owner for a non-servable
+      // source, so this is null there; we never invent it. (`?? null`
+      // tolerates an older endpoint that omits the field entirely.)
+      ipHolderName: c.ip_holder_name ?? null,
+    });
+  }
+  return Array.from(byDoc.values());
+}
+
+function NamedSources({
+  chunkIds,
+  onPreview,
+}: {
+  chunkIds: string[];
+  onPreview: (chunkId: string) => void;
+}) {
+  const [sources, setSources] = useState<ResolvedSource[] | null>(null);
+
+  useEffect(() => {
+    if (chunkIds.length === 0) {
+      setSources([]);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      // Resolve each cited chunk through the provenance chain. A failed
+      // fetch is dropped (honest: a source that can't be resolved is not
+      // a source we'll name — rigor #1, never fabricate a title), so the
+      // count of named sources can be fewer than the count of chunks.
+      const settled = await Promise.allSettled(chunkIds.map((id) => getChunk(id)));
+      if (!live) return;
+      const ok = settled
+        .filter((r): r is PromiseFulfilledResult<ChunkResponse> => r.status === "fulfilled")
+        .map((r) => r.value);
+      setSources(groupByDocument(ok));
+    })();
+    return () => {
+      live = false;
+    };
+  }, [chunkIds]);
+
+  if (chunkIds.length === 0) return null;
+  if (sources === null) {
+    return (
+      <span className="text-[11px] text-shadow-1 dark:text-moonlight italic">
+        resolving sources…
+      </span>
+    );
+  }
+  if (sources.length === 0) {
+    // Resolved, but no source could be named (all fetches failed / no
+    // titles). Honest, not a fabricated citation.
+    return (
+      <span className="text-[11px] text-shadow-1 dark:text-moonlight italic">
+        source unavailable
+      </span>
+    );
+  }
+
+  return (
+    <>
+      {sources.map((s) => (
+        <SourceCitation key={s.documentId} source={s} onPreview={onPreview} />
+      ))}
+    </>
+  );
+}
+
+function SourceCitation({
+  source,
+  onPreview,
+}: {
+  source: ResolvedSource;
+  onPreview: (chunkId: string) => void;
+}) {
+  const label = source.title ?? "an untitled source";
+  const locator = source.locator ? `, ${source.locator}` : "";
+  // SPR-10 M1 — "whose work grounds this": append the IP holder only when the
+  // endpoint resolved one. Null ⇒ unknown owner, shown by simply not claiming
+  // one (never an invented "published by …"). A non-servable source already
+  // has ipHolderName = null (§9.0 withholds it), so the protected attribution
+  // never leaks onto the restricted branch below.
+  const owner = source.ipHolderName ? `, published by ${source.ipHolderName}` : "";
+
+  if (!source.servable) {
+    // §9.0: a restricted / taken-down source must NOT open. Show the
+    // named source (so the reader knows what backs the claim) with an
+    // honest "not available to open" state — never the content.
+    return (
+      <span
+        className="text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+        title="This source isn’t available to open here (its license restricts it)."
+      >
+        from {label}
+        {locator}
+        <span className="text-[10px] text-shadow-1 dark:text-moonlight">
+          · not available to open
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={(e) => {
+        // ⌘/Ctrl-click opens the source jumped to its page; plain click
+        // previews the chunk inline first (the modal path).
+        if (e.metaKey || e.ctrlKey) {
+          e.preventDefault();
+          void (async () => {
+            try {
+              const chunk = await getChunk(source.representativeChunkId);
+              if (!chunk.servable) {
+                toast.err(`${label} isn’t available to open.`);
+                return;
+              }
+              const page = source.locator
+                ? parseInt(source.locator.replace(/\D/g, ""), 10)
+                : undefined;
+              openPdfPanel({
+                documentId: chunk.document_id,
+                page,
+                title: `${label}${source.locator ? ` · ${source.locator}` : ""}`,
+              });
+            } catch (err) {
+              toast.err(
+                `Could not open ${label}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            }
+          })();
+          return;
+        }
+        onPreview(source.representativeChunkId);
+      }}
+      className="text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors"
+      title="Click to preview · ⌘-click to open the source"
+    >
+      from {label}
+      {locator}
+      {owner}
+    </button>
   );
 }
 
@@ -243,6 +413,84 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
     >
       {rec.replace(/_/g, " ")}
     </span>
+  );
+}
+
+// ── Quality cue (SPR-11 M3) ──────────────────────────────────────────
+//
+// A quiet, plain-language read of the §14.4 inline rubric. The score is
+// READ from the persisted rubric event by the parser; this component only
+// renders what it's handed and never re-implements scoring. Three states:
+//   - absent  → render nothing (no fabricated score; the no-key / no-rubric
+//     case is honest by saying nothing rather than inventing a verdict);
+//   - clears the bar → a quiet positive cue, no number shoved forward;
+//   - below the bar → a visible flag in plain words, so the operator knows
+//     to give the answer another pass.
+//
+// The pass bar mirrors the substrate's PASS_THRESHOLD (0.5,
+// substrate/synthesis_rubric/scorer.py); we don't recompute, we only
+// compare the persisted composite against it to pick the wording. The four
+// sub-scores, when the persisted note carried them, sit behind a collapsed
+// "the detail" toggle so the default surface stays quiet (a raw dump is
+// itself noise to the operator).
+
+const QUALITY_PASS_BAR = 0.5;
+
+function QualityCue({ score }: { score: QualityScore | null }) {
+  // Absent: the synthesis carried no persisted rubric (no-key / nothing
+  // scored). Show nothing rather than a guessed verdict.
+  if (!score) return null;
+
+  const low = score.composite < QUALITY_PASS_BAR;
+
+  return (
+    <div className="mt-3 text-xs">
+      {low ? (
+        <p className="text-amber-800 dark:text-sun leading-relaxed">
+          This answer reads like it may want another pass before you rely on
+          it. The draft came in under our quality bar, so it&rsquo;s worth a
+          re-run or an edit.
+        </p>
+      ) : (
+        <p className="text-shadow-1 dark:text-moonlight leading-relaxed">
+          This answer clears our quality bar.
+        </p>
+      )}
+      <QualityDetail score={score} />
+    </div>
+  );
+}
+
+/** Optional breakdown, collapsed by default — the four sub-readings the
+ *  rubric noted, in plain words. Hidden entirely when the persisted note
+ *  carried no sub-scores (an older or free-form note), so we never show
+ *  empty rows. */
+function QualityDetail({ score }: { score: QualityScore }) {
+  const rows: Array<[string, number | null]> = [
+    ["Voice and style", score.voiceStyle],
+    ["Conviction", score.conviction],
+    ["Sourcing", score.citationDensity],
+    ["Stayed within the brief", score.constraintCompliance],
+  ];
+  const present = rows.filter(([, v]) => v !== null) as Array<[string, number]>;
+  if (present.length === 0) return null;
+
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors">
+        the detail
+      </summary>
+      <dl className="mt-2 space-y-1">
+        {present.map(([label, value]) => (
+          <div key={label} className="flex items-baseline gap-2">
+            <dt className="text-ink-soft dark:text-starlight">{label}</dt>
+            <dd className="font-mono text-shadow-1 dark:text-moonlight">
+              {Math.round(value * 100)}%
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 
@@ -316,7 +564,3 @@ function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
   );
 }
 
-function shortenChunkId(cid: string): string {
-  if (cid.length <= 18) return cid;
-  return cid.slice(0, 14) + "…";
-}

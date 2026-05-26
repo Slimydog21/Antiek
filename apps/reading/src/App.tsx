@@ -14,9 +14,6 @@ import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
-import InterviewMode from "./modes/Interview";
-import InterviewIndex from "./modes/InterviewIndex";
-import InvestigationsIndex from "./modes/InvestigationsIndex";
 import Library from "./modes/Library";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
@@ -33,6 +30,7 @@ import BookReader from "./modes/Reading";
 import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
+import MyResearch from "./modes/ResearchWorkstation/MyResearch";
 import Settings from "./modes/Settings";
 import SkillRuleDetail from "./modes/SkillRuleDetail";
 import SkillRules from "./modes/SkillRules";
@@ -42,6 +40,7 @@ import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
+import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
 
 /**
@@ -77,6 +76,14 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Speak SPR-08 one-door redirect for legacy /interview/:id deep-links.
+ *  The duplicate Interview surface is gone; interview-as-acquisition has one
+ *  door (/speak). An old interview link lands on the Speak home, where the
+ *  project that owns the interview is one tap away — never a dead route. */
+function InterviewRedirect() {
+  return <Navigate to="/speak" replace />;
+}
+
 function AuthenticatedRoutes() {
   return (
     <AppShell>
@@ -87,11 +94,21 @@ function AuthenticatedRoutes() {
       <Routes>
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
-        {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace). */}
+        {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace).
+            The :sessionId route opens it straight onto a launched session
+            (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
+        <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
+        {/* Write SPR-07 door re-home: the Write door opens on WriteHome — the
+            real blocks → outline → generate → edit loop — not the legacy
+            CreationStudio "select or create a deliverable" dead-end. The studio
+            stays reachable at /create (a demoted power surface, off the door),
+            its capability untouched; the door is /write (write.defaultRoute). */}
+        <Route path="/write" element={<WriteHome />} />
+        <Route path="/write/:deliverableId" element={<WriteHome />} />
         <Route path="/create" element={<CreationStudio />} />
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
@@ -120,8 +137,16 @@ function AuthenticatedRoutes() {
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
         <Route path="/replay/:investigationId" element={<Replay />} />
-        <Route path="/interview/:interviewId" element={<InterviewMode />} />
-        <Route path="/interviews" element={<InterviewIndex />} />
+        {/* Speak SPR-08 ONE DOOR: the duplicate Interview surface is folded
+            into Speak. There is exactly one door to interview-as-acquisition —
+            /speak. The old /interviews index redirects to /speak (the warm
+            home); an /interview/:id deep-link redirects into that interview's
+            Speak project console (the substance — recording, transcript,
+            corroboration — lives there now). The Interview / InterviewIndex
+            components stay on disk (capability preserved, mirrors the SPR-05
+            InvestigationsIndex fold) but are retired from routing. */}
+        <Route path="/interviews" element={<Navigate to="/speak" replace />} />
+        <Route path="/interview/:interviewId" element={<InterviewRedirect />} />
         <Route path="/speak" element={<SpeakIndex />} />
         <Route path="/speak/:projectId" element={<SpeakConsole />} />
         <Route path="/loop-3" element={<Loop3 />} />
@@ -129,7 +154,16 @@ function AuthenticatedRoutes() {
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />
         <Route path="/federation" element={<Federation />} />
         <Route path="/cross-graph/citations" element={<CrossGraphCitations />} />
-        <Route path="/investigations" element={<InvestigationsIndex />} />
+        {/* SPR-05 — the one multi-research monitor. Folds the three split
+            "manage your researches" surfaces (the docked sidebar tree, the
+            /deep-research grid, and the old /investigations flat list) into a
+            single calm home over every running + completed research. The old
+            /investigations path redirects here so there is exactly one door
+            (the experience-spec E-04/E-05 consolidation); the InvestigationsIndex
+            component is retired from routing, its capabilities (start, status,
+            cost, replay) preserved in MyResearch. */}
+        <Route path="/my-research" element={<MyResearch />} />
+        <Route path="/investigations" element={<Navigate to="/my-research" replace />} />
         <Route path="/payouts" element={<PayoutsAudit />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

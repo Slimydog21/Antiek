@@ -43,8 +43,17 @@ from .scoring import (
     normalize_gap_description,
     score_gap,
 )
+from .suggestions import (
+    DAEMON_SPAWN_POLICY_ID,
+    DEFAULT_MAX_SUGGESTIONS,
+    Suggestion,
+    build_suggestions,
+    policy_is_daemon,
+)
 
 __all__ = [
+    "DAEMON_SPAWN_POLICY_ID",
+    "DEFAULT_MAX_SUGGESTIONS",
     "DaemonBudget",
     "DaemonBudgetError",
     "DaemonConfig",
@@ -53,8 +62,11 @@ __all__ = [
     "GapRegistry",
     "ResearchTopic",
     "SpawnFn",
+    "Suggestion",
+    "build_suggestions",
     "no_op_spawn",
     "normalize_gap_description",
+    "policy_is_daemon",
     "run_one_iteration",
     "score_gap",
     "topic_id_for",

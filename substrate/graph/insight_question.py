@@ -87,8 +87,17 @@ _CONFIDENCE_TO_FLOAT = {
 
 
 def graph_db_path() -> str:
-    """Resolve the canonical graph DB path (``constants.DUCKDB_PATH`` with
-    ``~`` expanded). The connect-our-own-connection fallback uses this."""
+    """Resolve the canonical graph DB path. Honors the ``ANTIEK_DUCKDB_PATH``
+    operator/test override first, then falls back to ``constants.DUCKDB_PATH``
+    (``~`` expanded) — identical resolution to ``substrate.graph.default_db_path``,
+    so the connect-our-own-connection writers here (promotion + living-note)
+    target the *same* file the readers (default_db_path callers, the distill
+    surface, the cascade routes) open. Without this, an environment that sets
+    ANTIEK_DUCKDB_PATH would split the graph writer and readers across two
+    files."""
+    explicit = os.environ.get("ANTIEK_DUCKDB_PATH")
+    if explicit:
+        return os.path.expanduser(explicit)
     return os.path.expanduser(DUCKDB_PATH)
 
 
@@ -233,6 +242,11 @@ def promote_insight(
                 "canonical_text": canonical_text(text),
             }
         )
+        # Grounding on the node itself (the supported_by edge also carries
+        # it, but the living-note path resolves the note's document from node
+        # metadata, and the distill surface reads grounding from the row).
+        if source_document_id:
+            node_meta.setdefault("source_document_id", source_document_id)
         emb = (embedding_provider or _default_provider()).encode(text)
         insert_node(
             c,
@@ -291,6 +305,8 @@ def promote_question(
         node_meta.update({"promoted_kind": "question", "canonical_text": canonical_text(text)})
         if anchor_region_id:
             node_meta["anchor_region_id"] = anchor_region_id
+        if source_document_id:
+            node_meta.setdefault("source_document_id", source_document_id)
         emb = (embedding_provider or _default_provider()).encode(text)
         insert_node(
             c,

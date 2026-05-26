@@ -71,7 +71,9 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
     ],
     tabs: [
       { id: "workstation", label: "Workstation", to: "/" },
-      { id: "investigations", label: "Investigations", to: "/investigations" },
+      // SPR-05: the one multi-research monitor (folds the old Investigations
+      // list + the /deep-research grid into a single "manage all" door).
+      { id: "my-research", label: "My research", to: "/my-research" },
       { id: "outcomes", label: "Outcomes", to: "/outcomes" },
     ],
   },
@@ -91,19 +93,20 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
     actions: [
       {
         id: "new-deliverable",
-        label: "New deliverable",
+        label: "New piece",
         primary: true,
         // The button used to only `navigate("/create")`, which lands on
         // the empty "Select or create a deliverable to begin" canvas and
-        // creates nothing — it read as a dead button. Now it actually
-        // creates a deliverable and opens it. The operator renames the
-        // default title inline; kind defaults to the most common one.
+        // creates nothing — it read as a dead button. The #12 hotfix made it
+        // create + open; Write SPR-07 lands it on the REAL loop (/write/{id} —
+        // outline + tap-to-add repository + generate + edit), not the demoted
+        // studio (/create), so the door and this action agree.
         run: async (navigate) => {
           const d = await createDeliverable({
-            title: "Untitled deliverable",
-            deliverable_kind: "research_memo",
+            title: "Untitled piece",
+            deliverable_kind: "general_essay",
           });
-          navigate(`/create/${d.deliverable_id}`);
+          navigate(`/write/${d.deliverable_id}`);
         },
       },
     ],

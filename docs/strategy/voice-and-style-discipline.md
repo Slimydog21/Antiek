@@ -108,6 +108,38 @@ subject; the reader trusts the writer's eye.
 
 ---
 
+## Canonical machine source (drift prevention — Sprint 11)
+
+This document is the **design authority** for the discipline. The
+**canonical machine source** the roles actually consume is
+`substrate/voice_style/constructions.py`. It expresses the §5 forbidden
+constructions + permitted-construction guidance once, as data, with
+`render_voice_addendum(register=...)` composing the per-role prompt
+addendum text. The synthesizer and evidence_retriever render their
+addendum from it (registers `"synthesizer"` and `"evidence_retriever"`);
+the creative_writer and interviewer reference it as the named authority
+and are guarded by `tests/test_voice_style_constructions.py` so their
+register-specific framing cannot silently drop a canonical construction.
+
+**Why this exists:** before Sprint 11 the forbidden-construction list was
+copy-pasted inline across four role prompts plus the autoresearch scorer.
+Four copies drift — and they had already begun to (different surfaces
+banned different phrases). One source the roles reference prevents the
+silent divergence that lets one surface go sloppy while the others stay
+disciplined.
+
+**For a future role:** do NOT copy-paste a forbidden list into a new
+prompt. Either call `render_voice_addendum(...)` with an existing register,
+or, if you need a genuinely different framing, add a register to
+`constructions.py` (drawing its forbidden items from
+`FORBIDDEN_CONSTRUCTIONS`) so the shared source stays the single point of
+truth.
+
+(The deterministic scorer `tools/prompt_autoresearch/score.py` keeps its
+own regex list on purpose — it is a tuned measurement of the same §5
+discipline, not a prompt; unifying it would change the composite score.
+See the comment there.)
+
 ## Implementation — substrate-side prompt changes
 
 ### Change 1: Synthesizer system prompt addendum

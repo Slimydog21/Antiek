@@ -7,7 +7,7 @@ import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation } from "../../lib/api";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
-import TrajectoryView from "./TrajectoryView";
+import ThinkingStream from "./ThinkingStream";
 
 /**
  * Chase-this flow — pre-fills a textarea with a highlighted passage,
@@ -152,7 +152,9 @@ function SpawnedTrajectory({
         </button>
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">
-        <TrajectoryView investigation={inv} />
+        {/* SPR-02: a spawned chase is a running research too — narrate it,
+            with the raw log one toggle away (inside ThinkingStream). */}
+        <ThinkingStream investigation={inv} />
       </div>
     </div>
   );

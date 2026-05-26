@@ -162,9 +162,86 @@ class SteerRequest(BaseModel):
     payload: Optional[dict] = None
 
 
+class SuggestionOut(BaseModel):
+    """One "thread worth chasing" the surface renders (SPR-09 M1).
+
+    Carries only legible, plain-language fields — the daemon's vocabulary
+    (``evidentiary_gap`` / chase score / ``policy_id``) never crosses this
+    boundary. ``key`` is the opaque dedupe handle the surface echoes back when
+    the operator chases (so a chased gap can be dropped client-side too); it is
+    never rendered as a label."""
+
+    key: str
+    question: str
+    suggested_retrieval: Optional[str] = None
+    seen_in_research_count: int = 1
+    source_investigation_id: Optional[str] = None
+
+
+class SuggestionsResponse(BaseModel):
+    count: int
+    suggestions: list[SuggestionOut] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Plan endpoints (SPR-05)
 # ---------------------------------------------------------------------------
+
+
+@cascade_router.get("/budget-defaults")
+async def budget_defaults() -> dict:
+    """The per-research spend ceiling the runner uses when the launch request
+    omits one, plus the host-local concurrency cap. Both read straight off the
+    contracts (``BudgetCap`` + ``host_local.DEFAULT_MAX_CONCURRENCY``) so the
+    entry + monitor UIs can show "estimated up to $X for N researches" and an
+    honest "N running, M queued" without hardcoding a number that would drift
+    if the contract default changes. The concurrency cap is the host-local
+    bound; the §16-gated remote runner raises the practical ceiling only once
+    the operator provisions it."""
+    from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
+
+    cap = BudgetCap()
+    return {
+        "per_research_cost_usd": cap.cost_usd,
+        "per_research_max_steps": cap.max_steps,
+        "host_local_max_concurrency": DEFAULT_MAX_CONCURRENCY,
+    }
+
+
+@cascade_router.get("/suggestions", response_model=SuggestionsResponse)
+async def suggestions(limit: int = 8) -> SuggestionsResponse:
+    """The §7 compounding flywheel, surfaced (SPR-09 M1). Reads the continuous
+    daemon's *existing* scored evidentiary gaps off the event log and returns
+    the top ones as plain-language "threads worth chasing".
+
+    READ-ONLY — the load-bearing invariant of this sprint. Building suggestions
+    scans the event log and ranks with the daemon's own scorer; it spawns
+    nothing, reserves no budget, and does not run the daemon. A suggestion
+    costs nothing until the operator explicitly chases it through the existing
+    capped launch path (``POST /investigations`` / the cascade launch). With no
+    daemon output (no keys, daemon never ran) the result is an empty list — the
+    honest no-result state, never a fabricated thread.
+
+    The displayed count is bounded (rigor #3: rank + cap, don't dump a flood of
+    low-score gaps). ``limit`` is a *display* bound only — it changes nothing
+    about the daemon's §7.4 budget/cadence caps."""
+    from orchestration.continuous.suggestions import build_suggestions
+
+    capped = max(0, min(int(limit), 50))
+    items = build_suggestions(max_suggestions=capped, min_score=0.0)
+    return SuggestionsResponse(
+        count=len(items),
+        suggestions=[
+            SuggestionOut(
+                key=s.key,
+                question=s.question,
+                suggested_retrieval=s.suggested_retrieval,
+                seen_in_research_count=s.seen_in_research_count,
+                source_investigation_id=s.source_investigation_id,
+            )
+            for s in items
+        ],
+    )
 
 
 @cascade_router.post("/plans")

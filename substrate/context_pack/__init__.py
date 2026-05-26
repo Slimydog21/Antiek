@@ -20,6 +20,15 @@ from .assembler import (
     assemble_context_pack,
     default_budget_for,
 )
+from .style_guide import (
+    QUANTITATIVE_SKIP_THRESHOLD,
+    STYLE_EXTRACTOR_FLAG,
+    STYLE_GUIDE_LAYER_KIND,
+    STYLE_GUIDE_LAYER_SOURCE,
+    maybe_style_guide_layer,
+    should_run_style_extractor,
+    style_extractor_enabled,
+)
 
 __all__ = [
     "assemble_context_pack",
@@ -36,4 +45,12 @@ __all__ = [
     "SYNTHESIS_BUDGET_ROLES",
     "TRUNCATION_MARKER",
     "default_budget_for",
+    # style-guide wiring (Sprint 11)
+    "STYLE_EXTRACTOR_FLAG",
+    "QUANTITATIVE_SKIP_THRESHOLD",
+    "STYLE_GUIDE_LAYER_KIND",
+    "STYLE_GUIDE_LAYER_SOURCE",
+    "style_extractor_enabled",
+    "should_run_style_extractor",
+    "maybe_style_guide_layer",
 ]

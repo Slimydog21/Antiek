@@ -174,7 +174,13 @@ def _write_baseline(result: BenchmarkResult) -> None:
 
 
 def _check_regression(result: BenchmarkResult, threshold_pct: float) -> tuple[bool, str]:
-    """Return ``(regressed, message)``."""
+    """Return ``(regressed, message)``.
+
+    Craft signature: the locked baseline is p95 194.85 us at git 640a31c
+    (docs/craft_signature.md). NEVER re-mint the baseline to silence a CI
+    failure — a regression here means either real work to do or runner
+    noise to re-run; --update-baseline is operator-only and never in CI.
+    """
     if not BASELINE_FILE.exists():
         # Display the path repo-relative when possible (cleaner CI logs);
         # fall back to absolute when the caller monkey-patched it outside

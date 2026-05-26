@@ -20,13 +20,17 @@ Layer kinds (matching ``substrate.schemas.events.ContextLayer.kind``):
 - ``param_version_stamp`` — ANTIEK_PARAM_VERSION. Mandatory; never dropped.
 - ``phase_metadata`` — investigation_id / phase / role markers.
   Mandatory; never dropped.
+- ``style_guide`` — per-corpus sector style guide from the
+  ``style_extractor`` role (Sprint 11). Feature-flagged OFF by default;
+  injected only for qualitative investigations. Priority equals
+  ``long_term_skill`` (background conditioning, truncatable).
 - ``long_term_skill`` — accumulated knowledge from compounding skills.
 - ``graph_evidence`` — retrieved facts from the knowledge graph.
 - ``session`` — current investigation state, the role-specific task.
   Highest non-mandatory priority — preserved before evidence and skills.
 
 Rendering order in the final prompt:
-``param_version_stamp → phase_metadata → long_term_skill → graph_evidence → session``
+``param_version_stamp → phase_metadata → style_guide → long_term_skill → graph_evidence → session``
 
 The user's action-relevant content (``session``) goes last so it is
 closest to the model's response — standard LLM prompt-tail attention.
@@ -63,7 +67,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 
 LayerKind = Literal[
-    "session", "long_term_skill", "graph_evidence",
+    "session", "long_term_skill", "graph_evidence", "style_guide",
     "phase_metadata", "param_version_stamp",
 ]
 
@@ -78,6 +82,7 @@ DEFAULT_KIND_PRIORITY: dict[str, int] = {
     "session":              80,  # current task — almost always keep
     "graph_evidence":       60,  # retrieved facts — important but truncatable
     "long_term_skill":      40,  # background — easiest to truncate
+    "style_guide":          40,  # sector voice conditioning — same as skill
 }
 
 MANDATORY_PRIORITY_FLOOR = 90  # priorities >= this are never dropped
@@ -88,6 +93,7 @@ MANDATORY_PRIORITY_FLOOR = 90  # priorities >= this are never dropped
 CANONICAL_RENDER_ORDER: tuple[str, ...] = (
     "param_version_stamp",
     "phase_metadata",
+    "style_guide",
     "long_term_skill",
     "graph_evidence",
     "session",

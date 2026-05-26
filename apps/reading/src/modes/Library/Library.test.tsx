@@ -108,12 +108,17 @@ describe("Library", () => {
     expect(listBooksMock).toHaveBeenLastCalledWith("gated");
   });
 
-  it("shows an empty-state hint when the shelf is empty", async () => {
+  it("shows an honest empty-state (what's available to read, not an uploader)", async () => {
     listBooksMock.mockResolvedValue({ books: [], count: 0 });
     renderLibrary();
+    // Read SPR-06: an empty shelf is honest about the servable corpus — it
+    // points to Preview / bring-your-own, never prompts an operator ingest.
     await waitFor(() =>
-      expect(screen.getByText(/No servable books yet/)).toBeTruthy(),
+      expect(screen.getByText(/only shows what can be legally aggregated/)).toBeTruthy(),
     );
+    // It is the Read door's honest "nothing to read in full yet" state — not
+    // an upload prompt as the home (the wrestler is a demoted side affordance).
+    expect(screen.queryByText(/Load a PDF to wrestle/)).toBeNull();
   });
 
   it("curates the shelf by prompt, re-ranking to the curated order", async () => {

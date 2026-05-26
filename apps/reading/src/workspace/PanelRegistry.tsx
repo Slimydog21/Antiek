@@ -58,6 +58,9 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   MasterMdViewer,
   Chat: lazy(() => import("../modes/ResearchWorkstation/ChatInputArea")),
   Chase: lazy(() => import("../modes/ResearchWorkstation/ChaseSlideOver")),
+  // SPR-04 M2 — the delightful, jargon-free chase (reserved-id-reusing
+  // successor to Chase/ChaseSlideOver). Panel-only → lazy.
+  ChaseThread: lazy(() => import("../modes/ResearchWorkstation/ChaseThread")),
 
   // S6 — wrestling-workstation surfaces. PdfViewer is a direct child
   // of WrestleApp's main slot → eager. Notes / CrossDocs /

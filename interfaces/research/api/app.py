@@ -116,8 +116,24 @@ class InvestigationStartRequest(BaseModel):
 
 class ChunkResponse(BaseModel):
     """Response from ``GET /chunks/{chunk_id}``. Used by the web app's
-    claim hover modal to surface the actual chunk text + source
-    document title for any cited chunk_id."""
+    claim hover modal + SPR-04's named-source render to surface the
+    chunk text + source document title for any cited chunk_id.
+
+    ``servable`` carries the §9.0 retrieval-gate verdict to the surface
+    so the reader's "open this source" affordance and the data layer
+    cannot disagree. The gate applied here is the SAME one
+    ``substrate/graph/search.py`` applies to chunk retrieval on a
+    non-privileged path: content in ``RESTRICTED_CONTENT_CLASSES``
+    (restricted-pending-opt-in) or under a takedown is withheld; a NULL /
+    legacy research chunk passes (grandfathered) exactly as it does in
+    chunk search — this is the operator reading their own research
+    chunks, not the public "Spotify for books" full-text serve path
+    (which is the stricter allowlist in ``substrate/books/serve.py``).
+    When ``servable`` is False, ``text`` is withheld (empty string) — a
+    restricted source's body never leaves this endpoint, even on a
+    direct API call — but the named-source label (title) still resolves
+    so the reader sees an honest "not available to open" state rather
+    than a blank citation."""
 
     chunk_id: str
     text: str
@@ -126,6 +142,24 @@ class ChunkResponse(BaseModel):
     document_id: str
     document_title: Optional[str] = None
     source_tier: int = Field(ge=1, le=5)
+    # §9.0: whether this source may be opened on the reading surface.
+    # False ⇒ ``text`` is withheld and the surface shows "not available
+    # to open". Derived from content_class + takedown, never stored.
+    servable: bool = True
+    # SPR-10 M1 — "whose work grounds this": the document's IP holder's
+    # display name (e.g. "MIT Press"), or null when no owner is resolved
+    # (honest "unknown owner", never invented). §9.0: a NON-servable
+    # (restricted / taken-down) source does NOT expose its owner — the
+    # protected attribution stays withheld with the body. The lifecycle
+    # word (pre_onboarded … claimed) rides alongside so the surface frames
+    # escrow as opt-in-only (§9.10), never "money waiting" against an
+    # unconsenting rights holder.
+    ip_holder_name: Optional[str] = None
+    ip_holder_status: Optional[str] = None
+    # A presentation label for WHY a source is withheld
+    # ("restricted" | "taken_down"); null when servable. Lets the surface
+    # distinguish the two without re-deriving the gate.
+    servability: Optional[str] = None
 
 
 class InvestigationSummary(BaseModel):
@@ -140,6 +174,12 @@ class InvestigationSummary(BaseModel):
     completed_at: Optional[str] = None  # ISO8601, terminal events only
     cost_usd_total: float = 0.0
     parent_investigation_id: Optional[str] = None
+    # SPR-09 (the compounding flywheel): True when this research was spawned by
+    # the §7 continuous daemon (its start event carried the daemon's
+    # ``spawn_policy_id``), False for an operator-launched one. The surface
+    # translates this into the "found by the loop" badge — the raw policy_id is
+    # never sent to the client, only this honest boolean.
+    spawned_by_daemon: bool = False
 
 
 class InvestigationListResponse(BaseModel):
@@ -194,6 +234,31 @@ class InvestigationStartResponse(BaseModel):
     start_event_id: str
 
 
+class RubricScore(BaseModel):
+    """The §14.4 inline-rubric verdict for a synthesis, surfaced so the
+    reading surface can flag an answer that may need another pass.
+
+    SPR-11 M3: this is READ from the persisted ``rubric.scored`` event
+    the orchestrator emits after Phase 6 — it is NOT recomputed here, and
+    the scorer's algorithm is untouched. ``composite`` is the headline
+    score in [0, 1] (the event's ``final_score``); the four sub-scores
+    ride along when the persisted ``notes`` encode them (the scorer writes
+    ``voice=… conviction=… citation_density=… constraint=…``), and are
+    null when the note is a free-form one (e.g. the insufficient-evidence
+    floor). ``notes`` carries the scorer's own note verbatim.
+
+    When a synthesis has no persisted rubric event, the field carrying
+    this model is null — the surface shows no score rather than a
+    fabricated one (rigor #1)."""
+
+    composite: float = Field(ge=0.0, le=1.0)
+    voice_style: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    conviction: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    citation_density: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    constraint_compliance: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    notes: str = ""
+
+
 class InvestigationStatusResponse(BaseModel):
     """Response from ``GET /investigations/{id}``. ``status`` is one of:
 
@@ -205,13 +270,19 @@ class InvestigationStatusResponse(BaseModel):
     ``current_phase`` is the most recent phase the phase_log entered;
     ``last_delivered_action_type`` is the most recent ``*.delivered``
     or terminal event so the operator can see where the chain is in
-    flight."""
+    flight.
+
+    ``rubric_score`` (SPR-11 M3) is the §14.4 inline-rubric verdict for
+    this investigation's synthesis, READ from the persisted
+    ``rubric.scored`` event — null when the synthesis has no scored event
+    (honest absent, never a fabricated number)."""
 
     investigation_id: str
     status: str
     current_phase: Optional[int] = None
     last_delivered_action_type: Optional[str] = None
     terminal_payload: Optional[dict] = None
+    rubric_score: Optional[RubricScore] = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -434,6 +505,13 @@ class AttributionAlgorithmShares(BaseModel):
     document_titles: dict[str, str] = Field(default_factory=dict)
     document_count: int = 0
     claim_count: int = 0
+    # SPR-10 M1 — the provenance chain's last link: document_id → ip_holder_id
+    # (or null = unknown owner, never invented). document_ip_holder_status maps
+    # an ip_holder_id → its lifecycle word (pre_onboarded … claimed), so the
+    # surface can frame escrow as opt-in-only (§9.10). A restricted source never
+    # appears here at all — the §9.0 gate excludes it upstream in compute.py.
+    document_ip_holders: dict[str, Optional[str]] = Field(default_factory=dict)
+    document_ip_holder_status: dict[str, str] = Field(default_factory=dict)
 
 
 class AttributionReportResponse(BaseModel):
@@ -554,6 +632,63 @@ def _detect_source_kind(
         return "podcast"
     # Default: treat as a plain URL article (acquisition/urls).
     return "url"
+
+
+def _rubric_score_from_trajectory(rows: list[dict]) -> Optional["RubricScore"]:
+    """READ the §14.4 inline-rubric verdict from a trajectory (SPR-11 M3).
+
+    Walks newest-first for the most recent ``rubric.scored`` event and
+    reconstructs a ``RubricScore`` from its persisted payload. This does
+    NOT recompute the score and does NOT touch the scorer's algorithm —
+    it only reads what ``orchestration/loop_one/orchestrator.py`` already
+    emitted via ``middleware.outcomes.emit_rubric_scored`` after Phase 6.
+
+    The persisted payload carries ``final_score`` (the composite) and a
+    ``notes`` string. The synthesis rubric writes the four sub-scores into
+    that note as ``voice=… conviction=… citation_density=… constraint=…``
+    (see the orchestrator's emit call); we parse them back out when
+    present so the surface can offer the optional breakdown. When the note
+    is free-form (e.g. the insufficient-evidence floor message) the
+    sub-scores stay null — honest, never invented.
+
+    Returns ``None`` when the trajectory has no ``rubric.scored`` event,
+    so the caller leaves the response field null (no fabricated score)."""
+    import re
+
+    for r in reversed(rows):
+        payload = r.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("action_type") != "rubric.scored":
+            continue
+        final = payload.get("final_score")
+        if not isinstance(final, (int, float)):
+            # A rubric.scored event must carry final_score; a malformed
+            # one is treated as no score rather than a guessed value.
+            continue
+        notes = payload.get("notes")
+        notes_str = notes if isinstance(notes, str) else ""
+
+        def _sub(key: str) -> Optional[float]:
+            m = re.search(rf"\b{re.escape(key)}=([01](?:\.\d+)?)", notes_str)
+            if not m:
+                return None
+            try:
+                v = float(m.group(1))
+            except ValueError:
+                return None
+            return v if 0.0 <= v <= 1.0 else None
+
+        composite = max(0.0, min(1.0, float(final)))
+        return RubricScore(
+            composite=composite,
+            voice_style=_sub("voice"),
+            conviction=_sub("conviction"),
+            citation_density=_sub("citation_density"),
+            constraint_compliance=_sub("constraint"),
+            notes=notes_str,
+        )
+    return None
 
 
 def _extract_arxiv_id(url: str) -> Optional[str]:
@@ -1482,6 +1617,12 @@ def create_app(
             ):
                 break
 
+        # SPR-11 M3: surface the §14.4 inline-rubric verdict, READ from the
+        # persisted rubric.scored event (never recomputed). Null when the
+        # synthesis has no scored event — the surface shows no score rather
+        # than a fabricated one.
+        rubric_score = _rubric_score_from_trajectory(rows)
+
         if terminal_row is not None:
             status = (
                 "completed"
@@ -1494,6 +1635,7 @@ def create_app(
                 current_phase=last_phase,
                 last_delivered_action_type=last_delivered,
                 terminal_payload=terminal_row.get("payload"),
+                rubric_score=rubric_score,
             )
 
         return InvestigationStatusResponse(
@@ -1502,6 +1644,7 @@ def create_app(
             current_phase=last_phase,
             last_delivered_action_type=last_delivered,
             terminal_payload=None,
+            rubric_score=rubric_score,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -1520,12 +1663,32 @@ def create_app(
         discover all unique investigation_ids, then summarizes each
         with its start question + terminal status + cost.
 
+        Includes researches launched as a cascade fan-out (SPR-05): the
+        session parent (``session-…``) and its ``…-leaf-N`` children are
+        NOT ``inv-`` prefixed, but they are real researches the monitor
+        ("launch N at once") must show — so discovery accepts any
+        ``*.jsonl`` whose trajectory is an investigation (carries a
+        start-requested, spawned-from, or terminal lifecycle event),
+        not just the ``inv-`` shape. A cascade leaf records its session
+        parent via ``investigation.spawned_from`` (not the start payload),
+        so the grouping link is read from that event too, and its
+        question is the leaf's ``sub_question``.
+
+        Status honesty (SPR-05 B2/MINOR): a budget-halted chase
+        (``investigation.chase_halted``) is terminal — ``stopped`` — to
+        match ``cascade_session.reconstruct_session``; it must never read
+        as "working"/running forever. A research finished via stop/cancel
+        carries ``outcome`` in its completion payload, surfaced as
+        ``stopped`` so the operator sees an honest end state rather than
+        "done".
+
         Filter by ``status`` to narrow (one of: ``in_progress``,
-        ``completed``, ``failed``). Default limit 50, sorted newest
-        first."""
+        ``completed``, ``failed``, ``stopped``). Default limit 50, sorted
+        newest first."""
         import os as _os
         from substrate.event_log import default_events_dir
         from substrate.schemas import ActionType
+        from orchestration.continuous.suggestions import policy_is_daemon
 
         events_dir = default_events_dir()
         if not _os.path.isdir(events_dir):
@@ -1533,15 +1696,37 @@ def create_app(
 
         completed_action = ActionType.INVESTIGATION_COMPLETED.value
         failed_action = ActionType.INVESTIGATION_FAILED.value
+        halted_action = ActionType.INVESTIGATION_CHASE_HALTED.value
         start_action = ActionType.INVESTIGATION_START_REQUESTED.value
+        spawned_action = ActionType.INVESTIGATION_SPAWNED_FROM.value
+        # The lifecycle markers that identify a trajectory as a research
+        # (as opposed to, e.g., a session-only or non-investigation log).
+        # A cascade session file carries only ``cascade.launched`` and is
+        # surfaced as the grouping parent so its leaves nest under it.
+        investigation_markers = {
+            start_action, spawned_action, completed_action,
+            failed_action, halted_action, "cascade.launched",
+        }
 
         summaries: list[InvestigationSummary] = []
+        # Session-container ids (a cascade.launched file with no research
+        # lifecycle of its own): the grouping parent. Its honest status is the
+        # aggregate of its leaves (working iff a leaf still works), derived in a
+        # post-pass once every row is known — never a bare "working" forever.
+        session_containers: set[str] = set()
         for filename in _os.listdir(events_dir):
-            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
+            if not filename.endswith(".jsonl"):
                 continue
             inv_id = filename[:-len(".jsonl")]
             rows = trajectory(inv_id)
             if not rows:
+                continue
+            # A non-inv- file is only a research if its trajectory says so;
+            # this keeps unrelated logs out of the list while admitting the
+            # cascade session/leaf ids the monitor must show.
+            if not inv_id.startswith("inv-") and not any(
+                r.get("action_type") in investigation_markers for r in rows
+            ):
                 continue
 
             question: Optional[str] = None
@@ -1550,19 +1735,64 @@ def create_app(
             cost_total = 0.0
             terminal_status = "in_progress"
             parent_inv_id: Optional[str] = None
+            # A pure session container has cascade.launched but never starts or
+            # terminates a research of its own.
+            saw_launched = False
+            saw_own_lifecycle = False
+            # SPR-09: was this research spawned by the §7 daemon? True iff its
+            # start/spawned event carried the daemon's spawn policy_id. The raw
+            # policy_id is read here and translated to a boolean — never sent
+            # to the client.
+            spawned_by_daemon = False
 
             for r in rows:
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
+                if at in (start_action, spawned_action):
+                    if policy_is_daemon(r.get("policy_id")):
+                        spawned_by_daemon = True
+                if at in (start_action, spawned_action, completed_action,
+                          failed_action, halted_action):
+                    saw_own_lifecycle = True
+                if at == "cascade.launched":
+                    saw_launched = True
                 if at == start_action and question is None:
-                    question = payload.get("question")
+                    # A standalone research carries its question + parent here;
+                    # a cascade leaf carries only ``sub_question`` (its parent
+                    # link rides on the separate spawned_from event below).
+                    question = payload.get("question") or payload.get("sub_question")
                     started_at = r.get("emitted_at")
-                    parent_inv_id = payload.get("parent_investigation_id")
+                    if payload.get("parent_investigation_id"):
+                        parent_inv_id = payload.get("parent_investigation_id")
+                elif at == spawned_action:
+                    # The cascade/chase parent link (cascade leaves record it
+                    # here, not in the start payload). Also seeds the question
+                    # + a start time for a leaf whose start_requested lacked one.
+                    parent_inv_id = payload.get("parent_investigation_id") or parent_inv_id
+                    if question is None:
+                        question = payload.get("sub_question")
+                    if started_at is None:
+                        started_at = r.get("emitted_at")
+                elif at == "cascade.launched" and started_at is None:
+                    # The session parent's own row: no start_requested, so take
+                    # its launch time so the group sorts by real freshness.
+                    started_at = r.get("emitted_at")
                 elif at == completed_action:
-                    terminal_status = "completed"
+                    # Stop/cancel finishes through completed with an explicit
+                    # ``outcome`` — surface it honestly as ``stopped`` rather
+                    # than "done" (the M1 vocabulary lists them as distinct).
+                    if payload.get("outcome") in ("stopped", "cancelled"):
+                        terminal_status = "stopped"
+                    else:
+                        terminal_status = "completed"
                     completed_at = r.get("emitted_at")
                 elif at == failed_action:
                     terminal_status = "failed"
+                    completed_at = r.get("emitted_at")
+                elif at == halted_action:
+                    # Budget-halted: terminal (matches reconstruct_session's
+                    # BUDGET_HALTED), shown as stopped — never running forever.
+                    terminal_status = "stopped"
                     completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
                     try:
@@ -1570,8 +1800,8 @@ def create_app(
                     except (TypeError, ValueError):
                         pass
 
-            if status_filter and terminal_status != status_filter:
-                continue
+            if saw_launched and not saw_own_lifecycle:
+                session_containers.add(inv_id)
 
             summaries.append(InvestigationSummary(
                 investigation_id=inv_id,
@@ -1581,7 +1811,36 @@ def create_app(
                 completed_at=completed_at,
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
+                spawned_by_daemon=spawned_by_daemon,
             ))
+
+        # Derive each session container's status from its leaves (the same
+        # all-terminal logic cascade_session.reconstruct_session uses): working
+        # while any leaf works; needs-attention if any leaf failed; else done.
+        # So a session whose fan-out finished never reads "working" forever.
+        if session_containers:
+            children: dict[str, list[str]] = {}
+            for s in summaries:
+                if s.parent_investigation_id in session_containers:
+                    children.setdefault(s.parent_investigation_id, []).append(s.status)
+            for s in summaries:
+                if s.investigation_id not in session_containers:
+                    continue
+                leaf_states = children.get(s.investigation_id, [])
+                if any(st == "in_progress" for st in leaf_states):
+                    s.status = "in_progress"
+                elif any(st == "failed" for st in leaf_states):
+                    s.status = "failed"
+                elif leaf_states:
+                    # All leaves terminal: done if any completed, else stopped
+                    # (every leaf stopped/halted → the session is stopped).
+                    s.status = "completed" if any(
+                        st == "completed" for st in leaf_states) else "stopped"
+                # No leaves discovered yet (race just after launch): leave the
+                # honest "in_progress" the loop set.
+
+        if status_filter:
+            summaries = [s for s in summaries if s.status == status_filter]
 
         # Sort newest-first by started_at (ISO8601 strings sort lexically).
         summaries.sort(
@@ -1599,10 +1858,26 @@ def create_app(
     )
     async def get_chunk(chunk_id: str) -> ChunkResponse:
         """Read-only chunk fetch. Used by the web app's claim hover
-        modal to surface the actual chunk text + source document
-        title for any cited chunk_id."""
+        modal + SPR-04's named-source render to surface the chunk text +
+        source document title for any cited chunk_id.
+
+        §9.0 retrieval gate: a chunk whose source is RESTRICTED
+        (content_class in ``RESTRICTED_CONTENT_CLASSES``) or under a
+        takedown has its body WITHHELD here, at the query layer — the
+        same gate ``substrate/graph/search.py`` applies to chunk
+        retrieval — so a frontend that calls this directly still cannot
+        pull body text out of a restricted source. A NULL / legacy
+        research chunk passes (grandfathered), matching chunk search; the
+        stricter book full-text allowlist lives in
+        ``substrate/books/serve.py`` and governs the public serve path,
+        not this reading-surface preview. The named-source label (title)
+        still resolves so the reader sees an honest "not available to
+        open" state, never a blank citation. The verdict rides as
+        ``servable`` / ``servability`` so the surface need not re-derive
+        it."""
         import duckdb as _duckdb
         from substrate.graph import default_db_path
+        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
 
         db_path = default_db_path()
         try:
@@ -1614,12 +1889,21 @@ def create_app(
             ) from exc
 
         try:
+            # LEFT JOIN book_assets so a takedown override is honoured even
+            # for a chunk of a public-domain book (taken_down wins over
+            # content_class in the projection). A document with no
+            # book_assets row coalesces to taken_down=False.
             row = con.execute(
                 """
                 SELECT c.chunk_id, c.text, c.section_path, c.token_count,
-                       c.document_id, d.title, d.source_tier
+                       c.document_id, d.title, d.source_tier,
+                       d.content_class,
+                       COALESCE(b.taken_down, FALSE) AS taken_down,
+                       h.display_name, h.status
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.document_id
+                LEFT JOIN book_assets b ON d.document_id = b.document_id
+                LEFT JOIN ip_holders h ON d.ip_holder_id = h.ip_holder_id
                 WHERE c.chunk_id = ?
                 """,
                 [chunk_id],
@@ -1633,14 +1917,35 @@ def create_app(
                 detail=f"chunk_id {chunk_id!r} not found",
             )
 
+        content_class = row[7]
+        taken_down = bool(row[8])
+        # Takedown wins over everything; otherwise withhold only the
+        # named restricted classes (NULL/legacy passes — same as search).
+        if taken_down:
+            servable, label = False, "taken_down"
+        elif content_class in RESTRICTED_CONTENT_CLASSES:
+            servable, label = False, "restricted"
+        else:
+            servable, label = True, None
         return ChunkResponse(
             chunk_id=row[0],
-            text=row[1] or "",
+            # Withhold the body for a non-servable source. The whole point
+            # of the gate living here is that withholding is not a UI
+            # courtesy — the bytes do not leave the endpoint.
+            text=(row[1] or "") if servable else "",
             section_path=row[2],
             token_count=int(row[3] or 0),
             document_id=row[4],
             document_title=row[5],
             source_tier=int(row[6]),
+            servable=servable,
+            # §9.0: the IP-holder name is protected attribution — surface it
+            # ONLY for a servable source. A restricted / taken-down source
+            # withholds its owner exactly as it withholds its body, so a
+            # reader can't infer "whose work" from a source we may not serve.
+            ip_holder_name=(row[9] if servable else None),
+            ip_holder_status=(row[10] if servable else None),
+            servability=label,
         )
 
     # ── Sprint 12: source ingest ─────────────────────────────────
@@ -2543,6 +2848,8 @@ def create_app(
                 document_titles=dict(result.document_titles),
                 document_count=result.document_count,
                 claim_count=result.claim_count,
+                document_ip_holders=dict(result.document_ip_holders),
+                document_ip_holder_status=dict(result.document_ip_holder_status),
             )
 
         return AttributionReportResponse(
@@ -5137,6 +5444,14 @@ def create_app(
     # Wires the SPR-05 planner + SPR-02 runner + SPR-06 CascadeSession to HTTP.
     from interfaces.research.api.cascade_routes import cascade_router
     app.include_router(cascade_router)
+
+    # Distill surface (specs/product-depth/ SPR-03). Reads the shipped
+    # insight/question graph nodes for a research and drives the shipped
+    # living-note challenge path — same one-line inclusion discipline. The
+    # only graph write (a challenge) serializes through runtime/db_lock
+    # inside roles.note_taker.living_note; this router adds no second writer.
+    from interfaces.research.api.distill_routes import distill_router
+    app.include_router(distill_router)
 
     return app
 

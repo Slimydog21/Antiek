@@ -8,6 +8,12 @@ manual path. Sprint 4 day 4-5 promotion per the operator's
 """
 
 from .prompt import AUTONOMOUS_CHALLENGER_ROLE_PROMPT, DEFAULT_CHALLENGE_PROMPT
+from .resolver import (
+    ChallengeUnavailable,
+    RESOLVE_OR_DECLINE_PROMPT,
+    make_dispatch_resolver,
+    parse_resolution,
+)
 from .types import Challenge, compose_challenge
 
 __all__ = [
@@ -15,4 +21,9 @@ __all__ = [
     "AUTONOMOUS_CHALLENGER_ROLE_PROMPT",
     "Challenge",
     "compose_challenge",
+    # DRW SPR-03 — the resolver living_note.challenge_note drives
+    "ChallengeUnavailable",
+    "RESOLVE_OR_DECLINE_PROMPT",
+    "make_dispatch_resolver",
+    "parse_resolution",
 ]

@@ -14,6 +14,14 @@ export interface InvestigationState {
   costTotal: number;
   /** Latest investigation.completed | .failed event timestamp, if any. */
   completedAt: string | null;
+  /** The live WebSocket's connection state, surfaced so a live view can show
+   *  a reconnecting beat instead of a frozen feed (SPR-02 M2). Distinct from
+   *  `status`: a research can be `in_progress` while the socket is briefly
+   *  `closed`/`connecting` between reconnect attempts. */
+  streamStatus: "connecting" | "open" | "closed" | "error";
+  /** How many times the live socket has reconnected (from useEventStream).
+   *  A live view can show "reconnecting…" when this advances mid-run. */
+  reconnects: number;
 }
 
 /**
@@ -36,7 +44,11 @@ export function useInvestigation(
   const [seedEvents, setSeedEvents] = useState<Event[]>([]);
   const [status, setStatus] = useState<InvestigationStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const { events: liveEvents } = useEventStream(investigationId);
+  const {
+    events: liveEvents,
+    status: streamStatus,
+    reconnects,
+  } = useEventStream(investigationId);
 
   // Initial trajectory + status fetch on id change.
   useEffect(() => {
@@ -148,6 +160,8 @@ export function useInvestigation(
   return {
     id: investigationId ?? "",
     events,
+    streamStatus,
+    reconnects,
     ...derived,
   };
 }

@@ -191,11 +191,16 @@ export async function startInvestigation(
 export interface InvestigationSummary {
   investigation_id: string;
   question: string | null;
-  status: "in_progress" | "completed" | "failed" | "not_found";
+  status: "in_progress" | "completed" | "failed" | "stopped" | "not_found";
   started_at: string | null;
   completed_at: string | null;
   cost_usd_total: number;
   parent_investigation_id: string | null;
+  /** SPR-09: true when the §7 continuous daemon spawned this research (its
+   * start event carried the daemon's policy_id, translated to this boolean
+   * server-side). The surface badges it "found by the loop"; the raw
+   * policy_id is never sent. Optional for back-compat with older responses. */
+  spawned_by_daemon?: boolean;
 }
 
 /** GET /investigations — list past investigations for the sidebar. */
@@ -403,12 +408,32 @@ export async function reorderNotebookBlocks(
   return resp.json();
 }
 
+/** SPR-11 M3 — the §14.4 inline-rubric verdict for a completed research's
+ *  answer, READ from the persisted `rubric.scored` event (never recomputed
+ *  client-side). `composite` is the headline score in [0, 1]; the four
+ *  sub-scores are present only when the persisted note encoded them, and are
+ *  null otherwise (honest, never invented). The surface renders a quiet
+ *  plain-language quality cue from this, and flags a low score so the operator
+ *  knows the answer may want another pass. Absent (`null` on the parent) ⇒ no
+ *  score was persisted ⇒ the surface shows nothing. */
+export interface RubricScore {
+  composite: number;
+  voice_style: number | null;
+  conviction: number | null;
+  citation_density: number | null;
+  constraint_compliance: number | null;
+  notes: string;
+}
+
 export interface InvestigationStatus {
   investigation_id: string;
   status: "in_progress" | "completed" | "failed" | "not_found";
   current_phase: number | null;
   last_delivered_action_type: string | null;
   terminal_payload: Record<string, unknown> | null;
+  /** The inline-rubric verdict for this research's answer; null when no
+   *  score was persisted (the no-synthesis / no-key case). */
+  rubric_score: RubricScore | null;
 }
 
 /** GET /investigations/{id} — fetch terminal-state status. */
@@ -436,6 +461,22 @@ export interface ChunkResponse {
   document_id: string;
   document_title: string | null;
   source_tier: number;
+  /** §9.0: whether this source may be opened on the reading surface.
+   *  False ⇒ the body (`text`) is withheld by the endpoint and the
+   *  surface must show "not available to open", never the content. */
+  servable: boolean;
+  /** SPR-10 M1 — "whose work grounds this": the source's IP-holder name
+   *  (e.g. "MIT Press"), or null when no owner is resolved (honest
+   *  "unknown owner", never invented). §9.0: a non-servable source
+   *  withholds its owner with its body, so this is null for a restricted /
+   *  taken-down source. */
+  ip_holder_name?: string | null;
+  /** The IP holder's lifecycle word (pre_onboarded … claimed); null when
+   *  no owner or non-servable. Lets the surface frame escrow opt-in-only. */
+  ip_holder_status?: string | null;
+  /** Why a source is withheld ("restricted" | "taken_down"); null when
+   *  servable. Mirrors interfaces/research/api/app.py:ChunkResponse. */
+  servability: string | null;
 }
 
 // ── Sprint 12: source ingest ───────────────────────────────────────
@@ -764,6 +805,43 @@ export async function ingestVoiceNote(
   return resp.json();
 }
 
+// ── Read SPR-06 / SPR-04: voice transcription ──────────────────────
+//
+// Mirrors interfaces/research/api/read_voice.py:transcribe. Posts raw
+// audio bytes (e.g. audio/webm) and gets back a transcript. Gated on the
+// operator OpenAI key: a 503 is the honest no-key state, surfaced as
+// AIActionFailure by the caller — never a fabricated transcript.
+//
+// NB: api/books.ts has a sibling transcribeAudio for the Reading mode; it
+// flattens the HTTP status into a plain Error. This one preserves the
+// status via ApiError so the Research chase can tell 503 (no key) apart
+// from a transient failure and show the right honest state.
+
+export interface TranscribeResponse {
+  transcript: string;
+  language: string | null;
+  duration_seconds: number;
+}
+
+/** POST /voice/transcribe — audio blob → transcript (Whisper). 503 when
+ *  the operator OpenAI key is unset (honest no-key). Preserves the status
+ *  on ApiError so the caller can distinguish no-key from a transient. */
+export async function transcribeAudio(audio: Blob): Promise<TranscribeResponse> {
+  const resp = await apiFetch(`${API_BASE}/voice/transcribe`, {
+    method: "POST",
+    headers: { "Content-Type": audio.type || "application/octet-stream" },
+    body: audio,
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /voice/transcribe failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** POST /sources/ingest — add a URL to the substrate graph. */
 export async function ingestSource(
   req: IngestSourceRequest,
@@ -783,6 +861,93 @@ export async function ingestSource(
   return resp.json();
 }
 
+// ── SPR-03: distill surface (insights / open questions / living notes) ──
+//
+// Mirrors interfaces/research/api/distill_routes.py. The node_id is an
+// opaque handle echoed back on a challenge — never rendered as a label
+// (copy-lint: no raw-id leaks). "research" is the user-facing word for an
+// investigation (see language.ts GLOSSARY).
+
+export interface DistilledNode {
+  node_id: string;
+  /** "insight" | "question" — the §2.1 primitive. */
+  kind: string;
+  /** Current text; reflects any living-note refinement (read from the node). */
+  text: string;
+  confidence?: string | null;
+  /** The source that grounds it (a document handle); null when ungrounded. */
+  source_document_id?: string | null;
+  /** How many times this note has changed (a living-note signal). */
+  refinement_count: number;
+  /** A question whose challenge needs new research (escalation seam). */
+  escalated: boolean;
+  /** The reserved (NOT launched) child research id; SPR-04/05 launch it. */
+  reserved_child_investigation_id?: string | null;
+}
+
+export interface DistillationResponse {
+  investigation_id: string;
+  insights: DistilledNode[];
+  questions: DistilledNode[];
+}
+
+/** GET /research/{id}/distill — the durable product of a research:
+ *  its insights + open questions, read off the graph. */
+export async function getDistillation(
+  investigationId: string,
+): Promise<DistillationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/distill`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /research/{id}/distill failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface ChallengeNoteResponse {
+  node_id: string;
+  /** The note's text changed in place (living note). */
+  applied: boolean;
+  /** A stale refinement lost the seq race; the visible text is unchanged. */
+  superseded: boolean;
+  new_text?: string | null;
+  /** The challenge couldn't be resolved — a deeper research is reserved. */
+  escalated: boolean;
+  /** The reserved (un-launched) child research id, when escalated. */
+  reserved_child_investigation_id?: string | null;
+}
+
+/** POST /research/notes/{nodeId}/challenge — drive the shipped living-note
+ *  path. Resolves → mutates in place; declines → escalation (reserved, not
+ *  launched). 503 = no model configured (honest no-key); the caller shows
+ *  the shared failure surface, never a fabricated change. */
+export async function challengeNote(
+  nodeId: string,
+  req: { investigation_id: string; challenge_text?: string },
+): Promise<ChallengeNoteResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/notes/${encodeURIComponent(nodeId)}/challenge`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge_text: "", ...req }),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/notes/{id}/challenge failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** GET /chunks/{id} — used by Mode A's claim hover modal. */
 export async function getChunk(chunkId: string): Promise<ChunkResponse> {
   const resp = await apiFetch(
@@ -791,6 +956,113 @@ export async function getChunk(chunkId: string): Promise<ChunkResponse> {
   if (!resp.ok) {
     throw new ApiError(
       `GET /chunks/{id} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// ── SPR-10: §9 provenance + economics, surfaced (accrual, NOT disbursement) ──
+//
+// The accrual view (Economics/AccrualView) reads two SHIPPED, read-only
+// surfaces and shows them honestly: attribution shares (whose work grounds a
+// synthesis, under the §9.3 algorithms) and the consent/escrow view (what is
+// ACCRUING per IP holder, with every balance labelled gated-on-G2+G3). Neither
+// call can move money — there is no disburse/payout/publish client here.
+
+/** One §9.3 algorithm's per-document attribution result. Mirrors
+ *  interfaces/research/api/app.py:AttributionAlgorithmShares. ``shares`` is
+ *  document_id → share-of-total; the parallel maps carry the human title and
+ *  the provenance chain's last link (ip_holder). A §9.0-restricted source is
+ *  excluded upstream in compute.py — it never appears in any of these maps. */
+export interface AttributionAlgorithmShares {
+  algorithm: "A" | "B" | "C";
+  shares: Record<string, number>;
+  document_titles: Record<string, string>;
+  document_count: number;
+  claim_count: number;
+  /** document_id → ip_holder_id (or null = unknown owner, never invented). */
+  document_ip_holders: Record<string, string | null>;
+  /** ip_holder_id → lifecycle word (pre_onboarded … claimed). */
+  document_ip_holder_status: Record<string, string>;
+}
+
+export interface AttributionReportResponse {
+  synthesis_id: string;
+  target_question: string;
+  option_a: AttributionAlgorithmShares;
+  option_b: AttributionAlgorithmShares;
+  option_c: AttributionAlgorithmShares;
+}
+
+/** GET /attribution/synthesis/{id} — Phase 1 telemetry only; no payout is
+ *  attached to the result. The accrual view defaults to Option B (§9.3
+ *  recommended default). ``emit_event`` defaults false (a read shouldn't write
+ *  the log). */
+export async function getAttributionReport(
+  synthesisId: string,
+): Promise<AttributionReportResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/attribution/synthesis/${encodeURIComponent(synthesisId)}`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /attribution/synthesis/{id} failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** Why an accrued balance is NOT disbursable. ``disbursable`` is always false
+ *  on this surface — no field flips it, no endpoint disburses. */
+export interface DisbursementGate {
+  disbursable: boolean; // always false
+  open_gate_ids: string[]; // subset of {G2, G3} currently open
+  holder_claimed: boolean;
+  fully_unlocked: boolean;
+  label: string;
+}
+
+export interface IpHolderConsent {
+  ip_holder_id: string;
+  display_name: string;
+  status: string; // pre_onboarded | invited | claimed | opted_out
+  escrow_balance_usd: string; // accruing; "0" is an honest zero
+  gate: DisbursementGate;
+  serves_full_text: boolean | null;
+  servability_note: string | null;
+}
+
+export interface ConsentViewResponse {
+  holders: IpHolderConsent[];
+  escrow_report: {
+    pre_onboarded: number;
+    invited: number;
+    claimed: number;
+    opted_out: number;
+    claim_rate: number;
+    total_escrow_accrued_cents: number;
+    total_escrow_paid_cents: number; // honestly 0 — no payout has run
+    unclaimed_escrow_cents: number;
+    publishers_with_nontrivial_accrual: number;
+  };
+  disbursement_gates_open: string[];
+  total_escrow_accruing_usd: string;
+  any_disbursable: boolean; // false while a legal gate is open
+  gate_source_path: string;
+}
+
+/** GET /coordination/consent — the read-only escrow/consent view. Every
+ *  balance is accruing-not-paid; ``any_disbursable`` is false while a legal
+ *  gate is open. Read-only on the backend (no escrow write, no payout). */
+export async function getConsentView(): Promise<ConsentViewResponse> {
+  const resp = await apiFetch(`${API_BASE}/coordination/consent`);
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /coordination/consent failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

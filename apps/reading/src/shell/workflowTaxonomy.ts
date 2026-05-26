@@ -113,22 +113,36 @@ export const WORKFLOWS: Record<Exclude<Workflow, "shared">, WorkflowMeta> = {
   read: {
     id: "read",
     label: "Read",
-    tagline: "Wrestle sources into your substrate and think in notebooks.",
-    nouns: ["Library", "Documents", "Notebooks", "Sources"],
-    defaultRoute: "/wrestle",
+    // Read SPR-06 door re-home: the Read door opens on the Library shelf —
+    // "Spotify for books", the home of Read — not the PDF wrestler. The
+    // tagline + nouns lead with the shelf you read from, not the uploader
+    // you bring sources into (which is now a demoted power affordance,
+    // reachable from the Library, not the door).
+    tagline: "Open a book and read it with the AI alongside.",
+    nouns: ["Library", "Notebooks"],
+    defaultRoute: "/library",
   },
   write: {
     id: "write",
     label: "Write",
-    tagline: "Compose deliverables from your block repository.",
-    nouns: ["Deliverables", "Block repository"],
-    defaultRoute: "/create",
+    // Write SPR-07 door re-home: the Write door opens on the real lego-block
+    // loop (WriteHome at /write) — pull research notes into an outline,
+    // generate a draft from them, edit in the real editor — not the legacy
+    // CreationStudio "select or create a deliverable" dead-end (now a demoted
+    // power surface at /create, off the door). The tagline + nouns lead with
+    // the loop, not the studio.
+    tagline: "Pull your notes into an outline, draft from them, then edit.",
+    nouns: ["Pieces", "Block repository"],
+    defaultRoute: "/write",
   },
   speak: {
     id: "speak",
     label: "Speak",
-    tagline: "Interview-as-acquisition: invite, capture, corroborate.",
-    nouns: ["Interview projects", "Contributors", "Invites"],
+    // Speak SPR-08: a warm, human tagline + nouns — DeepBlu biography-as-a-
+    // service, not "interview-as-acquisition". Someone you want to remember;
+    // the people who knew them; the voices they leave.
+    tagline: "Remember someone — invite their people and gather their voices.",
+    nouns: ["People to remember", "Their people", "Voices"],
     defaultRoute: "/speak",
   },
 };
@@ -156,10 +170,16 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   {
     id: "InvestigationsIndex",
     workflow: "research",
-    label: "Investigations",
-    blurb: "List of past + in-flight investigations.",
+    label: "My research",
+    // SPR-05 fold: the old flat /investigations list is folded into the one
+    // multi-research monitor (MyResearch, a ResearchWorkstation surface). Its
+    // capabilities — list, status, cost, replay — are preserved there. The
+    // /investigations path redirects to /my-research, so the canonical route
+    // for this surface is now /my-research (the component file is retired from
+    // routing, kept on disk so this completeness entry stays honest).
+    blurb: "One calm monitor over every running + completed research (SPR-05).",
     built: true,
-    route: "/investigations",
+    route: "/my-research",
   },
   {
     id: "BrainstormStation",
@@ -209,26 +229,41 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   {
     id: "WrestleApp",
     workflow: "read",
+    // Read SPR-06: demoted from "the Read home" to a bring-your-own-PDF
+    // power surface. It STAYS in the Read workflow (it is reading), but it
+    // is no longer the door — the Library is (see read.defaultRoute). It is
+    // reachable from the Library's "bring your own PDF" affordance + ⌘K.
     label: "Document wrestler",
-    blurb: "PDF reading + region selection + claim extraction (Mode B). The Read home.",
+    blurb: "Bring your own PDF — read it, select regions, extract claims (power surface; not the Read door).",
     built: true,
     route: "/wrestle",
   },
+  // Read SPR-06 operator-surface eviction (mirrors Wave E U-03 "operator
+  // behind More"): the tier-filtered Documents index and the bulk-ingest
+  // Sources surface are acquisition/governance tools, not the reading door.
+  // They move OUT of the Read workflow into the shared/More bucket — the
+  // code + routes are untouched (capability preserved), only the
+  // classification changes, so they no longer bleed onto the Read door and
+  // no longer set the Read rail active. Reachable via More + ⌘K.
   {
     id: "DocumentsIndex",
-    workflow: "read",
+    workflow: "shared",
     label: "Documents",
-    blurb: "Substrate-attached sources by tier.",
+    blurb: "Substrate-attached sources by tier (acquisition/governance).",
     built: true,
     route: "/documents",
+    sharedReason:
+      "Tier-filtered source-management surface (raw ids, ingestion); operator/acquisition tooling, not the reading door (Read SPR-06 eviction).",
   },
   {
     id: "Sources",
-    workflow: "read",
+    workflow: "shared",
     label: "Sources",
     blurb: "Bulk-add URLs into the substrate graph (acquisition adapters).",
     built: true,
     route: "/sources",
+    sharedReason:
+      "Bulk source-ingestion (acquisition adapters); operator tooling that spans acquisition, not a reading surface (Read SPR-06 eviction).",
   },
   {
     id: "Notebook",
@@ -275,14 +310,22 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   },
 
   // ── WRITE ─────────────────────────────────────────────────────────
-  // Create (the section-based studio) folds into Write. The Write SPR-03/04
-  // component modes (Repository, Editor) are BUILT but not yet routed —
-  // honest: built=false until they have a route or panel mount.
+  // Write SPR-07: the door is the real lego-block loop — WriteHome at /write
+  // composes the block repository (tap-to-add picker) + the legible outline +
+  // the real editor + the brainstorm on-ramp. The Write SPR-03/04 component
+  // modes (Repository, Editor) are now MOUNTED inside that surface, so they
+  // are reachable (built=true, route=/write — the door they live on). The
+  // legacy CreationStudio is demoted to a power surface at /create (still
+  // Write — it IS writing — but off the door; capability untouched).
   {
     id: "CreationStudio",
     workflow: "write",
+    // Write SPR-07: demoted from "the Write home" to a power surface. It stays
+    // in Write, reachable at /create + ⌘K, but it is no longer the door — the
+    // real loop (WriteHome) is. (The "attach by id" dead-end the experience-
+    // spec flagged is bypassed by the door re-home, not the studio's own code.)
     label: "Creation studio",
-    blurb: "Section-based Lego-block writing surface (Mode C). The Write home today.",
+    blurb: "Section-based writing surface (power surface; not the Write door).",
     built: true,
     route: "/create",
   },
@@ -290,17 +333,19 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     id: "Write/Repository",
     workflow: "write",
     label: "Block repository",
-    blurb: "The block repository the Write editor composes from (Write SPR-03).",
-    // Built as a component but not yet routed or panel-registered — the
-    // honest-stub system surfaces this rather than faking a screen.
-    built: false,
+    blurb: "Tap-to-add block picker the Write loop composes from (Write SPR-03; routed SPR-07).",
+    // Mounted inside WriteHome — reachable on the Write door (/write).
+    built: true,
+    route: "/write",
   },
   {
     id: "Write/Editor",
     workflow: "write",
     label: "Write editor",
-    blurb: "Structured block editor over the repository (Write SPR-04).",
-    built: false,
+    blurb: "Real structured block editor where the generated draft lands (Write SPR-04; mounted SPR-07).",
+    // Mounted inside WriteHome — reachable on the Write door (/write).
+    built: true,
+    route: "/write",
   },
 
   // ── SPEAK ─────────────────────────────────────────────────────────
@@ -330,21 +375,30 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/speak/invite/:token",
   },
+  // Speak SPR-08 ONE DOOR: the duplicate Interview surface folds into Speak
+  // (mirrors the SPR-05 InvestigationsIndex fold). Their capability — capture,
+  // transcript, corroboration, the per-informant index — is preserved inside
+  // the Speak console + home; the components stay on disk. Routing is retired:
+  //   /interviews        → redirects to /speak (the warm home)
+  //   /interview/:id      → redirects to /speak (the one door)
+  // so the canonical route for both surfaces is now /speak. (The completeness
+  // test keeps these entries honest: built=true must have a reachable route,
+  // and /speak is reachable.)
   {
     id: "Interview",
     workflow: "speak",
     label: "Interview",
-    blurb: "Loop-4 interview capture surface (recording/transcript/notes).",
+    blurb: "Interview capture (recording/transcript/notes) — folded into the Speak console (SPR-08).",
     built: true,
-    route: "/interview/:interviewId",
+    route: "/speak",
   },
   {
     id: "InterviewIndex",
     workflow: "speak",
     label: "Interviews",
-    blurb: "Projects + invited informants index.",
+    blurb: "Projects + invited informants — folded into the Speak home (SPR-08).",
     built: true,
-    route: "/interviews",
+    route: "/speak",
   },
 
   // ── SHARED / OPERATOR / GOVERNANCE ────────────────────────────────
@@ -572,8 +626,24 @@ export function workflowHasBuiltMode(workflow: Workflow): boolean {
   return MODE_TAXONOMY.some((m) => m.workflow === workflow && m.built);
 }
 
-/** The first built, routed mode for a workflow — its landing scene. */
+/**
+ * The workflow's landing scene — the mode the door (and ThreadJump) opens.
+ *
+ * It MUST agree with `WORKFLOWS[workflow].defaultRoute` so a door re-home is
+ * honored in exactly one place: when a built mode's route matches the
+ * workflow's defaultRoute, that mode is the landing (e.g. Read SPR-06 set
+ * read.defaultRoute = /library, so the Library — not the first-declared
+ * Read mode, the demoted PDF wrestler — is the landing). Falls back to the
+ * first built+routed mode only when no mode owns the default route.
+ */
 export function landingModeForWorkflow(workflow: Workflow): ModeEntry | undefined {
+  if (workflow !== "shared") {
+    const wantRoute = WORKFLOWS[workflow].defaultRoute;
+    const onDefault = MODE_TAXONOMY.find(
+      (m) => m.workflow === workflow && m.built && m.route === wantRoute,
+    );
+    if (onDefault) return onDefault;
+  }
   return MODE_TAXONOMY.find(
     (m) => m.workflow === workflow && m.built && Boolean(m.route),
   );

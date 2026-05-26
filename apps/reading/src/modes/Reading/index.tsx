@@ -4,8 +4,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
 import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
+import ChaseThread from "../ResearchWorkstation/ChaseThread";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
+import ReadingCompanion from "./ReadingCompanion";
 import ResearchThis from "./ResearchThis";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
@@ -84,6 +86,42 @@ export default function BookReader() {
   const { observePage } = useReaderImpressions(documentId, sessionId);
   const [showVoice, setShowVoice] = useState(false);
 
+  // The book's reading thread (Read SPR-06). One id ties the companion's
+  // notes, the reader's voice notes, and the paragraph rabbit-hole's parent
+  // together — they all read/append to the same thread. Not a user-facing
+  // label (copy-lint): it is passed to components, never rendered.
+  const readingThreadId = `read-${documentId}`;
+
+  // Paragraph highlight → inline rabbit-hole (Read SPR-06 M3). `selection`
+  // is the lifted passage the reader highlighted (with a viewport anchor for
+  // the inline affordance); `chasing` is the passage currently being chased
+  // (mounts ChaseThread inline beside the reading column, text + voice). The
+  // way home is free: closing the chase restores reading, and usePosition
+  // has held the page the whole time — never a one-way trip.
+  const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(
+    null,
+  );
+  const [chasing, setChasing] = useState<string | null>(null);
+
+  const onSelectPassage = useCallback(() => {
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    const text = sel?.toString().trim() ?? "";
+    // A meaningful highlight only — a stray click clears the affordance.
+    if (!sel || sel.rangeCount === 0 || text.length < 8) {
+      setSelection(null);
+      return;
+    }
+    const rect = sel.getRangeAt(0).getBoundingClientRect();
+    setSelection({ text, top: rect.top, left: rect.left });
+  }, []);
+
+  // Turning the page (or jumping via TOC) drops a stale highlight affordance —
+  // the anchored position would otherwise float over the wrong page. A chase
+  // already in flight is left alone (it owns its own passage, page-independent).
+  useEffect(() => {
+    setSelection(null);
+  }, [pageIndex]);
+
   // Zero-buyer house fill: promote a servable book that isn't this one.
   const houseFill = useMemo<AdFillView>(() => {
     const candidate = housePool.find((b) => b.document_id !== documentId);
@@ -144,6 +182,30 @@ export default function BookReader() {
         <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
       </aside>
 
+      {/* Inline rabbit-hole affordance (Read SPR-06 M3). Floats by the
+          highlighted passage; "Go deeper on this passage" lifts it into an
+          inline chase (ChaseThread) beside the reading column. */}
+      {selection && !chasing && (
+        <div
+          className="fixed z-40 -translate-y-full -mt-2 flex items-center gap-1 rounded-md border border-ink bg-ink px-1 py-1 shadow-z2"
+          style={{ top: selection.top, left: selection.left }}
+          role="toolbar"
+          aria-label="Passage actions"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setChasing(selection.text);
+              setSelection(null);
+            }}
+            className="px-2 py-1 text-[12px] font-mono text-sun hover:text-bright rounded"
+            title="Follow this passage into a research, with a way back to the book"
+          >
+            Go deeper on this passage
+          </button>
+        </div>
+      )}
+
       {/* Reading column */}
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-6 py-6 flex flex-col gap-4 min-h-full">
@@ -164,11 +226,23 @@ export default function BookReader() {
             </div>
           )}
 
-          {/* Ad-border (top) — house state by default (zero buyers). */}
+          {/* Ad-border (top) — the v1 ad-border PLACEHOLDER (Read SPR-06 M4).
+              Visual position from v1, but always the zero-buyer house fill
+              here: no live ad serving, no attribution, no revenue math in this
+              sprint. Real ad economics (matching, attention-weighted accrual,
+              disbursement) are SPR-10 + Phase 4, gated G2/G3 — keeping them out
+              here is deliberate, so a placeholder slot never implies live ads. */}
           <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
 
-          {/* Page body */}
-          <article className="flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright">
+          {/* Page body. Highlighting a passage (text or voice ask follows in
+              the inline chase) lifts it for the rabbit-hole affordance. The
+              handler fires on mouse-up + key-up so a keyboard selection works
+              too; a stray click with no real selection clears the affordance. */}
+          <article
+            className="flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright"
+            onMouseUp={onSelectPassage}
+            onKeyUp={onSelectPassage}
+          >
             {page ? (
               <PageBody text={page.text} />
             ) : (
@@ -197,7 +271,7 @@ export default function BookReader() {
                 <VoiceNote
                   documentId={documentId}
                   pageIndex={pageIndex}
-                  investigationId={`read-${documentId}`}
+                  investigationId={readingThreadId}
                 />
               )}
             </div>
@@ -232,6 +306,52 @@ export default function BookReader() {
           )}
         </div>
       </main>
+
+      {/* The Read glass-box (M2) + the inline rabbit-hole answer (M3) share
+          the right column. While a passage is being chased, the column IS the
+          inline chase — the answer lands right beside the reading column,
+          text or voice (ChaseThread carries VoiceChaseButton). Otherwise it is
+          the reading companion. Closing the chase returns to the companion;
+          the page never moved (usePosition), so reading resumes where it was —
+          a reversible seam, not a one-way trip. */}
+      {chasing ? (
+        <aside
+          className="w-80 flex-shrink-0 border-l border-rule dark:border-charcoal-1 overflow-y-auto bg-ice-1 dark:bg-charcoal-2 hidden lg:flex lg:flex-col"
+          aria-label="Following this passage"
+        >
+          <div className="flex items-center justify-between px-3 py-2 border-b border-rule dark:border-charcoal-1">
+            <span className="text-[11px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+              Following a passage
+            </span>
+            <button
+              type="button"
+              onClick={() => setChasing(null)}
+              className="text-[12px] font-mono text-ink dark:text-bright hover:underline"
+              title="Close and return to reading where you left off"
+            >
+              ← back to the book
+            </button>
+          </div>
+          <div className="flex-1 min-h-0">
+            {/* Reuse SPR-04's chase verbatim: one launch path, the reserved-id
+                discipline, the live thinking stream, honest no-key via
+                AIActionFailure, and voice via VoiceChaseButton — all inherited.
+                The passage is the seed; the book's reading thread is the
+                parent. §9.0: the reader only ever rendered gate-served text,
+                so a highlight can only carry what the gate already permitted. */}
+            <ChaseThread
+              spawnContext={chasing}
+              parentInvestigationId={readingThreadId}
+            />
+          </div>
+        </aside>
+      ) : (
+        <ReadingCompanion
+          documentId={documentId}
+          title={book.title}
+          readingThreadId={readingThreadId}
+        />
+      )}
     </div>
   );
 }

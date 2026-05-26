@@ -7,6 +7,7 @@ import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
+import CascadeProposal from "./CascadeProposal";
 
 /**
  * StartResearch — the Research home's empty state (S5 redesign fix).
@@ -50,6 +51,11 @@ export default function StartResearch() {
   const navigate = useNavigate();
   const start = useStartInvestigation();
   const [question, setQuestion] = useState("");
+  // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
+  // default) and Break-into-sub-questions (cascade). Cascade swaps the
+  // composer for the proposal surface IN PLACE — no navigation away (M1). The
+  // problem text the user typed seeds the proposal.
+  const [cascadeProblem, setCascadeProblem] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   // The research-starts signature beat (U-05 M2) — Werner's one-shot
   // celebrate the moment a research is genuinely under way. Non-blocking:
@@ -77,6 +83,21 @@ export default function StartResearch() {
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
+    taRef.current?.focus();
+  }, []);
+
+  // Enter cascade mode with the typed problem space. Same >= 3-char floor as
+  // Ask so an empty composer can't propose an empty plan.
+  const onBreakDown = useCallback(() => {
+    const q = question.trim();
+    if (q.length < 3) return;
+    setCascadeProblem(q);
+  }, [question]);
+
+  // Back out of cascade (the proposal couldn't split it, or the user chose
+  // one question instead): keep the typed problem so Ask is one click away.
+  const onCascadeFallBack = useCallback(() => {
+    setCascadeProblem(null);
     taRef.current?.focus();
   }, []);
 
@@ -196,6 +217,29 @@ export default function StartResearch() {
     );
   }
 
+  // ── Cascade mode: the AI proposes sub-questions, the user trims, then
+  //    launches N parallel researches. Stays on this surface (no navigation
+  //    away) until launch hands a session to the monitor. ──
+  if (cascadeProblem) {
+    return (
+      <div className="h-full flex items-center justify-center px-6">
+        <div className="w-full max-w-xl">
+          <h1 className="text-2xl font-serif text-ink dark:text-bright mb-1 text-center">
+            Breaking this into sub-questions
+          </h1>
+          <p className="text-sm text-shadow-1 dark:text-moonlight font-serif text-center mb-4">
+            {cascadeProblem}
+          </p>
+          <CascadeProposal
+            problem={cascadeProblem}
+            onLaunched={(sessionId) => navigate(`/deep-research/${sessionId}`)}
+            onFallBackToAsk={onCascadeFallBack}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // ── Idle state: the start-a-research composer. ─────────────────────────
   return (
     <div className="h-full flex items-center justify-center px-6">
@@ -247,16 +291,29 @@ export default function StartResearch() {
               <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
                 ⌘ ↵
               </kbd>
-              to submit · {COST_ESTIMATE}
+              to ask · {COST_ESTIMATE}
             </div>
-            <LemonButton
-              variant="primary"
-              size="lg"
-              onClick={() => void onSubmit()}
-              disabled={busy || question.trim().length < 3}
-            >
-              {busy ? "Starting…" : "Ask"}
-            </LemonButton>
+            <div className="flex items-center gap-2">
+              {/* The second mode: break the problem space into focused
+                  sub-questions and run them in parallel. Secondary to Ask so
+                  the proven fast lane stays the default (rigor #2). */}
+              <LemonButton
+                variant="secondary"
+                size="lg"
+                onClick={onBreakDown}
+                disabled={busy || question.trim().length < 3}
+              >
+                Break into sub-questions
+              </LemonButton>
+              <LemonButton
+                variant="primary"
+                size="lg"
+                onClick={() => void onSubmit()}
+                disabled={busy || question.trim().length < 3}
+              >
+                {busy ? "Starting…" : "Ask"}
+              </LemonButton>
+            </div>
           </div>
         </div>
 

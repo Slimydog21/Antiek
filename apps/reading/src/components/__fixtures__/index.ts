@@ -129,6 +129,8 @@ export const mockInvestigationInProgress: InvestigationState = {
   terminalPayload: null,
   costTotal: 0.0094,
   completedAt: null,
+  streamStatus: "open",
+  reconnects: 0,
 };
 
 export const mockInvestigationCompleted: InvestigationState = {
@@ -142,6 +144,8 @@ export const mockInvestigationCompleted: InvestigationState = {
   },
   costTotal: 0.0094,
   completedAt: "2026-05-21T17:42:00Z",
+  streamStatus: "closed",
+  reconnects: 0,
 };
 
 export const mockInvestigationLoading: InvestigationState = {
@@ -152,4 +156,6 @@ export const mockInvestigationLoading: InvestigationState = {
   terminalPayload: null,
   costTotal: 0,
   completedAt: null,
+  streamStatus: "connecting",
+  reconnects: 0,
 };

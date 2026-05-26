@@ -38,6 +38,15 @@ export default function AdBorder({ slotId, position, fill, onOpenHouse }: AdBord
       data-slot-id={slotId}
       data-slot-position={position}
       aria-label={isAd ? "Advertisement" : "Recommended reading"}
+      // SPR-10 M3 — explain the placeholder honestly. This is where an ad
+      // would sit; when one someday runs, the §9.1 split sends a share to the
+      // work that drove this page. No ad runs and no revenue flows today — the
+      // house fill below is the real, default state, not a paid ad.
+      title={
+        isAd
+          ? undefined
+          : "Where an ad would sit. When ads run, a share would go to the sources behind this page — there's no live ad or revenue yet."
+      }
       className="w-full min-h-[44px] flex items-center px-3 py-1.5 border-edge border-rule dark:border-charcoal-1 rounded-md bg-ice-1 dark:bg-charcoal-1"
     >
       {isAd ? (

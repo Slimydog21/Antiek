@@ -221,7 +221,26 @@ def delete_outline_block(outline_block_id: str) -> dict:
 def get_section_blocks(section_id: str) -> dict:
     with _read() as con:
         blocks = list_section_blocks(con, section_id)
-    return {"count": len(blocks), "blocks": [_block_dict(b) for b in blocks]}
+        # The routed outline renders block TEXT, never an id (SPR-07 M2:
+        # "no UUID ever visible"). A graph-node block carries no `content`
+        # (its text lives on the node), so resolve the node's canonical
+        # label here and surface it as `node_label`. Read-only — no new
+        # writer, single-writer untouched.
+        node_ids = {b.node_id for b in blocks if b.node_id}
+        labels: dict[str, str] = {}
+        if node_ids:
+            rows = con.execute(
+                "SELECT node_id, canonical_label FROM nodes WHERE node_id = ANY(?)",
+                [list(node_ids)],
+            ).fetchall()
+            labels = {nid: lbl for nid, lbl in rows}
+    return {
+        "count": len(blocks),
+        "blocks": [
+            {**_block_dict(b), "node_label": labels.get(b.node_id) if b.node_id else None}
+            for b in blocks
+        ],
+    }
 
 
 @write_router.get("/deliverables/{deliverable_id}/outline")

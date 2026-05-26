@@ -22,7 +22,14 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { MODE_TAXONOMY, type ModeId } from "./workflowTaxonomy";
+import {
+  MODE_TAXONOMY,
+  WORKFLOWS,
+  landingModeForWorkflow,
+  modeById,
+  workflowForPath,
+  type ModeId,
+} from "./workflowTaxonomy";
 
 /**
  * The real mode set, derived from the filesystem at build time.
@@ -148,5 +155,139 @@ describe("workflowTaxonomy built-flag + shared-bucket integrity", () => {
     expect(bad, `Entries with an invalid workflow: ${JSON.stringify(bad)}`).toEqual(
       [],
     );
+  });
+});
+
+/**
+ * Read SPR-06 — the door re-home + operator-surface eviction, pinned so a
+ * future nav change can't silently revert them (rigor #5, defensibility).
+ */
+describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
+  it("the Read door opens on the Library, not the PDF wrestler", () => {
+    // The load-bearing claim: clicking the Read rail door (NavRail navigates
+    // WORKFLOWS.read.defaultRoute) lands on the Library shelf — never /wrestle.
+    expect(WORKFLOWS.read.defaultRoute).toBe("/library");
+    expect(WORKFLOWS.read.defaultRoute).not.toBe("/wrestle");
+  });
+
+  it("the Read landing surface resolves to the Library (ThreadJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source ThreadJump uses; it must
+    // agree with the door so the re-home holds everywhere, not just on the rail.
+    const landing = landingModeForWorkflow("read");
+    expect(landing?.id).toBe("Library");
+    expect(landing?.route).toBe("/library");
+  });
+
+  it("the PDF wrestler stays reachable (a demoted Read power surface), just not the door", () => {
+    const wrestle = modeById("WrestleApp");
+    expect(wrestle?.workflow).toBe("read"); // still Read — it IS reading
+    expect(wrestle?.built).toBe(true);
+    expect(wrestle?.route).toBe("/wrestle");
+    expect(WORKFLOWS.read.defaultRoute).not.toBe(wrestle?.route); // not the door
+  });
+
+  it("DocumentsIndex + Sources are evicted out of the Read door into shared/More", () => {
+    for (const id of ["DocumentsIndex", "Sources"]) {
+      const m = modeById(id);
+      expect(m, `${id} must still exist`).toBeDefined();
+      // Re-classed to shared (the More bucket) — no longer a Read-door surface.
+      expect(m?.workflow, `${id} must move out of the Read workflow`).toBe("shared");
+      // Code/route untouched — capability preserved, reachable via More + ⌘K.
+      expect(m?.built).toBe(true);
+      expect(m?.route).toBeTruthy();
+      // Shared entries must say why (the test elsewhere enforces this too).
+      expect(m?.sharedReason).toBeTruthy();
+    }
+  });
+
+  it("the evicted surfaces no longer set the Read rail active (off the Read door)", () => {
+    // workflowForPath drives the active-rail highlight. An operator on
+    // /documents or /sources is in the shared bucket, not on the Read door.
+    expect(workflowForPath("/documents")).toBe("shared");
+    expect(workflowForPath("/sources")).toBe("shared");
+    // And the Read door itself resolves to read.
+    expect(workflowForPath("/library")).toBe("read");
+  });
+});
+
+/**
+ * Write SPR-07 — the door re-home, pinned so a future nav change can't
+ * silently revert it (rigor #5, defensibility). Mirrors the Read SPR-06
+ * pattern: the door opens on the real lego-block loop, the legacy studio is
+ * demoted but reachable.
+ */
+describe("Write door re-home (Write SPR-07)", () => {
+  it("the Write door opens on the real loop (/write), not the legacy studio (/create)", () => {
+    // Clicking the Write rail door navigates WORKFLOWS.write.defaultRoute; it
+    // must land on WriteHome (the blocks → outline → generate → edit loop),
+    // never the CreationStudio "select or create a deliverable" dead-end.
+    expect(WORKFLOWS.write.defaultRoute).toBe("/write");
+    expect(WORKFLOWS.write.defaultRoute).not.toBe("/create");
+  });
+
+  it("the Write landing surface resolves on /write (ThreadJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source ThreadJump uses; it must
+    // agree with the door so the re-home holds everywhere, not just on the rail.
+    const landing = landingModeForWorkflow("write");
+    expect(landing?.workflow).toBe("write");
+    expect(landing?.route).toBe("/write");
+  });
+
+  it("the Write component modes (Repository, Editor) are mounted on the door", () => {
+    for (const id of ["Write/Repository", "Write/Editor"]) {
+      const m = modeById(id);
+      expect(m, `${id} must exist`).toBeDefined();
+      expect(m?.workflow).toBe("write");
+      // Now reachable (mounted inside WriteHome) — built + on the door route.
+      expect(m?.built, `${id} must be built (mounted in WriteHome)`).toBe(true);
+      expect(m?.route).toBe("/write");
+    }
+  });
+
+  it("the legacy CreationStudio stays reachable (a demoted power surface), just not the door", () => {
+    const studio = modeById("CreationStudio");
+    expect(studio?.workflow).toBe("write"); // still Write — it IS writing
+    expect(studio?.built).toBe(true);
+    expect(studio?.route).toBe("/create");
+    expect(WORKFLOWS.write.defaultRoute).not.toBe(studio?.route); // not the door
+  });
+
+  it("the Write door resolves to write (active-rail state)", () => {
+    expect(workflowForPath("/write")).toBe("write");
+    expect(workflowForPath("/write/dlv-123")).toBe("write");
+    // The demoted studio still belongs to write (reachable), just off the door.
+    expect(workflowForPath("/create")).toBe("write");
+  });
+});
+
+/**
+ * Speak SPR-08 — ONE DOOR. The duplicate Interview surface is folded into
+ * Speak (mirrors the SPR-05 InvestigationsIndex fold). Pinned so a future nav
+ * change can't silently re-create a second door to interview-as-acquisition.
+ */
+describe("Speak one-door consolidation (Speak SPR-08)", () => {
+  it("there is exactly one Speak door — /speak", () => {
+    expect(WORKFLOWS.speak.defaultRoute).toBe("/speak");
+    expect(WORKFLOWS.speak.defaultRoute).not.toBe("/interviews");
+  });
+
+  it("the Interview surfaces fold into Speak (capability preserved, no second door)", () => {
+    for (const id of ["Interview", "InterviewIndex"]) {
+      const m = modeById(id);
+      expect(m, `${id} must still exist (capability preserved)`).toBeDefined();
+      expect(m?.workflow).toBe("speak"); // still Speak — it IS Speak
+      expect(m?.built).toBe(true); // reachable…
+      expect(m?.route).toBe("/speak"); // …because it folds into the one door
+      // The old standalone doors are no longer the route for these surfaces.
+      expect(m?.route).not.toBe("/interviews");
+      expect(m?.route).not.toBe("/interview/:interviewId");
+    }
+  });
+
+  it("the Speak landing resolves to the home, and /speak resolves to speak", () => {
+    const landing = landingModeForWorkflow("speak");
+    expect(landing?.route).toBe("/speak");
+    expect(workflowForPath("/speak")).toBe("speak");
+    expect(workflowForPath("/speak/p-123")).toBe("speak");
   });
 });

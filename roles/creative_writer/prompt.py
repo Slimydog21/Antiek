@@ -12,6 +12,19 @@ section of a deliverable.
 The voice and style discipline (substrate-wide quality bar, see
 ``docs/strategy/voice-and-style-discipline.md``) is strictest here
 because the deliverable is publishable, not informational.
+
+Voice/style canonical source: ``substrate.voice_style.constructions`` is the
+single authority for the §5 forbidden constructions (the synthesizer and
+evidence_retriever render their addendum from it). This role's discipline is
+woven into its numbered hard constraints below with a *stricter* register
+(no em-dashes at all, no padding, no hedging — the deliverable is
+publishable), and the operator-facing phrase lists are register-specific
+("perhaps/arguably/it could be said that" rather than the synthesizer's
+"It could be argued that"), so the prose is not rendered from the shared
+renderer. The forbidden *items* are nonetheless the same canonical set;
+``tests/test_voice_style_constructions.py`` guards that this prompt keeps
+banning em-dashes, padding, and hedging so the register cannot silently
+relax. A future edit adds itself to the canonical source, not a fifth copy.
 """
 
 from __future__ import annotations

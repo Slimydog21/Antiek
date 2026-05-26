@@ -18,6 +18,7 @@
  */
 
 import { useCallback, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
@@ -54,9 +55,14 @@ export default function DeepResearchWorkspace() {
 }
 
 function Workspace() {
+  // A :sessionId in the route means we arrived from a launch elsewhere (the
+  // Research-entry cascade). Open straight onto the live monitor — the
+  // session's status is durable, so the monitor reconstructs it from the
+  // event log even if this process never held the in-memory session.
+  const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const [problem, setProblem] = useState("");
   const [plan, setPlan] = useState<PlanState | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(routeSessionId ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,6 +172,20 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
       setSteering(null);
     }
   };
+
+  // Connecting: arrived on a session (e.g. a fresh launch from the Research
+  // entry) before the first status poll has resolved. Show an honest
+  // connecting state rather than a bare "0 researches".
+  if (session.loading && session.researches.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 py-8" role="status" aria-live="polite">
+        <p className="text-sm font-serif text-ink dark:text-bright">Connecting to your researches…</p>
+        <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+          they’re starting in parallel
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-3">

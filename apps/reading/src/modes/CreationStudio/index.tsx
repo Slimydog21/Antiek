@@ -230,30 +230,13 @@ function SectionCard({
   section: SectionResponse;
   onChanged: () => Promise<void> | void;
 }) {
-  const [showAttach, setShowAttach] = useState(false);
-  const [blockId, setBlockId] = useState("");
-  const [blockKind, setBlockKind] = useState<BlockKind>("insight");
   const [busy, setBusy] = useState(false);
   const [dropHover, setDropHover] = useState(false);
 
-  async function handleAttach(e: React.FormEvent) {
-    e.preventDefault();
-    if (!blockId.trim()) return;
-    setBusy(true);
-    try {
-      await attachBlock({
-        section_id: section.section_id,
-        block_kind: blockKind,
-        block_id: blockId.trim(),
-        block_index: section.block_count,
-      });
-      setBlockId("");
-      setShowAttach(false);
-      await onChanged();
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Write SPR-07: the "Attach by id" / paste-a-UUID form is removed. The real
+  // way to add a block is the search-first TAP-to-add picker on the Write door
+  // (WriteHome → BlockRepository); this legacy studio keeps the drag affordance
+  // only. Pasting a raw id is never how a writer adds a block.
 
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -327,50 +310,12 @@ function SectionCard({
 
       <ProseEditor section={section} onSaved={onChanged} />
 
-
       <div className="mt-3 flex items-center gap-2">
-        <button
-          onClick={() => setShowAttach((v) => !v)}
-          className="text-xs text-ink-soft dark:text-starlight hover:text-ink dark:text-bright underline"
-        >
-          {showAttach ? "Cancel" : "Attach by id"}
-        </button>
         <span className="text-xs text-ink-mute dark:text-moonlight">
-          · or drag from the palette →
+          Drag a block from the palette → (or use the Write door to tap blocks in)
         </span>
         {busy && <span className="text-xs text-ink-mute dark:text-moonlight">working…</span>}
       </div>
-
-      {showAttach && (
-        <form
-          onSubmit={handleAttach}
-          className="mt-3 flex items-center gap-2"
-        >
-          <select
-            value={blockKind}
-            onChange={(e) => setBlockKind(e.target.value as BlockKind)}
-            className="px-2 py-1 text-xs border border-rule dark:border-charcoal-1 rounded"
-          >
-            <option value="insight">insight</option>
-            <option value="open_question">open_question</option>
-            <option value="operator_note">operator_note</option>
-            <option value="claim">claim</option>
-          </select>
-          <input
-            value={blockId}
-            onChange={(e) => setBlockId(e.target.value)}
-            placeholder="block_id (e.g. node-…)"
-            className="flex-1 px-2 py-1 text-xs font-mono border border-rule dark:border-charcoal-1 rounded"
-          />
-          <button
-            type="submit"
-            disabled={busy || !blockId.trim()}
-            className="px-3 py-1 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 dark:bg-slate-1 text-white text-xs rounded"
-          >
-            Attach
-          </button>
-        </form>
-      )}
     </li>
   );
 }
