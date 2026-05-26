@@ -138,6 +138,50 @@ def test_unresolvable_challenge_escalates_without_launch(env):
     assert all(x["action_type"] != ActionType.INVESTIGATION_START_REQUESTED.value for x in rows)
 
 
+# --------------------------------------------------------------------------
+# SPR-04 M2 — the chase REUSES the reserved escalation id (no orphan)
+# --------------------------------------------------------------------------
+
+
+def test_chase_reuses_reserved_escalation_id(env):
+    """The full seam SPR-04 M2 depends on: SPR-03 escalation reserves a child
+    id (launches nothing); SPR-04's chase launches INTO that exact id via the
+    same POST /investigations path SPR-01 uses. The escalated question gets
+    one research under the reserved id — not a rogue second child — and that
+    research is parented to the source research."""
+    client = env["client"]
+    # 1. Escalate: an unresolvable challenge reserves a child id, launches nothing.
+    ids = _seed(env, insights=["Margins are healthy."])
+    nid = ids["insights"][0]
+    env["mp"].setattr(dr, "make_dispatch_resolver",
+                      lambda inv, **k: (lambda cur, ch: None))
+    esc_body = client.post(f"/research/notes/{nid}/challenge",
+                           json={"investigation_id": "inv-1", "challenge_text": "source?"}).json()
+    reserved = esc_body["reserved_child_investigation_id"]
+    assert reserved
+    # Nothing launched yet — the reserved id has no research.
+    assert client.get(f"/investigations/{reserved}").json()["status"] == "not_found"
+
+    # 2. Chase: launch INTO the reserved id (what ChaseThread does on the
+    #    explicit gesture). Same endpoint, with investigation_id set.
+    launch = client.post("/investigations", json={
+        "question": "Where do the margins come from?",
+        "investigation_id": reserved,
+        "parent_investigation_id": "inv-1",
+        "spawn_context": "Margins are healthy.",
+    })
+    assert launch.status_code == 202, launch.text
+    # The research lands under EXACTLY the reserved id — no orphan, no new id.
+    assert launch.json()["investigation_id"] == reserved
+
+    # 3. The reserved research now exists, parented to the source research.
+    rows = trajectory(reserved, events_dir=env["events"])
+    starts = [x for x in rows if x["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value]
+    spawned = [x for x in rows if x["action_type"] == ActionType.INVESTIGATION_SPAWNED_FROM.value]
+    assert len(starts) == 1, "exactly one launch — not a rogue second child"
+    assert spawned and spawned[0]["payload"]["parent_investigation_id"] == "inv-1"
+
+
 def test_challenge_with_no_provider_is_honest_503(env):
     # The real resolver runs (no provider registered) → ChallengeUnavailable
     # → 503, NOT a fabricated refinement and NOT a spurious escalation.

@@ -11,6 +11,7 @@ import DistillView from "./DistillView";
 import HighlightToolbar from "./HighlightToolbar";
 import MasterMdViewer from "./MasterMdViewer";
 import NotesPanel from "./NotesPanel";
+import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
 import ThinkingStream from "./ThinkingStream";
 
@@ -73,12 +74,32 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const centerRef = useRef<HTMLDivElement>(null);
   const openPanel = useWorkspace((s) => s.open);
 
+  // SPR-04 M2: highlight → follow this. A raw highlight has no reserved
+  // escalation id, so we omit it and the substrate mints a fresh child.
   const onChaseThis = useCallback(
     (text: string) => {
       openPanel(
-        "Chase",
+        "ChaseThread",
         { spawnContext: text, parentInvestigationId: investigationId },
-        { mode: "floating", title: "Chase" },
+        { mode: "floating", title: "Follow this" },
+      );
+    },
+    [openPanel, investigationId],
+  );
+
+  // SPR-04 M2: chasing an OPEN QUESTION carries SPR-03's reserved
+  // escalation id when the question escalated — launch INTO it (no
+  // orphan), else mint fresh. One launch path either way.
+  const onChaseQuestion = useCallback(
+    (q: { text: string; reserved_child_investigation_id?: string | null }) => {
+      openPanel(
+        "ChaseThread",
+        {
+          spawnContext: q.text,
+          parentInvestigationId: investigationId,
+          reservedChildId: q.reserved_child_investigation_id ?? null,
+        },
+        { mode: "floating", title: "Follow this" },
       );
     },
     [openPanel, investigationId],
@@ -101,13 +122,22 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
 
   return (
     <div ref={centerRef} className="h-full overflow-y-auto relative">
-      <CenterContent investigation={investigation} />
+      <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
       <HighlightToolbar scopeRef={centerRef} onChaseThis={onChaseThis} />
     </div>
   );
 }
 
-function CenterContent({ investigation }: { investigation: InvestigationState }) {
+function CenterContent({
+  investigation,
+  onChaseQuestion,
+}: {
+  investigation: InvestigationState;
+  onChaseQuestion: (q: {
+    text: string;
+    reserved_child_investigation_id?: string | null;
+  }) => void;
+}) {
   if (
     investigation.status === "completed" ||
     investigation.status === "failed"
@@ -125,7 +155,13 @@ function CenterContent({ investigation }: { investigation: InvestigationState })
           <DistillView
             investigationId={investigation.id}
             running={false}
+            onChase={onChaseQuestion}
           />
+        </div>
+        {/* SPR-04 M3: paste/drop a file into THIS research → max-context
+            pack. Absorbed content is citable on the next run / chase. */}
+        <div className="border-t border-rule px-4 py-4 dark:border-charcoal-1">
+          <PasteIngest investigationId={investigation.id} />
         </div>
       </div>
     );

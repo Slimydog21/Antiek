@@ -7,7 +7,7 @@ import HighlightToolbar from "./HighlightToolbar";
  * HighlightToolbar — anchors to user text selection inside `scopeRef`.
  * Renders nothing until the operator selects a span. The story below
  * gives the operator a scratch passage to select; selecting any text
- * inside the gold box surfaces the toolbar with a "Chase this" affordance.
+ * inside the gold box surfaces the toolbar with a "Follow this" affordance.
  */
 const meta = {
   title: "Loop 1 / HighlightToolbar",

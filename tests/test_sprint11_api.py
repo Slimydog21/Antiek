@@ -172,6 +172,102 @@ def test_get_chunk_404(temp_substrate):
     assert resp.status_code == 404
 
 
+# ── 3b. SPR-04: §9.0 servability gate on the chunk endpoint ──────────
+
+
+def _seed_chunk(temp_substrate, *, document_id, content_class, text="body text"):
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(temp_substrate["db_path"])
+    with connect_write(temp_substrate["db_path"], purpose="test") as con:
+        insert_document(
+            con, document_id=document_id, source_tier=2,
+            document_type="book", title=f"Title of {document_id}",
+            content_class=content_class, on_conflict="ignore",
+        )
+        return insert_chunk(
+            con, document_id=document_id, chunk_index=0,
+            text=text, section_path="p.12",
+        )
+
+
+def test_get_chunk_servable_source_returns_body(temp_substrate):
+    """A public-domain source IS servable: the named source opens, body
+    text is returned, servable=True."""
+    chunk_id = _seed_chunk(
+        temp_substrate, document_id="doc-public",
+        content_class="public_domain", text="The open chunk text.",
+    )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is True
+    assert body["servability"] is None
+    assert body["text"] == "The open chunk text."
+    # The named-source label resolves either way.
+    assert body["document_title"] == "Title of doc-public"
+
+
+def test_get_chunk_restricted_source_not_opened(temp_substrate):
+    """SPR-04 gate (verification): a restricted source's body is WITHHELD
+    at the endpoint. The title still resolves (honest "not available to
+    open" state), but ``text`` never carries the restricted body — even
+    on a direct API call that bypasses the UI. This is the SAME
+    restricted set the G1 chunk-search gate withholds on a non-privileged
+    path (``substrate/graph/search.py`` RESTRICTED_CONTENT_CLASSES)."""
+    chunk_id = _seed_chunk(
+        temp_substrate, document_id="doc-restricted",
+        content_class="restricted_pending_opt_in",
+        text="SECRET in-copyright passage that must not be served.",
+    )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is False
+    assert body["servability"] == "restricted"
+    # The body must NOT leave the endpoint.
+    assert body["text"] == ""
+    assert "SECRET" not in body["text"]
+    # The named source still resolves so the reader sees the citation.
+    assert body["document_title"] == "Title of doc-restricted"
+
+
+def test_get_chunk_null_content_class_grandfathered(temp_substrate):
+    """A NULL content_class research chunk (legacy / the operator's own
+    tier-2 paper) passes — exactly as it does in chunk search. The
+    reading-surface preview is the operator reading their own research,
+    not the stricter public full-text serve allowlist."""
+    chunk_id = _seed_chunk(
+        temp_substrate, document_id="doc-legacy",
+        content_class=None, text="Legacy research body.",
+    )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is True
+    assert body["text"] == "Legacy research body."
+
+
+def test_get_chunk_taken_down_source_not_opened(temp_substrate):
+    """A taken-down source's body is withheld regardless of its
+    underlying license — takedown wins over content_class."""
+    from runtime.db_lock import connect_write
+
+    chunk_id = _seed_chunk(
+        temp_substrate, document_id="doc-pd-takedown",
+        content_class="public_domain", text="Body to be taken down.",
+    )
+    with connect_write(temp_substrate["db_path"], purpose="test") as con:
+        con.execute(
+            "INSERT INTO book_assets (document_id, taken_down) VALUES (?, TRUE)",
+            ["doc-pd-takedown"],
+        )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is False
+    assert body["servability"] == "taken_down"
+    assert body["text"] == ""
+
+
 # ── 4. GET /investigations (list) ────────────────────────────────────
 
 

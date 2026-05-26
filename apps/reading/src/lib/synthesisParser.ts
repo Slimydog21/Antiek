@@ -47,6 +47,30 @@ export interface ParsedExecutionRisk {
   mitigation?: string;
 }
 
+/**
+ * A named source backing a claim, resolved through the provenance chain
+ * claim → chunk → document → (title, locator). SPR-04 renders THIS, not a
+ * raw chunk id / `[N chunks]` count: a reader thinks in sources, not in the
+ * engine's retrieval unit. One source groups all of a claim's chunks that
+ * land in the same document (so "3 chunks of one paper" reads as one named
+ * source, not "[3 chunks]").
+ *
+ * The resolution is async (it needs the chunk→document join the `getChunk`
+ * endpoint owns), so the PARSER only groups the chunk ids per claim; the
+ * VIEWER resolves titles + servability. This shape is the contract between
+ * them.
+ */
+export interface ClaimSourceGroup {
+  /** A representative chunk id used to resolve the document (any chunk of
+   *  the group resolves the same document title + servability). */
+  resolveChunkId: string;
+  /** Every chunk id this claim cites in the same (still-unresolved)
+   *  document bucket. Bucketing by document is the viewer's job after it
+   *  resolves document_id; before resolution we only know chunk ids, so a
+   *  claim starts with one group per chunk and the viewer coalesces. */
+  chunkIds: string[];
+}
+
 export interface ParsedSynthesis {
   thesisSummary: string;
   components: ParsedClaim[];

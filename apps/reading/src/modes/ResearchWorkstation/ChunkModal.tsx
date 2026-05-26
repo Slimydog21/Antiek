@@ -108,18 +108,31 @@ export default function ChunkModal({
                 )}
                 <TierChip tier={chunk.source_tier} />
               </div>
-              <p className="text-sm text-ink dark:text-bright font-serif leading-relaxed whitespace-pre-wrap">
-                {chunk.text}
-              </p>
+              {chunk.servable ? (
+                <p className="text-sm text-ink dark:text-bright font-serif leading-relaxed whitespace-pre-wrap">
+                  {chunk.text}
+                </p>
+              ) : (
+                // §9.0: the endpoint withheld the body for a restricted /
+                // taken-down source. Show the honest "not available" state —
+                // never the content (it isn't here to show anyway).
+                <p className="text-sm text-shadow-1 dark:text-moonlight font-serif italic leading-relaxed">
+                  This source isn’t available to open here
+                  {chunk.servability === "taken_down"
+                    ? " — it was taken down on request."
+                    : " — its license restricts the full text."}{" "}
+                  You can see what it backs, but not read it inside Antiek.
+                </p>
+              )}
             </>
           )}
         </div>
         {chunk && (
           <div className="px-5 py-3 border-t border-rule dark:border-charcoal-1 flex items-center justify-between">
             <div className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
-              {chunk.token_count} tokens
+              {chunk.servable ? `${chunk.token_count} tokens` : "not available"}
             </div>
-            <OpenInDocumentButton chunk={chunk} />
+            {chunk.servable && <OpenInDocumentButton chunk={chunk} />}
           </div>
         )}
       </div>

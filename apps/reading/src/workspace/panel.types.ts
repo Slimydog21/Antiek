@@ -37,6 +37,7 @@ export type PanelKind =
   | "MasterMdViewer"
   | "Chat"
   | "Chase"
+  | "ChaseThread"
   | "PdfViewer"
   | "Notes"
   | "CrossDocs"

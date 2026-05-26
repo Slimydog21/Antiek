@@ -116,8 +116,24 @@ class InvestigationStartRequest(BaseModel):
 
 class ChunkResponse(BaseModel):
     """Response from ``GET /chunks/{chunk_id}``. Used by the web app's
-    claim hover modal to surface the actual chunk text + source
-    document title for any cited chunk_id."""
+    claim hover modal + SPR-04's named-source render to surface the
+    chunk text + source document title for any cited chunk_id.
+
+    ``servable`` carries the §9.0 retrieval-gate verdict to the surface
+    so the reader's "open this source" affordance and the data layer
+    cannot disagree. The gate applied here is the SAME one
+    ``substrate/graph/search.py`` applies to chunk retrieval on a
+    non-privileged path: content in ``RESTRICTED_CONTENT_CLASSES``
+    (restricted-pending-opt-in) or under a takedown is withheld; a NULL /
+    legacy research chunk passes (grandfathered) exactly as it does in
+    chunk search — this is the operator reading their own research
+    chunks, not the public "Spotify for books" full-text serve path
+    (which is the stricter allowlist in ``substrate/books/serve.py``).
+    When ``servable`` is False, ``text`` is withheld (empty string) — a
+    restricted source's body never leaves this endpoint, even on a
+    direct API call — but the named-source label (title) still resolves
+    so the reader sees an honest "not available to open" state rather
+    than a blank citation."""
 
     chunk_id: str
     text: str
@@ -126,6 +142,14 @@ class ChunkResponse(BaseModel):
     document_id: str
     document_title: Optional[str] = None
     source_tier: int = Field(ge=1, le=5)
+    # §9.0: whether this source may be opened on the reading surface.
+    # False ⇒ ``text`` is withheld and the surface shows "not available
+    # to open". Derived from content_class + takedown, never stored.
+    servable: bool = True
+    # A presentation label for WHY a source is withheld
+    # ("restricted" | "taken_down"); null when servable. Lets the surface
+    # distinguish the two without re-deriving the gate.
+    servability: Optional[str] = None
 
 
 class InvestigationSummary(BaseModel):
@@ -1599,10 +1623,26 @@ def create_app(
     )
     async def get_chunk(chunk_id: str) -> ChunkResponse:
         """Read-only chunk fetch. Used by the web app's claim hover
-        modal to surface the actual chunk text + source document
-        title for any cited chunk_id."""
+        modal + SPR-04's named-source render to surface the chunk text +
+        source document title for any cited chunk_id.
+
+        §9.0 retrieval gate: a chunk whose source is RESTRICTED
+        (content_class in ``RESTRICTED_CONTENT_CLASSES``) or under a
+        takedown has its body WITHHELD here, at the query layer — the
+        same gate ``substrate/graph/search.py`` applies to chunk
+        retrieval — so a frontend that calls this directly still cannot
+        pull body text out of a restricted source. A NULL / legacy
+        research chunk passes (grandfathered), matching chunk search; the
+        stricter book full-text allowlist lives in
+        ``substrate/books/serve.py`` and governs the public serve path,
+        not this reading-surface preview. The named-source label (title)
+        still resolves so the reader sees an honest "not available to
+        open" state, never a blank citation. The verdict rides as
+        ``servable`` / ``servability`` so the surface need not re-derive
+        it."""
         import duckdb as _duckdb
         from substrate.graph import default_db_path
+        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
 
         db_path = default_db_path()
         try:
@@ -1614,12 +1654,19 @@ def create_app(
             ) from exc
 
         try:
+            # LEFT JOIN book_assets so a takedown override is honoured even
+            # for a chunk of a public-domain book (taken_down wins over
+            # content_class in the projection). A document with no
+            # book_assets row coalesces to taken_down=False.
             row = con.execute(
                 """
                 SELECT c.chunk_id, c.text, c.section_path, c.token_count,
-                       c.document_id, d.title, d.source_tier
+                       c.document_id, d.title, d.source_tier,
+                       d.content_class,
+                       COALESCE(b.taken_down, FALSE) AS taken_down
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.document_id
+                LEFT JOIN book_assets b ON d.document_id = b.document_id
                 WHERE c.chunk_id = ?
                 """,
                 [chunk_id],
@@ -1633,14 +1680,29 @@ def create_app(
                 detail=f"chunk_id {chunk_id!r} not found",
             )
 
+        content_class = row[7]
+        taken_down = bool(row[8])
+        # Takedown wins over everything; otherwise withhold only the
+        # named restricted classes (NULL/legacy passes — same as search).
+        if taken_down:
+            servable, label = False, "taken_down"
+        elif content_class in RESTRICTED_CONTENT_CLASSES:
+            servable, label = False, "restricted"
+        else:
+            servable, label = True, None
         return ChunkResponse(
             chunk_id=row[0],
-            text=row[1] or "",
+            # Withhold the body for a non-servable source. The whole point
+            # of the gate living here is that withholding is not a UI
+            # courtesy — the bytes do not leave the endpoint.
+            text=(row[1] or "") if servable else "",
             section_path=row[2],
             token_count=int(row[3] or 0),
             document_id=row[4],
             document_title=row[5],
             source_tier=int(row[6]),
+            servable=servable,
+            servability=label,
         )
 
     # ── Sprint 12: source ingest ─────────────────────────────────

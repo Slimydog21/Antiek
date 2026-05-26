@@ -436,6 +436,13 @@ export interface ChunkResponse {
   document_id: string;
   document_title: string | null;
   source_tier: number;
+  /** §9.0: whether this source may be opened on the reading surface.
+   *  False ⇒ the body (`text`) is withheld by the endpoint and the
+   *  surface must show "not available to open", never the content. */
+  servable: boolean;
+  /** Why a source is withheld ("restricted" | "taken_down"); null when
+   *  servable. Mirrors interfaces/research/api/app.py:ChunkResponse. */
+  servability: string | null;
 }
 
 // ── Sprint 12: source ingest ───────────────────────────────────────
@@ -757,6 +764,43 @@ export async function ingestVoiceNote(
   if (!resp.ok) {
     throw new ApiError(
       `POST /voice-notes/ingest failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// ── Read SPR-06 / SPR-04: voice transcription ──────────────────────
+//
+// Mirrors interfaces/research/api/read_voice.py:transcribe. Posts raw
+// audio bytes (e.g. audio/webm) and gets back a transcript. Gated on the
+// operator OpenAI key: a 503 is the honest no-key state, surfaced as
+// AIActionFailure by the caller — never a fabricated transcript.
+//
+// NB: api/books.ts has a sibling transcribeAudio for the Reading mode; it
+// flattens the HTTP status into a plain Error. This one preserves the
+// status via ApiError so the Research chase can tell 503 (no key) apart
+// from a transient failure and show the right honest state.
+
+export interface TranscribeResponse {
+  transcript: string;
+  language: string | null;
+  duration_seconds: number;
+}
+
+/** POST /voice/transcribe — audio blob → transcript (Whisper). 503 when
+ *  the operator OpenAI key is unset (honest no-key). Preserves the status
+ *  on ApiError so the caller can distinguish no-key from a transient. */
+export async function transcribeAudio(audio: Blob): Promise<TranscribeResponse> {
+  const resp = await apiFetch(`${API_BASE}/voice/transcribe`, {
+    method: "POST",
+    headers: { "Content-Type": audio.type || "application/octet-stream" },
+    body: audio,
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /voice/transcribe failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
