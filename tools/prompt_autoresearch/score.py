@@ -24,6 +24,21 @@ WEIGHT_GROUNDING = 0.10   # deterministic (grounding preservation rate)
 
 
 # Voice-style discipline patterns to suppress (master-spec §5.1).
+#
+# DELIBERATELY NOT unified with substrate.voice_style.constructions
+# (the canonical prompt-side §5 source). The two share the §5.1 origin but
+# serve different masters: that source instructs the *model* (prompt addendum
+# text); this list is a *deterministic scorer* whose per-pattern -0.05 weight
+# and exact membership were tuned for the §5.3 composite (em-dash + padding +
+# transition penalties). The two lists already differ on purpose — this scorer
+# penalizes generic transitions ("Furthermore,", "Additionally,", "In
+# conclusion,") that the prompt source does not enumerate, and the prompt
+# source carries enumeration tics + the "context indicates" preamble that this
+# scorer intentionally does not weight. Sourcing this from the canonical list
+# would change the deterministic score (start penalizing "Firstly,"/"The
+# context indicates that", stop penalizing "Furthermore,") and shift the
+# tuned composite — a behavior change, not a de-duplication. Left inline by
+# design; see SPR-11 handoff for the steelman of both choices.
 FORBIDDEN_PADDING_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"It is important to note that", re.IGNORECASE),
     re.compile(r"It should be observed", re.IGNORECASE),

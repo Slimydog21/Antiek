@@ -183,7 +183,7 @@ export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejecte
  * ``ContextPackAssembledPayload.layers``.
  */
 export interface ContextLayer {
-  kind: "session" | "long_term_skill" | "graph_evidence" | "phase_metadata" | "param_version_stamp";
+  kind: "session" | "long_term_skill" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
   source: string;
   tokens: number;
 }

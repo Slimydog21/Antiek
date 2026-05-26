@@ -79,6 +79,7 @@ function synth(over: Partial<ParsedSynthesis> = {}): ParsedSynthesis {
     masterMdPath: null,
     domainsPatched: [],
     chunkCitations: { c1: [1] },
+    qualityScore: null,
     ...over,
   };
 }
@@ -192,5 +193,105 @@ describe("MasterMdViewer — named-source read (M1)", () => {
     await waitFor(() => expect(screen.getByText(/A Restricted Book/)).toBeTruthy());
     expect(screen.getByText(/not available to open/)).toBeTruthy();
     expect(screen.queryByText(/published by/)).toBeNull();
+  });
+});
+
+// ── SPR-11 M3 — the inline-rubric quality cue (present / low / absent) ──
+
+describe("MasterMdViewer — quality cue (SPR-11 M3)", () => {
+  it("renders nothing when no score was persisted (absent → no fabricated cue)", () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(<MasterMdViewer synthesis={synth({ qualityScore: null })} />);
+    // No quality wording at all — the absent case is honest by saying nothing.
+    expect(screen.queryByText(/quality bar/i)).toBeNull();
+    expect(screen.queryByText(/another pass/i)).toBeNull();
+  });
+
+  it("shows a quiet positive cue when the score clears the bar", () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          qualityScore: {
+            composite: 0.82,
+            voiceStyle: 0.8,
+            conviction: 0.75,
+            citationDensity: 1.0,
+            constraintCompliance: 1.0,
+            notes: "voice=0.80 conviction=0.75 citation_density=1.00 constraint=1.00",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText(/clears our quality bar/i)).toBeTruthy();
+    // A passing answer is NOT flagged for a re-run.
+    expect(screen.queryByText(/another pass/i)).toBeNull();
+  });
+
+  it("visibly flags a LOW score so the operator knows to re-run / edit", () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          qualityScore: {
+            composite: 0.22,
+            voiceStyle: 0.3,
+            conviction: 0.2,
+            citationDensity: 0.0,
+            constraintCompliance: 0.0,
+            notes: "voice=0.30 conviction=0.20 citation_density=0.00 constraint=0.00",
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText(/another pass/i)).toBeTruthy();
+    expect(screen.getByText(/under our quality bar/i)).toBeTruthy();
+    // It must NOT also claim the answer cleared the bar.
+    expect(screen.queryByText(/clears our quality bar/i)).toBeNull();
+  });
+
+  it("offers the sub-score breakdown behind a collapsed toggle (quiet by default)", () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          qualityScore: {
+            composite: 0.82,
+            voiceStyle: 0.8,
+            conviction: 0.75,
+            citationDensity: 1.0,
+            constraintCompliance: 1.0,
+            notes: "voice=0.80 conviction=0.75 citation_density=1.00 constraint=1.00",
+          },
+        })}
+      />,
+    );
+    // The breakdown exists but is not the default surface — it's behind a
+    // <summary> toggle. The labels are plain words, not scorer field names.
+    expect(screen.getByText(/the detail/i)).toBeTruthy();
+    expect(screen.getByText(/Voice and style/)).toBeTruthy();
+    expect(screen.getByText(/Sourcing/)).toBeTruthy();
+  });
+
+  it("hides the breakdown when the note carried no sub-scores (no empty rows)", () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          qualityScore: {
+            composite: 0.1,
+            voiceStyle: null,
+            conviction: null,
+            citationDensity: null,
+            constraintCompliance: null,
+            notes: "synthesizer declined to produce a thesis (insufficient_evidence)",
+          },
+        })}
+      />,
+    );
+    // Low score still flags for a re-run …
+    expect(screen.getByText(/another pass/i)).toBeTruthy();
+    // … but with no sub-scores there is no "the detail" toggle.
+    expect(screen.queryByText(/the detail/i)).toBeNull();
   });
 });

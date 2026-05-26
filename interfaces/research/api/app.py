@@ -234,6 +234,31 @@ class InvestigationStartResponse(BaseModel):
     start_event_id: str
 
 
+class RubricScore(BaseModel):
+    """The §14.4 inline-rubric verdict for a synthesis, surfaced so the
+    reading surface can flag an answer that may need another pass.
+
+    SPR-11 M3: this is READ from the persisted ``rubric.scored`` event
+    the orchestrator emits after Phase 6 — it is NOT recomputed here, and
+    the scorer's algorithm is untouched. ``composite`` is the headline
+    score in [0, 1] (the event's ``final_score``); the four sub-scores
+    ride along when the persisted ``notes`` encode them (the scorer writes
+    ``voice=… conviction=… citation_density=… constraint=…``), and are
+    null when the note is a free-form one (e.g. the insufficient-evidence
+    floor). ``notes`` carries the scorer's own note verbatim.
+
+    When a synthesis has no persisted rubric event, the field carrying
+    this model is null — the surface shows no score rather than a
+    fabricated one (rigor #1)."""
+
+    composite: float = Field(ge=0.0, le=1.0)
+    voice_style: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    conviction: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    citation_density: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    constraint_compliance: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    notes: str = ""
+
+
 class InvestigationStatusResponse(BaseModel):
     """Response from ``GET /investigations/{id}``. ``status`` is one of:
 
@@ -245,13 +270,19 @@ class InvestigationStatusResponse(BaseModel):
     ``current_phase`` is the most recent phase the phase_log entered;
     ``last_delivered_action_type`` is the most recent ``*.delivered``
     or terminal event so the operator can see where the chain is in
-    flight."""
+    flight.
+
+    ``rubric_score`` (SPR-11 M3) is the §14.4 inline-rubric verdict for
+    this investigation's synthesis, READ from the persisted
+    ``rubric.scored`` event — null when the synthesis has no scored event
+    (honest absent, never a fabricated number)."""
 
     investigation_id: str
     status: str
     current_phase: Optional[int] = None
     last_delivered_action_type: Optional[str] = None
     terminal_payload: Optional[dict] = None
+    rubric_score: Optional[RubricScore] = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -601,6 +632,63 @@ def _detect_source_kind(
         return "podcast"
     # Default: treat as a plain URL article (acquisition/urls).
     return "url"
+
+
+def _rubric_score_from_trajectory(rows: list[dict]) -> Optional["RubricScore"]:
+    """READ the §14.4 inline-rubric verdict from a trajectory (SPR-11 M3).
+
+    Walks newest-first for the most recent ``rubric.scored`` event and
+    reconstructs a ``RubricScore`` from its persisted payload. This does
+    NOT recompute the score and does NOT touch the scorer's algorithm —
+    it only reads what ``orchestration/loop_one/orchestrator.py`` already
+    emitted via ``middleware.outcomes.emit_rubric_scored`` after Phase 6.
+
+    The persisted payload carries ``final_score`` (the composite) and a
+    ``notes`` string. The synthesis rubric writes the four sub-scores into
+    that note as ``voice=… conviction=… citation_density=… constraint=…``
+    (see the orchestrator's emit call); we parse them back out when
+    present so the surface can offer the optional breakdown. When the note
+    is free-form (e.g. the insufficient-evidence floor message) the
+    sub-scores stay null — honest, never invented.
+
+    Returns ``None`` when the trajectory has no ``rubric.scored`` event,
+    so the caller leaves the response field null (no fabricated score)."""
+    import re
+
+    for r in reversed(rows):
+        payload = r.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("action_type") != "rubric.scored":
+            continue
+        final = payload.get("final_score")
+        if not isinstance(final, (int, float)):
+            # A rubric.scored event must carry final_score; a malformed
+            # one is treated as no score rather than a guessed value.
+            continue
+        notes = payload.get("notes")
+        notes_str = notes if isinstance(notes, str) else ""
+
+        def _sub(key: str) -> Optional[float]:
+            m = re.search(rf"\b{re.escape(key)}=([01](?:\.\d+)?)", notes_str)
+            if not m:
+                return None
+            try:
+                v = float(m.group(1))
+            except ValueError:
+                return None
+            return v if 0.0 <= v <= 1.0 else None
+
+        composite = max(0.0, min(1.0, float(final)))
+        return RubricScore(
+            composite=composite,
+            voice_style=_sub("voice"),
+            conviction=_sub("conviction"),
+            citation_density=_sub("citation_density"),
+            constraint_compliance=_sub("constraint"),
+            notes=notes_str,
+        )
+    return None
 
 
 def _extract_arxiv_id(url: str) -> Optional[str]:
@@ -1529,6 +1617,12 @@ def create_app(
             ):
                 break
 
+        # SPR-11 M3: surface the §14.4 inline-rubric verdict, READ from the
+        # persisted rubric.scored event (never recomputed). Null when the
+        # synthesis has no scored event — the surface shows no score rather
+        # than a fabricated one.
+        rubric_score = _rubric_score_from_trajectory(rows)
+
         if terminal_row is not None:
             status = (
                 "completed"
@@ -1541,6 +1635,7 @@ def create_app(
                 current_phase=last_phase,
                 last_delivered_action_type=last_delivered,
                 terminal_payload=terminal_row.get("payload"),
+                rubric_score=rubric_score,
             )
 
         return InvestigationStatusResponse(
@@ -1549,6 +1644,7 @@ def create_app(
             current_phase=last_phase,
             last_delivered_action_type=last_delivered,
             terminal_payload=None,
+            rubric_score=rubric_score,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────

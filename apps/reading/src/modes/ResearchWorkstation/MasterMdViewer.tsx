@@ -4,7 +4,7 @@ import LemonButton from "../../components/lemon/LemonButton";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
-import type { ParsedClaim, ParsedSynthesis, Recommendation } from "../../lib/synthesisParser";
+import type { ParsedClaim, ParsedSynthesis, QualityScore, Recommendation } from "../../lib/synthesisParser";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
@@ -87,6 +87,11 @@ export default function MasterMdViewer({
               </LemonButton>
             </span>
           </div>
+          {/* SPR-11 M3 — a quiet quality cue, read from the persisted inline
+              rubric (never recomputed here). Renders nothing when no score was
+              persisted; flags a low score so the operator knows the answer may
+              want another pass. */}
+          <QualityCue score={synthesis.qualityScore} />
         </header>
 
         {/* Thesis summary — flowing prose */}
@@ -408,6 +413,84 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
     >
       {rec.replace(/_/g, " ")}
     </span>
+  );
+}
+
+// ── Quality cue (SPR-11 M3) ──────────────────────────────────────────
+//
+// A quiet, plain-language read of the §14.4 inline rubric. The score is
+// READ from the persisted rubric event by the parser; this component only
+// renders what it's handed and never re-implements scoring. Three states:
+//   - absent  → render nothing (no fabricated score; the no-key / no-rubric
+//     case is honest by saying nothing rather than inventing a verdict);
+//   - clears the bar → a quiet positive cue, no number shoved forward;
+//   - below the bar → a visible flag in plain words, so the operator knows
+//     to give the answer another pass.
+//
+// The pass bar mirrors the substrate's PASS_THRESHOLD (0.5,
+// substrate/synthesis_rubric/scorer.py); we don't recompute, we only
+// compare the persisted composite against it to pick the wording. The four
+// sub-scores, when the persisted note carried them, sit behind a collapsed
+// "the detail" toggle so the default surface stays quiet (a raw dump is
+// itself noise to the operator).
+
+const QUALITY_PASS_BAR = 0.5;
+
+function QualityCue({ score }: { score: QualityScore | null }) {
+  // Absent: the synthesis carried no persisted rubric (no-key / nothing
+  // scored). Show nothing rather than a guessed verdict.
+  if (!score) return null;
+
+  const low = score.composite < QUALITY_PASS_BAR;
+
+  return (
+    <div className="mt-3 text-xs">
+      {low ? (
+        <p className="text-amber-800 dark:text-sun leading-relaxed">
+          This answer reads like it may want another pass before you rely on
+          it. The draft came in under our quality bar, so it&rsquo;s worth a
+          re-run or an edit.
+        </p>
+      ) : (
+        <p className="text-shadow-1 dark:text-moonlight leading-relaxed">
+          This answer clears our quality bar.
+        </p>
+      )}
+      <QualityDetail score={score} />
+    </div>
+  );
+}
+
+/** Optional breakdown, collapsed by default — the four sub-readings the
+ *  rubric noted, in plain words. Hidden entirely when the persisted note
+ *  carried no sub-scores (an older or free-form note), so we never show
+ *  empty rows. */
+function QualityDetail({ score }: { score: QualityScore }) {
+  const rows: Array<[string, number | null]> = [
+    ["Voice and style", score.voiceStyle],
+    ["Conviction", score.conviction],
+    ["Sourcing", score.citationDensity],
+    ["Stayed within the brief", score.constraintCompliance],
+  ];
+  const present = rows.filter(([, v]) => v !== null) as Array<[string, number]>;
+  if (present.length === 0) return null;
+
+  return (
+    <details className="mt-1">
+      <summary className="cursor-pointer text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors">
+        the detail
+      </summary>
+      <dl className="mt-2 space-y-1">
+        {present.map(([label, value]) => (
+          <div key={label} className="flex items-baseline gap-2">
+            <dt className="text-ink-soft dark:text-starlight">{label}</dt>
+            <dd className="font-mono text-shadow-1 dark:text-moonlight">
+              {Math.round(value * 100)}%
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 

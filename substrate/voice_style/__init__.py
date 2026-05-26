@@ -32,6 +32,12 @@ from .ab_runner import (
     format_audit_markdown,
     run_voice_impact_audit,
 )
+from .constructions import (
+    FORBIDDEN_CONSTRUCTIONS,
+    ForbiddenConstruction,
+    forbidden_phrase_examples,
+    render_voice_addendum,
+)
 from .rubric import (
     Violation,
     ViolationKind,
@@ -45,8 +51,10 @@ from .suppression import (
 )
 
 __all__ = [
+    "FORBIDDEN_CONSTRUCTIONS",
     "AuditVerdictKind",
     "CohortScore",
+    "ForbiddenConstruction",
     "SuppressionContext",
     "SuppressionVerdict",
     "Violation",
@@ -55,7 +63,9 @@ __all__ = [
     "VoiceImpactObservation",
     "VoiceStyleScore",
     "evaluate_inline_suppression",
+    "forbidden_phrase_examples",
     "format_audit_markdown",
+    "render_voice_addendum",
     "run_voice_impact_audit",
     "score_voice_style",
 ]

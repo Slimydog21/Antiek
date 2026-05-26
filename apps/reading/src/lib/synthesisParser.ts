@@ -71,6 +71,23 @@ export interface ClaimSourceGroup {
   chunkIds: string[];
 }
 
+/**
+ * SPR-11 M3 — the §14.4 inline-rubric verdict for this answer, READ from the
+ * `rubric.scored` event the orchestrator emits after Phase 6. The parser only
+ * reads the persisted event; it never recomputes the score (the scorer's
+ * algorithm is substrate-owned and untouched here). `composite` is the
+ * headline in [0, 1]; the four sub-scores are present only when the persisted
+ * note encoded them and are null otherwise (honest, never invented).
+ */
+export interface QualityScore {
+  composite: number;
+  voiceStyle: number | null;
+  conviction: number | null;
+  citationDensity: number | null;
+  constraintCompliance: number | null;
+  notes: string;
+}
+
 export interface ParsedSynthesis {
   thesisSummary: string;
   components: ParsedClaim[];
@@ -85,6 +102,10 @@ export interface ParsedSynthesis {
   /** Map every chunk_id we encounter → set of component indices that cite it.
    *  Used by the hover modal to navigate citations bidirectionally. */
   chunkCitations: Record<string, number[]>;
+  /** The inline-rubric verdict for this answer; null when no `rubric.scored`
+   *  event was persisted (the no-synthesis / no-key case). The viewer renders
+   *  a quiet quality cue from this and shows nothing when it's null. */
+  qualityScore: QualityScore | null;
 }
 
 const EMPTY_SYNTHESIS: ParsedSynthesis = {
@@ -99,6 +120,7 @@ const EMPTY_SYNTHESIS: ParsedSynthesis = {
   masterMdPath: null,
   domainsPatched: [],
   chunkCitations: {},
+  qualityScore: null,
 };
 
 interface SynthesizeDeliveredPayload {
@@ -130,6 +152,24 @@ interface CompletedPayload {
   domains_patched?: string[];
 }
 
+/** The persisted `rubric.scored` payload. `final_score` is the composite; the
+ *  four sub-scores ride along inside `notes` as
+ *  `voice=… conviction=… citation_density=… constraint=…` (the orchestrator
+ *  writes them there), so we read them back when present. */
+interface RubricScoredPayload {
+  final_score?: number;
+  notes?: string;
+}
+
+/** Pull one named sub-score out of the rubric note, or null when absent /
+ *  out of range. Mirrors the backend reader so the two surfaces agree. */
+function subScoreFromNotes(notes: string, key: string): number | null {
+  const m = notes.match(new RegExp(`\\b${key}=([01](?:\\.\\d+)?)`));
+  if (!m) return null;
+  const v = Number(m[1]);
+  return Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+}
+
 /**
  * Walk events to extract the canonical synthesis structure + sum costs.
  * Returns `null` when the investigation has no synthesize.delivered yet
@@ -140,6 +180,9 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   let completed: CompletedPayload | null = null;
   let question: string | null = null;
   let totalCost = 0;
+  // SPR-11 M3: the inline-rubric verdict, READ from the last rubric.scored
+  // event (never recomputed). Keep the latest in trajectory order.
+  let rubricPayload: RubricScoredPayload | null = null;
 
   for (const e of events) {
     const at = e.action_type;
@@ -154,6 +197,8 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
     } else if (at === "dispatch.call") {
       const c = (p as { cost_usd?: number } | undefined)?.cost_usd;
       if (typeof c === "number") totalCost += c;
+    } else if (at === "rubric.scored") {
+      rubricPayload = p as RubricScoredPayload;
     }
   }
 
@@ -213,6 +258,21 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   if (synthDelivered?.constraint_compliance) {
     result.hardConstraintsSatisfied =
       synthDelivered.constraint_compliance.hard_constraints_satisfied ?? null;
+  }
+
+  // SPR-11 M3: attach the persisted inline-rubric verdict when one exists.
+  // A rubric.scored event must carry a numeric final_score; without it we
+  // leave qualityScore null rather than guess a value (rigor #1).
+  if (rubricPayload && typeof rubricPayload.final_score === "number") {
+    const notes = typeof rubricPayload.notes === "string" ? rubricPayload.notes : "";
+    result.qualityScore = {
+      composite: Math.max(0, Math.min(1, rubricPayload.final_score)),
+      voiceStyle: subScoreFromNotes(notes, "voice"),
+      conviction: subScoreFromNotes(notes, "conviction"),
+      citationDensity: subScoreFromNotes(notes, "citation_density"),
+      constraintCompliance: subScoreFromNotes(notes, "constraint"),
+      notes,
+    };
   }
 
   return result;

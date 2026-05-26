@@ -12,6 +12,16 @@ the substrate:
 - Terminating: when must-cover questions are answered (or the
   informant ends), the role signals ``should_end: true`` and the
   Loop 4 driver writes the final transcript document.
+
+Voice/style canonical source: ``substrate.voice_style.constructions`` is the
+single authority for the §5 forbidden constructions. The interviewer's
+discipline (no hedging, no sycophancy) is woven into hard constraint #4 below
+in a conversational register addressed to a real person, so its phrase list
+("I'm wondering if", "would you maybe") is register-specific and not rendered
+from the shared renderer. The forbidden *item* (hedging) is the same canonical
+construction; ``tests/test_voice_style_constructions.py`` guards that this
+prompt keeps banning hedging so the register cannot silently relax. A future
+edit adds itself to the canonical source, not a fifth copy.
 """
 
 from __future__ import annotations

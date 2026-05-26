@@ -408,12 +408,32 @@ export async function reorderNotebookBlocks(
   return resp.json();
 }
 
+/** SPR-11 M3 — the §14.4 inline-rubric verdict for a completed research's
+ *  answer, READ from the persisted `rubric.scored` event (never recomputed
+ *  client-side). `composite` is the headline score in [0, 1]; the four
+ *  sub-scores are present only when the persisted note encoded them, and are
+ *  null otherwise (honest, never invented). The surface renders a quiet
+ *  plain-language quality cue from this, and flags a low score so the operator
+ *  knows the answer may want another pass. Absent (`null` on the parent) ⇒ no
+ *  score was persisted ⇒ the surface shows nothing. */
+export interface RubricScore {
+  composite: number;
+  voice_style: number | null;
+  conviction: number | null;
+  citation_density: number | null;
+  constraint_compliance: number | null;
+  notes: string;
+}
+
 export interface InvestigationStatus {
   investigation_id: string;
   status: "in_progress" | "completed" | "failed" | "not_found";
   current_phase: number | null;
   last_delivered_action_type: string | null;
   terminal_payload: Record<string, unknown> | null;
+  /** The inline-rubric verdict for this research's answer; null when no
+   *  score was persisted (the no-synthesis / no-key case). */
+  rubric_score: RubricScore | null;
 }
 
 /** GET /investigations/{id} — fetch terminal-state status. */
