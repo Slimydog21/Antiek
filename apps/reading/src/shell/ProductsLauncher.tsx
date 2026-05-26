@@ -13,11 +13,19 @@ import {
 // for NavRail, ProjectTree, stubs, palette, and the future M2 rail-destination
 // guard) free of presentation concerns. These are the human labels the
 // operator sees in the calm "More" drawer.
+//
+// Cost & consent (escrow/IP-holder consent + unified cost) is intentionally
+// not a top-level MODE_TAXONOMY entry; it lives as content inside the
+// Coordination shared surface (see taxonomy sharedReason and blurb).
+// Documented here for M4 clarity so the launcher remains the honest
+// inventory without duplicating taxonomy.
 const RUN_LABELS: Record<string, string> = {
   OperatorDashboard: "Operator console",
   TrustCenter: "Trust & safety",
   PrivacyDashboard: "Privacy & deletion",
   Billing: "Billing & usage",
+  Settings: "Settings",
+  Coordination: "Coordination",
 };
 
 /**
@@ -34,6 +42,11 @@ const RUN_LABELS: Record<string, string> = {
  * faked as present. Data-driven from MODE_TAXONOMY; a tiny local label map
  * here supplies the calm human surface names without touching the single
  * source used by rail, tree, stubs and palette.
+ *
+ * Presentation note (post M4 sharpen): rendered as a fixed centered overlay
+ * (inset-0 z-50 pt-20 w-[760px] card, role=dialog aria-modal). The "drawer"
+ * language in the broader spec is aspirational; the implementation is a
+ * modal/overlay for immediate accessibility and keyboard parity with ⌘K.
  */
 export function ProductsLauncher({
   open,
