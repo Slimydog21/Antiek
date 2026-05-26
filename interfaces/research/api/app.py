@@ -5138,6 +5138,14 @@ def create_app(
     from interfaces.research.api.cascade_routes import cascade_router
     app.include_router(cascade_router)
 
+    # Distill surface (specs/product-depth/ SPR-03). Reads the shipped
+    # insight/question graph nodes for a research and drives the shipped
+    # living-note challenge path — same one-line inclusion discipline. The
+    # only graph write (a challenge) serializes through runtime/db_lock
+    # inside roles.note_taker.living_note; this router adds no second writer.
+    from interfaces.research.api.distill_routes import distill_router
+    app.include_router(distill_router)
+
     return app
 
 

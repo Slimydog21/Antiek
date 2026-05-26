@@ -783,6 +783,93 @@ export async function ingestSource(
   return resp.json();
 }
 
+// ── SPR-03: distill surface (insights / open questions / living notes) ──
+//
+// Mirrors interfaces/research/api/distill_routes.py. The node_id is an
+// opaque handle echoed back on a challenge — never rendered as a label
+// (copy-lint: no raw-id leaks). "research" is the user-facing word for an
+// investigation (see language.ts GLOSSARY).
+
+export interface DistilledNode {
+  node_id: string;
+  /** "insight" | "question" — the §2.1 primitive. */
+  kind: string;
+  /** Current text; reflects any living-note refinement (read from the node). */
+  text: string;
+  confidence?: string | null;
+  /** The source that grounds it (a document handle); null when ungrounded. */
+  source_document_id?: string | null;
+  /** How many times this note has changed (a living-note signal). */
+  refinement_count: number;
+  /** A question whose challenge needs new research (escalation seam). */
+  escalated: boolean;
+  /** The reserved (NOT launched) child research id; SPR-04/05 launch it. */
+  reserved_child_investigation_id?: string | null;
+}
+
+export interface DistillationResponse {
+  investigation_id: string;
+  insights: DistilledNode[];
+  questions: DistilledNode[];
+}
+
+/** GET /research/{id}/distill — the durable product of a research:
+ *  its insights + open questions, read off the graph. */
+export async function getDistillation(
+  investigationId: string,
+): Promise<DistillationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/distill`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /research/{id}/distill failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+export interface ChallengeNoteResponse {
+  node_id: string;
+  /** The note's text changed in place (living note). */
+  applied: boolean;
+  /** A stale refinement lost the seq race; the visible text is unchanged. */
+  superseded: boolean;
+  new_text?: string | null;
+  /** The challenge couldn't be resolved — a deeper research is reserved. */
+  escalated: boolean;
+  /** The reserved (un-launched) child research id, when escalated. */
+  reserved_child_investigation_id?: string | null;
+}
+
+/** POST /research/notes/{nodeId}/challenge — drive the shipped living-note
+ *  path. Resolves → mutates in place; declines → escalation (reserved, not
+ *  launched). 503 = no model configured (honest no-key); the caller shows
+ *  the shared failure surface, never a fabricated change. */
+export async function challengeNote(
+  nodeId: string,
+  req: { investigation_id: string; challenge_text?: string },
+): Promise<ChallengeNoteResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/notes/${encodeURIComponent(nodeId)}/challenge`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge_text: "", ...req }),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/notes/{id}/challenge failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** GET /chunks/{id} — used by Mode A's claim hover modal. */
 export async function getChunk(chunkId: string): Promise<ChunkResponse> {
   const resp = await apiFetch(

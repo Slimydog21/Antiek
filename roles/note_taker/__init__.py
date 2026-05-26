@@ -34,6 +34,14 @@ from .document_pass import PassResult, run_document_pass
 from .step_pass import RunNoteDeduper, notes_for_step
 from .living_note import ChallengeResult, apply_refinement, challenge_note
 from .scheduler import AsyncNoteScheduler, SchedulerStats, DEFAULT_DEBOUNCE_S
+# DRW SPR-03 M2 — read seam: surface an investigation's distilled nodes.
+# Aliased (the distill.py Distillation is the *write*-side shape; this is the
+# *read*-side shape) so a caller imports the one it means.
+from .distill_query import (
+    DistilledNode,
+    Distillation as DistilledView,
+    distillation_for,
+)
 
 __all__ = [
     "NOTE_TAKER_SYSTEM_PROMPT",
@@ -45,4 +53,6 @@ __all__ = [
     "RunNoteDeduper", "notes_for_step",
     "ChallengeResult", "apply_refinement", "challenge_note",
     "AsyncNoteScheduler", "SchedulerStats", "DEFAULT_DEBOUNCE_S",
+    # SPR-03 read seam (M2)
+    "DistilledNode", "DistilledView", "distillation_for",
 ]

@@ -7,8 +7,10 @@ import { parseSynthesis } from "../../lib/synthesisParser";
 import { PanelHost } from "../../workspace/PanelHost";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import type { StarterPanel } from "../../workspace/PanelHost";
+import DistillView from "./DistillView";
 import HighlightToolbar from "./HighlightToolbar";
 import MasterMdViewer from "./MasterMdViewer";
+import NotesPanel from "./NotesPanel";
 import StartResearch from "./StartResearch";
 import ThinkingStream from "./ThinkingStream";
 
@@ -111,13 +113,41 @@ function CenterContent({ investigation }: { investigation: InvestigationState })
     investigation.status === "failed"
   ) {
     const synth = parseSynthesis(investigation.events);
-    if (synth) return <MasterMdViewer synthesis={synth} />;
+    // SPR-03: a completed research's durable product is its insights + open
+    // questions (DistillView, M2), shown alongside the answer prose
+    // (MasterMdViewer, SPR-04's narrative is separate). When there's no
+    // synthesis (the no-key / nothing-distilled case) DistillView carries the
+    // honest no-result state on its own.
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+        {synth ? <MasterMdViewer synthesis={synth} /> : null}
+        <div className="border-t border-rule dark:border-charcoal-1">
+          <DistillView
+            investigationId={investigation.id}
+            running={false}
+          />
+        </div>
+      </div>
+    );
   }
-  // SPR-02: the default live view is the plain-language thinking stream, not
-  // the raw event log. The raw log lives one toggle away inside ThinkingStream
-  // (the "show raw activity" escape hatch reuses TrajectoryView). No steer
-  // controls on this one-shot `/inv/:id` path — the Loop-1 orchestrator has no
-  // steerable runner; the cascade monitor (DeepResearchWorkspace) is where
-  // Stop/redirect/deepen are wired through a session.
-  return <ThinkingStream investigation={investigation} />;
+  // SPR-02 live view + SPR-03 auto-notes: the plain-language thinking stream on
+  // the left, the notes the async note-taker is taking on the right (M1) — the
+  // user watches notes being taken, not just activity narrated. The raw log
+  // lives one toggle away inside ThinkingStream. No steer controls on this
+  // one-shot `/inv/:id` path — the Loop-1 orchestrator has no steerable runner;
+  // the cascade monitor (DeepResearchWorkspace) is where Stop/redirect/deepen
+  // are wired through a session.
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="min-w-0 flex-1">
+        <ThinkingStream investigation={investigation} />
+      </div>
+      <aside className="hidden w-[320px] shrink-0 flex-col overflow-y-auto border-l border-rule dark:border-charcoal-1 lg:flex">
+        <div className="border-b border-rule bg-ice-1 px-4 py-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+          Notes
+        </div>
+        <NotesPanel investigation={investigation} />
+      </aside>
+    </div>
+  );
 }
