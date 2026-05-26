@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, fireEvent, waitFor, renderHook, act } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, waitFor, renderHook, act, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 import type { BookDetail, FullTextResponse } from "../../api/books";
@@ -14,6 +14,7 @@ const {
   spinResearchMock,
   recordAdImpressionsMock,
   navigateMock,
+  useInvestigationMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
@@ -21,6 +22,7 @@ const {
   spinResearchMock: vi.fn(),
   recordAdImpressionsMock: vi.fn().mockResolvedValue(undefined),
   navigateMock: vi.fn(),
+  useInvestigationMock: vi.fn(),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -34,6 +36,13 @@ vi.mock("../../api/books", async (orig) => {
     recordAdImpressions: recordAdImpressionsMock,
   };
 });
+
+// ReadingCompanion (M2) + ChaseThread's launched stream (M3) read the book's
+// reading thread through this hook. A calm, not-running thread keeps the
+// companion in its honest empty state for the gesture tests.
+vi.mock("../../hooks/useInvestigation", () => ({
+  useInvestigation: useInvestigationMock,
+}));
 
 vi.mock("react-router-dom", async (orig) => {
   const actual = await orig<typeof import("react-router-dom")>();
@@ -181,6 +190,19 @@ describe("BookReader", () => {
     getBookMock.mockReset();
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
+    navigateMock.mockReset();
+    // Default: a calm, empty reading thread (the no-key / nothing-yet case).
+    useInvestigationMock.mockReset();
+    useInvestigationMock.mockReturnValue({
+      id: "read-doc-1",
+      status: "not_found",
+      events: [],
+      question: null,
+      terminalPayload: null,
+      costTotal: 0,
+      completedAt: null,
+      reconnects: 0,
+    });
   });
 
   it("renders a servable book's full text with a working pager", async () => {
@@ -244,5 +266,109 @@ describe("BookReader", () => {
     // Seeds from the current page index (0) and hands off to the research.
     expect(spinResearchMock).toHaveBeenCalledWith("doc-1", 0, expect.stringContaining("opening"));
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child-xyz"));
+  });
+
+  // ── Read SPR-06 M2/M3: companion rail + inline rabbit-hole ──────────
+
+  it("mounts the reading companion beside an open book (M2 glass-box)", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    // The companion is docked beside the reading column.
+    expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
+    // Empty, not-running thread ⇒ honest empty state, no fabricated notes.
+    expect(screen.getByText(/No notes yet/)).toBeTruthy();
+  });
+
+  it("highlighting a passage offers an inline rabbit-hole; chasing mounts beside the passage with a way home (M3)", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const para = await screen.findByText("The opening of the book.");
+
+    // No affordance until there's a real highlight.
+    expect(screen.queryByRole("toolbar", { name: /Passage actions/ })).toBeNull();
+
+    // Simulate a meaningful text selection inside the page body.
+    const selectionStub = {
+      rangeCount: 1,
+      toString: () => "The opening of the book.",
+      getRangeAt: () => ({ getBoundingClientRect: () => ({ top: 120, left: 80 }) }),
+    } as unknown as Selection;
+    vi.spyOn(window, "getSelection").mockReturnValue(selectionStub);
+    fireEvent.mouseUp(para);
+
+    // The inline affordance appears.
+    const goDeeper = await screen.findByRole("button", { name: /Go deeper on this passage/ });
+    fireEvent.click(goDeeper);
+
+    // The inline chase mounts beside the reading column (the answer lands
+    // right there), seeded with the passage, with a reversible way home.
+    const chasePanel = await screen.findByRole("complementary", { name: /Following this passage/ });
+    // The passage is lifted into the chase (the blockquote shows it, and it
+    // also seeds the editable question) — proof the highlight seeded the chase.
+    const lifted = within(chasePanel).getAllByText(/The opening of the book\./);
+    expect(lifted.length).toBeGreaterThanOrEqual(1);
+    const back = screen.getByRole("button", { name: /back to the book/ });
+    fireEvent.click(back);
+    // Back to the companion — not a one-way trip; reading position is held by
+    // usePosition (the page never changed), so reading resumes where it was.
+    expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
+  });
+
+  it("a taken-down (restricted) book renders no body — nothing to read or chase (servable-corpus honesty, §9.0)", async () => {
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "taken_down", servable_full_text: false, taken_down: true }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({ servable: false, full_text: null, snippet: null, servability: "taken_down", reason: "taken_down" }),
+    );
+    await renderReader();
+    await waitFor(() => expect(screen.getByText(/has been removed/)).toBeTruthy());
+    // The body is never served, so there is no page to highlight and no
+    // paragraph affordance — the gate withholds at the source, the reader
+    // honestly reflects it.
+    expect(screen.getByText(/no readable pages/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Go deeper on this passage/ })).toBeNull();
+  });
+
+  it("a gated book serves only a bounded snippet — a highlight can chase only that gate-permitted text, never full text (§9.0)", async () => {
+    // The §9.0 safety of the inline chase rests on a client-side invariant: the
+    // reader can only ever render what the server-side gate served. A gated
+    // (metadata-only) book serves a BOUNDED snippet and withholds full_text, so
+    // the only highlightable text is that snippet — a chase can carry only
+    // gate-permitted text, never the withheld body. The taken-down test pins the
+    // no-body half; this pins the bounded-snippet half (RIGOR #3).
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        servable: false,
+        full_text: null,
+        snippet: "A short gate-served preview.",
+        servability: "gated_metadata_only",
+        reason: "gated_metadata_only",
+      }),
+    );
+    await renderReader();
+    // Only the gate-served snippet is on screen (full_text was withheld).
+    const para = await screen.findByText(/A short gate-served preview\./);
+    const selectionStub = {
+      rangeCount: 1,
+      toString: () => "A short gate-served preview.",
+      getRangeAt: () => ({ getBoundingClientRect: () => ({ top: 120, left: 80 }) }),
+    } as unknown as Selection;
+    vi.spyOn(window, "getSelection").mockReturnValue(selectionStub);
+    fireEvent.mouseUp(para);
+    const goDeeper = await screen.findByRole("button", { name: /Go deeper on this passage/ });
+    fireEvent.click(goDeeper);
+    // The chase is seeded only with the bounded snippet — there is no full text
+    // anywhere for it to lift, because the gate never served any.
+    const chasePanel = await screen.findByRole("complementary", { name: /Following this passage/ });
+    expect(
+      within(chasePanel).getAllByText(/A short gate-served preview\./).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 });

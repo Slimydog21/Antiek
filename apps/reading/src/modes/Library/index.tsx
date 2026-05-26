@@ -7,7 +7,8 @@ import BookCard from "./BookCard";
 import CuratePrompt from "./CuratePrompt";
 
 /**
- * Library — the home of the Read workflow (Read SPR-02).
+ * Library — the home of the Read workflow (Read SPR-02; re-homed as the Read
+ * DOOR in Read SPR-06).
  *
  * A shelf/grid over the servable corpus. The legal posture is visible in
  * the IA, not just the backend: the default view is the servable shelf
@@ -17,6 +18,11 @@ import CuratePrompt from "./CuratePrompt";
  *
  * Opening a book routes to /read/:documentId (SPR-03), which renders only
  * what the serve gate permits.
+ *
+ * Read SPR-06: this is the Read workflow's defaultRoute (the door). The PDF
+ * wrestler is demoted from the door to a "bring your own PDF" affordance
+ * here — still reachable for the power case, no longer the home. An empty
+ * shelf shows an honest "what's available to read" state, NOT an uploader.
  */
 
 const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
@@ -104,11 +110,25 @@ export default function Library() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1>
+            <div className="flex items-start justify-between gap-4">
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1>
+              {/* Read SPR-06: the PDF wrestler, demoted from the Read door to a
+                  bring-your-own affordance. Reachable for the power case (read a
+                  PDF you brought), no longer the home — the shelf is. */}
+              <button
+                type="button"
+                onClick={() => navigate("/wrestle")}
+                className="shrink-0 mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
+                title="Read a PDF you bring yourself"
+              >
+                bring your own PDF →
+              </button>
+            </div>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              A licensed shelf — public-domain works, Antiek originals, and
-              publisher-opted-in titles you can read in full. Everything else
-              is preview-only. {subtitle}.
+              A licensed shelf of what can be aggregated — public-domain works,
+              Antiek originals, and publisher-opted-in titles you can read in
+              full. A library, not a marketplace: everything else is
+              preview-only. {subtitle}.
             </p>
           </header>
 
@@ -167,7 +187,7 @@ export default function Library() {
               {curatedOrder !== null
                 ? "No servable books matched that prompt. Try different words, or clear to see the whole shelf."
                 : status === "servable"
-                  ? "No servable books yet. Ingest a public-domain title or an Antiek original to start the shelf."
+                  ? "Nothing is readable in full on the shelf yet — the library only shows what can be legally aggregated. Check the Preview tab for titles you can sample, or bring your own PDF to read it here."
                   : "Nothing here."}
             </p>
           )}

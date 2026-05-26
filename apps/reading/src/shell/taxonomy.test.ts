@@ -22,7 +22,14 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { MODE_TAXONOMY, type ModeId } from "./workflowTaxonomy";
+import {
+  MODE_TAXONOMY,
+  WORKFLOWS,
+  landingModeForWorkflow,
+  modeById,
+  workflowForPath,
+  type ModeId,
+} from "./workflowTaxonomy";
 
 /**
  * The real mode set, derived from the filesystem at build time.
@@ -148,5 +155,57 @@ describe("workflowTaxonomy built-flag + shared-bucket integrity", () => {
     expect(bad, `Entries with an invalid workflow: ${JSON.stringify(bad)}`).toEqual(
       [],
     );
+  });
+});
+
+/**
+ * Read SPR-06 — the door re-home + operator-surface eviction, pinned so a
+ * future nav change can't silently revert them (rigor #5, defensibility).
+ */
+describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
+  it("the Read door opens on the Library, not the PDF wrestler", () => {
+    // The load-bearing claim: clicking the Read rail door (NavRail navigates
+    // WORKFLOWS.read.defaultRoute) lands on the Library shelf — never /wrestle.
+    expect(WORKFLOWS.read.defaultRoute).toBe("/library");
+    expect(WORKFLOWS.read.defaultRoute).not.toBe("/wrestle");
+  });
+
+  it("the Read landing surface resolves to the Library (ThreadJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source ThreadJump uses; it must
+    // agree with the door so the re-home holds everywhere, not just on the rail.
+    const landing = landingModeForWorkflow("read");
+    expect(landing?.id).toBe("Library");
+    expect(landing?.route).toBe("/library");
+  });
+
+  it("the PDF wrestler stays reachable (a demoted Read power surface), just not the door", () => {
+    const wrestle = modeById("WrestleApp");
+    expect(wrestle?.workflow).toBe("read"); // still Read — it IS reading
+    expect(wrestle?.built).toBe(true);
+    expect(wrestle?.route).toBe("/wrestle");
+    expect(WORKFLOWS.read.defaultRoute).not.toBe(wrestle?.route); // not the door
+  });
+
+  it("DocumentsIndex + Sources are evicted out of the Read door into shared/More", () => {
+    for (const id of ["DocumentsIndex", "Sources"]) {
+      const m = modeById(id);
+      expect(m, `${id} must still exist`).toBeDefined();
+      // Re-classed to shared (the More bucket) — no longer a Read-door surface.
+      expect(m?.workflow, `${id} must move out of the Read workflow`).toBe("shared");
+      // Code/route untouched — capability preserved, reachable via More + ⌘K.
+      expect(m?.built).toBe(true);
+      expect(m?.route).toBeTruthy();
+      // Shared entries must say why (the test elsewhere enforces this too).
+      expect(m?.sharedReason).toBeTruthy();
+    }
+  });
+
+  it("the evicted surfaces no longer set the Read rail active (off the Read door)", () => {
+    // workflowForPath drives the active-rail highlight. An operator on
+    // /documents or /sources is in the shared bucket, not on the Read door.
+    expect(workflowForPath("/documents")).toBe("shared");
+    expect(workflowForPath("/sources")).toBe("shared");
+    // And the Read door itself resolves to read.
+    expect(workflowForPath("/library")).toBe("read");
   });
 });

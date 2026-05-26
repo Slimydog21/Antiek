@@ -113,9 +113,14 @@ export const WORKFLOWS: Record<Exclude<Workflow, "shared">, WorkflowMeta> = {
   read: {
     id: "read",
     label: "Read",
-    tagline: "Wrestle sources into your substrate and think in notebooks.",
-    nouns: ["Library", "Documents", "Notebooks", "Sources"],
-    defaultRoute: "/wrestle",
+    // Read SPR-06 door re-home: the Read door opens on the Library shelf —
+    // "Spotify for books", the home of Read — not the PDF wrestler. The
+    // tagline + nouns lead with the shelf you read from, not the uploader
+    // you bring sources into (which is now a demoted power affordance,
+    // reachable from the Library, not the door).
+    tagline: "Open a book and read it with the AI alongside.",
+    nouns: ["Library", "Notebooks"],
+    defaultRoute: "/library",
   },
   write: {
     id: "write",
@@ -215,26 +220,41 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   {
     id: "WrestleApp",
     workflow: "read",
+    // Read SPR-06: demoted from "the Read home" to a bring-your-own-PDF
+    // power surface. It STAYS in the Read workflow (it is reading), but it
+    // is no longer the door — the Library is (see read.defaultRoute). It is
+    // reachable from the Library's "bring your own PDF" affordance + ⌘K.
     label: "Document wrestler",
-    blurb: "PDF reading + region selection + claim extraction (Mode B). The Read home.",
+    blurb: "Bring your own PDF — read it, select regions, extract claims (power surface; not the Read door).",
     built: true,
     route: "/wrestle",
   },
+  // Read SPR-06 operator-surface eviction (mirrors Wave E U-03 "operator
+  // behind More"): the tier-filtered Documents index and the bulk-ingest
+  // Sources surface are acquisition/governance tools, not the reading door.
+  // They move OUT of the Read workflow into the shared/More bucket — the
+  // code + routes are untouched (capability preserved), only the
+  // classification changes, so they no longer bleed onto the Read door and
+  // no longer set the Read rail active. Reachable via More + ⌘K.
   {
     id: "DocumentsIndex",
-    workflow: "read",
+    workflow: "shared",
     label: "Documents",
-    blurb: "Substrate-attached sources by tier.",
+    blurb: "Substrate-attached sources by tier (acquisition/governance).",
     built: true,
     route: "/documents",
+    sharedReason:
+      "Tier-filtered source-management surface (raw ids, ingestion); operator/acquisition tooling, not the reading door (Read SPR-06 eviction).",
   },
   {
     id: "Sources",
-    workflow: "read",
+    workflow: "shared",
     label: "Sources",
     blurb: "Bulk-add URLs into the substrate graph (acquisition adapters).",
     built: true,
     route: "/sources",
+    sharedReason:
+      "Bulk source-ingestion (acquisition adapters); operator tooling that spans acquisition, not a reading surface (Read SPR-06 eviction).",
   },
   {
     id: "Notebook",
@@ -578,8 +598,24 @@ export function workflowHasBuiltMode(workflow: Workflow): boolean {
   return MODE_TAXONOMY.some((m) => m.workflow === workflow && m.built);
 }
 
-/** The first built, routed mode for a workflow — its landing scene. */
+/**
+ * The workflow's landing scene — the mode the door (and ThreadJump) opens.
+ *
+ * It MUST agree with `WORKFLOWS[workflow].defaultRoute` so a door re-home is
+ * honored in exactly one place: when a built mode's route matches the
+ * workflow's defaultRoute, that mode is the landing (e.g. Read SPR-06 set
+ * read.defaultRoute = /library, so the Library — not the first-declared
+ * Read mode, the demoted PDF wrestler — is the landing). Falls back to the
+ * first built+routed mode only when no mode owns the default route.
+ */
 export function landingModeForWorkflow(workflow: Workflow): ModeEntry | undefined {
+  if (workflow !== "shared") {
+    const wantRoute = WORKFLOWS[workflow].defaultRoute;
+    const onDefault = MODE_TAXONOMY.find(
+      (m) => m.workflow === workflow && m.built && m.route === wantRoute,
+    );
+    if (onDefault) return onDefault;
+  }
   return MODE_TAXONOMY.find(
     (m) => m.workflow === workflow && m.built && Boolean(m.route),
   );
