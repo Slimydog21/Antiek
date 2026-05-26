@@ -96,6 +96,15 @@ export interface LaunchResponse {
 
 export type SteerKind = "pause" | "resume" | "stop" | "redirect" | "deepen";
 
+/** The per-research spend ceiling the runner applies when launch omits one
+ * (mirrors runtime/research_runner protocol.BudgetCap). The entry UI reads
+ * this to show "estimated up to $X for N researches" — never a hardcoded
+ * number that would drift from the contract. */
+export interface BudgetDefaults {
+  per_research_cost_usd: number;
+  per_research_max_steps: number;
+}
+
 // ── Request helpers ─────────────────────────────────────────────────────
 
 async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
@@ -118,6 +127,10 @@ function get<T>(path: string): Promise<T> {
 }
 
 // ── Plan lifecycle (SPR-05 over HTTP) ───────────────────────────────────
+
+export function getBudgetDefaults(): Promise<BudgetDefaults> {
+  return get("/research/budget-defaults");
+}
 
 export function createPlan(req: {
   problem: string;

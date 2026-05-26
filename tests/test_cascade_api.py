@@ -74,6 +74,18 @@ def _poll_until_terminal(client, session_id, timeout_s=5.0):
 # --------------------------------------------------------------------------
 
 
+def test_budget_defaults_reads_the_contract(client):
+    # The entry UI shows "estimated up to $X for N researches" off this, so it
+    # must be the BudgetCap contract default, not a hardcoded API number.
+    from runtime.research_runner import BudgetCap
+    r = client.get("/research/budget-defaults")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    cap = BudgetCap()
+    assert body["per_research_cost_usd"] == cap.cost_usd
+    assert body["per_research_max_steps"] == cap.max_steps
+
+
 def test_create_plan_returns_editable_tree(client):
     r = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a", "b", "c"]})
     assert r.status_code == 200

@@ -87,8 +87,11 @@ function AuthenticatedRoutes() {
       <Routes>
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
-        {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace). */}
+        {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace).
+            The :sessionId route opens it straight onto a launched session
+            (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
+        <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />

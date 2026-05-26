@@ -53,6 +53,21 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
+// Mock the cascade child at its boundary: this file is a unit of the toggle,
+// not of the proposal (CascadeProposal has its own test). The stub renders a
+// marker + a launch button so we can prove the toggle mounts it on the same
+// surface and that a launch navigates to the session monitor.
+vi.mock("./CascadeProposal", () => ({
+  default: ({ problem, onLaunched }: { problem: string; onLaunched: (id: string) => void }) => (
+    <div data-testid="cascade-proposal">
+      <span>cascade for: {problem}</span>
+      <button type="button" onClick={() => onLaunched("session-xyz")}>
+        launch-stub
+      </button>
+    </div>
+  ),
+}));
+
 import StartResearch from "./StartResearch";
 
 function renderStart() {
@@ -128,6 +143,47 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
       expect(screen.getByText(/at least 3 characters/i)).toBeTruthy(),
     );
     expect(startInvestigationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("StartResearch — cascade mode beside the one-shot Ask (SPR-01 M1)", () => {
+  it("shows two clearly-labelled actions; cascade is disabled under 3 chars", () => {
+    renderStart();
+    const ask = screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement;
+    const cascade = screen.getByRole("button", {
+      name: /Break into sub-questions/i,
+    }) as HTMLButtonElement;
+    expect(ask).toBeTruthy();
+    expect(cascade.disabled).toBe(true); // empty composer
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "How will the energy transition reshape geopolitics?" },
+    });
+    expect(cascade.disabled).toBe(false);
+  });
+
+  it("choosing cascade renders the proposal in place — no navigation away, no POST of a one-shot", () => {
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "How will the energy transition reshape geopolitics?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Break into sub-questions/i }));
+    // The proposal mounted on the SAME surface.
+    expect(screen.getByTestId("cascade-proposal")).toBeTruthy();
+    expect(screen.getByText(/cascade for: How will the energy transition/i)).toBeTruthy();
+    // It did NOT start a one-shot investigation.
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    // The one-shot composer is gone (we're in cascade mode).
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+  });
+
+  it("a launched cascade navigates to the session monitor", () => {
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Where do the authors disagree across the corpus?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Break into sub-questions/i }));
+    fireEvent.click(screen.getByRole("button", { name: "launch-stub" }));
+    expect(navigateMock).toHaveBeenCalledWith("/deep-research/session-xyz");
   });
 });
 

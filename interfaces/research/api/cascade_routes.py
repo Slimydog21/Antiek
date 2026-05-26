@@ -167,6 +167,16 @@ class SteerRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@cascade_router.get("/budget-defaults")
+async def budget_defaults() -> dict:
+    """The per-research spend ceiling the runner uses when the launch request
+    omits one. Read straight off the ``BudgetCap`` contract so the entry UI
+    can show "estimated up to $X for N researches" without hardcoding a number
+    that would drift if the contract default changes."""
+    cap = BudgetCap()
+    return {"per_research_cost_usd": cap.cost_usd, "per_research_max_steps": cap.max_steps}
+
+
 @cascade_router.post("/plans")
 async def create_plan(req: CreatePlanRequest) -> dict:
     """Decompose a problem into an editable, focus-checked sub-question tree
