@@ -14,8 +14,6 @@ import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
-import InterviewMode from "./modes/Interview";
-import InterviewIndex from "./modes/InterviewIndex";
 import Library from "./modes/Library";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
@@ -78,6 +76,14 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Speak SPR-08 one-door redirect for legacy /interview/:id deep-links.
+ *  The duplicate Interview surface is gone; interview-as-acquisition has one
+ *  door (/speak). An old interview link lands on the Speak home, where the
+ *  project that owns the interview is one tap away — never a dead route. */
+function InterviewRedirect() {
+  return <Navigate to="/speak" replace />;
+}
+
 function AuthenticatedRoutes() {
   return (
     <AppShell>
@@ -131,8 +137,16 @@ function AuthenticatedRoutes() {
         <Route path="/outcomes" element={<OutcomesIndex />} />
         <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
         <Route path="/replay/:investigationId" element={<Replay />} />
-        <Route path="/interview/:interviewId" element={<InterviewMode />} />
-        <Route path="/interviews" element={<InterviewIndex />} />
+        {/* Speak SPR-08 ONE DOOR: the duplicate Interview surface is folded
+            into Speak. There is exactly one door to interview-as-acquisition —
+            /speak. The old /interviews index redirects to /speak (the warm
+            home); an /interview/:id deep-link redirects into that interview's
+            Speak project console (the substance — recording, transcript,
+            corroboration — lives there now). The Interview / InterviewIndex
+            components stay on disk (capability preserved, mirrors the SPR-05
+            InvestigationsIndex fold) but are retired from routing. */}
+        <Route path="/interviews" element={<Navigate to="/speak" replace />} />
+        <Route path="/interview/:interviewId" element={<InterviewRedirect />} />
         <Route path="/speak" element={<SpeakIndex />} />
         <Route path="/speak/:projectId" element={<SpeakConsole />} />
         <Route path="/loop-3" element={<Loop3 />} />

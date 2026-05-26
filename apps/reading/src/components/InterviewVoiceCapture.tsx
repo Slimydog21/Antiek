@@ -39,9 +39,27 @@ type CaptureState =
 interface Props {
   sessionId: string;
   onUploaded?: (audioUrl: string) => void;
+  /**
+   * Build the upload URL from the captured duration. Defaults to the operator
+   * voice route (``/voice/sessions/{id}/upload``). The Speak invitee surface
+   * passes a builder that targets the TOKEN-gated route
+   * (``/speak/invite/{token}/voice``) so a non-power-user's recording goes
+   * through the same single voice owner without an operator session — no
+   * second pipeline (Product Depth SPR-08 M3).
+   */
+  buildUploadUrl?: (durationSeconds: number) => string;
+  /** Called when the upload comes back non-OK, so the host can show an honest,
+   *  reason-carrying failure (e.g. AIActionFailure on a no-key 503) instead of
+   *  the generic inline error. */
+  onUploadError?: (status: number, detail: string) => void;
 }
 
-export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) {
+export default function InterviewVoiceCapture({
+  sessionId,
+  onUploaded,
+  buildUploadUrl,
+  onUploadError,
+}: Props) {
   const [state, setState] = useState<CaptureState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState<number>(0);
@@ -143,22 +161,37 @@ export default function InterviewVoiceCapture({ sessionId, onUploaded }: Props) 
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
       // Raw-body upload; duration rides on the query string. Keeps
       // the substrate side free of the python-multipart dependency
-      // for a single-field upload (master-spec §11.5).
-      const url =
-        `/voice/sessions/${encodeURIComponent(sessionId)}/upload` +
-        `?duration_seconds=${durationSeconds}`;
+      // for a single-field upload (master-spec §11.5). The URL is
+      // pluggable so the token-gated invitee route can be targeted
+      // without forking the capture component (SPR-08 M3).
+      const url = buildUploadUrl
+        ? buildUploadUrl(durationSeconds)
+        : `/voice/sessions/${encodeURIComponent(sessionId)}/upload` +
+          `?duration_seconds=${durationSeconds}`;
       const resp = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "audio/webm" },
         body: blob,
       });
       if (!resp.ok) {
-        throw new Error(`Upload failed: HTTP ${resp.status}`);
+        let detail = `HTTP ${resp.status}`;
+        try {
+          const body = await resp.json();
+          if (typeof body.detail === "string") detail = body.detail;
+        } catch {
+          // keep the status-only detail
+        }
+        if (onUploadError) onUploadError(resp.status, detail);
+        throw new Error(`Upload failed: ${detail}`);
       }
       const data = await resp.json();
       setState("uploaded");
       if (data.audio_url && onUploaded) {
         onUploaded(data.audio_url);
+      } else if (onUploaded) {
+        // The token-gated route returns the transcript, not an audio_url; still
+        // signal completion so the invitee surface can advance.
+        onUploaded(typeof data.transcript === "string" ? data.transcript : "");
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));

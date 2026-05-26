@@ -88,7 +88,12 @@ def test_full_operator_journey_to_public_publish(client, monkeypatch):
 
     # 6. Corroborate → the shared claim is multiply-attested.
     clusters = client.post(f"/speak/projects/{project_id}/corroborate").json()["clusters"]
-    assert any(c["label"] == "multiply_attested" for c in clusters)
+    attested = [c for c in clusters if c["label"] == "multiply_attested"]
+    assert attested
+    # The endpoint must carry the actual remembered statement (canonical_text),
+    # not just the machine label — the "what everyone agrees on" view renders it
+    # (SPR-08 sharpen: the field was omitted, so the surface fell back to the label).
+    assert all(c.get("canonical_text") for c in attested)
 
     # 7. Subject consent (deceased → documented rule).
     r = client.post(f"/speak/projects/{project_id}/subject-consent", json={

@@ -1,48 +1,63 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import WernerThinking from "../../brand/werner/animated/WernerThinking";
+import { LemonButton } from "../../components/lemon";
 import { apiFetch } from "../../lib/api";
-import Invites, { type InviteRow, type InviteStatus } from "./Invites";
+import {
+  assembleDraft,
+  getEconomics,
+  getProject,
+  inviteByEmail,
+  listVoices,
+  makeShareLink,
+  whatEveryoneAgreesOn,
+  type AgreementPoint,
+  type ArrivingVoice,
+  type AssembledDraft,
+  type EconomicsView,
+  type ProjectDetail,
+} from "../../lib/speakApi";
+import AIActionFailure from "../../shared/AIActionFailure";
+import Invites from "./Invites";
+import SpeakSettings from "./SpeakSettings";
 
 /**
- * Speak project console (specs/speak/) — the operator's workspace for
- * one biography project, wired to the /speak REST surface.
+ * Speak project page (Product Depth SPR-08 M2 + M4).
  *
- * The operator loop: invite stakeholders, watch their interviews,
- * corroborate across them, draft the biography, and publish per mode.
- * Every gate refusal (legal/consent/G7) surfaces its specific reason —
- * the UI never pretends a blocked action succeeded.
+ * The operator's verdict on the old console: "no focus and looks ugly." It
+ * was a flat wall of action verbs (corroborate · generate draft · publish ·
+ * quote paperback) over raw enums. This is a warm, focused page that does the
+ * one thing Speak is for: gather voices for someone and watch their story
+ * come together.
  *
- * Authoring + publishing reuse Write + Read under the hood; this surface
- * drives the Speak-owned orchestration. v1 is single-operator: invitees
- * are sources, not accounts (the public ecosystem is gated on G7).
+ *   1. one shareable link to invite the people who knew them;
+ *   2. the voices as they arrive (light polling while the page is open);
+ *   3. what everyone agrees on — corroboration, framed honestly as
+ *      "corroborated", NEVER "proven";
+ *   4. the assembling story (creator-only), with Werner present while it
+ *      assembles and an honest no-result state without model keys;
+ *   5. everything else — economics, the contributor split, publishing,
+ *      physical books — behind ONE calm Settings tap (SPR-08 M4).
+ *
+ * The substrate enums never reach this component: they're translated at the
+ * UI edge in lib/speakApi.ts.
  */
-interface Project {
-  project_id: string;
-  title: string;
-  subject_ref: string | null;
-  subject_status: string;
-  publish_intent: string;
-  invitation_mode: string;
-}
+type DraftState =
+  | { phase: "idle" }
+  | { phase: "assembling" }
+  | { phase: "ready"; draft: AssembledDraft }
+  | { phase: "failed" };
 
-interface Economics {
-  cell: string;
-  inference_margin: string;
-  split_applies: boolean;
-  creator_carries_cost: boolean;
-}
+type AgreeState =
+  | { phase: "idle" }
+  | { phase: "working" }
+  | { phase: "ready"; points: AgreementPoint[] }
+  | { phase: "failed" };
 
-interface LifecycleRow {
-  interview_id: string;
-  informant_email: string | null;
-  informant_handle: string | null;
-  status: string;
-  link: string | null;
-  required_consent_scopes: string[];
-}
+const POLL_MS = 8000;
 
-async function readError(resp: Response): Promise<string> {
+async function readDetail(resp: Response): Promise<string> {
   try {
     const body = await resp.json();
     return typeof body.detail === "string" ? body.detail : `HTTP ${resp.status}`;
@@ -53,173 +68,411 @@ async function readError(resp: Response): Promise<string> {
 
 export default function Speak() {
   const { projectId } = useParams<{ projectId: string }>();
-  const [project, setProject] = useState<Project | null>(null);
-  const [economics, setEconomics] = useState<Economics | null>(null);
-  const [invites, setInvites] = useState<InviteRow[]>([]);
+  const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [economics, setEconomics] = useState<EconomicsView | null>(null);
+  const [voices, setVoices] = useState<ArrivingVoice[]>([]);
+  const [shareLink, setShareLink] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const [actionLog, setActionLog] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [draftPublic, setDraftPublic] = useState(false);
-  const [draftProse, setDraftProse] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const [showSettings, setShowSettings] = useState(false);
+  const [draft, setDraft] = useState<DraftState>({ phase: "idle" });
+  const [agree, setAgree] = useState<AgreeState>({ phase: "idle" });
+
+  // Gated-action note (publish / book quote) — shown verbatim, never faked.
+  const [actionNote, setActionNote] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
     setError(null);
     try {
-      const [pr, ec, iv] = await Promise.all([
-        apiFetch(`/speak/projects/${projectId}`),
-        apiFetch(`/speak/projects/${projectId}/economics`),
-        apiFetch(`/speak/projects/${projectId}/invites`),
+      const [p, ec, vs] = await Promise.all([
+        getProject(projectId),
+        getEconomics(projectId).catch(() => null),
+        listVoices(projectId).catch(() => [] as ArrivingVoice[]),
       ]);
-      if (pr.ok) setProject(await pr.json());
-      else setError(`project: HTTP ${pr.status}`);
-      if (ec.ok) setEconomics(await ec.json());
-      if (iv.ok) {
-        const data = await iv.json();
-        const rows: LifecycleRow[] = Array.isArray(data.invites) ? data.invites : [];
-        setInvites(rows.map((r) => ({
-          interviewId: r.interview_id,
-          email: r.informant_email,
-          handle: r.informant_handle,
-          status: r.status as InviteStatus,
-          link: r.link ?? "",
-          requiredScopes: (r.required_consent_scopes ?? []) as InviteRow["requiredScopes"],
-        })));
-      }
+      setProject(p);
+      setEconomics(ec);
+      setVoices(vs);
+      // Seed the shareable link from the first existing invite, if any.
+      setShareLink((cur) => cur || vs.find((v) => v.link)?.link || "");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [projectId]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  // Light polling for arriving voices while the page is open. Refreshes just
+  // the voices (not the whole page) so an open Settings panel / draft stays
+  // put. Calm: no spinner, no churn when nothing changes.
+  useEffect(() => {
+    if (!projectId) return;
+    const t = window.setInterval(() => {
+      void listVoices(projectId)
+        .then(setVoices)
+        .catch(() => {/* keep the last good list; polling is best-effort */});
+    }, POLL_MS);
+    return () => window.clearInterval(t);
+  }, [projectId]);
+
+  const ensureShareLink = useCallback(async () => {
+    if (!projectId || shareLink) return;
+    try {
+      const link = await makeShareLink(projectId);
+      setShareLink(link);
+      await reload();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [projectId, shareLink, reload]);
+
+  const copyTimer = useRef<number | null>(null);
+  const copyLink = useCallback(() => {
+    if (!shareLink) return;
+    void navigator.clipboard?.writeText(shareLink);
+    setCopied(true);
+    if (copyTimer.current) window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(false), 1800);
+  }, [shareLink]);
 
   const invite = useCallback(async (email: string) => {
     if (!projectId) return;
-    const resp = await apiFetch(`/speak/projects/${projectId}/invites`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ informant_email: email }),
-    });
-    if (!resp.ok) { setActionError(await readError(resp)); return; }
-    await reload();
+    try {
+      await inviteByEmail(projectId, email);
+      await reload();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }, [projectId, reload]);
 
-  const runAction = useCallback(
-    async (label: string, path: string, body?: unknown, ok?: (data: unknown) => string) => {
+  const seeAgreement = useCallback(async () => {
+    if (!projectId) return;
+    setAgree({ phase: "working" });
+    try {
+      const points = await whatEveryoneAgreesOn(projectId);
+      setAgree({ phase: "ready", points });
+    } catch {
+      setAgree({ phase: "failed" });
+    }
+  }, [projectId]);
+
+  const assemble = useCallback(async () => {
+    if (!projectId) return;
+    setDraft({ phase: "assembling" });
+    try {
+      const d = await assembleDraft(projectId, project?.willBePublic ?? false);
+      setDraft({ phase: "ready", draft: d });
+    } catch {
+      setDraft({ phase: "failed" });
+    }
+  }, [projectId, project?.willBePublic]);
+
+  // The gated, money-adjacent actions (publish / book quote). They surface the
+  // backend's verbatim refusal (G2/G3) — never a pretend success.
+  const runGated = useCallback(
+    async (label: string, path: string, body: unknown) => {
       if (!projectId) return;
-      setActionError(null);
-      setActionLog(`${label}…`);
+      setActionBusy(true);
+      setActionNote(`${label}…`);
       try {
         const resp = await apiFetch(`/speak/projects/${projectId}${path}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body ?? {}),
+          body: JSON.stringify(body),
         });
-        const data = await resp.json().catch(() => ({}));
+        const detail = resp.ok ? null : await readDetail(resp);
         if (!resp.ok) {
-          setActionLog(null);
-          setActionError(`${label} refused: ${typeof data.detail === "string" ? data.detail : `HTTP ${resp.status}`}`);
+          setActionNote(`Not yet — ${detail}`);
           return;
         }
-        setActionLog(ok ? ok(data) : `${label} ✓`);
+        const data = await resp.json().catch(() => ({}));
+        if (label === "Publishing") {
+          setActionNote(
+            data.served
+              ? "Published."
+              : "Saved privately — not shared publicly (publishing is still gated).",
+          );
+        } else {
+          setActionNote(
+            `Paperback quote: $${data.cost_usd ?? "—"} (not ordered — fulfilment is gated).`,
+          );
+        }
         await reload();
       } catch (e: unknown) {
-        setActionLog(null);
-        setActionError(e instanceof Error ? e.message : String(e));
+        setActionNote(e instanceof Error ? e.message : String(e));
+      } finally {
+        setActionBusy(false);
       }
     },
     [projectId, reload],
   );
 
   if (!projectId) {
-    return <div className="p-6 font-mono text-[12px]">No project selected. <Link to="/speak" className="text-sun-deep underline">← projects</Link></div>;
+    return (
+      <div className="p-6 font-serif text-[14px] text-ink dark:text-bright">
+        No one selected.{" "}
+        <Link to="/speak" className="text-sun-deep underline dark:text-sun">
+          ← everyone you're remembering
+        </Link>
+      </div>
+    );
   }
 
+  const arrived = voices.filter((v) => v.state === "shared" || v.state === "recording");
+
   return (
-    <div className="h-full overflow-y-auto p-6 bg-ice-0 dark:bg-charcoal-2 max-w-3xl mx-auto">
-      <Link to="/speak" className="font-mono text-[10px] text-sun-deep dark:text-sun hover:underline">
-        ← all projects
-      </Link>
-      <header className="mt-2 mb-4">
-        <h1 className="text-lg font-serif text-ink dark:text-bright">
-          {project?.title ?? projectId}
-        </h1>
-        {project && (
-          <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight mt-1">
-            {project.publish_intent.replace(/_/g, " ")}
-            {project.subject_ref && ` · subject: ${project.subject_ref} (${project.subject_status})`}
-          </p>
-        )}
-        {economics && (
-          <p className="text-[10px] font-mono mt-1 text-aurora">
-            economics: {economics.cell} · margin {economics.inference_margin} ·
-            {economics.split_applies ? " 70% contributor split" : " creator carries cost"}
-          </p>
-        )}
-      </header>
+    <div className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+      <div className="mx-auto max-w-2xl px-6 py-8">
+        <Link
+          to="/speak"
+          className="font-mono text-[10px] text-sun-deep hover:underline dark:text-sun"
+        >
+          ← everyone you're remembering
+        </Link>
 
-      {error && <p className="text-[12px] text-emperor font-mono mb-2">{error}</p>}
+        <header className="mb-5 mt-2 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
+              {project?.name ?? "Their story"}
+            </h1>
+            <p className="mt-0.5 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+              {project?.willBePublic ? "Will be shared publicly" : "Kept private"}
+            </p>
+          </div>
+          <LemonButton
+            variant="tertiary"
+            size="sm"
+            onClick={() => setShowSettings((v) => !v)}
+            aria-expanded={showSettings}
+          >
+            {showSettings ? "Done" : "Settings"}
+          </LemonButton>
+        </header>
 
-      <section className="mb-5">
-        <Invites
-          projectTitle={project?.title ?? projectId}
-          publishIntent={
-            project?.publish_intent === "will_be_public" ? "will_be_public" : "private_never_published"
-          }
-          invites={invites}
-          onInvite={invite}
-        />
-      </section>
+        {error && <p className="mb-3 font-mono text-[12px] text-emperor">{error}</p>}
 
-      <section className="border-2 border-ink rounded p-3">
-        <h2 className="text-xs font-mono uppercase tracking-wider mb-2 text-shadow-1 dark:text-moonlight">
-          Author &amp; publish
-        </h2>
-        <div className="flex flex-wrap gap-2 items-center">
-          <button type="button" onClick={() => void runAction(
-            "corroborate", "/corroborate", {},
-            (d) => `corroborate ✓ — ${(d as { clusters?: unknown[] }).clusters?.length ?? 0} clusters`,
-          )} className="font-mono text-[11px] px-3 py-1 border border-ink rounded text-sun-deep dark:text-sun hover:underline">
-            corroborate
-          </button>
-          <label className="font-mono text-[10px] flex items-center gap-1 text-ink-mute dark:text-moonlight">
-            <input type="checkbox" checked={draftPublic} onChange={(e) => setDraftPublic(e.target.checked)} />
-            public
-          </label>
-          <button type="button" onClick={() => void runAction(
-            "draft", "/draft", { public: draftPublic },
-            (d) => {
-              const data = d as { prose_text?: string; excluded_claim_ids?: unknown[] };
-              setDraftProse(data.prose_text ?? "");
-              return `draft ✓ — ${(data.excluded_claim_ids ?? []).length} excluded`;
-            },
-          )} className="font-mono text-[11px] px-3 py-1 border border-ink rounded text-sun-deep dark:text-sun hover:underline">
-            generate draft
-          </button>
-          <button type="button" onClick={() => void runAction(
-            "publish", "/publish", {},
-            (d) => {
-              const data = d as { served?: boolean; servability?: string };
-              return `publish ✓ — ${data.served ? "served" : "not served"} (${data.servability})`;
-            },
-          )} className="font-mono text-[11px] px-3 py-1 border border-ink rounded text-sun-deep dark:text-sun hover:underline">
-            publish
-          </button>
-          <button type="button" onClick={() => void runAction(
-            "book order", "/book-orders", { book_format: "paperback", page_count: 200 },
-            (d) => `book quote ✓ — $${(d as { cost_usd?: string }).cost_usd} (${(d as { payer?: string }).payer})`,
-          )} className="font-mono text-[11px] px-3 py-1 border border-ink rounded text-sun-deep dark:text-sun hover:underline">
-            quote paperback
-          </button>
-        </div>
-        {actionLog && <p className="mt-2 text-[11px] font-mono text-aurora">{actionLog}</p>}
-        {actionError && <p className="mt-2 text-[11px] font-mono text-emperor">{actionError}</p>}
-        {draftProse !== null && (
-          <pre className="mt-3 p-2 text-[12px] font-serif whitespace-pre-wrap border border-ink-mute/40 rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright max-h-64 overflow-y-auto">
-            {draftProse || "(empty draft — thin project, no padding)"}
-          </pre>
+        {showSettings ? (
+          <SpeakSettings
+            willBePublic={project?.willBePublic ?? false}
+            subjectStatusWord={project?.subjectStatusWord ?? null}
+            economics={economics}
+            actionNote={actionNote}
+            busy={actionBusy}
+            onPublish={() => void runGated("Publishing", "/publish", {})}
+            onQuoteBook={() =>
+              void runGated("Quote", "/book-orders", { book_format: "paperback", page_count: 200 })
+            }
+          />
+        ) : (
+          <>
+            {/* 1 · Invite by link */}
+            <section className="mb-5 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
+              <h2 className="font-serif text-[16px] text-ink dark:text-bright">
+                Invite the people who knew them
+              </h2>
+              <p className="mt-0.5 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+                Share one link. Anyone who has it can record their memories —
+                in their own voice, on their own time. No account needed.
+              </p>
+              {shareLink ? (
+                <div className="mt-3 flex items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded border border-rule bg-ice-1 px-2 py-1.5 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright">
+                    {shareLink}
+                  </code>
+                  <LemonButton variant="primary" size="sm" onClick={copyLink}>
+                    {copied ? "Copied" : "Copy link"}
+                  </LemonButton>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <LemonButton variant="primary" size="sm" onClick={() => void ensureShareLink()}>
+                    Get a shareable link
+                  </LemonButton>
+                </div>
+              )}
+              <details className="mt-3">
+                <summary className="cursor-pointer font-mono text-[11px] text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright">
+                  or invite someone by email
+                </summary>
+                <div className="mt-2">
+                  <Invites
+                    projectTitle={project?.name ?? "this story"}
+                    publishIntent={
+                      project?.willBePublic ? "will_be_public" : "private_never_published"
+                    }
+                    invites={voices.map((v) => ({
+                      interviewId: v.interviewId,
+                      email: v.who,
+                      handle: null,
+                      status:
+                        v.state === "recording"
+                          ? "in_progress"
+                          : v.state === "shared"
+                          ? "completed"
+                          : v.state === "declined"
+                          ? "declined"
+                          : v.state === "unfinished"
+                          ? "incomplete"
+                          : "invited",
+                      link: v.link,
+                      requiredScopes: ["record"],
+                    }))}
+                    onInvite={invite}
+                  />
+                </div>
+              </details>
+            </section>
+
+            {/* 2 · Arriving voices */}
+            <section className="mb-5">
+              <h2 className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                Voices ({arrived.length})
+              </h2>
+              {voices.length === 0 ? (
+                <p className="font-serif text-[13px] italic text-ink-mute dark:text-moonlight">
+                  No voices yet. Share the link above — they'll appear here as
+                  people record.
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {voices.map((v) => (
+                    <li
+                      key={v.interviewId}
+                      className="flex items-center justify-between gap-3 rounded border border-rule px-3 py-2 dark:border-charcoal-1"
+                    >
+                      <span className="min-w-0 truncate font-serif text-[14px] text-ink dark:text-bright">
+                        {v.who}
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                        {v.state === "shared"
+                          ? "shared"
+                          : v.state === "recording"
+                          ? "recording…"
+                          : v.state === "declined"
+                          ? "declined"
+                          : v.state === "unfinished"
+                          ? "started"
+                          : "invited"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {/* 3 · What everyone agrees on (corroboration — honest) */}
+            <section className="mb-5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                  What everyone agrees on
+                </h2>
+                <LemonButton variant="tertiary" size="sm" onClick={() => void seeAgreement()}>
+                  {agree.phase === "working" ? "Looking…" : "Refresh"}
+                </LemonButton>
+              </div>
+              {agree.phase === "idle" && (
+                <p className="font-serif text-[13px] italic text-ink-mute dark:text-moonlight">
+                  Once a few people have shared, see where their memories line
+                  up — and where they remember things differently.
+                </p>
+              )}
+              {agree.phase === "working" && (
+                <div className="py-1">
+                  <WernerThinking size={28} label="Comparing the voices" />
+                </div>
+              )}
+              {agree.phase === "failed" && (
+                <AIActionFailure
+                  title="We couldn't compare the voices"
+                  onRetry={() => void seeAgreement()}
+                />
+              )}
+              {agree.phase === "ready" &&
+                (agree.points.length === 0 ? (
+                  <p className="font-serif text-[13px] italic text-ink-mute dark:text-moonlight">
+                    Nothing to compare yet — when two people mention the same
+                    thing, it'll show up here.
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {agree.points.map((pt, i) => (
+                      <li
+                        key={i}
+                        className="rounded border border-rule px-3 py-2 dark:border-charcoal-1"
+                      >
+                        <p className="font-serif text-[14px] text-ink dark:text-bright">
+                          {pt.text}
+                        </p>
+                        <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                          {pt.kind === "corroborated"
+                            ? `Corroborated · ${pt.voices} people independently remember this`
+                            : pt.kind === "disagreement"
+                            ? "People remember this differently — both kept"
+                            : "One person so far"}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ))}
+            </section>
+
+            {/* 4 · The assembling story (creator-only) */}
+            <section className="mb-2">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h2 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+                  Their story, so far
+                </h2>
+                <LemonButton
+                  variant="secondary"
+                  size="sm"
+                  disabled={draft.phase === "assembling"}
+                  onClick={() => void assemble()}
+                >
+                  {draft.phase === "ready" ? "Reassemble" : "Assemble the story"}
+                </LemonButton>
+              </div>
+              <p className="mb-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                Only you see this draft — each contributor only sees what they
+                shared.
+              </p>
+              {draft.phase === "assembling" && (
+                <div className="rounded-md border border-rule p-4 dark:border-charcoal-1">
+                  <WernerThinking size={32} label="Assembling their story" />
+                  <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+                    Drawing the story together from what everyone shared…
+                  </p>
+                </div>
+              )}
+              {draft.phase === "failed" && (
+                <AIActionFailure
+                  title="The story couldn't be assembled"
+                  onRetry={() => void assemble()}
+                  retryLabel="Try again"
+                />
+              )}
+              {draft.phase === "ready" && (
+                <div className="rounded-md border border-rule p-4 dark:border-charcoal-1">
+                  <p className="whitespace-pre-wrap font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
+                    {draft.draft.prose || "It's still thin — invite a few more voices and try again."}
+                  </p>
+                  {draft.draft.excludedCount > 0 && (
+                    <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                      {draft.draft.excludedCount} memory
+                      {draft.draft.excludedCount === 1 ? " was" : "ies were"} left
+                      out — only one person mentioned them, or people disagreed,
+                      so they aren't in the story yet.
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+          </>
         )}
-      </section>
+      </div>
     </div>
   );
 }

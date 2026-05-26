@@ -138,8 +138,11 @@ export const WORKFLOWS: Record<Exclude<Workflow, "shared">, WorkflowMeta> = {
   speak: {
     id: "speak",
     label: "Speak",
-    tagline: "Interview-as-acquisition: invite, capture, corroborate.",
-    nouns: ["Interview projects", "Contributors", "Invites"],
+    // Speak SPR-08: a warm, human tagline + nouns — DeepBlu biography-as-a-
+    // service, not "interview-as-acquisition". Someone you want to remember;
+    // the people who knew them; the voices they leave.
+    tagline: "Remember someone — invite their people and gather their voices.",
+    nouns: ["People to remember", "Their people", "Voices"],
     defaultRoute: "/speak",
   },
 };
@@ -372,21 +375,30 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/speak/invite/:token",
   },
+  // Speak SPR-08 ONE DOOR: the duplicate Interview surface folds into Speak
+  // (mirrors the SPR-05 InvestigationsIndex fold). Their capability — capture,
+  // transcript, corroboration, the per-informant index — is preserved inside
+  // the Speak console + home; the components stay on disk. Routing is retired:
+  //   /interviews        → redirects to /speak (the warm home)
+  //   /interview/:id      → redirects to /speak (the one door)
+  // so the canonical route for both surfaces is now /speak. (The completeness
+  // test keeps these entries honest: built=true must have a reachable route,
+  // and /speak is reachable.)
   {
     id: "Interview",
     workflow: "speak",
     label: "Interview",
-    blurb: "Loop-4 interview capture surface (recording/transcript/notes).",
+    blurb: "Interview capture (recording/transcript/notes) — folded into the Speak console (SPR-08).",
     built: true,
-    route: "/interview/:interviewId",
+    route: "/speak",
   },
   {
     id: "InterviewIndex",
     workflow: "speak",
     label: "Interviews",
-    blurb: "Projects + invited informants index.",
+    blurb: "Projects + invited informants — folded into the Speak home (SPR-08).",
     built: true,
-    route: "/interviews",
+    route: "/speak",
   },
 
   // ── SHARED / OPERATOR / GOVERNANCE ────────────────────────────────

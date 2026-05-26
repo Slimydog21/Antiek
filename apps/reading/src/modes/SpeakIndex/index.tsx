@@ -1,57 +1,44 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-import { apiFetch } from "../../lib/api";
+import Werner from "../../brand/Werner";
+import { LemonButton } from "../../components/lemon";
+import { createPerson, listPeople, type RememberedPerson } from "../../lib/speakApi";
+import AIActionFailure from "../../shared/AIActionFailure";
 
 /**
- * Speak index — the operator's biography-project surface (specs/speak/).
+ * Speak home — the warm one-door entry (Product Depth SPR-08 M1).
  *
- * Lists every Speak project and lets the operator create one. Each
- * project links to /speak/:projectId where the console (invites,
- * corroboration, draft, publish) lives. Wires the /speak REST surface
- * (interfaces/research/api/speak_routes.py).
+ * The operator's verdict on the old console was "no focus and looks ugly":
+ * the create form was a wall of enums (subject status, publish intent) the
+ * first-time user shouldn't have to reason about. This replaces it with one
+ * warm question — "Who do you want to remember?" — type a name, get a
+ * project, land on it. The status + publish details that used to live here
+ * move BEHIND the project (one calm Settings tap, SPR-08 M4), with a safe
+ * private default; they are never the first thing you see.
  *
- * Speak is interview-as-acquisition: invite a subject's friends and
- * family, interview them, corroborate across them, author with Write,
- * publish with Read. This page is the entry point.
+ * This is also the ONE DOOR for interview-as-acquisition (SPR-08 M1): the
+ * duplicate /interviews index now redirects here, and its substance — the
+ * invitees, their recordings, corroboration — lives inside each project.
+ *
+ * No engineering string is shown: the substrate enums are translated at the
+ * UI edge (lib/speakApi.ts); a person is named by their name, never an id.
  */
-interface SpeakProjectRow {
-  project_id: string;
-  title: string;
-  subject_ref: string | null;
-  subject_status: string;
-  publish_intent: string;
-  invitation_mode: string;
-  interview_count: number;
-  created_at: string | null;
-}
-
-const SUBJECT_STATUSES = ["unknown", "living", "deceased", "non_identifiable"] as const;
-const PUBLISH_INTENTS = ["private_never_published", "will_be_public"] as const;
-
 export default function SpeakIndex() {
-  const [projects, setProjects] = useState<SpeakProjectRow[]>([]);
+  const navigate = useNavigate();
+  const [people, setPeople] = useState<RememberedPerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [title, setTitle] = useState("");
-  const [subjectRef, setSubjectRef] = useState("");
-  const [subjectStatus, setSubjectStatus] = useState<(typeof SUBJECT_STATUSES)[number]>("unknown");
-  const [publishIntent, setPublishIntent] =
-    useState<(typeof PUBLISH_INTENTS)[number]>("private_never_published");
+  const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [createFailed, setCreateFailed] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiFetch("/speak/projects");
-      if (!resp.ok) {
-        setError(`HTTP ${resp.status}`);
-        return;
-      }
-      const data = await resp.json();
-      setProjects(Array.isArray(data.projects) ? data.projects : []);
+      setPeople(await listPeople());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -63,137 +50,119 @@ export default function SpeakIndex() {
     void reload();
   }, [reload]);
 
+  // The one warm action: name a person → get a project → land on it. The
+  // subject details + publish mode default safely (unknown / kept private)
+  // and are adjustable behind the project's Settings (SPR-08 M4), never on
+  // this first screen.
   const create = useCallback(async () => {
-    if (!title.trim()) return;
+    if (!name.trim()) return;
     setSubmitting(true);
     setError(null);
+    setCreateFailed(false);
     try {
-      const resp = await apiFetch("/speak/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          subject_ref: subjectRef.trim() || null,
-          subject_status: subjectStatus,
-          publish_intent: publishIntent,
-        }),
-      });
-      if (!resp.ok) {
-        setError(`create failed: HTTP ${resp.status}`);
-        return;
-      }
-      setTitle("");
-      setSubjectRef("");
-      await reload();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const id = await createPerson(name);
+      navigate(`/speak/${id}`);
+    } catch {
+      setCreateFailed(true);
     } finally {
       setSubmitting(false);
     }
-  }, [title, subjectRef, subjectStatus, publishIntent, reload]);
+  }, [name, navigate]);
 
   return (
-    <div className="h-full overflow-y-auto p-6 bg-ice-0 dark:bg-charcoal-2 max-w-3xl mx-auto">
-      <header className="mb-4">
-        <h1 className="text-lg font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-          Speak · biography projects
-        </h1>
-        <p className="text-[12px] font-serif text-ink-mute dark:text-moonlight mt-1">
-          Invite a subject's friends and family, interview them, corroborate across
-          them, then author + publish. Invitees are sources, not accounts.
-        </p>
-      </header>
-
-      <section className="border-2 border-ink rounded p-3 mb-5">
-        <h2 className="text-xs font-mono uppercase tracking-wider mb-2 text-shadow-1 dark:text-moonlight">
-          New project
-        </h2>
-        <div className="flex flex-col gap-2">
-          <input
-            value={title}
-            placeholder="Title (e.g. Dad's biography)"
-            onChange={(e) => setTitle(e.target.value)}
-            className="font-serif text-[14px] px-2 py-1 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
-          />
-          <input
-            value={subjectRef}
-            placeholder="Subject reference (who the biography is about)"
-            onChange={(e) => setSubjectRef(e.target.value)}
-            className="font-serif text-[14px] px-2 py-1 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
-          />
-          <div className="flex gap-2">
-            <select
-              value={subjectStatus}
-              onChange={(e) => setSubjectStatus(e.target.value as (typeof SUBJECT_STATUSES)[number])}
-              className="font-mono text-[11px] px-2 py-1 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
-            >
-              {SUBJECT_STATUSES.map((s) => (
-                <option key={s} value={s}>subject: {s}</option>
-              ))}
-            </select>
-            <select
-              value={publishIntent}
-              onChange={(e) => setPublishIntent(e.target.value as (typeof PUBLISH_INTENTS)[number])}
-              className="font-mono text-[11px] px-2 py-1 border border-ink-mute rounded bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright"
-            >
-              {PUBLISH_INTENTS.map((p) => (
-                <option key={p} value={p}>{p.replace(/_/g, " ")}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => void create()}
-              disabled={submitting || !title.trim()}
-              className="font-mono text-[11px] px-3 py-1 border border-ink rounded text-sun-deep dark:text-sun hover:underline disabled:opacity-40"
-            >
-              create
-            </button>
-          </div>
-          {publishIntent === "will_be_public" && (
-            <p className="text-[10px] font-mono text-warning dark:text-sun">
-              will-be-public ⇒ invites capture publish-scope consent; public
-              publishing is gated on the legal gate (G2/G3).
+    <div className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+      <div className="mx-auto max-w-2xl px-6 py-10">
+        <header className="mb-7 flex items-start gap-3">
+          <Werner mood="idle" size={44} />
+          <div>
+            <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
+              Who do you want to remember?
+            </h1>
+            <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
+              Name someone, then invite the people who knew them. Each records
+              their memories — in their own voice, on their own time — and
+              their story comes together from what everyone shares.
             </p>
-          )}
-        </div>
-      </section>
+          </div>
+        </header>
 
-      {error && <p className="text-[12px] text-emperor font-mono mb-2">{error}</p>}
-      {loading ? (
-        <p className="text-[12px] italic text-ink-mute dark:text-moonlight font-serif">Loading…</p>
-      ) : projects.length === 0 ? (
-        <p className="text-[12px] italic text-ink-mute dark:text-moonlight font-serif">
-          No projects yet — create one above.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {projects.map((p) => (
-            <li key={p.project_id}>
-              <Link
-                to={`/speak/${p.project_id}`}
-                className="block border border-ink-mute/40 rounded p-3 hover:border-ink transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-serif text-[15px] text-ink dark:text-bright">{p.title}</span>
-                  <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight">
-                    {p.interview_count} invitee{p.interview_count === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div className="flex gap-2 mt-1">
-                  <span className="font-mono text-[9px] uppercase tracking-wider text-sun-deep dark:text-sun">
-                    {p.publish_intent.replace(/_/g, " ")}
-                  </span>
-                  {p.subject_ref && (
-                    <span className="font-mono text-[9px] text-ink-mute dark:text-moonlight">
-                      subject: {p.subject_ref} ({p.subject_status})
-                    </span>
-                  )}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+          className="mb-8 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+        >
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="A name — e.g. my grandmother, Dad, Maria"
+            aria-label="Who do you want to remember?"
+            className="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+          />
+          <LemonButton
+            type="submit"
+            variant="primary"
+            disabled={submitting || !name.trim()}
+          >
+            {submitting ? "Starting…" : "Start their story"}
+          </LemonButton>
+        </form>
+
+        {createFailed && (
+          <div className="mb-6">
+            <AIActionFailure
+              title="We couldn't start that story"
+              onRetry={() => void create()}
+              retryLabel="Try again"
+            />
+          </div>
+        )}
+
+        {error && (
+          <p className="mb-3 font-mono text-[12px] text-emperor">{error}</p>
+        )}
+
+        {loading ? (
+          <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
+            Loading…
+          </p>
+        ) : people.length === 0 ? (
+          <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
+            No one yet — name the first person above.
+          </p>
+        ) : (
+          <section>
+            <h2 className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+              The people you're remembering
+            </h2>
+            <ul className="space-y-2">
+              {people.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    to={`/speak/${p.id}`}
+                    className="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-serif text-[16px] text-ink dark:text-bright">
+                        {p.name}
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
+                        {p.voiceCount === 0
+                          ? "no voices yet"
+                          : `${p.voiceCount} voice${p.voiceCount === 1 ? "" : "s"}`}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                      {p.willBePublic ? "Will be shared publicly" : "Kept private"}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

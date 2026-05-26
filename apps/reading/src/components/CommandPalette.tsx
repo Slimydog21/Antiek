@@ -203,10 +203,10 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
-    id: "route:interviews",
-    title: "Interviews",
-    subtitle: "Projects + invited informants (/interviews)",
-    path: "/interviews",
+    id: "route:speak",
+    title: "Speak",
+    subtitle: "Remember someone — invite their people, gather their voices (/speak)",
+    path: "/speak",
   },
   {
     kind: "route",

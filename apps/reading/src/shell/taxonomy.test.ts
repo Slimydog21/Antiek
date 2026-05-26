@@ -259,3 +259,35 @@ describe("Write door re-home (Write SPR-07)", () => {
     expect(workflowForPath("/create")).toBe("write");
   });
 });
+
+/**
+ * Speak SPR-08 — ONE DOOR. The duplicate Interview surface is folded into
+ * Speak (mirrors the SPR-05 InvestigationsIndex fold). Pinned so a future nav
+ * change can't silently re-create a second door to interview-as-acquisition.
+ */
+describe("Speak one-door consolidation (Speak SPR-08)", () => {
+  it("there is exactly one Speak door — /speak", () => {
+    expect(WORKFLOWS.speak.defaultRoute).toBe("/speak");
+    expect(WORKFLOWS.speak.defaultRoute).not.toBe("/interviews");
+  });
+
+  it("the Interview surfaces fold into Speak (capability preserved, no second door)", () => {
+    for (const id of ["Interview", "InterviewIndex"]) {
+      const m = modeById(id);
+      expect(m, `${id} must still exist (capability preserved)`).toBeDefined();
+      expect(m?.workflow).toBe("speak"); // still Speak — it IS Speak
+      expect(m?.built).toBe(true); // reachable…
+      expect(m?.route).toBe("/speak"); // …because it folds into the one door
+      // The old standalone doors are no longer the route for these surfaces.
+      expect(m?.route).not.toBe("/interviews");
+      expect(m?.route).not.toBe("/interview/:interviewId");
+    }
+  });
+
+  it("the Speak landing resolves to the home, and /speak resolves to speak", () => {
+    const landing = landingModeForWorkflow("speak");
+    expect(landing?.route).toBe("/speak");
+    expect(workflowForPath("/speak")).toBe("speak");
+    expect(workflowForPath("/speak/p-123")).toBe("speak");
+  });
+});
