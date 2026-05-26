@@ -90,6 +90,21 @@ def test_place_and_list_blocks(client, seed):
     assert blocks["blocks"][0]["node_id"] == seed["node"]
 
 
+def test_list_blocks_carries_node_label_for_id_free_render(client, seed):
+    """The routed outline (Product Depth SPR-07) renders block TEXT, never an
+    id. A graph-node block carries no `content` (its text is on the node), so
+    the list endpoint resolves the node's canonical label as `node_label` so
+    the UI has text to show without ever surfacing the node_id."""
+    client.post("/write/blocks", json={
+        "section_id": seed["section_id"], "block_kind": "insight",
+        "provenance_kind": "graph_node", "node_id": seed["node"], "block_index": 0,
+    })
+    b = client.get(f"/write/sections/{seed['section_id']}/blocks").json()["blocks"][0]
+    # content is null for a graph-node block; node_label carries the text.
+    assert b["content"] is None
+    assert b["node_label"] == "a sourced insight"
+
+
 def test_place_block_rejects_orphan_prose(client, seed):
     """The no-orphan-prose invariant surfaces as a 400 over HTTP."""
     r = client.post("/write/blocks", json={

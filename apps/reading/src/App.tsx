@@ -42,6 +42,7 @@ import SpeakIndex from "./modes/SpeakIndex";
 import SpeakInvite from "./modes/SpeakInvite";
 import Stats from "./modes/Stats";
 import TrustCenter from "./modes/TrustCenter";
+import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
 
 /**
@@ -95,6 +96,13 @@ function AuthenticatedRoutes() {
         <Route path="/wrestle" element={<WrestleApp />} />
         <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
+        {/* Write SPR-07 door re-home: the Write door opens on WriteHome — the
+            real blocks → outline → generate → edit loop — not the legacy
+            CreationStudio "select or create a deliverable" dead-end. The studio
+            stays reachable at /create (a demoted power surface, off the door),
+            its capability untouched; the door is /write (write.defaultRoute). */}
+        <Route path="/write" element={<WriteHome />} />
+        <Route path="/write/:deliverableId" element={<WriteHome />} />
         <Route path="/create" element={<CreationStudio />} />
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />

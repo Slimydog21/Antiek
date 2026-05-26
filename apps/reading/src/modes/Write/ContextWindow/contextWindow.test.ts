@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
-import type { ContextWindowState } from "./contextWindow";
-import { contextToPromoteRequest, generatability, itemToSpec } from "./contextWindow";
+import type { ContextWindowState } from "./contextWindowState";
+import { contextToPromoteRequest, generatability, itemToSpec } from "./contextWindowState";
 
 /**
  * The pre-outline context window's pure core (SPR-08): state → promote

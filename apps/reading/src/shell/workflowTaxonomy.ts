@@ -125,9 +125,15 @@ export const WORKFLOWS: Record<Exclude<Workflow, "shared">, WorkflowMeta> = {
   write: {
     id: "write",
     label: "Write",
-    tagline: "Compose deliverables from your block repository.",
-    nouns: ["Deliverables", "Block repository"],
-    defaultRoute: "/create",
+    // Write SPR-07 door re-home: the Write door opens on the real lego-block
+    // loop (WriteHome at /write) — pull research notes into an outline,
+    // generate a draft from them, edit in the real editor — not the legacy
+    // CreationStudio "select or create a deliverable" dead-end (now a demoted
+    // power surface at /create, off the door). The tagline + nouns lead with
+    // the loop, not the studio.
+    tagline: "Pull your notes into an outline, draft from them, then edit.",
+    nouns: ["Pieces", "Block repository"],
+    defaultRoute: "/write",
   },
   speak: {
     id: "speak",
@@ -301,14 +307,22 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   },
 
   // ── WRITE ─────────────────────────────────────────────────────────
-  // Create (the section-based studio) folds into Write. The Write SPR-03/04
-  // component modes (Repository, Editor) are BUILT but not yet routed —
-  // honest: built=false until they have a route or panel mount.
+  // Write SPR-07: the door is the real lego-block loop — WriteHome at /write
+  // composes the block repository (tap-to-add picker) + the legible outline +
+  // the real editor + the brainstorm on-ramp. The Write SPR-03/04 component
+  // modes (Repository, Editor) are now MOUNTED inside that surface, so they
+  // are reachable (built=true, route=/write — the door they live on). The
+  // legacy CreationStudio is demoted to a power surface at /create (still
+  // Write — it IS writing — but off the door; capability untouched).
   {
     id: "CreationStudio",
     workflow: "write",
+    // Write SPR-07: demoted from "the Write home" to a power surface. It stays
+    // in Write, reachable at /create + ⌘K, but it is no longer the door — the
+    // real loop (WriteHome) is. (The "attach by id" dead-end the experience-
+    // spec flagged is bypassed by the door re-home, not the studio's own code.)
     label: "Creation studio",
-    blurb: "Section-based Lego-block writing surface (Mode C). The Write home today.",
+    blurb: "Section-based writing surface (power surface; not the Write door).",
     built: true,
     route: "/create",
   },
@@ -316,17 +330,19 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     id: "Write/Repository",
     workflow: "write",
     label: "Block repository",
-    blurb: "The block repository the Write editor composes from (Write SPR-03).",
-    // Built as a component but not yet routed or panel-registered — the
-    // honest-stub system surfaces this rather than faking a screen.
-    built: false,
+    blurb: "Tap-to-add block picker the Write loop composes from (Write SPR-03; routed SPR-07).",
+    // Mounted inside WriteHome — reachable on the Write door (/write).
+    built: true,
+    route: "/write",
   },
   {
     id: "Write/Editor",
     workflow: "write",
     label: "Write editor",
-    blurb: "Structured block editor over the repository (Write SPR-04).",
-    built: false,
+    blurb: "Real structured block editor where the generated draft lands (Write SPR-04; mounted SPR-07).",
+    // Mounted inside WriteHome — reachable on the Write door (/write).
+    built: true,
+    route: "/write",
   },
 
   // ── SPEAK ─────────────────────────────────────────────────────────

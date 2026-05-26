@@ -103,6 +103,80 @@ export async function placeBlock(body: PlaceBlockBody): Promise<string> {
   return r.outline_block_id;
 }
 
+/** One block as it sits in a section's outline.
+ *
+ * `node_label` is the node's text for a graph-node block (whose `content`
+ * is null — the text lives on the node); the routed outline renders this,
+ * NEVER the `outline_block_id` / `node_id` (SPR-07 M2 no-UUID gate). The
+ * raw ids are present for the move/reorder API only, never for display. */
+export interface OutlineBlockView {
+  outline_block_id: string;
+  section_id: string;
+  block_kind: string;
+  provenance_kind: string;
+  node_id: string | null;
+  /** User-authored prose, when this block isn't node-backed. */
+  content: string | null;
+  /** The node's canonical label, for a graph-node block. */
+  node_label: string | null;
+  block_index: number;
+  is_user_originated: boolean;
+}
+
+/** The display text for an outline block — never an id. Falls back to a
+ * plain placeholder rather than leaking a handle. */
+export function blockDisplayText(b: OutlineBlockView): string {
+  return (b.content || b.node_label || "").trim() || "(untitled block)";
+}
+
+/** Read a section's blocks (for the routed outline). */
+export async function getSectionBlocks(
+  sectionId: string,
+): Promise<OutlineBlockView[]> {
+  const body = await _json<{ blocks: OutlineBlockView[] }>(
+    await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/blocks`),
+    "GET /write/sections/{id}/blocks",
+  );
+  return body.blocks;
+}
+
+/** Move/reorder a placed block within or across sections (drag-to-reorder). */
+export async function moveBlock(
+  outlineBlockId: string,
+  toSectionId: string,
+  toIndex: number,
+): Promise<void> {
+  await _json<unknown>(
+    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_section_id: toSectionId, to_index: toIndex }),
+    }),
+    "POST /write/blocks/{id}/move",
+  );
+}
+
+export interface TraceTarget {
+  kind: string;
+  /** The no-leak bit: false ⟹ the source is gated, only metadata is shown. */
+  full_text_allowed: boolean;
+  document_id: string | null;
+  document_title: string | null;
+  chunk_ids: string[];
+  servability_status: string | null;
+  detail: string | null;
+}
+
+/** Resolve a placed block's trace target (the source the citation chip
+ * opens). Honest about gating: `full_text_allowed=false` for a gated source
+ * (§9.0 no-leak). The shared reader that opens it is DRW SPR-10. */
+export async function getTraceTarget(outlineBlockId: string): Promise<TraceTarget> {
+  return _json<TraceTarget>(
+    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/trace`),
+    "GET /write/blocks/{id}/trace",
+  );
+}
+
 export interface PromoteResult {
   deliverable_id: string;
   section_id: string;

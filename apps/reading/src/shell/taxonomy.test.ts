@@ -209,3 +209,53 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     expect(workflowForPath("/library")).toBe("read");
   });
 });
+
+/**
+ * Write SPR-07 — the door re-home, pinned so a future nav change can't
+ * silently revert it (rigor #5, defensibility). Mirrors the Read SPR-06
+ * pattern: the door opens on the real lego-block loop, the legacy studio is
+ * demoted but reachable.
+ */
+describe("Write door re-home (Write SPR-07)", () => {
+  it("the Write door opens on the real loop (/write), not the legacy studio (/create)", () => {
+    // Clicking the Write rail door navigates WORKFLOWS.write.defaultRoute; it
+    // must land on WriteHome (the blocks → outline → generate → edit loop),
+    // never the CreationStudio "select or create a deliverable" dead-end.
+    expect(WORKFLOWS.write.defaultRoute).toBe("/write");
+    expect(WORKFLOWS.write.defaultRoute).not.toBe("/create");
+  });
+
+  it("the Write landing surface resolves on /write (ThreadJump + stub agree)", () => {
+    // landingModeForWorkflow is the single source ThreadJump uses; it must
+    // agree with the door so the re-home holds everywhere, not just on the rail.
+    const landing = landingModeForWorkflow("write");
+    expect(landing?.workflow).toBe("write");
+    expect(landing?.route).toBe("/write");
+  });
+
+  it("the Write component modes (Repository, Editor) are mounted on the door", () => {
+    for (const id of ["Write/Repository", "Write/Editor"]) {
+      const m = modeById(id);
+      expect(m, `${id} must exist`).toBeDefined();
+      expect(m?.workflow).toBe("write");
+      // Now reachable (mounted inside WriteHome) — built + on the door route.
+      expect(m?.built, `${id} must be built (mounted in WriteHome)`).toBe(true);
+      expect(m?.route).toBe("/write");
+    }
+  });
+
+  it("the legacy CreationStudio stays reachable (a demoted power surface), just not the door", () => {
+    const studio = modeById("CreationStudio");
+    expect(studio?.workflow).toBe("write"); // still Write — it IS writing
+    expect(studio?.built).toBe(true);
+    expect(studio?.route).toBe("/create");
+    expect(WORKFLOWS.write.defaultRoute).not.toBe(studio?.route); // not the door
+  });
+
+  it("the Write door resolves to write (active-rail state)", () => {
+    expect(workflowForPath("/write")).toBe("write");
+    expect(workflowForPath("/write/dlv-123")).toBe("write");
+    // The demoted studio still belongs to write (reachable), just off the door.
+    expect(workflowForPath("/create")).toBe("write");
+  });
+});
