@@ -1,0 +1,313 @@
+// narrateEvent — the translation layer (SPR-02 M1).
+//
+// One pure function maps a substrate event to a plain-language line a
+// non-technical reader understands, or to nothing (events that are noise to
+// a human). It is the single place where the engine's vocabulary
+// (action_type, phase numbers, role names, dispatch internals) becomes the
+// user's vocabulary ("looking for evidence", "found a source", "writing the
+// answer"). The thinking stream renders only what this returns; nothing
+// raw reaches the default view.
+//
+// Three discipline rules a maintainer must keep, in priority order:
+//
+//   1. COVERAGE. Every action_type in the generated catalogue
+//      (generated/types.ts ActionType) MUST have a row in NARRATION below —
+//      either a narration or an explicit `null` (suppress). A missing row is
+//      a coverage gap that narrateEvent.test.ts fails on. When the schema
+//      adds an action_type, codegen regenerates the catalogue and the test
+//      goes red until you add its row here. That is the gate working.
+//
+//   2. HONESTY (rigor #1). A line claims only what the event asserts. A
+//      retrieval that returned is "Looking through the sources", NOT "Found
+//      a strong source" — strength is a claim the retrieval event does not
+//      make. Where a line summarizes a payload (counts, a sub-question), it
+//      reads what the payload actually carries; where a row smooths several
+//      events into one beat, that is noted in the handoff, not hidden here.
+//
+//   3. NO VOCABULARY LEAK. A narration never contains a phase number, an
+//      action_type, "dispatch", "synthesizer", "chunk", or a raw id. Those
+//      are correct in the log (behind the raw-activity toggle) and wrong in
+//      the thinking stream.
+//
+// The function is pure (event in → Narration | null out) and crashes on
+// nothing: an action_type with no row (only possible if the catalogue and
+// this map drift between a codegen run and this file) narrates generically
+// and logs, rather than throwing inside a render.
+
+import type { Event } from "../../generated/types";
+import { ActionType } from "../../generated/types";
+
+/** The tone shapes how a line reads in the stream — not a severity, a register.
+ *  `step` is ongoing work; `finding` is something the research learned;
+ *  `caution` is a gap or a self-correction; `milestone` is a lifecycle beat. */
+export type NarrationTone = "step" | "finding" | "caution" | "milestone";
+
+export interface Narration {
+  line: string;
+  tone: NarrationTone;
+}
+
+type ActionTypeValue = (typeof ActionType)[keyof typeof ActionType];
+
+/** A narration is either a fixed beat or a function of the event payload
+ *  (when the line reads a count or a quoted fragment). `null` suppresses. */
+type NarrationRule =
+  | Narration
+  | null
+  | ((event: Event) => Narration | null);
+
+// A small helper so payload reads stay terse and total — a missing or
+// mistyped field degrades to the fixed beat, never throws.
+function payload(event: Event): Record<string, unknown> {
+  const p = event.payload as unknown;
+  return p && typeof p === "object" ? (p as Record<string, unknown>) : {};
+}
+
+function asString(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+// ── The map ──────────────────────────────────────────────────────────────
+//
+// Keyed by the ActionType *value* (the wire string) so a row sits next to
+// the catalogue entry it covers. Grouped by the run's natural arc:
+// orientation → evidence → connection → synthesis → lifecycle, then the
+// large suppressed tail (substrate mechanics no reader needs to watch).
+
+const NARRATION: Record<ActionTypeValue, NarrationRule> = {
+  // ── Lifecycle the reader should feel ──
+  [ActionType.INVESTIGATION_START_REQUESTED]: (e) => {
+    const q = asString(payload(e).question);
+    return {
+      line: q ? `Starting on your question: ${q}` : "Starting your research",
+      tone: "milestone",
+    };
+  },
+  [ActionType.INVESTIGATION_COMPLETED]: { line: "Finished — the answer is ready", tone: "milestone" },
+  [ActionType.INVESTIGATION_FAILED]: { line: "Couldn’t finish this research", tone: "caution" },
+  [ActionType.INVESTIGATION_CHASE_HALTED]: { line: "Paused following this thread further", tone: "caution" },
+  [ActionType.INVESTIGATION_SPAWNED_FROM]: { line: "Following up on a thread from an earlier research", tone: "milestone" },
+  [ActionType.PIPELINE_TERMINATED]: { line: "Stopped this research", tone: "milestone" },
+
+  // ── Orientation + breaking the question down ──
+  [ActionType.DECOMPOSE_QUESTION_REQUESTED]: { line: "Breaking your question into parts", tone: "step" },
+  [ActionType.DECOMPOSE_QUESTION_DELIVERED]: (e) => {
+    const subs = payload(e).decomposition;
+    const n = Array.isArray(subs) ? subs.length : 0;
+    return {
+      line: n ? `Broke it into ${plural(n, "angle", "angles")} to look into` : "Worked out what to look into",
+      tone: "finding",
+    };
+  },
+  // The paraphrase guard caught a weak split and asked for a better one —
+  // a self-correction worth showing as a small caution, not the raw flag.
+  [ActionType.DECOMPOSER_PARAPHRASE_FLAGGED]: { line: "Noticed the parts overlapped — rethinking them", tone: "caution" },
+  [ActionType.DECOMPOSER_REGENERATED]: { line: "Reworked the angles", tone: "step" },
+
+  // ── Looking for evidence ──
+  [ActionType.EVIDENCE_RETRIEVE_REQUESTED]: (e) => {
+    const sq = asString(payload(e).sub_question);
+    return { line: sq ? `Looking for evidence on: ${sq}` : "Looking for evidence", tone: "step" };
+  },
+  [ActionType.EVIDENCE_RETRIEVE_DELIVERED]: (e) => {
+    const p = payload(e);
+    // The event asserts what came back — claims found and gaps left. It does
+    // NOT assert the source is "strong"; we say what it actually carries.
+    const claims = Array.isArray(p.supporting_claims) ? p.supporting_claims.length : 0;
+    const gaps = Array.isArray(p.evidentiary_gaps) ? p.evidentiary_gaps.length : 0;
+    if (p.insufficient_evidence === true || (claims === 0 && gaps > 0)) {
+      return { line: "The sources came up short here", tone: "caution" };
+    }
+    if (claims === 0) return { line: "Read through the sources", tone: "step" };
+    const tail = gaps > 0 ? `, with ${plural(gaps, "open question", "open questions")} left` : "";
+    return { line: `Found ${plural(claims, "supporting point", "supporting points")}${tail}`, tone: "finding" };
+  },
+  [ActionType.EVIDENCE_PACK_BUILT]: { line: "Gathered the evidence together", tone: "step" },
+
+  // ── Connecting ideas across domains ──
+  [ActionType.CONNECTOR_REQUESTED]: { line: "Looking for connections across the ideas", tone: "step" },
+  [ActionType.CONNECTOR_DELIVERED]: (e) => {
+    const paths = payload(e).paths;
+    const n = Array.isArray(paths) ? paths.length : 0;
+    return {
+      line: n ? `Connected ${plural(n, "idea", "ideas")} across the sources` : "Looked for cross-cutting connections",
+      tone: n ? "finding" : "step",
+    };
+  },
+
+  // ── Weighing the answer + constraints (the "weighing a counter-argument" beat) ──
+  [ActionType.SYNTHESIZE_REQUESTED]: { line: "Weighing the evidence to form an answer", tone: "step" },
+  [ActionType.SYNTHESIZE_DELIVERED]: { line: "Drafted the answer", tone: "finding" },
+  [ActionType.CONSTRAINT_VIOLATION_FOUND]: { line: "Caught a place the answer didn’t hold up", tone: "caution" },
+  [ActionType.CONSTRAINT_REVISION_TRIGGERED]: { line: "Reworking the answer to fix that", tone: "step" },
+  [ActionType.CONSTRAINT_LOOP_RESOLVED]: (e) => {
+    const status = asString(payload(e).final_status);
+    if (status === "regressed" || status === "max_iterations_reached" || status === "escalated") {
+      return { line: "Couldn’t fully reconcile the answer with every requirement", tone: "caution" };
+    }
+    return { line: "Settled the answer against your requirements", tone: "finding" };
+  },
+
+  // ── Writing it up ──
+  [ActionType.MASTER_MD_WRITTEN]: { line: "Writing the answer", tone: "milestone" },
+  [ActionType.SYNTHESIS_ARCHIVED]: { line: "Saved the answer", tone: "step" },
+
+  // ── Open questions the reader benefits from seeing surface ──
+  [ActionType.QUESTION_IDENTIFIED]: (e) => {
+    const q = asString(payload(e).question_text);
+    return { line: q ? `Noted an open question: ${q}` : "Noted an open question", tone: "finding" };
+  },
+  [ActionType.QUESTION_ESCALATED_TO_RESEARCH]: { line: "Spinning up a deeper look at an open question", tone: "milestone" },
+
+  // ── Phase 8 self-improvement — a quiet milestone ──
+  [ActionType.AUTO_PATCH_APPLIED]: { line: "Updated what it learned for next time", tone: "step" },
+
+  // ── A self-repair attempt on a flaky role call — show the recovery, not the mechanism ──
+  [ActionType.ROLE_SELF_REPAIR_ATTEMPTED]: { line: "Hit a snag and retried", tone: "caution" },
+  [ActionType.ROLE_VALIDATION_FAILED]: { line: "A step came back malformed — retrying", tone: "caution" },
+  [ActionType.KE_LLM_RESPONSE_FAILED]: { line: "A step didn’t return cleanly — retrying", tone: "caution" },
+
+  // ── Suppressed: substrate mechanics, costing, and per-step plumbing the
+  //    reader does not need to watch tick by tick. These are still in the log
+  //    behind the raw-activity toggle; suppressing them here is the whole
+  //    point of the glass-box (a narration, not a log dump). ──
+  [ActionType.PHASE_ENTER]: null,
+  [ActionType.PHASE_EXIT]: null,
+  [ActionType.PHASE_VERIFY]: null,
+  [ActionType.ROLE_CALL_START]: null,
+  [ActionType.ROLE_CALL_END]: null,
+  [ActionType.ROLE_CALL_FAILED]: null, // the human-facing recovery is ROLE_SELF_REPAIR_ATTEMPTED / VALIDATION_FAILED
+  [ActionType.AUDIT_FINDING_EMITTED]: null,
+  [ActionType.PAGE_ATTRIBUTION_COMPUTED]: null,
+  [ActionType.PARAMETER_EXTRACT_REQUESTED]: null, // folded into the synthesize beat
+  [ActionType.PARAMETER_EXTRACT_DELIVERED]: null,
+  [ActionType.CROSS_DOMAIN_KEYWORDS_RESOLVED]: null,
+  [ActionType.CROSS_DOMAIN_TRAVERSAL_RAN]: null,
+  [ActionType.CONSTRAINT_PREFLIGHT]: null,
+  [ActionType.GRAPH_NODE_INSERTED]: null,
+  [ActionType.GRAPH_EDGE_INSERTED]: null,
+  [ActionType.GRAPH_TIER_OVERRIDDEN]: null,
+  [ActionType.GRAPH_SUPERSESSION_PROPOSED]: null,
+  [ActionType.GRAPH_STALENESS_FLAGGED]: null,
+  [ActionType.NODE_MERGE]: null,
+  [ActionType.EMBED_MODEL_REGISTER]: null,
+  [ActionType.TIER_REWRITE_BULK]: null,
+  [ActionType.SUPERSESSION_APPLY]: null,
+  [ActionType.SUPERSESSION_DISMISS]: null,
+  [ActionType.SUPERSESSION_COEXIST]: null,
+  [ActionType.STALENESS_RESOLVE]: null,
+  [ActionType.SUBSTRATE_MANIFEST_WRITTEN]: null,
+  [ActionType.MASTER_MD_SKIPPED]: null,
+  [ActionType.AUTO_PATCH_SKIPPED]: null,
+  [ActionType.OUTCOME_RECORDED]: null,
+  [ActionType.RUBRIC_SCORED]: null,
+  [ActionType.USER_ACCEPT_DELTA]: null,
+  [ActionType.USER_REJECT_DELTA]: null,
+  [ActionType.USER_MODIFY_DELTA]: null,
+  [ActionType.DISPATCH_CALL]: null, // the cost meter aggregates these; never a line
+  [ActionType.CONTEXT_PACK_ASSEMBLED]: null,
+  [ActionType.GRAPH_TIER_ASSIGNED]: null,
+  [ActionType.QUESTION_RESOLVED_BY_DOC]: null,
+  [ActionType.CROSS_DOC_QUESTION_ANSWERED]: null,
+  [ActionType.CLAIM_ASSERTED_BY_OPERATOR]: null,
+
+  // ── Wrestling-loop, exploration, RLM, federation, visual, write, read,
+  //    speak, DP, seam, and AI-sidecar events: these belong to other
+  //    workflows' surfaces, not the Research thinking stream. They can ride
+  //    the same per-investigation log on a shared id, so they are catalogued
+  //    here as explicit suppressions — present and accounted for, never a
+  //    fall-through. (A future sprint that surfaces one of these in Research
+  //    moves its row up to a narration; the gate makes that an additive,
+  //    visible edit.) ──
+  [ActionType.DOCUMENT_LOADED]: null,
+  [ActionType.DOCUMENT_REGION_SELECTED]: null,
+  [ActionType.DISTILLATION_REQUESTED]: null,
+  [ActionType.DISTILLATION_DELIVERED]: null,
+  [ActionType.CLAIM_CHALLENGE_RAISED]: null,
+  [ActionType.CLAIM_GROUNDING_CHECK_PASSED]: null,
+  [ActionType.CLAIM_GROUNDING_CHECK_FAILED]: null,
+  [ActionType.NOTE_EMERGED]: null,
+  [ActionType.NOTE_REFINED]: null,
+  [ActionType.NOTE_COMPRESSED_DOC_WRITTEN]: null,
+  [ActionType.USER_ACCEPT_DISTILLATION]: null,
+  [ActionType.USER_REJECT_DISTILLATION]: null,
+  [ActionType.USER_EDIT_DISTILLATION]: null,
+  [ActionType.ARTIFACT_GENERATED]: null,
+  [ActionType.ARTIFACT_INTERACTED]: null,
+  [ActionType.RLM_BRIDGE_DECIDED]: null,
+  [ActionType.QUALITY_GATE_EVALUATED]: null,
+  [ActionType.CROSS_GRAPH_CITATION_RECORDED]: null,
+  [ActionType.REV_SHARE_DECIDED]: null,
+  [ActionType.PREFERENCE_OBSERVATION_RECORDED]: null,
+  [ActionType.SKILL_RULE_PROMOTED]: null,
+  [ActionType.DISCOVERY_PROPOSED]: null,
+  [ActionType.DISCOVERY_SELECTED]: null,
+  [ActionType.FETCH_FALLBACK_ESCALATED]: null,
+  [ActionType.VERIFIER_LOOKUP]: null,
+  [ActionType.FEDERATION_PARTNER_REGISTERED]: null,
+  [ActionType.FEDERATION_PARTNER_TRUSTED]: null,
+  [ActionType.FEDERATION_PARTNER_REVOKED]: null,
+  [ActionType.FEDERATION_OUTBOUND_CITATION_EMITTED]: null,
+  [ActionType.FEDERATION_INBOUND_CITATION_ACCEPTED]: null,
+  [ActionType.FEDERATION_INBOUND_CITATION_REFUSED]: null,
+  [ActionType.VISUAL_FRAME_IDENTIFIED]: null,
+  [ActionType.VISUAL_CLAIMS_EXTRACTED]: null,
+  [ActionType.VISUAL_ROLE_FAILED]: null,
+  [ActionType.AI_ACTION_APPLIED]: null,
+  [ActionType.AI_ACTION_UNDONE]: null,
+  [ActionType.DP_ROUTED]: null,
+  [ActionType.OUTLINE_BLOCK_PLACED]: null,
+  [ActionType.OUTLINE_BLOCK_MOVED]: null,
+  [ActionType.OUTLINE_BLOCK_REMOVED]: null,
+  [ActionType.BOOK_SERVABILITY_CHANGED]: null,
+  [ActionType.BOOK_TAKEN_DOWN]: null,
+  [ActionType.EDIT_CAPTURED]: null,
+  [ActionType.SEAM_RESEARCH_TO_READ]: null,
+  [ActionType.SEAM_READ_TO_RESEARCH]: null,
+  [ActionType.SEAM_READ_TO_WRITE]: null,
+  [ActionType.SEAM_WRITE_TO_READ]: null,
+  [ActionType.SEAM_SPEAK_TO_WRITE]: null,
+  [ActionType.SEAM_SPEAK_TO_READ]: null,
+  [ActionType.SEAM_WRITE_TO_SPEAK]: null,
+};
+
+/** The safe generic line for an action_type with no row — only reachable if
+ *  the catalogue and the map drift (a codegen ran without this file being
+ *  updated). The coverage test makes that a red build; at runtime we degrade
+ *  to a non-leaking beat and log, rather than crash a render. */
+const GENERIC: Narration = { line: "Working…", tone: "step" };
+
+/**
+ * Translate one event to a plain-language line, or `null` to suppress it.
+ *
+ * Pure and total. An unmapped action_type returns the generic line and logs
+ * a one-time-ish console warning (it will repeat per offending type, which is
+ * the right loudness for a drift bug).
+ */
+export function narrateEvent(event: Event): Narration | null {
+  const rule = NARRATION[event.action_type as ActionTypeValue];
+  if (rule === undefined) {
+    // Drift between the generated catalogue and this map. Don't throw inside
+    // a render; surface it and keep the stream readable.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `narrateEvent: no narration row for action_type ${String(event.action_type)} — ` +
+        `add it to narrateEvent.ts (the coverage gate should have caught this).`,
+    );
+    return GENERIC;
+  }
+  if (rule === null) return null;
+  if (typeof rule === "function") return rule(event);
+  return rule;
+}
+
+/** Exposed for the coverage test: the set of action_type values that have an
+ *  explicit row (narration or suppress). The test asserts this equals the
+ *  generated catalogue exactly — no missing rows, no stale rows. */
+export function narratedActionTypes(): ReadonlySet<string> {
+  return new Set(Object.keys(NARRATION));
+}

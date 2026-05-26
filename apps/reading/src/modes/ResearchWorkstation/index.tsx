@@ -10,7 +10,7 @@ import type { StarterPanel } from "../../workspace/PanelHost";
 import HighlightToolbar from "./HighlightToolbar";
 import MasterMdViewer from "./MasterMdViewer";
 import StartResearch from "./StartResearch";
-import TrajectoryView from "./TrajectoryView";
+import ThinkingStream from "./ThinkingStream";
 
 /**
  * Mode A — Research Workstation (S5 redesign).
@@ -113,5 +113,11 @@ function CenterContent({ investigation }: { investigation: InvestigationState })
     const synth = parseSynthesis(investigation.events);
     if (synth) return <MasterMdViewer synthesis={synth} />;
   }
-  return <TrajectoryView investigation={investigation} />;
+  // SPR-02: the default live view is the plain-language thinking stream, not
+  // the raw event log. The raw log lives one toggle away inside ThinkingStream
+  // (the "show raw activity" escape hatch reuses TrajectoryView). No steer
+  // controls on this one-shot `/inv/:id` path — the Loop-1 orchestrator has no
+  // steerable runner; the cascade monitor (DeepResearchWorkspace) is where
+  // Stop/redirect/deepen are wired through a session.
+  return <ThinkingStream investigation={investigation} />;
 }
