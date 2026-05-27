@@ -16,12 +16,17 @@ import {
   QUALITY_CUE_WIDGET_ID,
   makeQualityCueAugmentation,
 } from "../../reading-physics/augmentations/quality-cue";
+import {
+  REVIEW_DUE_CLASS,
+  makeReviewDueAugmentation,
+} from "../../reading-physics/augmentations/review-due";
+import type { ReviewDueClaimView } from "../../reading-physics/augmentations/review-due";
 import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import { renderEnacted, resolveAnchoredWidgets } from "../../reading-physics/facets/anchored-widgets";
 import { EMPTY_LAYOUT_MAP } from "../../reading-physics/layout-map";
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
-import type { ChunkId, ReadingContext, RenderContext } from "../../reading-physics/types";
+import type { ClaimId, ChunkId, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
@@ -43,12 +48,118 @@ import ChunkModal from "./ChunkModal";
  * default per the voice and style discipline (audit metadata, not
  * reading material).
  */
+// ── SPR-08 M5 — the review-due augmentation, behind a default-OFF toggle ─────
+//
+// review-due (augmentations/review-due.ts) is the first AGENT-authored reading
+// augmentation — a spaced-repetition "this claim is due to review" cue. It is a
+// plain DECORATION (geometry-independent), so unlike SPR-05's collapse it needs
+// no read-time geometry pass: it composes through the SAME decorations facet
+// apply pass the §9.0 servability / IP-holder augmentations already run (the
+// claim span gets the augmentation-declared `review-due` class).
+//
+// It ships behind this default-OFF toggle (anti-purgatory, PR-7): the feature is
+// genuinely WIRED and runs through the real facet pass when flipped on, but the
+// review-state it reads — which claims the reader is *due* to review — is a
+// DEFERRED surface integration (resolving the reader's spaced-repetition schedule
+// from the substrate), exactly like SPR-06's `source.read` signal. Until that
+// resolver exists, the toggle passes an EMPTY `dueClaims`, so flipping it on
+// shows the HONEST no-data state (nothing lights up) rather than fabricated
+// review state. Filed: docs/decisions/spr-08-review-state-resolution-gap.md.
+//
+// DEFAULT-OFF byte-equivalence: with the toggle false, `composedReviewDueByClaim`
+// runs no augmentation and returns an empty map, so every claim span renders with
+// no extra class — byte-identical to the pre-SPR-08 render (the MasterMdViewer
+// tests prove this unchanged: the default-off claim-span assertion + the SPR-02
+// byte-equivalence test).
+const REVIEW_DUE_ENABLED = false;
+
+/**
+ * DEFERRED: the surface resolves the reader's spaced-repetition schedule from
+ * the substrate and returns the due claims here. Until that resolver ships, the
+ * due set is EMPTY — review-due declares nothing (honest no-data), never a
+ * fabricated due claim. See spr-08-review-state-resolution-gap.md.
+ */
+function resolveDueClaims(): readonly ReviewDueClaimView[] {
+  return [];
+}
+
+/**
+ * Run the decorations facet pass for the review-due augmentation over the
+ * synthesis claims and the PASSED-IN due set, returning a lookup from a claim's
+ * positional anchor key → its resolved review-due decoration (when the claim is
+ * due). The surface's collect → combine half (§2) for the claim-decoration slot;
+ * `ClaimBlock` owns the enact (it picks the class onto the claim span).
+ *
+ * The PURE seam: it takes the due set as an argument (it does not read the
+ * toggle), so the augmentation→facet→map chain is drivable by a test with a
+ * populated `dueClaims` — the toggle-ON liveness path (review-due.test against
+ * `MasterMdViewer`). `composedReviewDueByClaim` is the toggle-gated wrapper.
+ *
+ * A PLAIN function, NOT a hook (mirrors `composedDecorationsByChunk` /
+ * `renderHeaderQualityCue`): it calls no hooks, runs each render (cheap —
+ * O(claims), pure), and the augmentation only DECLARES (PR-1).
+ */
+export function reviewDueDecorationsFor(
+  synthesis: ParsedSynthesis,
+  dueClaims: readonly ReviewDueClaimView[],
+): Map<string, ResolvedDecoration> {
+  const reviewDue = makeReviewDueAugmentation(dueClaims);
+  const ctx: ReadingContext = {
+    synthesis: {
+      question: synthesis.question,
+      // The augmentation anchors to claim positional ids (PR-4); it reads only
+      // the due set passed in, so the claim list need only carry the ids the
+      // surface knows about. (Empty due set ⇒ this is unused this sprint.)
+      claims: synthesis.components.map((c) => ({
+        claimId: String(c.index) as ClaimId,
+        chunkIds: c.chunkIds as ChunkId[],
+      })),
+    },
+    layout: { resolve: () => null },
+    substrate: {
+      getChunk: () =>
+        // Not used by the decorations pass (the surface resolves the due set
+        // upstream); present only to satisfy the frozen ReadingContext shape.
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the review-due pass"),
+        ),
+    },
+  };
+  const resolved = collectDecorations([reviewDue], ctx);
+  const byKey = new Map<string, ResolvedDecoration>();
+  for (const d of resolved) byKey.set(d.key, d);
+  return byKey;
+}
+
+/**
+ * The toggle-gated review-due decorations pass.
+ *
+ * GATED by `REVIEW_DUE_ENABLED`: off ⇒ the pass runs nothing and the returned
+ * map is empty — every claim renders exactly as today (default-off
+ * byte-equivalence). On ⇒ it runs the real pass (`reviewDueDecorationsFor`) over
+ * the deferred-resolution due set (`resolveDueClaims()`, still empty), so it
+ * declares nothing until review-state is wired (the honest dormant-correct
+ * state, NOT fabricated).
+ */
+function composedReviewDueByClaim(
+  synthesis: ParsedSynthesis,
+): Map<string, ResolvedDecoration> {
+  return REVIEW_DUE_ENABLED
+    ? reviewDueDecorationsFor(synthesis, resolveDueClaims())
+    : new Map();
+}
+
 export default function MasterMdViewer({
   synthesis,
 }: {
   synthesis: ParsedSynthesis;
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
+
+  // SPR-08 M5 — the review-due decorations pass (default-off; empty map unless
+  // the toggle is flipped AND review-state is wired). Computed once per render,
+  // threaded into each ClaimBlock. Off ⇒ empty ⇒ byte-equivalent to today.
+  const reviewDueByClaim = composedReviewDueByClaim(synthesis);
 
   return (
     <div className="bg-ice-0 dark:bg-charcoal-2">
@@ -138,6 +249,9 @@ export default function MasterMdViewer({
                   key={c.index}
                   claim={c}
                   onChunkClick={setOpenChunkId}
+                  reviewDue={reviewDueByClaim.get(
+                    anchorKey({ kind: "claim", claimId: String(c.index) as ClaimId }),
+                  )}
                 />
               ))}
             </div>
@@ -158,19 +272,41 @@ export default function MasterMdViewer({
 
 // ── Sub-components ───────────────────────────────────────────────────
 
-function ClaimBlock({
+export function ClaimBlock({
   claim,
   onChunkClick,
+  reviewDue,
 }: {
   claim: ParsedClaim;
   onChunkClick: (chunkId: string) => void;
+  /** SPR-08 M5 — the COMBINED decoration the review-due augmentation declared for
+   *  this claim's range (when the default-off toggle is on AND review-state is
+   *  resolved). The augmentation declares the `review-due` verdict class; this
+   *  component ENACTS it onto the claim span — never re-deciding "is this due"
+   *  inline (PR-6: the augmentation read the verdict; the surface honors it).
+   *  Undefined when the claim is not due (the common case, and ALWAYS the case
+   *  while the toggle is off / review-state is deferred — empty `dueClaims` ⇒ no
+   *  decoration ⇒ the claim span renders byte-identically to today). */
+  reviewDue?: ResolvedDecoration | undefined;
 }) {
+  // ENACT the declared review-due verdict. Off / no-data ⇒ no class added ⇒
+  // the span is byte-identical to the pre-SPR-08 render. The closed-vocabulary
+  // class is appended only when the augmentation positively declared it.
+  const claimClass = reviewDue?.classNames.includes(REVIEW_DUE_CLASS)
+    ? REVIEW_DUE_CLASS
+    : undefined;
   return (
     <div className="text-base leading-relaxed">
       <span className="font-mono text-xs text-ink-mute dark:text-moonlight mr-2">
         {claim.index}.
       </span>
-      <span data-claim-id={String(claim.index)}>{claim.claim}</span>
+      <span
+        data-claim-id={String(claim.index)}
+        {...(claimClass ? { className: claimClass } : {})}
+        {...(reviewDue?.title ? { title: reviewDue.title } : {})}
+      >
+        {claim.claim}
+      </span>
       {claim.rationale && (
         <p className="text-sm text-ink-soft dark:text-starlight mt-2 leading-relaxed pl-6 border-l-2 border-rule dark:border-charcoal-1 ml-1">
           {claim.rationale}
