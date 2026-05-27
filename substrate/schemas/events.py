@@ -364,6 +364,23 @@ class ActionType(str, Enum):
     #    node_id wins); the optional region_id carries M4 theme grouping.
     BLOCK_POSITIONED = "block.positioned"
 
+    # ── Highlight → float-menu NOTE (Living Roadmap SPR-04 M2). A reader
+    #    selects text on ANY surface (Research synthesis, a DRW block detail,
+    #    later a book/draft) and chooses "Note" in the shared float-menu; the
+    #    selection becomes a user-authored marginalia note. It rides the SAME
+    #    single-writer funnel as every other state mutation. Like voice.captured
+    #    it is a §9 provenance-LOAD-BEARING event: source_kind is pinned to the
+    #    literal "user" (a marginalia note is human-authored, NEVER model output)
+    #    so it can never be conflated with a model reply node in the one graph.
+    #    It carries the selection's provenance (document_id on the envelope +
+    #    the chunk_id where the selection lands) so the note chains
+    #    claim→chunk→document like every other claim. The excerpt is the user's
+    #    OWN selected text (what they highlighted), not retrieved body — so it is
+    #    not a §9.0-withheld-content concern (the reader is reading their own
+    #    selection); the no-leak guard governs the SEARCH/DEEP-RESEARCH outbound
+    #    payloads, not this note of one's own reading.
+    MARGINALIA_NOTED = "marginalia.noted"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -469,7 +486,18 @@ class ActionType(str, Enum):
 #     theme-grouping (a block dropped into a named region) through the SAME
 #     event — no second event type, no side store. specs/antiek-living-roadmap/
 #     SPR-03. 2026-05-28.
-EVENT_SCHEMA_VERSION: int = 18
+# v19: Living Roadmap SPR-04 — highlight → float-menu NOTE. One typed event
+#     (marginalia.noted) records a user-authored note created by selecting text
+#     on any surface and choosing "Note" in the shared float-menu. It carries
+#     the note text + the selection excerpt + the selection's provenance
+#     (chunk_id; document_id rides the Event envelope) + the SHARED provenance
+#     discriminator source_kind pinned to the literal "user" — a marginalia note
+#     is human-authored, the §9 reason it can never be conflated with a model
+#     reply (the float-menu's Dialogue/Search/Deep-research RESULTS are
+#     model/retrieval-sourced; only this note is user-sourced). The note rides
+#     the SAME single-writer typed-event funnel as every other state mutation —
+#     no client side-store. specs/antiek-living-roadmap/ SPR-04. 2026-05-28.
+EVENT_SCHEMA_VERSION: int = 19
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3046,6 +3074,46 @@ class VoiceCapturedPayload(_PayloadBase):
     audio_ref: Optional[str] = None
 
 
+class MarginaliaNotedPayload(_PayloadBase):
+    """A user-authored note created from a text selection via the shared
+    highlight → float-menu (Living Roadmap SPR-04 M2). The reader selects text
+    on any surface and chooses "Note"; the selection becomes a marginalia note
+    persisted through the single-writer funnel — never a client side-store.
+
+    ``source_kind`` is fixed to ``"user"`` and is the §9 load-bearing field,
+    identically to :class:`VoiceCapturedPayload`: a marginalia note is
+    human-authored, so it can NEVER be persisted as ``"ai"``/``"system"`` and
+    can never be conflated with a model reply in the one graph. (The
+    float-menu's OTHER actions — Dialogue / Search / Deep-research — produce
+    model/retrieval-sourced RESULTS, which are labelled by their own paths;
+    only this note is user-sourced.) The no-conflation invariant is enforced by
+    the type, not by convention.
+
+    Provenance (master-spec §9): the note chains claim→chunk→document like every
+    other claim. ``chunk_id`` is the chunk the selection lands in (when the host
+    can resolve it — a synthesis selection over a cited claim resolves a chunk;
+    a free-prose selection may not, so it is optional); the document id rides
+    the Event envelope (``document_id``). ``excerpt`` is the reader's OWN
+    selected text — what they highlighted — not retrieved body, so it carries no
+    §9.0-withheld-content risk (a reader reading their own selection). The §9.0
+    no-leak guard governs the float-menu's outbound SEARCH / DEEP-RESEARCH
+    payloads, not this note of one's own reading."""
+
+    action_type: Literal[ActionType.MARGINALIA_NOTED] = ActionType.MARGINALIA_NOTED
+    note_id: str
+    note_text: str
+    # The user's selected text (what they highlighted) — their own words on the
+    # page, the anchor the note hangs off. Not retrieved body; see class docs.
+    excerpt: str
+    # The §9 provenance label — pinned to "user" (a marginalia note is the
+    # reader's own authorship), the no-conflation invariant from the type.
+    source_kind: Literal["user"] = "user"
+    # The chunk the selection lands in, when the host resolves one (a synthesis
+    # selection over a cited claim resolves a chunk; a free-prose selection may
+    # not). Null is honest "no chunk resolved", never invented.
+    chunk_id: Optional[str] = None
+
+
 # ── Block-canvas position persistence — DRW "organism" view (SPR-03) ──
 
 
@@ -3203,6 +3271,7 @@ TypedPayload = Annotated[
         SeamSpeakToReadPayload,
         SeamWriteToSpeakPayload,
         VoiceCapturedPayload,
+        MarginaliaNotedPayload,
         BlockPositionPayload,
     ],
     Field(discriminator="action_type"),
@@ -3321,6 +3390,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.SEAM_WRITE_TO_SPEAK.value,
     # Living Roadmap SPR-14 — voice-in capture provenance.
     ActionType.VOICE_CAPTURED.value,
+    # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
+    ActionType.MARGINALIA_NOTED.value,
     # Living Roadmap SPR-03 — block-canvas position persistence.
     ActionType.BLOCK_POSITIONED.value,
 })
@@ -3610,6 +3681,8 @@ __all__ = [
     # Voice infrastructure SPR-14 — shared provenance vocab + voice-in capture
     "ProvenanceSourceKind",
     "VoiceCapturedPayload",
+    # Highlight → float-menu user NOTE SPR-04 (v19 schema bump)
+    "MarginaliaNotedPayload",
     # Block-canvas position persistence SPR-03 (v18 schema bump)
     "BlockPositionPayload",
 ]

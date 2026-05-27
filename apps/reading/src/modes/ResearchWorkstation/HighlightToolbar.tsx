@@ -1,99 +1,56 @@
-import { useEffect, useState } from "react";
-
-interface ToolbarState {
-  visible: boolean;
-  top: number; // viewport-relative
-  left: number;
-  selectedText: string;
-}
+import FloatMenu from "../shared/FloatMenu/FloatMenu";
+import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 
 /**
- * Floating action toolbar anchored to text selections within a scope
- * element. Shows "Follow this" (active — SPR-04 M2's one-gesture chase
- * into a child research; the verb the reader reads, no "spawn"/"chase"
- * substrate vocabulary) and "Mark golden" (disabled with tooltip —
- * Sprint 12+ deferred).
+ * HighlightToolbar — the Research-synthesis HOST for the shared
+ * {@link FloatMenu} (Living Roadmap SPR-04).
  *
- * Listens for `selectionchange` events globally, then narrows to
- * selections that are entirely within the configured scope container.
- * Positions itself just above the selection's bounding rect.
+ * It WAS the single-action "Follow this" floating toolbar; its selection-listen
+ * + positioning is now the shared {@link useFloatMenuSelection} hook and its one
+ * action is now the four-action FloatMenu {Note · Dialogue · Search ·
+ * Deep-research}. This file is the thin Research-surface adapter: it owns the
+ * scope + the host pixel read (via the hook) and wires Deep-research to the
+ * EXISTING chase path (`onChaseThis` → ChaseThread + startInvestigation),
+ * non-breaking against `ResearchWorkstation/index.tsx`.
  *
- * Hides when the selection collapses or focus moves elsewhere.
+ * Why a host adapter and not FloatMenu directly in the page: FloatMenu is
+ * host-agnostic (it takes a rect prop, reads no DOM, imports nothing from
+ * reading-physics) so Read/Write/Speak can mount it too. The DOM↔graph
+ * provenance resolution is per-surface, so each host owns it; here a raw
+ * synthesis selection has no resolved chunk yet (the synthesis prose isn't a
+ * single chunk), so provenance is left empty — the NOTE records null chunk
+ * honestly. A future enhancement maps a selection over a cited claim to its
+ * chunk; the seam is `resolveProvenance` below.
  */
 export default function HighlightToolbar({
   scopeRef,
   onChaseThis,
+  investigationId,
 }: {
   scopeRef: React.RefObject<HTMLElement | null>;
+  /** REUSED chase path — the host opens ChaseThread + startInvestigation. */
   onChaseThis: (selectedText: string) => void;
+  /** The investigation the synthesis belongs to — the NOTE event bucket +
+   * dialogue session. Optional for back-compat with the empty-synthesis case;
+   * when absent the menu still positions but actions that need an id no-op. */
+  investigationId?: string;
 }) {
-  const [state, setState] = useState<ToolbarState>({
-    visible: false,
-    top: 0,
-    left: 0,
-    selectedText: "",
-  });
-
-  useEffect(() => {
-    function onSelectionChange() {
-      const sel = window.getSelection();
-      const scope = scopeRef.current;
-      if (!sel || sel.rangeCount === 0 || !scope) {
-        setState((s) => (s.visible ? { ...s, visible: false } : s));
-        return;
-      }
-      const text = sel.toString().trim();
-      if (!text || text.length < 3) {
-        setState((s) => (s.visible ? { ...s, visible: false } : s));
-        return;
-      }
-      // Confirm the selection is inside the scope.
-      const range = sel.getRangeAt(0);
-      if (!scope.contains(range.commonAncestorContainer)) {
-        setState((s) => (s.visible ? { ...s, visible: false } : s));
-        return;
-      }
-      const rect = range.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return;
-      setState({
-        visible: true,
-        top: Math.max(8, rect.top - 44 + window.scrollY),
-        left: rect.left + rect.width / 2 + window.scrollX,
-        selectedText: text,
-      });
-    }
-    document.addEventListener("selectionchange", onSelectionChange);
-    return () =>
-      document.removeEventListener("selectionchange", onSelectionChange);
-  }, [scopeRef]);
-
-  if (!state.visible) return null;
+  const selection = useFloatMenuSelection({ scopeRef });
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: state.top,
-        left: state.left,
-        transform: "translateX(-50%)",
-        zIndex: 40,
+    <FloatMenu
+      selection={selection}
+      investigationId={investigationId ?? "__research__"}
+      onDeepResearch={(safeSpawnText: string | null, _sel: FloatMenuSelection) => {
+        // §9.0: `safeSpawnText` is null when the selection crosses a withheld
+        // region — the chase MUST NOT receive the withheld body. On the
+        // synthesis surface a selection resolves no withheld chunk (provenance
+        // empty), so safeSpawnText is the selection; the guard is the shared
+        // policy regardless. We refuse rather than spawn on a withheld body.
+        if (safeSpawnText === null) return;
+        onChaseThis(safeSpawnText);
       }}
-      className="bg-ink text-white text-xs font-mono rounded-md shadow-lg flex items-center divide-x divide-charcoal-2"
-      onMouseDown={(e) => e.preventDefault()} /* don't blur selection */
-    >
-      <button
-        onClick={() => onChaseThis(state.selectedText)}
-        className="px-3 py-1.5 hover:bg-shadow-2 transition-colors rounded-l-md"
-      >
-        Follow this
-      </button>
-      <button
-        disabled
-        className="px-3 py-1.5 text-shadow-1 dark:text-moonlight cursor-not-allowed rounded-r-md"
-        title="Coming Sprint 12: mark this as a confirmed insight, attaches metadata + pushes new questions to chase"
-      >
-        Mark golden
-      </button>
-    </div>
+    />
   );
 }

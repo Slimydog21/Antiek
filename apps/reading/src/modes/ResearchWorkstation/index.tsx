@@ -124,7 +124,11 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   return (
     <div ref={centerRef} className="h-full overflow-y-auto relative">
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
-      <HighlightToolbar scopeRef={centerRef} onChaseThis={onChaseThis} />
+      <HighlightToolbar
+        scopeRef={centerRef}
+        onChaseThis={onChaseThis}
+        investigationId={investigationId}
+      />
     </div>
   );
 }

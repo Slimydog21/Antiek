@@ -275,6 +275,9 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.SEAM_WRITE_TO_SPEAK]: null,
   // SPR-14 — voice-in capture provenance; not narrated in the thinking stream.
   [ActionType.VOICE_CAPTURED]: null,
+  // SPR-04 — a highlight → float-menu user note is reader marginalia, not
+  // research progress; never narrated in the thinking stream.
+  [ActionType.MARGINALIA_NOTED]: null,
   // SPR-03 — block-canvas position is pure view-state (where a block sits on
   // the organism canvas); never narrated as research progress.
   [ActionType.BLOCK_POSITIONED]: null,

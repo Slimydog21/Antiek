@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 18;
+export const EVENT_SCHEMA_VERSION = 19;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -133,6 +133,7 @@ export const ActionType = {
   SEAM_WRITE_TO_SPEAK: "seam.write_to_speak",
   VOICE_CAPTURED: "voice.captured",
   BLOCK_POSITIONED: "block.positioned",
+  MARGINALIA_NOTED: "marginalia.noted",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -2139,6 +2140,40 @@ export interface VoiceCapturedPayload {
 }
 
 /**
+ * A user-authored note created from a text selection via the shared
+ * highlight → float-menu (Living Roadmap SPR-04 M2). The reader selects text
+ * on any surface and chooses "Note"; the selection becomes a marginalia note
+ * persisted through the single-writer funnel — never a client side-store.
+ * 
+ * ``source_kind`` is fixed to ``"user"`` and is the §9 load-bearing field,
+ * identically to :class:`VoiceCapturedPayload`: a marginalia note is
+ * human-authored, so it can NEVER be persisted as ``"ai"``/``"system"`` and
+ * can never be conflated with a model reply in the one graph. (The
+ * float-menu's OTHER actions — Dialogue / Search / Deep-research — produce
+ * model/retrieval-sourced RESULTS, which are labelled by their own paths;
+ * only this note is user-sourced.) The no-conflation invariant is enforced by
+ * the type, not by convention.
+ * 
+ * Provenance (master-spec §9): the note chains claim→chunk→document like every
+ * other claim. ``chunk_id`` is the chunk the selection lands in (when the host
+ * can resolve it — a synthesis selection over a cited claim resolves a chunk;
+ * a free-prose selection may not, so it is optional); the document id rides
+ * the Event envelope (``document_id``). ``excerpt`` is the reader's OWN
+ * selected text — what they highlighted — not retrieved body, so it carries no
+ * §9.0-withheld-content risk (a reader reading their own selection). The §9.0
+ * no-leak guard governs the float-menu's outbound SEARCH / DEEP-RESEARCH
+ * payloads, not this note of one's own reading.
+ */
+export interface MarginaliaNotedPayload {
+  action_type: "marginalia.noted";
+  note_id: string;
+  note_text: string;
+  excerpt: string;
+  source_kind?: "user";
+  chunk_id?: string | null;
+}
+
+/**
  * Where an insight/open-question block sits on the DRW canvas (Living
  * Roadmap SPR-03 M2/M4). Emitted on drag-end by the Canvas component.
  * 
@@ -2284,6 +2319,7 @@ export type TypedPayload =
   | SeamSpeakToReadPayload
   | SeamWriteToSpeakPayload
   | VoiceCapturedPayload
+  | MarginaliaNotedPayload
   | BlockPositionPayload;
 
 /**
@@ -2367,6 +2403,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "investigation.failed",
   "investigation.spawned_from",
   "investigation.start_requested",
+  "marginalia.noted",
   "note.compressed_doc_written",
   "note.emerged",
   "note.refined",

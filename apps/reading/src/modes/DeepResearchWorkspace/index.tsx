@@ -33,10 +33,12 @@ import {
   type PlanTree,
   type SteerKind,
 } from "../../api/research";
+import type { DistilledNode } from "../../lib/api";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
+import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
 
 interface PlanState {
@@ -167,6 +169,12 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   // default live-card monitor (non-breaking: the existing shell is unchanged
   // until the operator opts into the canvas).
   const [canvasFor, setCanvasFor] = useState<string | null>(null);
+  // SPR-04: the block whose detail (the SECOND FloatMenu host) is open, or null.
+  // Clicking a BlockCard on the canvas opens its detail as an overlay panel —
+  // a highlight inside it mounts the SAME shared FloatMenu the synthesis host
+  // uses. Non-breaking: the canvas keeps rendering underneath; the detail is an
+  // overlay, dismissed back to the canvas.
+  const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
 
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
@@ -206,8 +214,21 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
             organism canvas
           </span>
         </div>
-        <div className="min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
-          <Canvas investigationId={canvasFor} />
+        <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
+          <Canvas investigationId={canvasFor} onOpenDetail={setOpenNode} />
+          {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
+              opens off a BlockCard click as an overlay over the canvas (the
+              canvas stays mounted underneath — non-breaking) and dismisses
+              back to it. A text selection inside it mounts the SAME FloatMenu. */}
+          {openNode && (
+            <div className="absolute inset-0 z-10 overflow-auto bg-ice-0 dark:bg-charcoal-1">
+              <BlockDetail
+                node={openNode}
+                investigationId={canvasFor}
+                onClose={() => setOpenNode(null)}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
