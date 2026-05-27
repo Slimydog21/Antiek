@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 17;
+export const EVENT_SCHEMA_VERSION = 18;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -132,6 +132,7 @@ export const ActionType = {
   SEAM_SPEAK_TO_READ: "seam.speak_to_read",
   SEAM_WRITE_TO_SPEAK: "seam.write_to_speak",
   VOICE_CAPTURED: "voice.captured",
+  BLOCK_POSITIONED: "block.positioned",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -2138,6 +2139,46 @@ export interface VoiceCapturedPayload {
 }
 
 /**
+ * Where an insight/open-question block sits on the DRW canvas (Living
+ * Roadmap SPR-03 M2/M4). Emitted on drag-end by the Canvas component.
+ * 
+ * The canvas is a FREE 2D coordinate space — NOT the reading-physics
+ * in-document layout-map (that anchors widgets to text; this places nodes
+ * on a whiteboard). ``x``/``y`` are canvas-local pixels; the canvas
+ * re-derives layout by replaying these events (latest event per
+ * ``node_id`` wins), so the persisted event is the SINGLE source of truth
+ * for position. A node with no event falls back to deterministic
+ * auto-layout client-side; we never persist the auto-layout coordinates
+ * (only an operator drag emits an event).
+ * 
+ * Why an event and not a client side-store? A canvas position is graph
+ * *view-state* the operator wants to survive reload. The only sanctioned
+ * DuckDB writer is the host funnel through ``runtime/db_lock``; a
+ * localStorage side-store would be a second source of truth that can
+ * diverge from the substrate. So position rides the SAME typed-event funnel
+ * as every other state mutation — the §-single-writer reason, identical to
+ * why VoiceCapturedPayload carries its audio by reference rather than a
+ * side-store.
+ * 
+ * A canvas position is NOT a §9 provenance claim — it asserts nothing about
+ * the world, only about pixels — so it carries no source/grounding fields;
+ * the block's provenance still lives on its graph node (source_document_id).
+ * 
+ * ``region_id`` (+ optional human ``region_label``) carries M4 theme
+ * grouping through the SAME event: a block dropped into a named region
+ * records its region here rather than as a second event type or a side
+ * store. ``None`` means "ungrouped".
+ */
+export interface BlockPositionPayload {
+  action_type: "block.positioned";
+  node_id: string;
+  x: number;
+  y: number;
+  region_id?: string | null;
+  region_label?: string | null;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -2242,7 +2283,8 @@ export type TypedPayload =
   | SeamSpeakToWritePayload
   | SeamSpeakToReadPayload
   | SeamWriteToSpeakPayload
-  | VoiceCapturedPayload;
+  | VoiceCapturedPayload
+  | BlockPositionPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2275,6 +2317,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "artifact.generated",
   "artifact.interacted",
   "audit.finding_emitted",
+  "block.positioned",
   "claim.asserted_by_operator",
   "claim.challenge_raised",
   "claim.grounding_check_failed",

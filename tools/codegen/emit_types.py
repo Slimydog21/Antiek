@@ -251,6 +251,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.SeamWriteToSpeakPayload,
     # Living Roadmap SPR-14 — shared voice-in capture provenance.
     schema_module.VoiceCapturedPayload,
+    # Living Roadmap SPR-03 — block-canvas position persistence (DRW organism).
+    schema_module.BlockPositionPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.

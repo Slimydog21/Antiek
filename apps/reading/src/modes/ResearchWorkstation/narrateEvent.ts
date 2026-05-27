@@ -275,6 +275,9 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.SEAM_WRITE_TO_SPEAK]: null,
   // SPR-14 — voice-in capture provenance; not narrated in the thinking stream.
   [ActionType.VOICE_CAPTURED]: null,
+  // SPR-03 — block-canvas position is pure view-state (where a block sits on
+  // the organism canvas); never narrated as research progress.
+  [ActionType.BLOCK_POSITIONED]: null,
 };
 
 /** The safe generic line for an action_type with no row — only reachable if

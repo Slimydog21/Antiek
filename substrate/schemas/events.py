@@ -15,13 +15,15 @@ Scope of this file:
   ``substrate/event_log/events.py`` so the schemas package is at the
   bottom of the dependency stack; event_log re-exports for back-compat).
 - The ``Event`` envelope.
-- Payload variants for the 19 currently-schemaed action types:
+- Payload variants for the 20 currently-schemaed action types:
   - ``DispatchCallPayload`` (week 1 dependency — cost-tracking emits)
   - ``ContextPackAssembledPayload`` (week 1 dependency — pack provenance)
   - 17 wrestling payloads (locked at substrate time per
     ``architecture_notes.md`` §9.1 so Loop 2 trajectories are typed
     from the first event written)
-- A discriminated union over those 19 variants.
+  - ``BlockPositionPayload`` (Living Roadmap SPR-03 — DRW block-canvas
+    position persistence as a typed event, single-writer funnel)
+- A discriminated union over those 20 variants.
 - A model validator enforcing that wrestling-loop events carry
   ``document_id`` on the envelope.
 
@@ -350,6 +352,18 @@ class ActionType(str, Enum):
     #    (substrate/books/voice_note → note.emerged) is unchanged.
     VOICE_CAPTURED = "voice.captured"
 
+    # ── Block-canvas position persistence (Living Roadmap SPR-03). The DRW
+    #    "organism" canvas renders insight/question graph nodes as draggable
+    #    blocks; each drag-end appends ONE block.positioned event recording the
+    #    node's (x, y) in the canvas's free 2D coordinate space, scoped to the
+    #    investigation by the Event envelope. This is pure view-state, NOT a §9
+    #    claim — it rides the SAME single-writer typed-event funnel as every
+    #    other state mutation because the frontend has no other sanctioned
+    #    writer (a localStorage side-store would diverge from the graph). The
+    #    canvas re-derives positions by replaying these events (latest per
+    #    node_id wins); the optional region_id carries M4 theme grouping.
+    BLOCK_POSITIONED = "block.positioned"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -440,7 +454,22 @@ class ActionType(str, Enum):
 #     blob persists by reference through the single-writer typed-event
 #     funnel — no client side-store. specs/antiek-living-roadmap/ SPR-14.
 #     2026-05-27.
-EVENT_SCHEMA_VERSION: int = 17
+# v18: Living Roadmap SPR-03 — block-canvas position persistence. One typed
+#     event (block.positioned) records where the operator dragged an
+#     insight/question block on the DRW "organism" canvas: node_id + (x, y)
+#     in the canvas's free 2D coordinate space, scoped to the investigation
+#     via the Event envelope's investigation_id. A canvas position is pure
+#     view-state, NOT a §9 provenance claim — it is persisted through the
+#     SAME single-writer typed-event funnel as every other state mutation
+#     precisely because the frontend has no other sanctioned writer (a
+#     client side-store would be a second source of truth that can diverge).
+#     The canvas re-derives positions by replaying these events (latest per
+#     node_id wins); a node with no event falls back to deterministic
+#     auto-layout. The optional ``region_id`` + ``region_label`` carry M4
+#     theme-grouping (a block dropped into a named region) through the SAME
+#     event — no second event type, no side store. specs/antiek-living-roadmap/
+#     SPR-03. 2026-05-28.
+EVENT_SCHEMA_VERSION: int = 18
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3017,6 +3046,55 @@ class VoiceCapturedPayload(_PayloadBase):
     audio_ref: Optional[str] = None
 
 
+# ── Block-canvas position persistence — DRW "organism" view (SPR-03) ──
+
+
+class BlockPositionPayload(_PayloadBase):
+    """Where an insight/open-question block sits on the DRW canvas (Living
+    Roadmap SPR-03 M2/M4). Emitted on drag-end by the Canvas component.
+
+    The canvas is a FREE 2D coordinate space — NOT the reading-physics
+    in-document layout-map (that anchors widgets to text; this places nodes
+    on a whiteboard). ``x``/``y`` are canvas-local pixels; the canvas
+    re-derives layout by replaying these events (latest event per
+    ``node_id`` wins), so the persisted event is the SINGLE source of truth
+    for position. A node with no event falls back to deterministic
+    auto-layout client-side; we never persist the auto-layout coordinates
+    (only an operator drag emits an event).
+
+    Why an event and not a client side-store? A canvas position is graph
+    *view-state* the operator wants to survive reload. The only sanctioned
+    DuckDB writer is the host funnel through ``runtime/db_lock``; a
+    localStorage side-store would be a second source of truth that can
+    diverge from the substrate. So position rides the SAME typed-event funnel
+    as every other state mutation — the §-single-writer reason, identical to
+    why VoiceCapturedPayload carries its audio by reference rather than a
+    side-store.
+
+    A canvas position is NOT a §9 provenance claim — it asserts nothing about
+    the world, only about pixels — so it carries no source/grounding fields;
+    the block's provenance still lives on its graph node (source_document_id).
+
+    ``region_id`` (+ optional human ``region_label``) carries M4 theme
+    grouping through the SAME event: a block dropped into a named region
+    records its region here rather than as a second event type or a side
+    store. ``None`` means "ungrouped"."""
+
+    action_type: Literal[ActionType.BLOCK_POSITIONED] = ActionType.BLOCK_POSITIONED
+    # The graph node (insight or question) this position belongs to. Opaque
+    # handle echoed from the distill surface; never rendered as a label.
+    node_id: str
+    # Canvas-local coordinates (free 2D space, not the reading-physics map).
+    x: float
+    y: float
+    # M4 theme grouping — the region this block was dropped into (None =
+    # ungrouped). Persisted on the SAME event so grouping needs no side store.
+    region_id: Optional[str] = None
+    # Human-facing region name, when the operator named the region. Opaque
+    # otherwise; never required.
+    region_label: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -3125,6 +3203,7 @@ TypedPayload = Annotated[
         SeamSpeakToReadPayload,
         SeamWriteToSpeakPayload,
         VoiceCapturedPayload,
+        BlockPositionPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -3242,6 +3321,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.SEAM_WRITE_TO_SPEAK.value,
     # Living Roadmap SPR-14 — voice-in capture provenance.
     ActionType.VOICE_CAPTURED.value,
+    # Living Roadmap SPR-03 — block-canvas position persistence.
+    ActionType.BLOCK_POSITIONED.value,
 })
 
 
@@ -3529,4 +3610,6 @@ __all__ = [
     # Voice infrastructure SPR-14 — shared provenance vocab + voice-in capture
     "ProvenanceSourceKind",
     "VoiceCapturedPayload",
+    # Block-canvas position persistence SPR-03 (v18 schema bump)
+    "BlockPositionPayload",
 ]
