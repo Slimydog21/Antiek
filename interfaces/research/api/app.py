@@ -109,6 +109,12 @@ class InvestigationStartRequest(BaseModel):
     investigation_id: Optional[str] = None
     parent_investigation_id: Optional[str] = None
     spawn_context: Optional[str] = None
+    # SPR-01 M3: curated fast/deep research tier from the research entry.
+    # CLOSED set; recorded on the start event so the chosen tier is
+    # queryable. "fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro (the
+    # tier→provider map lives in substrate/dispatch/research_tier.py).
+    # Defaults to "deep" — a cold research question is the high-value case.
+    research_tier: Literal["fast", "deep"] = "deep"
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -283,6 +289,13 @@ class InvestigationStatusResponse(BaseModel):
     last_delivered_action_type: Optional[str] = None
     terminal_payload: Optional[dict] = None
     rubric_score: Optional[RubricScore] = None
+    # SPR-01 M3: the curated fast/deep research tier recorded on this
+    # investigation's start event ("fast" → MiMo V2.5 Pro, "deep" →
+    # DeepSeek V4 Pro). READ from the persisted start payload — this is
+    # the "chosen tier is queryable after the fact" acceptance. Null when
+    # the start event has no tier (legacy / daemon-spawned runs predate
+    # the field); the surface treats null as the default, never fabricates.
+    research_tier: Optional[str] = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -1526,6 +1539,10 @@ def create_app(
                     max_sub_questions=req.max_sub_questions,
                     parent_investigation_id=req.parent_investigation_id,
                     spawn_context=req.spawn_context,
+                    # SPR-01 M3: record the chosen research tier on the
+                    # start event (queryable after the fact). The payload
+                    # field is the same CLOSED set.
+                    research_tier=req.research_tier,
                 ),
                 role="operator",
                 policy_id="operator-cli",
@@ -1623,6 +1640,22 @@ def create_app(
         # than a fabricated one.
         rubric_score = _rubric_score_from_trajectory(rows)
 
+        # SPR-01 M3: READ the chosen research tier off the start event's
+        # persisted payload (the "queryable after the fact" acceptance).
+        # The start event is the first INVESTIGATION_START_REQUESTED row;
+        # walk oldest-first and stop at the first match. Null when absent
+        # (legacy/daemon runs predate the field) — never fabricated.
+        start_action = ActionType.INVESTIGATION_START_REQUESTED.value
+        research_tier: Optional[str] = None
+        for r in rows:
+            if r.get("action_type") == start_action:
+                payload = r.get("payload")
+                if isinstance(payload, dict):
+                    rt = payload.get("research_tier")
+                    if isinstance(rt, str):
+                        research_tier = rt
+                break
+
         if terminal_row is not None:
             status = (
                 "completed"
@@ -1636,6 +1669,7 @@ def create_app(
                 last_delivered_action_type=last_delivered,
                 terminal_payload=terminal_row.get("payload"),
                 rubric_score=rubric_score,
+                research_tier=research_tier,
             )
 
         return InvestigationStatusResponse(
@@ -1645,6 +1679,7 @@ def create_app(
             last_delivered_action_type=last_delivered,
             terminal_payload=None,
             rubric_score=rubric_score,
+            research_tier=research_tier,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────

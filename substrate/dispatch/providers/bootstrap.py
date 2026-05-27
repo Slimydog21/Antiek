@@ -36,11 +36,28 @@ from .openai_compat import OpenAICompatProvider
 # (provider_name, factory) — factory returns an instance or None when
 # the required env var is missing.
 def _maybe_deepseek() -> Optional[OpenAICompatProvider]:
+    # DeepSeek V4 Pro — the "deep" research tier's primary provider
+    # (see substrate/dispatch/research_tier.py). DeepSeek's API speaks
+    # the OpenAI chat-completions shape verbatim, so it reuses the
+    # OpenAICompatProvider adapter (mirror of the xAI/Hermes bridge at
+    # bootstrap.py:_maybe_hermes / providers/openai_compat.py). The
+    # concrete model id (``deepseek-v4-pro``) is supplied per-call by the
+    # tier in config.yaml, NOT pinned here — one provider endpoint can
+    # serve V4-Pro and V4-Flash; the provider is the endpoint, the model
+    # is the per-call argument. ``ANTIEK_DEEPSEEK_BASE_URL`` overrides the
+    # default if DeepSeek changes the host or the operator is proxying
+    # (matches the xiaomi/hermes override convention below).
+    #
+    # KEY READ FROM ENV ``DEEPSEEK_API_KEY`` — never hardcoded; registers
+    # ONLY when present (degraded-posture, not an error, per this
+    # module's docstring + tests/test_dispatch_bootstrap.py).
     if not os.environ.get("DEEPSEEK_API_KEY"):
         return None
     return OpenAICompatProvider(
         name="deepseek",
-        base_url="https://api.deepseek.com",
+        base_url=os.environ.get(
+            "ANTIEK_DEEPSEEK_BASE_URL", "https://api.deepseek.com",
+        ),
         api_key_env="DEEPSEEK_API_KEY",
     )
 
@@ -66,8 +83,27 @@ def _maybe_openrouter() -> Optional[OpenAICompatProvider]:
 
 
 def _maybe_xiaomi() -> Optional[OpenAICompatProvider]:
-    # MiMo API. Endpoint per the public docs; ANTIEK_XIAOMI_BASE_URL
+    # Xiaomi MiMo V2.5 Pro — the "fast" research tier's primary provider
+    # (see substrate/dispatch/research_tier.py). MiMo's API speaks the
+    # OpenAI chat-completions shape, so it reuses the same
+    # OpenAICompatProvider adapter as DeepSeek and the xAI/Hermes bridge.
+    # The concrete model id (``mimo-v2.5-pro``) is supplied per-call by
+    # the tier in config.yaml, not pinned here. ANTIEK_XIAOMI_BASE_URL
     # overrides if Xiaomi changes the path or you're proxying.
+    #
+    # ASSUMPTION (operator-bound to verify on prod): the MiMo endpoint
+    # below is from the public docs as of 2026-01; the base URL already
+    # carries ``/v1``, so the adapter's DEFAULT chat_completions_path of
+    # ``/v1/chat/completions`` would double-up to ``/v1/v1/...`` — the
+    # exact failure the Hermes regression at
+    # tests/test_dispatch_bootstrap.py:test_hermes_provider_url_does_not_double_v1
+    # locks in. MiMo is therefore given the same ``/chat/completions``
+    # override as OpenRouter/Hermes. If MiMo's real base omits ``/v1``,
+    # set ANTIEK_XIAOMI_BASE_URL to include it (the path override stays
+    # correct either way as long as the base carries the version prefix).
+    #
+    # KEY READ FROM ENV ``XIAOMI_API_KEY`` — never hardcoded; registers
+    # ONLY when present.
     if not os.environ.get("XIAOMI_API_KEY"):
         return None
     return OpenAICompatProvider(
@@ -77,6 +113,7 @@ def _maybe_xiaomi() -> Optional[OpenAICompatProvider]:
             "https://api.mimo.xiaomi.com/v1",
         ),
         api_key_env="XIAOMI_API_KEY",
+        chat_completions_path="/chat/completions",
     )
 
 

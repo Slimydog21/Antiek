@@ -153,6 +153,16 @@ export async function getHealth(): Promise<{
 
 // ── Sprint 11: investigations + chunks ─────────────────────────────
 
+/**
+ * SPR-01 M3 — the curated research tier. CLOSED two-value set offered ONLY
+ * at the research entry (not a raw model dropdown anywhere). "fast" → MiMo
+ * V2.5 Pro, "deep" → DeepSeek V4 Pro. The tier→provider map lives in ONE
+ * place server-side (substrate/dispatch/research_tier.py); the client only
+ * sends the chosen label. Mirrors the closed set in
+ * substrate/dispatch/research_tier.py:RESEARCH_TIERS.
+ */
+export type ResearchTier = "fast" | "deep";
+
 export interface StartInvestigationRequest {
   question: string;
   context?: string;
@@ -161,6 +171,8 @@ export interface StartInvestigationRequest {
   spawn_context?: string;
   max_sub_questions?: number;
   investigation_id?: string;
+  /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
+  research_tier?: ResearchTier;
 }
 
 export interface StartInvestigationResponse {

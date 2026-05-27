@@ -191,15 +191,63 @@ def _empty_delivered_payload(
 # ---------------------------------------------------------------------------
 
 
+def _research_tier_override(investigation_id: str):
+    """SPR-01 M3 — resolve the (provider, model) override for THIS
+    investigation's chosen fast/deep research tier, READ from the
+    persisted start event. Synthesis is the human-facing artifact, so it
+    is the one role where the fast/deep choice is most felt — so it is
+    where the recorded tier is consumed to actually change which provider
+    is routed to.
+
+    Returns ``(provider, model)`` for the chosen tier, or ``(None, None)``
+    when no start event / no tier is recorded (legacy runs) — in which
+    case the synthesizer routes through the config default, unchanged.
+
+    The override is a PREFERENCE that only takes effect when its provider
+    is ACTUALLY REGISTERED. If the resolved tier provider isn't registered
+    (its API key isn't set in this deploy — the common case until the
+    operator adds keys, AND the case in stub-provider tests), we return
+    ``(None, None)`` so the synthesizer uses the config's own primary +
+    fallback chain unchanged. This is deliberately stricter than relying on
+    the router's KeyError→fallback: it means a research-tier choice never
+    *displaces* a working config route with an unregistered provider — the
+    tier only ever *adds* routing when its provider is live. (It also keeps
+    the schema default of "deep" from silently re-routing every run onto an
+    absent DeepSeek key.)"""
+    from substrate.dispatch import resolve_research_tier
+    from substrate.dispatch.router import _PROVIDER_REGISTRY
+
+    start_action = ActionType.INVESTIGATION_START_REQUESTED.value
+    try:
+        rows = trajectory(investigation_id)
+    except Exception:  # pragma: no cover — diagnostic; never block synthesis
+        return None, None
+    for r in rows:
+        if r.get("action_type") == start_action:
+            payload = r.get("payload")
+            if isinstance(payload, dict) and payload.get("research_tier"):
+                target = resolve_research_tier(payload["research_tier"])
+                # Only override when the tier's provider is live.
+                if target.provider in _PROVIDER_REGISTRY:
+                    return target.provider, target.model
+            break
+    return None, None
+
+
 def _dispatch_once(prompt: str, event: Event) -> tuple[Optional[str], str]:
     """One dispatch attempt. Returns (response_text, policy_id) or
     (None, fallback_policy_id) on ProviderError / KeyError."""
+    provider_override, model_override = _research_tier_override(
+        event.investigation_id,
+    )
     try:
         result = dispatch(
             prompt,
             "synthesizer",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            provider_override=provider_override,
+            model_override=model_override,
         )
         return result.text, f"{result.provider}/{result.model}"
     except (ProviderError, KeyError) as exc:

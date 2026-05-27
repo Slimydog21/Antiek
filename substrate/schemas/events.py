@@ -1637,6 +1637,16 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     chase_value: int = Field(default=0, ge=0)
     # Hard budget cap in USD across the chase tree. Defaults to $2.
     chase_budget_usd: float = Field(default=2.0, ge=0.0)
+    # SPR-01 (Living Roadmap) M3: the curated fast/deep research tier the
+    # operator chose at the research entry. CLOSED set — its only legal
+    # values are the members of substrate.dispatch.research_tier.RESEARCH_TIERS
+    # ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro). Recorded ON the
+    # start event so the chosen tier is queryable after the fact (which
+    # provider Hermes preferred for this investigation). The tier→provider
+    # resolution lives in ONE place — substrate/dispatch/research_tier.py —
+    # never duplicated here. Defaults to "deep" (DEFAULT_RESEARCH_TIER): a
+    # cold research question is the high-value case.
+    research_tier: Literal["fast", "deep"] = "deep"
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):

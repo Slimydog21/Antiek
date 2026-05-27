@@ -7,6 +7,7 @@ import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
+import type { ResearchTier } from "../../lib/api";
 import CascadeProposal from "./CascadeProposal";
 
 /**
@@ -43,6 +44,25 @@ const EXAMPLE_PROMPTS: readonly string[] = [
 /** Cost line shared with ChatInputArea — kept in sync intentionally. */
 const COST_ESTIMATE = "~$0.08-$0.16 / investigation";
 
+/**
+ * SPR-01 M3 — the curated research tiers. This is the WHOLE set the entry
+ * offers: two values, no raw model dropdown, no BYO-model. The label +
+ * one-line "what it's for" are the operator-facing framing; the tier→provider
+ * map ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro) lives server-side in
+ * substrate/dispatch/research_tier.py and is never exposed to the client.
+ * Default is "deep" (mirrors DEFAULT_RESEARCH_TIER): a cold research question
+ * is the high-value case; the operator opts DOWN to fast for cheap asks.
+ */
+const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
+  value: ResearchTier;
+  label: string;
+  hint: string;
+}> = [
+  { value: "fast", label: "Fast", hint: "cheaper, lower-latency" },
+  { value: "deep", label: "Deep", hint: "reasoning-heavier" },
+];
+const DEFAULT_TIER: ResearchTier = "deep";
+
 /** Grace period before navigating even if no event has streamed yet, so a
  *  slow WS connection doesn't strand the operator on the start surface. */
 const NAVIGATE_GRACE_MS = 1500;
@@ -51,6 +71,9 @@ export default function StartResearch() {
   const navigate = useNavigate();
   const start = useStartInvestigation();
   const [question, setQuestion] = useState("");
+  // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
+  // Recorded on the investigation server-side so it's queryable after.
+  const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -77,9 +100,9 @@ export default function StartResearch() {
   } = start;
 
   const onSubmit = useCallback(async () => {
-    const id = await submit({ question });
+    const id = await submit({ question, researchTier: tier });
     if (id) setQuestion("");
-  }, [submit, question]);
+  }, [submit, question, tier]);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -285,6 +308,49 @@ export default function StartResearch() {
           {error && (
             <div className="text-xs font-mono text-emperor">{error}</div>
           )}
+
+          {/* SPR-01 M3 — the curated fast/deep tier selector. A closed
+              two-value segmented control (NOT a model dropdown). Selecting
+              a tier changes which provider Hermes routes to server-side
+              ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro); the chosen
+              value rides on the start request and is recorded on the
+              investigation. Lives ONLY here, at the research entry. */}
+          <div
+            className="flex items-center gap-2"
+            role="radiogroup"
+            aria-label="Research depth"
+          >
+            <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              Depth
+            </span>
+            <div className="inline-flex rounded-hog border border-rule dark:border-charcoal-1 overflow-hidden">
+              {RESEARCH_TIER_OPTIONS.map((opt) => {
+                const active = tier === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setTier(opt.value)}
+                    disabled={busy}
+                    title={opt.hint}
+                    className={
+                      "px-3 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
+                      (active
+                        ? "bg-sun text-ink"
+                        : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright hover:bg-sun/10")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+              {RESEARCH_TIER_OPTIONS.find((o) => o.value === tier)?.hint}
+            </span>
+          </div>
 
           <div className="flex items-center justify-between gap-3">
             <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">

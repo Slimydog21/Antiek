@@ -398,3 +398,160 @@ async def test_end_to_end_post_drives_orchestrator(
     assert body["current_phase"] == 8  # last entered phase
     assert body["terminal_payload"]["thesis_summary"].startswith("PsiQuantum")
     assert Path(body["terminal_payload"]["master_md_path"]).exists()
+
+
+# ---------------------------------------------------------------------------
+# SPR-01 (Living Roadmap) M3 — the chosen research tier is recorded on the
+# investigation and is queryable after the fact via GET /investigations/{id}.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_post_records_research_tier_on_start_event(async_client):
+    """The fast/deep tier the operator chose rides on the start payload and
+    is persisted on the INVESTIGATION_START_REQUESTED event — the M3
+    'recorded on the investigation' acceptance."""
+    r = await async_client.post(
+        "/investigations",
+        json={
+            "question": "Does the moat compound with more dispatches?",
+            "investigation_id": "inv-tier-fast",
+            "research_tier": "fast",
+        },
+    )
+    assert r.status_code == 202, r.text
+    rows = trajectory("inv-tier-fast")
+    start = [
+        x for x in rows
+        if x["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
+    ]
+    assert len(start) == 1
+    assert start[0]["payload"]["research_tier"] == "fast"
+
+
+@pytest.mark.asyncio
+async def test_get_status_surfaces_chosen_research_tier(async_client):
+    """GET /investigations/{id} reads the chosen tier back out — queryable
+    after the fact, not recomputed."""
+    await async_client.post(
+        "/investigations",
+        json={
+            "question": "Trace how this idea evolved across sources.",
+            "investigation_id": "inv-tier-deep",
+            "research_tier": "deep",
+        },
+    )
+    r = await async_client.get("/investigations/inv-tier-deep")
+    assert r.status_code == 200
+    assert r.json()["research_tier"] == "deep"
+
+
+@pytest.mark.asyncio
+async def test_research_tier_defaults_to_deep_when_omitted(async_client):
+    """Omitting the tier defaults to 'deep' server-side (a cold research
+    question is the high-value case)."""
+    await async_client.post(
+        "/investigations",
+        json={
+            "question": "What is the strongest counter-argument here?",
+            "investigation_id": "inv-tier-default",
+        },
+    )
+    r = await async_client.get("/investigations/inv-tier-default")
+    assert r.json()["research_tier"] == "deep"
+
+
+@pytest.mark.asyncio
+async def test_legacy_investigation_without_tier_reads_null(async_client):
+    """An investigation whose start event predates the research_tier field
+    reads NULL — honest absent, never fabricated. This fires the null branch
+    of the GET read-back guard (app.py: research_tier stays None when the
+    persisted payload has no research_tier key).
+
+    The current schema defaults research_tier to "deep", so emit_typed() can
+    never produce a field-less row. We construct a GENUINELY pre-field
+    historical row via the low-level log_event() path, which writes the raw
+    payload dict verbatim WITHOUT going through the Pydantic schema default —
+    exactly the shape a start event written before the field existed has on
+    disk. The GET must then read research_tier back as None."""
+    from substrate.event_log import log_event
+
+    # Raw start payload with NO research_tier key — the pre-field shape.
+    # (matches InvestigationStartRequestedPayload minus the field that
+    #  didn't exist yet; the discriminator action_type is still present so
+    #  the GET's start-event detection still finds the row.)
+    log_event(
+        "inv-legacy",
+        ActionType.INVESTIGATION_START_REQUESTED.value,
+        payload={
+            "action_type": ActionType.INVESTIGATION_START_REQUESTED.value,
+            "question": "legacy run",
+            "context": "",
+            "topic_slug": None,
+            "max_sub_questions": 4,
+        },
+        role="operator",
+    )
+    # Sanity: the persisted row genuinely lacks the field (so we know the
+    # assertion below exercises the null branch, not the default-present one).
+    start = next(
+        x for x in trajectory("inv-legacy")
+        if x["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
+    )
+    assert "research_tier" not in start["payload"]
+
+    r = await async_client.get("/investigations/inv-legacy")
+    # The read-back guard finds no research_tier key → null, never "deep".
+    assert r.json()["research_tier"] is None
+
+
+# ---------------------------------------------------------------------------
+# SPR-01 M2 — the original bug: with NO provider registered, the Ask path
+# must surface an honest terminal failure (investigation.failed), NOT hang
+# and NOT swallow the error. The frontend reads investigation.failed and
+# shows the "no provider configured" state (AIActionFailure); here we prove
+# the substrate end of that contract.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_no_provider_surfaces_terminal_failure_not_hang(
+    app_and_bus, async_client,
+):
+    """No providers registered (the production cold-start bug). POST →
+    orchestrator runs → phase 1's decomposer dispatch hits an empty
+    registry (KeyError), the bridge emits an empty decomposition, phase 1
+    fails its postcondition, and the orchestrator emits a terminal
+    investigation.failed. GET must report 'failed' within a bounded wait —
+    proving the path does not hang and the error is not swallowed."""
+    _, bus = app_and_bus
+    # Deliberately register NOTHING — this is the keys-absent posture.
+    reset_provider_registry()
+
+    post_resp = await async_client.post(
+        "/investigations",
+        json={
+            "question": "Will the Ask button do anything without a provider?",
+            "investigation_id": "inv-no-provider",
+            "max_sub_questions": 2,
+        },
+    )
+    assert post_resp.status_code == 202
+
+    deadline = asyncio.get_event_loop().time() + 20.0
+    body = None
+    while asyncio.get_event_loop().time() < deadline:
+        await bus.wait_for_handlers(timeout=2.0)
+        status_resp = await async_client.get("/investigations/inv-no-provider")
+        body = status_resp.json()
+        if body["status"] in ("completed", "failed"):
+            break
+        await asyncio.sleep(0.05)
+
+    assert body is not None
+    # Honest terminal failure — NOT in_progress forever, NOT completed.
+    assert body["status"] == "failed", body
+    # The failure is queryable (a diagnostic reason is attached), not
+    # swallowed.
+    assert body["terminal_payload"] is not None
+    assert body["terminal_payload"].get("phase") == 1

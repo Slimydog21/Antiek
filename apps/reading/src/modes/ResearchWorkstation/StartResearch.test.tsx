@@ -131,6 +131,36 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     );
   });
 
+  it("defaults the research tier to deep and submits it (SPR-01 M3)", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-tier" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Does the moat compound with more dispatches?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ research_tier: "deep" }),
+      ),
+    );
+  });
+
+  it("selecting Fast changes the submitted tier (SPR-01 M3)", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fast" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "A quick exploratory scan of this topic." },
+    });
+    // The curated closed-set control — pick "Fast".
+    fireEvent.click(screen.getByRole("radio", { name: "Fast" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ research_tier: "fast" }),
+      ),
+    );
+  });
+
   it("rejects a too-short question without POSTing", async () => {
     renderStart();
     const input = screen.getByLabelText("Research question");

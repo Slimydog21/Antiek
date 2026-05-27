@@ -309,6 +309,8 @@ def dispatch(
     parent_event_id: Optional[str] = None,
     config: Optional[DispatchConfig] = None,
     config_path: Optional[str | Path] = None,
+    provider_override: Optional[str] = None,
+    model_override: Optional[str] = None,
 ) -> DispatchResult:
     """Route an LLM call.
 
@@ -331,6 +333,21 @@ def dispatch(
         config_path: Path to a config.yaml. Used when ``config`` is None.
             Defaults to ``substrate/dispatch/config.yaml`` co-located
             with this module.
+        provider_override: SPR-01 M3 — when set (together with
+            ``model_override``), swap the PRIMARY tier's
+            ``(provider, model)`` for this one. The fallback chain is
+            preserved unchanged, so the override is a preference, not a
+            single point of failure: if the override provider is down or
+            unregistered, the call falls through to the config's fallback
+            exactly as a normal primary failure would. This is how the
+            curated fast/deep research tier
+            (``substrate/dispatch/research_tier.py``) makes the selection
+            actually change which provider is routed to — NOT a second
+            dispatcher (§16), just a per-call primary swap on the one
+            Hermes-routed path. Ignored unless BOTH override args are
+            present (a half-specified override is a caller bug, so we
+            refuse to guess the missing half and fall back to config).
+        model_override: see ``provider_override``.
 
     Returns:
         DispatchResult for the first successful call.
@@ -359,6 +376,20 @@ def dispatch(
 
     prompt_hash = _sha256_prefix(prompt)
     tier = config.tiers[tier_name]
+    # SPR-01 M3 route-override: swap ONLY the primary's (provider, model),
+    # keeping the same pricing/limits and the SAME fallback chain. Requires
+    # both halves; a partial override is ignored (refuse to guess).
+    if provider_override and model_override:
+        tier = TierConfig(
+            name=tier.name,
+            provider=provider_override,
+            model=model_override,
+            max_tokens=tier.max_tokens,
+            temperature=tier.temperature,
+            context_budget_tokens=tier.context_budget_tokens,
+            pricing=tier.pricing,
+            fallback=tier.fallback,
+        )
     chain_index = 0
     last_error: Optional[ProviderError] = None
 
@@ -371,7 +402,41 @@ def dispatch(
             chain_index += 1
             continue
 
-        provider = get_provider(current.provider)
+        # An unregistered provider (e.g. a route-override pointing at a
+        # provider whose API key isn't set, so bootstrap never registered
+        # it) is a recoverable, fallback-triggering condition — NOT a hard
+        # crash of the whole dispatch. Convert the registry KeyError into a
+        # retryable ProviderError so the same fallback machinery below
+        # handles it. This is what keeps the SPR-01 M3 route-override a
+        # preference, not a single point of failure.
+        try:
+            provider = get_provider(current.provider)
+        except KeyError as e:
+            last_error = ProviderError(
+                f"provider {current.provider!r} is not registered "
+                f"(no API key / not bootstrapped); falling back. {e}",
+                provider=current.provider, model=current.model or "<none>",
+                latency_ms=0, retryable=True,
+            )
+            _emit_dispatch_call(
+                investigation_id=investigation_id,
+                parent_event_id=parent_event_id,
+                role=role,
+                tier=tier_name,
+                provider=current.provider,
+                model=current.model,
+                usage=NormalizedUsage(input_tokens=0, output_tokens=0),
+                cost_usd=0.0,
+                latency_ms=0,
+                verification_required=verification_required,
+                fallback_chain_index=chain_index,
+                prompt_hash=prompt_hash,
+                finish_reason="error",
+                context_pack_event_id=context_pack_event_id,
+            )
+            current = current.fallback
+            chain_index += 1
+            continue
         effective_max_tokens = max_tokens if max_tokens is not None else current.max_tokens
 
         t_start = time.monotonic()
