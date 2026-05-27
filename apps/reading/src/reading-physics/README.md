@@ -29,6 +29,8 @@ written to be **true of the actual code**, not aspirational.
 | `anchors.ts` | Shared semantic-anchor constructors (e.g. `synthesisHeaderAnchor()` / `SYNTHESIS_HEADER_CLAIM_ID`) so widgets pin to the same substrate identity without importing one another. |
 | `augmentations/servability.ts` | The §9.0 servability augmentation (re-homed SPR-02). Declares a verdict-class decoration per source. |
 | `augmentations/ip-holder.ts` | The "whose work grounds this" IP-holder augmentation (re-homed SPR-03 M5). Declares an `attribution` payload per source with a known owner. **Composes** with servability through the facet — neither imports the other. |
+| `augmentations/skim.ts` | **Skim** (SPR-06 M1) — rhetorical-role colors. Declares a colored-background decoration per claim by its coarse role (objective/method/result). Reads a substrate-derived `RhetoricalRoleView` (see below); writes nothing. **Composes** with SiteSee through the `decorations` facet — neither imports the other. |
+| `augmentations/sitesee.ts` | **SiteSee** (SPR-06 M2) — citation tints + a hover card. Declares a tint decoration per cited source by its reading-history state, plus an `inline-end` hover-card anchored widget (via the surface-injected `SiteSeeHoverCard`). Reuses the §9.0 servability gate for the card metadata. **Composes** with Skim through the facets — neither imports the other. |
 
 ### The augmentation contract (what an agent implements)
 
@@ -245,6 +247,116 @@ load-bearing FACT, not a precise figure):
   anchors on-screen) — the asserted gate (`< FRAME_BUDGET_MS × 2`, with CI
   headroom). This is the path the surface ships. Proven behavior-preserving: an
   in-band anchor resolves the identical post-transform rect as the unscoped map.
+
+## Two augmentations that compose — Skim + SiteSee (SPR-06)
+
+SPR-06 is the **headline composability proof on new ideas**: two augmentations
+from two unrelated talk demos — **Skim** (rhetorical-role colors) and **SiteSee**
+(citation tints + a hover card) — ship as **two independent augmentations that
+compose on one synthesis** through the SPR-03/04 facets, **neither importing the
+other**, both grounded in the substrate. The composition is the deliverable, not
+the two features — proven in `skim-sitesee.compose.test.ts` (both sets of
+decorations present + merged, the hover card on the anchored-widgets facet, the
+overlap of a cited "result" sentence resolving deterministically, and the PR-3
+no-cross-import assertion).
+
+Why two modules and not one combined "annotations" augmentation (the steelman):
+a combined module is fewer files, but it proves **nothing** about the physics —
+the whole thesis is that two *independent* authors' ideas compose without
+coupling. A combined module can't be split later and demonstrates no
+`O(facets)`-not-`O(N²)` property (canon §4). Two modules is the cost of the proof
+that matters.
+
+### Skim's rhetorical-role taxonomy + where the role comes from (M1 + the open question)
+
+The sprint's open question, resolved in diligence: **`ParsedClaim` /
+`thesis_components` (synthesisParser.ts) carry NO explicit rhetorical-role
+field** — only `{ index, claim, rationale, confidence, effectiveSourceTier,
+hedgingRequired, chunkIds, supportingPathIndices }`. So Skim must **derive** the
+role. Per canon PR-2 + the sprint manual there are two paths:
+
+- **(a) derive a coarse role from the synthesis STRUCTURE** (a claim's position /
+  section / the chunk's `section_path`), or
+- **(b) run a classifier and write its output to the SUBSTRATE as an event** —
+  never a private store (that violates PR-2, breaks composition, trips the guard).
+
+**RESOLUTION: path (a), STRUCTURE — chosen, shipped.** No classifier, no event
+write. The taxonomy is four **coarse** roles:
+
+| Role | className (the WHAT) | When |
+|---|---|---|
+| `objective` | `skim--objective` (→ green) | a goal/aim/research-question claim |
+| `method` | `skim--method` (→ blue) | a how/approach/procedure claim |
+| `result` | `skim--result` (→ orange) | a finding/outcome/result claim |
+| `other` | **none** (no color) | role not determined by the structure |
+
+The **surface** resolves a coarse `RhetoricalRoleView { claimId, role }` per
+claim from substrate-derived structure (the synthesis section the claim sits in
++ the chunk's `section_path`) and hands it to Skim; Skim only **declares** a
+color per role. This keeps Skim contract-only (imports ONLY `../types`), pure
+(PR-1), and makes the no-data state honest: **a claim whose role is `other` (or
+absent) declares nothing — no guessed color (M5)**. Path (b)'s classifier-event
+is the **documented fallback** if a future synthesis genuinely needs
+per-*sentence* roles that structure can't give: the classifier would emit a
+typed event through the one shipped write funnel (PR-6) and Skim would read the
+resolved role exactly as it reads the structural one — **never a private store**.
+It is **not needed** for the coarse claim-level signal this sprint ships, and a
+coarse honest role that composes beats a precise one that doesn't (manual). No
+classifier accuracy is reported because **no classifier was built** — the role
+is a deterministic read of structure, not a probabilistic guess.
+
+### Where SiteSee's read/cited history lives in the substrate (M4)
+
+SiteSee tints a citation marker by the reader's **history** with that source,
+read from the **substrate event log** (`api.ts`: the typed event log,
+`TypedEventEnvelope` / `getTrajectory`). The taxonomy + their sources:
+
+| State | className | Substrate source |
+|---|---|---|
+| `cited` | `sitesee--cited` | already substrate-derived — a claim cites chunks (`supporting_chunk_ids` on `synthesize.delivered`; `cited_chunk_ids` on an authored section). |
+| `saved` | `sitesee--saved` | a promoted/saved source (the `saved`/`saved_and_promoted` status on a section update). |
+| `read` | `sitesee--read` | a **`source.read`** typed event — **new this sprint** (see below). |
+| `unseen` | **none** (no tint) | the honest default — no history ⇒ **tints nothing (M5)**. |
+
+The `cited` and `saved` signals already exist in the substrate. A **per-source
+"READ"** signal (the reader opened this source) **did not exist as a
+first-class event**. SiteSee does **NOT** invent a private store for it (PR-2 —
+that would break composition + trip the guard). The decision: **the SURFACE
+emits a `source.read` typed event** through the ONE shipped write funnel
+(`postTypedEvent` → `POST /events/typed` → `runtime/db_lock`, the single-writer
+invariant — PR-6) when a reader opens a source, and resolves the per-source
+history back **from the event log** into the `SiteSeeSourceView` it hands the
+augmentation. **The augmentation only READS the resolved state; it opens no
+writer and emits no event itself.** (The event *emission* is a surface
+integration — the same shape as the SPR-05 geometry-pass gap: the augmentation
+ships dormant-correct against the resolved view, and lights up fully the moment
+the surface wires the `source.read` emit + the event-log history resolution.
+This is the one net-new substrate signal the sprint allows; everything else is
+read from existing events.)
+
+### §9.0 — the hover card shows only bounded metadata (reused, not re-implemented)
+
+SiteSee's hover card **reuses the §9.0 servability gate exactly as the shipped
+`SourceCitation` does** (PR-6 — never recomputed). The surface resolves each
+cited source's `servable` verdict + (only when servable) its `ip_holder_name`
+from `getChunk`; SiteSee passes the verdict THROUGH to the card and, for a
+**non-servable** source, supplies **ONLY the title** — never the owner (the
+endpoint already withheld it with the body) and — structurally — **never any
+body** (the `SiteSeeHoverCard` prop shape has no body field, so it is impossible
+to leak one). Proven in `skim-sitesee.compose.test.ts` (§9.0 block): a
+deliberately-populated owner on a non-servable source is **dropped** by the
+augmentation and never appears in the rendered card.
+
+### The overlap case — a cited "result" sentence (rigor #3)
+
+The load-bearing composition edge: a claim that is BOTH a Skim **`result`** AND a
+SiteSee **`cited`** source — both decorate the **exact same claim range**. The
+`decorations` facet's §5.1 rule is **range union, order-independent**: the
+resolved decoration carries **both** classes (`skim--result` + `sitesee--cited`),
+sorted, as a single resolved range — deterministic regardless of which
+augmentation was enabled first. There is **no winner-takes-all**; within the
+facet both classes paint, and cross-facet visual stacking (if it ever mattered)
+is a z-order the surface owns, never a function of declaration order.
 
 ## Byte-equivalence baseline (still enforced)
 

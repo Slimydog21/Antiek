@@ -163,7 +163,46 @@ export interface AnchoredWidgetComponents {
     readonly parentInvestigationId: string;
     readonly reservedChildId?: string | null;
   }) => ReactNode;
+  /**
+   * SPR-06 — SiteSee's citation hover card. The SURFACE owns the card chrome
+   * (the popover, its styling, its dismiss behaviour); the augmentation supplies
+   * only the substrate-derived, §9.0-GATED metadata to show. The props are a
+   * CLOSED, bounded shape — there is no `body`/`text` field, so the augmentation
+   * structurally CANNOT pass a withheld source body through the card. For a
+   * non-servable cited source the augmentation supplies `servable: false` +
+   * ONLY the title (no `ipHolderName` — the endpoint withholds it with the
+   * body), and the surface renders the honest bounded state. The reading-history
+   * `state` (read / saved / cited / unseen) is substrate-derived too. ADDITIVE +
+   * OPTIONAL: a pass without it yields nothing for the card (graceful no-op),
+   * exactly like AccrualPanel / ChaseLauncher.
+   */
+  readonly SiteSeeHoverCard?: (props: {
+    /** The cited source's title (always shown — bounded metadata, never the
+     *  body). Null when the substrate resolved no title. */
+    readonly title: string | null;
+    /** §9.0 verdict, READ from the substrate (never recomputed). Drives the
+     *  card's bounded-vs-full metadata branch, mirroring the citation gate. */
+    readonly servable: boolean;
+    /** The IP-holder name — present ONLY for a servable source with a known
+     *  owner (the endpoint withholds it for a non-servable source, so the
+     *  augmentation never passes it there). Null/absent ⇒ the card shows no
+     *  owner line (honest unknown OR §9.0-withheld). */
+    readonly ipHolderName?: string | null;
+    /** The reading-history state the marker was tinted by (substrate-derived).
+     *  The card may echo it ("You've read this source"). */
+    readonly state: CitationHistoryState;
+  }) => ReactNode;
 }
+
+/**
+ * The reading-history state of a cited source (SPR-06). Derived from the
+ * substrate event log (per-source read / saved / cited signals); see
+ * `augmentations/sitesee.ts` + reading-physics/README.md for where each lives.
+ * "unseen" is the explicit HONEST default — a source with no history is unseen
+ * and SiteSee tints it nothing (M5). The order is the precedence the surface
+ * resolves to a single tint when a source carries more than one signal.
+ */
+export type CitationHistoryState = "cited" | "saved" | "read" | "unseen";
 
 // ── Decoration facet (PR-1 / decorations) ───────────────────────────────
 
