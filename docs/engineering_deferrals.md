@@ -27,7 +27,7 @@ Each entry below carries:
 - **Action when unlocked** — what an agent should do the day the criterion
   fires
 
-The eleven deferrals, by unlock criterion category:
+The thirteen deferrals, by unlock criterion category:
 
 ---
 
@@ -350,6 +350,72 @@ the decision with operator-rationale so a future maintainer doesn't
 
 ---
 
+## D13 — Physics of Reading: live surface integrations (the augmentations ship dormant-correct)
+
+**Status:** ❌ Deferred. The full Physics of Reading substrate shipped to prod
+via PR #14 (`origin/main` `76c2002`; 8 sprints `944b93e`→`0935590`): the facet
+engine, the CI boundary guard, and the augmentation roster (servability,
+ip-holder, quality-cue, skim, sitesee, collapse, minimap, marginalia, review-due)
+— built, tested, and composing. Most are **dormant-correct on the real engine**:
+they run on the actual facet / layout-map seams but their live data or geometry
+feeds are not yet wired. Only servability, ip-holder, and QualityCue render live
+today; the rest light up when the integrations below land. No augmentation invents
+its own data (PR-2 / PR-6) — each reads a surface-resolved view that does not
+exist yet, so this is a deferral, **not** a code gap to fill by inventing the feed.
+**Unlock criterion:** per sub-item below — each is a distinct surface/backend
+integration with its own decision file in `docs/decisions/`. None is closeable by
+writing the missing feed inside an augmentation; each waits on a named surface
+integration (and the canon ratification is a separate operator action).
+**Spec reference:** `docs/philosophy/physics-of-reading.md` (the binding canon,
+PR-1..PR-8; status: **draft** — operator ratification pending) + the four
+`docs/decisions/spr-0{5,6,7,8}-*.md` files + `reading-physics-boundary-guard.md`.
+**Blocks-what:** the fully-live Read surface (collapse, minimap, AccrualView /
+ChaseThread re-home, Skim/SiteSee `read` tint, voice marginalia, the
+spaced-repetition review cue). Nothing on the substrate / payout / multi-user / RL
+paths — this cluster is Read-surface-local.
+
+The cluster contains:
+
+- **The geometry-measurement pass** (`docs/decisions/spr-05-geometry-pass-gap.md`)
+  — the run's largest deferred item. One `useLayoutEffect`
+  (`getBoundingClientRect` per anchor → `baseGeometryFromMap` → `createLayoutMap`)
+  replaces `EMPTY_LAYOUT_MAP` in `MasterMdViewer` and lights up collapse + minimap
+  + AccrualView + ChaseThread **at once** (O(facets) payoff). Unlock: an
+  agent/operator builds the pass.
+- **The `source.read` event** (`docs/decisions/spr-06-source-read-event-gap.md`)
+  — SiteSee's `cited` / `saved` tints resolve today; the `read` tint waits on a
+  net-new `source.read` typed event the surface must emit (`postTypedEvent` →
+  `/events/typed` → `runtime/db_lock`, single-writer) plus a `CitationHistoryState`
+  resolver. Unlock: the surface emits + resolves it.
+- **The marginalia note/voice persistence**
+  (`docs/decisions/spr-07-marginalia-voice-storage.md`) — the margin-note + voice
+  augmentation reads resolved views; the note/anchor write path and the audio-blob
+  object storage (keyed by event, reusing the Speak path) are a surface/backend
+  integration the augmentation cannot perform (PR-2 / PR-6). Unlock: the surface
+  wires the note-author write path + blob storage.
+- **The review-state resolver**
+  (`docs/decisions/spr-08-review-state-resolution-gap.md`) — review-due is mounted
+  **live** in `MasterMdViewer` behind a default-off toggle (`REVIEW_DUE_ENABLED`)
+  but reads an empty `dueClaims`; resolving the per-reader spaced-repetition
+  schedule from the substrate (likely a review-history typed event, like
+  `source.read`) is deferred. Unlock: the surface resolves the schedule, hands a
+  populated `dueClaims`, and flips the toggle.
+
+A fifth, **operator-only** item gates the guard's strictness rather than an
+augmentation: ratifying the canon (`physics-of-reading.md` `status: draft →
+ratified`) flips the CI boundary guard `tools/lint/reading_physics_check.py` from
+advisory to **blocking** (then add `--enforce` to its `ci.yml` `tsc`-job step). See
+`docs/decisions/reading-physics-boundary-guard.md` + `ci-informational-gates.md`.
+Until then the guard runs green-advisory, printing any findings without blocking.
+
+**Action when unlocked:** each sub-item ships its own integration PR per its
+decision file. The geometry pass is the highest-leverage (one pass unblocks four
+widgets); the three data feeds are independent and can land in any order. The canon
+ratification is an operator action independent of the integrations — it can happen
+any time and changes only CI strictness, not behavior.
+
+---
+
 ## Cross-reference: unlock criterion → deferrals it gates
 
 | Unlock criterion | Deferrals that close |
@@ -362,6 +428,8 @@ the decision with operator-rationale so a future maintainer doesn't
 | D1 (multi-user) + ≥1 publisher opted in | D8 (Sprint 30+ federation activation) |
 | Operator-discretion polish | D9 (Substack publish), D10 (sync voice), D11 (chase-tree mode) |
 | Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
+| Read-surface integration sprints (geometry pass / `source.read` emit / marginalia persistence / review-state resolver; each its own `docs/decisions/spr-0{5,6,7,8}-*.md`) | D13 (Physics of Reading live surface integrations) |
+| Operator ratifies the Physics of Reading canon (`physics-of-reading.md` draft→ratified) | D13's CI-guard advisory→blocking flip |
 
 ---
 
@@ -382,13 +450,19 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
 - **D8 (Sprint 30+ federation activation)** — D1 + ≥1 publisher opt-in
   (G3); earliest 2027 H2
 - **D9, D10, D11, D12** — operator-discretion; no calendar binding
+- **D13 (Physics of Reading live integrations)** — no calendar binding; each
+  Read-surface integration ships when the surface is built out (the geometry pass
+  is the highest-leverage, unblocking four widgets at once). The canon ratification
+  is an independent operator-discretion action that only flips CI strictness.
 
-**Bottom line:** of the 12 deferrals, **none can be closed this week**;
+**Bottom line:** of the 13 deferrals, **none can be closed this week**;
 **0 close this month** (every deferral is gated on either time, volume,
 ratification, or D1); **3 close in late 2026 to mid-2027** (D1, then D7,
 D8 trail); **3 close in 2027+ at the earliest** (D3, D5, D6 all gated on
 G8); **D4 depends on operator's ratification cadence**; **D9, D10, D11,
-D12 are operator-discretion items with no spec-binding deadline**.
+D12 are operator-discretion items with no spec-binding deadline**; **D13
+(Physics of Reading live integrations) is Read-surface engineering with no
+spec-binding deadline — the augmentations ship dormant-correct until wired**.
 
 The pattern matches `operator_gate_actions.md`'s G7→G8 chain:
 **multi-user is the keystone**. D1 closing unblocks the largest cluster
