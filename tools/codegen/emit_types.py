@@ -249,6 +249,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.SeamSpeakToWritePayload,
     schema_module.SeamSpeakToReadPayload,
     schema_module.SeamWriteToSpeakPayload,
+    # Living Roadmap SPR-14 — shared voice-in capture provenance.
+    schema_module.VoiceCapturedPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
@@ -278,6 +280,9 @@ LITERAL_ALIASES: dict[str, tuple[str, ...]] = {
     # Sprint 18 — Exa/Browserbase substrate-only precursor.
     "DiscoveryProvider": typing.get_args(schema_module.DiscoveryProvider),
     "DiscoveryDecision": typing.get_args(schema_module.DiscoveryDecision),
+    # Living Roadmap SPR-14 — shared provenance vocabulary (voice-in "user",
+    # TTS-out "ai", machine "system"). The voice-out builder references "ai".
+    "ProvenanceSourceKind": typing.get_args(schema_module.ProvenanceSourceKind),
 }
 
 

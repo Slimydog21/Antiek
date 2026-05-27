@@ -339,6 +339,17 @@ class ActionType(str, Enum):
     # operator exercises it, but the seam is off the SPR-08 critical path.
     SEAM_WRITE_TO_SPEAK = "seam.write_to_speak"
 
+    # ── Voice infrastructure (Living Roadmap SPR-14). The shared
+    #    capture+transcribe hook (apps/reading/src/hooks/useVoiceCapture.ts)
+    #    persists each spoken capture as ONE typed event through the
+    #    single-writer funnel — the audio blob rides by reference
+    #    (``audio_ref``), never a client side-store. The defining field is
+    #    ``source_kind="user"``: voice-IN is ALWAYS human-authored and is the
+    #    §9 reason it can never be conflated with model output. This is the
+    #    capture-provenance event; downstream distillation
+    #    (substrate/books/voice_note → note.emerged) is unchanged.
+    VOICE_CAPTURED = "voice.captured"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -418,7 +429,18 @@ class ActionType(str, Enum):
 #     the trajectory. Handoff-audit events over existing entities — NOT
 #     graph-write events; the seam moves a reference, never a copy.
 #     specs/antiek-unified/ SPR-03. 2026-05-25.
-EVENT_SCHEMA_VERSION: int = 16
+# v17: Living Roadmap SPR-14 — voice infrastructure (shared voice-in
+#     capture). One typed event (voice.captured) records a spoken capture
+#     transcribed via the live /voice/transcribe (Whisper today; MiMo-V2.5-ASR
+#     is the intended future backend behind the SAME route — a backend swap,
+#     no new event). It carries the transcript + audio_ref + the SHARED
+#     provenance discriminator source_kind ("user" | "ai" | "system"); a
+#     voice capture is ALWAYS source_kind="user" (human-authored), the §9
+#     reason voice-in can never be conflated with model output. The audio
+#     blob persists by reference through the single-writer typed-event
+#     funnel — no client side-store. specs/antiek-living-roadmap/ SPR-14.
+#     2026-05-27.
+EVENT_SCHEMA_VERSION: int = 17
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -496,6 +518,19 @@ class ContextLayer(BaseModel):
 # a tuple import). Keep in sync with constants.py manually; the test
 # suite asserts equivalence in ``test_events_schema``.
 ConfidenceLevel = Literal["high", "moderate", "low", "unknown"]
+
+# The SHARED provenance discriminator (Living Roadmap SPR-14 M3 / master-spec
+# §9). One vocabulary, deliberately NOT voice-specific, so every authored-vs-
+# generated distinction across the graph uses the same three values:
+#   "user"   — human-authored (voice-IN capture, a typed note, an operator edit)
+#   "ai"     — model-generated (a synthesized artifact; TTS narration of model
+#              text is labeled "ai" by the voice-OUT half — SPR-14 M2/M3)
+#   "system" — machine / non-authored (a deterministic pipeline emission)
+# It is a §9 violation to ever store voice-IN as anything other than "user":
+# conflating human speech with model output corrupts the provenance chain that
+# claim→chunk→document→ip_holder_id depends on. The other builder's TTS-out
+# labeling references the value "ai"; keep this list as the single source.
+ProvenanceSourceKind = Literal["user", "ai", "system"]
 
 
 class Claim(BaseModel):
@@ -2940,6 +2975,48 @@ class SeamWriteToSpeakPayload(_SeamPayloadBase):
     outline_section_id: Optional[str] = None
 
 
+# ── Voice infrastructure — shared voice-in capture (SPR-14) ──────────
+
+
+class VoiceCapturedPayload(_PayloadBase):
+    """A spoken capture, transcribed and persisted through the single-writer
+    funnel (Living Roadmap SPR-14 M1/M3). Emitted by the shared
+    ``useVoiceCapture`` hook after record → transcribe; downstream
+    distillation (``substrate/books/voice_note`` → ``note.emerged``) is
+    unchanged and consumes this capture by event id.
+
+    ``source_kind`` is fixed to ``"user"`` here and is the §9 load-bearing
+    field: a voice capture is human-authored, never model output. The schema
+    pins it to the literal ``"user"`` (not the open :data:`ProvenanceSourceKind`) so a
+    voice capture can NEVER be persisted as ``"ai"``/``"system"`` — the
+    no-conflation invariant is enforced by the type, not by convention.
+
+    The audio blob rides by *reference* (``audio_ref`` — the same field
+    ``saveVoiceNote`` carries), never inline and never a client side-store:
+    the blob persists wherever the reference points, the event carries only
+    the pointer + the transcript.
+
+    ``transcript`` may be empty: a silent recording must NOT be given a
+    hallucinated transcript (SPR-14 rigor #3). ``transcript_status``
+    distinguishes a genuine empty/silent capture ("empty") from an ordinary
+    one ("ok"), so a downstream consumer never mistakes "" for "transcription
+    failed". A failed transcription — or an over-cap long clip — is surfaced to
+    the user and NEVER persisted; there is no such event (so no truncated/
+    "bounded" status is ever emitted, hence it is not in the Literal)."""
+
+    action_type: Literal[ActionType.VOICE_CAPTURED] = ActionType.VOICE_CAPTURED
+    # The §9 provenance label — pinned to "user" (a capture is human speech).
+    source_kind: Literal["user"] = "user"
+    transcript: str  # may be "" for a silent capture — never a hallucination
+    transcript_status: Literal["ok", "empty"] = "ok"
+    language: Optional[str] = None
+    duration_seconds: float = Field(ge=0.0, default=0.0)
+    # Reference to the persisted audio blob (e.g. an object key / URL). The
+    # blob is NOT inlined here; this is the pointer the typed-event funnel
+    # carries so there is no client-side side store.
+    audio_ref: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -3047,6 +3124,7 @@ TypedPayload = Annotated[
         SeamSpeakToWritePayload,
         SeamSpeakToReadPayload,
         SeamWriteToSpeakPayload,
+        VoiceCapturedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -3162,6 +3240,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.SEAM_SPEAK_TO_WRITE.value,
     ActionType.SEAM_SPEAK_TO_READ.value,
     ActionType.SEAM_WRITE_TO_SPEAK.value,
+    # Living Roadmap SPR-14 — voice-in capture provenance.
+    ActionType.VOICE_CAPTURED.value,
 })
 
 
@@ -3446,4 +3526,7 @@ __all__ = [
     "BookTakenDownPayload",
     # Write workflow SPR-02 — edit capture (v15 schema bump)
     "EditCapturedPayload",
+    # Voice infrastructure SPR-14 — shared provenance vocab + voice-in capture
+    "ProvenanceSourceKind",
+    "VoiceCapturedPayload",
 ]

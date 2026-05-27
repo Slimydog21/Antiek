@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 16;
+export const EVENT_SCHEMA_VERSION = 17;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -131,6 +131,7 @@ export const ActionType = {
   SEAM_SPEAK_TO_WRITE: "seam.speak_to_write",
   SEAM_SPEAK_TO_READ: "seam.speak_to_read",
   SEAM_WRITE_TO_SPEAK: "seam.write_to_speak",
+  VOICE_CAPTURED: "voice.captured",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -177,6 +178,8 @@ export type AuditSeverity = "info" | "warning" | "critical";
 export type DiscoveryProvider = "exa" | "operator";
 
 export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
+
+export type ProvenanceSourceKind = "user" | "ai" | "system";
 
 /**
  * One layer of an assembled context pack. Embedded inside
@@ -2099,6 +2102,42 @@ export interface SeamWriteToSpeakPayload {
 }
 
 /**
+ * A spoken capture, transcribed and persisted through the single-writer
+ * funnel (Living Roadmap SPR-14 M1/M3). Emitted by the shared
+ * ``useVoiceCapture`` hook after record → transcribe; downstream
+ * distillation (``substrate/books/voice_note`` → ``note.emerged``) is
+ * unchanged and consumes this capture by event id.
+ * 
+ * ``source_kind`` is fixed to ``"user"`` here and is the §9 load-bearing
+ * field: a voice capture is human-authored, never model output. The schema
+ * pins it to the literal ``"user"`` (not the open :data:`ProvenanceSourceKind`) so a
+ * voice capture can NEVER be persisted as ``"ai"``/``"system"`` — the
+ * no-conflation invariant is enforced by the type, not by convention.
+ * 
+ * The audio blob rides by *reference* (``audio_ref`` — the same field
+ * ``saveVoiceNote`` carries), never inline and never a client side-store:
+ * the blob persists wherever the reference points, the event carries only
+ * the pointer + the transcript.
+ * 
+ * ``transcript`` may be empty: a silent recording must NOT be given a
+ * hallucinated transcript (SPR-14 rigor #3). ``transcript_status``
+ * distinguishes a genuine empty/silent capture ("empty") from an ordinary
+ * one ("ok"), so a downstream consumer never mistakes "" for "transcription
+ * failed". A failed transcription — or an over-cap long clip — is surfaced to
+ * the user and NEVER persisted; there is no such event (so no truncated/
+ * "bounded" status is ever emitted, hence it is not in the Literal).
+ */
+export interface VoiceCapturedPayload {
+  action_type: "voice.captured";
+  source_kind?: "user";
+  transcript: string;
+  transcript_status?: "ok" | "empty";
+  language?: string | null;
+  duration_seconds?: number;
+  audio_ref?: string | null;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -2202,7 +2241,8 @@ export type TypedPayload =
   | SeamWriteToReadPayload
   | SeamSpeakToWritePayload
   | SeamSpeakToReadPayload
-  | SeamWriteToSpeakPayload;
+  | SeamWriteToSpeakPayload
+  | VoiceCapturedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2328,6 +2368,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "visual.claims_extracted",
   "visual.frame_identified",
   "visual.role_failed",
+  "voice.captured",
 ]);
 
 export const WRESTLING_ACTION_TYPES: ReadonlySet<ActionType> = new Set<ActionType>([

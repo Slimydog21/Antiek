@@ -273,6 +273,8 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.SEAM_SPEAK_TO_WRITE]: null,
   [ActionType.SEAM_SPEAK_TO_READ]: null,
   [ActionType.SEAM_WRITE_TO_SPEAK]: null,
+  // SPR-14 — voice-in capture provenance; not narrated in the thinking stream.
+  [ActionType.VOICE_CAPTURED]: null,
 };
 
 /** The safe generic line for an action_type with no row — only reachable if
