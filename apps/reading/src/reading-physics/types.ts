@@ -85,7 +85,29 @@ export interface Rect {
  */
 export interface LayoutMap {
   resolve(anchor: Anchor): Rect | null;
+  /**
+   * SPR-04 — `positionOf` is the named, ergonomic read the canon §5.3 / the
+   * sprint manual M2 names ("layoutMap.positionOf(location) → { top, side }").
+   * It is a THIN derivation over `resolve`: it returns the resolved top edge
+   * plus the lane the caller intends, or `null` when the anchor is not laid
+   * out — so a widget can ask "where does my anchor sit, in my lane?" without
+   * itself touching `resolve`'s full Rect. ADDITIVE widening of the frozen §6
+   * `LayoutMap` (no field renamed/narrowed): SPR-02's `{ resolve: () => null }`
+   * stubs stay valid because `positionOf` is OPTIONAL — a layout-map that only
+   * implements `resolve` is still a layout-map. The de-overlap enact derives
+   * everything it needs from `resolve` directly, so `positionOf` is a
+   * convenience for augmentation/SPR-05 callers, never the load-bearing path.
+   */
+  positionOf?(anchor: Anchor, lane: WidgetLane): { top: number; side: WidgetLane } | null;
 }
+
+/**
+ * The gutter/lane an anchored widget lives in (SPR-04). Hoisted to a named type
+ * (was inline on `AnchoredWidget.lane`) so `LayoutMap.positionOf` and the
+ * de-overlap enact can share the exact same closed vocabulary. Widening the
+ * union later is additive; this is the §5.2 lane set verbatim.
+ */
+export type WidgetLane = "left-gutter" | "right-gutter" | "inline-end";
 
 /**
  * Which render pass is asking (PR / multi-render). The same facets are read
@@ -99,6 +121,48 @@ export interface RenderContext {
    *  open to future pass names (a bare `string` union would discard them). */
   readonly pass: "main" | "minimap" | (string & {});
   readonly layout: LayoutMap;
+  /**
+   * SPR-04 — the SURFACE-OWNED heavy-component map (PR-1 / PR-8). Some re-homed
+   * widgets are genuinely heavy: AccrualView owns its own §9 attribution/consent
+   * reads + a payout-refusal CALLBACK, and the ChaseThread launcher needs the
+   * surface's "Follow this" launch callback. A `render(rect, ctx)` that imported
+   * those directly would blow the PR-8 import allowlist (an augmentation may
+   * import only the facet contract + React). Instead the SURFACE injects them
+   * here as a `kind → component` map, and the augmentation's render returns the
+   * surface-supplied component — declaring the VIEW it wants placed without
+   * importing it (the canon §7 "named UI primitives" + the manual's PREFERRED
+   * resolution: "the surface owns a kind → component map and the augmentation
+   * declares a lightweight spec the §6 render returns"). OPTIONAL + ADDITIVE: a
+   * context without it (every SPR-02/03 stub) is still a valid RenderContext;
+   * a widget whose component is absent renders nothing (graceful no-op). The
+   * surface owns BOTH the component and its behaviour (PR-1) — the augmentation
+   * supplies only substrate-derived data (PR-2 / PR-6), never the wiring.
+   */
+  readonly components?: AnchoredWidgetComponents;
+}
+
+/**
+ * The surface-owned components an anchored widget may ask the surface to place
+ * (SPR-04). Each is a React component the SURFACE wires (its behaviour, its
+ * heavy imports, its callbacks); the augmentation only chooses to render it with
+ * substrate-derived props. Every member is OPTIONAL so a render pass that does
+ * not provide a given component simply yields nothing for that widget (a widget
+ * MUST tolerate an absent component, exactly as it tolerates a null rect).
+ *
+ * Typed as `ComponentType<…>`-shaped function props rather than concrete imports
+ * so this contract module stays types-only and forks no surface component.
+ */
+export interface AnchoredWidgetComponents {
+  /** The §9 accrual panel (modes/Economics/AccrualView). The augmentation
+   *  supplies the synthesis id; the surface owns the reads + the payout gate. */
+  readonly AccrualPanel?: (props: { readonly synthesisId: string }) => ReactNode;
+  /** The "Follow this" chase launcher. The augmentation supplies the passage
+   *  text + parent investigation id; the surface owns the one launch path. */
+  readonly ChaseLauncher?: (props: {
+    readonly passageText: string;
+    readonly parentInvestigationId: string;
+    readonly reservedChildId?: string | null;
+  }) => ReactNode;
 }
 
 // ── Decoration facet (PR-1 / decorations) ───────────────────────────────
@@ -195,8 +259,9 @@ export interface AnchoredWidget {
    * Which gutter/lane the widget lives in. Widgets in different lanes never
    * collide; widgets in the SAME lane at the same vertical position de-overlap
    * by `weight` (higher wins the slot; the loser stacks below). Deterministic.
-   */
-  readonly lane: "left-gutter" | "right-gutter" | "inline-end";
+   * Typed via the named `WidgetLane` (SPR-04) — identical string literals to the
+   * frozen inline union, shared with `LayoutMap.positionOf`; no narrowing. */
+  readonly lane: WidgetLane;
   /** Tie-break weight for same-lane same-position collisions. Higher = nearer
    *  the anchor; equal weights break by `id` (lexicographic) for determinism. */
   readonly weight: number;

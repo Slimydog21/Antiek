@@ -36,11 +36,30 @@ through React context, and the PR-6 §7-5b *recompute* of a substrate verdict.
 Those are review-owned (canon §7 & §9). See `../README.md` for the full honest
 scope.
 
-## The two shipped augmentations (worked examples)
+## The shipped augmentations (worked examples)
 
+Decorations facet (SPR-02/03) — decorate the **same** source range; the facet
+merges them (the first composition, `../composition.test.ts`); neither imports
+the other:
 - `servability.ts` — declares the §9.0 verdict class per source.
 - `ip-holder.ts` — declares the "published by …" owner per source.
 
-They decorate the **same** source range and the facet merges them — the first
-two-augmentation composition (`../composition.test.ts`). Neither imports the
-other. Read them before authoring a third.
+Anchored-widgets facet (SPR-04) — declare a widget at a semantic anchor; the
+surface places + de-overlaps via the layout-map; none imports another:
+- `quality-cue.ts` — the quality cue as a header-anchored widget. **LIVE**:
+  rendered via the facet in `MasterMdViewer` (re-homed from the old inline
+  `<QualityCue>`), byte-equivalent.
+- `accrual.ts` — the §9 accrual panel as a header-anchored widget (surface-
+  injected `AccrualPanel`); shares the synthesis-header anchor with
+  `quality-cue` — the §5.2 two-widgets-one-anchor de-overlap case.
+- `chase-launcher.ts` — the ChaseThread launcher as a passage-anchored,
+  `inline-end` widget (surface-injected `ChaseLauncher`).
+
+**Follow-up — deliberately surfaced (not a regression, not yet done):**
+`accrual.ts` and `chase-launcher.ts` are re-expressed as augmentations and proven
+through the facet in `../anchored-widgets.test.ts`, but their LIVE surfaces
+(`modes/Economics/AccrualView.tsx`, `modes/Reading/index.tsx`) remain hand-wired.
+Switching those surfaces to render via the facet was deferred so SPR-04 would not
+regress their current placement — only QualityCue is live through the facet today.
+A later sprint should wire the two live surfaces through the anchored-widgets facet.
+Read these before authoring a new augmentation.

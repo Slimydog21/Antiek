@@ -27,6 +27,8 @@
 
 import { decorationsFacet } from "./facets/decorations";
 import type { ResolvedDecoration } from "./facets/decorations";
+import { anchoredWidgetsFacet } from "./facets/anchored-widgets";
+import type { ResolvedWidgetLayout } from "./facets/anchored-widgets";
 import type {
   AnchoredWidget,
   Decoration,
@@ -67,9 +69,9 @@ class CollectingRegistry implements FacetRegistry {
   }
 
   declareAnchoredWidget(w: AnchoredWidget): void {
-    // Frozen sink; enacted by SPR-04. Collected so an augmentation that
-    // declares one type-checks today without a surface change later.
-    this.bucket<AnchoredWidget>("anchored-widgets").push(w);
+    // SPR-04 ENACTS this bucket (was collect-only since SPR-02/03). The bucket
+    // key is the facet's own name, so routing stays generic (M1).
+    this.bucket<AnchoredWidget>(anchoredWidgetsFacet.name).push(w);
   }
 
   declareSpatialTransform(t: SpatialTransform): void {
@@ -82,6 +84,17 @@ class CollectingRegistry implements FacetRegistry {
    *  (M1: the surface owns the combine; this just applies it). */
   combinedDecorations(): ResolvedDecoration[] {
     return decorationsFacet.combine(this.bucket<Decoration>(decorationsFacet.name));
+  }
+
+  /** The combined, order-independent anchored-widget placement plan (§5.2) for
+   *  this pass (SPR-04) — produced by running the anchored-widgets facet's
+   *  combine over its bucket. The surface then resolves it against the
+   *  layout-map (enactWidgetLayout) — that step needs geometry, so it lives in
+   *  the surface/facet enact, not here (the registry is geometry-free). */
+  combinedAnchoredWidgets(): ResolvedWidgetLayout {
+    return anchoredWidgetsFacet.combine(
+      this.bucket<AnchoredWidget>(anchoredWidgetsFacet.name),
+    );
   }
 }
 
@@ -110,6 +123,26 @@ export function collectDecorations(
     aug.contribute(ctx, registry);
   }
   return registry.combinedDecorations();
+}
+
+/**
+ * Run every augmentation's `contribute()` once against the given context and
+ * return the COMBINED anchored-widget placement plan (§5.2) — the collect →
+ * combine half for the anchored-widgets facet (SPR-04). Mirror of
+ * `collectDecorations`. Order-independent across augmentations: the facet's
+ * combine sorts by (lane, weight, id), never by which augmentation declared
+ * first. The surface then ENACTS the plan against the layout-map
+ * (enactWidgetLayout) — that step needs geometry and lives outside the registry.
+ */
+export function collectAnchoredWidgets(
+  augmentations: readonly ReadingAugmentation[],
+  ctx: ReadingContext,
+): ResolvedWidgetLayout {
+  const registry = new CollectingRegistry();
+  for (const aug of augmentations) {
+    aug.contribute(ctx, registry);
+  }
+  return registry.combinedAnchoredWidgets();
 }
 
 // ── Augmentation lifecycle (M3) ───────────────────────────────────────────

@@ -12,10 +12,16 @@ import {
   makeServabilityAugmentation,
 } from "../../reading-physics/augmentations/servability";
 import { makeIpHolderAugmentation } from "../../reading-physics/augmentations/ip-holder";
+import {
+  QUALITY_CUE_WIDGET_ID,
+  makeQualityCueAugmentation,
+} from "../../reading-physics/augmentations/quality-cue";
 import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
 import { anchorKey } from "../../reading-physics/facets/decorations";
-import { collectDecorations } from "../../reading-physics/registry";
-import type { ChunkId, ReadingContext } from "../../reading-physics/types";
+import { renderEnacted, resolveAnchoredWidgets } from "../../reading-physics/facets/anchored-widgets";
+import { EMPTY_LAYOUT_MAP } from "../../reading-physics/layout-map";
+import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
+import type { ChunkId, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
@@ -98,11 +104,14 @@ export default function MasterMdViewer({
               </LemonButton>
             </span>
           </div>
-          {/* SPR-11 M3 — a quiet quality cue, read from the persisted inline
-              rubric (never recomputed here). Renders nothing when no score was
-              persisted; flags a low score so the operator knows the answer may
-              want another pass. */}
-          <QualityCue score={synthesis.qualityScore} />
+          {/* SPR-11 M3 → SPR-04 M4 — the quiet quality cue, now a DECLARED
+              anchored widget the surface PLACES via the anchored-widgets facet
+              (PR-1: the cue declares; the surface enacts). Byte-equivalent to
+              the prior inline `<QualityCue score={…} />` — same wording, classes,
+              and collapsed detail — so this is a re-home, not a UX change. Still
+              read from the persisted inline rubric, never recomputed (PR-6);
+              renders nothing for an absent score. */}
+          {renderHeaderQualityCue(synthesis.qualityScore)}
         </header>
 
         {/* Thesis summary — flowing prose */}
@@ -523,82 +532,67 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
   );
 }
 
-// ── Quality cue (SPR-11 M3) ──────────────────────────────────────────
+// ── Quality cue (SPR-11 M3 → re-homed SPR-04 M4) ─────────────────────────
 //
-// A quiet, plain-language read of the §14.4 inline rubric. The score is
-// READ from the persisted rubric event by the parser; this component only
-// renders what it's handed and never re-implements scoring. Three states:
-//   - absent  → render nothing (no fabricated score; the no-key / no-rubric
-//     case is honest by saying nothing rather than inventing a verdict);
-//   - clears the bar → a quiet positive cue, no number shoved forward;
-//   - below the bar → a visible flag in plain words, so the operator knows
-//     to give the answer another pass.
+// A quiet, plain-language read of the §14.4 inline rubric. The score is READ
+// from the persisted rubric event by the parser; the augmentation only renders
+// what it is handed and never re-implements scoring (PR-6). Three states are
+// unchanged from the original inline component:
+//   - absent  → render nothing (no fabricated score);
+//   - clears the bar → a quiet positive cue;
+//   - below the bar → a visible flag in plain words.
 //
-// The pass bar mirrors the substrate's PASS_THRESHOLD (0.5,
-// substrate/synthesis_rubric/scorer.py); we don't recompute, we only
-// compare the persisted composite against it to pick the wording. The four
-// sub-scores, when the persisted note carried them, sit behind a collapsed
-// "the detail" toggle so the default surface stays quiet (a raw dump is
-// itself noise to the operator).
+// SPR-04 M4 re-homes the cue from a hand-placed `<QualityCue score={…} />` into
+// a DECLARED `AnchoredWidget` (augmentations/quality-cue.ts) the SURFACE places
+// via the anchored-widgets facet (PR-1). The widget's view is BYTE-EQUIVALENT to
+// the old inline JSX (same wording, classes, collapsed "the detail" toggle).
+// `renderHeaderQualityCue` below is the surface's facet apply pass for the
+// header slot.
 
-const QUALITY_PASS_BAR = 0.5;
-
-function QualityCue({ score }: { score: QualityScore | null }) {
-  // Absent: the synthesis carried no persisted rubric (no-key / nothing
-  // scored). Show nothing rather than a guessed verdict.
-  if (!score) return null;
-
-  const low = score.composite < QUALITY_PASS_BAR;
-
-  return (
-    <div className="mt-3 text-xs">
-      {low ? (
-        <p className="text-amber-800 dark:text-sun leading-relaxed">
-          This answer reads like it may want another pass before you rely on
-          it. The draft came in under our quality bar, so it&rsquo;s worth a
-          re-run or an edit.
-        </p>
-      ) : (
-        <p className="text-shadow-1 dark:text-moonlight leading-relaxed">
-          This answer clears our quality bar.
-        </p>
-      )}
-      <QualityDetail score={score} />
-    </div>
+/**
+ * Run the anchored-widgets facet pass for the synthesis-header slot and return
+ * the QualityCue widget's rendered node (SPR-04 M4). This is the surface's
+ * collect → combine → enact cycle for one widget (§2), routed through the SAME
+ * facet machinery the decorations pass uses.
+ *
+ * A PLAIN function, NOT a React hook — it is called from the viewer's JSX, but
+ * the SPR-02 discipline holds regardless: a hook here would be fragile next to
+ * the early-returning sub-components. It calls no hooks, runs each render
+ * (cheap — O(1) widget, pure), and the augmentation only DECLARES (PR-1).
+ *
+ * The QualityCue widget's content is geometry-independent (the surface places
+ * it in the header; the cue ignores the rect), so the layout-map can be the
+ * empty map — the de-overlap enact resolves a null rect, the widget renders its
+ * view all the same. The RenderContext is the minimal header pass: "main", the
+ * (empty) layout-map, and no `components` (QualityCue needs no surface-injected
+ * component — it builds its view from React primitives, PR-8 clean).
+ */
+function renderHeaderQualityCue(score: QualityScore | null) {
+  // The score is substrate-derived (parsed from the persisted rubric); the
+  // augmentation captures it at declare time and renders nothing for null
+  // (the honest absent case). `QualityScore` structurally satisfies the
+  // augmentation's minimal `QualityScoreView` (same five fields).
+  const cue = makeQualityCueAugmentation(score);
+  // Decorations need no layout-map for the cue; the cue's render context is the
+  // minimal header pass. Substrate is a shape-only stub never called here (the
+  // augmentation reads no further substrate data — the score was passed in).
+  const ctx: ReadingContext = {
+    synthesis: { question: null, claims: [] },
+    layout: EMPTY_LAYOUT_MAP,
+    substrate: {
+      getChunk: () =>
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the header widget pass"),
+        ),
+    },
+  };
+  const enacted = resolveAnchoredWidgets(
+    collectAnchoredWidgets([cue], ctx).all.map((p) => p.widget),
+    EMPTY_LAYOUT_MAP,
   );
-}
-
-/** Optional breakdown, collapsed by default — the four sub-readings the
- *  rubric noted, in plain words. Hidden entirely when the persisted note
- *  carried no sub-scores (an older or free-form note), so we never show
- *  empty rows. */
-function QualityDetail({ score }: { score: QualityScore }) {
-  const rows: Array<[string, number | null]> = [
-    ["Voice and style", score.voiceStyle],
-    ["Conviction", score.conviction],
-    ["Sourcing", score.citationDensity],
-    ["Stayed within the brief", score.constraintCompliance],
-  ];
-  const present = rows.filter(([, v]) => v !== null) as Array<[string, number]>;
-  if (present.length === 0) return null;
-
-  return (
-    <details className="mt-1">
-      <summary className="cursor-pointer text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors">
-        the detail
-      </summary>
-      <dl className="mt-2 space-y-1">
-        {present.map(([label, value]) => (
-          <div key={label} className="flex items-baseline gap-2">
-            <dt className="text-ink-soft dark:text-starlight">{label}</dt>
-            <dd className="font-mono text-shadow-1 dark:text-moonlight">
-              {Math.round(value * 100)}%
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </details>
-  );
+  const renderCtx: RenderContext = { pass: "main", layout: EMPTY_LAYOUT_MAP };
+  const headerWidget = enacted.find((e) => e.widget.id === QUALITY_CUE_WIDGET_ID);
+  return headerWidget ? renderEnacted(headerWidget, renderCtx) : null;
 }
 
 function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
