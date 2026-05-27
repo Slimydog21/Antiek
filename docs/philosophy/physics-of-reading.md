@@ -165,10 +165,14 @@ declares an `AnchoredWidget` on the claim anchor; the citation declares a
 de-overlap them. Adding a third claim-level augmentation tomorrow requires
 editing neither.
 
-**Violation in code (SPR-03 detects).** An augmentation module imports another
-augmentation module (an import path that resolves into the augmentations
-directory, other than the facet API barrel). That is a direct dependency, which
-PR-3 forbids — coupling must go through a named facet, not an import.
+**Violation in code (SPR-03 detects).** An augmentation module imports a
+*different* augmentation (an import path that resolves into the augmentations
+directory, other than the facet API barrel). An augmentation's identity is its
+**package** — a flat module file, OR a subdirectory when one augmentation is
+split across several files (`marginalia/index.ts` + `marginalia/resolve-quote.ts`);
+same-package internal imports are that augmentation's own structure, not a
+sibling import. Crossing into a *different* package is the violation — a direct
+dependency PR-3 forbids; coupling must go through a named facet, not an import.
 
 ### PR-4 — Anchors are semantic, not pixel
 

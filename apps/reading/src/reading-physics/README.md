@@ -31,6 +31,7 @@ written to be **true of the actual code**, not aspirational.
 | `augmentations/ip-holder.ts` | The "whose work grounds this" IP-holder augmentation (re-homed SPR-03 M5). Declares an `attribution` payload per source with a known owner. **Composes** with servability through the facet — neither imports the other. |
 | `augmentations/skim.ts` | **Skim** (SPR-06 M1) — rhetorical-role colors. Declares a colored-background decoration per claim by its coarse role (objective/method/result). Reads a substrate-derived `RhetoricalRoleView` (see below); writes nothing. **Composes** with SiteSee through the `decorations` facet — neither imports the other. |
 | `augmentations/sitesee.ts` | **SiteSee** (SPR-06 M2) — citation tints + a hover card. Declares a tint decoration per cited source by its reading-history state, plus an `inline-end` hover-card anchored widget (via the surface-injected `SiteSeeHoverCard`). Reuses the §9.0 servability gate for the card metadata. **Composes** with Skim through the facets — neither imports the other. |
+| `augmentations/marginalia/` | **Marginalia** (SPR-07) — voice-anchored margin notes, the talk's own demo. A PACKAGE (an augmentation may be a folder, not one file): `resolve-quote.ts` resolves a short quote → 0/1/many/withheld honestly (M1/M6); `voice.ts` is the optional voice-clip resolved view (M3, Speak's path reused); `index.ts` declares the margin note as a `left-gutter` anchored widget at the resolved `passage` anchor (M2) and re-resolves the anchor BY QUOTE on move/copy (M4). **Composes** with Skim/SiteSee/QualityCue through the facets — imports none of them. |
 
 ### The augmentation contract (what an agent implements)
 
@@ -357,6 +358,96 @@ sorted, as a single resolved range — deterministic regardless of which
 augmentation was enabled first. There is **no winner-takes-all**; within the
 facet both classes paint, and cross-facet visual stacking (if it ever mattered)
 is a z-order the surface owns, never a function of declaration order.
+
+## Voice-anchored marginalia — the talk's own demo (SPR-07)
+
+Marginalia is the talk's most personal demo on Antiek's substrate: the reader
+anchors a note (and optional voice clip) to a passage by speaking/typing a short
+**quote** that uniquely identifies it (the **Canon Cat insight**). It lives in
+`augmentations/marginalia/` and **composes** with Skim/SiteSee/QualityCue through
+the facets — importing none of them (proved in `marginalia.compose.test.ts`).
+
+### The quote-resolution algorithm + the ambiguity thresholds (defensibility)
+
+`resolve-quote.ts` maps a short quote → a substrate `chunk_id` + a chunk-relative
+`passage` anchor (`[start, end)` — PR-4), HONESTLY:
+
+1. **Normalise** the quote AND each chunk's text the same way — collapse runs of
+   whitespace to a single space, trim, and case-fold — because a spoken/typed
+   quote rarely reproduces the source's exact casing/spacing. Punctuation is
+   **preserved** (it disambiguates); only whitespace + case are folded. A match
+   in the normalised text is mapped **back to the original chunk offsets**, so the
+   anchor indexes the real chunk text, not the normalised view.
+2. **Search** the (servable) chunk bodies for **every non-overlapping** literal
+   occurrence of the normalised quote. This is a substring match, **not fuzzy /
+   semantic** search — a paraphrase honestly returns `no-match`, never a wrong
+   anchor.
+3. **Classify** by count — the mechanical **0/1/many gate** (`resolve-quote.test.ts`):
+   - **exactly 1** → `match` (a single `passage` anchor);
+   - **0** → `no-match` (honest "I don't see that run of words");
+   - **>1** → `ambiguous`, carrying **every** candidate — **NEVER a silent
+     first-hit anchor**.
+
+   The threshold is therefore **exact uniqueness**: a quote anchors **iff** it
+   matches exactly once across the resolved chunk set. "3–4 words is unique" is
+   **probabilistic, not deterministic** — a short common phrase (e.g. "as a
+   result") matches many places and is surfaced as `ambiguous`. The
+   **false-match** behaviour is reported, not hidden: the resolver test measures a
+   repeated-phrase fixture and asserts it returns `ambiguous` (two candidates),
+   proving the resolver never collapses a multi-match to one. A quote **spanning a
+   chunk boundary** matches neither chunk's body and honestly returns `no-match`
+   (a documented edge, not a partial wrong anchor).
+
+### Re-resolution by quote (plain-text materiality, M4)
+
+The note's anchor is stored as the **quote text** (`anchorQuote`), **not a
+coordinate**. `reResolveNote(authored, ctx)` re-resolves it by quote on **both**
+author and a content edit (a move): inserting text before the quote shifts its
+offset, and re-resolution finds the quote's **new** position — the note follows
+the content rather than pointing at a now-wrong coordinate. **Copying** a note
+(`copyNote`) carries the quote (with a fresh id) so paste re-resolves it in the
+destination. This is why the anchor is by-quote not by-coordinate: it is what
+makes marginalia "just plain text material."
+
+### The voice-blob storage decision (substrate ref + object storage)
+
+A note's optional voice clip's **transcript is the data** (PR-2 — text is the
+data) and lives in the note's substrate event; the **audio blob lives in object
+storage keyed by the note's event id**, referenced by the event's `audio_ref`
+field. This **reuses Speak's existing voice path** — `transcribeAudio` (→ `POST
+/voice/transcribe`) + `saveVoiceNote(documentId, { transcript, audio_ref })` (→
+`POST /books/{id}/voice-note`, `apps/reading/src/api/books.ts`) — **not a new
+store** (PR-2). A note with **no clip** works fully (voice is optional, M3); a
+clip with a **failed/absent transcript** renders the honest marker
+(`[voice clip — transcript unavailable]`), never a fabricated transcript.
+
+Like the SPR-06 `source.read` emit and the SPR-05 geometry pass, the actual
+**emit** (post the note event + store the blob) is a deferred **surface
+integration** — the augmentation reads the resolved note/clip view and ships
+**dormant-correct**. Full decision: `docs/decisions/spr-07-marginalia-voice-storage.md`.
+
+### §9.0 — a non-servable quote target (M6)
+
+A quote whose target source is **non-servable** never has its body searched or
+returned: the endpoint withholds `text` (`servable: false`), and the per-chunk
+resolver path (`resolveQuoteOnChunk`) returns a `withheld` outcome anchoring the
+note to the **bounded `chunk` surface** — the note's rendered `excerpt` is null
+and **no body text is ever surfaced** (proved in both marginalia tests). The
+§9.0 verdict is **read, never recomputed** (PR-6).
+
+### PR-3 + a PACKAGE augmentation (the guard refinement)
+
+Marginalia is the first augmentation that is a **package** (a folder with
+`index.ts` + `resolve-quote.ts` + `voice.ts`) rather than a single flat file.
+The CI guard's PR-3 check (`tools/lint/reading_physics_check.py`) was refined so
+an augmentation's **identity is its package** — its immediate child under
+`augmentations/` (a flat filename OR a subdirectory name). A **same-package**
+import (marginalia's own folder) is internal, **not** a sibling-augmentation
+import; a cross-package import (marginalia → sitesee) is **still** a PR-3
+violation. This changes **no** verdict for the flat augmentations the tree ships
+(each maps to its own filename) — it only recognises that a split augmentation's
+own helper modules are one augmentation. The refinement is verified to still flag
+every real cross-augmentation import (flat→flat, flat→package, package→flat).
 
 ## Byte-equivalence baseline (still enforced)
 

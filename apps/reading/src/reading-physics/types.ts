@@ -192,6 +192,40 @@ export interface AnchoredWidgetComponents {
      *  The card may echo it ("You've read this source"). */
     readonly state: CitationHistoryState;
   }) => ReactNode;
+  /**
+   * SPR-07 — a voice-anchored margin note. The SURFACE owns the note chrome (the
+   * margin card, its block-quote of the anchored excerpt, an optional clip-play
+   * affordance keyed by `audioRef`, dismiss behaviour); the augmentation supplies
+   * only substrate-derived, §9.0-GATED data. The props are a CLOSED, bounded
+   * shape: `excerpt` is the SERVABLE quote the note anchors to (a withheld body
+   * never reaches here — for a non-servable target `servable: false` is set and
+   * `excerpt` is null, so the augmentation structurally cannot pass a withheld
+   * body through the card). `comment` is the reader's typed note; `transcript` is
+   * the (optional) voice-clip transcript (text is the data, PR-2 — null when ASR
+   * failed/absent, the honest marker, never fabricated). `audioRef` is the
+   * object-storage reference to the blob (the surface plays it; the augmentation
+   * never holds the blob). ADDITIVE + OPTIONAL: a pass without it yields nothing
+   * for the note (graceful no-op), exactly like SiteSeeHoverCard / ChaseLauncher.
+   */
+  readonly MarginNote?: (props: {
+    /** The reader's typed note comment. Always present (the note's core text). */
+    readonly comment: string;
+    /** The SERVABLE excerpt the note anchors to (the block quote). Null when the
+     *  target is non-servable (§9.0: the body is withheld) OR the note anchors at
+     *  the chunk level rather than a resolved passage. Never carries a withheld
+     *  body. */
+    readonly excerpt: string | null;
+    /** §9.0 verdict for the anchored source, READ from the substrate (PR-6). When
+     *  false the note anchors to the bounded surface and `excerpt` is null. */
+    readonly servable: boolean;
+    /** The voice clip's transcript (text is the data, PR-2). Null when no clip,
+     *  or when the clip's ASR transcript failed/absent (honest, never guessed). */
+    readonly transcript?: string | null;
+    /** Object-storage reference to the clip's audio blob, keyed by the note's
+     *  substrate event id. Null/absent ⇒ no clip (voice is optional — M3). The
+     *  surface plays it; the augmentation never holds the blob. */
+    readonly audioRef?: string | null;
+  }) => ReactNode;
 }
 
 /**

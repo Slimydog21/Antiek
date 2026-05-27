@@ -23,7 +23,11 @@ ratified canon + `--enforce`) on:
   enacts.
 - **PR-3** — importing **another augmentation** in this directory. Augmentations
   couple only through named facets, never by importing a sibling. (`../types.ts`,
-  `../facet.ts`, `../facets/*`, and the substrate read API are fine.)
+  `../facet.ts`, `../facets/*`, and the substrate read API are fine.) An
+  augmentation may be a **package** (a folder, e.g. `marginalia/` with
+  `index.ts` + helpers) — modules in the **same** package are one augmentation
+  and import each other freely; only crossing into a **different** package is a
+  PR-3 violation.
 - **PR-4/PR-5** — measuring pixel geometry (`getBoundingClientRect`, `offset*`,
   `scrollTop`, `window.innerWidth`, `matchMedia`). Anchors are semantic; the
   layout-map owns pixels.

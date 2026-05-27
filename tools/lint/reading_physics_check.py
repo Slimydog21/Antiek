@@ -294,14 +294,47 @@ _WRITE_PATH = re.compile(
 )
 
 
+def _augmentation_package(path: Path) -> str | None:
+    """The augmentation-PACKAGE identity of a module ``path`` under
+    ``augmentations/``, or ``None`` when ``path`` is not under it.
+
+    An augmentation is a PACKAGE, not necessarily a single file: the identity is
+    its immediate child under ``augmentations/`` — a flat module's filename
+    (``sitesee.ts`` → ``sitesee.ts``) OR a subdirectory NAME when the
+    augmentation is split across several files in its own folder
+    (``marginalia/index.ts`` + ``marginalia/resolve-quote.ts`` → ``marginalia``).
+    Two modules with the SAME package identity are one augmentation; PR-3 is
+    crossing into a DIFFERENT package. (The flat augmentations the tree ships
+    each map to their own filename, so this changes none of their verdicts — it
+    only recognises that a same-folder helper of a package augmentation is
+    internal, not a sibling.)"""
+    try:
+        rel = path.resolve().relative_to(_AUG_DIR.resolve())
+    except (OSError, ValueError):
+        return None
+    parts = rel.parts
+    if not parts:
+        return None
+    # parts[0] is the immediate child: a filename (flat augmentation) or a
+    # subdirectory name (a package augmentation). For a FLAT file, strip the
+    # extension so a self-import by an extensionless specifier (`skim.ts`
+    # importing `from "./skim"` → resolves to `skim`) maps to the SAME package
+    # as the file itself, not a phantom sibling. A subdirectory name has no
+    # extension to strip.
+    if len(parts) == 1:
+        return Path(parts[0]).stem
+    return parts[0]
+
+
 def _is_sibling_augmentation_import(py: Path, target: str) -> bool:
     """True iff ``target`` (an import specifier in module ``py``) resolves to a
-    DIFFERENT module inside the augmentations directory. Self-imports, the facet
-    API (types.ts / facet.ts / facets/*), and the substrate read API are fine —
-    only importing a SIBLING augmentation breaks PR-3. Handles relative
-    specifiers (``./x``, ``../augmentations/x``) by resolving against the
-    importing file's directory; non-relative specifiers fall back to the
-    ``augmentations/`` path marker."""
+    DIFFERENT augmentation PACKAGE inside the augmentations directory. The facet
+    API (types.ts / facet.ts / facets/*), the substrate read API, a self-import,
+    AND a same-PACKAGE helper (a split augmentation's own folder) are all fine —
+    only importing a SIBLING augmentation (a different package) breaks PR-3.
+    Handles relative specifiers (``./x``, ``../augmentations/x``) by resolving
+    against the importing file's directory; non-relative specifiers fall back to
+    the ``augmentations/`` path marker."""
     if target.startswith("."):
         # Resolve the relative specifier against the importing file's directory.
         resolved = (py.parent / target).resolve()
@@ -311,8 +344,16 @@ def _is_sibling_augmentation_import(py: Path, target: str) -> bool:
             inside_aug = False
         if not inside_aug:
             return False
-        # Same module (any extension) is a self-import — allowed.
-        return resolved.stem != py.stem
+        # Compare PACKAGE identities: same package (same flat file, or same
+        # subfolder for a split augmentation) is internal — allowed. A different
+        # package is a sibling-augmentation import — PR-3 violation.
+        my_pkg = _augmentation_package(py)
+        their_pkg = _augmentation_package(resolved)
+        if my_pkg is None or their_pkg is None:
+            # Fall back to the conservative stem comparison if either side does
+            # not map to a package (should not happen for in-aug modules).
+            return resolved.stem != py.stem
+        return their_pkg != my_pkg
     # Non-relative: only an explicit augmentations/ path counts.
     return _AUG_IMPORT_MARKER in target
 
