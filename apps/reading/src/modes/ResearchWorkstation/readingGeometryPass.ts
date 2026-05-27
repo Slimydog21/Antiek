@@ -23,7 +23,7 @@
 //
 // ── HOW geometry enters without the physics measuring it (the layout-map seam) ─
 //
-//   DOM nodes carrying a semantic marker  (a `[data-claim-id]` claim span)
+//   DOM nodes carrying a semantic marker  (a claim span tagged data-claim-id)
 //        │  getBoundingClientRect (HERE, once per measured node)
 //        ▼
 //   anchorKey(anchor) → Rect   (a plain Map, the surface's BaseGeometry input)

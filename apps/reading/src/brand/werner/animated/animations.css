@@ -137,6 +137,24 @@
   transform-origin: 50% 65%;
 }
 
+/* ─── Penguin mascot idle wander (SPR-12 M3) ──────────────────────────
+ * The floating project-home Penguin gently wanders while idle: a slow,
+ * small positional drift layered on top of the Werner breathing sway.
+ * Restrained on purpose (a few px, 9s loop) so it reads as "alive,"
+ * never as motion the operator has to track. The mascot component ALSO
+ * removes this class entirely when prefers-reduced-motion matches (a JS
+ * guard), so reduced-motion is honoured on both the CSS and JS paths. */
+@keyframes penguin-mascot-wander {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(4px, -3px); }
+  50%  { transform: translate(0, -5px); }
+  75%  { transform: translate(-4px, -2px); }
+  100% { transform: translate(0, 0); }
+}
+.penguin-mascot-wander {
+  animation: penguin-mascot-wander 9000ms ease-in-out infinite;
+}
+
 /* ─── Reduced-motion guard ────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .werner-toboggan,
@@ -152,9 +170,11 @@
   .werner-thinking-dot-4,
   .werner-fish-flipper,
   .werner-fish-sparkle,
+  .penguin-mascot-wander,
   .werner-idle {
     animation: none !important;
   }
+  .penguin-mascot-wander { transform: translate(0, 0); }
   /* Static fallback frames — slight rotation so the operator can still
      tell a Werner is animating in spirit, just without motion. */
   .werner-toboggan { transform: rotate(0deg); }

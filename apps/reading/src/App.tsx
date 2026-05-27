@@ -14,6 +14,7 @@ import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
+import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
@@ -92,6 +93,11 @@ function AuthenticatedRoutes() {
           PanelKind="AISidecar" and is mounted by the panel system
           when the operator opens it via ⌘/ (S8-full refactor). */}
       <Routes>
+        {/* SPR-12 M1 — the unified branded home. A NEW route (the top-left
+            rail logo points here). "/" deliberately STAYS the Research door
+            (StartResearch already serves it); see modes/Home/Home.tsx for
+            the recorded, reversible routing decision. */}
+        <Route path="/home" element={<Home />} />
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
         {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace).
