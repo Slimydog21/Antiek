@@ -15,13 +15,29 @@ import {
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode
- * (SPR-01 product-depth).
+ * (SPR-01 product-depth) → the OPTIONAL "plan it first" path (Living-Roadmap
+ * SPR-05 M2).
  *
- * The one-shot Ask runs a single research. This is the second mode: the user
+ * The one-shot Ask runs a single research. This is the second, OPTIONAL mode
+ * (the operator decision: plan-mode is NOT forced on every Ask): the user
  * states a problem space, the AI proposes a small set of focused
- * sub-questions, the user trims/edits them, and on launch each approved
- * sub-question becomes its own parallel research. The user watches them think
- * on the next surface (SPR-02).
+ * sub-questions, the user trims/edits/rewords them, APPROVES, and on launch
+ * each approved sub-question becomes its own parallel research. The user
+ * watches them think on the next surface (SPR-02).
+ *
+ * ── WHAT THE PLAN RENDERS (honesty gate, rigor #1) ──────────────────────
+ * The SPR-05 sprint page describes the plan as "known insights, open
+ * questions, and sub-question sprints." The shipped cascade planner
+ * (roles/cascade_planner/planner.py → POST /research/plans → PlanTree)
+ * actually produces ONLY the sub-question sprints (the PlanTree leaves: each a
+ * `question` + a `rationale` + a `focus_boundary`). It does NOT produce
+ * "known insights" or "open questions" — those are DISTILLATION artifacts
+ * (getDistillation) that exist only AFTER a research has run; a fresh problem
+ * space has none. So this surface renders the planner's REAL output — the
+ * sub-questions and, newly, each one's RATIONALE (also real planner output) —
+ * and does NOT fabricate placeholder insight/question blocks the planner never
+ * produced. That deliberate gap is named here and in the sprint handoff
+ * rather than papered over with hand-faked content.
  *
  * It wires shipped machinery, it does not reinvent it: createPlan runs the
  * decomposer + cascade planner; editPlan applies one trim/reword through the
@@ -75,6 +91,10 @@ function subQuestions(tree: PlanTree): PlanNode[] {
 
 export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }: Props) {
   const [plan, setPlan] = useState<PlanState | null>(null);
+  // Phase gates the human-in-the-loop: a plan block is editable ONLY once
+  // phase === "ready" (after createPlan resolves), so an edit can NEVER race the
+  // planner while it is still proposing (the spec's rigor-#3 edit-while-streaming
+  // edge — handled by construction, not left as a free-for-all).
   const [phase, setPhase] = useState<"proposing" | "ready" | "launching">("proposing");
   const [failed, setFailed] = useState<string | null>(null);
   // null until the failure carries no engine reason (the no-key case); a
@@ -257,9 +277,20 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
               </form>
             ) : (
               <>
-                <p className="flex-1 text-[13px] font-serif text-ink dark:text-bright leading-relaxed">
-                  {sub.question}
-                </p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-serif text-ink dark:text-bright leading-relaxed">
+                    {sub.question}
+                  </p>
+                  {/* The planner's REAL rationale for this sub-question — why it
+                      chose to chase this thread. Rendered only when present
+                      (the planner may omit it); never a placeholder. This is
+                      the "why" half of the plan, sourced from planner output. */}
+                  {sub.rationale?.trim() && (
+                    <p className="mt-0.5 text-[11px] font-serif italic text-ink-mute dark:text-moonlight leading-snug">
+                      {sub.rationale}
+                    </p>
+                  )}
+                </div>
                 <div className="flex shrink-0 gap-2 opacity-60 transition-opacity group-hover:opacity-100">
                   <button
                     type="button"

@@ -164,7 +164,21 @@ function aggregate(items: InvestigationSummary[]): Aggregate {
   return { total: items.length, running, done, attention, costUsd };
 }
 
-export default function MyResearch() {
+/**
+ * SPR-05 M3 — `embedded` folds this log INTO the Research home (StartResearch),
+ * per the operator's "the research home IS the research log" decision. When
+ * embedded:
+ *   - the LaunchBar is dropped (the composer ABOVE the log is the one entry —
+ *     keeping a second "Start a research" button would be the duplicate door
+ *     M3 is removing);
+ *   - the outer container loses its full-screen scroll/padding chrome (the
+ *     home scrolls; the log is a section in it), and the header reads as a log
+ *     heading rather than the page title.
+ * Standalone (embedded=false, the /my-research route — kept non-breaking) it
+ * renders exactly as before: full page, header, launch bar, suggested lane.
+ * The row → /inv/{id} navigation contract is identical in both.
+ */
+export default function MyResearch({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const { state: auth } = useAuth();
   // The substrate's own list, polled. Limit generous — the monitor is the
@@ -202,18 +216,37 @@ export default function MyResearch() {
   const runningActive = cap === null ? agg.running : Math.min(agg.running, cap);
   const queued = cap === null ? 0 : Math.max(0, agg.running - cap);
 
+  // SPR-05 M3 — when embedded in the home, shed the full-screen page chrome
+  // (the home owns the scroll + background) and read as a log section.
+  const outerClass = embedded
+    ? "w-full"
+    : "flex h-full flex-col overflow-y-auto bg-ice-0 dark:bg-charcoal-2";
+  const innerClass = embedded
+    ? "w-full space-y-6"
+    : "mx-auto w-full max-w-5xl space-y-6 px-8 py-10";
+
   return (
-    <div className="flex h-full flex-col overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-      <div className="mx-auto w-full max-w-5xl space-y-6 px-8 py-10">
+    <div className={outerClass}>
+      <div className={innerClass}>
         <header className="space-y-2">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-serif text-ink dark:text-bright">My research</h1>
-              <p className="max-w-2xl text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
-                Every research you have running and finished, in one place. Each
-                shows what it is doing in plain language; open any one for the
-                full view. Launch several at once and watch them here together.
-              </p>
+              <h1
+                className={
+                  embedded
+                    ? "text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
+                    : "text-2xl font-serif text-ink dark:text-bright"
+                }
+              >
+                {embedded ? "Your research" : "My research"}
+              </h1>
+              {!embedded && (
+                <p className="max-w-2xl text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
+                  Every research you have running and finished, in one place. Each
+                  shows what it is doing in plain language; open any one for the
+                  full view. Launch several at once and watch them here together.
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -236,12 +269,18 @@ export default function MyResearch() {
 
         {/* Launch affordances. Disabled with a clear reason when no research
             can run (no provider keys). Both route to the start surface — one
-            composer, no second entry point (M1 consolidation). */}
-        <LaunchBar
-          disabled={auth.status !== "authenticated"}
-          onStartOne={() => navigate("/")}
-          onLaunchSeveral={() => navigate("/")}
-        />
+            composer, no second entry point (M1 consolidation).
+            SPR-05 M3: SUPPRESSED when embedded in the home — the composer
+            sitting directly above the log IS the entry, so a second "Start a
+            research" button here would be exactly the duplicate door the
+            consolidation removes. */}
+        {!embedded && (
+          <LaunchBar
+            disabled={auth.status !== "authenticated"}
+            onStartOne={() => navigate("/")}
+            onLaunchSeveral={() => navigate("/")}
+          />
+        )}
 
         {/* SPR-09: the compounding flywheel, surfaced. A calm "what to chase
             next" lane sourced from the §7 daemon's existing scored gaps — an
