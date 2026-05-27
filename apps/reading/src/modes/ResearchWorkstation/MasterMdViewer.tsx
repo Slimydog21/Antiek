@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import { toast } from "../../components/lemon/LemonToast";
@@ -25,10 +25,19 @@ import type { ResolvedDecoration } from "../../reading-physics/facets/decoration
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import { renderEnacted, resolveAnchoredWidgets } from "../../reading-physics/facets/anchored-widgets";
 import { EMPTY_LAYOUT_MAP } from "../../reading-physics/layout-map";
+import {
+  minimapLayoutFrom,
+  projectDecorationsToMinimap,
+  renderMinimap,
+} from "../../reading-physics/minimap";
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
-import type { ClaimId, ChunkId, ReadingContext, RenderContext } from "../../reading-physics/types";
+import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
+import {
+  buildViewportBand,
+  buildViewportScopedLayoutMap,
+} from "./readingGeometryPass";
 
 /**
  * Renders a completed investigation's synthesis as a trustworthy
@@ -149,6 +158,21 @@ function composedReviewDueByClaim(
     : new Map();
 }
 
+// ── Living-Roadmap SPR-02 — the recompute debounce (M3) ──────────────────────
+//
+// WHY 100ms (the no-magic-number rule — defensibility): the geometry pass re-runs
+// on scroll AND resize. A raw scroll handler fires every animation frame (~16ms);
+// re-measuring + rebuilding the map that often is the O(n)-jank the M3 milestone
+// forbids. 100ms is ~6 frames — below the ~100–200ms threshold at which a UI
+// change reads as "instant" to a human (so the gutter widgets/minimap never feel
+// laggy on settle), yet coarse enough that a continuous scroll coalesces ~6
+// frames of events into ONE recompute instead of measuring every frame. Resize is
+// rarer but debounced by the same handle (a drag-resize would otherwise thrash).
+// Paired with viewport-scoping (createViewportScopedLayoutMap) so each recompute
+// is bounded to on-screen anchors — debounce caps the FREQUENCY, scope caps the
+// WORK per recompute. A surface constant; tuning it never touches the physics.
+const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
+
 export default function MasterMdViewer({
   synthesis,
 }: {
@@ -161,9 +185,72 @@ export default function MasterMdViewer({
   // threaded into each ClaimBlock. Off ⇒ empty ⇒ byte-equivalent to today.
   const reviewDueByClaim = composedReviewDueByClaim(synthesis);
 
+  // ── Living-Roadmap SPR-02 — the surface GEOMETRY PASS (M1/M3) ──────────────
+  //
+  // PR-4 BOUNDARY: the surface (NOT an augmentation) measures the DOM and builds
+  // the live layout-map. All getBoundingClientRect calls live in
+  // ./readingGeometryPass.ts — never under reading-physics/. A future maintainer
+  // must NOT move measurement into an augmentation (see that module's header).
+  //
+  // The article column is the measurement root AND the scroll-band reference. The
+  // live map starts as EMPTY_LAYOUT_MAP (the honest first-paint default: nothing
+  // measured yet ⇒ every anchor resolves null ⇒ widgets render nothing) and is
+  // replaced by the measured map in a useLayoutEffect that runs SYNCHRONOUSLY
+  // after the React commit, before paint — so the resolved rects are read from the
+  // just-committed tree (the reflow-during-measure mode is pinned to the commit
+  // boundary; a later DOM mutation re-renders → the effect re-runs → fresh map).
+  const articleRef = useRef<HTMLElement | null>(null);
+  const [layoutMap, setLayoutMap] = useState<LayoutMap>(EMPTY_LAYOUT_MAP);
+
+  useLayoutEffect(() => {
+    const root = articleRef.current;
+    if (!root) return;
+
+    const recompute = () => {
+      const node = articleRef.current;
+      if (!node) return;
+      // Viewport-SCOPED (M3): off-screen anchors short-circuit to null before the
+      // (empty this sprint) transform pipeline folds, capping per-frame work to
+      // the on-screen anchors. The scroll container is the article's own scroller
+      // — falling back to the article itself when it is not independently
+      // scrollable (the band then spans the whole column, which the page scroll
+      // makes visible incrementally). The transform pipeline is empty here; a live
+      // collapse passes collapsePipelineFor(state) as the 3rd arg with no surface
+      // change (SPR-05's seam is already threaded through buildViewportScopedLayoutMap).
+      const band = buildViewportBand(node, node);
+      setLayoutMap(buildViewportScopedLayoutMap(node, band));
+    };
+
+    // Initial measure: synchronous, pre-paint (the M1 geometry pass).
+    recompute();
+
+    // M3 — debounced recompute on scroll/resize (NOT measure-every-frame). A
+    // single trailing-edge timer coalesces a burst of scroll events into one
+    // rebuild after the scroll settles; viewport-scoping bounds the work of that
+    // one rebuild. ResizeObserver vs this scroll/resize-listener choice is
+    // discussed in the handoff (the prescribed useLayoutEffect + getBoundingClientRect
+    // synchronous read is the load-bearing M1 path; the debounce is the M3 cap).
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onChange = () => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(recompute, GEOMETRY_RECOMPUTE_DEBOUNCE_MS);
+    };
+    window.addEventListener("scroll", onChange, { passive: true });
+    window.addEventListener("resize", onChange);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+      window.removeEventListener("scroll", onChange);
+      window.removeEventListener("resize", onChange);
+    };
+    // Re-run when the rendered synthesis changes (new claims ⇒ new anchors to
+    // measure). The streamed-mutation case re-renders on its own and re-runs this.
+  }, [synthesis]);
+
   return (
     <div className="bg-ice-0 dark:bg-charcoal-2">
-      <article className="max-w-3xl mx-auto px-6 py-10 font-serif text-ink dark:text-bright">
+      <article
+        ref={articleRef}
+        className="max-w-3xl mx-auto px-6 py-10 font-serif text-ink dark:text-bright">
         {/* Header band */}
         <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
           {synthesis.question && (
@@ -221,8 +308,15 @@ export default function MasterMdViewer({
               the prior inline `<QualityCue score={…} />` — same wording, classes,
               and collapsed detail — so this is a re-home, not a UX change. Still
               read from the persisted inline rubric, never recomputed (PR-6);
-              renders nothing for an absent score. */}
-          {renderHeaderQualityCue(synthesis.qualityScore)}
+              renders nothing for an absent score.
+
+              Living-Roadmap SPR-02 (M1): the cue is now placed against the LIVE
+              layout-map (the measured map, EMPTY before first measure). QualityCue
+              is geometry-INDEPENDENT (it pins to the header and renders without a
+              rect), so this is byte-equivalent to the prior EMPTY_LAYOUT_MAP call
+              — passing the live map proves the surface threads it everywhere, and
+              lights up the moment a geometry-DEPENDENT widget is mounted here. */}
+          {renderHeaderQualityCue(synthesis.qualityScore, layoutMap)}
         </header>
 
         {/* Thesis summary — flowing prose */}
@@ -262,12 +356,60 @@ export default function MasterMdViewer({
         <Appendix synthesis={synthesis} />
       </article>
 
+      {/* ── Living-Roadmap SPR-02 (M2) — the minimap, a SECOND render pass of the
+          SAME facets against the LIVE layout-map ──────────────────────────────
+          PR-5 payoff: the minimap consumes the SAME ResolvedDecoration[] the main
+          column resolves (here, the claim-anchored review-due decorations) and
+          re-projects them through a minimap-scaled layout-map derived (by uniform
+          vertical compression) from the live main-view map — NO re-measurement,
+          NO re-combine. It lights up only when there are claim-anchored decorations
+          AND the geometry pass has measured their anchors (default-off review-due
+          ⇒ no marks ⇒ the minimap renders empty/aria-hidden, the honest no-data
+          state). Wiring only: no minimap/augmentation logic changed. */}
+      <ReadingMinimap byClaim={reviewDueByClaim} layoutMap={layoutMap} />
+
       <ChunkModal
         chunkId={openChunkId}
         onClose={() => setOpenChunkId(null)}
       />
     </div>
   );
+}
+
+// ── Living-Roadmap SPR-02 (M2) — the minimap mount ───────────────────────────
+//
+// A thin SURFACE component that runs the minimap's SECOND pass against the live
+// layout-map. It is pure wiring: it imports the shipped minimap functions
+// (minimapLayoutFrom / projectDecorationsToMinimap / renderMinimap) and feeds them
+// the main view's resolved decorations + live map. No minimap LOGIC is touched
+// (M2: "the diff under reading-physics/ is wiring only"). The minimap column is a
+// narrow fingerprint of the document; a null-resolving anchor (off the minimap
+// viewport, or not measured) paints nothing — exactly the contract the minimap
+// already tolerates.
+
+/** The minimap's uniform vertical compression factor (whole doc → a narrow
+ *  column). 0.08 ≈ 1/12 — a long synthesis (~12 viewport-heights) squeezes into
+ *  roughly one column. A surface constant; the minimap re-scales the live rects
+ *  by it (minimap.tsx owns the math, this only supplies the factor). */
+const MINIMAP_SCALE = 0.08;
+/** The minimap column width (px). Narrow by design — it shows COLOR, not text. */
+const MINIMAP_COLUMN_WIDTH_PX = 6;
+
+function ReadingMinimap({
+  byClaim,
+  layoutMap,
+}: {
+  byClaim: Map<string, ResolvedDecoration>;
+  layoutMap: LayoutMap;
+}) {
+  // The SAME resolved decorations the main column paints (shared, not re-derived).
+  const resolved = Array.from(byClaim.values());
+  // A second layout-map instance derived from the live main-view map by uniform
+  // compression (minimap.tsx: it WRAPS the main map's resolve, so it inherits any
+  // transform the main map folded — a collapsed section is collapsed here too).
+  const minimapLayout = minimapLayoutFrom(layoutMap, MINIMAP_SCALE, MINIMAP_COLUMN_WIDTH_PX);
+  const marks = projectDecorationsToMinimap(resolved, minimapLayout);
+  return <>{renderMinimap(marks, MINIMAP_COLUMN_WIDTH_PX)}</>;
 }
 
 // ── Sub-components ───────────────────────────────────────────────────
@@ -703,18 +845,23 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
  * (empty) layout-map, and no `components` (QualityCue needs no surface-injected
  * component — it builds its view from React primitives, PR-8 clean).
  */
-function renderHeaderQualityCue(score: QualityScore | null) {
+function renderHeaderQualityCue(score: QualityScore | null, layout: LayoutMap) {
   // The score is substrate-derived (parsed from the persisted rubric); the
   // augmentation captures it at declare time and renders nothing for null
   // (the honest absent case). `QualityScore` structurally satisfies the
   // augmentation's minimal `QualityScoreView` (same five fields).
   const cue = makeQualityCueAugmentation(score);
-  // Decorations need no layout-map for the cue; the cue's render context is the
-  // minimal header pass. Substrate is a shape-only stub never called here (the
-  // augmentation reads no further substrate data — the score was passed in).
+  // Living-Roadmap SPR-02 (M1): the header pass now runs against the LIVE
+  // layout-map the surface measured (was EMPTY_LAYOUT_MAP). QualityCue is
+  // geometry-INDEPENDENT — it pins to the header and renders without a rect — so
+  // the cue's view is byte-equivalent whether the map is empty or live (the
+  // de-overlap enact resolves a null/real rect, the cue renders its view either
+  // way). Threading the live map here proves the surface mounts it everywhere a
+  // RenderContext is built; a future geometry-DEPENDENT header widget lights up
+  // for free. Substrate is a shape-only stub never called here.
   const ctx: ReadingContext = {
     synthesis: { question: null, claims: [] },
-    layout: EMPTY_LAYOUT_MAP,
+    layout,
     substrate: {
       getChunk: () =>
         Promise.reject(
@@ -724,9 +871,9 @@ function renderHeaderQualityCue(score: QualityScore | null) {
   };
   const enacted = resolveAnchoredWidgets(
     collectAnchoredWidgets([cue], ctx).all.map((p) => p.widget),
-    EMPTY_LAYOUT_MAP,
+    layout,
   );
-  const renderCtx: RenderContext = { pass: "main", layout: EMPTY_LAYOUT_MAP };
+  const renderCtx: RenderContext = { pass: "main", layout };
   const headerWidget = enacted.find((e) => e.widget.id === QUALITY_CUE_WIDGET_ID);
   return headerWidget ? renderEnacted(headerWidget, renderCtx) : null;
 }

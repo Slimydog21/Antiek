@@ -539,6 +539,50 @@ describe("MasterMdViewer — review-due liveness (SPR-08 M5)", () => {
 // transitively; this pins the review-due-specific default-off claim directly so
 // the deferral doc's wording is literally true.)
 
+// ── Living-Roadmap SPR-02 — the geometry pass is MOUNTED in the surface (M1/M2) ─
+//
+// Proves the surface threads a LIVE layout-map through its render contexts (M1)
+// and mounts the minimap as a SECOND pass (M2). jsdom does no layout, so the
+// measured rects are 0×0 and (correctly) dropped — so this asserts the WIRING is
+// present (the minimap container renders, the existing widget render is preserved
+// against the live map) rather than re-proving the resolver, which the headless
+// readingGeometryPass.test.ts pins against a populated DOM. Separating "the surface
+// mounts the live map" (here) from "the layout-map function returns a rect this
+// facet consumes" (there) is the honesty rigor #1 asks for.
+
+describe("MasterMdViewer — geometry pass mounted in the surface (Living-Roadmap SPR-02)", () => {
+  it("mounts the minimap as a second pass (the wiring is present)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    const { container } = render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText(/On Growth and Form/)).toBeTruthy());
+    // The minimap's second pass renders its container (wiring proof). Review-due
+    // is default-off ⇒ no marks ⇒ the container is the honest empty/aria-hidden
+    // fingerprint, but it IS mounted (proving the live map flows to a second pass).
+    expect(container.querySelector(".reading-minimap")).not.toBeNull();
+  });
+
+  it("the header quality cue still renders against the live map (geometry-independent, preserved)", () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          qualityScore: {
+            composite: 0.82,
+            voiceStyle: 0.8,
+            conviction: 0.75,
+            citationDensity: 1.0,
+            constraintCompliance: 1.0,
+            notes: "voice=0.80 conviction=0.75 citation_density=1.00 constraint=1.00",
+          },
+        })}
+      />,
+    );
+    // QualityCue is geometry-independent: threading the live map (vs the old
+    // EMPTY_LAYOUT_MAP) leaves its render byte-equivalent — it still clears the bar.
+    expect(screen.getByText(/clears our quality bar/i)).toBeTruthy();
+  });
+});
+
 describe("MasterMdViewer — review-due default-off byte-equivalence (SPR-08 M5)", () => {
   it("no claim span carries the review-due class or a review-due title on the default", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
