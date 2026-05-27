@@ -11,6 +11,7 @@ import {
   SERVABLE_TITLE,
   makeServabilityAugmentation,
 } from "../../reading-physics/augmentations/servability";
+import { makeIpHolderAugmentation } from "../../reading-physics/augmentations/ip-holder";
 import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import { collectDecorations } from "../../reading-physics/registry";
@@ -296,18 +297,18 @@ function NamedSources({
     );
   }
 
-  // ── Facet apply pass (SPR-02, the proving slice) ───────────────────────
+  // ── Facet apply pass (SPR-03: the first TWO-augmentation composition) ──
   //
-  // The §9.0 servability verdict is no longer branched on inline in
-  // SourceCitation. Instead the ServabilityAugmentation DECLARES one
-  // decoration per source (anchored to the source's representative chunk),
-  // carrying the closed-vocabulary verdict class + tooltip; the surface here
-  // runs the collect → combine pass and hands SourceCitation the COMBINED
-  // decoration to ENACT. This is the physics on real shipped code: the
-  // augmentation declares, the surface (this apply pass) enacts — render
-  // byte-identical to the pre-slice inline branch. PR-1: the augmentation
-  // never touches the DOM; only this surface paints.
-  const decorationByChunk = servabilityDecorationsByChunk(sources);
+  // Two augmentations now declare decorations on each source's range:
+  //   - ServabilityAugmentation declares the §9.0 verdict class + tooltip;
+  //   - IpHolderAugmentation declares the "whose work grounds this" owner name.
+  // The decorations facet MERGES both contributions per source (§5.1), and the
+  // surface here reads the combined verdict class AND owner name off ONE
+  // resolved decoration. Neither augmentation imports the other — they meet
+  // only at the named facet (PR-3). This is the physics' payoff on real shipped
+  // code: composition for free, render byte-identical to the inline branch.
+  // PR-1: the augmentations never touch the DOM; only this surface paints.
+  const decorationByChunk = composedDecorationsByChunk(sources);
 
   return (
     <>
@@ -326,26 +327,35 @@ function NamedSources({
 }
 
 /**
- * Run the decorations facet pass over the resolved sources and return a
- * lookup from a source's anchor key → its combined decoration. This is the
- * surface's collect → combine half of the cycle (§2); SourceCitation owns
- * enact. A plain pure function — NOT a hook: NamedSources returns early above
- * its call site, so it cannot use hooks. The augmentation only declares, this
- * never mutates the DOM, and it runs each render (cheap — O(sources), pure).
+ * Run the decorations facet pass over the resolved sources, COMPOSING the
+ * servability + IP-holder augmentations (SPR-03 M5), and return a lookup from a
+ * source's anchor key → its combined decoration. This is the surface's
+ * collect → combine half of the cycle (§2); SourceCitation owns enact. A plain
+ * pure function — NOT a hook: NamedSources returns early above its call site,
+ * so it cannot use hooks. The augmentations only declare, this never mutates
+ * the DOM, and it runs each render (cheap — O(sources), pure).
  */
-function servabilityDecorationsByChunk(
+function composedDecorationsByChunk(
   sources: ResolvedSource[],
 ): Map<string, ResolvedDecoration> {
-  // The servability augmentation reads the substrate verdict (`servable`)
-  // off each resolved source (PR-6: read, never recompute) and declares a
-  // decoration per source. The render context is minimal for the slice —
-  // decorations need no layout-map (that resolves widget pixels, SPR-04), and
-  // the augmentation pulls no further substrate data, so `substrate` is a
+  // Both augmentations read substrate verdicts off each resolved source (PR-6:
+  // read, never recompute) and declare a decoration per source on the SAME
+  // anchor (the representative chunk). The facet merges them — servability's
+  // verdict class with the IP-holder's owner name — so they compose without
+  // importing each other (PR-3). The render context is minimal: decorations
+  // need no layout-map (that resolves widget pixels, SPR-04), and the
+  // augmentations pull no further substrate data, so `substrate` is a
   // shape-only stub never called this sprint.
-  const aug = makeServabilityAugmentation(
+  const servability = makeServabilityAugmentation(
     sources.map((s) => ({
       representativeChunkId: s.representativeChunkId,
       servable: s.servable,
+    })),
+  );
+  const ipHolder = makeIpHolderAugmentation(
+    sources.map((s) => ({
+      representativeChunkId: s.representativeChunkId,
+      ipHolderName: s.ipHolderName,
     })),
   );
   const ctx: ReadingContext = {
@@ -353,15 +363,17 @@ function servabilityDecorationsByChunk(
     layout: { resolve: () => null },
     substrate: {
       getChunk: () =>
-        // Not used by the decorations slice (the surface resolves sources via
+        // Not used by the decorations pass (the surface resolves sources via
         // the shipped api.getChunk above); present only to satisfy the frozen
         // ReadingContext shape. SPR-04+ wires this to the real read API.
         Promise.reject(
-          new Error("substrate.getChunk is not wired in the SPR-02 slice"),
+          new Error("substrate.getChunk is not wired in the reading-physics slice"),
         ),
     },
   };
-  const resolved = collectDecorations([aug], ctx);
+  // Collect both augmentations' declarations and combine. Order-independent:
+  // passing [ipHolder, servability] yields the identical resolved set.
+  const resolved = collectDecorations([servability, ipHolder], ctx);
   const byKey = new Map<string, ResolvedDecoration>();
   for (const d of resolved) byKey.set(d.key, d);
   return byKey;
@@ -385,12 +397,18 @@ function SourceCitation({
 }) {
   const label = source.title ?? "an untitled source";
   const locator = source.locator ? `, ${source.locator}` : "";
-  // SPR-10 M1 — "whose work grounds this": append the IP holder only when the
-  // endpoint resolved one. Null ⇒ unknown owner, shown by simply not claiming
-  // one (never an invented "published by …"). A non-servable source already
-  // has ipHolderName = null (§9.0 withholds it), so the protected attribution
-  // never leaks onto the restricted branch below.
-  const owner = source.ipHolderName ? `, published by ${source.ipHolderName}` : "";
+  // SPR-10 M1 — "whose work grounds this": the IP-holder name is now declared
+  // by the IpHolderAugmentation and merged into this combined decoration
+  // (SPR-03 M5), no longer read inline off `source.ipHolderName`. The surface
+  // owns the "published by …" phrasing (PR-6); the augmentation supplied only
+  // the substrate-resolved name. Painted iff the combined decoration carries
+  // exactly one owner (the single-source case). A null owner declared nothing,
+  // so `ipHolderNames` is empty and no attribution is claimed — the honest
+  // unknown. A non-servable source's owner was withheld by the endpoint
+  // (ip_holder_name = null), so it never reaches the restricted branch below.
+  const ownerName =
+    decoration?.ipHolderNames.length === 1 ? decoration.ipHolderNames[0] : null;
+  const owner = ownerName ? `, published by ${ownerName}` : "";
 
   // ENACT the declared §9.0 verdict (PR-6: the augmentation read `servable`
   // from the substrate; the surface honors it, never re-decides it). The

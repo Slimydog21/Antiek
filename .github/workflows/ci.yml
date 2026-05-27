@@ -185,3 +185,30 @@ jobs:
         # import silently ballooning the bundle.
         working-directory: apps/reading
         run: npm run build:check
+
+      - name: Reading-physics augmentation boundary (SPR-03 — PR-1/2/3/6/8)
+        # The Physics of Reading no-side-store / declare-don't-act guard.
+        # Scans apps/reading/src/reading-physics/augmentations + facets and
+        # fails on a private store, a DOM mutation, a sibling-augmentation
+        # import, a substrate WRITE path, or (PR-8) an import outside the
+        # augmentation allowlist. Models tools/lint/boundary_check.py (same
+        # path:line output, same exit-code contract). Lives in the tsc job
+        # because the augmentation surface is TypeScript (canon §7).
+        #
+        # The guard SELF-GATES its own exit code — no `|| echo` swallow here, so
+        # the step's pass/fail is exactly the guard's exit code (no false-negative
+        # trap). Blocking requires BOTH the canon front-matter `status: ratified`
+        # AND `--enforce`; with either missing the guard exits 0 (advisory) even
+        # when it lists findings, so this step stays GREEN while
+        # docs/philosophy/physics-of-reading.md reads `status: draft`. The guard
+        # itself prints the `[advisory]`/`ADVISORY` findings to the log.
+        #
+        # To flip blocking AFTER the operator ratifies the canon, the single
+        # atomic act is: add `--enforce` to the command below. Because there is
+        # no `|| echo` swallowing the exit code, that one edit is sufficient —
+        # the gate will then fail (red) on a real violation under a ratified
+        # canon. (Standing informational-then-blocking discipline,
+        # docs/decisions/ci-informational-gates.md.) Run from the repo root
+        # (the guard resolves its own paths).
+        working-directory: ${{ github.workspace }}
+        run: python3 tools/lint/reading_physics_check.py

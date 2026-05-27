@@ -124,6 +124,59 @@ export interface Decoration {
    * by " · ") — see the doc's overlapping-decorations case.
    */
   readonly title?: string;
+  /**
+   * Optional WIDGET affordance painted ALONGSIDE this range (SPR-03 M2) — e.g.
+   * the talk's quote-leap button next to a quoted passage. ADDITIVE widening of
+   * the frozen §6 signature (allowed per §6: "additive widening is allowed in
+   * later sprints; renaming or narrowing a field is a canon change"); no
+   * existing field is renamed or narrowed, so SPR-02's decorations type-check
+   * unchanged. It is DATA from a closed vocabulary (`WidgetSpec`), never a
+   * render callback — the surface owns how the affordance looks and behaves, so
+   * the augmentation cannot smuggle a DOM mutation through it (PR-1). Distinct
+   * from the gutter-lane `AnchoredWidget` below (that is SPR-04's facet); this
+   * widget is inline with the decorated range.
+   */
+  readonly widget?: WidgetDecorationSpec;
+  /**
+   * Optional ATTRIBUTION payload (SPR-03 M5) — the "whose work grounds this"
+   * IP-holder name the surface paints inline (e.g. "published by MIT Press").
+   * ADDITIVE widening of §6 (no field renamed/narrowed). It is structured DATA,
+   * not free-form copy that competes with §5 voice (PR-6): the augmentation
+   * supplies only the substrate-resolved owner NAME; the surface owns the
+   * "published by …" phrasing. Kept off `title` (the tooltip) and off
+   * `className` (the closed verdict vocabulary) deliberately, so the IP-holder
+   * augmentation can declare attribution on the SAME range as the servability
+   * augmentation's verdict class and the facet merges both WITHOUT either
+   * augmentation knowing the other exists (PR-3 — the M5 composition).
+   */
+  readonly attribution?: AttributionSpec;
+}
+
+/**
+ * The IP-holder attribution a `Decoration` may carry (SPR-03 M5). Read from the
+ * substrate's `ip_holder_name` verdict (PR-6 — never invented), null-safe by
+ * construction: an augmentation only declares this when the substrate resolved
+ * a non-null owner, so the field's mere presence means "a known owner." The
+ * surface owns the phrasing; the augmentation declares the name.
+ */
+export interface AttributionSpec {
+  /** The IP-holder name the substrate resolved (e.g. "MIT Press"). Plain text,
+   *  substrate-supplied; the augmentation never fabricates it. */
+  readonly ipHolderName: string;
+}
+
+/**
+ * The closed widget-affordance vocabulary a `Decoration` may carry (SPR-03 M2).
+ * Kept here in the frozen-signature module (additively) so an augmentation that
+ * declares a widget imports only `types.ts`. The surface maps each `kind` to a
+ * concrete affordance; an augmentation declares WHAT (the kind + a label),
+ * never HOW it is painted (PR-1 / PR-5).
+ */
+export interface WidgetDecorationSpec {
+  /** Closed vocabulary — extend additively, never free-form CSS/DOM. */
+  readonly kind: "quote-leap" | "preview" | "open-source";
+  /** Accessible label/tooltip the surface paints. Plain text, no markup. */
+  readonly label: string;
 }
 
 // ── Anchored-widget facet (PR-1 / anchored-widgets) ──────────────────────
