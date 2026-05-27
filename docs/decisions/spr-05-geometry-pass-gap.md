@@ -102,11 +102,12 @@ ONE `getBoundingClientRect` caller in the whole reading stack (the PR-4 boundary
 scan it and must never need to). `MasterMdViewer.tsx` runs it in a
 `useLayoutEffect` (synchronous, post-commit / pre-paint): it measures every
 laid-out `[data-claim-id]` claim span → `anchorKey → Rect` → `baseGeometryFromMap`
-(layout-map.ts:71) → `createViewportScopedLayoutMap` (layout-map.ts:177), and
-stores the result in state. `EMPTY_LAYOUT_MAP` is **no longer the mounted map** —
-it is only the first-paint default (before the first measure), exactly the honest
-"nothing laid out yet" state. The header `renderHeaderQualityCue` pass and the
-minimap second pass both now run against this live map.
+(layout-map.ts:71) → `createLayoutMap` (layout-map.ts:95) via the UNSCOPED
+`buildLayoutMap`, and stores the result in state. `EMPTY_LAYOUT_MAP` is **no
+longer the mounted map** — it is only the first-paint default (before the first
+measure), exactly the honest "nothing laid out yet" state. The header
+`renderHeaderQualityCue` pass and the minimap second pass both now run against
+this live map.
 
 **What is GENUINELY live now:**
 - The **layout-map itself** resolves real, non-null rects for claim anchors from
@@ -152,21 +153,48 @@ minimap second pass both now run against this live map.
   mounting them is wiring — but it is not done in this sprint (out of scope: M2 is
   minimap/collapse/marginalia wiring).
 
-**M3 recompute strategy (recorded per the milestone):** the pass is
-**viewport-scoped** (`createViewportScopedLayoutMap` — off-screen anchors
-short-circuit to `null` before the transform pipeline folds, capping per-frame
-work to on-screen anchors) AND **debounced** on scroll/resize at
-`GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100ms` (≈6 frames — below the ~100–200ms
-"instant" perception threshold so the gutter never feels laggy, coarse enough that
-a continuous scroll coalesces ~6 frames of events into ONE rebuild). Overscan is
-`VIEWPORT_OVERSCAN_PX = 300` (≈1.5 viewport-heights of reading-column content, so a
-block scrolling into view resolves a frame early). Both numbers are SURFACE
-constants justified inline at their declaration (the no-magic-number rule); tuning
-them never touches the physics. Debounce caps the FREQUENCY of recompute; scope
-caps the WORK per recompute — the two together are the "deliberately, not
-measure-everything-every-frame" the milestone asks for. The numbers are a
-documented starting point, not measured on the real surface yet (the live number
-is the one that matters — re-measure if pop-in or jank is observed).
+**M3 recompute strategy (recorded per the milestone — corrected in round 2 to
+the honest model).** Round 1 mounted a `window` scroll/resize listener feeding a
+viewport-scoped map. A verifier-critic returned DO-NOT-MERGE on M3: that machinery
+was **misdirected and inert** on this surface. Round 2 corrected it. The honest
+model:
+
+- **The base geometry is ROOT-RELATIVE ⇒ SCROLL-INVARIANT.** `measureClaimGeometry`
+  normalises every rect by `box.top - rootBox.top` (readingGeometryPass.ts), so
+  scrolling the reading column moves the article and its claim spans by the same
+  delta and leaves every root-relative rect unchanged. **Scrolling never changes
+  the map.** Recompute-on-scroll is therefore unnecessary for correctness — and on
+  this surface it never even fired: `MasterMdViewer` is mounted inside an inner
+  `overflow-y-auto` scroller (`index.tsx`), and `scroll` events do not bubble to
+  `window` from an inner overflow container, so round 1's `window` scroll listener
+  was dead. Round 2 **drops the scroll listener entirely.**
+- **The recompute trigger is a `ResizeObserver` on the article element.** The only
+  events that move root-relative geometry are LAYOUT-SIZE changes — viewport
+  resize, web-font load, async content reflow (a streamed synthesis still
+  settling). A `ResizeObserver` observing the `articleRef` fires on exactly those,
+  uniformly, untied to `window`. It is disconnected in the effect cleanup. The
+  initial synchronous `useLayoutEffect` measure (pre-paint, avoids a flash) is
+  kept, and `synthesis` stays an effect dependency (new claims ⇒ re-measure). A
+  vitest drives this real trigger: it stubs `ResizeObserver` to capture the
+  callback, proves the observer is bound to the article, fires the callback, and
+  asserts a fresh measurement pass ran (`MasterMdViewer.test.tsx`).
+- **Debounce justification is now for the OBSERVER BURST, not scroll.**
+  `GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100ms` (≈6 frames at 60fps — below the
+  ~100–200ms "instant" perception threshold so a settle never feels laggy) coalesces
+  the rapid BURST of resize callbacks a drag-resize or a streaming reflow emits into
+  ONE trailing-edge rebuild. (It is NOT a scroll-frame cap — there is no scroll
+  listener.) A surface constant justified inline; tuning it never touches the physics.
+- **Viewport-scoping is deliberately NOT mounted on this surface.** Round 1 mounted
+  `createViewportScopedLayoutMap`; round 2 mounts the **unscoped** `buildLayoutMap`.
+  Scoping would prune NOTHING here: the transform pipeline is empty (SPR-05's
+  collapse is unbound this sprint, so there is no per-frame fold cost to cap) AND
+  the base geometry is scroll-invariant (the visible band never narrows the resolved
+  set). `buildViewportScopedLayoutMap` / `buildViewportBand` / `VIEWPORT_OVERSCAN_PX`
+  remain **exported and tested** in `readingGeometryPass.ts` as the **RESERVED PATH**
+  for when (a) the reading column becomes its OWN scroll container AND (b) a
+  non-empty transform pipeline (SPR-05 collapse) makes per-frame fold cost real — at
+  which point the surface switches to the scoped map fed by the real container. Their
+  doc comments state this plainly; they are a documented future seam, not dead code.
 
 **Measurement failure modes (rigor #3) — how each is handled:**
 - **Zero-height anchor** (not yet laid out — first paint before layout, or an
@@ -198,12 +226,24 @@ is the one that matters — re-measure if pop-in or jank is observed).
 - A different surface than `MasterMdViewer` becomes the canonical reading column →
   the geometry pass + its feed-points move with it; update `readingGeometryPass.ts`
   + the mount.
-- The viewport-scoped path proves insufficient at real document sizes once live →
-  re-measure on the real surface and revisit the M5 perf decision (the unscoped
-  number was always machine-dependent; the live number is the one that matters).
-- The debounce/overscan numbers feel laggy or show pop-in on the real surface →
-  re-tune `GEOMETRY_RECOMPUTE_DEBOUNCE_MS` / `VIEWPORT_OVERSCAN_PX` (surface
-  constants; physics untouched), OR switch the recompute trigger to a
-  `ResizeObserver`/`IntersectionObserver` (steelmanned in the SPR-02 handoff — the
-  synchronous pre-paint `useLayoutEffect` read was kept as the load-bearing M1
-  path; the observer is the alternative if the listener-debounce proves coarse).
+- **The reading column becomes its own scroll container AND a live transform
+  pipeline (SPR-05 collapse) is bound** → switch the surface mount from the
+  unscoped `buildLayoutMap` to the RESERVED scoped path
+  (`buildViewportScopedLayoutMap` fed by `buildViewportBand` off the real
+  container). Only then does viewport-scoping prune anything (a non-empty fold has
+  per-frame cost to cap) — until BOTH hold, mounting the scoped map would be inert
+  machinery. The seam is kept exported + tested for exactly this.
+- The debounce number feels laggy on the real surface (a drag-resize or streaming
+  reflow settles too slowly, or a single resize feels delayed) → re-tune
+  `GEOMETRY_RECOMPUTE_DEBOUNCE_MS` (a surface constant; physics untouched). Note it
+  caps the FREQUENCY of the ResizeObserver-BURST recompute, not scroll — there is
+  no scroll listener (the map is scroll-invariant).
+- A geometry-DEPENDENT change is observed NOT to recompute (a widget stale after a
+  layout-size change) → confirm the `ResizeObserver` on the article still fires for
+  that change; if the relevant reflow does not resize the article (e.g. an
+  ancestor-only change), extend the observed set or add an `IntersectionObserver`,
+  but do NOT re-add a scroll listener (it would be dead/misdirected — see the M3
+  section).
+- The `VIEWPORT_OVERSCAN_PX = 300` overscan shows pop-in once the scoped path is
+  mounted → re-tune it (a surface constant on the reserved scoped path; load-bearing
+  only after the scoped map is mounted; physics untouched).

@@ -38,8 +38,10 @@
 //   LayoutMap.resolve(anchor) → Rect | null   ← every augmentation/widget queries this
 //
 // PR-2 (no side store): the returned map is a pure function of the current DOM
-// measurement. It is rebuilt every pass (the surface re-runs the effect on
-// scroll/resize); losing it loses nothing.
+// measurement. It is rebuilt every pass (the surface re-runs the effect on a
+// LAYOUT-SIZE change — a ResizeObserver on the article, NOT on scroll: the
+// root-relative base geometry is scroll-invariant, so scrolling cannot change the
+// map); losing it loses nothing.
 // ─────────────────────────────────────────────────────────────────────────
 
 import {
@@ -75,10 +77,12 @@ export const CLAIM_ID_ATTR = "data-claim-id";
  *     a widget at the document origin. A real anchor gains a non-zero rect on the
  *     next pass once layout settles.
  *   - OFF-SCREEN anchor (laid out, real rect, but outside the viewport): KEPT with
- *     its real rect — off-screen is a viewport-SCOPE concern, handled by
- *     `createViewportScopedLayoutMap` downstream (M3), NOT by dropping it at
- *     measure time. (Dropping it here would defeat the minimap, which wants the
- *     whole document's geometry.)
+ *     its real rect — off-screen is a viewport-SCOPE concern, not a measure-time
+ *     drop. On the live surface today the UNSCOPED map keeps it (the minimap wants
+ *     the whole document's geometry); the RESERVED scoped path
+ *     (`createViewportScopedLayoutMap`) is what would short-circuit it once mounted
+ *     (see `buildViewportScopedLayoutMap`). Either way, dropping it HERE would be
+ *     wrong.
  *   - REFLOW-DURING-MEASURE (a streamed synthesis still mutating the DOM): the
  *     measurement is a SNAPSHOT of the DOM at the instant the effect runs
  *     (useLayoutEffect, synchronously after the React commit, before paint — so it
@@ -129,14 +133,33 @@ export function buildLayoutMap(
 }
 
 /**
- * The VIEWPORT-SCOPED geometry pass (M3 — the no-O(n)-jank discipline). Same
- * measure step, but the surface also supplies the visible band (derived from the
- * scroll container) so off-screen anchors short-circuit to `null` before the
- * transform pipeline folds — capping per-frame work to the on-screen anchors.
+ * The VIEWPORT-SCOPED geometry pass (the no-O(n)-jank discipline). Same measure
+ * step, but the surface also supplies the visible band (derived from the scroll
+ * container) so off-screen anchors short-circuit to `null` before the transform
+ * pipeline folds — capping per-frame work to the on-screen anchors.
  *
  * The band is in the SAME pre-transform coordinate space `measureClaimGeometry`
  * produces (root-relative), so the cheap base-rect membership test is apples-to-
  * apples. `buildViewportBand` below derives it from the scroll container.
+ *
+ * ── RESERVED PATH — deliberately NOT mounted by MasterMdViewer today ──────────
+ * This (with `buildViewportBand` + `VIEWPORT_OVERSCAN_PX`) is kept, exported, and
+ * tested as the documented future seam, but the live reading surface mounts the
+ * UNSCOPED `buildLayoutMap` instead (Living-Roadmap SPR-02 round 2). On the
+ * current surface, scoping would prune NOTHING and is therefore not honest
+ * machinery to mount:
+ *   (a) the base geometry is ROOT-RELATIVE (see `measureClaimGeometry`), hence
+ *       SCROLL-INVARIANT — the visible band never narrows the resolved set as the
+ *       reader scrolls; and
+ *   (b) the transform pipeline is EMPTY this sprint (SPR-05's collapse is unbound),
+ *       so there is no per-frame fold cost for scoping to cap.
+ * Switch the surface to this scoped map ONLY when BOTH become true:
+ *   (1) the reading column becomes its OWN scroll container (so a real visible
+ *       band exists to scope against), AND
+ *   (2) a NON-EMPTY transform pipeline (the SPR-05 collapse fold) makes per-frame
+ *       fold cost real — at which point bounding the fold to on-screen anchors
+ *       earns its keep. Until then this is a tested seam, not dead code: the
+ *       retained tests + the D13 doc reference keep it honest and ready.
  */
 export function buildViewportScopedLayoutMap(
   root: HTMLElement,
@@ -154,17 +177,19 @@ export function buildViewportScopedLayoutMap(
 /**
  * Vertical OVERSCAN (px) padded above and below the visible band so an anchor
  * scrolling INTO view resolves a frame early (no pop-in at the viewport edge).
+ * Part of the RESERVED scoped path (see `buildViewportScopedLayoutMap`) — only
+ * load-bearing once the surface mounts the scoped map.
  *
  * WHY 300 (the no-magic-number rule — defensibility): it is ~1.5× a typical
  * laptop viewport's worth of reading-column content above and below the fold
  * (a claim block + its rationale + citations is ~150–200px; 300px keeps roughly
  * the next/previous block warm). Small enough that per-frame work stays bounded
- * to the on-screen + just-off-screen anchors (the M3 point), large enough that a
- * normal scroll velocity never out-runs the recompute and shows an unresolved
- * gutter. It is a SURFACE constant (the band is the surface's measurement), so
- * tuning it never touches the physics. Not derived from a measurement on the real
- * surface yet (the D13 doc's "the live number is the one that matters") — a
- * deliberate, documented starting point, re-measure if pop-in is observed.
+ * to the on-screen + just-off-screen anchors, large enough that a normal scroll
+ * velocity never out-runs the recompute and shows an unresolved gutter. It is a
+ * SURFACE constant (the band is the surface's measurement), so tuning it never
+ * touches the physics. Not derived from a measurement on the real surface yet
+ * (the D13 doc's "the live number is the one that matters") — a deliberate,
+ * documented starting point, re-measure if pop-in is observed.
  */
 export const VIEWPORT_OVERSCAN_PX = 300;
 
@@ -174,6 +199,12 @@ export const VIEWPORT_OVERSCAN_PX = 300;
  * coordinates (the space `measureClaimGeometry` uses) so it feeds
  * `createViewportScopedLayoutMap` directly. The SURFACE owns this read (it owns
  * the scroll container); the physics never measures the viewport itself (PR-4).
+ *
+ * RESERVED PATH — see `buildViewportScopedLayoutMap`. `MasterMdViewer` does NOT
+ * call this today: its base geometry is scroll-invariant and its transform
+ * pipeline is empty, so a visible band would scope away nothing. This becomes
+ * load-bearing when the reading column gains its own scroll container AND a live
+ * transform pipeline (SPR-05 collapse) makes scoping earn its keep.
  */
 export function buildViewportBand(
   root: HTMLElement,

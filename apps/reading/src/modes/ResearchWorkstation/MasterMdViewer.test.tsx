@@ -12,8 +12,8 @@
  *   - a claim whose chunks all fail to resolve shows an honest
  *     "source unavailable", never a fabricated title (rigor #1).
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
@@ -40,9 +40,32 @@ import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ClaimId } from "../../reading-physics/types";
 import type { ParsedClaim } from "../../lib/synthesisParser";
 
+// jsdom does not implement ResizeObserver, but MasterMdViewer's geometry pass
+// (Living-Roadmap SPR-02 round 2) constructs one on mount. Install a minimal
+// no-op global stub so every render works; the recompute-trigger test below
+// replaces it with a capturing stub for the one assertion that drives the
+// callback, and restores this afterward.
+const PRIOR_RESIZE_OBSERVER = (globalThis as { ResizeObserver?: unknown })
+  .ResizeObserver;
+class NoopResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+beforeEach(() => {
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+    NoopResizeObserver as unknown as typeof ResizeObserver;
+});
+
 afterEach(() => {
   cleanup();
   getChunkMock.mockReset();
+  if (PRIOR_RESIZE_OBSERVER === undefined) {
+    delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+  } else {
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+      PRIOR_RESIZE_OBSERVER;
+  }
 });
 
 function chunk(over: Partial<ChunkResponse>): ChunkResponse {
@@ -580,6 +603,124 @@ describe("MasterMdViewer — geometry pass mounted in the surface (Living-Roadma
     // QualityCue is geometry-independent: threading the live map (vs the old
     // EMPTY_LAYOUT_MAP) leaves its render byte-equivalent — it still clears the bar.
     expect(screen.getByText(/clears our quality bar/i)).toBeTruthy();
+  });
+});
+
+// ── Living-Roadmap SPR-02 round 2 — the REAL recompute trigger is exercised ──
+//
+// Round 1 mounted a `window` scroll listener that NEVER fires on this surface
+// (MasterMdViewer scrolls inside an inner `overflow-y-auto` ancestor, and the base
+// geometry is root-relative ⇒ scroll-invariant anyway). Round 2 replaced it with a
+// ResizeObserver on the ARTICLE, the true recompute trigger (layout-size / reflow
+// changes). This test drives that trigger end-to-end rather than asserting a
+// function in isolation: it stubs ResizeObserver to CAPTURE the callback + the
+// observed node, proves the observer is bound to the article element, then fires
+// the callback and (after the debounce) asserts a fresh measurement pass ran — the
+// mounted map is recomputed from the just-changed DOM, not from a dead listener.
+
+interface CapturedRO {
+  callback: ResizeObserverCallback;
+  observed: Element[];
+  disconnected: boolean;
+}
+
+describe("MasterMdViewer — ResizeObserver recompute trigger (Living-Roadmap SPR-02 round 2)", () => {
+  it("recomputes the layout-map when the captured ResizeObserver callback fires", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+
+    // ── Stub ResizeObserver (jsdom has none) so we can capture its callback and
+    //    drive it deterministically. We record the observed nodes + disconnect. ──
+    const observers: CapturedRO[] = [];
+    const RealResizeObserver = (globalThis as { ResizeObserver?: unknown })
+      .ResizeObserver;
+    class StubResizeObserver {
+      private readonly rec: CapturedRO;
+      constructor(callback: ResizeObserverCallback) {
+        this.rec = { callback, observed: [], disconnected: false };
+        observers.push(this.rec);
+      }
+      observe(el: Element) {
+        this.rec.observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {
+        this.rec.disconnected = true;
+      }
+    }
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+      StubResizeObserver as unknown as typeof ResizeObserver;
+
+    // ── Spy getBoundingClientRect: give the article a real rect so the measure
+    //    pass walks a populated root, and COUNT the reads on the article so we can
+    //    detect a second measurement pass after the trigger fires. jsdom returns
+    //    all-zeros otherwise. ──
+    let articleRectReads = 0;
+    const geomSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        if (this.tagName === "ARTICLE") articleRectReads += 1;
+        const claimId = this.getAttribute("data-claim-id");
+        // The claim span carries a real rect (so a measurement resolves it); the
+        // article is the origin; everything else is unlaid (0×0, dropped).
+        const r = claimId
+          ? { top: 120, left: 20, width: 600, height: 40 }
+          : this.tagName === "ARTICLE"
+            ? { top: 0, left: 0, width: 800, height: 4000 }
+            : { top: 0, left: 0, width: 0, height: 0 };
+        return {
+          top: r.top,
+          left: r.left,
+          width: r.width,
+          height: r.height,
+          right: r.left + r.width,
+          bottom: r.top + r.height,
+          x: r.left,
+          y: r.top,
+          toJSON() {
+            return r;
+          },
+        } as DOMRect;
+      });
+
+    vi.useFakeTimers();
+    try {
+      render(<MasterMdViewer synthesis={synth()} />);
+
+      // The trigger is wired to the ARTICLE element (NOT window): exactly one
+      // observer was constructed and it observes the article that carries the
+      // measured claim spans.
+      expect(observers).toHaveLength(1);
+      const ro = observers[0];
+      expect(ro.observed).toHaveLength(1);
+      expect((ro.observed[0] as HTMLElement).tagName).toBe("ARTICLE");
+
+      // The initial synchronous useLayoutEffect measure already read the article.
+      const readsAfterInitialMeasure = articleRectReads;
+      expect(readsAfterInitialMeasure).toBeGreaterThan(0);
+
+      // Fire the REAL recompute trigger (a layout-size change) and let the debounce
+      // settle. Only after the trailing-edge timer should the recompute run.
+      act(() => {
+        ro.callback([], ro as unknown as ResizeObserver);
+      });
+      // Before the debounce elapses, no extra measurement pass has run.
+      expect(articleRectReads).toBe(readsAfterInitialMeasure);
+      act(() => {
+        vi.advanceTimersByTime(150); // > GEOMETRY_RECOMPUTE_DEBOUNCE_MS (100)
+      });
+      // The captured callback drove a FRESH measurement pass: the article was
+      // re-measured (recompute ran through the real trigger, not a dead listener).
+      expect(articleRectReads).toBeGreaterThan(readsAfterInitialMeasure);
+    } finally {
+      vi.useRealTimers();
+      geomSpy.mockRestore();
+      if (RealResizeObserver === undefined) {
+        delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+      } else {
+        (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+          RealResizeObserver;
+      }
+    }
   });
 });
 

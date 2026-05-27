@@ -39,6 +39,7 @@ import {
   minimapLayoutFrom,
   projectDecorationsToMinimap,
 } from "../../reading-physics/minimap";
+import { MINIMAP_SCALE, MINIMAP_COLUMN_WIDTH_PX } from "./MasterMdViewer";
 import {
   CollapseState,
   fingerprintPlan,
@@ -221,13 +222,16 @@ describe("readingGeometryPass — M2: facets light up against the live map (wiri
       { claimId: "1", rect: { top: 400, left: 20, width: 600, height: 40 } },
     ]);
     const live = buildLayoutMap(root);
-    const minimapLayout = minimapLayoutFrom(live, 0.1, 6);
+    // Use the constants the SURFACE actually mounts (MasterMdViewer's
+    // MINIMAP_SCALE / MINIMAP_COLUMN_WIDTH_PX) so the test can never drift from the
+    // mounted value — the mounted constant IS the tested one.
+    const minimapLayout = minimapLayoutFrom(live, MINIMAP_SCALE, MINIMAP_COLUMN_WIDTH_PX);
     const marks = projectDecorationsToMinimap([resolvedClaimDecoration("1")], minimapLayout);
     expect(marks).toHaveLength(1);
     expect(marks[0].rect).not.toBeNull();
     // Compressed: minimap top = main top * scale, width = the minimap column.
-    expect(marks[0].rect!.top).toBeCloseTo(40, 5);
-    expect(marks[0].rect!.width).toBe(6);
+    expect(marks[0].rect!.top).toBeCloseTo(400 * MINIMAP_SCALE, 5);
+    expect(marks[0].rect!.width).toBe(MINIMAP_COLUMN_WIDTH_PX);
     // The SAME resolved decoration the main view would paint (shared reference).
     expect(marks[0].decoration.classNames).toContain("review-due");
   });

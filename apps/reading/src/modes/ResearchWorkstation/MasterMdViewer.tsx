@@ -34,10 +34,7 @@ import { collectAnchoredWidgets, collectDecorations } from "../../reading-physic
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
-import {
-  buildViewportBand,
-  buildViewportScopedLayoutMap,
-} from "./readingGeometryPass";
+import { buildLayoutMap } from "./readingGeometryPass";
 
 /**
  * Renders a completed investigation's synthesis as a trustworthy
@@ -160,17 +157,29 @@ function composedReviewDueByClaim(
 
 // ── Living-Roadmap SPR-02 — the recompute debounce (M3) ──────────────────────
 //
-// WHY 100ms (the no-magic-number rule — defensibility): the geometry pass re-runs
-// on scroll AND resize. A raw scroll handler fires every animation frame (~16ms);
-// re-measuring + rebuilding the map that often is the O(n)-jank the M3 milestone
-// forbids. 100ms is ~6 frames — below the ~100–200ms threshold at which a UI
-// change reads as "instant" to a human (so the gutter widgets/minimap never feel
-// laggy on settle), yet coarse enough that a continuous scroll coalesces ~6
-// frames of events into ONE recompute instead of measuring every frame. Resize is
-// rarer but debounced by the same handle (a drag-resize would otherwise thrash).
-// Paired with viewport-scoping (createViewportScopedLayoutMap) so each recompute
-// is bounded to on-screen anchors — debounce caps the FREQUENCY, scope caps the
-// WORK per recompute. A surface constant; tuning it never touches the physics.
+// WHAT TRIGGERS A RECOMPUTE, and what does NOT (the honest M3 model). The base
+// geometry this surface measures is ROOT-RELATIVE (readingGeometryPass.ts
+// normalises each rect by `box.top - rootBox.top`), so it is SCROLL-INVARIANT:
+// scrolling the reading column moves the article and its claim spans by the SAME
+// delta, leaving every root-relative rect unchanged. Scrolling therefore never
+// changes the map — there is NO scroll listener here (a re-measure-on-scroll would
+// be both misdirected and pure waste; see the geometry-pass comment below). The
+// events that DO move geometry are LAYOUT-SIZE changes: a viewport resize, a web
+// font finishing load, async content reflow (a streamed synthesis still settling).
+// A `ResizeObserver` on the article fires on exactly those — uniformly, and untied
+// to `window` (the article lives inside an inner overflow scroller, so a window
+// listener would miss container-scoped reflow anyway).
+//
+// WHY 100ms FOR THE OBSERVER BURST (the no-magic-number rule — defensibility): a
+// ResizeObserver does NOT fire per scroll frame, but it DOES fire a BURST during a
+// continuous gesture — a drag-resize of the window, or a streaming synthesis whose
+// DOM reflows on each appended chunk, each emit a rapid run of resize callbacks.
+// Re-measuring + rebuilding the map on every one of those is the O(n) thrash the
+// M3 milestone forbids. 100ms is ~6 frames at 60fps — below the ~100–200ms
+// threshold at which a settle reads as "instant" to a human (so the minimap/gutter
+// never feel laggy once the resize stops), yet coarse enough that a burst
+// coalesces into ONE trailing-edge recompute instead of one per callback. A
+// surface constant; tuning it never touches the physics.
 const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 
 export default function MasterMdViewer({
@@ -192,13 +201,34 @@ export default function MasterMdViewer({
   // ./readingGeometryPass.ts — never under reading-physics/. A future maintainer
   // must NOT move measurement into an augmentation (see that module's header).
   //
-  // The article column is the measurement root AND the scroll-band reference. The
-  // live map starts as EMPTY_LAYOUT_MAP (the honest first-paint default: nothing
-  // measured yet ⇒ every anchor resolves null ⇒ widgets render nothing) and is
-  // replaced by the measured map in a useLayoutEffect that runs SYNCHRONOUSLY
-  // after the React commit, before paint — so the resolved rects are read from the
-  // just-committed tree (the reflow-during-measure mode is pinned to the commit
-  // boundary; a later DOM mutation re-renders → the effect re-runs → fresh map).
+  // The article column is the measurement root. The live map starts as
+  // EMPTY_LAYOUT_MAP (the honest first-paint default: nothing measured yet ⇒ every
+  // anchor resolves null ⇒ widgets render nothing) and is replaced by the measured
+  // map in a useLayoutEffect that runs SYNCHRONOUSLY after the React commit, before
+  // paint — so the resolved rects are read from the just-committed tree (the
+  // reflow-during-measure mode is pinned to the commit boundary; a later DOM
+  // mutation re-renders → the effect re-runs → fresh map).
+  //
+  // M3 RECOMPUTE DISCIPLINE — the honest model. The base geometry is ROOT-RELATIVE
+  // (readingGeometryPass.ts normalises by `box.top - rootBox.top`) and therefore
+  // SCROLL-INVARIANT: scrolling moves the article and its anchors by the same
+  // delta, so the root-relative map is unchanged. Hence there is deliberately NO
+  // scroll listener — re-measuring on scroll would be both MISDIRECTED (this
+  // surface scrolls inside an inner `overflow-y-auto` ancestor in index.tsx, so a
+  // `window` scroll listener never even fires on real reading scroll) AND
+  // UNNECESSARY (the map cannot change). The only things that move geometry are
+  // LAYOUT-SIZE changes — viewport resize, font load, async content reflow — so the
+  // recompute trigger is a ResizeObserver on the article (it fires on exactly those,
+  // uniformly, untied to `window`), debounced for the resize/reflow BURST case.
+  //
+  // We mount the UNSCOPED buildLayoutMap (NOT the viewport-scoped variant): on this
+  // surface scoping would prune NOTHING — the transform pipeline is empty (SPR-05's
+  // collapse is not bound this sprint) so there is no per-frame fold cost to cap,
+  // and the base geometry is scroll-invariant so the visible band never narrows the
+  // work. The scoped path (buildViewportScopedLayoutMap / buildViewportBand in
+  // readingGeometryPass.ts) is RESERVED for when the reading column becomes its own
+  // scroll container AND a non-empty transform pipeline makes per-frame fold cost
+  // real — see that module's header for the reserved-seam contract.
   const articleRef = useRef<HTMLElement | null>(null);
   const [layoutMap, setLayoutMap] = useState<LayoutMap>(EMPTY_LAYOUT_MAP);
 
@@ -209,38 +239,31 @@ export default function MasterMdViewer({
     const recompute = () => {
       const node = articleRef.current;
       if (!node) return;
-      // Viewport-SCOPED (M3): off-screen anchors short-circuit to null before the
-      // (empty this sprint) transform pipeline folds, capping per-frame work to
-      // the on-screen anchors. The scroll container is the article's own scroller
-      // — falling back to the article itself when it is not independently
-      // scrollable (the band then spans the whole column, which the page scroll
-      // makes visible incrementally). The transform pipeline is empty here; a live
-      // collapse passes collapsePipelineFor(state) as the 3rd arg with no surface
-      // change (SPR-05's seam is already threaded through buildViewportScopedLayoutMap).
-      const band = buildViewportBand(node, node);
-      setLayoutMap(buildViewportScopedLayoutMap(node, band));
+      // The transform pipeline is empty here; a live collapse passes
+      // collapsePipelineFor(state) as the 2nd arg with no surface change (SPR-05's
+      // seam is already threaded through buildLayoutMap).
+      setLayoutMap(buildLayoutMap(node));
     };
 
-    // Initial measure: synchronous, pre-paint (the M1 geometry pass).
+    // Initial measure: synchronous, pre-paint (the M1 geometry pass). Correct as a
+    // useLayoutEffect read — it avoids a first-paint flash of unmeasured widgets.
     recompute();
 
-    // M3 — debounced recompute on scroll/resize (NOT measure-every-frame). A
-    // single trailing-edge timer coalesces a burst of scroll events into one
-    // rebuild after the scroll settles; viewport-scoping bounds the work of that
-    // one rebuild. ResizeObserver vs this scroll/resize-listener choice is
-    // discussed in the handoff (the prescribed useLayoutEffect + getBoundingClientRect
-    // synchronous read is the load-bearing M1 path; the debounce is the M3 cap).
+    // M3 — recompute on LAYOUT-SIZE change via a ResizeObserver on the article (NOT
+    // a scroll listener: the map is scroll-invariant, see the block comment above).
+    // The observer fires on viewport resize, font load, and async content reflow —
+    // the events that actually move root-relative geometry. A single trailing-edge
+    // timer coalesces a resize/reflow BURST into one rebuild after it settles. The
+    // observer is disconnected in cleanup so it does not outlive the mount.
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const onChange = () => {
+    const observer = new ResizeObserver(() => {
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(recompute, GEOMETRY_RECOMPUTE_DEBOUNCE_MS);
-    };
-    window.addEventListener("scroll", onChange, { passive: true });
-    window.addEventListener("resize", onChange);
+    });
+    observer.observe(root);
     return () => {
       if (timer !== null) clearTimeout(timer);
-      window.removeEventListener("scroll", onChange);
-      window.removeEventListener("resize", onChange);
+      observer.disconnect();
     };
     // Re-run when the rendered synthesis changes (new claims ⇒ new anchors to
     // measure). The streamed-mutation case re-renders on its own and re-runs this.
@@ -390,10 +413,13 @@ export default function MasterMdViewer({
 /** The minimap's uniform vertical compression factor (whole doc → a narrow
  *  column). 0.08 ≈ 1/12 — a long synthesis (~12 viewport-heights) squeezes into
  *  roughly one column. A surface constant; the minimap re-scales the live rects
- *  by it (minimap.tsx owns the math, this only supplies the factor). */
-const MINIMAP_SCALE = 0.08;
-/** The minimap column width (px). Narrow by design — it shows COLOR, not text. */
-const MINIMAP_COLUMN_WIDTH_PX = 6;
+ *  by it (minimap.tsx owns the math, this only supplies the factor). Exported so
+ *  the minimap-projection test asserts against the value the surface ACTUALLY
+ *  mounts (the mounted constant is the tested one — no drift). */
+export const MINIMAP_SCALE = 0.08;
+/** The minimap column width (px). Narrow by design — it shows COLOR, not text.
+ *  Exported alongside MINIMAP_SCALE so the test pins the mounted value. */
+export const MINIMAP_COLUMN_WIDTH_PX = 6;
 
 function ReadingMinimap({
   byClaim,
