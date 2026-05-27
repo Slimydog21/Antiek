@@ -5,6 +5,28 @@ import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedClaim, ParsedSynthesis, QualityScore, Recommendation } from "../../lib/synthesisParser";
+import {
+  RESTRICTED_TITLE,
+  SERVABLE_CLASS,
+  SERVABLE_TITLE,
+  makeServabilityAugmentation,
+} from "../../reading-physics/augmentations/servability";
+import { makeIpHolderAugmentation } from "../../reading-physics/augmentations/ip-holder";
+import {
+  QUALITY_CUE_WIDGET_ID,
+  makeQualityCueAugmentation,
+} from "../../reading-physics/augmentations/quality-cue";
+import {
+  REVIEW_DUE_CLASS,
+  makeReviewDueAugmentation,
+} from "../../reading-physics/augmentations/review-due";
+import type { ReviewDueClaimView } from "../../reading-physics/augmentations/review-due";
+import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
+import { anchorKey } from "../../reading-physics/facets/decorations";
+import { renderEnacted, resolveAnchoredWidgets } from "../../reading-physics/facets/anchored-widgets";
+import { EMPTY_LAYOUT_MAP } from "../../reading-physics/layout-map";
+import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
+import type { ClaimId, ChunkId, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
@@ -26,12 +48,118 @@ import ChunkModal from "./ChunkModal";
  * default per the voice and style discipline (audit metadata, not
  * reading material).
  */
+// ── SPR-08 M5 — the review-due augmentation, behind a default-OFF toggle ─────
+//
+// review-due (augmentations/review-due.ts) is the first AGENT-authored reading
+// augmentation — a spaced-repetition "this claim is due to review" cue. It is a
+// plain DECORATION (geometry-independent), so unlike SPR-05's collapse it needs
+// no read-time geometry pass: it composes through the SAME decorations facet
+// apply pass the §9.0 servability / IP-holder augmentations already run (the
+// claim span gets the augmentation-declared `review-due` class).
+//
+// It ships behind this default-OFF toggle (anti-purgatory, PR-7): the feature is
+// genuinely WIRED and runs through the real facet pass when flipped on, but the
+// review-state it reads — which claims the reader is *due* to review — is a
+// DEFERRED surface integration (resolving the reader's spaced-repetition schedule
+// from the substrate), exactly like SPR-06's `source.read` signal. Until that
+// resolver exists, the toggle passes an EMPTY `dueClaims`, so flipping it on
+// shows the HONEST no-data state (nothing lights up) rather than fabricated
+// review state. Filed: docs/decisions/spr-08-review-state-resolution-gap.md.
+//
+// DEFAULT-OFF byte-equivalence: with the toggle false, `composedReviewDueByClaim`
+// runs no augmentation and returns an empty map, so every claim span renders with
+// no extra class — byte-identical to the pre-SPR-08 render (the MasterMdViewer
+// tests prove this unchanged: the default-off claim-span assertion + the SPR-02
+// byte-equivalence test).
+const REVIEW_DUE_ENABLED = false;
+
+/**
+ * DEFERRED: the surface resolves the reader's spaced-repetition schedule from
+ * the substrate and returns the due claims here. Until that resolver ships, the
+ * due set is EMPTY — review-due declares nothing (honest no-data), never a
+ * fabricated due claim. See spr-08-review-state-resolution-gap.md.
+ */
+function resolveDueClaims(): readonly ReviewDueClaimView[] {
+  return [];
+}
+
+/**
+ * Run the decorations facet pass for the review-due augmentation over the
+ * synthesis claims and the PASSED-IN due set, returning a lookup from a claim's
+ * positional anchor key → its resolved review-due decoration (when the claim is
+ * due). The surface's collect → combine half (§2) for the claim-decoration slot;
+ * `ClaimBlock` owns the enact (it picks the class onto the claim span).
+ *
+ * The PURE seam: it takes the due set as an argument (it does not read the
+ * toggle), so the augmentation→facet→map chain is drivable by a test with a
+ * populated `dueClaims` — the toggle-ON liveness path (review-due.test against
+ * `MasterMdViewer`). `composedReviewDueByClaim` is the toggle-gated wrapper.
+ *
+ * A PLAIN function, NOT a hook (mirrors `composedDecorationsByChunk` /
+ * `renderHeaderQualityCue`): it calls no hooks, runs each render (cheap —
+ * O(claims), pure), and the augmentation only DECLARES (PR-1).
+ */
+export function reviewDueDecorationsFor(
+  synthesis: ParsedSynthesis,
+  dueClaims: readonly ReviewDueClaimView[],
+): Map<string, ResolvedDecoration> {
+  const reviewDue = makeReviewDueAugmentation(dueClaims);
+  const ctx: ReadingContext = {
+    synthesis: {
+      question: synthesis.question,
+      // The augmentation anchors to claim positional ids (PR-4); it reads only
+      // the due set passed in, so the claim list need only carry the ids the
+      // surface knows about. (Empty due set ⇒ this is unused this sprint.)
+      claims: synthesis.components.map((c) => ({
+        claimId: String(c.index) as ClaimId,
+        chunkIds: c.chunkIds as ChunkId[],
+      })),
+    },
+    layout: { resolve: () => null },
+    substrate: {
+      getChunk: () =>
+        // Not used by the decorations pass (the surface resolves the due set
+        // upstream); present only to satisfy the frozen ReadingContext shape.
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the review-due pass"),
+        ),
+    },
+  };
+  const resolved = collectDecorations([reviewDue], ctx);
+  const byKey = new Map<string, ResolvedDecoration>();
+  for (const d of resolved) byKey.set(d.key, d);
+  return byKey;
+}
+
+/**
+ * The toggle-gated review-due decorations pass.
+ *
+ * GATED by `REVIEW_DUE_ENABLED`: off ⇒ the pass runs nothing and the returned
+ * map is empty — every claim renders exactly as today (default-off
+ * byte-equivalence). On ⇒ it runs the real pass (`reviewDueDecorationsFor`) over
+ * the deferred-resolution due set (`resolveDueClaims()`, still empty), so it
+ * declares nothing until review-state is wired (the honest dormant-correct
+ * state, NOT fabricated).
+ */
+function composedReviewDueByClaim(
+  synthesis: ParsedSynthesis,
+): Map<string, ResolvedDecoration> {
+  return REVIEW_DUE_ENABLED
+    ? reviewDueDecorationsFor(synthesis, resolveDueClaims())
+    : new Map();
+}
+
 export default function MasterMdViewer({
   synthesis,
 }: {
   synthesis: ParsedSynthesis;
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
+
+  // SPR-08 M5 — the review-due decorations pass (default-off; empty map unless
+  // the toggle is flipped AND review-state is wired). Computed once per render,
+  // threaded into each ClaimBlock. Off ⇒ empty ⇒ byte-equivalent to today.
+  const reviewDueByClaim = composedReviewDueByClaim(synthesis);
 
   return (
     <div className="bg-ice-0 dark:bg-charcoal-2">
@@ -87,11 +215,14 @@ export default function MasterMdViewer({
               </LemonButton>
             </span>
           </div>
-          {/* SPR-11 M3 — a quiet quality cue, read from the persisted inline
-              rubric (never recomputed here). Renders nothing when no score was
-              persisted; flags a low score so the operator knows the answer may
-              want another pass. */}
-          <QualityCue score={synthesis.qualityScore} />
+          {/* SPR-11 M3 → SPR-04 M4 — the quiet quality cue, now a DECLARED
+              anchored widget the surface PLACES via the anchored-widgets facet
+              (PR-1: the cue declares; the surface enacts). Byte-equivalent to
+              the prior inline `<QualityCue score={…} />` — same wording, classes,
+              and collapsed detail — so this is a re-home, not a UX change. Still
+              read from the persisted inline rubric, never recomputed (PR-6);
+              renders nothing for an absent score. */}
+          {renderHeaderQualityCue(synthesis.qualityScore)}
         </header>
 
         {/* Thesis summary — flowing prose */}
@@ -118,6 +249,9 @@ export default function MasterMdViewer({
                   key={c.index}
                   claim={c}
                   onChunkClick={setOpenChunkId}
+                  reviewDue={reviewDueByClaim.get(
+                    anchorKey({ kind: "claim", claimId: String(c.index) as ClaimId }),
+                  )}
                 />
               ))}
             </div>
@@ -138,19 +272,41 @@ export default function MasterMdViewer({
 
 // ── Sub-components ───────────────────────────────────────────────────
 
-function ClaimBlock({
+export function ClaimBlock({
   claim,
   onChunkClick,
+  reviewDue,
 }: {
   claim: ParsedClaim;
   onChunkClick: (chunkId: string) => void;
+  /** SPR-08 M5 — the COMBINED decoration the review-due augmentation declared for
+   *  this claim's range (when the default-off toggle is on AND review-state is
+   *  resolved). The augmentation declares the `review-due` verdict class; this
+   *  component ENACTS it onto the claim span — never re-deciding "is this due"
+   *  inline (PR-6: the augmentation read the verdict; the surface honors it).
+   *  Undefined when the claim is not due (the common case, and ALWAYS the case
+   *  while the toggle is off / review-state is deferred — empty `dueClaims` ⇒ no
+   *  decoration ⇒ the claim span renders byte-identically to today). */
+  reviewDue?: ResolvedDecoration | undefined;
 }) {
+  // ENACT the declared review-due verdict. Off / no-data ⇒ no class added ⇒
+  // the span is byte-identical to the pre-SPR-08 render. The closed-vocabulary
+  // class is appended only when the augmentation positively declared it.
+  const claimClass = reviewDue?.classNames.includes(REVIEW_DUE_CLASS)
+    ? REVIEW_DUE_CLASS
+    : undefined;
   return (
     <div className="text-base leading-relaxed">
       <span className="font-mono text-xs text-ink-mute dark:text-moonlight mr-2">
         {claim.index}.
       </span>
-      <span data-claim-id={String(claim.index)}>{claim.claim}</span>
+      <span
+        data-claim-id={String(claim.index)}
+        {...(claimClass ? { className: claimClass } : {})}
+        {...(reviewDue?.title ? { title: reviewDue.title } : {})}
+      >
+        {claim.claim}
+      </span>
       {claim.rationale && (
         <p className="text-sm text-ink-soft dark:text-starlight mt-2 leading-relaxed pl-6 border-l-2 border-rule dark:border-charcoal-1 ml-1">
           {claim.rationale}
@@ -286,39 +442,135 @@ function NamedSources({
     );
   }
 
+  // ── Facet apply pass (SPR-03: the first TWO-augmentation composition) ──
+  //
+  // Two augmentations now declare decorations on each source's range:
+  //   - ServabilityAugmentation declares the §9.0 verdict class + tooltip;
+  //   - IpHolderAugmentation declares the "whose work grounds this" owner name.
+  // The decorations facet MERGES both contributions per source (§5.1), and the
+  // surface here reads the combined verdict class AND owner name off ONE
+  // resolved decoration. Neither augmentation imports the other — they meet
+  // only at the named facet (PR-3). This is the physics' payoff on real shipped
+  // code: composition for free, render byte-identical to the inline branch.
+  // PR-1: the augmentations never touch the DOM; only this surface paints.
+  const decorationByChunk = composedDecorationsByChunk(sources);
+
   return (
     <>
       {sources.map((s) => (
-        <SourceCitation key={s.documentId} source={s} onPreview={onPreview} />
+        <SourceCitation
+          key={s.documentId}
+          source={s}
+          onPreview={onPreview}
+          decoration={decorationByChunk.get(
+            anchorKey({ kind: "chunk", chunkId: s.representativeChunkId as ChunkId }),
+          )}
+        />
       ))}
     </>
   );
 }
 
+/**
+ * Run the decorations facet pass over the resolved sources, COMPOSING the
+ * servability + IP-holder augmentations (SPR-03 M5), and return a lookup from a
+ * source's anchor key → its combined decoration. This is the surface's
+ * collect → combine half of the cycle (§2); SourceCitation owns enact. A plain
+ * pure function — NOT a hook: NamedSources returns early above its call site,
+ * so it cannot use hooks. The augmentations only declare, this never mutates
+ * the DOM, and it runs each render (cheap — O(sources), pure).
+ */
+function composedDecorationsByChunk(
+  sources: ResolvedSource[],
+): Map<string, ResolvedDecoration> {
+  // Both augmentations read substrate verdicts off each resolved source (PR-6:
+  // read, never recompute) and declare a decoration per source on the SAME
+  // anchor (the representative chunk). The facet merges them — servability's
+  // verdict class with the IP-holder's owner name — so they compose without
+  // importing each other (PR-3). The render context is minimal: decorations
+  // need no layout-map (that resolves widget pixels, SPR-04), and the
+  // augmentations pull no further substrate data, so `substrate` is a
+  // shape-only stub never called this sprint.
+  const servability = makeServabilityAugmentation(
+    sources.map((s) => ({
+      representativeChunkId: s.representativeChunkId,
+      servable: s.servable,
+    })),
+  );
+  const ipHolder = makeIpHolderAugmentation(
+    sources.map((s) => ({
+      representativeChunkId: s.representativeChunkId,
+      ipHolderName: s.ipHolderName,
+    })),
+  );
+  const ctx: ReadingContext = {
+    synthesis: { question: null, claims: [] },
+    layout: { resolve: () => null },
+    substrate: {
+      getChunk: () =>
+        // Not used by the decorations pass (the surface resolves sources via
+        // the shipped api.getChunk above); present only to satisfy the frozen
+        // ReadingContext shape. SPR-04+ wires this to the real read API.
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the reading-physics slice"),
+        ),
+    },
+  };
+  // Collect both augmentations' declarations and combine. Order-independent:
+  // passing [ipHolder, servability] yields the identical resolved set.
+  const resolved = collectDecorations([servability, ipHolder], ctx);
+  const byKey = new Map<string, ResolvedDecoration>();
+  for (const d of resolved) byKey.set(d.key, d);
+  return byKey;
+}
+
 function SourceCitation({
   source,
   onPreview,
+  decoration,
 }: {
   source: ResolvedSource;
   onPreview: (chunkId: string) => void;
+  /** The COMBINED §9.0 decoration the ServabilityAugmentation declared for
+   *  this source (SPR-02 facet apply pass). The augmentation declares the
+   *  verdict (servable vs restricted) as a closed-vocabulary class; this
+   *  component ENACTS it — choosing the DOM branch from the declared class,
+   *  not by re-branching on `source.servable` inline. Undefined only if the
+   *  pass produced no decoration for this source (defensive; treated as the
+   *  restricted branch so an un-annotated source never silently opens). */
+  decoration: ResolvedDecoration | undefined;
 }) {
   const label = source.title ?? "an untitled source";
   const locator = source.locator ? `, ${source.locator}` : "";
-  // SPR-10 M1 — "whose work grounds this": append the IP holder only when the
-  // endpoint resolved one. Null ⇒ unknown owner, shown by simply not claiming
-  // one (never an invented "published by …"). A non-servable source already
-  // has ipHolderName = null (§9.0 withholds it), so the protected attribution
-  // never leaks onto the restricted branch below.
-  const owner = source.ipHolderName ? `, published by ${source.ipHolderName}` : "";
+  // SPR-10 M1 — "whose work grounds this": the IP-holder name is now declared
+  // by the IpHolderAugmentation and merged into this combined decoration
+  // (SPR-03 M5), no longer read inline off `source.ipHolderName`. The surface
+  // owns the "published by …" phrasing (PR-6); the augmentation supplied only
+  // the substrate-resolved name. Painted iff the combined decoration carries
+  // exactly one owner (the single-source case). A null owner declared nothing,
+  // so `ipHolderNames` is empty and no attribution is claimed — the honest
+  // unknown. A non-servable source's owner was withheld by the endpoint
+  // (ip_holder_name = null), so it never reaches the restricted branch below.
+  const ownerName =
+    decoration?.ipHolderNames.length === 1 ? decoration.ipHolderNames[0] : null;
+  const owner = ownerName ? `, published by ${ownerName}` : "";
 
-  if (!source.servable) {
+  // ENACT the declared §9.0 verdict (PR-6: the augmentation read `servable`
+  // from the substrate; the surface honors it, never re-decides it). The
+  // servable branch requires the explicitly-declared SERVABLE_CLASS; anything
+  // else (RESTRICTED_CLASS, or a missing decoration) takes the withholding
+  // branch — fail-closed so a source can never open without a positive
+  // servable verdict.
+  const servable = decoration?.classNames.includes(SERVABLE_CLASS) ?? false;
+
+  if (!servable) {
     // §9.0: a restricted / taken-down source must NOT open. Show the
     // named source (so the reader knows what backs the claim) with an
     // honest "not available to open" state — never the content.
     return (
       <span
         className="text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
-        title="This source isn’t available to open here (its license restricts it)."
+        title={decoration?.title ?? RESTRICTED_TITLE}
       >
         from {label}
         {locator}
@@ -364,7 +616,7 @@ function SourceCitation({
         onPreview(source.representativeChunkId);
       }}
       className="text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors"
-      title="Click to preview · ⌘-click to open the source"
+      title={decoration?.title ?? SERVABLE_TITLE}
     >
       from {label}
       {locator}
@@ -416,82 +668,67 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
   );
 }
 
-// ── Quality cue (SPR-11 M3) ──────────────────────────────────────────
+// ── Quality cue (SPR-11 M3 → re-homed SPR-04 M4) ─────────────────────────
 //
-// A quiet, plain-language read of the §14.4 inline rubric. The score is
-// READ from the persisted rubric event by the parser; this component only
-// renders what it's handed and never re-implements scoring. Three states:
-//   - absent  → render nothing (no fabricated score; the no-key / no-rubric
-//     case is honest by saying nothing rather than inventing a verdict);
-//   - clears the bar → a quiet positive cue, no number shoved forward;
-//   - below the bar → a visible flag in plain words, so the operator knows
-//     to give the answer another pass.
+// A quiet, plain-language read of the §14.4 inline rubric. The score is READ
+// from the persisted rubric event by the parser; the augmentation only renders
+// what it is handed and never re-implements scoring (PR-6). Three states are
+// unchanged from the original inline component:
+//   - absent  → render nothing (no fabricated score);
+//   - clears the bar → a quiet positive cue;
+//   - below the bar → a visible flag in plain words.
 //
-// The pass bar mirrors the substrate's PASS_THRESHOLD (0.5,
-// substrate/synthesis_rubric/scorer.py); we don't recompute, we only
-// compare the persisted composite against it to pick the wording. The four
-// sub-scores, when the persisted note carried them, sit behind a collapsed
-// "the detail" toggle so the default surface stays quiet (a raw dump is
-// itself noise to the operator).
+// SPR-04 M4 re-homes the cue from a hand-placed `<QualityCue score={…} />` into
+// a DECLARED `AnchoredWidget` (augmentations/quality-cue.ts) the SURFACE places
+// via the anchored-widgets facet (PR-1). The widget's view is BYTE-EQUIVALENT to
+// the old inline JSX (same wording, classes, collapsed "the detail" toggle).
+// `renderHeaderQualityCue` below is the surface's facet apply pass for the
+// header slot.
 
-const QUALITY_PASS_BAR = 0.5;
-
-function QualityCue({ score }: { score: QualityScore | null }) {
-  // Absent: the synthesis carried no persisted rubric (no-key / nothing
-  // scored). Show nothing rather than a guessed verdict.
-  if (!score) return null;
-
-  const low = score.composite < QUALITY_PASS_BAR;
-
-  return (
-    <div className="mt-3 text-xs">
-      {low ? (
-        <p className="text-amber-800 dark:text-sun leading-relaxed">
-          This answer reads like it may want another pass before you rely on
-          it. The draft came in under our quality bar, so it&rsquo;s worth a
-          re-run or an edit.
-        </p>
-      ) : (
-        <p className="text-shadow-1 dark:text-moonlight leading-relaxed">
-          This answer clears our quality bar.
-        </p>
-      )}
-      <QualityDetail score={score} />
-    </div>
+/**
+ * Run the anchored-widgets facet pass for the synthesis-header slot and return
+ * the QualityCue widget's rendered node (SPR-04 M4). This is the surface's
+ * collect → combine → enact cycle for one widget (§2), routed through the SAME
+ * facet machinery the decorations pass uses.
+ *
+ * A PLAIN function, NOT a React hook — it is called from the viewer's JSX, but
+ * the SPR-02 discipline holds regardless: a hook here would be fragile next to
+ * the early-returning sub-components. It calls no hooks, runs each render
+ * (cheap — O(1) widget, pure), and the augmentation only DECLARES (PR-1).
+ *
+ * The QualityCue widget's content is geometry-independent (the surface places
+ * it in the header; the cue ignores the rect), so the layout-map can be the
+ * empty map — the de-overlap enact resolves a null rect, the widget renders its
+ * view all the same. The RenderContext is the minimal header pass: "main", the
+ * (empty) layout-map, and no `components` (QualityCue needs no surface-injected
+ * component — it builds its view from React primitives, PR-8 clean).
+ */
+function renderHeaderQualityCue(score: QualityScore | null) {
+  // The score is substrate-derived (parsed from the persisted rubric); the
+  // augmentation captures it at declare time and renders nothing for null
+  // (the honest absent case). `QualityScore` structurally satisfies the
+  // augmentation's minimal `QualityScoreView` (same five fields).
+  const cue = makeQualityCueAugmentation(score);
+  // Decorations need no layout-map for the cue; the cue's render context is the
+  // minimal header pass. Substrate is a shape-only stub never called here (the
+  // augmentation reads no further substrate data — the score was passed in).
+  const ctx: ReadingContext = {
+    synthesis: { question: null, claims: [] },
+    layout: EMPTY_LAYOUT_MAP,
+    substrate: {
+      getChunk: () =>
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the header widget pass"),
+        ),
+    },
+  };
+  const enacted = resolveAnchoredWidgets(
+    collectAnchoredWidgets([cue], ctx).all.map((p) => p.widget),
+    EMPTY_LAYOUT_MAP,
   );
-}
-
-/** Optional breakdown, collapsed by default — the four sub-readings the
- *  rubric noted, in plain words. Hidden entirely when the persisted note
- *  carried no sub-scores (an older or free-form note), so we never show
- *  empty rows. */
-function QualityDetail({ score }: { score: QualityScore }) {
-  const rows: Array<[string, number | null]> = [
-    ["Voice and style", score.voiceStyle],
-    ["Conviction", score.conviction],
-    ["Sourcing", score.citationDensity],
-    ["Stayed within the brief", score.constraintCompliance],
-  ];
-  const present = rows.filter(([, v]) => v !== null) as Array<[string, number]>;
-  if (present.length === 0) return null;
-
-  return (
-    <details className="mt-1">
-      <summary className="cursor-pointer text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors">
-        the detail
-      </summary>
-      <dl className="mt-2 space-y-1">
-        {present.map(([label, value]) => (
-          <div key={label} className="flex items-baseline gap-2">
-            <dt className="text-ink-soft dark:text-starlight">{label}</dt>
-            <dd className="font-mono text-shadow-1 dark:text-moonlight">
-              {Math.round(value * 100)}%
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </details>
-  );
+  const renderCtx: RenderContext = { pass: "main", layout: EMPTY_LAYOUT_MAP };
+  const headerWidget = enacted.find((e) => e.widget.id === QUALITY_CUE_WIDGET_ID);
+  return headerWidget ? renderEnacted(headerWidget, renderCtx) : null;
 }
 
 function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
