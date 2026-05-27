@@ -1,4 +1,4 @@
-# reading-physics — the Physics of Reading, facet engine (SPR-02 → SPR-03)
+# reading-physics — the Physics of Reading, facet engine (SPR-02 → SPR-05)
 
 This module is Antiek's read-side **composition layer**, implementing
 *A Physics of Reading* (`docs/philosophy/physics-of-reading.md`). An
@@ -131,6 +131,120 @@ would leave residue; a declarative augmentation cannot. Proven in
 `status: ratified` AND the `--enforce` flag. While the canon is `draft` the
 guard only warns (exit 0); after ratification, the first PR stays advisory and a
 follow-up adds `--enforce` (the standing informational-then-blocking discipline).
+
+## Spatial transforms + the minimap (SPR-05)
+
+SPR-05 fills the SPR-04 layout-map seam with the talk's signature reading
+capability — a **spatial transform** (section collapse) — and proves the
+what/where separation (PR-4 + PR-5) by adding a **minimap** that is a *second
+render pass of the same facets*.
+
+### ⚠️ Not yet live — wiring gap (read this first)
+
+**The spatial-transform facet, the collapse controller, and the minimap are
+complete and tested, but they CANNOT run live yet.** They are mounted NOWHERE on
+the production reading surface. The reason is a single, identifiable gap:
+
+- The reading surface (`apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.tsx`)
+  feeds **`EMPTY_LAYOUT_MAP`** into every render context (it imports it at the top
+  and passes it at lines ~581/591/593). `EMPTY_LAYOUT_MAP.resolve` returns `null`
+  for every anchor — the surface measures **no DOM geometry**. With no real
+  `BaseGeometry`, `createLayoutMap` has nothing to fold a collapse pipeline over,
+  so the collapse and the minimap have no positions to transform or project.
+- **No sprint has built the surface's geometry-measurement pass** — the piece that
+  would, in a `useLayoutEffect`, call `getBoundingClientRect()` per laid-out
+  anchor, assemble an `anchorKey → Rect` map, and hand it to `baseGeometryFromMap`
+  → `createLayoutMap` so the layout-map resolves **real** geometry. (Per PR-4/PR-5
+  this pass is the **one** place `getBoundingClientRect` is called — inside the
+  surface, never in an augmentation; the reading-physics CI guard forbids it
+  anywhere under `augmentations/`/`facets/`.)
+
+**Why this is correct, not a regression.** SPR-05's milestone is the
+reading-physics-`/`-scoped capability: the transform math, the
+widgets-follow-the-transform proof, the minimap-shares-the-facet proof, the
+viewport-scoping perf mitigation — all proved against in-memory `BaseGeometry`
+fixtures in `spatial-transform.test.ts`. Building the live DOM-geometry pass is a
+**separate, cross-cutting surface integration** (it touches `MasterMdViewer`'s
+render lifecycle and scroll handling), deliberately out of SPR-05's scope. So the
+capability ships **dormant-but-on-the-real-engine**: it runs on the actual
+layout-map seam, not a prototype, and flips on the moment the geometry pass exists.
+
+**The exact next step (one cross-cutting integration).** Build the surface
+geometry-measurement pass described above; then (1) wire the `⌘/Ctrl+scroll`
+collapse gesture to mutate the ephemeral `CollapseState` and feed
+`collapsePipelineFor(state)` into `createLayoutMap`/`createViewportScopedLayoutMap`,
+and (2) mount `renderMinimap` as a second pass. That single integration unblocks
+collapse, the minimap, **and** the not-yet-live `AccrualView` / `ChaseThread`
+gutter widgets simultaneously (they all wait on the same real `BaseGeometry`; only
+`QualityCue` is live today, and it renders without geometry because it pins to the
+header). Filed in full at `docs/decisions/spr-05-geometry-pass-gap.md`.
+
+| File | What it is |
+|---|---|
+| `facets/spatial-transform.ts` | Builds `SpatialTransform` instances (the frozen §6 shape) — `makeCollapseTransform({ id, order, range, mode:"collapse", targetHeight })` returns a pure `apply(anchor, rect) → rect \| null` that compresses a vertical band (above → unchanged, inside → compressed, below → shifted up, straddling → contiguous). `buildCollapsePipeline` maps specs to transforms; the **layout-map** owns the sort (ascending `order`, ties by `id`). |
+| `augmentations/collapse.ts` | The **surface's collapse controller** (cmd+scroll). `CollapseState` is the **ephemeral PR-2-escape view-state** (immutable, reconstructible-from-nothing, never persisted). `collapsePipelineFor(state)` → the transform pipeline; `fingerprintPlan(...)` marks decorations inside a collapsed band for the compressed **fingerprint** (NOT dropped). |
+| `minimap.tsx` | The **minimap** (a second render pass). `projectDecorationsToMinimap(resolved, minimapLayout)` re-projects the *exact* `ResolvedDecoration[]` the main view paints through a `minimapLayoutFrom(mainLayout, scale, width)` second layout-map — a second `RenderContext` with `pass:"minimap"`, **sharing the facet, not re-implementing it**. |
+| `layout-map.ts` | (extended) `createViewportScopedLayoutMap(base, viewport, transforms)` — the **M5 perf mitigation**: an off-screen anchor resolves `null` (skips the pipeline fold), capping per-frame work to on-screen anchors. Same `resolve` seam → PR-5 intact. |
+
+### The fragment-shader / vertex-shader model (defensibility)
+
+The talk's metaphor, made literal here: a **spatial transform is the vertex
+shader** — it moves *where* content appears (the geometry the layout-map
+reports). **Decorations are the fragment shader** — they paint *what* appears
+and **follow the moved geometry automatically**, because they only ever query the
+layout-map's *final* rect, never a pre-transform pixel. The collapse moves the
+vertices; the rhetorical/servability colors squeeze into a band and follow. No
+augmentation learns the document was reshaped (PR-5). The load-bearing proof:
+`spatial-transform.test.ts` collapses a band spanning a shipped widget's anchor
+and asserts the widget lands at its **post-transform** position with **zero
+changes to its code** — because every widget routes through the one layout-map
+seam (PR-4).
+
+### Collapse state is the allowed ephemeral PR-2 exception
+
+Which sections are collapsed is genuinely **view-state, not reading data** — the
+canon's one bounded PR-2 escape (view-only, reconstructible-from-nothing, holds
+no authored datum). It lives in an immutable in-memory `CollapseState`, **never
+persisted** (no `localStorage`, no event-log write); a reload starts fully
+expanded. The `// PR-2 escape:` rationale comment sits on the state declaration
+in `augmentations/collapse.ts` so the boundary lint's audit trail records it.
+
+### OQ2 resolution — spatial transforms are SURFACE-DECLARED ONLY
+
+The canon's §9 open question 2 (owned by SPR-05) asked whether spatial transforms
+are surface-reserved or augmentation-declarable. **SPR-05 resolves it the safe
+way: surface-declared only.** A `ReadingAugmentation` never calls
+`registry.declareSpatialTransform` — the surface (which owns geometry + the
+collapse view-state) constructs the pipeline and hands it to `createLayoutMap`.
+This sidesteps the cross-augmentation ordering conflict OQ2 names (two
+augmentations declaring conflicting transforms at the same `order`). The frozen
+`declareSpatialTransform` sink stays in `FacetRegistry` (no canon change); the
+surface is its only caller. SPR-08's agent authors decorations/widgets — which
+*follow* transforms for free — not transforms.
+
+### Performance — the measured recompute number + the viewport-scoping decision (M5)
+
+Measured (`spatial-transform.test.ts`, perf block, logged each run — the number
+is machine-dependent and varies with runtime warmth, so we state the
+load-bearing FACT, not a precise figure):
+
+- **Full-document recompute under collapse takes tens of ms on a worst-case
+  full-document fold** (2,000 decorated anchors × 20 collapsed sections = 40,000
+  `apply` calls) — **over one frame budget (16.67 ms)**. That is the load-bearing
+  fact: resolving the *whole* document every frame WOULD jank the main scroll.
+  (The measured figure swings with machine + JIT warmth — the test's own comment
+  records ~50–60 ms cold; a warm re-run can be a few ms — which is exactly why we
+  do not assert a frame budget on the unscoped path and do not pin a number here.)
+- **A single resolve through 20 collapses is sub-microsecond-to-a-few-µs** — the
+  per-anchor pipeline fold is trivially cheap; the cost was purely doing it
+  2,000× per frame.
+- **Decision: VIEWPORT-SCOPE the recompute** (per the sprint manual: "if it janks
+  … scope to the viewport and re-measure; do not ship a janky scroll silently").
+  `createViewportScopedLayoutMap` resolves only on-screen anchors.
+- **Viewport-scoped recompute is comfortably within one frame budget** (~30/2,000
+  anchors on-screen) — the asserted gate (`< FRAME_BUDGET_MS × 2`, with CI
+  headroom). This is the path the surface ships. Proven behavior-preserving: an
+  in-band anchor resolves the identical post-transform rect as the unscoped map.
 
 ## Byte-equivalence baseline (still enforced)
 

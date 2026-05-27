@@ -135,6 +135,70 @@ export function createLayoutMap(
 }
 
 /**
+ * A pre-transform vertical viewport band, in the SAME base-geometry pixel space
+ * the surface measured. `[topPx, bottomPx)`, usually the scroll container's
+ * visible band padded by an overscan margin. Used to VIEWPORT-SCOPE the layout
+ * recompute (SPR-05 M5 perf mitigation).
+ */
+export interface ViewportBand {
+  readonly topPx: number;
+  readonly bottomPx: number;
+}
+
+/**
+ * Create a VIEWPORT-SCOPED layout-map (SPR-05 M5 — the measured perf mitigation).
+ *
+ * WHY (intellectual honesty — rigor #1 / #5): the full-document recompute under
+ * collapse measured ~57 ms COLD on a worst-case long synthesis (2,000 anchors ×
+ * 20 collapses, 40,000 `apply` calls) — over one frame budget (~16.67 ms), so it
+ * WOULD jank the main scroll. The sprint manual's prescribed fix when recompute
+ * exceeds a frame is to "scope the transform/layout recompute to the viewport and
+ * re-measure; do NOT ship a janky scroll silently." This does exactly that.
+ *
+ * HOW: an anchor whose PRE-transform base rect falls entirely OUTSIDE the viewport
+ * band resolves to `null` (not laid out — exactly the contract a widget already
+ * tolerates), so the surface never folds the pipeline for off-screen anchors. An
+ * anchor inside (or straddling) the band resolves through the full pipeline, post-
+ * transform, EXACTLY as the unscoped map would. The viewport band is in PRE-
+ * transform space so the cheap base-rect lookup decides membership before any
+ * transform runs — capping per-frame work to the ~30–60 on-screen anchors.
+ *
+ * PR-5 preserved: this is still the ONE `resolve` seam; widgets/decorations query
+ * it unchanged and follow the transform for free. A scrolled-into-view anchor
+ * resolves on the next frame — the surface re-derives the band each scroll, so the
+ * map is rebuilt (PR-2: nothing persisted). PR-4 honesty: the band is supplied by
+ * the SURFACE (which owns the scroll container's measurement); this module reads
+ * no pixel itself.
+ *
+ * @param base       the surface-measured base geometry (pre-transform).
+ * @param viewport   the pre-transform visible band (pad with overscan upstream).
+ * @param transforms the spatial-transform pipeline (folded for in-band anchors).
+ */
+export function createViewportScopedLayoutMap(
+  base: BaseGeometry,
+  viewport: ViewportBand,
+  transforms: readonly SpatialTransform[] = [],
+): LayoutMap {
+  const full = createLayoutMap(base, transforms);
+  function inViewport(rect: Rect): boolean {
+    // Overlap test against the half-open band: keep an anchor whose base rect
+    // intersects the viewport at all (straddlers included).
+    return rect.top < viewport.bottomPx && rect.top + rect.height > viewport.topPx;
+  }
+  function resolve(anchor: Anchor): Rect | null {
+    // Cheap base lookup FIRST — skip the pipeline fold for off-screen anchors.
+    const baseRect = base.rectForKey(anchorKey(anchor));
+    if (baseRect === null || !inViewport(baseRect)) return null;
+    return full.resolve(anchor);
+  }
+  function positionOf(anchor: Anchor, lane: WidgetLane) {
+    const rect = resolve(anchor);
+    return rect === null ? null : { top: rect.top, side: lane };
+  }
+  return { resolve, positionOf };
+}
+
+/**
  * The empty layout-map: every anchor resolves to `null` (nothing is laid out).
  * The honest default when the surface has measured nothing yet (first paint
  * before the geometry pass) or in a headless/test context with no DOM. A widget
