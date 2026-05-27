@@ -1,3 +1,5 @@
+> SUPERSEDED on UI/surface-organization by docs/roadmap/ROADMAP.html (2026-05-27); STILL AUTHORITATIVE on architecture/§5/§9/§16/single-writer.
+
 # Antiek — Master Product Spec
 
 **Status**: execution-ready master spec consolidating the operator's product
