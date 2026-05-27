@@ -295,3 +295,129 @@ describe("MasterMdViewer — quality cue (SPR-11 M3)", () => {
     expect(screen.queryByText(/the detail/i)).toBeNull();
   });
 });
+
+// ── SPR-02 — BYTE-EQUIVALENCE of the re-homed §9.0 render ───────────────────
+//
+// The §9.0 servability / IP-holder annotations were re-homed out of the inline
+// SourceCitation branch into a ServabilityAugmentation that DECLARES decorations
+// into the new `decorations` facet; the surface ENACTS them. The slice's whole
+// claim is that the rendered DOM is BYTE-IDENTICAL to the pre-slice render. The
+// baseline strings below are the recorded pre-SPR-02 SourceCitation output
+// (MasterMdViewer.tsx). Any diff is a regression (rigor #1) — do not "adjust"
+// the baseline. Both a SERVABLE and a NON-servable source are exercised in one
+// render (rigor #3).
+
+const SERVABLE_BUTTON_CLASS =
+  "text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors";
+const RESTRICTED_SPAN_CLASS =
+  "text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1";
+
+/** A synthesis with two claims: one cites a SERVABLE source, the other a
+ *  NON-servable source — so a single render exercises both §9.0 branches. */
+function twoSourceSynth(): ParsedSynthesis {
+  return synth({
+    components: [
+      {
+        index: 1,
+        claim: "Backed by an open source.",
+        confidence: "high",
+        effectiveSourceTier: 2,
+        hedgingRequired: false,
+        chunkIds: ["open-1"],
+        supportingPathIndices: [],
+      },
+      {
+        index: 2,
+        claim: "Backed by a restricted source.",
+        confidence: "moderate",
+        effectiveSourceTier: 3,
+        hedgingRequired: false,
+        chunkIds: ["gated-1"],
+        supportingPathIndices: [],
+      },
+    ],
+    chunkCitations: { "open-1": [1], "gated-1": [2] },
+  });
+}
+
+describe("MasterMdViewer — byte-equivalence of the re-homed §9.0 render (SPR-02)", () => {
+  it("emits the EXACT servable button + restricted span the inline code produced", async () => {
+    getChunkMock.mockImplementation(async (id: string) => {
+      if (id === "open-1") {
+        return chunk({
+          chunk_id: "open-1",
+          document_id: "doc-open",
+          document_title: "An Open Paper",
+          section_path: "p.7",
+          servable: true,
+          servability: null,
+          ip_holder_name: "MIT Press",
+        });
+      }
+      return chunk({
+        chunk_id: "gated-1",
+        document_id: "doc-gated",
+        document_title: "A Restricted Book",
+        section_path: "p.99",
+        text: "", // body withheld by the endpoint
+        servable: false,
+        servability: "restricted",
+        ip_holder_name: null, // §9.0 withholds the owner with the body
+      });
+    });
+
+    const { container } = render(<MasterMdViewer synthesis={twoSourceSynth()} />);
+
+    // ── Servable source: a BUTTON, exact class string + tooltip + content ──
+    const openBtn = await waitFor(() =>
+      screen.getByTitle("Click to preview · ⌘-click to open the source"),
+    );
+    expect(openBtn.tagName).toBe("BUTTON");
+    expect(openBtn.getAttribute("class")).toBe(SERVABLE_BUTTON_CLASS);
+    expect(openBtn.textContent).toBe("from An Open Paper, p.7, published by MIT Press");
+
+    // ── Restricted source: a SPAN, exact class string + tooltip + the
+    //     "not available to open" inner span; NO body, NO owner ──
+    const gatedSpan = screen.getByTitle(
+      "This source isn’t available to open here (its license restricts it).",
+    );
+    expect(gatedSpan.tagName).toBe("SPAN");
+    expect(gatedSpan.getAttribute("class")).toBe(RESTRICTED_SPAN_CLASS);
+    expect(gatedSpan.textContent).toBe(
+      "from A Restricted Book, p.99· not available to open",
+    );
+    // The inner "· not available to open" span carries its exact class.
+    const inner = gatedSpan.querySelector("span");
+    expect(inner?.getAttribute("class")).toBe(
+      "text-[10px] text-shadow-1 dark:text-moonlight",
+    );
+
+    // §9.0: the withheld body never appears; the restricted source exposes
+    // NO owner; and exactly ONE openable button exists (the servable source).
+    expect(container.textContent).not.toContain("body");
+    expect(gatedSpan.textContent).not.toContain("published by");
+    expect(
+      container.querySelectorAll("button[title^='Click to preview']").length,
+    ).toBe(1);
+  });
+
+  it("§9.0: a non-servable source keeps WITHHOLDING — no decoration reveals it", async () => {
+    getChunkMock.mockResolvedValue(
+      chunk({
+        chunk_id: "c1",
+        document_title: "A Restricted Book",
+        text: "", // body withheld
+        servable: false,
+        servability: "restricted",
+        ip_holder_name: null,
+      }),
+    );
+    const { container } = render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText(/A Restricted Book/)).toBeTruthy());
+    // The verdict decoration declared RESTRICTED, so the surface enacts the
+    // withholding span — never an openable button.
+    expect(screen.queryByTitle(/Click to preview/)).toBeNull();
+    expect(screen.getByText(/not available to open/)).toBeTruthy();
+    expect(container.querySelector("button[title^='Click to preview']")).toBeNull();
+  });
+});

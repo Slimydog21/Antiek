@@ -1,0 +1,277 @@
+// ─────────────────────────────────────────────────────────────────────────
+// Physics of Reading — FROZEN facet-API signature (SPR-01).
+// Types-only. SPR-02 imports as-is. No runtime values.
+// Verified: tsc --noEmit, strict, TS 5.9.3 — clean (see §10).
+// ─────────────────────────────────────────────────────────────────────────
+//
+// This module is the verbatim transcription of `docs/philosophy/
+// physics-of-reading.md` §6 — the ratified-draft frozen facet-API signature.
+// SPR-02 transcribes the WHOLE signature (not just the decorations path it
+// implements) so SPR-03+ import the real module as-is — the canon's intent:
+// "SPR-02 imports it as-is" (§6). For the proving slice SPR-02 only USES the
+// decorations path (Decoration / FacetRegistry.declareDecoration /
+// ReadingAugmentation.contribute); the other declare* methods and facet
+// shapes are present and frozen so SPR-04/05 add no new method to the sink.
+//
+// Additive widening is allowed in later sprints; renaming or narrowing a
+// field is a canon change requiring re-ratification (§6).
+
+// The reading surface is React; a widget's render returns a view node, never a
+// side effect. Typing the return as ReactNode (not `unknown`) is what makes
+// "a view, not a side effect" a TYPE constraint, not just a PR-1 grep.
+import type { ReactNode } from "react";
+
+// ── Semantic identity (PR-2 / PR-4) ──────────────────────────────────────
+// Augmentations name WHERE they contribute by semantic identity, never by
+// pixel. ChunkId and DocumentId are opaque ids the SUBSTRATE mints; ClaimId
+// is a synthesis-scoped POSITIONAL index (see its note). The reading surface
+// is the only place that resolves any of these to geometry (PR-5).
+
+/** A chunk id — the engine's retrieval unit. Opaque; substrate-minted. */
+export type ChunkId = string & { readonly __brand: "ChunkId" };
+
+/**
+ * A claim's identity WITHIN one rendered synthesis. NOT substrate-minted:
+ * the real handle is `data-claim-id = String(claim.index)`
+ * (MasterMdViewer.tsx:153), the 1-based positional `ParsedClaim.index`
+ * (synthesisParser.ts:30). It is synthesis-scoped and positional — vastly
+ * more stable than a pixel and fixed for the lifetime of a rendered
+ * synthesis, but it SHIFTS if the claims reorder (a re-parse that reorders
+ * components remints the index). Branded so the type system still treats it
+ * as an opaque handle, not a free-form string.
+ */
+export type ClaimId = string & { readonly __brand: "ClaimId" };
+
+/** A document id. Opaque; substrate-minted. */
+export type DocumentId = string & { readonly __brand: "DocumentId" };
+
+/**
+ * A semantic anchor (PR-4). An augmentation declares one of these to say
+ * WHERE it contributes; the layout-map (PR-5) resolves it to pixels at read
+ * time. A passage offset is expressed relative to a chunk, never to the
+ * rendered DOM, so it survives a spatial transform.
+ */
+export type Anchor =
+  | { readonly kind: "chunk"; readonly chunkId: ChunkId }
+  | { readonly kind: "claim"; readonly claimId: ClaimId }
+  | {
+      readonly kind: "passage";
+      readonly chunkId: ChunkId;
+      /** Char offsets INTO the chunk's text, half-open [start, end). */
+      readonly start: number;
+      readonly end: number;
+    };
+
+/**
+ * A resolved pixel rectangle in the reading surface's coordinate space, AFTER
+ * any spatial transform has been applied (PR-5). Augmentations never
+ * construct these; the layout-map returns them.
+ */
+export interface Rect {
+  readonly top: number;
+  readonly left: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+// ── The read-time resolver every widget queries (PR-5 / layout-map) ──────
+
+/**
+ * The layout-map facet (PR-5): the read-time answer to "where is anchor X
+ * now?". The surface owns it; augmentations only query it. Returns null when
+ * the anchor is not currently laid out (off-screen, collapsed, in a render
+ * pass that excludes it — see RenderContext). An augmentation MUST tolerate
+ * null rather than assume a position.
+ */
+export interface LayoutMap {
+  resolve(anchor: Anchor): Rect | null;
+}
+
+/**
+ * Which render pass is asking (PR / multi-render). The same facets are read
+ * once per context; an augmentation may legitimately contribute differently
+ * to the minimap than to the main view, but it MUST be a pure function of the
+ * context — no hidden cross-pass state.
+ */
+export interface RenderContext {
+  /** "main" is the primary reading column; others are secondary passes.
+   *  `string & {}` keeps the "main"/"minimap" autocomplete hints while staying
+   *  open to future pass names (a bare `string` union would discard them). */
+  readonly pass: "main" | "minimap" | (string & {});
+  readonly layout: LayoutMap;
+}
+
+// ── Decoration facet (PR-1 / decorations) ───────────────────────────────
+
+/**
+ * A visual treatment applied to a semantic RANGE. Combine rule: range UNION,
+ * deterministic and order-independent (PR / decorations). Two decorations on
+ * overlapping ranges both apply; the surface paints their union; neither wins
+ * by being declared first.
+ */
+export interface Decoration {
+  /** What range receives the treatment. */
+  readonly anchor: Anchor;
+  /**
+   * The class(es) the surface paints onto the resolved range. A closed
+   * vocabulary the surface understands — NOT arbitrary CSS, NOT inline DOM,
+   * so the combine stays order-independent (PR-1: declare, don't act).
+   */
+  readonly className: string;
+  /**
+   * Optional title/aria text. When two decorations on the same range both
+   * carry a title, the surface joins them deterministically (sorted, joined
+   * by " · ") — see the doc's overlapping-decorations case.
+   */
+  readonly title?: string;
+}
+
+// ── Anchored-widget facet (PR-1 / anchored-widgets) ──────────────────────
+
+/**
+ * A widget pinned to a semantic anchor (PR-4). The surface resolves the pixel
+ * via the layout-map and places the widget; the augmentation never positions
+ * itself. Combine rule: de-overlap by `lane` then `weight` (see doc).
+ */
+export interface AnchoredWidget {
+  /** Stable id so multi-render (PR / multi-render) can reconcile passes. */
+  readonly id: string;
+  /** WHERE it pins (PR-4 semantic, resolved by layout-map at read time). */
+  readonly anchor: Anchor;
+  /**
+   * Which gutter/lane the widget lives in. Widgets in different lanes never
+   * collide; widgets in the SAME lane at the same vertical position de-overlap
+   * by `weight` (higher wins the slot; the loser stacks below). Deterministic.
+   */
+  readonly lane: "left-gutter" | "right-gutter" | "inline-end";
+  /** Tie-break weight for same-lane same-position collisions. Higher = nearer
+   *  the anchor; equal weights break by `id` (lexicographic) for determinism. */
+  readonly weight: number;
+  /**
+   * The render function. Receives the resolved rect (post-transform, PR-5) and
+   * the context (PR multi-render). Returns a ReactNode — a VIEW, not a side
+   * effect: the type forbids returning junk and pairs with PR-1 (declare,
+   * don't act) at the type level, not just at the grep level. MUST be pure
+   * w.r.t. the context and MUST tolerate a null-resolving anchor by rendering
+   * nothing (return null).
+   */
+  render(rect: Rect | null, ctx: RenderContext): ReactNode;
+}
+
+// ── Spatial-transform facet (PR-5 / spatial-transform) ───────────────────
+
+/**
+ * A read-side remap of where content appears (e.g. fold a section, zoom a
+ * passage, reflow into columns). Composes with decorations like a fragment
+ * shader over a vertex shader (PR-5): the transform changes the geometry the
+ * layout-map reports, so decorations and widgets follow automatically without
+ * knowing the geometry moved. Combine rule: an ORDERED pipeline (see doc) —
+ * transforms are explicitly composed left-to-right; order is justified, not
+ * order-independent, because folding-then-zooming differs from zoom-then-fold.
+ */
+export interface SpatialTransform {
+  /** Stable id; also the pipeline-ordering key when two transforms tie. */
+  readonly id: string;
+  /** Explicit pipeline position. Lower runs first. Equal ⇒ break by `id`. */
+  readonly order: number;
+  /**
+   * Remap an anchor's pre-transform rect to its post-transform rect, or null
+   * to remove it from this pass (e.g. a folded section). The layout-map folds
+   * the whole pipeline so widgets/decorations query the FINAL geometry only.
+   */
+  apply(anchor: Anchor, rect: Rect | null): Rect | null;
+}
+
+// ── The augmentation contract (PR-1 / PR-3 / PR-8) ────────────────────────
+
+/**
+ * The sink an augmentation declares INTO. The surface provides it; the
+ * augmentation never holds a ref to the DOM and never mutates a sibling.
+ * Every method is "declare", never "act" (PR-1). This is the entire surface
+ * area an augmentation may touch (PR-8: small + safe enough for an agent).
+ */
+export interface FacetRegistry {
+  declareDecoration(d: Decoration): void;
+  declareAnchoredWidget(w: AnchoredWidget): void;
+  declareSpatialTransform(t: SpatialTransform): void;
+}
+
+/**
+ * What every augmentation reads FROM. A narrow, read-only window onto the
+ * substrate (PR-2): the augmentation sees chunks/claims/docs the substrate
+ * already owns, plus the layout-map (PR-5). It has NO write capability and NO
+ * persistence client — that is the CI-guarded boundary (PR-2 / SPR-03).
+ */
+export interface ReadingContext {
+  /** The synthesis being read, already parsed (substrate-derived, read-only). */
+  readonly synthesis: ReadonlySynthesis;
+  /** The read-time resolver (PR-5). */
+  readonly layout: LayoutMap;
+  /**
+   * The substrate read API (PR-2): the ONLY way to pull more substrate data
+   * (e.g. resolve a chunk → document title + §9.0 servability verdict). An
+   * augmentation that imports any OTHER persistence client violates PR-2 and
+   * SPR-03's guard flags it.
+   */
+  readonly substrate: SubstrateReadApi;
+}
+
+/** A read-only view of the parsed synthesis. (Shape owned by synthesisParser;
+ *  declared opaque here so the facet API does not fork the parser's types.) */
+export interface ReadonlySynthesis {
+  readonly question: string | null;
+  readonly claims: readonly { readonly claimId: ClaimId; readonly chunkIds: readonly ChunkId[] }[];
+}
+
+/** The substrate read API surface an augmentation is allowed to call (PR-2).
+ *  Read-only by construction. The RETURN type IS the shipped `ChunkResponse`
+ *  shape verbatim (apps/reading/src/lib/api.ts:456-480) — snake_case, same
+ *  field names — so SPR-02 wires `ctx.substrate.getChunk` straight to the
+ *  shipped `api.ts:getChunk` (api.ts:952) with ZERO adapter. The branded
+ *  `ChunkId` input is the augmentation-facing identity (PR-4); only the input
+ *  is augmentation-shaped, the return mirrors the substrate exactly. Widened
+ *  in later sprints additively, never with writes. */
+export interface SubstrateReadApi {
+  getChunk(id: ChunkId): Promise<{
+    readonly chunk_id: string;
+    readonly text: string;
+    readonly section_path: string | null;
+    readonly token_count: number;
+    readonly document_id: string;
+    readonly document_title: string | null;
+    readonly source_tier: number;
+    /** §9.0: when false, the endpoint withholds the body (`text`) and the
+     *  surface must show "not available to open", never the content. The
+     *  §9.0 gate is carried entirely by `servable` + `servability` here —
+     *  the augmentation reads the verdict, it never recomputes it (PR-6). */
+    readonly servable: boolean;
+    /** SPR-10 M1 "whose work grounds this": the IP-holder name, or null when
+     *  the owner is unknown OR the source is non-servable (the endpoint
+     *  withholds the owner with the body). */
+    readonly ip_holder_name?: string | null;
+    /** The IP-holder lifecycle word (pre_onboarded … claimed); null when no
+     *  owner or non-servable. */
+    readonly ip_holder_status?: string | null;
+    /** Why a source is withheld ("restricted" | "taken_down"); null when
+     *  servable. The second half of the §9.0 gate. */
+    readonly servability: string | null;
+  }>;
+}
+
+/**
+ * THE augmentation contract (PR-1 / PR-8). An augmentation is a pure function
+ * from a read-only ReadingContext to a set of DECLARATIONS into the registry.
+ * It returns nothing; it does not mutate the surface, a sibling, or the
+ * substrate. SPR-02's decorations augmentation, and every augmentation after
+ * it, implements exactly this shape.
+ */
+export interface ReadingAugmentation {
+  /** Stable id, for diagnostics and multi-render reconciliation. */
+  readonly id: string;
+  /**
+   * Declare this augmentation's contributions. Called by the surface, once
+   * per render context (PR multi-render). MUST be pure w.r.t. (ctx, registry):
+   * the same inputs always produce the same declarations.
+   */
+  contribute(ctx: ReadingContext, registry: FacetRegistry): void;
+}

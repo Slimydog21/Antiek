@@ -5,6 +5,16 @@ import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedClaim, ParsedSynthesis, QualityScore, Recommendation } from "../../lib/synthesisParser";
+import {
+  RESTRICTED_TITLE,
+  SERVABLE_CLASS,
+  SERVABLE_TITLE,
+  makeServabilityAugmentation,
+} from "../../reading-physics/augmentations/servability";
+import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
+import { anchorKey } from "../../reading-physics/facets/decorations";
+import { collectDecorations } from "../../reading-physics/registry";
+import type { ChunkId, ReadingContext } from "../../reading-physics/types";
 import { openNotebook, openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 
@@ -286,21 +296,92 @@ function NamedSources({
     );
   }
 
+  // ── Facet apply pass (SPR-02, the proving slice) ───────────────────────
+  //
+  // The §9.0 servability verdict is no longer branched on inline in
+  // SourceCitation. Instead the ServabilityAugmentation DECLARES one
+  // decoration per source (anchored to the source's representative chunk),
+  // carrying the closed-vocabulary verdict class + tooltip; the surface here
+  // runs the collect → combine pass and hands SourceCitation the COMBINED
+  // decoration to ENACT. This is the physics on real shipped code: the
+  // augmentation declares, the surface (this apply pass) enacts — render
+  // byte-identical to the pre-slice inline branch. PR-1: the augmentation
+  // never touches the DOM; only this surface paints.
+  const decorationByChunk = servabilityDecorationsByChunk(sources);
+
   return (
     <>
       {sources.map((s) => (
-        <SourceCitation key={s.documentId} source={s} onPreview={onPreview} />
+        <SourceCitation
+          key={s.documentId}
+          source={s}
+          onPreview={onPreview}
+          decoration={decorationByChunk.get(
+            anchorKey({ kind: "chunk", chunkId: s.representativeChunkId as ChunkId }),
+          )}
+        />
       ))}
     </>
   );
 }
 
+/**
+ * Run the decorations facet pass over the resolved sources and return a
+ * lookup from a source's anchor key → its combined decoration. This is the
+ * surface's collect → combine half of the cycle (§2); SourceCitation owns
+ * enact. A plain pure function — NOT a hook: NamedSources returns early above
+ * its call site, so it cannot use hooks. The augmentation only declares, this
+ * never mutates the DOM, and it runs each render (cheap — O(sources), pure).
+ */
+function servabilityDecorationsByChunk(
+  sources: ResolvedSource[],
+): Map<string, ResolvedDecoration> {
+  // The servability augmentation reads the substrate verdict (`servable`)
+  // off each resolved source (PR-6: read, never recompute) and declares a
+  // decoration per source. The render context is minimal for the slice —
+  // decorations need no layout-map (that resolves widget pixels, SPR-04), and
+  // the augmentation pulls no further substrate data, so `substrate` is a
+  // shape-only stub never called this sprint.
+  const aug = makeServabilityAugmentation(
+    sources.map((s) => ({
+      representativeChunkId: s.representativeChunkId,
+      servable: s.servable,
+    })),
+  );
+  const ctx: ReadingContext = {
+    synthesis: { question: null, claims: [] },
+    layout: { resolve: () => null },
+    substrate: {
+      getChunk: () =>
+        // Not used by the decorations slice (the surface resolves sources via
+        // the shipped api.getChunk above); present only to satisfy the frozen
+        // ReadingContext shape. SPR-04+ wires this to the real read API.
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the SPR-02 slice"),
+        ),
+    },
+  };
+  const resolved = collectDecorations([aug], ctx);
+  const byKey = new Map<string, ResolvedDecoration>();
+  for (const d of resolved) byKey.set(d.key, d);
+  return byKey;
+}
+
 function SourceCitation({
   source,
   onPreview,
+  decoration,
 }: {
   source: ResolvedSource;
   onPreview: (chunkId: string) => void;
+  /** The COMBINED §9.0 decoration the ServabilityAugmentation declared for
+   *  this source (SPR-02 facet apply pass). The augmentation declares the
+   *  verdict (servable vs restricted) as a closed-vocabulary class; this
+   *  component ENACTS it — choosing the DOM branch from the declared class,
+   *  not by re-branching on `source.servable` inline. Undefined only if the
+   *  pass produced no decoration for this source (defensive; treated as the
+   *  restricted branch so an un-annotated source never silently opens). */
+  decoration: ResolvedDecoration | undefined;
 }) {
   const label = source.title ?? "an untitled source";
   const locator = source.locator ? `, ${source.locator}` : "";
@@ -311,14 +392,22 @@ function SourceCitation({
   // never leaks onto the restricted branch below.
   const owner = source.ipHolderName ? `, published by ${source.ipHolderName}` : "";
 
-  if (!source.servable) {
+  // ENACT the declared §9.0 verdict (PR-6: the augmentation read `servable`
+  // from the substrate; the surface honors it, never re-decides it). The
+  // servable branch requires the explicitly-declared SERVABLE_CLASS; anything
+  // else (RESTRICTED_CLASS, or a missing decoration) takes the withholding
+  // branch — fail-closed so a source can never open without a positive
+  // servable verdict.
+  const servable = decoration?.classNames.includes(SERVABLE_CLASS) ?? false;
+
+  if (!servable) {
     // §9.0: a restricted / taken-down source must NOT open. Show the
     // named source (so the reader knows what backs the claim) with an
     // honest "not available to open" state — never the content.
     return (
       <span
         className="text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
-        title="This source isn’t available to open here (its license restricts it)."
+        title={decoration?.title ?? RESTRICTED_TITLE}
       >
         from {label}
         {locator}
@@ -364,7 +453,7 @@ function SourceCitation({
         onPreview(source.representativeChunkId);
       }}
       className="text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors"
-      title="Click to preview · ⌘-click to open the source"
+      title={decoration?.title ?? SERVABLE_TITLE}
     >
       from {label}
       {locator}
