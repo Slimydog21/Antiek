@@ -27,7 +27,7 @@ Each entry below carries:
 - **Action when unlocked** — what an agent should do the day the criterion
   fires
 
-The eleven deferrals, by unlock criterion category:
+The thirteen deferrals, by unlock criterion category:
 
 ---
 
@@ -350,6 +350,87 @@ the decision with operator-rationale so a future maintainer doesn't
 
 ---
 
+## D13 — Physics of Reading: live surface integrations (the augmentations ship dormant-correct)
+
+**Status:** 🟡 **MOSTLY CLOSED by the Living Roadmap (PR #16, `origin/main`
+`a94d357`).** The Physics of Reading substrate shipped *dormant* to prod first
+via PR #14 (`76c2002`; 8 sprints `944b93e`→`0935590`): the facet engine, the CI
+boundary guard, and the augmentation roster (servability, ip-holder, quality-cue,
+skim, sitesee, collapse, minimap, marginalia, review-due) — built, tested,
+composing, but with their live data/geometry feeds unwired. The **Living Roadmap
+run then shipped the very feeds three of them were waiting on** — the geometry
+pass (SPR-02), the `source.read` event + resolver (SPR-07), and the marginalia
+note→graph-node write path (SPR-07) — so they now render against live data on
+`main`. The two tracks dovetailed: PR #14 shipped the consumers, PR #16 shipped
+the feeds. What REMAINS deferred is a smaller residual set (below): the SiteSee
+`read` *tint* still awaits per-chunk-id resolution, the marginalia *audio-blob*
+storage, the spaced-repetition review-state resolver, and the operator-only canon
+ratification that flips the CI guard advisory→blocking. No augmentation invents
+its own data (PR-2 / PR-6).
+**Unlock criterion:** per sub-item below — each is a distinct surface/backend
+integration with its own decision file in `docs/decisions/`. None is closeable by
+writing the missing feed inside an augmentation; each waits on a named surface
+integration (and the canon ratification is a separate operator action).
+**Spec reference:** `docs/philosophy/physics-of-reading.md` (the binding canon,
+PR-1..PR-8; status: **draft** — operator ratification pending) + the four
+`docs/decisions/spr-0{5,6,7,8}-*.md` files + `reading-physics-boundary-guard.md`.
+**Blocks-what:** the fully-live Read surface (collapse, minimap, AccrualView /
+ChaseThread re-home, Skim/SiteSee `read` tint, voice marginalia, the
+spaced-repetition review cue). Nothing on the substrate / payout / multi-user / RL
+paths — this cluster is Read-surface-local.
+
+The cluster contains:
+
+- **The geometry-measurement pass** (`docs/decisions/spr-05-geometry-pass-gap.md`)
+  — ✅ **CLOSED by the Living Roadmap (PR #16 / SPR-02).** This was framed as the
+  run's largest deferred item; it is now built and wired: `readingGeometryPass.ts`
+  `buildLayoutMap(node)` measures live (`getBoundingClientRect` →
+  `baseGeometryFromMap` → `createLayoutMap`) and `setLayoutMap` replaces
+  `EMPTY_LAYOUT_MAP` in `MasterMdViewer` (`MasterMdViewer.tsx:244`), recomputed by a
+  `ResizeObserver` on the article (`:251`). The four geometry-dependent widgets
+  (collapse, minimap, AccrualView, ChaseThread) now have a live layout-map feed.
+- **The `source.read` event** (`docs/decisions/spr-06-source-read-event-gap.md`)
+  — ✅ **EVENT + RESOLVER CLOSED by the Living Roadmap (PR #16 / SPR-07).** The
+  net-new `source.read` typed event this entry blocked on now ships
+  (`SourceReadPayload` in `substrate/schemas/events.py`, emitted via
+  `postTypedEvent` → `/events/typed` → `runtime/db_lock`, single-writer) and the
+  SiteSee resolver is live (`modes/Reading/sourceRead.ts`). **RESIDUAL:** the
+  SiteSee `read` *tint* paints once a per-chunk id is resolved for the reader
+  (`representativeChunkId = null`, `modes/Reading/index.tsx`) — a small follow-up,
+  not the net-new event this originally waited on.
+- **The marginalia note/voice persistence**
+  (`docs/decisions/spr-07-marginalia-voice-storage.md`) — ✅ **NOTE→NODE WRITE PATH
+  CLOSED by the Living Roadmap (PR #16 / SPR-07):** an in-book `marginalia.noted`
+  becomes a user-sourced graph node via `promote_from_marginalia_event`
+  (`substrate/graph/insight_question.py`; single-writer, `source_kind` preserved so
+  the §9 user/model distinction holds), and the note is searchable. **RESIDUAL:**
+  the voice/audio-blob object storage (keyed by event, reusing the Speak path).
+- **The review-state resolver**
+  (`docs/decisions/spr-08-review-state-resolution-gap.md`) — ❌ **STILL DEFERRED**
+  (the one feed in this cluster the Living Roadmap did NOT build). review-due is
+  mounted **live** in `MasterMdViewer` behind a default-off toggle
+  (`REVIEW_DUE_ENABLED = false`) but reads an empty `dueClaims`; resolving the
+  per-reader spaced-repetition schedule from the substrate (likely a review-history
+  typed event, like `source.read`) is deferred. Unlock: the surface resolves the
+  schedule, hands a populated `dueClaims`, and flips the toggle.
+
+A fifth, **operator-only** item gates the guard's strictness rather than an
+augmentation: ratifying the canon (`physics-of-reading.md` `status: draft →
+ratified`) flips the CI boundary guard `tools/lint/reading_physics_check.py` from
+advisory to **blocking** (then add `--enforce` to its `ci.yml` `tsc`-job step). See
+`docs/decisions/reading-physics-boundary-guard.md` + `ci-informational-gates.md`.
+Until then the guard runs green-advisory, printing any findings without blocking.
+
+**What's left:** the geometry pass + the `source.read` event + the marginalia
+note→node write path closed when the Living Roadmap (PR #16) landed. The residuals
+each ship their own small follow-up: the SiteSee `read` tint (resolve a per-chunk
+id for the reader), the marginalia audio-blob storage, and the review-state
+resolver (the one feed still fully unbuilt). The canon ratification is an
+operator action independent of the integrations — it can happen any time and
+changes only CI strictness (advisory→blocking), not behavior.
+
+---
+
 ## Cross-reference: unlock criterion → deferrals it gates
 
 | Unlock criterion | Deferrals that close |
@@ -362,6 +443,8 @@ the decision with operator-rationale so a future maintainer doesn't
 | D1 (multi-user) + ≥1 publisher opted in | D8 (Sprint 30+ federation activation) |
 | Operator-discretion polish | D9 (Substack publish), D10 (sync voice), D11 (chase-tree mode) |
 | Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
+| Read-surface integration sprints (geometry pass / `source.read` emit / marginalia persistence / review-state resolver; each its own `docs/decisions/spr-0{5,6,7,8}-*.md`) | D13 (Physics of Reading live surface integrations) |
+| Operator ratifies the Physics of Reading canon (`physics-of-reading.md` draft→ratified) | D13's CI-guard advisory→blocking flip |
 
 ---
 
@@ -382,13 +465,24 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
 - **D8 (Sprint 30+ federation activation)** — D1 + ≥1 publisher opt-in
   (G3); earliest 2027 H2
 - **D9, D10, D11, D12** — operator-discretion; no calendar binding
+- **D13 (Physics of Reading live integrations)** — **mostly closed by PR #16**
+  (the geometry pass, the `source.read` event + resolver, and the marginalia
+  note→node write path are live on `main`). The residuals (read-tint per-chunk
+  resolution, marginalia audio-blob storage, the review-state resolver) have no
+  calendar binding; the canon ratification is an independent operator-discretion
+  action that only flips CI strictness.
 
-**Bottom line:** of the 12 deferrals, **none can be closed this week**;
+**Bottom line:** of the 13 deferrals, **none can be closed this week**;
 **0 close this month** (every deferral is gated on either time, volume,
 ratification, or D1); **3 close in late 2026 to mid-2027** (D1, then D7,
 D8 trail); **3 close in 2027+ at the earliest** (D3, D5, D6 all gated on
 G8); **D4 depends on operator's ratification cadence**; **D9, D10, D11,
-D12 are operator-discretion items with no spec-binding deadline**.
+D12 are operator-discretion items with no spec-binding deadline**; **D13
+(Physics of Reading live integrations) is now MOSTLY CLOSED by PR #16 — the
+geometry pass, the `source.read` event, and the marginalia note→node write path
+shipped to `main`; only smaller residuals (read-tint per-chunk id, marginalia
+audio-blob, the review-state resolver) + the operator-only canon ratification
+remain**.
 
 The pattern matches `operator_gate_actions.md`'s G7→G8 chain:
 **multi-user is the keystone**. D1 closing unblocks the largest cluster
