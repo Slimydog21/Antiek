@@ -35,17 +35,30 @@ actual_failure: |
   hit during the ban every time.
 
 harness_check_that_now_catches: |
-  GAP — would need a small ban_state.py module that writes to
-  ~/.antiek/arxiv_banned_until and exposes ``is_banned() -> bool``
-  + ``mark_banned(until: datetime)``. Integrate into the arxiv
-  HTTP client factory. The fallback paths (PDF, S2) already exist
-  per the same memory entry; only the sentinel + the integration
-  are missing.
+  acquisition/arxiv/throttle.py — ArxivThrottle persists a
+  banned_until sentinel to a cross-process JSON state file (default
+  under the operator's ~ .antiek runtime dir, override via the
+  ANTIEK_ARXIV_THROTTLE_PATH env var). is_banned()/banned_until()
+  read it; wait_if_needed() raises ArxivBanned while a ban is active
+  so a fresh invocation short-circuits instead of re-hitting the
+  endpoint. The sentinel is set on the LIVE path because the CLI
+  (tools/ingest_arxiv.py) catches the httpx.HTTPStatusError a real 429
+  raises and calls note_response() — closed end-to-end by
+  test_live_429_pdf_fetch_sets_sentinel_and_halts_batch in
+  tests/test_arxiv_ingest.py (asserts banned_until is actually written
+  to the state file by driving run_batch with a 429-returning fetch,
+  not by calling note_response directly). The sentinel read/clear
+  semantics are unit-covered by
+  test_429_sets_ban_and_subsequent_request_raises and
+  test_ban_clears_after_window in tests/test_arxiv_licenses.py.
 
-fix_commit: GAP
+fix_commit: SPR-02
 
 notes: |
-  This is the LOAD-BEARING fix in the arxiv cluster. Without the
-  sentinel, the throttle (arxiv-429-export-ban) and the cache size
-  (undersized-metadata-cache) just shift the ban around without
-  preventing it. Fix this first.
+  This is the LOAD-BEARING fix in the arxiv cluster. The sentinel
+  closes both this fixture and arxiv-429-export-ban (same
+  ArxivThrottle mechanism). PDF/S2 ENDPOINT fallback (routing a
+  banned request to an alternate source) is NOT part of this
+  sprint — the sentinel here makes the batch PAUSE, which is the
+  invariant-respecting behavior; alternate-source fallback is a
+  separate enhancement.

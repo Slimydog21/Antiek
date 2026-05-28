@@ -21,12 +21,27 @@ all use ``on_conflict='ignore'`` so re-ingesting the same paper
 no-ops on the DB side. The ``document.loaded`` event still fires
 each time — the trajectory log is append-only by design.
 
-**What this does NOT do** (Sprint 10 day 3-4 + 4-5 work):
-- Fetch the full-text PDF and extract its content. Use
-  ``acquisition/books/`` once that lands.
-- Run the ``parameter_extractor`` role to mint nodes + edges from
-  the abstract. That's the Loop 1 orchestrator's job; this adapter
-  just lands the source.
+Two ingest paths live here:
+
+- ``ingest_paper`` — the ORIGINAL abstract-only / metadata path. It is
+  license-blind by design (an abstract is short and factual; this path
+  predates the rights layer). Kept for callers that only want the
+  abstract landed as a source. It does NOT serve full text.
+- ``ingest_paper_with_rights`` (SPR-02) — the FULL-TEXT path. It resolves
+  ``paper.license_uri`` to a servable content_class via
+  ``acquisition.arxiv.licenses``, fetches the PDF, and routes through the
+  shared ``acquisition.books.ingest_servable_book`` so the legal-gate /
+  deny-by-default classification has exactly one home. This is the path
+  the SPR-02 CLI uses. The two paths are deliberately distinct (abstract
+  vs full text) — they are NOT silently-diverging copies of the same
+  ingest.
+
+**What this does NOT do:**
+- Run the ``parameter_extractor`` role to mint nodes + edges from the
+  abstract. That's the Loop 1 orchestrator's job; this adapter just lands
+  the source.
+- Re-derive full text from LaTeX. The full-text path ingests the PDF
+  bytes; a LaTeX renderer is out of scope.
 """
 
 from __future__ import annotations
@@ -35,7 +50,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -66,6 +81,7 @@ from substrate.graph.ops import (  # noqa: E402
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
 from .client import ArxivPaper
+from .licenses import license_basis_string, resolve_license
 
 # Tier policy: arXiv preprints are academic but unrefereed → tier 3.
 # Tier 1 = peer-reviewed primary; Tier 5 = uncited social. The
@@ -271,4 +287,132 @@ def ingest_paper(
         node_ids=node_ids,
         document_loaded_event_id=event_id,
         chunks_written=chunks_written,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rights-aware full-text ingest (SPR-02)
+# ---------------------------------------------------------------------------
+
+# arXiv preprints stay tier 3 even as full text — academic but unrefereed.
+DEFAULT_ARXIV_FULLTEXT_SOURCE_TIER = 3
+
+# Type of the injectable PDF fetcher: arxiv_id -> pdf bytes. Tests pass a
+# stub that returns fixture bytes so CI never hits the network.
+PdfFetcher = Callable[[str], bytes]
+
+
+@dataclass(frozen=True)
+class IngestPaperWithRightsResult:
+    """What ``ingest_paper_with_rights`` returns.
+
+    ``servable_full_text`` is the derived "may we serve this paper's full
+    text" answer — deny-by-default, so a default-arXiv-terms or
+    unknown-license paper comes back False. ``content_class`` and
+    ``license_basis`` are echoed so the caller (CLI dry-run) can report the
+    rights decision without re-querying the substrate."""
+
+    document_id: str
+    content_class: str
+    redistributable: bool
+    servability: str
+    servable_full_text: bool
+    license_uri: Optional[str]
+    license_basis: str
+
+
+def _default_fetch_pdf(arxiv_id: str) -> bytes:
+    """Fetch a paper's PDF bytes from arxiv.org/pdf/<id>.
+
+    Reuses the client's httpx + User-Agent convention. Throttling + ban
+    safety are the CALLER's responsibility (the throttle is per-batch, not
+    per-fetch) — the CLI wraps this in ``ArxivThrottle``. Network / HTTP
+    errors propagate so the batch can record a per-item failure and
+    continue rather than ingesting an empty document.
+    """
+    import httpx
+
+    from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
+
+    url = f"https://arxiv.org/pdf/{arxiv_id}"
+    with httpx.Client(follow_redirects=True) as c:
+        r = c.get(
+            url,
+            headers={"User-Agent": DEFAULT_USER_AGENT},
+            timeout=DEFAULT_TIMEOUT_S,
+        )
+    r.raise_for_status()
+    return r.content
+
+
+def ingest_paper_with_rights(
+    paper: ArxivPaper,
+    *,
+    investigation_id: str,
+    pdf_bytes: Optional[bytes] = None,
+    fetch_pdf: Optional[PdfFetcher] = None,
+    source_tier: int = DEFAULT_ARXIV_FULLTEXT_SOURCE_TIER,
+    db_path: Optional[str] = None,
+    embedder: Optional[EmbeddingProvider] = None,
+) -> IngestPaperWithRightsResult:
+    """Ingest a paper's FULL TEXT through the shared servable-book path,
+    gated on the paper's declared license.
+
+    The rights flow:
+
+      1. Resolve ``paper.license_uri`` via ``acquisition.arxiv.licenses``.
+         CC-BY / CC-BY-SA / CC0 -> ``opt_in_licensed`` (servable). arXiv
+         default terms / NC / ND / unknown / missing -> gated. The
+         unknown-fallback is deny-by-default — never guessed servable.
+      2. Build a ``license_basis`` audit string (license name + URI for
+         servable; a "why gated" string otherwise).
+      3. Fetch the PDF (injected ``pdf_bytes`` in tests; ``fetch_pdf`` or
+         the default network fetcher in prod) and route through
+         ``acquisition.books.ingest_servable_book`` — the ONE home for the
+         deny-by-default classification. No parallel ingest path.
+
+    ``pdf_bytes`` short-circuits the fetch (CI passes fixture bytes so no
+    network). When omitted, ``fetch_pdf`` (default: arxiv.org/pdf) is used.
+    """
+    from acquisition.books.adapter import ingest_servable_book
+
+    resolution = resolve_license(paper.license_uri)
+    basis = license_basis_string(resolution)
+
+    if pdf_bytes is None:
+        fetcher = fetch_pdf or _default_fetch_pdf
+        pdf_bytes = fetcher(paper.arxiv_id)
+    if not pdf_bytes:
+        # An empty PDF would land a 0-word document and silently gate it on
+        # low_word_count; surface the fetch failure instead of ingesting a
+        # husk that looks like a rights decision.
+        raise ValueError(
+            f"empty PDF bytes for {paper.arxiv_id} — fetch failed or paper "
+            "has no PDF"
+        )
+
+    result = ingest_servable_book(
+        pdf_bytes,
+        investigation_id=investigation_id,
+        # None content_class would deny-by-default in ingest_servable_book,
+        # but we pass the resolved class explicitly so the gated case is an
+        # auditable decision (basis names the license) rather than a silent
+        # omission.
+        content_class=resolution.content_class,
+        license_basis=basis,
+        source_uri=paper.abs_url,
+        source_tier=int(source_tier),
+        provenance=paper.pdf_url,
+        db_path=db_path,
+        embedder=embedder,
+    )
+
+    return IngestPaperWithRightsResult(
+        document_id=result.document_id,
+        content_class=resolution.content_class,
+        redistributable=resolution.redistributable,
+        servability=result.servability,
+        servable_full_text=result.servable_full_text,
+        license_uri=paper.license_uri,
+        license_basis=basis,
     )
