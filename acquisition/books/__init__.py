@@ -4,14 +4,42 @@ Sprint 10 day 3-4. Requires the ``[pdf]`` extra:
 ``pip install -e '.[pdf]'`` to pick up ``pypdf``.
 """
 
-from .adapter import IngestBookResult, book_doc_id, ingest_pdf
+from .adapter import (
+    IngestBookResult,
+    IngestServableBookResult,
+    book_doc_id,
+    ingest_pdf,
+    ingest_servable_book,
+)
+from .public_domain import (
+    IngestOutcome,
+    PublicDomainWork,
+    SourceClient,
+    SourceError,
+    archive_candidate,
+    gutenberg_candidates,
+    ingest_work,
+    strip_gutenberg_boilerplate,
+    text_to_pdf,
+)
 from .reader import PdfPage, ReadResult, read_pdf
 
 __all__ = [
     "IngestBookResult",
+    "IngestServableBookResult",
+    "IngestOutcome",
     "PdfPage",
+    "PublicDomainWork",
     "ReadResult",
+    "SourceClient",
+    "SourceError",
+    "archive_candidate",
     "book_doc_id",
+    "gutenberg_candidates",
     "ingest_pdf",
+    "ingest_servable_book",
+    "ingest_work",
     "read_pdf",
+    "strip_gutenberg_boilerplate",
+    "text_to_pdf",
 ]
