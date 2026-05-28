@@ -46,6 +46,11 @@ SPEAK_CLAIM_CONTRADICTED = "speak.claim.contradicted"
 SPEAK_CONTRIBUTOR_MAPPED = "speak.contributor.mapped"
 SPEAK_CONTRIBUTION_ACCRUED = "speak.contribution.accrued"
 SPEAK_DISBURSEMENT_BLOCKED = "speak.disbursement.blocked"
+# SPR-10 — the AI verifier graded an interview against the requester's
+# information goal (payout_verifier.py). A Speak-local string, NOT a
+# central ActionType: per this module's doctrine that keeps the codegen
+# staleness gate green with no TS drift (EVENT_SCHEMA_VERSION unchanged).
+SPEAK_INTERVIEW_GRADED = "speak.interview.graded"
 SPEAK_PUBLISHED = "speak.published"
 SPEAK_BOOK_ORDER_QUOTED = "speak.book_order.quoted"
 
@@ -65,6 +70,7 @@ SPEAK_ACTION_TYPES: frozenset[str] = frozenset({
     SPEAK_CONTRIBUTOR_MAPPED,
     SPEAK_CONTRIBUTION_ACCRUED,
     SPEAK_DISBURSEMENT_BLOCKED,
+    SPEAK_INTERVIEW_GRADED,
     SPEAK_PUBLISHED,
     SPEAK_BOOK_ORDER_QUOTED,
 })

@@ -3,7 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
 import { LemonButton } from "../../components/lemon";
-import { createPerson, listPeople, type RememberedPerson } from "../../lib/speakApi";
+import {
+  createPerson,
+  listPeople,
+  listPublicFeed,
+  type FeedItem,
+  type RememberedPerson,
+} from "../../lib/speakApi";
 import AIActionFailure from "../../shared/AIActionFailure";
 
 /**
@@ -24,11 +30,22 @@ import AIActionFailure from "../../shared/AIActionFailure";
  * No engineering string is shown: the substrate enums are translated at the
  * UI edge (lib/speakApi.ts); a person is named by their name, never an id.
  */
+type Tab = "yours" | "public";
+
 export default function SpeakIndex() {
   const navigate = useNavigate();
   const [people, setPeople] = useState<RememberedPerson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // M1 — the public/private structure. "Yours" is the private dashboard of
+  // the people you're remembering (your invited/owned projects). "Public" is
+  // a browsable feed of public remembrances anyone can chime in on. They are
+  // two views over the SAME shipped backend — /speak/projects (yours) and
+  // /speak/feed (public) — no new store.
+  const [tab, setTab] = useState<Tab>("yours");
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
 
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -46,9 +63,24 @@ export default function SpeakIndex() {
     }
   }, []);
 
+  const reloadFeed = useCallback(async () => {
+    setFeedLoading(true);
+    try {
+      setFeed(await listPublicFeed());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (tab === "public") void reloadFeed();
+  }, [tab, reloadFeed]);
 
   // The one warm action: name a person → get a project → land on it. The
   // subject details + publish mode default safely (unknown / kept private)
@@ -123,43 +155,118 @@ export default function SpeakIndex() {
           <p className="mb-3 font-mono text-[12px] text-emperor">{error}</p>
         )}
 
-        {loading ? (
-          <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
-            Loading…
-          </p>
-        ) : people.length === 0 ? (
-          <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
-            No one yet — name the first person above.
-          </p>
+        {/* M1 — the public/private split: your dashboard vs the public feed. */}
+        <div role="tablist" className="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "yours"}
+            onClick={() => setTab("yours")}
+            className={`-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider ${
+              tab === "yours"
+                ? "border-sun text-ink dark:text-bright"
+                : "border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+            }`}
+          >
+            People you're remembering
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "public"}
+            onClick={() => setTab("public")}
+            className={`-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider ${
+              tab === "public"
+                ? "border-sun text-ink dark:text-bright"
+                : "border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+            }`}
+          >
+            Public remembrances
+          </button>
+        </div>
+
+        {tab === "yours" ? (
+          loading ? (
+            <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
+              Loading…
+            </p>
+          ) : people.length === 0 ? (
+            <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
+              No one yet — name the first person above.
+            </p>
+          ) : (
+            <section>
+              <ul className="space-y-2">
+                {people.map((p) => (
+                  <li key={p.id}>
+                    <Link
+                      to={`/speak/${p.id}`}
+                      className="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-serif text-[16px] text-ink dark:text-bright">
+                          {p.name}
+                        </span>
+                        <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
+                          {p.voiceCount === 0
+                            ? "no voices yet"
+                            : `${p.voiceCount} voice${p.voiceCount === 1 ? "" : "s"}`}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                        {p.willBePublic ? "Will be shared publicly" : "Kept private"}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
         ) : (
+          // The browsable PUBLIC feed: each item has an "add your memory"
+          // entry — the in-feed chime-in. Honest when empty.
           <section>
-            <h2 className="mb-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
-              The people you're remembering
-            </h2>
-            <ul className="space-y-2">
-              {people.map((p) => (
-                <li key={p.id}>
-                  <Link
-                    to={`/speak/${p.id}`}
-                    className="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+            {feedLoading ? (
+              <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
+                Loading…
+              </p>
+            ) : feed.length === 0 ? (
+              <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
+                No public remembrances yet. When someone shares a story
+                publicly, it'll appear here — and you'll be able to add what you
+                remember.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {feed.map((f) => (
+                  <li
+                    key={f.id}
+                    className="rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className="font-serif text-[16px] text-ink dark:text-bright">
-                        {p.name}
-                      </span>
+                      <Link
+                        to={`/speak/${f.id}`}
+                        className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
+                      >
+                        {f.name}
+                      </Link>
                       <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
-                        {p.voiceCount === 0
+                        {f.voiceCount === 0
                           ? "no voices yet"
-                          : `${p.voiceCount} voice${p.voiceCount === 1 ? "" : "s"}`}
+                          : `${f.voiceCount} voice${f.voiceCount === 1 ? "" : "s"}`}
                       </span>
                     </div>
-                    <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
-                      {p.willBePublic ? "Will be shared publicly" : "Kept private"}
-                    </p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                    <div className="mt-2">
+                      <Link to={`/speak/${f.id}`}>
+                        <LemonButton variant="secondary" size="sm">
+                          Add your memory
+                        </LemonButton>
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         )}
       </div>

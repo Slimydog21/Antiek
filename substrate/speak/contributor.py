@@ -50,6 +50,7 @@ from .events import (
 )
 from .ids import new_accrual_id
 from .schema import ensure_speak_schema
+from .takedown import active_takedowns
 from .third_party import list_claims
 
 # Default voice-note source tier (interviews are first-person primary
@@ -164,6 +165,20 @@ def measure_contribution(
                   if (not c.is_third_party)
                   or c.verification in ("multiply_attested", "operator_attested")]
 
+    # Takedown → payout linkage (SPR-10 MAJOR fix). An active takedown
+    # reaches *earning* content: a claim whose interview is taken down, or
+    # the claim itself, no longer contributes a share — payout must respect
+    # a withdrawn consent even on a corroborated, normally-earning claim.
+    # We read active takedowns here (the same authoritative source as the
+    # publish gate) and exclude the affected claims from the §9 split.
+    taken_down = active_takedowns(con, project_id)
+    td_interviews = {t.target_id for t in taken_down if t.target_kind == "interview"}
+    td_claims = {t.target_id for t in taken_down if t.target_kind == "claim"}
+    if td_interviews or td_claims:
+        claims = [c for c in claims
+                  if c.claim_id not in td_claims
+                  and (c.interview_id is None or c.interview_id not in td_interviews)]
+
     chunk_to_document: dict[str, str] = {}
     chunk_to_conf: dict[str, float] = {}
     document_to_tier: dict[str, int] = {}
@@ -202,8 +217,15 @@ class AccrualLine:
     interview_id: str
     ip_holder_id: Optional[str]
     share_fraction: float
-    amount_usd: Decimal
+    amount_usd: Decimal           # what ACTUALLY accrued to escrow (post-clamp)
     slop_gated: bool
+    # The §9-weighted amount this interview WOULD have accrued before the
+    # requester's budget/cap clamped it. Equal to ``amount_usd`` when no
+    # clamp bound it. Surfaced so the release can report capping/exhaustion
+    # honestly against the ledger that was actually written.
+    uncapped_amount_usd: Decimal = Decimal("0")
+    capped: bool = False          # the per-interview cap bound this line
+    budget_clamped: bool = False  # the project budget bound this line
 
 
 def accrue_contributions(
@@ -216,11 +238,28 @@ def accrue_contributions(
     impression_ref: Optional[str] = None,
     quality_scores: Optional[dict[str, float]] = None,
     slop_threshold: float = DEFAULT_SLOP_THRESHOLD,
+    budget_usd: Optional[Decimal] = None,
+    per_interview_cap_usd: Optional[Decimal] = None,
 ) -> list[AccrualLine]:
     """Accrue each interviewee's share of the 70% contributor slice to
     escrow. Zero-buyer safe: ``ad_revenue_usd == 0`` accrues $0 but still
     records the share fraction (no fictional balances). Slop-gated
     interviewees get a $0, ``slop_gated=True`` line.
+
+    Budget / per-interview cap (SPR-10 BLOCKER fix). The clamp binds the
+    ACTUAL escrow ledger, not a downstream report: the amount written to
+    ``speak_accruals`` AND incremented into ``ip_holders.escrow_balance_usd``
+    is the clamped amount. So after this call the real ``speak_accruals``
+    sum and the real escrow balances are ≤ ``budget_usd`` and no single
+    interview's accrual exceeds ``per_interview_cap_usd``. ``None`` (the
+    default for both) means "no bound" — the §9-weighted amount accrues in
+    full (the pre-SPR-10 behaviour; ``publish.py`` passes neither).
+
+    The single-escrow-writer invariant is preserved: there is still exactly
+    one ``ip_holders.accrue_escrow`` call site, and it now receives the
+    clamped figure (we clamp BEFORE writing, never a second corrective
+    writer). Slop-gated and budget-exhausted interviews are still recorded
+    as $0 rows so the audit shows they were considered.
 
     Accrual ≠ disbursement — money only LEAVES escrow via
     ``attempt_disbursement``, which is gated on G2/G3.
@@ -231,14 +270,33 @@ def accrue_contributions(
         slop_threshold=slop_threshold,
     )
     contributor_pool = (Decimal(ad_revenue_usd) * CREATOR_REV_SHARE)
+    cap = Decimal(per_interview_cap_usd) if per_interview_cap_usd is not None else None
+    budget = Decimal(budget_usd) if budget_usd is not None else None
+    spent = Decimal("0")  # cumulative clamped escrow accrued this call
 
     lines: list[AccrualLine] = []
 
-    # Earning lines.
-    for interview_id, share in contribution.shares.items():
+    # Earning lines. Iterate in descending share so the budget binds the
+    # smallest contributors last (a stable, defensible exhaustion order),
+    # and the clamp is applied to the SAME amount we write + escrow.
+    for interview_id, share in sorted(
+        contribution.shares.items(), key=lambda kv: kv[1], reverse=True
+    ):
         mapping = get_payee(con, interview_id)
         ip_holder_id = mapping.ip_holder_id if mapping else None
-        amount = (contributor_pool * Decimal(str(share))).quantize(Decimal("0.000001"))
+        uncapped = (contributor_pool * Decimal(str(share))).quantize(Decimal("0.000001"))
+        amount = uncapped
+        capped = False
+        budget_clamped = False
+        # Per-interview cap: one interview cannot accrue more than the cap.
+        if cap is not None and cap > 0 and amount > cap:
+            amount = cap
+            capped = True
+        # Project budget: cumulative escrow this release cannot exceed it.
+        if budget is not None and budget >= 0 and spent + amount > budget:
+            amount = max(Decimal("0"), budget - spent)
+            budget_clamped = True
+        spent += amount
         con.execute(
             "INSERT INTO speak_accruals "
             "(accrual_id, project_id, publication_id, interview_id, ip_holder_id, "
@@ -249,7 +307,10 @@ def accrue_contributions(
         )
         if ip_holder_id is not None and amount > 0:
             ip_holders.accrue_escrow(con, ip_holder_id, amount)
-        lines.append(AccrualLine(interview_id, ip_holder_id, float(share), amount, False))
+        lines.append(AccrualLine(
+            interview_id, ip_holder_id, float(share), amount, False,
+            uncapped_amount_usd=uncapped, capped=capped, budget_clamped=budget_clamped,
+        ))
 
     # Slop lines — recorded as $0 so the audit shows they were considered
     # and earned nothing ("slop doesn't earn").
@@ -264,7 +325,8 @@ def accrue_contributions(
              mapping.ip_holder_id if mapping else None, page_id, impression_ref],
         )
         lines.append(AccrualLine(interview_id, mapping.ip_holder_id if mapping else None,
-                                 0.0, Decimal("0"), True))
+                                 0.0, Decimal("0"), True,
+                                 uncapped_amount_usd=Decimal("0")))
 
     record_speak_event(
         SPEAK_CONTRIBUTION_ACCRUED,

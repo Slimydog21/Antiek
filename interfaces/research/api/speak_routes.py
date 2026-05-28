@@ -47,7 +47,9 @@ from substrate.speak import (
     contributor as contributor_mod,
     corroboration,
     economics_mode,
+    gate_status,
     invitations,
+    payout_verifier,
     physical_book,
     project as project_mod,
     publish as publish_mod,
@@ -214,6 +216,24 @@ class BookOrderRequest(BaseModel):
     publication_id: Optional[str] = None
 
 
+class GradeInterviewRequest(BaseModel):
+    """The REQUESTER's information goal — what they want covered + the money
+    bounds. The grade itself is produced by the AI verifier, NOT here."""
+
+    information_goal: str = Field(..., min_length=1)
+    must_cover: list[str] = Field(default_factory=list)
+    budget_usd: str = "0"
+    per_interview_cap_usd: str = "0"
+
+
+class ReleasePayoutRequest(BaseModel):
+    information_goal: str = Field(..., min_length=1)
+    budget_usd: str = "0"
+    per_interview_cap_usd: str = "0"
+    ad_revenue_usd: str = "0"
+    publication_id: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Operator: project lifecycle
 # ---------------------------------------------------------------------------
@@ -267,12 +287,49 @@ async def get_project(project_id: str) -> ProjectResponse:
 async def get_economics(project_id: str) -> dict:
     with _translate(), _write("speak/api:economics") as con:
         policy = economics_mode.policy_for_project(con, project_id)
+    # The G2/G3 gate STATE, read-only (gate_status.py). The UI shows these
+    # as "gated / not yet activated" — there is no flip/close affordance
+    # here; closing a gate is an operator action, never a code path.
+    publishing = gate_status.public_publishing_allowed()
+    disbursement = gate_status.disbursement_allowed()
     return {
         "cell": policy.cell,
         "inference_margin": str(policy.inference_margin),
         "split_applies": policy.split_applies,
         "creator_carries_cost": policy.creator_carries_cost,
         "requires_publish_consent": policy.requires_publish_consent,
+        # Operator-gate state, READ-ONLY. Deny-by-default; the UI surfaces
+        # these gated, never offering to close them.
+        "public_publishing_allowed": publishing.allowed,
+        "public_publishing_reason": publishing.reason,
+        "disbursement_allowed": disbursement.allowed,
+        "disbursement_reason": disbursement.reason,
+    }
+
+
+@speak_router.get("/feed")
+async def public_feed() -> dict:
+    """The browsable PUBLIC feed (M1): projects whose intent is public —
+    the surface a visitor scrolls and can 'interview-with'/chime in on.
+    Honest when empty (returns ``[]``). Distinct from ``GET /projects``,
+    which is the operator's full index (their private dashboard)."""
+    with _translate(), _write("speak/api:feed") as con:
+        rows = con.execute(
+            "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
+            "p.invitation_mode, "
+            "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id) "
+            "FROM speak_projects p "
+            "JOIN interview_projects ip ON ip.project_id = p.project_id "
+            "WHERE p.publish_intent = 'will_be_public' "
+            "ORDER BY p.created_at DESC"
+        ).fetchall()
+    return {
+        "count": len(rows),
+        "projects": [
+            {"project_id": r[0], "title": r[1], "subject_ref": r[2],
+             "subject_status": r[3], "invitation_mode": r[4], "interview_count": r[5]}
+            for r in rows
+        ],
     }
 
 
@@ -484,6 +541,68 @@ async def publish(project_id: str, req: PublishRequest) -> dict:
              "share_fraction": a.share_fraction, "amount_usd": str(a.amount_usd),
              "slop_gated": a.slop_gated}
             for a in result.accrual_lines
+        ],
+    }
+
+
+@speak_router.post("/interviews/{interview_id}/grade", status_code=201)
+async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict:
+    """AI-grade one interview against the requester's information goal
+    (SPR-10 M3). The grade is produced by the verifier (here: the honest
+    deterministic rubric, since no ``dispatch_fn`` is injected on this
+    route — production would pass ``substrate.dispatch.dispatch``), NOT by
+    the requester. The grade is persisted (kept, even when it fails) and
+    returned with its honest/gamed labels. NO money moves here."""
+    with _translate(), _write("speak/api:grade") as con:
+        prow = con.execute(
+            "SELECT project_id FROM interviews WHERE interview_id = ?", [interview_id]
+        ).fetchone()
+        if prow is None:
+            raise HTTPException(status_code=404, detail=f"interview {interview_id} not found")
+        goal = payout_verifier.InterviewGoal(
+            information_goal=req.information_goal,
+            must_cover=tuple(req.must_cover),
+            budget_usd=_decimal(req.budget_usd, "budget_usd"),
+            per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
+        )
+        grade = payout_verifier.grade_interview(
+            con, project_id=prow[0], interview_id=interview_id, goal=goal,
+        )
+    return {
+        "interview_id": grade.interview_id, "score": grade.score,
+        "passed": grade.passed, "honest": grade.honest,
+        "gamed_risk": grade.gamed_risk, "rationale": grade.rationale,
+        "graded_by": grade.graded_by,
+    }
+
+
+@speak_router.post("/projects/{project_id}/release-payout", status_code=201)
+async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
+    """Release graded payout for a project (SPR-10 M3), routed through §9
+    (``accrue_contributions``) into ESCROW — never disbursed. Enforces the
+    requester's budget + per-interview cap. With zero ad buyers this
+    accrues $0 while still tracking the §9-weighted share fractions; money
+    only leaves escrow post-G2/G3 (which this never triggers)."""
+    with _translate(), _write("speak/api:release_payout") as con:
+        goal = payout_verifier.InterviewGoal(
+            information_goal=req.information_goal,
+            budget_usd=_decimal(req.budget_usd, "budget_usd"),
+            per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
+        )
+        release = payout_verifier.release_payout(
+            con, project_id=project_id, goal=goal,
+            ad_revenue_usd=_decimal(req.ad_revenue_usd, "ad_revenue_usd"),
+            publication_id=req.publication_id,
+        )
+    return {
+        "spent_usd": str(release.spent_usd),
+        "budget_usd": str(release.budget_usd),
+        "budget_exhausted": release.budget_exhausted,
+        "capped_interview_ids": list(release.capped_interview_ids),
+        "accrual_lines": [
+            {"interview_id": a.interview_id, "share_fraction": a.share_fraction,
+             "amount_usd": str(a.amount_usd), "slop_gated": a.slop_gated}
+            for a in release.accrual_lines
         ],
     }
 

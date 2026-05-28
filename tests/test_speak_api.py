@@ -267,3 +267,93 @@ def test_list_projects(client):
     titles = {p["title"] for p in data["projects"]}
     assert titles == {"Dad's biography", "Mom's biography"}
     assert all("interview_count" in p and "publish_intent" in p for p in data["projects"])
+
+
+# ── SPR-10 M1: public feed split ──────────────────────────────────────────
+
+
+def test_public_feed_shows_only_public_projects(client):
+    # Fresh → empty feed (honest empty).
+    r = client.get("/speak/feed")
+    assert r.status_code == 200
+    assert r.json() == {"count": 0, "projects": []}
+    # One private, one public → only the public one is in the feed.
+    client.post("/speak/projects", json={"title": "Private one"})
+    client.post("/speak/projects", json={"title": "Public one", "publish_intent": "will_be_public"})
+    feed = client.get("/speak/feed").json()
+    assert feed["count"] == 1
+    assert feed["projects"][0]["title"] == "Public one"
+    # The operator dashboard (/projects) still shows BOTH.
+    assert client.get("/speak/projects").json()["count"] == 2
+
+
+# ── SPR-10 M2: economics READS gate status, shows gated (never closes) ─────
+
+
+def test_economics_surfaces_gate_status_gated_by_default(client, monkeypatch):
+    monkeypatch.delenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", raising=False)
+    monkeypatch.delenv("ANTIEK_STRIPE_PROVIDER", raising=False)
+    pid = client.post("/speak/projects",
+                      json={"title": "Bio", "publish_intent": "will_be_public"}).json()["project_id"]
+    ec = client.get(f"/speak/projects/{pid}/economics").json()
+    # Public ⇒ split applies (the binding rule).
+    assert ec["split_applies"] is True
+    # The gate state is SHOWN as gated/not-activated — read-only, deny-by-default.
+    assert ec["public_publishing_allowed"] is False
+    assert ec["disbursement_allowed"] is False
+    assert "legal gate" in ec["public_publishing_reason"]
+
+
+# ── SPR-10 M3: AI-grade an interview + release routes to escrow ────────────
+
+
+def test_grade_interview_endpoint_scores_and_keeps(client):
+    pid = client.post("/speak/projects",
+                      json={"title": "Bio", "publish_intent": "will_be_public"}).json()["project_id"]
+    iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
+    interview_id = iv["interview_id"]
+    client.post(f"/speak/interviews/{interview_id}/consent", json={"scopes": ["record"]})
+    client.post(f"/speak/interviews/{interview_id}/answers", json={
+        "question_id": "q1",
+        "transcript": "He ran the village bakery for thirty years through the war years, "
+                      "baking before dawn and feeding the whole street when flour was scarce.",
+    })
+    r = client.post(f"/speak/interviews/{interview_id}/grade", json={
+        "information_goal": "his work and the war years",
+        "must_cover": ["the bakery", "the war years"],
+        "budget_usd": "100", "per_interview_cap_usd": "40",
+    })
+    assert r.status_code == 201, r.text
+    g = r.json()
+    assert 0.0 <= g["score"] <= 1.0
+    assert g["graded_by"] == "deterministic-rubric"  # no dispatch_fn on this route
+    assert "passed" in g and "honest" in g and "gamed_risk" in g
+
+
+def test_release_payout_accrues_to_escrow_no_disbursement(client, monkeypatch):
+    monkeypatch.delenv("ANTIEK_STRIPE_PROVIDER", raising=False)  # disbursement gated
+    pid = client.post("/speak/projects",
+                      json={"title": "Bio", "publish_intent": "will_be_public"}).json()["project_id"]
+    iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
+    interview_id = iv["interview_id"]
+    client.post(f"/speak/interviews/{interview_id}/consent", json={"scopes": ["record", "attribute"]})
+    client.post(f"/speak/interviews/{interview_id}/answers", json={
+        "question_id": "q1",
+        "transcript": "He ran the village bakery for thirty years through the war years daily.",
+    })
+    client.post(f"/speak/interviews/{interview_id}/claims",
+                json={"text": "He ran the bakery during the war.", "confidence": 0.9})
+    client.post(f"/speak/projects/{pid}/contributors",
+                json={"interview_id": interview_id, "display_name": "A"})
+    client.post(f"/speak/interviews/{interview_id}/grade",
+                json={"information_goal": "the bakery and the war", "must_cover": ["bakery", "war"]})
+    r = client.post(f"/speak/projects/{pid}/release-payout", json={
+        "information_goal": "the bakery and the war", "ad_revenue_usd": "100",
+        "budget_usd": "1000", "per_interview_cap_usd": "0",
+    })
+    assert r.status_code == 201, r.text
+    body = r.json()
+    # Routed via §9: accrual lines exist with share fractions (not a flat fee).
+    assert any(l["interview_id"] == interview_id for l in body["accrual_lines"])
+    # spent accrued to escrow (a real dollar figure because ad_revenue>0).
+    assert "spent_usd" in body
