@@ -74,8 +74,9 @@ describe("Werner logo white-background fix (SPR-12 M4)", () => {
       for (let x = 0; x < fixed.width; x += 8) {
         const [r, g, b, a] = pixel(fixed, x, y);
         if (a > 200) opaque += 1;
-        // The sun-yellow bill/feet (#F5DF24-ish) must survive the cut —
-        // they are NOT neutral white, so the neutrality guard spares them.
+        // The sun-yellow bill/feet (the sun token's lemon, sun.base) must
+        // survive the cut — they are NOT neutral white (high r+g, low b), so
+        // the neutrality guard spares them.
         if (a > 200 && r > 200 && g > 170 && b < 120) sunYellow += 1;
       }
     }
