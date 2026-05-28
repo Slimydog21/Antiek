@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 20;
+export const EVENT_SCHEMA_VERSION = 21;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -135,6 +135,7 @@ export const ActionType = {
   BLOCK_POSITIONED: "block.positioned",
   MARGINALIA_NOTED: "marginalia.noted",
   SOURCE_READ: "source.read",
+  READ_META_READING_GENERATED: "read.meta_reading.generated",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -513,6 +514,22 @@ export interface ExaLookupResult {
   text_snippet?: string | null;
   relevance_score?: number | null;
   provider_response_id?: string | null;
+}
+
+/**
+ * One page-level citation in a saved meta-reading asset. It carries a
+ * REFERENCE (chunk_id + the document + the resolved reader page), never the
+ * source body — opening it re-derives the body through the §9.0 serve gate.
+ * ``page_index`` is the 0-based reader page the chunk anchors to, or null when
+ * ``section_path`` did not resolve to a ``Page N`` marker (then
+ * ``page_resolved`` is False and the surface shows an honest "page not
+ * pinpointed", never a fabricated page — rigor #1).
+ */
+export interface MetaReadingCitation {
+  chunk_id: string;
+  document_id: string;
+  page_index?: number | null;
+  page_resolved?: boolean;
 }
 
 /**
@@ -2254,6 +2271,41 @@ export interface SourceReadPayload {
 }
 
 /**
+ * A one-shot, READ-ONLY, page-cited synthesis over the reader's OWNED
+ * corpus, saved as a re-openable Read asset (Read SPR-08 M4).
+ * 
+ * It is substrate truth (re-open / narrate / promote-on-explicit-action), so
+ * it rides the single-writer funnel — not a client side-store (which would
+ * diverge from the graph). The running talk-to-book chat is the opposite case
+ * (ephemeral session view-state, sessionStorage).
+ * 
+ * §9.0 — the ``report`` is MODEL-generated synthesis grounded on owned
+ * SERVABLE chunks; a withheld body never enters it because retrieval went
+ * through the search gate (restricted content excluded). The ``citations``
+ * carry references, never bodies. ``corpus_document_ids`` is the defensible
+ * record of EXACTLY which owned docs were in scope — the proof this never
+ * reached the open internet (internet-agnostic; if it had, it would be
+ * Research, not Read).
+ * 
+ * PROPOSED boundary (operator decision 2, sign-off pending): built behind the
+ * "proposed (sign-off pending)" banner, reversible to a ``soft`` corpus scope.
+ * Promotion into Research is the EXISTING ``seam.read_to_research`` event on
+ * explicit user action only — never auto, never a new silo.
+ */
+export interface ReadMetaReadingGeneratedPayload {
+  action_type: "read.meta_reading.generated";
+  asset_id: string;
+  prompt: string;
+  report: string;
+  length_unit: "pages" | "minutes";
+  length_amount: number;
+  truncated?: boolean;
+  corpus_scope?: "hard" | "soft";
+  corpus_document_ids?: string[];
+  citations?: MetaReadingCitation[];
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -2361,7 +2413,8 @@ export type TypedPayload =
   | VoiceCapturedPayload
   | MarginaliaNotedPayload
   | BlockPositionPayload
-  | SourceReadPayload;
+  | SourceReadPayload
+  | ReadMetaReadingGeneratedPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2463,6 +2516,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "question.escalated_to_research",
   "question.identified",
   "question.resolved_by_doc",
+  "read.meta_reading.generated",
   "rev_share.decided",
   "rlm.bridge.decided",
   "rubric.scored",

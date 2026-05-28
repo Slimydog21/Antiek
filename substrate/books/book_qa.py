@@ -1,0 +1,227 @@
+"""Talk-to-book — gated, page-cited question answering over ONE book
+(Read SPR-08 M2).
+
+The book-level multi-turn conversation lives in the reader UI
+(``apps/reading/src/modes/Reading``); this is the per-turn backend it calls.
+A turn is: retrieve the most relevant chunks OF THIS BOOK (and only this book)
+through the §9.0 retrieval gate, hand the model that gated context plus the
+running conversation, and return a structured answer whose claims cite
+page-level locations back into the SPR-07 reader.
+
+The three load-bearing properties (rigor #3 degenerate inputs are tested):
+
+1. §9.0 NO-LEAK. Retrieval goes through ``substrate.graph.search.search``
+   with the DEFAULT (non-privileged) ``policy_tag``, so a withheld /
+   restricted / taken-down book's chunks never enter the result set — and
+   therefore never enter the model's context or a citation. A talk-to-book
+   answer CANNOT quote or cite a withheld region because the body never
+   reaches it. This is the SAME gate the chunk-search path uses; we do not
+   re-implement or bypass it.
+
+2. NO-EXTRACTABLE-TEXT books fail gracefully. A scanned-image PDF has no
+   embedded chunks (nothing to embed / retrieve). ``answer_book_question``
+   returns an empty-context answer that SAYS it has nothing to ground on,
+   rather than dispatching a model to hallucinate. The caller surfaces the
+   honest "no readable text in this book" state.
+
+3. APPROXIMATE PAGE CITATIONS are labelled approximate. A chunk's page is
+   resolved from ``section_path`` (``page_anchor.page_index_from_section_path``);
+   when it does not resolve to a ``Page N`` marker the citation carries
+   ``page_index=None`` and ``page_resolved=False`` so the UI shows an honest
+   "page not pinpointed — open the book" rather than a fabricated page.
+
+§16: the answer is generated through the ONE Hermes-routed dispatch path
+(``substrate.dispatch.router.dispatch``), with the curated fast/deep research
+tier choosing WHICH registered provider the primary prefers (a per-call
+override, not a second runtime). No new ASR/LLM/TTS host.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Optional, Sequence
+
+from substrate.dispatch.research_tier import resolve_research_tier
+from substrate.dispatch.router import ProviderError, dispatch
+from substrate.graph.search import EmbeddingModel, search
+
+from .page_anchor import page_index_from_section_path
+
+# How many of the book's chunks to ground a turn on. Small enough to keep the
+# prompt focused (and cheap), large enough to answer a cross-passage question.
+DEFAULT_QA_TOP_K = 6
+
+# How many prior turns of the running conversation to carry into the prompt.
+# The multi-turn thread lives in the reader's session state (the floating
+# bookmark); the client sends the recent tail, we bound it so a long thread
+# can't blow the context budget. The bound is stated, not silent.
+MAX_HISTORY_TURNS = 8
+
+
+@dataclass(frozen=True)
+class Citation:
+    """One page-level citation in a talk-to-book answer. ``page_index`` is the
+    0-based reader page the cited chunk anchors to, or ``None`` when the
+    chunk's ``section_path`` does not resolve to a page (then ``page_resolved``
+    is False and the UI must show an honest "page not pinpointed")."""
+
+    chunk_id: str
+    document_id: str
+    page_index: Optional[int]
+    page_resolved: bool
+    snippet: str  # a bounded excerpt of the cited chunk (already gate-served)
+
+
+@dataclass(frozen=True)
+class Turn:
+    """One prior conversation turn carried into the next prompt. ``question``
+    is user-sourced; ``answer`` is the model's prior reply (MODEL-sourced —
+    never relabelled). Kept distinct so the prompt builder never conflates the
+    two."""
+
+    question: str
+    answer: str
+
+
+@dataclass(frozen=True)
+class BookAnswer:
+    """A talk-to-book turn result. ``answer`` is MODEL-generated prose;
+    ``citations`` anchor its claims back into the book. ``grounded`` is False
+    when there was no extractable text to retrieve — the honest no-context
+    state (the model was NOT asked to answer ungrounded)."""
+
+    answer: str
+    citations: list[Citation]
+    grounded: bool
+    # Diagnostic: how many of the book's chunks were retrieved for this turn.
+    context_chunk_count: int = 0
+
+
+def _build_prompt(
+    *,
+    book_title: Optional[str],
+    question: str,
+    history: Sequence[Turn],
+    context_chunks: Sequence[dict],
+) -> str:
+    """Assemble the dispatch prompt: the running conversation (bounded) + the
+    gated book context + the new question. The model is instructed to answer
+    ONLY from the provided book passages and to refuse rather than invent —
+    the no-context branch never reaches here (see ``answer_book_question``)."""
+    parts: list[str] = []
+    title = book_title or "this book"
+    parts.append(
+        f"You are answering a reader's questions about the book “{title}”. "
+        "Answer ONLY from the book passages provided below. If the passages do "
+        "not contain the answer, say so plainly — do not invent facts or cite "
+        "anything not in the passages."
+    )
+    if history:
+        parts.append("\nThe conversation so far:")
+        for t in history[-MAX_HISTORY_TURNS:]:
+            parts.append(f"Reader: {t.question}")
+            parts.append(f"You: {t.answer}")
+    parts.append("\nBook passages (each tagged with its page when known):")
+    for i, ch in enumerate(context_chunks, start=1):
+        page_index = page_index_from_section_path(ch.get("section_path"))
+        page_tag = f"page {page_index + 1}" if page_index is not None else "page not marked"
+        parts.append(f"[{i}] ({page_tag}) {ch.get('chunk_text', '')}")
+    parts.append(f"\nThe reader's question: {question}")
+    return "\n".join(parts)
+
+
+def _citations_from_chunks(context_chunks: Sequence[dict]) -> list[Citation]:
+    """Turn the retrieved (gate-served) chunks into page-level citations. Each
+    chunk that survived the §9.0 gate is a legitimate, citable source; the page
+    is resolved best-effort and labelled approximate when it does not pin."""
+    out: list[Citation] = []
+    for ch in context_chunks:
+        page_index = page_index_from_section_path(ch.get("section_path"))
+        text = ch.get("chunk_text", "") or ""
+        out.append(
+            Citation(
+                chunk_id=ch.get("chunk_id", ""),
+                document_id=ch.get("document_id", ""),
+                page_index=page_index,
+                page_resolved=page_index is not None,
+                snippet=text[:240] + ("…" if len(text) > 240 else ""),
+            )
+        )
+    return out
+
+
+def answer_book_question(
+    con: Any,
+    *,
+    document_id: str,
+    question: str,
+    model: EmbeddingModel,
+    investigation_id: str,
+    history: Optional[Sequence[Turn]] = None,
+    research_tier: str = "deep",
+    top_k: int = DEFAULT_QA_TOP_K,
+    config: Optional[Any] = None,
+) -> BookAnswer:
+    """Answer one talk-to-book turn, page-cited, gate-safe.
+
+    Retrieval is scoped to ``document_id`` through the §9.0 gate (default
+    ``policy_tag`` — restricted content excluded). A book with no extractable
+    chunks returns an ungrounded, honest no-context answer WITHOUT dispatching
+    a model (rigor #3). Otherwise the gated context + the running conversation
+    are dispatched through the curated research tier; the reply's claims are
+    backed by the page-level citations of the retrieved chunks.
+
+    Raises ``ProviderError`` when every provider in the dispatch chain is
+    unavailable (no key) — the caller maps that to an honest 503, never a
+    fabricated answer.
+    """
+    history = history or []
+
+    retrieved = search(
+        con,
+        question,
+        model=model,
+        top_k=top_k,
+        document_id=document_id,
+        # DEFAULT policy_tag — the §9.0 gate excludes restricted content. A
+        # withheld book's chunks never enter this result set, so they can never
+        # reach the model context or a citation.
+    )
+    context_chunks = retrieved["results"]
+
+    if not context_chunks:
+        # No extractable text (scanned-image PDF) OR a fully-withheld book:
+        # nothing to ground on. Do NOT dispatch a model to guess — return the
+        # honest no-context state.
+        return BookAnswer(
+            answer=(
+                "I couldn't find any readable text in this book to answer from. "
+                "It may be a scanned/image-only edition, or its passages aren't "
+                "available."
+            ),
+            citations=[],
+            grounded=False,
+            context_chunk_count=0,
+        )
+
+    prompt = _build_prompt(
+        book_title=None,
+        question=question,
+        history=history,
+        context_chunks=context_chunks,
+    )
+    target = resolve_research_tier(research_tier)
+    result = dispatch(
+        prompt,
+        role="user_agent",
+        investigation_id=investigation_id,
+        provider_override=target.provider,
+        model_override=target.model,
+        config=config,
+    )
+    return BookAnswer(
+        answer=result.text,
+        citations=_citations_from_chunks(context_chunks),
+        grounded=True,
+        context_chunk_count=len(context_chunks),
+    )

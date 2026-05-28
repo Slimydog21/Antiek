@@ -399,6 +399,26 @@ class ActionType(str, Enum):
     #    history; it emits nothing and opens no writer of its own.
     SOURCE_READ = "source.read"
 
+    # ── Meta-reading deliverable (Living Roadmap SPR-08 M4). A one-shot,
+    #    READ-ONLY, page-cited synthesis over the reader's OWNED corpus, saved
+    #    as a re-openable Read asset. WHY AN EVENT, NOT A CLIENT SIDE-STORE:
+    #    the deliverable is substrate truth — it must survive reload, be
+    #    re-opened, narrated, and (only on explicit user action) promoted into
+    #    a Research investigation via the existing seam.read_to_research event.
+    #    A sessionStorage copy would be a second source of truth that diverges
+    #    from the graph; so it rides the SAME single-writer typed-event funnel
+    #    as every other state mutation (NOT the running talk-to-book thread,
+    #    which IS ephemeral session view-state — that stays in sessionStorage,
+    #    the usePosition precedent). It records the report PROSE (model-
+    #    generated synthesis grounded on owned servable chunks — a §9.0 withheld
+    #    body never enters it because retrieval went through the search gate),
+    #    the length-box, the corpus scope (hard|soft) + the exact owned
+    #    document ids in scope (the defensible record that it never reached the
+    #    open internet), and the page-cited chunk references. It is built behind
+    #    the "proposed (sign-off pending)" banner — the PROPOSED Research↔Read
+    #    boundary, reversible to soft. specs/antiek-living-roadmap/ SPR-08.
+    READ_META_READING_GENERATED = "read.meta_reading.generated"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -529,7 +549,25 @@ class ActionType(str, Enum):
 #     session through the single-writer funnel (no side store); SiteSee reads
 #     the resolved history and emits nothing itself. specs/antiek-living-roadmap/
 #     SPR-07. 2026-05-28.
-EVENT_SCHEMA_VERSION: int = 20
+# v21: Living Roadmap SPR-08 — meta-reading deliverable. One typed event
+#     (read.meta_reading.generated) persists a one-shot, READ-ONLY, page-cited
+#     synthesis over the reader's OWNED corpus as a re-openable Read asset. It
+#     rides the single-writer funnel (NOT a client side-store) because the
+#     deliverable is substrate truth — it must survive reload, be re-opened /
+#     narrated, and (only on explicit user action) be promoted into Research via
+#     the EXISTING seam.read_to_research event (never a new silo, never auto).
+#     The running talk-to-book chat thread is NOT an event — it is ephemeral
+#     session view-state (sessionStorage, the usePosition precedent). The event
+#     records the report prose (model-generated synthesis grounded on owned
+#     servable chunks — a §9.0 withheld body never enters it because retrieval
+#     went through the search gate), the length-box (the hard pages/minutes
+#     budget the asset was built to), the corpus scope (hard|soft) + the exact
+#     owned document ids in scope (the defensible record it never reached the
+#     open internet — internet-agnostic), and page-cited chunk references. Built
+#     behind the "proposed (sign-off pending)" banner: the PROPOSED Research↔Read
+#     boundary, reversible to soft. specs/antiek-living-roadmap/ SPR-08.
+#     2026-05-28.
+EVENT_SCHEMA_VERSION: int = 21
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3245,6 +3283,72 @@ class SourceReadPayload(_PayloadBase):
     page_count: int = Field(ge=0, default=0)
 
 
+# ── Meta-reading deliverable → re-openable Read asset (SPR-08 M4) ──────────
+
+
+class MetaReadingCitation(_PayloadBase):
+    """One page-level citation in a saved meta-reading asset. It carries a
+    REFERENCE (chunk_id + the document + the resolved reader page), never the
+    source body — opening it re-derives the body through the §9.0 serve gate.
+    ``page_index`` is the 0-based reader page the chunk anchors to, or null when
+    ``section_path`` did not resolve to a ``Page N`` marker (then
+    ``page_resolved`` is False and the surface shows an honest "page not
+    pinpointed", never a fabricated page — rigor #1)."""
+
+    chunk_id: str
+    document_id: str
+    page_index: Optional[int] = None
+    page_resolved: bool = False
+
+
+class ReadMetaReadingGeneratedPayload(_PayloadBase):
+    """A one-shot, READ-ONLY, page-cited synthesis over the reader's OWNED
+    corpus, saved as a re-openable Read asset (Read SPR-08 M4).
+
+    It is substrate truth (re-open / narrate / promote-on-explicit-action), so
+    it rides the single-writer funnel — not a client side-store (which would
+    diverge from the graph). The running talk-to-book chat is the opposite case
+    (ephemeral session view-state, sessionStorage).
+
+    §9.0 — the ``report`` is MODEL-generated synthesis grounded on owned
+    SERVABLE chunks; a withheld body never enters it because retrieval went
+    through the search gate (restricted content excluded). The ``citations``
+    carry references, never bodies. ``corpus_document_ids`` is the defensible
+    record of EXACTLY which owned docs were in scope — the proof this never
+    reached the open internet (internet-agnostic; if it had, it would be
+    Research, not Read).
+
+    PROPOSED boundary (operator decision 2, sign-off pending): built behind the
+    "proposed (sign-off pending)" banner, reversible to a ``soft`` corpus scope.
+    Promotion into Research is the EXISTING ``seam.read_to_research`` event on
+    explicit user action only — never auto, never a new silo."""
+
+    action_type: Literal[ActionType.READ_META_READING_GENERATED] = (
+        ActionType.READ_META_READING_GENERATED
+    )
+    asset_id: str
+    # The reader's ask the synthesis answered (user-sourced prompt).
+    prompt: str
+    # The model-generated synthesis prose, already bounded to the length-box
+    # (built-to-size, not post-trimmed). Read-only — never edited in place.
+    report: str
+    # The hard length-box the asset was built to (operator decision 3).
+    length_unit: Literal["pages", "minutes"]
+    length_amount: int = Field(ge=1)
+    # True when the synthesis overran the budget and was cut to fit — labelled,
+    # never silently clipped (rigor #1).
+    truncated: bool = False
+    # The corpus scope: "hard" (the proposed boundary — owned servable docs,
+    # optionally an explicit pick) or "soft" (the rollback when sign-off is
+    # withheld — the whole owned readable corpus). NEITHER reaches the internet.
+    corpus_scope: Literal["hard", "soft"] = "hard"
+    # EXACTLY the owned document ids the synthesis drew on — the internet-
+    # agnostic record. An empty list is an honest "owned corpus was empty".
+    corpus_document_ids: list[str] = Field(default_factory=list)
+    # Page-cited references back into the SPR-07 reader.
+    citations: list[MetaReadingCitation] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -3356,6 +3460,7 @@ TypedPayload = Annotated[
         MarginaliaNotedPayload,
         BlockPositionPayload,
         SourceReadPayload,
+        ReadMetaReadingGeneratedPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -3479,6 +3584,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.BLOCK_POSITIONED.value,
     # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
     ActionType.SOURCE_READ.value,
+    # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
+    ActionType.READ_META_READING_GENERATED.value,
 })
 
 
@@ -3772,4 +3879,7 @@ __all__ = [
     "BlockPositionPayload",
     # Source read → SiteSee "read" tint SPR-07 (v20 schema bump)
     "SourceReadPayload",
+    # Meta-reading deliverable → re-openable Read asset SPR-08 (v21 schema bump)
+    "MetaReadingCitation",
+    "ReadMetaReadingGeneratedPayload",
 ]

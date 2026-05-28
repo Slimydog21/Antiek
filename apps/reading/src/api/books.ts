@@ -216,6 +216,124 @@ export async function curateBooks(prompt: string, limit = 20): Promise<CurateRes
   return (await resp.json()) as CurateResponse;
 }
 
+// ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────
+//
+// A book-level conversation. The MULTI-TURN thread lives in the reader's
+// SESSION state (the floating bookmark — sessionStorage, the usePosition
+// precedent), NOT in substrate truth; the client sends the recent tail as
+// `history` each turn. Answers cite page-level locations; the §9.0 gate on the
+// backend means a withheld region's body never reaches the model or a citation.
+
+/** One page-level citation in a talk-to-book / meta-reading answer. */
+export interface BookCitation {
+  chunk_id: string;
+  document_id: string;
+  /** The 0-based reader page the cited chunk anchors to, or null when the
+   * chunk's section did not resolve to a page marker. When null,
+   * `page_resolved` is false and the UI shows an honest "page not pinpointed"
+   * — never a fabricated page (no false precision). */
+  page_index: number | null;
+  page_resolved: boolean;
+  snippet: string;
+}
+
+/** One prior conversation turn carried forward. `question` is user-sourced;
+ * `answer` the model's prior reply — kept distinct, never conflated. */
+export interface TalkTurn {
+  question: string;
+  answer: string;
+}
+
+export interface AskBookResponse {
+  answer: string;
+  citations: BookCitation[];
+  /** False when the book had no extractable text to ground on (scanned-image
+   * PDF / fully-withheld) — an honest no-context answer, never a hallucination. */
+  grounded: boolean;
+  context_chunk_count: number;
+}
+
+/** Ask one talk-to-book turn (Read SPR-08 M2). Answers CITE pages; a withheld
+ * region can never be cited (backend §9.0 gate). 503 when no model provider is
+ * configured (no-key) or the embedding model is unavailable. 404 for an
+ * unknown book. */
+export async function askBook(
+  documentId: string,
+  question: string,
+  opts?: { history?: TalkTurn[]; researchTier?: "fast" | "deep" },
+): Promise<AskBookResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      question,
+      history: opts?.history ?? [],
+      research_tier: opts?.researchTier ?? "deep",
+    }),
+  });
+  if (resp.status === 404) throw new Error("book_not_found");
+  if (resp.status === 503) throw new Error("Talk-to-book isn’t available right now.");
+  if (!resp.ok) throw new Error(`POST /books/{id}/ask: HTTP ${resp.status}`);
+  return (await resp.json()) as AskBookResponse;
+}
+
+// ── SPR-08 M4: meta-reading deliverable (PROPOSED boundary) ───────────
+//
+// One-shot, READ-ONLY, page-cited synthesis over the OWNED corpus
+// (internet-agnostic — owned DuckDB graph only). HARD length-box; saved as a
+// re-openable Read asset. Built behind the "proposed (sign-off pending)" banner.
+
+export interface MetaReadingRequest {
+  prompt: string;
+  length_unit: "pages" | "minutes";
+  length_amount: number;
+  research_tier?: "fast" | "deep";
+  /** The owned-corpus scope. "hard" is the PROPOSED Research↔Read boundary;
+   * "soft" is the rollback when sign-off is withheld. NEITHER reaches the
+   * internet. */
+  corpus_scope?: "hard" | "soft";
+  /** An explicit pick of owned document ids (intersected with the owned set
+   * under "hard" scope). Omit to scope to the whole owned servable corpus. */
+  document_ids?: string[];
+}
+
+export interface MetaReadingResponse {
+  asset_id: string;
+  report: string;
+  citations: BookCitation[];
+  length_unit: "pages" | "minutes";
+  length_amount: number;
+  word_budget: number;
+  /** True when the synthesis overran the budget and was cut — labelled, never
+   * silently clipped. */
+  truncated: boolean;
+  corpus_scope: "hard" | "soft";
+  corpus_document_ids: string[];
+  /** True when the owned corpus had nothing to synthesize from — honest empty. */
+  empty: boolean;
+  context_chunk_count: number;
+}
+
+/** Generate + save a meta-reading deliverable over the owned corpus (Read
+ * SPR-08 M4). 422 when the length is degenerate (stated bound). 503 when the
+ * model / embedding is unavailable. */
+export async function generateMetaReading(
+  req: MetaReadingRequest,
+): Promise<MetaReadingResponse> {
+  const resp = await apiFetch(`${API_BASE}/corpus/meta-reading`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ research_tier: "deep", corpus_scope: "hard", ...req }),
+  });
+  if (resp.status === 422) {
+    const body = await resp.json().catch(() => ({ detail: "Invalid length." }));
+    throw new Error(typeof body.detail === "string" ? body.detail : "Invalid length.");
+  }
+  if (resp.status === 503) throw new Error("Meta-reading isn’t available right now.");
+  if (!resp.ok) throw new Error(`POST /corpus/meta-reading: HTTP ${resp.status}`);
+  return (await resp.json()) as MetaReadingResponse;
+}
+
 /** Human-readable label + Lemon tag colour for a servability status. One
  * source so Library cards and the reader badge never disagree. */
 export function servabilityLabel(s: Servability): { label: string; colour: "aurora" | "sun" | "muted" | "danger" } {

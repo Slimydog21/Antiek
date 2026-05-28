@@ -29,6 +29,7 @@ import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
+import MetaReading from "./modes/Reading/MetaReading";
 import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
@@ -134,6 +135,11 @@ function AuthenticatedRoutes() {
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
         <Route path="/library" element={<Library />} />
+        {/* SPR-08 M4 — meta-reading surface (PROPOSED, sign-off pending).
+            Literal route declared BEFORE /read/:documentId; React-Router v6
+            ranks static segments above params, so /read/meta-reading never
+            resolves the book reader. */}
+        <Route path="/read/meta-reading" element={<MetaReading />} />
         <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />

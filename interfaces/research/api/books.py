@@ -162,6 +162,100 @@ class FullTextResponse(BaseModel):
     reason: str
 
 
+# ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
+
+
+class TalkTurn(BaseModel):
+    """One prior conversation turn the client carries forward (the multi-turn
+    thread lives in the reader's session state — the floating bookmark — NOT in
+    substrate truth). ``question`` is user-sourced; ``answer`` the model's prior
+    reply, kept distinct."""
+
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+
+
+class AskBookRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    # The recent tail of the running conversation (server bounds it again).
+    history: list[TalkTurn] = Field(default_factory=list)
+    research_tier: Literal["fast", "deep"] = "deep"
+
+
+class CitationResponse(BaseModel):
+    chunk_id: str
+    document_id: str
+    # The 0-based reader page the cited chunk anchors to, or null when the
+    # chunk's section_path did not resolve to a page marker (then
+    # ``page_resolved`` is False and the surface shows an honest "page not
+    # pinpointed" — never a fabricated page).
+    page_index: Optional[int] = None
+    page_resolved: bool = False
+    snippet: str
+
+
+class AskBookResponse(BaseModel):
+    answer: str
+    citations: list[CitationResponse]
+    # False when the book had no extractable text to ground on (scanned-image
+    # PDF / fully-withheld) — the honest no-context state, never a hallucination.
+    grounded: bool
+    context_chunk_count: int
+
+
+# ── SPR-08 M1 — corpus search (NET-NEW) ─────────────────────────────
+
+
+class CorpusSearchHit(BaseModel):
+    chunk_id: str
+    document_id: str
+    document_title: Optional[str]
+    page_index: Optional[int] = None
+    page_resolved: bool = False
+    snippet: str
+    similarity: float
+
+
+class CorpusSearchResponse(BaseModel):
+    query: str
+    hits: list[CorpusSearchHit]
+    count: int
+
+
+# ── SPR-08 M4 — meta-reading deliverable (PROPOSED boundary) ────────
+
+
+class MetaReadingRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    length_unit: Literal["pages", "minutes"]
+    length_amount: int = Field(ge=1)
+    research_tier: Literal["fast", "deep"] = "deep"
+    # The owned-corpus scope. "hard" is the PROPOSED Research↔Read boundary
+    # (owned servable docs, optionally an explicit pick); "soft" is the rollback
+    # when operator sign-off is withheld (the whole owned readable corpus).
+    # NEITHER reaches the open internet — meta-reading is internet-agnostic.
+    corpus_scope: Literal["hard", "soft"] = "hard"
+    # An explicit pick of owned document ids (intersected with the owned set
+    # under "hard" scope). Omit to scope to the whole owned servable corpus.
+    document_ids: Optional[list[str]] = None
+
+
+class MetaReadingResponse(BaseModel):
+    asset_id: str
+    report: str
+    citations: list[CitationResponse]
+    length_unit: Literal["pages", "minutes"]
+    length_amount: int
+    word_budget: int
+    truncated: bool
+    corpus_scope: Literal["hard", "soft"]
+    corpus_document_ids: list[str]
+    # True when the owned corpus had nothing to synthesize from (honest empty,
+    # never a fabricated report).
+    empty: bool
+    context_chunk_count: int
+
+
 # ── Routes ──────────────────────────────────────────────────────────
 
 
@@ -383,4 +477,241 @@ def register_book_routes(app: FastAPI) -> None:
             gated=seed.gated,
             servability=seed.servability,
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
+        )
+
+    # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited, gate-safe) ──
+    @app.post(
+        "/books/{document_id}/ask",
+        response_model=AskBookResponse,
+        tags=["books"],
+    )
+    async def ask_book(document_id: str, req: AskBookRequest) -> AskBookResponse:
+        """Answer one talk-to-book turn, page-cited, over THIS book only.
+
+        Retrieval is scoped to ``document_id`` through the §9.0 gate, so a
+        withheld book's body never reaches the model context or a citation. A
+        book with no extractable text returns an honest ungrounded answer
+        WITHOUT dispatching a model (no hallucination). The model is dispatched
+        through the ONE Hermes-routed path (§16); 503 when no provider is keyed.
+        """
+        from runtime.db_lock import connect_read
+        from substrate.books.book_qa import Turn, answer_book_question
+        from substrate.dispatch.router import ProviderError
+        from substrate.graph.search import SentenceTransformerEmbedding
+
+        # Confirm the book exists (honest 404 rather than an empty answer).
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            asset = get_book_asset(con, document_id)
+        finally:
+            con.close()
+        if asset is None:
+            raise HTTPException(status_code=404, detail="book_not_found")
+
+        try:
+            model = SentenceTransformerEmbedding()
+        except RuntimeError as exc:  # sentence-transformers not installed
+            raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
+
+        con = connect_read(db)
+        try:
+            try:
+                result = answer_book_question(
+                    con,
+                    document_id=document_id,
+                    question=req.question,
+                    model=model,
+                    investigation_id=f"read-{document_id}",
+                    history=[Turn(question=t.question, answer=t.answer) for t in req.history],
+                    research_tier=req.research_tier,
+                )
+            except ProviderError as exc:
+                # No keyed provider — honest 503, never a fabricated answer.
+                raise HTTPException(status_code=503, detail=f"dispatch_unavailable: {exc}") from exc
+        finally:
+            con.close()
+
+        return AskBookResponse(
+            answer=result.answer,
+            citations=[
+                CitationResponse(
+                    chunk_id=c.chunk_id,
+                    document_id=c.document_id,
+                    page_index=c.page_index,
+                    page_resolved=c.page_resolved,
+                    snippet=c.snippet,
+                )
+                for c in result.citations
+            ],
+            grounded=result.grounded,
+            context_chunk_count=result.context_chunk_count,
+        )
+
+    # ── SPR-08 M1 — corpus search over the owned graph (NET-NEW) ──
+    @app.get(
+        "/corpus/search",
+        response_model=CorpusSearchResponse,
+        tags=["books"],
+    )
+    async def corpus_search(
+        q: str,
+        limit: int = 20,
+        document_id: Optional[str] = None,
+    ) -> CorpusSearchResponse:
+        """Search the owned corpus by a natural-language query. Wraps
+        ``substrate.graph.search.search`` with the DEFAULT (non-privileged)
+        policy_tag, so the §9.0 gate excludes restricted content. ``document_id``
+        optionally scopes to one document. The Library's typed query + file-drop
+        bias both POST text here (file = a query SIGNAL, never ingested)."""
+        from runtime.db_lock import connect_read
+        from substrate.books.page_anchor import page_index_from_section_path
+        from substrate.graph.search import SentenceTransformerEmbedding, search
+
+        if not q.strip():
+            return CorpusSearchResponse(query=q, hits=[], count=0)
+        try:
+            model = SentenceTransformerEmbedding()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
+
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            res = search(con, q, model=model, top_k=max(1, limit), document_id=document_id)
+        finally:
+            con.close()
+
+        hits: list[CorpusSearchHit] = []
+        for r in res["results"]:
+            page_index = page_index_from_section_path(r.get("section_path"))
+            text = r.get("chunk_text", "") or ""
+            hits.append(
+                CorpusSearchHit(
+                    chunk_id=r.get("chunk_id", ""),
+                    document_id=r.get("document_id", ""),
+                    document_title=r.get("document_title"),
+                    page_index=page_index,
+                    page_resolved=page_index is not None,
+                    snippet=text[:240] + ("…" if len(text) > 240 else ""),
+                    similarity=r.get("similarity", 0.0),
+                )
+            )
+        return CorpusSearchResponse(query=q, hits=hits, count=len(hits))
+
+    # ── SPR-08 M4 — meta-reading deliverable (PROPOSED, owned-corpus-only) ──
+    @app.post(
+        "/corpus/meta-reading",
+        response_model=MetaReadingResponse,
+        status_code=201,
+        tags=["books"],
+    )
+    async def meta_reading(req: MetaReadingRequest) -> MetaReadingResponse:
+        """Generate + SAVE a one-shot, READ-ONLY, page-cited synthesis over the
+        OWNED corpus (Read SPR-08 M4). INTERNET-AGNOSTIC: retrieval is ONLY
+        ``search`` over owned document ids — no acquisition / open-web call. The
+        HARD length-box is built up front (a degenerate size → 422 with a stated
+        bound). The deliverable is persisted as a re-openable Read asset through
+        the single-writer typed-event funnel (NOT a new silo). PROPOSED boundary
+        (sign-off pending) — reversible to a soft corpus scope.
+        """
+        import uuid as _uuid
+
+        from runtime.db_lock import connect_read
+        from substrate.books.meta_reading import MetaReadingError, generate_meta_reading
+        from substrate.dispatch.router import ProviderError
+        from substrate.event_log import emit_typed
+        from substrate.graph.search import SentenceTransformerEmbedding
+        from substrate.schemas.events import (
+            MetaReadingCitation,
+            ReadMetaReadingGeneratedPayload,
+        )
+
+        try:
+            model = SentenceTransformerEmbedding()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
+
+        asset_id = f"mr-{_uuid.uuid4().hex[:12]}"
+        investigation_id = f"read-meta-{asset_id}"
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            try:
+                deliverable = generate_meta_reading(
+                    con,
+                    prompt=req.prompt,
+                    unit=req.length_unit,
+                    amount=req.length_amount,
+                    model=model,
+                    investigation_id=investigation_id,
+                    scope=req.corpus_scope,
+                    document_ids=req.document_ids,
+                    research_tier=req.research_tier,
+                )
+            except MetaReadingError as exc:
+                # Degenerate length (0 / negative / above the cap) — stated bound.
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except ProviderError as exc:
+                raise HTTPException(status_code=503, detail=f"dispatch_unavailable: {exc}") from exc
+        finally:
+            con.close()
+
+        citations = [
+            CitationResponse(
+                chunk_id=c.chunk_id,
+                document_id=c.document_id,
+                page_index=c.page_index,
+                page_resolved=c.page_resolved,
+                snippet=c.snippet,
+            )
+            for c in deliverable.citations
+        ]
+
+        # Persist the deliverable as substrate truth (re-open / narrate /
+        # promote). NOT a side-store — it rides the single-writer funnel. An
+        # empty deliverable is NOT saved (nothing to re-open); honest empty.
+        if not deliverable.empty:
+            event_id = emit_typed(
+                investigation_id,
+                ReadMetaReadingGeneratedPayload(
+                    asset_id=asset_id,
+                    prompt=req.prompt,
+                    report=deliverable.report,
+                    length_unit=deliverable.length_box.unit,
+                    length_amount=deliverable.length_box.amount,
+                    truncated=deliverable.truncated,
+                    corpus_scope=deliverable.corpus_scope,
+                    corpus_document_ids=deliverable.corpus_document_ids,
+                    citations=[
+                        MetaReadingCitation(
+                            chunk_id=c.chunk_id,
+                            document_id=c.document_id,
+                            page_index=c.page_index,
+                            page_resolved=c.page_resolved,
+                        )
+                        for c in deliverable.citations
+                    ],
+                ),
+                role="read/meta_reading",
+                policy_id="read/meta_reading",
+            )
+            if event_id is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
+                )
+
+        return MetaReadingResponse(
+            asset_id=asset_id,
+            report=deliverable.report,
+            citations=citations,
+            length_unit=deliverable.length_box.unit,
+            length_amount=deliverable.length_box.amount,
+            word_budget=deliverable.length_box.word_budget,
+            truncated=deliverable.truncated,
+            corpus_scope=deliverable.corpus_scope,
+            corpus_document_ids=deliverable.corpus_document_ids,
+            empty=deliverable.empty,
+            context_chunk_count=deliverable.context_chunk_count,
         )

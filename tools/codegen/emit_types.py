@@ -133,6 +133,8 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ReasoningPathUsed,
     # Wedge 3 — sub-model for VerifierLookupPayload.results.
     schema_module.ExaLookupResult,
+    # SPR-08 M4 — sub-model for ReadMetaReadingGeneratedPayload.citations.
+    schema_module.MetaReadingCitation,
 )
 
 # Payload models, in the same order as the TypedPayload union.
@@ -257,6 +259,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.BlockPositionPayload,
     # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
     schema_module.SourceReadPayload,
+    # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
+    schema_module.ReadMetaReadingGeneratedPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.

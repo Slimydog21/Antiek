@@ -284,6 +284,9 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // SPR-07 — source.read is the reader's own reading history (lights SiteSee's
   // "read" tint on the Read surface); not a Research thinking-stream beat.
   [ActionType.SOURCE_READ]: null,
+  // SPR-08 — a saved meta-reading deliverable is a Read asset (a re-openable
+  // synthesis over the owned corpus); it is not a Research thinking-stream beat.
+  [ActionType.READ_META_READING_GENERATED]: null,
 };
 
 /** The safe generic line for an action_type with no row — only reachable if

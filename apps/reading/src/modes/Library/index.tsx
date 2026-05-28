@@ -6,6 +6,7 @@ import { curateBooks, listBooks } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import BookCard from "./BookCard";
+import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
 import { documentsByTheme } from "./documentsByTheme";
 import type { FeedOrdering } from "./documentsByTheme";
@@ -140,6 +141,24 @@ export default function Library() {
     [navigate],
   );
 
+  // Open a book at a specific page (M1 search-result jump). The reader reads its
+  // page from the SAME sessionStorage locator usePosition owns (no new
+  // mechanism); seeding it here lands the reader on the cited page. A null /
+  // unresolved page opens at the saved position (honest — no fake page jump).
+  const openAtPage = useCallback(
+    (documentId: string, pageIndex?: number | null) => {
+      if (pageIndex !== null && pageIndex !== undefined && pageIndex >= 0) {
+        try {
+          window.sessionStorage.setItem(`antiek.read.pos.${documentId}`, String(pageIndex));
+        } catch {
+          /* private mode — the reader still opens, just at the saved page */
+        }
+      }
+      navigate(`/read/${encodeURIComponent(documentId)}`);
+    },
+    [navigate],
+  );
+
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";
     if (status === "servable") return `${books.length} books readable in full`;
@@ -196,6 +215,30 @@ export default function Library() {
                 {f.label}
               </button>
             ))}
+          </div>
+
+          {/* M1: search the OWNED corpus — typed query OR file-drop bias.
+              Theme-context (the active research themes) is folded into the
+              query when present, degrading gracefully when absent. */}
+          <CorpusSearch onOpen={openAtPage} themeContext={themeTerms} />
+
+          {/* M4: meta-reading entry — deep-research the owned corpus into a
+              re-openable, length-boxed Read asset. PROPOSED boundary (sign-off
+              pending) — the surface itself carries the banner. */}
+          <div className="flex items-center justify-between gap-3 rounded-md border border-sun/40 bg-sun/10 px-3 py-2">
+            <p className="text-[13px] font-serif text-ink dark:text-bright">
+              Make a reading asset from your corpus
+              <span className="ml-2 text-[11px] font-mono uppercase tracking-wider text-sun-deep dark:text-sun">
+                proposed
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/read/meta-reading")}
+              className="shrink-0 text-xs font-mono text-ink dark:text-bright underline decoration-dotted underline-offset-2 hover:opacity-80"
+            >
+              Meta-read →
+            </button>
           </div>
 
           {status === "servable" && (

@@ -15,9 +15,10 @@ import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ReadingCompanion from "./ReadingCompanion";
 import ResearchThis from "./ResearchThis";
+import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
-import { paginate } from "./paginate";
+import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
@@ -80,6 +81,18 @@ export default function BookReader() {
     [body],
   );
   const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
+
+  // Citation → page jump (M2). A talk-to-book / search citation carries a
+  // resolved 0-based page; map it to the window index and move the reader.
+  // REUSES the EXISTING reader navigation (windowForTocPage + setPageIndex) —
+  // the SAME path TOC jumps use, not a parallel one.
+  const jumpToPage = useCallback(
+    (page: number) => {
+      const window = windowForTocPage(pages, page);
+      if (window !== null) setPageIndex(window);
+    },
+    [pages, setPageIndex],
+  );
 
   // Reader ad-impression flushing (SPR-05). A stable session id per mount;
   // the hook tracks focused dwell and flushes the page's slots on change.
@@ -429,6 +442,13 @@ export default function BookReader() {
           readingThreadId={readingThreadId}
         />
       )}
+
+      {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book
+          conversation that persists across page navigation (session state, the
+          usePosition precedent). Answers cite pages → jumpToPage moves the
+          SPR-07 reader. The SPR-04 selection FloatMenu Dialogue stays one-shot;
+          THIS is the new multi-turn surface. */}
+      <TalkToBook documentId={documentId} title={book.title} onJumpToPage={jumpToPage} />
     </div>
   );
 }

@@ -138,6 +138,7 @@ def search(
     top_k: int = 5,
     source_tier_max: Optional[int] = None,
     document_id: Optional[str] = None,
+    document_ids: Optional[Sequence[str]] = None,
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
 ) -> dict:
@@ -157,6 +158,17 @@ def search(
         document_id: Scope to chunks belonging to a single document.
             Used by the grounder to check claims against the document
             the user was wrestling, not the whole corpus.
+        document_ids: Scope to chunks belonging to ANY document in this
+            set (a single ``document_id IN (?,?,..)`` clause). This is the
+            Read SPR-08 meta-reading "owned corpus" scope: synthesis over
+            a bounded set of owned books ranks all their chunks by global
+            similarity in ONE gated query, rather than iterating per-doc
+            and re-merging (which would re-rank after the fact and risk
+            applying the §9.0 gate inconsistently). When both
+            ``document_id`` and ``document_ids`` are given, the single id
+            is appended to the set (the union of the two scopes). An empty
+            set is treated as "no documents in scope" → no results (an
+            honest empty, never the whole corpus).
         with_edges: When True, attach the edges sourced from each
             returned chunk plus the nodes those edges connect.
         policy_tag: Retrieval-time gate per master-spec §9.0. When
@@ -177,6 +189,24 @@ def search(
     if top_k < 1:
         raise ValueError(f"top_k must be >= 1, got {top_k}")
 
+    # Union the single-id scope into the set scope (a caller may pass
+    # either or both). An EXPLICITLY-EMPTY set means "no documents in
+    # scope" — return nothing rather than silently widening to the whole
+    # corpus (the meta-reading owned-corpus scope must never leak past its
+    # bound). `document_ids is None` ⇒ no set filter at all.
+    scoped_ids: Optional[list[str]] = None
+    if document_ids is not None:
+        scoped_ids = list(dict.fromkeys(document_ids))  # de-dup, keep order
+        if document_id is not None and document_id not in scoped_ids:
+            scoped_ids.append(document_id)
+        if not scoped_ids:
+            return {
+                "query": query,
+                "top_k": top_k,
+                "results": [],
+                "node_matches": [],
+            }
+
     query_vec = list(model.encode(query))
     dim = model.dimension
     if len(query_vec) != dim:
@@ -190,6 +220,7 @@ def search(
     sql = f"""
         SELECT
             c.chunk_id, c.section_path, c.text, c.token_count,
+            c.document_id, c.chunk_index,
             d.title, d.source_tier, d.document_type,
             {sim_expr} AS similarity
         FROM chunks c
@@ -197,7 +228,11 @@ def search(
         WHERE c.embedding IS NOT NULL
     """
     params: list[Any] = []
-    if document_id is not None:
+    if scoped_ids is not None:
+        placeholders = ",".join("?" for _ in scoped_ids)
+        sql += f" AND c.document_id IN ({placeholders})"
+        params.extend(scoped_ids)
+    elif document_id is not None:
         sql += " AND c.document_id = ?"
         params.append(document_id)
     if source_tier_max is not None:
@@ -222,12 +257,21 @@ def search(
     rows = con.execute(sql, params).fetchall()
 
     results: list[dict] = []
-    for chunk_id, section, text, tokens, title, tier, dtype, sim in rows:
+    for (
+        chunk_id, section, text, tokens, doc_id, chunk_index,
+        title, tier, dtype, sim,
+    ) in rows:
         item: dict[str, Any] = {
             "chunk_id": chunk_id,
             "section_path": section,
             "chunk_text": text[:500] + ("…" if text and len(text) > 500 else ""),
             "token_count": tokens,
+            # document_id + chunk_index let a citation jump back to the
+            # source: the Read surface maps section_path ("Page N") → a
+            # reader page (page_index_from_section_path), and falls back to
+            # the document when no page resolves (honest, never invented).
+            "document_id": doc_id,
+            "chunk_index": chunk_index,
             "document_title": title,
             "source_tier": tier,
             "document_type": dtype,
