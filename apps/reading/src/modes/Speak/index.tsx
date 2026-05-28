@@ -11,6 +11,7 @@ import {
   inviteByEmail,
   listVoices,
   makeShareLink,
+  releasePayout,
   whatEveryoneAgreesOn,
   type AgreementPoint,
   type ArrivingVoice,
@@ -265,6 +266,9 @@ export default function Speak() {
             onPublish={() => void runGated("Publishing", "/publish", {})}
             onQuoteBook={() =>
               void runGated("Quote", "/book-orders", { book_format: "paperback", page_count: 200 })
+            }
+            onReleasePayout={(args) =>
+              releasePayout(projectId, { ...args, adRevenueUsd: "0" })
             }
           />
         ) : (

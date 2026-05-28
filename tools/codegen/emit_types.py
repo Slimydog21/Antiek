@@ -133,6 +133,8 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ReasoningPathUsed,
     # Wedge 3 — sub-model for VerifierLookupPayload.results.
     schema_module.ExaLookupResult,
+    # SPR-08 M4 — sub-model for ReadMetaReadingGeneratedPayload.citations.
+    schema_module.MetaReadingCitation,
 )
 
 # Payload models, in the same order as the TypedPayload union.
@@ -238,6 +240,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.OutlineBlockRemovedPayload,
     # Write workflow SPR-02 — edit capture.
     schema_module.EditCapturedPayload,
+    # Write workflow SPR-09 — draft provenance persistence (X-ray).
+    schema_module.SectionDraftGeneratedPayload,
     # Read workflow SPR-01 — servable-corpus legal-gate audit trail.
     schema_module.BookServabilityChangedPayload,
     schema_module.BookTakenDownPayload,
@@ -249,6 +253,18 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.SeamSpeakToWritePayload,
     schema_module.SeamSpeakToReadPayload,
     schema_module.SeamWriteToSpeakPayload,
+    # Living Roadmap SPR-14 — shared voice-in capture provenance.
+    schema_module.VoiceCapturedPayload,
+    # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
+    schema_module.MarginaliaNotedPayload,
+    # Living Roadmap SPR-03 — block-canvas position persistence (DRW organism).
+    schema_module.BlockPositionPayload,
+    # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
+    schema_module.SourceReadPayload,
+    # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
+    schema_module.ReadMetaReadingGeneratedPayload,
+    # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
+    schema_module.DocumentFiledIntoInvestigationPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.
@@ -278,6 +294,9 @@ LITERAL_ALIASES: dict[str, tuple[str, ...]] = {
     # Sprint 18 — Exa/Browserbase substrate-only precursor.
     "DiscoveryProvider": typing.get_args(schema_module.DiscoveryProvider),
     "DiscoveryDecision": typing.get_args(schema_module.DiscoveryDecision),
+    # Living Roadmap SPR-14 — shared provenance vocabulary (voice-in "user",
+    # TTS-out "ai", machine "system"). The voice-out builder references "ai".
+    "ProvenanceSourceKind": typing.get_args(schema_module.ProvenanceSourceKind),
 }
 
 

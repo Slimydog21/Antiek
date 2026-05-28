@@ -12,15 +12,17 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
  *  - an engine failure shows the honest AIActionFailure, never a fake landing.
  */
 
-const { listPeopleMock, createPersonMock } = vi.hoisted(() => ({
+const { listPeopleMock, createPersonMock, listPublicFeedMock } = vi.hoisted(() => ({
   listPeopleMock: vi.fn(),
   createPersonMock: vi.fn(),
+  listPublicFeedMock: vi.fn(),
 }));
 
 vi.mock("../../lib/speakApi", async (orig) => ({
   ...(await orig<typeof import("../../lib/speakApi")>()),
   listPeople: listPeopleMock,
   createPerson: createPersonMock,
+  listPublicFeed: listPublicFeedMock,
 }));
 
 import SpeakIndex from "./index";
@@ -28,6 +30,7 @@ import SpeakIndex from "./index";
 beforeEach(() => {
   listPeopleMock.mockReset().mockResolvedValue([]);
   createPersonMock.mockReset();
+  listPublicFeedMock.mockReset().mockResolvedValue([]);
 });
 afterEach(cleanup);
 
@@ -69,5 +72,21 @@ describe("SpeakIndex — the warm door", () => {
     fireEvent.click(screen.getByRole("button", { name: /start their story/i }));
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.queryByText("PROJECT PAGE")).toBeNull();
+  });
+
+  // ── M1 — the public/private split ──
+  it("has a public-feed tab with an honest empty state and an 'add your memory' entry", async () => {
+    mount();
+    // Default tab is the private dashboard.
+    expect(await screen.findByText(/no one yet/i)).toBeTruthy();
+    // Switch to the public feed — empty is honest, not placeholder cards.
+    fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
+    expect(await screen.findByText(/no public remembrances yet/i)).toBeTruthy();
+    // Now a populated feed shows an interview-with / chime-in entry per item.
+    listPublicFeedMock.mockResolvedValue([{ id: "p1", name: "Grandma", voiceCount: 3 }]);
+    fireEvent.click(screen.getByRole("tab", { name: /people you're remembering/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
+    expect(await screen.findByText("Grandma")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /add your memory/i })).toBeTruthy();
   });
 });

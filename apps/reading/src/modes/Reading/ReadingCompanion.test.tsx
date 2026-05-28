@@ -94,6 +94,30 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(screen.getByText(/Open question:/)).toBeTruthy();
   });
 
+  it("renders an in-book FloatMenu NOTE (marginalia.noted) as a user-sourced note (M3)", () => {
+    // Read SPR-07 M3 — the in-book NOTE lands on the book's reading thread as
+    // a marginalia.noted event; the companion (via deriveNotes) must render it,
+    // labelled as the reader's own note (§9 — never shown as AI-distilled).
+    useInvestigationMock.mockReturnValue(
+      state({
+        status: "completed",
+        events: [
+          ev("marginalia.noted", {
+            note_id: "mn-1",
+            note_text: "The moat is provenance, not the model.",
+            excerpt: "provenance is the moat",
+            source_kind: "user",
+            chunk_id: null,
+          }),
+        ],
+      }),
+    );
+    renderCompanion();
+    expect(screen.getByText(/The moat is provenance/)).toBeTruthy();
+    // Honest attribution: a user-authored note carries the "Your note" label.
+    expect(screen.getByText(/Your note/)).toBeTruthy();
+  });
+
   it("with no key (empty, not-running thread) shows the honest empty state, no fabricated notes", () => {
     // No provider key ⇒ no distillation emits ⇒ the thread is empty and not
     // running. The companion is calm and honest — never invents a note.

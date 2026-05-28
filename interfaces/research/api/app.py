@@ -109,6 +109,12 @@ class InvestigationStartRequest(BaseModel):
     investigation_id: Optional[str] = None
     parent_investigation_id: Optional[str] = None
     spawn_context: Optional[str] = None
+    # SPR-01 M3: curated fast/deep research tier from the research entry.
+    # CLOSED set; recorded on the start event so the chosen tier is
+    # queryable. "fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro (the
+    # tier→provider map lives in substrate/dispatch/research_tier.py).
+    # Defaults to "deep" — a cold research question is the high-value case.
+    research_tier: Literal["fast", "deep"] = "deep"
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -283,6 +289,13 @@ class InvestigationStatusResponse(BaseModel):
     last_delivered_action_type: Optional[str] = None
     terminal_payload: Optional[dict] = None
     rubric_score: Optional[RubricScore] = None
+    # SPR-01 M3: the curated fast/deep research tier recorded on this
+    # investigation's start event ("fast" → MiMo V2.5 Pro, "deep" →
+    # DeepSeek V4 Pro). READ from the persisted start payload — this is
+    # the "chosen tier is queryable after the fact" acceptance. Null when
+    # the start event has no tier (legacy / daemon-spawned runs predate
+    # the field); the surface treats null as the default, never fabricates.
+    research_tier: Optional[str] = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -343,6 +356,11 @@ class DeliverableDetailResponse(BaseModel):
     title: str
     deliverable_kind: str
     status: str
+    # SPR-09 M1: the piece↔research link, surfaced on the detail so the Write
+    # header can show the active connection and the canvas can import the
+    # linked research's blocks. Reading it back here is how M1 verifies the
+    # link EXISTS (not a UI claim) — see docs/decisions/spr-09-*.md (D-1).
+    investigation_root_id: Optional[str] = None
     sections: list[SectionResponse] = Field(default_factory=list)
 
 
@@ -1383,6 +1401,81 @@ def create_app(
                 # Don't fail the POST because the broadcast failed.
                 pass
 
+            # Read SPR-07 M3 — an in-book FloatMenu NOTE (marginalia.noted)
+            # becomes a USER-AUTHORED per-book insight node in the one graph,
+            # so a later block_search returns it. Promotion is the single
+            # host-side mutation, serialized through db_lock (single-writer
+            # holds). Best-effort: the note is already durably on the log and
+            # the backfill is the safety net, so a promotion hiccup must NOT
+            # fail the note's persistence. §9: source_kind="user" is carried
+            # onto the node (promote_from_marginalia_event), never conflated
+            # with a model-emerged insight.
+            if action_value == "marginalia.noted":
+                try:
+                    from substrate.graph.insight_question import (
+                        promote_from_marginalia_event,
+                    )
+
+                    promote_from_marginalia_event(matching, enabled=True)
+                except Exception:  # pragma: no cover — best-effort, backfill covers
+                    pass
+
+            # Read SPR-13 M3 — filing a personal-space doc INTO a research
+            # project. The reader EXPLICITLY accepted a suggestion (the suggest
+            # path NEVER auto-files; this event only exists because the user
+            # clicked accept). Filing is a LINK, not a copy: we set the doc's
+            # investigation_id THROUGH THE SINGLE-WRITER FUNNEL (connect_write =
+            # runtime/db_lock) — a direct `UPDATE documents` outside this lock is
+            # forbidden (it would bypass the only-writer invariant). The §9 chain
+            # (claim→chunk→document→ip_holder_id) is untouched and ip_holder_id is
+            # NOT written (immutable on filing). Unlike marginalia (best-effort —
+            # the note is already durable + a backfill covers it), the filing
+            # write IS the point of the event: if it fails we surface a 503 so the
+            # client doesn't think a doc was filed when it wasn't (no silent
+            # divergence between the log and the documents table).
+            if action_value == "document.filed_into_investigation":
+                from runtime.db_lock import connect_write
+                from substrate.graph import default_db_path
+
+                payload = matching.get("payload") or {}
+                filed_doc = payload.get("filed_document_id")
+                target_inv = payload.get("target_investigation_id")
+                if not filed_doc or not target_inv:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            "document.filed_into_investigation requires "
+                            "filed_document_id + target_investigation_id."
+                        ),
+                    )
+                try:
+                    with connect_write(
+                        default_db_path(), purpose="api:file_document"
+                    ) as con:
+                        existing = con.execute(
+                            "SELECT document_id FROM documents WHERE document_id = ?",
+                            [filed_doc],
+                        ).fetchone()
+                        if existing is None:
+                            raise HTTPException(
+                                status_code=404,
+                                detail=f"document {filed_doc!r} not found; nothing filed.",
+                            )
+                        # 1:N — set the doc's single investigation home. ip_holder_id
+                        # + the chunk/claim chain are NOT touched (link, not copy).
+                        con.execute(
+                            "UPDATE documents SET investigation_id = ? "
+                            "WHERE document_id = ?",
+                            [target_inv, filed_doc],
+                        )
+                except HTTPException:
+                    raise
+                except Exception as exc:  # the write IS the point — surface it
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"filing write failed: {exc}",
+                    ) from exc
+
         return EmittedEventResponse(event_id=event_id, action_type=action_value)
 
     # ── GET trajectory ──────────────────────────────────────────
@@ -1526,6 +1619,10 @@ def create_app(
                     max_sub_questions=req.max_sub_questions,
                     parent_investigation_id=req.parent_investigation_id,
                     spawn_context=req.spawn_context,
+                    # SPR-01 M3: record the chosen research tier on the
+                    # start event (queryable after the fact). The payload
+                    # field is the same CLOSED set.
+                    research_tier=req.research_tier,
                 ),
                 role="operator",
                 policy_id="operator-cli",
@@ -1623,6 +1720,22 @@ def create_app(
         # than a fabricated one.
         rubric_score = _rubric_score_from_trajectory(rows)
 
+        # SPR-01 M3: READ the chosen research tier off the start event's
+        # persisted payload (the "queryable after the fact" acceptance).
+        # The start event is the first INVESTIGATION_START_REQUESTED row;
+        # walk oldest-first and stop at the first match. Null when absent
+        # (legacy/daemon runs predate the field) — never fabricated.
+        start_action = ActionType.INVESTIGATION_START_REQUESTED.value
+        research_tier: Optional[str] = None
+        for r in rows:
+            if r.get("action_type") == start_action:
+                payload = r.get("payload")
+                if isinstance(payload, dict):
+                    rt = payload.get("research_tier")
+                    if isinstance(rt, str):
+                        research_tier = rt
+                break
+
         if terminal_row is not None:
             status = (
                 "completed"
@@ -1636,6 +1749,7 @@ def create_app(
                 last_delivered_action_type=last_delivered,
                 terminal_payload=terminal_row.get("payload"),
                 rubric_score=rubric_score,
+                research_tier=research_tier,
             )
 
         return InvestigationStatusResponse(
@@ -1645,6 +1759,7 @@ def create_app(
             last_delivered_action_type=last_delivered,
             terminal_payload=None,
             rubric_score=rubric_score,
+            research_tier=research_tier,
         )
 
     # ── Sprint 11: list investigations + chunk fetch ───────────
@@ -2155,7 +2270,8 @@ def create_app(
         con = duckdb.connect(db, read_only=True)
         try:
             head = con.execute(
-                "SELECT deliverable_id, title, deliverable_kind, status "
+                "SELECT deliverable_id, title, deliverable_kind, status, "
+                "investigation_root_id "
                 "FROM deliverables WHERE deliverable_id = ?", [deliverable_id],
             ).fetchone()
             if head is None:
@@ -2185,7 +2301,8 @@ def create_app(
             ))
         return DeliverableDetailResponse(
             deliverable_id=head[0], title=head[1],
-            deliverable_kind=head[2], status=head[3], sections=sections,
+            deliverable_kind=head[2], status=head[3],
+            investigation_root_id=head[4], sections=sections,
         )
 
     @app.post("/sections", response_model=SectionResponse, status_code=201)

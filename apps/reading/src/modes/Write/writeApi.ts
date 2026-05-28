@@ -26,7 +26,10 @@ export interface FolderSummary {
   member_count: number;
 }
 
-export interface PlaceBlockBody {
+/** Place a graph-node-backed block (the dominant case — dragging an insight /
+ * question / claim from research into the outline). Carries a node_id, no
+ * content (the node is the content of record). */
+export interface PlaceNodeBlockBody {
   section_id: string;
   block_kind: "insight" | "open_question" | "claim";
   provenance_kind: "graph_node";
@@ -34,6 +37,20 @@ export interface PlaceBlockBody {
   block_index: number;
   deliverable_id?: string;
 }
+
+/** Place a user-originated block (the operator wrote/spoke it — e.g. SPR-09 M4
+ * voice-to-draft). §9: carries inline content + NO node_id (no fabricated
+ * citation); recorded as the writer's own authorship, never model output. */
+export interface PlaceUserBlockBody {
+  section_id: string;
+  block_kind: "user_authored" | "operator_note";
+  provenance_kind: "user_authored";
+  content: string;
+  block_index: number;
+  deliverable_id?: string;
+}
+
+export type PlaceBlockBody = PlaceNodeBlockBody | PlaceUserBlockBody;
 
 async function _json<T>(resp: Response, what: string): Promise<T> {
   if (!resp.ok) {
@@ -204,6 +221,11 @@ export interface GenerationResult {
   all_claims_cited?: boolean | null;
   unsupported_paragraphs?: number[];
   fabricated_citations?: string[];
+  /** paragraph_index (string key) → driving block_ids. Persisted server-side
+   * (SECTION_DRAFT_GENERATED, SPR-09 M3) and returned so the X-ray can show
+   * paragraph→blocks immediately; a reload reads the SAME map back from
+   * GET /deliverables/{id}.prose_provenance. Empty unless status==generated. */
+  prose_provenance?: Record<string, string[]>;
 }
 
 /** Generate a section's prose from its attached blocks (SPR-06). The live

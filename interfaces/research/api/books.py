@@ -162,6 +162,169 @@ class FullTextResponse(BaseModel):
     reason: str
 
 
+# ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
+
+
+class TalkTurn(BaseModel):
+    """One prior conversation turn the client carries forward (the multi-turn
+    thread lives in the reader's session state — the floating bookmark — NOT in
+    substrate truth). ``question`` is user-sourced; ``answer`` the model's prior
+    reply, kept distinct."""
+
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+
+
+class AskBookRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    # The recent tail of the running conversation (server bounds it again).
+    history: list[TalkTurn] = Field(default_factory=list)
+    research_tier: Literal["fast", "deep"] = "deep"
+
+
+class CitationResponse(BaseModel):
+    chunk_id: str
+    document_id: str
+    # The 0-based reader page the cited chunk anchors to, or null when the
+    # chunk's section_path did not resolve to a page marker (then
+    # ``page_resolved`` is False and the surface shows an honest "page not
+    # pinpointed" — never a fabricated page).
+    page_index: Optional[int] = None
+    page_resolved: bool = False
+    snippet: str
+
+
+class AskBookResponse(BaseModel):
+    answer: str
+    citations: list[CitationResponse]
+    # False when the book had no extractable text to ground on (scanned-image
+    # PDF / fully-withheld) — the honest no-context state, never a hallucination.
+    grounded: bool
+    context_chunk_count: int
+
+
+# ── SPR-08 M1 — corpus search (NET-NEW) ─────────────────────────────
+
+
+class CorpusSearchHit(BaseModel):
+    chunk_id: str
+    document_id: str
+    document_title: Optional[str]
+    page_index: Optional[int] = None
+    page_resolved: bool = False
+    snippet: str
+    similarity: float
+
+
+class CorpusSearchResponse(BaseModel):
+    query: str
+    hits: list[CorpusSearchHit]
+    count: int
+
+
+# ── SPR-08 M4 — meta-reading deliverable (PROPOSED boundary) ────────
+
+
+class MetaReadingRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    length_unit: Literal["pages", "minutes"]
+    length_amount: int = Field(ge=1)
+    research_tier: Literal["fast", "deep"] = "deep"
+    # The owned-corpus scope. "hard" is the PROPOSED Research↔Read boundary
+    # (owned servable docs, optionally an explicit pick); "soft" is the rollback
+    # when operator sign-off is withheld (the whole owned readable corpus).
+    # NEITHER reaches the open internet — meta-reading is internet-agnostic.
+    corpus_scope: Literal["hard", "soft"] = "hard"
+    # An explicit pick of owned document ids (intersected with the owned set
+    # under "hard" scope). Omit to scope to the whole owned servable corpus.
+    document_ids: Optional[list[str]] = None
+
+
+class MetaReadingResponse(BaseModel):
+    asset_id: str
+    report: str
+    citations: list[CitationResponse]
+    length_unit: Literal["pages", "minutes"]
+    length_amount: int
+    word_budget: int
+    truncated: bool
+    corpus_scope: Literal["hard", "soft"]
+    corpus_document_ids: list[str]
+    # True when the owned corpus had nothing to synthesize from (honest empty,
+    # never a fabricated report).
+    empty: bool
+    context_chunk_count: int
+
+
+# ── SPR-13 — personal document space (collect / categorize / file) ──
+
+
+class PersonalAssetResponse(BaseModel):
+    """One item in the personal space (a created deliverable or a saved read).
+    Substrate-backed — reconstructed from the event log, NOT a new store."""
+
+    asset_id: str
+    kind: Literal["meta_reading", "saved_read"]
+    title: str
+    prompt: Optional[str]
+    document_ids: list[str]
+    emitted_at: Optional[str]
+    # The in-app route that re-opens the item (the meta-doc view / the reader).
+    open_route: str
+
+
+class PersonalSpaceResponse(BaseModel):
+    assets: list[PersonalAssetResponse]
+    count: int
+
+
+class AssetCategoryResponse(BaseModel):
+    # Stable, unique key the surface renders on — two clusters can share a
+    # human label, so the id (not the label) is the safe list key.
+    category_id: str
+    label: str
+    asset_ids: list[str]
+    # "theme" when the label emerged from clustering; "recency" when the corpus
+    # was below the stability bound and we fell back honestly (never a fake label).
+    ordering: Literal["theme", "recency"]
+
+
+class CategorizedSpaceResponse(BaseModel):
+    categories: list[AssetCategoryResponse]
+    ordering: Literal["theme", "recency"]
+    # The asset-count below which categories don't stabilize → recency fallback.
+    stability_bound: int
+
+
+class ProjectMatchResponse(BaseModel):
+    investigation_id: str
+    question: str
+    score: float
+
+
+class FileSuggestionResponse(BaseModel):
+    document_id: str
+    # The candidate projects above the suggestion threshold (top match first;
+    # >1 when the doc matches several — the surface names them, never auto-files).
+    matches: list[ProjectMatchResponse]
+
+
+class SavedMetaReadingResponse(BaseModel):
+    """A previously-saved meta-reading asset, re-opened by id from the event log
+    (Read SPR-13 M1 — the item opens back into the meta-doc view). The same
+    shape MetaReadingResponse carries, minus the generation-only word_budget."""
+
+    asset_id: str
+    prompt: str
+    report: str
+    citations: list[CitationResponse]
+    length_unit: Literal["pages", "minutes"]
+    length_amount: int
+    truncated: bool
+    corpus_scope: Literal["hard", "soft"]
+    corpus_document_ids: list[str]
+
+
 # ── Routes ──────────────────────────────────────────────────────────
 
 
@@ -383,4 +546,455 @@ def register_book_routes(app: FastAPI) -> None:
             gated=seed.gated,
             servability=seed.servability,
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
+        )
+
+    # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited, gate-safe) ──
+    @app.post(
+        "/books/{document_id}/ask",
+        response_model=AskBookResponse,
+        tags=["books"],
+    )
+    async def ask_book(document_id: str, req: AskBookRequest) -> AskBookResponse:
+        """Answer one talk-to-book turn, page-cited, over THIS book only.
+
+        Retrieval is scoped to ``document_id`` through the §9.0 gate, so a
+        withheld book's body never reaches the model context or a citation. A
+        book with no extractable text returns an honest ungrounded answer
+        WITHOUT dispatching a model (no hallucination). The model is dispatched
+        through the ONE Hermes-routed path (§16); 503 when no provider is keyed.
+        """
+        from runtime.db_lock import connect_read
+        from substrate.books.book_qa import Turn, answer_book_question
+        from substrate.dispatch.router import ProviderError
+        from substrate.graph.search import SentenceTransformerEmbedding
+
+        # Confirm the book exists (honest 404 rather than an empty answer).
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            asset = get_book_asset(con, document_id)
+        finally:
+            con.close()
+        if asset is None:
+            raise HTTPException(status_code=404, detail="book_not_found")
+
+        try:
+            model = SentenceTransformerEmbedding()
+        except RuntimeError as exc:  # sentence-transformers not installed
+            raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
+
+        con = connect_read(db)
+        try:
+            try:
+                result = answer_book_question(
+                    con,
+                    document_id=document_id,
+                    question=req.question,
+                    model=model,
+                    investigation_id=f"read-{document_id}",
+                    history=[Turn(question=t.question, answer=t.answer) for t in req.history],
+                    research_tier=req.research_tier,
+                )
+            except ProviderError as exc:
+                # No keyed provider — honest 503, never a fabricated answer.
+                raise HTTPException(status_code=503, detail=f"dispatch_unavailable: {exc}") from exc
+        finally:
+            con.close()
+
+        return AskBookResponse(
+            answer=result.answer,
+            citations=[
+                CitationResponse(
+                    chunk_id=c.chunk_id,
+                    document_id=c.document_id,
+                    page_index=c.page_index,
+                    page_resolved=c.page_resolved,
+                    snippet=c.snippet,
+                )
+                for c in result.citations
+            ],
+            grounded=result.grounded,
+            context_chunk_count=result.context_chunk_count,
+        )
+
+    # ── SPR-08 M1 — corpus search over the owned graph (NET-NEW) ──
+    @app.get(
+        "/corpus/search",
+        response_model=CorpusSearchResponse,
+        tags=["books"],
+    )
+    async def corpus_search(
+        q: str,
+        limit: int = 20,
+        document_id: Optional[str] = None,
+    ) -> CorpusSearchResponse:
+        """Search the owned corpus by a natural-language query. Wraps
+        ``substrate.graph.search.search`` with the DEFAULT (non-privileged)
+        policy_tag, so the §9.0 gate excludes restricted content. ``document_id``
+        optionally scopes to one document. The Library's typed query + file-drop
+        bias both POST text here (file = a query SIGNAL, never ingested)."""
+        from runtime.db_lock import connect_read
+        from substrate.books.page_anchor import page_index_from_section_path
+        from substrate.graph.search import SentenceTransformerEmbedding, search
+
+        if not q.strip():
+            return CorpusSearchResponse(query=q, hits=[], count=0)
+        try:
+            model = SentenceTransformerEmbedding()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
+
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            res = search(con, q, model=model, top_k=max(1, limit), document_id=document_id)
+        finally:
+            con.close()
+
+        hits: list[CorpusSearchHit] = []
+        for r in res["results"]:
+            page_index = page_index_from_section_path(r.get("section_path"))
+            text = r.get("chunk_text", "") or ""
+            hits.append(
+                CorpusSearchHit(
+                    chunk_id=r.get("chunk_id", ""),
+                    document_id=r.get("document_id", ""),
+                    document_title=r.get("document_title"),
+                    page_index=page_index,
+                    page_resolved=page_index is not None,
+                    snippet=text[:240] + ("…" if len(text) > 240 else ""),
+                    similarity=r.get("similarity", 0.0),
+                )
+            )
+        return CorpusSearchResponse(query=q, hits=hits, count=len(hits))
+
+    # ── SPR-08 M4 — meta-reading deliverable (PROPOSED, owned-corpus-only) ──
+    @app.post(
+        "/corpus/meta-reading",
+        response_model=MetaReadingResponse,
+        status_code=201,
+        tags=["books"],
+    )
+    async def meta_reading(req: MetaReadingRequest) -> MetaReadingResponse:
+        """Generate + SAVE a one-shot, READ-ONLY, page-cited synthesis over the
+        OWNED corpus (Read SPR-08 M4). INTERNET-AGNOSTIC: retrieval is ONLY
+        ``search`` over owned document ids — no acquisition / open-web call. The
+        HARD length-box is built up front (a degenerate size → 422 with a stated
+        bound). The deliverable is persisted as a re-openable Read asset through
+        the single-writer typed-event funnel (NOT a new silo). PROPOSED boundary
+        (sign-off pending) — reversible to a soft corpus scope.
+        """
+        import uuid as _uuid
+
+        from runtime.db_lock import connect_read
+        from substrate.books.meta_reading import MetaReadingError, generate_meta_reading
+        from substrate.dispatch.router import ProviderError
+        from substrate.event_log import emit_typed
+        from substrate.graph.search import SentenceTransformerEmbedding
+        from substrate.schemas.events import (
+            MetaReadingCitation,
+            ReadMetaReadingGeneratedPayload,
+        )
+
+        try:
+            model = SentenceTransformerEmbedding()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=f"embedding_unavailable: {exc}") from exc
+
+        asset_id = f"mr-{_uuid.uuid4().hex[:12]}"
+        investigation_id = f"read-meta-{asset_id}"
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            try:
+                deliverable = generate_meta_reading(
+                    con,
+                    prompt=req.prompt,
+                    unit=req.length_unit,
+                    amount=req.length_amount,
+                    model=model,
+                    investigation_id=investigation_id,
+                    scope=req.corpus_scope,
+                    document_ids=req.document_ids,
+                    research_tier=req.research_tier,
+                )
+            except MetaReadingError as exc:
+                # Degenerate length (0 / negative / above the cap) — stated bound.
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except ProviderError as exc:
+                raise HTTPException(status_code=503, detail=f"dispatch_unavailable: {exc}") from exc
+        finally:
+            con.close()
+
+        citations = [
+            CitationResponse(
+                chunk_id=c.chunk_id,
+                document_id=c.document_id,
+                page_index=c.page_index,
+                page_resolved=c.page_resolved,
+                snippet=c.snippet,
+            )
+            for c in deliverable.citations
+        ]
+
+        # Persist the deliverable as substrate truth (re-open / narrate /
+        # promote). NOT a side-store — it rides the single-writer funnel. An
+        # empty deliverable is NOT saved (nothing to re-open); honest empty.
+        if not deliverable.empty:
+            event_id = emit_typed(
+                investigation_id,
+                ReadMetaReadingGeneratedPayload(
+                    asset_id=asset_id,
+                    prompt=req.prompt,
+                    report=deliverable.report,
+                    length_unit=deliverable.length_box.unit,
+                    length_amount=deliverable.length_box.amount,
+                    truncated=deliverable.truncated,
+                    corpus_scope=deliverable.corpus_scope,
+                    corpus_document_ids=deliverable.corpus_document_ids,
+                    citations=[
+                        MetaReadingCitation(
+                            chunk_id=c.chunk_id,
+                            document_id=c.document_id,
+                            page_index=c.page_index,
+                            page_resolved=c.page_resolved,
+                        )
+                        for c in deliverable.citations
+                    ],
+                ),
+                role="read/meta_reading",
+                policy_id="read/meta_reading",
+            )
+            if event_id is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Event log is disabled (ANTIEK_EVENTS_DISABLED).",
+                )
+
+        return MetaReadingResponse(
+            asset_id=asset_id,
+            report=deliverable.report,
+            citations=citations,
+            length_unit=deliverable.length_box.unit,
+            length_amount=deliverable.length_box.amount,
+            word_budget=deliverable.length_box.word_budget,
+            truncated=deliverable.truncated,
+            corpus_scope=deliverable.corpus_scope,
+            corpus_document_ids=deliverable.corpus_document_ids,
+            empty=deliverable.empty,
+            context_chunk_count=deliverable.context_chunk_count,
+        )
+
+    # ── SPR-13 — personal document space ────────────────────────────
+    #
+    # The reader's "personal bed of information that labels itself": their
+    # CREATED deliverables (SPR-08 meta-readings) + saved reads (SPR-07
+    # source.read history), reconstructed from the event log — NO new store.
+    # Distinct from /books (the raw library of source books). These selectors
+    # live in substrate/books/personal_space.py and reuse the SAME embedding
+    # model SPR-04 curate + §7 search use (no new embedder).
+
+    def _book_title_resolver(document_id: str) -> Optional[str]:
+        """Map a read document_id → its book title so a saved read shows the
+        book's name, not its id. Best-effort: a non-book / missing doc resolves
+        to None and the caller falls back to the id (honest, never fabricated)."""
+        from runtime.db_lock import connect_read
+
+        try:
+            con = connect_read(_resolve_db_path())
+            try:
+                asset = get_book_asset(con, document_id)
+            finally:
+                con.close()
+            return asset.title if asset else None
+        except Exception:
+            return None
+
+    @app.get("/meta-readings", response_model=PersonalSpaceResponse, tags=["books"])
+    async def list_personal_space() -> PersonalSpaceResponse:
+        """List the personal-space assets — created deliverables + saved reads,
+        newest first (Read SPR-13 M1). Substrate-backed (event-log scan), NOT a
+        new document store. Each asset's ``open_route`` re-opens it into the
+        SPR-08 meta-doc view / the SPR-07 reader."""
+        from substrate.books.personal_space import list_personal_assets
+
+        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        return PersonalSpaceResponse(
+            assets=[PersonalAssetResponse(**a.to_dict()) for a in assets],
+            count=len(assets),
+        )
+
+    @app.get(
+        "/meta-readings/categories",
+        response_model=CategorizedSpaceResponse,
+        tags=["books"],
+    )
+    async def personal_space_categories() -> CategorizedSpaceResponse:
+        """Cluster the personal-space assets into SYSTEM-named categories (Read
+        SPR-13 M2). The system names the categories from each cluster's salient
+        terms; the user never hand-organizes folders. Deterministic on a fixed
+        corpus; honest recency fallback below the stability bound (rigor #1).
+        Reuses the SAME embedding model — NO new embedder; an unavailable model
+        degrades to the recency fallback rather than failing the request."""
+        from substrate.books.personal_space import (
+            categorize_assets,
+            list_personal_assets,
+        )
+
+        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        try:
+            from substrate.graph.search import SentenceTransformerEmbedding
+
+            model: Optional[object] = SentenceTransformerEmbedding()
+        except RuntimeError:
+            model = None
+
+        if model is None:
+            # No embedder → the honest recency fallback (one bucket), never a
+            # fabricated theme label. categorize_assets also self-falls-back
+            # below the bound, but with no model we short-circuit here.
+            from substrate.books.personal_space import (
+                MIN_ASSETS_FOR_CLUSTERING,
+                AssetCategory,
+                CategorizedSpace,
+            )
+
+            space = CategorizedSpace(
+                categories=[
+                    AssetCategory(
+                        category_id="recency",
+                        label="Recently read & created",
+                        asset_ids=[a.asset_id for a in assets],
+                        ordering="recency",
+                    )
+                ]
+                if assets
+                else [],
+                ordering="recency",
+                stability_bound=MIN_ASSETS_FOR_CLUSTERING,
+            )
+        else:
+            space = categorize_assets(assets, model=model)  # type: ignore[arg-type]
+
+        return CategorizedSpaceResponse(
+            categories=[
+                AssetCategoryResponse(
+                    category_id=c.category_id,
+                    label=c.label,
+                    asset_ids=c.asset_ids,
+                    ordering=c.ordering,
+                )
+                for c in space.categories
+            ],
+            ordering=space.ordering,
+            stability_bound=space.stability_bound,
+        )
+
+    @app.get(
+        "/meta-readings/file-suggestion",
+        response_model=FileSuggestionResponse,
+        tags=["books"],
+    )
+    async def file_suggestion(document_id: str) -> FileSuggestionResponse:
+        """Suggest research projects a personal-space document could be filed
+        into (Read SPR-13 M3). Ranks candidate projects by the doc's semantic
+        similarity to each project's question; returns matches above the
+        justified threshold, best first (top match, or >1 on a tie — never
+        auto-files). SUGGEST-ONLY: this endpoint ranks; filing is the separate
+        explicit-accept ``document.filed_into_investigation`` event.
+
+        The doc's match text is its title + its prompt (for a meta-reading) /
+        title (for a saved read), reconstructed from the personal-space list —
+        the reader's OWN deliverable text, not a withheld source body (§9.0)."""
+        from substrate.books.personal_space import (
+            list_personal_assets,
+            match_document_to_investigations,
+        )
+
+        try:
+            from substrate.graph.search import SentenceTransformerEmbedding
+
+            model = SentenceTransformerEmbedding()
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=503, detail=f"embedding_unavailable: {exc}"
+            ) from exc
+
+        # Build the doc's match text from the personal-space asset (its own
+        # deliverable text). If the id isn't a personal asset we fall back to
+        # the raw document_id as the match text (still no source body).
+        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        asset = next(
+            (a for a in assets if document_id in (a.asset_id, *a.document_ids)),
+            None,
+        )
+        if asset is not None:
+            doc_text = " ".join(p for p in (asset.prompt, asset.title) if p)
+        else:
+            doc_text = document_id
+
+        matches = match_document_to_investigations(doc_text=doc_text, model=model)
+        return FileSuggestionResponse(
+            document_id=document_id,
+            matches=[
+                ProjectMatchResponse(
+                    investigation_id=m.investigation_id,
+                    question=m.question,
+                    score=m.score,
+                )
+                for m in matches
+            ],
+        )
+
+    # Registered AFTER the static /meta-readings/{categories,file-suggestion}
+    # routes so neither is captured as an asset_id (FastAPI matches in
+    # registration order; static segments declared first win).
+    @app.get(
+        "/meta-readings/{asset_id}",
+        response_model=SavedMetaReadingResponse,
+        tags=["books"],
+    )
+    async def get_saved_meta_reading(asset_id: str) -> SavedMetaReadingResponse:
+        """Re-open a saved meta-reading asset by id (Read SPR-13 M1). Reads the
+        ``read.meta_reading.generated`` event off the log (the asset rides
+        ``read-meta-{asset_id}``) — the substrate's source of truth, NOT a new
+        store. The saved citations carry references (chunk/document/page), never
+        a body; the generation-time snippet preview was not persisted, so it is
+        an honest empty string on re-open (the page link still resolves)."""
+        from substrate.event_log.events import trajectory
+
+        investigation_id = f"read-meta-{asset_id}"
+        rows = trajectory(investigation_id)
+        payload = next(
+            (
+                (r.get("payload") or {})
+                for r in rows
+                if r.get("action_type") == "read.meta_reading.generated"
+                and (r.get("payload") or {}).get("asset_id") == asset_id
+            ),
+            None,
+        )
+        if payload is None:
+            raise HTTPException(
+                status_code=404, detail=f"meta-reading asset {asset_id!r} not found."
+            )
+        return SavedMetaReadingResponse(
+            asset_id=asset_id,
+            prompt=payload.get("prompt", ""),
+            report=payload.get("report", ""),
+            citations=[
+                CitationResponse(
+                    chunk_id=c.get("chunk_id", ""),
+                    document_id=c.get("document_id", ""),
+                    page_index=c.get("page_index"),
+                    page_resolved=bool(c.get("page_resolved", False)),
+                    snippet="",
+                )
+                for c in (payload.get("citations") or [])
+            ],
+            length_unit=payload.get("length_unit", "pages"),
+            length_amount=int(payload.get("length_amount", 1)),
+            truncated=bool(payload.get("truncated", False)),
+            corpus_scope=payload.get("corpus_scope", "hard"),
+            corpus_document_ids=list(payload.get("corpus_document_ids") or []),
         )

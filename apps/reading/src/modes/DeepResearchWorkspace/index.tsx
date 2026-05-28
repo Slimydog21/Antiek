@@ -33,9 +33,12 @@ import {
   type PlanTree,
   type SteerKind,
 } from "../../api/research";
+import type { DistilledNode } from "../../lib/api";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import Canvas from "./Canvas/Canvas";
+import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
 
 interface PlanState {
@@ -160,6 +163,18 @@ function ComposeBar({
 function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const session = useResearchSession(sessionId);
   const [steering, setSteering] = useState<string | null>(null);
+  // SPR-03: the "organism" canvas branch. When set to a completed
+  // investigation id, the monitor swaps the live-card grid for the
+  // block-canvas view of that research's insight/question graph. Null = the
+  // default live-card monitor (non-breaking: the existing shell is unchanged
+  // until the operator opts into the canvas).
+  const [canvasFor, setCanvasFor] = useState<string | null>(null);
+  // SPR-04: the block whose detail (the SECOND FloatMenu host) is open, or null.
+  // Clicking a BlockCard on the canvas opens its detail as an overlay panel —
+  // a highlight inside it mounts the SAME shared FloatMenu the synthesis host
+  // uses. Non-breaking: the canvas keeps rendering underneath; the detail is an
+  // overlay, dismissed back to the canvas.
+  const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
 
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
@@ -187,6 +202,38 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
     );
   }
 
+  // SPR-03: render the organism canvas for the chosen completed research.
+  if (canvasFor) {
+    return (
+      <div className="flex h-full flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <LemonButton variant="tertiary" size="sm" onClick={() => setCanvasFor(null)}>
+            ← back to monitor
+          </LemonButton>
+          <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+            organism canvas
+          </span>
+        </div>
+        <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
+          <Canvas investigationId={canvasFor} onOpenDetail={setOpenNode} />
+          {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
+              opens off a BlockCard click as an overlay over the canvas (the
+              canvas stays mounted underneath — non-breaking) and dismisses
+              back to it. A text selection inside it mounts the SAME FloatMenu. */}
+          {openNode && (
+            <div className="absolute inset-0 z-10 overflow-auto bg-ice-0 dark:bg-charcoal-1">
+              <BlockDetail
+                node={openNode}
+                investigationId={canvasFor}
+                onClose={() => setOpenNode(null)}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
@@ -199,7 +246,24 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
             <span className="ml-2 text-[11px] font-normal text-shadow-1 dark:text-moonlight">complete</span>
           )}
         </h2>
-        <div className="w-64"><CostMeter cost={session.cost} /></div>
+        <div className="flex items-center gap-3">
+          {/* SPR-03 entry: open the first completed research as the organism
+              canvas. A completed research's insight/question graph is the
+              durable product the canvas lays out. */}
+          {session.researches.some((r) => r.state === "done") && (
+            <LemonButton
+              variant="tertiary"
+              size="sm"
+              onClick={() => {
+                const done = session.researches.find((r) => r.state === "done");
+                if (done) setCanvasFor(done.investigation_id);
+              }}
+            >
+              view as canvas
+            </LemonButton>
+          )}
+          <div className="w-64"><CostMeter cost={session.cost} /></div>
+        </div>
       </div>
       {session.error && (
         <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>

@@ -72,6 +72,23 @@ export interface EconomicsView {
   splitApplies: boolean;
   /** True when the creator carries the inference cost (private mode). */
   creatorCarriesCost: boolean;
+  /**
+   * The operator-gate state (G2/G3), READ-ONLY. The UI surfaces these as
+   * "gated / not yet activated" — there is NO close affordance. Closing a
+   * gate is an operator action (a deliberate env flip post-counsel), never
+   * something this surface can do. Deny-by-default: both false until then.
+   */
+  publicPublishingAllowed: boolean;
+  publicPublishingReason: string;
+  disbursementAllowed: boolean;
+  disbursementReason: string;
+}
+
+/** One project in the browsable PUBLIC feed (M1). */
+export interface FeedItem {
+  id: string;
+  name: string;
+  voiceCount: number;
 }
 
 const VOICE_STATE: Record<string, VoiceState> = {
@@ -113,6 +130,14 @@ export function toEconomics(raw: Record<string, unknown>): EconomicsView {
   return {
     splitApplies: Boolean(raw.split_applies),
     creatorCarriesCost: Boolean(raw.creator_carries_cost),
+    // Read-only gate state. The backend denies by default; the UI shows
+    // these gated and never offers a way to close them.
+    publicPublishingAllowed: Boolean(raw.public_publishing_allowed),
+    publicPublishingReason:
+      typeof raw.public_publishing_reason === "string" ? raw.public_publishing_reason : "",
+    disbursementAllowed: Boolean(raw.disbursement_allowed),
+    disbursementReason:
+      typeof raw.disbursement_reason === "string" ? raw.disbursement_reason : "",
   };
 }
 
@@ -231,6 +256,111 @@ export async function assembleDraft(id: string, isPublic: boolean): Promise<Asse
   const data = await resp.json();
   const excluded = Array.isArray(data.excluded_claim_ids) ? data.excluded_claim_ids.length : 0;
   return { prose: typeof data.prose_text === "string" ? data.prose_text : "", excludedCount: excluded };
+}
+
+/**
+ * The browsable PUBLIC feed (M1) — only projects whose intent is public.
+ * Distinct from `listPeople` (the operator's private dashboard of everyone
+ * they're remembering). Honest when empty (returns []).
+ */
+export async function listPublicFeed(): Promise<FeedItem[]> {
+  const resp = await apiFetch("/speak/feed");
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  const rows: Record<string, unknown>[] = Array.isArray(data.projects) ? data.projects : [];
+  return rows.map((r) => ({
+    id: String(r.project_id ?? ""),
+    name:
+      typeof r.subject_ref === "string" && r.subject_ref
+        ? r.subject_ref
+        : typeof r.title === "string"
+        ? r.title
+        : "",
+    voiceCount: typeof r.interview_count === "number" ? r.interview_count : 0,
+  }));
+}
+
+export interface PayoutReleaseView {
+  spentUsd: string;
+  budgetUsd: string;
+  budgetExhausted: boolean;
+  cappedCount: number;
+}
+
+/**
+ * Release graded payout for a project (M3) — routed through §9 into ESCROW.
+ * Never disburses money (disbursement stays gated on G2/G3). Returns the
+ * honest accrued figure (which is $0 with no ad buyers) and whether the
+ * requester's budget was exhausted.
+ */
+export async function releasePayout(
+  projectId: string,
+  args: { informationGoal: string; budgetUsd: string; perInterviewCapUsd: string; adRevenueUsd: string },
+): Promise<PayoutReleaseView> {
+  const resp = await apiFetch(`/speak/projects/${encodeURIComponent(projectId)}/release-payout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      information_goal: args.informationGoal,
+      budget_usd: args.budgetUsd,
+      per_interview_cap_usd: args.perInterviewCapUsd,
+      ad_revenue_usd: args.adRevenueUsd,
+    }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  return {
+    spentUsd: typeof data.spent_usd === "string" ? data.spent_usd : "0",
+    budgetUsd: typeof data.budget_usd === "string" ? data.budget_usd : "0",
+    budgetExhausted: Boolean(data.budget_exhausted),
+    cappedCount: Array.isArray(data.capped_interview_ids) ? data.capped_interview_ids.length : 0,
+  };
+}
+
+/**
+ * SPR-11 — the Biography template composition over the ONE graph.
+ *
+ * A biography is a TEMPLATE composing Research + Write + Speak, NOT a fifth
+ * product or a fifth graph. The three ids it wires together all resolve to one
+ * shared identity (the investigationId): the Write deliverable's research link
+ * == the investigationId, and the Speak project is linked via the shared
+ * composition event. There is no biographyId — a biography is the composition,
+ * not its own entity.
+ */
+export interface BiographyComposition {
+  investigationId: string;
+  deliverableId: string;
+  projectId: string;
+}
+
+/**
+ * Provision a biography: a Research folder (created first via
+ * startInvestigation), then the Write deliverable scaffold + Speak interview
+ * project wired to that same Research folder over the shared substrate. The
+ * Research folder can be empty (no research run yet) and the Speak project
+ * empty (no voices yet) — both provision regardless (rigor #3 edge cases a/c).
+ */
+export async function createBiography(args: {
+  investigationId: string;
+  subjectName: string;
+  title?: string;
+}): Promise<BiographyComposition> {
+  const resp = await apiFetch("/speak/biography", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      investigation_id: args.investigationId,
+      subject_name: args.subjectName.trim(),
+      title: args.title,
+    }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  return {
+    investigationId: String(data.investigation_id ?? ""),
+    deliverableId: String(data.deliverable_id ?? ""),
+    projectId: String(data.project_id ?? ""),
+  };
 }
 
 export async function createPerson(name: string): Promise<string> {

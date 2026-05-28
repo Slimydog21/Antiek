@@ -446,8 +446,11 @@ def generate_section_draft(section_id: str) -> dict:
                 "detail": "no blocks attached — left as a gap, not fabricated"}
 
     try:
-        from substrate.write.draft_generation import default_dispatch_fn
-        result = generate_section(ctx=ctx, dispatch_fn=default_dispatch_fn(), section_id=section_id)
+        from substrate.write.draft_generation import default_dispatch_fn, persist_section_draft
+        result = generate_section(
+            ctx=ctx, dispatch_fn=default_dispatch_fn(investigation_id=deliverable_id),
+            section_id=section_id,
+        )
     except KeyError:
         # creative_writer not wired into the dispatch config.
         raise HTTPException(
@@ -458,6 +461,22 @@ def generate_section_draft(section_id: str) -> dict:
         raise HTTPException(status_code=503, detail=f"generation unavailable: {e}")
 
     report = result.citation_report
+    # M3: persist prose_provenance so the X-ray can read paragraph→blocks back.
+    # ONLY on a clean generation (gate passed, parser valid). A gate_failed /
+    # invalid result never ships, so it never persists provenance either (no
+    # half-written draft in the graph). The persist + the audit event go
+    # through the single-writer funnel together (db_lock + emit_typed),
+    # mirroring patch_section_prose. See docs/decisions/spr-09-*.md (D-2).
+    if result.status == "generated" and report is not None:
+        with _translate(), _write("write/persist_draft") as con:
+            persist_section_draft(
+                con,
+                section_id=section_id,
+                deliverable_id=deliverable_id,
+                result=result,
+                report=report,
+                investigation_id=deliverable_id,
+            )
     return {
         "status": result.status, "section_id": section_id,
         "prose_text": result.prose_text, "detail": result.detail,
@@ -466,4 +485,10 @@ def generate_section_draft(section_id: str) -> dict:
         "all_claims_cited": report.all_claims_cited if report else None,
         "unsupported_paragraphs": report.unsupported_paragraphs if report else [],
         "fabricated_citations": report.fabricated_citations if report else [],
+        # paragraph_index → [block_ids], so the client can render the X-ray
+        # immediately AND a reload reads the same persisted map back.
+        "prose_provenance": (
+            {str(i): v for i, v in result.prose_provenance.items()}
+            if result.status == "generated" else {}
+        ),
     }

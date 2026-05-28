@@ -3,8 +3,13 @@ import { useNavigate } from "react-router-dom";
 
 import type { BookSummary, CorpusStatus } from "../../api/books";
 import { curateBooks, listBooks } from "../../api/books";
+import { listInvestigations } from "../../lib/api";
+import type { InvestigationSummary } from "../../lib/api";
 import BookCard from "./BookCard";
+import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
+import { documentsByTheme } from "./documentsByTheme";
+import type { FeedOrdering } from "./documentsByTheme";
 
 /**
  * Library — the home of the Read workflow (Read SPR-02; re-homed as the Read
@@ -35,6 +40,9 @@ export default function Library() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<CorpusStatus>("servable");
   const [books, setBooks] = useState<BookSummary[]>([]);
+  // Active research, the signal documentsByTheme ranks the shelf to (M1).
+  // Best-effort: a failed/empty fetch falls the feed back to recency, honestly.
+  const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +59,20 @@ export default function Library() {
     try {
       const data = await listBooks(status);
       setBooks(data.books);
+      // Pull active research themes only for the default servable shelf — the
+      // theme-ranked feed is the Read DOOR's first view. Best-effort: if the
+      // research list is unavailable, the feed falls back to recency (the empty
+      // investigations set → documentsByTheme returns ordering "recency").
+      if (status === "servable") {
+        try {
+          const inv = await listInvestigations({ status: "in_progress" });
+          setInvestigations(inv.investigations);
+        } catch {
+          setInvestigations([]); // thin signal → recency fallback, honestly
+        }
+      } else {
+        setInvestigations([]);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -84,17 +106,56 @@ export default function Library() {
     setCuratePrompt("");
   }, []);
 
-  // Curated view re-ranks the loaded servable shelf to the curated order;
-  // books not present in the shelf (shouldn't happen — curate is servable-
-  // only) are dropped rather than rendered without their metadata.
-  const displayed = useMemo<BookSummary[]>(() => {
-    if (!curatedOrder) return books;
-    const byId = new Map(books.map((b) => [b.document_id, b]));
-    return curatedOrder.map((id) => byId.get(id)).filter((b): b is BookSummary => Boolean(b));
-  }, [curatedOrder, books]);
+  // The display order, in three layers of precedence:
+  //   1. an ACTIVE CURATE prompt (explicit user query) re-ranks to that order;
+  //   2. otherwise, on the default servable shelf, documentsByTheme ranks to
+  //      the user's active research themes (M1) — or falls back to recency with
+  //      a STATED label when the theme signal is thin (the honesty seam);
+  //   3. on the Preview / All shelves there is no ambient theme ranking — they
+  //      are flagged catalogues, shown in their given (recency) order.
+  // `ordering`/`themeTerms` drive the honest label the surface renders.
+  const { displayed, ordering, themeTerms } = useMemo<{
+    displayed: BookSummary[];
+    ordering: FeedOrdering | null;
+    themeTerms: string[];
+  }>(() => {
+    if (curatedOrder) {
+      // Curated: re-rank the loaded shelf to the curated order; books not in
+      // the shelf (shouldn't happen — curate is servable-only) are dropped
+      // rather than rendered without their metadata.
+      const byId = new Map(books.map((b) => [b.document_id, b]));
+      const curated = curatedOrder
+        .map((id) => byId.get(id))
+        .filter((b): b is BookSummary => Boolean(b));
+      return { displayed: curated, ordering: null, themeTerms: [] };
+    }
+    if (status === "servable") {
+      const feed = documentsByTheme(books, investigations);
+      return { displayed: feed.books, ordering: feed.ordering, themeTerms: feed.themeTerms };
+    }
+    return { displayed: books, ordering: null, themeTerms: [] };
+  }, [curatedOrder, books, status, investigations]);
 
   const open = useCallback(
     (documentId: string) => navigate(`/read/${encodeURIComponent(documentId)}`),
+    [navigate],
+  );
+
+  // Open a book at a specific page (M1 search-result jump). The reader reads its
+  // page from the SAME sessionStorage locator usePosition owns (no new
+  // mechanism); seeding it here lands the reader on the cited page. A null /
+  // unresolved page opens at the saved position (honest — no fake page jump).
+  const openAtPage = useCallback(
+    (documentId: string, pageIndex?: number | null) => {
+      if (pageIndex !== null && pageIndex !== undefined && pageIndex >= 0) {
+        try {
+          window.sessionStorage.setItem(`antiek.read.pos.${documentId}`, String(pageIndex));
+        } catch {
+          /* private mode — the reader still opens, just at the saved page */
+        }
+      }
+      navigate(`/read/${encodeURIComponent(documentId)}`);
+    },
     [navigate],
   );
 
@@ -156,6 +217,30 @@ export default function Library() {
             ))}
           </div>
 
+          {/* M1: search the OWNED corpus — typed query OR file-drop bias.
+              Theme-context (the active research themes) is folded into the
+              query when present, degrading gracefully when absent. */}
+          <CorpusSearch onOpen={openAtPage} themeContext={themeTerms} />
+
+          {/* M4: meta-reading entry — deep-research the owned corpus into a
+              re-openable, length-boxed Read asset. PROPOSED boundary (sign-off
+              pending) — the surface itself carries the banner. */}
+          <div className="flex items-center justify-between gap-3 rounded-md border border-sun/40 bg-sun/10 px-3 py-2">
+            <p className="text-[13px] font-serif text-ink dark:text-bright">
+              Make a reading asset from your corpus
+              <span className="ml-2 text-[11px] font-mono uppercase tracking-wider text-sun-deep dark:text-sun">
+                proposed
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/read/meta-reading")}
+              className="shrink-0 text-xs font-mono text-ink dark:text-bright underline decoration-dotted underline-offset-2 hover:opacity-80"
+            >
+              Meta-read →
+            </button>
+          </div>
+
           {status === "servable" && (
             <CuratePrompt
               onCurate={onCurate}
@@ -169,6 +254,28 @@ export default function Library() {
             <p className="text-[13px] font-serif text-ink dark:text-bright">
               Curated for “<span className="italic">{curatePrompt}</span>” —{" "}
               {displayed.length} {displayed.length === 1 ? "book" : "books"}, best match first.
+            </p>
+          )}
+
+          {/* M1 honesty seam: SAY which ordering is active. A theme-ranked feed
+              names the research it ranked to; a thin-signal fallback admits it
+              is showing recency, never dressing it up as relevance. Only on the
+              default servable shelf, and never while a curate prompt overrides. */}
+          {curatedOrder === null && !loading && displayed.length > 0 && ordering === "theme" && (
+            <p className="text-[13px] font-serif text-ink dark:text-bright" data-feed-ordering="theme">
+              Ranked to your active research
+              {themeTerms.length > 0 && (
+                <>
+                  {" — "}
+                  <span className="italic">{themeTerms.slice(0, 4).join(", ")}</span>
+                </>
+              )}
+              .
+            </p>
+          )}
+          {curatedOrder === null && !loading && displayed.length > 0 && ordering === "recency" && (
+            <p className="text-[13px] font-serif text-shadow-1 dark:text-moonlight" data-feed-ordering="recency">
+              No active research to rank to yet — showing the most recently added first.
             </p>
           )}
 

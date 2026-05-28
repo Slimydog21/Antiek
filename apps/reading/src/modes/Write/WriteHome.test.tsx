@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { emitTraceIntent } from "./Editor/traceIntent";
@@ -16,16 +17,24 @@ import type { TraceTarget } from "./writeApi";
  *    when it isn't (§9.0 gated / unreachable).
  */
 
-const { listDeliverablesMock, getTraceTargetMock } = vi.hoisted(() => ({
+const {
+  listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
+  startInvestigationMock, createDeliverableMock,
+} = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
+  listInvestigationsMock: vi.fn(),
+  startInvestigationMock: vi.fn(),
+  createDeliverableMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   listDeliverables: listDeliverablesMock,
   getDeliverable: vi.fn().mockResolvedValue(null),
-  createDeliverable: vi.fn(),
+  createDeliverable: createDeliverableMock,
+  listInvestigations: listInvestigationsMock,
+  startInvestigation: startInvestigationMock,
 }));
 
 vi.mock("./writeApi", async (orig) => ({
@@ -38,6 +47,15 @@ import WriteHome from "./WriteHome";
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   getTraceTargetMock.mockReset();
+  listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
+  startInvestigationMock.mockReset().mockResolvedValue({
+    investigation_id: "inv-spawned", status: "in_progress", start_event_id: "ev-1",
+  });
+  createDeliverableMock.mockReset().mockResolvedValue({
+    deliverable_id: "dlv-new", title: "Memo", deliverable_kind: "general_essay",
+    investigation_root_id: "inv-spawned", status: "draft",
+    created_at: null, updated_at: null, section_count: 0,
+  });
 });
 afterEach(cleanup);
 
@@ -56,12 +74,33 @@ function mountAt(path: string) {
 describe("WriteHome — the re-homed door", () => {
   it("opens on a real start-a-piece surface, not the 'select a deliverable' dead-end", async () => {
     mountAt("/write");
-    // The action-first door (U-04): start writing.
-    expect(await screen.findByRole("button", { name: /start writing/i })).toBeTruthy();
+    // The action-first door (U-04): name the piece (SPR-09 M1 then prompts the
+    // research connection before the piece is created).
+    expect(
+      await screen.findByPlaceholderText(/what are you writing/i),
+    ).toBeTruthy();
     // The legacy dead-end sentence is gone.
     expect(screen.queryByText(/select or create a deliverable/i)).toBeNull();
     // And the brainstorm on-ramp is offered as the outline-optional entry.
     expect(screen.getByText(/brainstorm from an idea/i)).toBeTruthy();
+  });
+
+  it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {
+    mountAt("/write");
+    // Naming the piece reveals the connect-to-research step (M1).
+    const title = await screen.findByPlaceholderText(/what are you writing/i);
+    await userEvent.type(title, "A margins memo");
+    // Choose "none" → auto-spawn + link.
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    await waitFor(() => expect(createDeliverableMock).toHaveBeenCalled());
+    // The piece is created WITH the spawned investigation_root_id (the link is
+    // set at creation — verified by the create call carrying it, not a UI claim).
+    expect(createDeliverableMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "A margins memo",
+        investigation_root_id: "inv-spawned",
+      }),
+    );
   });
 
   it("routes a servable trace-to-source to the source reader", async () => {
@@ -76,7 +115,7 @@ describe("WriteHome — the re-homed door", () => {
     };
     getTraceTargetMock.mockResolvedValue(target);
     mountAt("/write");
-    await screen.findByRole("button", { name: /start writing/i });
+    await screen.findByPlaceholderText(/what are you writing/i);
 
     emitTraceIntent({
       sectionId: "sec-1",
@@ -101,7 +140,7 @@ describe("WriteHome — the re-homed door", () => {
     };
     getTraceTargetMock.mockResolvedValue(gated);
     mountAt("/write");
-    await screen.findByRole("button", { name: /start writing/i });
+    await screen.findByPlaceholderText(/what are you writing/i);
 
     emitTraceIntent({
       sectionId: "sec-1",

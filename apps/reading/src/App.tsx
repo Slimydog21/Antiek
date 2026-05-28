@@ -7,6 +7,7 @@ import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
+import Biography from "./modes/Biography";
 import BrainstormStation from "./modes/BrainstormStation";
 import Coordination from "./modes/Coordination";
 import CostConsent from "./modes/Coordination/CostConsent";
@@ -14,11 +15,13 @@ import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
+import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
 import Notebook from "./modes/Notebook";
+import AutoNotebook from "./modes/Notebook/AutoNotebook";
 import NotebooksIndex from "./modes/NotebooksIndex";
 import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
@@ -27,6 +30,8 @@ import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
+import MetaReading from "./modes/Reading/MetaReading";
+import PersonalSpace from "./modes/Reading/PersonalSpace";
 import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
@@ -92,6 +97,11 @@ function AuthenticatedRoutes() {
           PanelKind="AISidecar" and is mounted by the panel system
           when the operator opens it via ⌘/ (S8-full refactor). */}
       <Routes>
+        {/* SPR-12 M1 — the unified branded home. A NEW route (the top-left
+            rail logo points here). "/" deliberately STAYS the Research door
+            (StartResearch already serves it); see modes/Home/Home.tsx for
+            the recorded, reversible routing decision. */}
+        <Route path="/home" element={<Home />} />
         <Route path="/" element={<ResearchWorkstation />} />
         <Route path="/inv/:investigationId" element={<ResearchWorkstation />} />
         {/* DRW SPR-09 — the glass-box N-research monitor (deep-research-workspace).
@@ -113,9 +123,35 @@ function AuthenticatedRoutes() {
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
         <Route path="/notebooks" element={<NotebooksIndex />} />
+        {/* SPR-06 — the auto-notebook (PROPOSED — sign-off pending). The
+            derived, always-current narrative VIEW of one research's
+            insight/question graph, behind a visible "proposed" banner. A
+            REVERSIBLE leaf: removing this route + AutoNotebook.tsx reverts to
+            the manual TipTap notebook below, which is untouched. Not a hard
+            dependency of any sprint. React-Router v6 ranks routes by SPECIFICITY
+            (the static "auto" segment outranks the ":notebookId" param), so "auto"
+            is never read as a notebook id — robust regardless of declaration order.
+            See docs/decisions/spr-06-auto-notebook-proposed.md. */}
+        <Route path="/notebook/auto/:investigationId" element={<AutoNotebook />} />
+        <Route path="/notebook/auto" element={<AutoNotebook />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
         <Route path="/library" element={<Library />} />
+        {/* SPR-08 M4 — meta-reading surface (PROPOSED, sign-off pending).
+            Literal route declared BEFORE /read/:documentId; React-Router v6
+            ranks static segments above params, so /read/meta-reading never
+            resolves the book reader. */}
+        <Route path="/read/meta-reading" element={<MetaReading />} />
+        {/* SPR-13 M1 — re-open a SAVED meta-reading asset by id (the personal
+            space item opens back into the meta-doc view). Declared after the
+            literal /read/meta-reading so it doesn't shadow the generator. */}
+        <Route path="/read/meta-reading/:assetId" element={<MetaReading />} />
+        {/* SPR-13 M1 — the personal document space (created deliverables +
+            saved reads, auto-categorized, suggest-file-into-project). */}
+        <Route path="/readings" element={<PersonalSpace />} />
+        {/* SPR-13 M4 — the meta-docs tab: the same personal space filtered to
+            created deliverables, after the Library in the Read nav. */}
+        <Route path="/meta-readings" element={<PersonalSpace metaDocsOnly />} />
         <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />
@@ -149,6 +185,13 @@ function AuthenticatedRoutes() {
         <Route path="/interview/:interviewId" element={<InterviewRedirect />} />
         <Route path="/speak" element={<SpeakIndex />} />
         <Route path="/speak/:projectId" element={<SpeakConsole />} />
+        {/* SPR-11 — the Biography TEMPLATE landing. A dedicated route (NOT a
+            fifth NavRail door — the four-door rail is sacred); reachable from
+            the home's "Start a biography" feature card. "Start a biography"
+            composes a Research folder + a Write deliverable + a Speak project
+            over the ONE graph (it is a template, not a fifth product/graph).
+            See docs/decisions/spr-11-biography-template-not-graph.md. */}
+        <Route path="/biography" element={<Biography />} />
         <Route path="/loop-3" element={<Loop3 />} />
         <Route path="/skill-rules" element={<SkillRules />} />
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />

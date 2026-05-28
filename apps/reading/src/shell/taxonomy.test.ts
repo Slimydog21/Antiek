@@ -211,6 +211,29 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
 });
 
 /**
+ * Read SPR-13 M4 — the Meta-docs tab sits AFTER the Library as a Read noun, and
+ * the personal-space surfaces are Read-workflow destinations. Pinned so a future
+ * nav change can't silently drop the tab or mis-classify the surfaces.
+ */
+describe("Read personal space + meta-docs tab (Read SPR-13 M4)", () => {
+  it("Meta-docs is a Read noun, declared AFTER Library", () => {
+    const nouns = WORKFLOWS.read.nouns;
+    const libraryIdx = nouns.indexOf("Library");
+    const metaIdx = nouns.indexOf("Meta-docs");
+    expect(libraryIdx).toBeGreaterThanOrEqual(0);
+    expect(metaIdx).toBeGreaterThan(libraryIdx);
+  });
+
+  it("the personal-space + meta-docs routes resolve to the Read workflow (active rail)", () => {
+    expect(workflowForPath("/readings")).toBe("read");
+    expect(workflowForPath("/meta-readings")).toBe("read");
+    expect(workflowForPath("/read/meta-reading/mr-abc")).toBe("read");
+    // The book reader stays Read too; /readings must NOT be mistaken for it.
+    expect(workflowForPath("/read/doc-1")).toBe("read");
+  });
+});
+
+/**
  * Write SPR-07 — the door re-home, pinned so a future nav change can't
  * silently revert it (rigor #5, defensibility). Mirrors the Read SPR-06
  * pattern: the door opens on the real lego-block loop, the legacy studio is

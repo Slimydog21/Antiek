@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Antiek — Living Roadmap</title>
+<style>
+  :root {
+    --cream: #f7f3ea;
+    --cream-deep: #efe8d7;
+    --ink: #1c1a17;
+    --ink-soft: #3b3631;
+    --muted: #6e6557;
+    --rule: #d8cfb9;
+    --accent: #6b4a1f;
+    --accent-soft: #b08a4a;
+    --shipped: #2b6a3c;
+    --scaffold: #8a6a16;
+    --pending: #7a3e1a;
+    --unverified: #6f6f6f;
+    /* register accents — STABLE reads as bedrock (cool slate), FLUID as
+       working surface (warm sand). The two registers must be visually
+       distinct sections offline (M1). */
+    --stable-bg: #eef1f4;
+    --stable-bar: #3a4a6b;
+    --stable-edge: #c4ccd8;
+    --fluid-bg: #f4ecda;
+    --fluid-bar: #8a6a16;
+    --fluid-edge: #e0d3b3;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--cream); color: var(--ink); }
+  body {
+    font-family: "EB Garamond", "Iowan Old Style", "Georgia", "Palatino", serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 28px 96px; }
+  header.doc {
+    border-bottom: 2px solid var(--rule);
+    padding-bottom: 20px;
+    margin-bottom: 8px;
+  }
+  header.doc h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: 0.01em; }
+  header.doc .subtitle { color: var(--muted); font-style: italic; margin: 0 0 4px; }
+  header.doc .meta { font-size: 13px; color: var(--muted); }
+  h2.section { font-size: 23px; margin: 40px 0 8px; }
+  h3 { font-size: 18px; margin: 26px 0 6px; }
+  p { margin: 10px 0; }
+  a { color: var(--accent); }
+  code, .mono { font-family: "SFMono-Regular", "Menlo", "Consolas", monospace; font-size: 0.86em; }
+  .cite {
+    display: inline-block;
+    font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 12px;
+    color: var(--accent);
+    background: rgba(176, 138, 74, 0.14);
+    border: 1px solid var(--accent-soft);
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-top: 4px;
+  }
+  blockquote {
+    margin: 12px 0;
+    padding: 10px 16px;
+    border-left: 3px solid var(--accent-soft);
+    background: rgba(176, 138, 74, 0.08);
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+
+  /* ── REGISTER FRAMES — the two registers render as distinct sections ── */
+  .register {
+    border-radius: 8px;
+    padding: 4px 26px 26px;
+    margin: 22px 0;
+  }
+  .register .reg-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin: 18px 0 4px;
+    padding-bottom: 8px;
+  }
+  .register .reg-head .badge {
+    font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: #fff;
+    padding: 3px 9px;
+    border-radius: 4px;
+  }
+  .register .reg-head h2 { margin: 0; font-size: 24px; }
+  .register .governance-line { font-size: 14px; color: var(--muted); margin: 0 0 6px; }
+
+  .register.stable {
+    background: var(--stable-bg);
+    border: 1px solid var(--stable-edge);
+    border-left: 8px solid var(--stable-bar);
+  }
+  .register.stable .reg-head .badge { background: var(--stable-bar); }
+
+  .register.fluid {
+    background: var(--fluid-bg);
+    border: 1px solid var(--fluid-edge);
+    border-left: 8px solid var(--fluid-bar);
+  }
+  .register.fluid .reg-head .badge { background: var(--fluid-bar); }
+
+  /* invariant cards */
+  .inv {
+    background: #fff;
+    border: 1px solid var(--stable-edge);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+  }
+  .inv .inv-title { font-weight: 700; font-size: 17px; margin: 0 0 4px; }
+  .inv p { margin: 6px 0; }
+
+  /* surface cards */
+  .surface {
+    background: #fff;
+    border: 1px solid var(--fluid-edge);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 12px 0;
+  }
+  .surface .s-head { display: flex; align-items: baseline; gap: 10px; }
+  .surface .s-head .name { font-weight: 700; font-size: 17px; }
+  .surface .s-head .route { font-family: "SFMono-Regular", "Menlo", monospace; font-size: 12px; color: var(--muted); }
+  .status {
+    font-family: "SFMono-Regular", "Menlo", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 7px;
+    border-radius: 4px;
+    color: #fff;
+    white-space: nowrap;
+  }
+  .status.routed { background: var(--scaffold); }
+  .status.unverified { background: var(--unverified); }
+  .status.open { background: var(--pending); }
+
+  ul { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+
+  .recon {
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 16px 18px;
+    margin: 14px 0;
+  }
+  .recon h4 { margin: 0 0 6px; font-size: 16px; }
+  table.recon-tbl { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 15px; }
+  table.recon-tbl th, table.recon-tbl td {
+    border: 1px solid var(--rule);
+    padding: 8px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  table.recon-tbl th { background: var(--cream-deep); }
+
+  .note {
+    background: rgba(122, 62, 26, 0.07);
+    border: 1px solid #e3c9b5;
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 15px;
+  }
+  footer.doc { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="doc">
+    <h1>Antiek — Living Roadmap</h1>
+    <p class="subtitle">One roadmap with two registers: a ratified STABLE bedrock and a memento-proposes / operator-ratifies FLUID surface.</p>
+    <p class="meta">Created 2026-05-27 (SPR-00, Living-Roadmap run). Authoritative on UI / surface-organization. Architecture, §5, §9, §16, and the single-writer invariant remain authoritative in <code>docs/master-product-spec.md</code> under its supersession banner. Governance: <code>docs/roadmap/GOVERNANCE.md</code>.</p>
+  </header>
+
+  <p>This document exists because three prior vision artifacts (the master product spec; the <code>antiek-unified</code> integration spec; the four-product Read/Write/Speak/DRW specs) diverged both from one another and from shipped reality on the question of <em>how the product is organized into surfaces</em>. The clearest symptom: the master spec's §16.2 records <strong>"No 'four products' framing"</strong> as a settled REJECT, while the shipped <code>NavRail.tsx</code> is built around exactly four workflows. The roadmap resolves that not by editing either artifact but by separating what is <strong>ratified and load-bearing</strong> (STABLE) from what is <strong>current-best and revisable</strong> (FLUID), and by recording the reconciliation explicitly (see Reconciliations below).</p>
+
+  <p><strong>Why a roadmap and not just a patched master spec — the steelman, stated and answered.</strong> The honest alternative is to keep <code>master-product-spec.md</code> as the single canon and patch §16 in place (a one-line clarification that "four surfaces over one graph" is fine; only graph-separation is rejected). That alternative is attractive: one canon, no second document to keep in sync, no risk of the roadmap and the spec drifting. It collapses for one reason: the three priors disagree <em>with each other</em> as well as with shipped reality, so "keep one canon" still requires <em>choosing which prior is canon</em> on surface-organization — and the choice that matches what shipped (four surfaces over one graph) is precisely the thing §16.2 rejected in words. Patching §16 in place would mean the operator silently editing a settled REJECT, which destroys the audit trail of why the REJECT existed (graph-separation, not the word "product"). The roadmap keeps that REJECT text intact under its banner and records the reconciliation as a first-class, dated artifact. One-canon does not fail because it is wrong in spirit; it fails because it forces an unrecorded edit to a settled decision.</p>
+
+  <!-- ====================== STABLE REGISTER ====================== -->
+  <section class="register stable">
+    <div class="reg-head">
+      <span class="badge">STABLE · ratified-only</span>
+      <h2>STABLE register — the invariants</h2>
+    </div>
+    <p class="governance-line">Ratified-only. memento NEVER touches this register, the banners, or the invariants (see <code>GOVERNANCE.md</code>). Changes here require explicit operator ratification, not a memento proposal. Each invariant is restated <strong>verbatim</strong> from its source spec section, with an inline citation.</p>
+
+    <div class="inv">
+      <p class="inv-title">1 — One substrate, one graph</p>
+      <p>Verbatim (master spec §2.5 / §16.2): "The substrate is the moat (§2.5). Separating products would have meant separating graphs, which would kill the cross-corpus knowledge-graph value that IS the product thesis. The biography wedge, the research workstation, the brainstorming surface, the creation tool — all one substrate."</p>
+      <span class="cite">source: docs/master-product-spec.md §2.5 "The substrate is the moat, not the UI" + §16.2 "No 'four products' framing"</span>
+    </div>
+
+    <div class="inv">
+      <p class="inv-title">2 — Voice and style discipline (non-negotiable quality bar)</p>
+      <p>Verbatim (master spec §5): "Antiek's product proposition collapses if the output reads like LLM slop. No amount of feature work makes a bullet-pointed em-dash-laden synthesis into something the operator wants to read." Discipline: "Prose flows. … Sector vocabulary absorbed from the corpus. … One em-dash per thesis max. … Confidence conveyed by sentence rhythm + word choice, not by appending '(high confidence)' markers in the prose." Per §5.5 the discipline "governs <strong>visual</strong> choices, not just prose."</p>
+      <span class="cite">source: docs/master-product-spec.md §5 "Voice and style — non-negotiable quality bar" (§5.1–§5.5)</span>
+    </div>
+
+    <div class="inv">
+      <p class="inv-title">3 — IP attribution + ad economics + the provenance chain</p>
+      <p>Verbatim (master spec §9.1 / §16): "Each chunk has a <code>document_id</code>. Each document has an <code>ip_holder_id</code> … When an ad impression accrues, substrate computes attribution weights … Revenue distributed [§9.1's two bullets inlined]: Platform cut: configurable, default 30%; IP holders: 70% split among contributing documents, weighted by attribution share." And the chain itself (§16): "Every claim cites chunks. Every chunk cites documents. Every document has an <code>ip_holder_id</code> (even if null today). The provenance graph is the substrate's compounding asset; never break the chain." Payouts gate strictly on retrieval-time gating in production + first publisher opt-in (§9.0).</p>
+      <span class="cite">source: docs/master-product-spec.md §9 "IP attribution + ad economics" (§9.0 legal gate, §9.1 the full mechanic) + §16 provenance-chain REJECT</span>
+    </div>
+
+    <div class="inv">
+      <p class="inv-title">4 — Hermes-primary dispatch (consume models via API; no self-hosting, no second runtime)</p>
+      <p>Verbatim (master spec §3.1 / §14.3): "Hermes-primary posture (Sprint 12+): all flash/pro/synthesis/verify tiers route to <code>hermes / grok-4.3</code> (xAI via the Hermes Agent OAuth bridge …) with OpenRouter (DeepSeek-Flash, DeepSeek-Pro, Claude Opus 4.7) as fallback." And the discipline-list form (§16): "Adding more tools 'just in case.' No Daytona, no Modal, no Momentic, no Pulumi until a specific problem warrants it. Substrate stays tool-thin." The one ratified carve-out is research-runner fan-out via <code>runtime/remote_exec/</code> (see <code>docs/decisions/s16-research-fanout-exemption.md</code>); dispatch stays Hermes-primary for all non-research inference.</p>
+      <span class="cite">source: docs/master-product-spec.md §3.1 "Substrate · Dispatch" + §14.3 dispatch-posture lock + §16 "Adding more tools 'just in case'"; carve-out docs/decisions/s16-research-fanout-exemption.md</span>
+    </div>
+
+    <div class="inv">
+      <p class="inv-title">5 — Single-writer DuckDB</p>
+      <p>Verbatim (master spec §3.1 / §16): "Fallback chain with <code>--workers 1</code> enforced." And the REJECT form (§16): "Horizontal scaling of the FastAPI process. The <code>InvestigationCoordinator</code> holds per-investigation futures in-process. <code>--workers 4</code> corrupts the DuckDB single-writer invariant. Migration to Postgres (substrate-level decision) is the only correct path to scale." The sole graph writer is the serialized host funnel through <code>runtime/db_lock</code>; events are appended via <code>postTypedEvent</code> → <code>/events/typed</code>.</p>
+      <span class="cite">source: docs/master-product-spec.md §3.1 "Event log / Dispatch (--workers 1 enforced)" + §16 "Horizontal scaling of the FastAPI process"; enforcement runtime/db_lock.py + antiek.service systemd unit (per CLAUDE.md invariant 1)</span>
+    </div>
+  </section>
+
+  <!-- ====================== FLUID REGISTER ====================== -->
+  <section class="register fluid">
+    <div class="reg-head">
+      <span class="badge">FLUID · memento proposes / operator ratifies</span>
+      <h2>FLUID register — surfaces, interaction model, status, open questions</h2>
+    </div>
+    <p class="governance-line">memento PROPOSES a diff to this register at the end of a run; the operator RATIFIES before any write. memento NEVER auto-writes (HARD RULE — see <code>GOVERNANCE.md</code>). Everything in this register is current-best and revisable without touching the STABLE register. This is the same propose→ratify, surfaces-as-warnings discipline as the CI informational-gate policy (<code>docs/decisions/ci-informational-gates.md</code>): surface honestly, never silently flip state.</p>
+
+    <h3>The four surfaces — lenses over one graph</h3>
+    <p>Four surfaces are <em>lenses over one substrate/one graph</em>, never separate silos (see STABLE invariant 1 and the Reconciliations subsection). The shipped frontend reads its rail from a single source-of-truth taxonomy (<code>apps/reading/src/shell/workflowTaxonomy.ts</code>), whose <code>built</code> flags are cross-checked against the route table by <code>taxonomy.test.ts</code>. Status below is reported from that taxonomy on this branch (origin/main 76c2002).</p>
+
+    <div class="note">
+      <strong>Status vocabulary (honest, per the diligence rule).</strong>
+      <code>routed-in-build</code> = the surface's modes carry <code>built: true</code> in <code>workflowTaxonomy.ts</code>, which <code>taxonomy.test.ts</code> pins to a real route/panel (it is reachable when the app is built). It does <strong>NOT</strong> assert the surface is deployed-and-working on production — that is <code>status unverified</code> from this branch, and is NOT claimed "live."
+    </div>
+
+    <div class="surface">
+      <div class="s-head"><span class="name">Research</span><span class="route">door: /</span><span class="status routed">routed-in-build</span><span class="status unverified">prod-live unverified</span></div>
+      <p>Tagline (from taxonomy): "Investigate a question end-to-end and grade the answer." Modes marked <code>built: true</code>: Research workstation (<code>/</code>), My research (<code>/my-research</code>), Brainstorm station (<code>/brainstorm</code>), Outcome / Outcomes audit, Trajectory replay, Backtest report, Deep Research Workspace (<code>/deep-research</code>). Wrestle + Brainstorm from the prior 5-surface prototype fold in here.</p>
+    </div>
+
+    <div class="surface">
+      <div class="s-head"><span class="name">Read</span><span class="route">door: /library</span><span class="status routed">routed-in-build</span><span class="status unverified">prod-live unverified</span></div>
+      <p>Tagline (from taxonomy): "Open a book and read it with the AI alongside." Modes marked <code>built: true</code>: Library (<code>/library</code>, the door), Reader (<code>/read/:documentId</code>), Notebook / Notebooks, Document wrestler (<code>/wrestle</code>, demoted to a power surface). Documents-index and Sources were evicted to the shared/More bucket (acquisition tooling, not the reading door).</p>
+    </div>
+
+    <div class="surface">
+      <div class="s-head"><span class="name">Write</span><span class="route">door: /write</span><span class="status routed">routed-in-build</span><span class="status unverified">prod-live unverified</span></div>
+      <p>Tagline (from taxonomy): "Pull your notes into an outline, draft from them, then edit." Modes marked <code>built: true</code>: Block repository + Write editor (both mounted inside WriteHome at <code>/write</code>), Creation studio (demoted to a power surface at <code>/create</code>).</p>
+    </div>
+
+    <div class="surface">
+      <div class="s-head"><span class="name">Speak</span><span class="route">door: /speak</span><span class="status routed">routed-in-build</span><span class="status unverified">prod-live unverified</span></div>
+      <p>Tagline (from taxonomy): "Remember someone — invite their people and gather their voices." Modes marked <code>built: true</code>: Speak home (<code>/speak</code>), Speak project console (<code>/speak/:projectId</code>), Speak invite landing, plus the folded-in Interview / Interviews surfaces (redirect to <code>/speak</code>).</p>
+    </div>
+
+    <h3>Interaction model (current-best, revisable)</h3>
+    <ul>
+      <li><strong>NavRail = exactly four workflow doors</strong> (Research / Read / Write / Speak), read from <code>WORKFLOW_ORDER</code> so the rail cannot drift from the taxonomy. Source: <code>apps/reading/src/shell/NavRail.tsx</code> — "the four-workflow content-first rail … Exactly four workflow entries — not 8, not 5."</li>
+      <li><strong>One "More" affordance</strong> opens the ProductsLauncher, which holds the honest full inventory (every deep mode) plus operator/governance surfaces (Operator, Trust, Settings, the shared bucket). Everything off the rail is one click in via More + ⌘K.</li>
+      <li><strong>Search / ⌘K</strong> and <strong>New / project-tree (⌘B)</strong> are utilities above the divider, visually subordinate to the four doors.</li>
+      <li><strong>U-04 door contract:</strong> a workflow's <code>defaultRoute</code> opens to an action, not an explanation (Research → start a research; Read → open/add a book; Write → start composing; Speak → start a remembrance).</li>
+    </ul>
+
+    <h3>Open questions (recorded OPEN; the roadmap does not resolve them)</h3>
+    <ul>
+      <li><span class="status open">OPEN</span> &nbsp;<strong>Notebook surface boundary.</strong> The TipTap-based notebook is the literate-analysis linchpin (master spec §5.6, PostHog Wedge 2). Whether it lives primarily under Read, is a cross-surface render target, or earns its own rail presence is not settled here.</li>
+      <li><span class="status open">OPEN</span> &nbsp;<strong>Auto-notebook definition (PROPOSED — sign-off pending).</strong> The operator's PROPOSED resolution of "what a notebook is": the auto-generated, always-current narrative VIEW of a workstation's insight/question graph (the document lens over the block-lens canvas) — its outline derived from the graph's themes, its sections ARE the insights/open-questions, regenerating on graph change; one per investigation, always auto, with no manual "save to notebook"; the same artifact SPR-09's Write surface will consume. <strong>NOT yet ratified.</strong> SPR-06 built it (<code>apps/reading/src/modes/Notebook/AutoNotebook.tsx</code>, route <code>/notebook/auto/:investigationId</code>) behind a visible "proposed (sign-off pending)" banner, as a DERIVED, REVERSIBLE leaf: no new persisted store, no new writes (single-writer untouched), removing the route + banner reverts cleanly to the manual TipTap notebook. <strong>What ratifies it:</strong> the operator signing off on this definition. <strong>What reverts it:</strong> the operator withholding sign-off / redirecting → drop the route + <code>AutoNotebook.tsx</code> + <code>deriveAutoNotebook.ts</code>, revert the SPR-06 M2 removal of the static save-to-notebook button if the static model is restored. Full rationale: <code>docs/decisions/spr-06-auto-notebook-proposed.md</code>.</li>
+      <li><span class="status open">OPEN</span> &nbsp;<strong>Meta-reading boundary.</strong> Where "reading the AI's own trajectory/replay" sits relative to Research vs Read (Trajectory replay is currently a Research mode) is unresolved. <strong>A second, related sense — PROPOSED, sign-off pending:</strong> "meta-reading" as <em>deep-research my OWNED corpus → make me a re-openable asset (X pages / X minutes)." The operator's PROPOSED resolution is to keep THIS sense in <strong>Read, not Research</strong>, on a split by intent + corpus scope: it is scoped to the owned corpus ONLY, <strong>internet-agnostic</strong> (retrieval is <code>substrate.graph.search</code> over owned document ids — no acquisition / open-web path; if it touched the internet it would be Research), HARD time/length-boxed, and produced as a <strong>one-shot READ-ONLY cited report</strong> saved as a Read asset (reusing the typed-event funnel — no new silo), with a <strong>suggest-only</strong> promote-into-Research link (the existing <code>seam.read_to_research</code> event; never auto). <strong>NOT yet ratified.</strong> SPR-08 built it behind a visible "proposed (sign-off pending)" banner (route <code>/read/meta-reading</code>, <code>apps/reading/src/modes/Reading/MetaReading/</code>; endpoint <code>POST /corpus/meta-reading</code>) as a REVERSIBLE leaf. <strong>What ratifies it:</strong> the operator signing off on the Research↔Read split for owned-corpus synthesis. <strong>What reverts it:</strong> the operator withholding sign-off → relax <code>corpus_scope</code> to <code>soft</code> + drop the banner (the rollback in the decision doc), or remove the route + <code>MetaReading/</code> entirely. The suggest-not-autoship promote link is the hedge that lets either future (Read or Research) win. Full rationale + the page→words / minutes→words mapping: <code>docs/decisions/spr-08-meta-reading-boundary.md</code>.</li>
+      <li><span class="status open">OPEN</span> &nbsp;<strong>Payout Goodhart / attribution-gaming.</strong> The attribution math (master spec §9.3) and anti-gaming (§9.7) remain a live design fork; STABLE invariant 3 fixes the chain and the legal gate, not the final attribution algorithm.</li>
+    </ul>
+
+    <!-- ====================== RECONCILIATIONS ====================== -->
+    <h3 id="reconciliations">Reconciliations</h3>
+    <p>This subsection records, with both sides cited, where a prior artifact's words conflict with shipped reality and how the roadmap reads the two together. <strong>The master spec body is not edited;</strong> §16 text stays intact under its banner, and the reconciliation lives only here.</p>
+
+    <div class="recon">
+      <h4>R-01 — §16.2 "No 'four products' framing" vs the shipped four-workflow NavRail</h4>
+
+      <p><strong>Side A — the prior REJECT, verbatim (master spec §16.2 "On positioning and strategy"):</strong></p>
+      <blockquote>"No 'four products' framing. The substrate is the moat (§2.5). Separating products would have meant separating graphs, which would kill the cross-corpus knowledge-graph value that IS the product thesis. The biography wedge, the research workstation, the brainstorming surface, the creation tool — all one substrate. Re-raised in the May 2026 reframing analysis and explicitly REJECTed."</blockquote>
+      <span class="cite">source A: docs/master-product-spec.md §16.2 "No 'four products' framing"</span>
+
+      <p style="margin-top:14px;"><strong>Side B — the shipped usage, verbatim (frontend source):</strong></p>
+      <blockquote>"NavRail (SPR-04) — the four-workflow content-first rail. … Exactly four workflow entries — not 8, not 5. Everything else (deep modes, Operator, Trust, Settings, the shared bucket) lives behind the single 'More' affordance + ⌘K, never on the rail."</blockquote>
+      <span class="cite">source B: apps/reading/src/shell/NavRail.tsx (lines 18–19, 46); taxonomy at apps/reading/src/shell/workflowTaxonomy.ts</span>
+
+      <p style="margin-top:14px;"><strong>The reconciliation.</strong> The two are not in conflict once the object of the REJECT is read precisely. §16.2 rejects <em>separating products</em> — and its own next sentence states why: "Separating products would have meant <strong>separating graphs</strong>." The thing rejected is graph-separation (separate silos with separate substrates), because that would kill the cross-corpus value that is the product thesis. It is not a prohibition on the <em>word</em> "product" or on organizing the UI into four named surfaces. The shipped <code>NavRail</code> does exactly what §16.2 protects: four surfaces (Research / Read / Write / Speak) are <strong>lenses over one graph</strong> — the taxonomy maps every mode to one of four workflows over a single substrate, and <code>isWorkflowDestination</code> is the single boundary that keeps the rail to four. No graph is separated; the moat (STABLE invariant 1) is intact. The reconciled reading, recorded as canon on UI/surface-organization: <strong>four surfaces over one graph is permitted and is what shipped; four separate product silos with separate graphs remains REJECTed exactly as §16.2 states.</strong></p>
+
+      <table class="recon-tbl">
+        <tr><th>What §16.2 rejects</th><th>What the roadmap (and the shipped rail) permits</th></tr>
+        <tr>
+          <td>Separating <em>graphs</em> — distinct substrates / silos per product. This kills cross-corpus value and is REJECTed, unchanged.</td>
+          <td>Four named <em>surfaces</em> (lenses) over one substrate/one graph. The NavRail's four doors are views, not silos; the taxonomy enforces one-graph membership.</td>
+        </tr>
+      </table>
+    </div>
+  </section>
+
+  <footer class="doc">
+    <p>Living Roadmap · SPR-00 · created 2026-05-27. STABLE register is ratified-only; FLUID register is memento-proposes / operator-ratifies. Propose→ratify gate and the "memento never auto-writes" hard rule live in <code>docs/roadmap/GOVERNANCE.md</code>. Priors banner: <code>docs/master-product-spec.md</code> is superseded on UI/surface-organization by this file and remains authoritative on architecture / §5 / §9 / §16 / single-writer. The <code>antiek-unified</code> and Read/Write/Speak/DRW vision specs are not committed on this canonical branch; their bannering is operator-bound (see GOVERNANCE.md).</p>
+  </footer>
+
+</div>
+</body>
+</html>

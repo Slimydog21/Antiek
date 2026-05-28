@@ -15,13 +15,15 @@ Scope of this file:
   ``substrate/event_log/events.py`` so the schemas package is at the
   bottom of the dependency stack; event_log re-exports for back-compat).
 - The ``Event`` envelope.
-- Payload variants for the 19 currently-schemaed action types:
+- Payload variants for the 20 currently-schemaed action types:
   - ``DispatchCallPayload`` (week 1 dependency — cost-tracking emits)
   - ``ContextPackAssembledPayload`` (week 1 dependency — pack provenance)
   - 17 wrestling payloads (locked at substrate time per
     ``architecture_notes.md`` §9.1 so Loop 2 trajectories are typed
     from the first event written)
-- A discriminated union over those 19 variants.
+  - ``BlockPositionPayload`` (Living Roadmap SPR-03 — DRW block-canvas
+    position persistence as a typed event, single-writer funnel)
+- A discriminated union over those 20 variants.
 - A model validator enforcing that wrestling-loop events carry
   ``document_id`` on the envelope.
 
@@ -319,6 +321,20 @@ class ActionType(str, Enum):
     #    unlock_gate (G8) and the reward stays None until post-unlock.
     EDIT_CAPTURED = "edit.captured"
 
+    # ── Write workflow — draft provenance persistence (Write SPR-09). The
+    #    X-ray view (paragraph → driving blocks) needs prose_provenance to
+    #    survive the request that generated it. creative_writer returns a
+    #    paragraph_index → [block_ids] map ephemerally; this event makes it
+    #    durable. It is emitted ONLY after a live generation succeeds AND the
+    #    voice gate passes, paired in the same single-writer context with the
+    #    existing update_section_prose table write (mirrors patch_section_prose,
+    #    Sprint 15). The link from generated paragraph → its blocks (then
+    #    chunks → documents via resolve_provenance) thus EXISTS in the graph —
+    #    a persisted event + a persisted row — not just on screen (§9 moat).
+    #    This is a composition/audit event over deliverable_sections, NOT a
+    #    graph-write: the underlying blocks/nodes are untouched.
+    SECTION_DRAFT_GENERATED = "section.draft_generated"
+
     # ── Cross-workflow seams (antiek-unified SPR-03). Each typed seam
     #    handoff (substrate/seams/contracts.py) emits one of these when it
     #    fires. They carry the entity id + kind + provenance ref + the
@@ -338,6 +354,97 @@ class ActionType(str, Enum):
     # Provisional — write→speak. Typed so the trajectory can carry it if the
     # operator exercises it, but the seam is off the SPR-08 critical path.
     SEAM_WRITE_TO_SPEAK = "seam.write_to_speak"
+
+    # ── Voice infrastructure (Living Roadmap SPR-14). The shared
+    #    capture+transcribe hook (apps/reading/src/hooks/useVoiceCapture.ts)
+    #    persists each spoken capture as ONE typed event through the
+    #    single-writer funnel — the audio blob rides by reference
+    #    (``audio_ref``), never a client side-store. The defining field is
+    #    ``source_kind="user"``: voice-IN is ALWAYS human-authored and is the
+    #    §9 reason it can never be conflated with model output. This is the
+    #    capture-provenance event; downstream distillation
+    #    (substrate/books/voice_note → note.emerged) is unchanged.
+    VOICE_CAPTURED = "voice.captured"
+
+    # ── Block-canvas position persistence (Living Roadmap SPR-03). The DRW
+    #    "organism" canvas renders insight/question graph nodes as draggable
+    #    blocks; each drag-end appends ONE block.positioned event recording the
+    #    node's (x, y) in the canvas's free 2D coordinate space, scoped to the
+    #    investigation by the Event envelope. This is pure view-state, NOT a §9
+    #    claim — it rides the SAME single-writer typed-event funnel as every
+    #    other state mutation because the frontend has no other sanctioned
+    #    writer (a localStorage side-store would diverge from the graph). The
+    #    canvas re-derives positions by replaying these events (latest per
+    #    node_id wins); the optional region_id carries M4 theme grouping.
+    BLOCK_POSITIONED = "block.positioned"
+
+    # ── Highlight → float-menu NOTE (Living Roadmap SPR-04 M2). A reader
+    #    selects text on ANY surface (Research synthesis, a DRW block detail,
+    #    later a book/draft) and chooses "Note" in the shared float-menu; the
+    #    selection becomes a user-authored marginalia note. It rides the SAME
+    #    single-writer funnel as every other state mutation. Like voice.captured
+    #    it is a §9 provenance-LOAD-BEARING event: source_kind is pinned to the
+    #    literal "user" (a marginalia note is human-authored, NEVER model output)
+    #    so it can never be conflated with a model reply node in the one graph.
+    #    It carries the selection's provenance (document_id on the envelope +
+    #    the chunk_id where the selection lands) so the note chains
+    #    claim→chunk→document like every other claim. The excerpt is the user's
+    #    OWN selected text (what they highlighted), not retrieved body — so it is
+    #    not a §9.0-withheld-content concern (the reader is reading their own
+    #    selection); the no-leak guard governs the SEARCH/DEEP-RESEARCH outbound
+    #    payloads, not this note of one's own reading.
+    MARGINALIA_NOTED = "marginalia.noted"
+
+    # ── Source read → SiteSee "read" tint (Living Roadmap SPR-07 M4). When a
+    #    reader DWELLS on a source long enough to count as "read" (the
+    #    dwell-threshold rule is justified in
+    #    docs/decisions/spr-06-source-read-event-gap.md), the reading surface
+    #    emits ONE source.read event per source per reading session through the
+    #    single-writer funnel — the SAME funnel as every other state mutation,
+    #    so SiteSee's per-source read history is substrate-derived (PR-2/PR-6),
+    #    never a client side-store. It is the net-new signal the SPR-06 gap doc
+    #    filed: cited/saved were already substrate-derived, "read" was not. The
+    #    event carries NO body (§9.0): only the document_id (on the Event
+    #    envelope) + the chunk the read was attributed to + the dwell evidence
+    #    that justified the "read" verdict (so a maintainer can see WHY this
+    #    counted as read). It is NOT a §9 provenance claim about the world — it
+    #    asserts the reader's own reading history, like a "saved" signal — so it
+    #    carries no source_kind/grounding fields. SiteSee READS the resolved
+    #    history; it emits nothing and opens no writer of its own.
+    SOURCE_READ = "source.read"
+
+    # ── Meta-reading deliverable (Living Roadmap SPR-08 M4). A one-shot,
+    #    READ-ONLY, page-cited synthesis over the reader's OWNED corpus, saved
+    #    as a re-openable Read asset. WHY AN EVENT, NOT A CLIENT SIDE-STORE:
+    #    the deliverable is substrate truth — it must survive reload, be
+    #    re-opened, narrated, and (only on explicit user action) promoted into
+    #    a Research investigation via the existing seam.read_to_research event.
+    #    A sessionStorage copy would be a second source of truth that diverges
+    #    from the graph; so it rides the SAME single-writer typed-event funnel
+    #    as every other state mutation (NOT the running talk-to-book thread,
+    #    which IS ephemeral session view-state — that stays in sessionStorage,
+    #    the usePosition precedent). It records the report PROSE (model-
+    #    generated synthesis grounded on owned servable chunks — a §9.0 withheld
+    #    body never enters it because retrieval went through the search gate),
+    #    the length-box, the corpus scope (hard|soft) + the exact owned
+    #    document ids in scope (the defensible record that it never reached the
+    #    open internet), and the page-cited chunk references. It is built behind
+    #    the "proposed (sign-off pending)" banner — the PROPOSED Research↔Read
+    #    boundary, reversible to soft. specs/antiek-living-roadmap/ SPR-08.
+    READ_META_READING_GENERATED = "read.meta_reading.generated"
+
+    # ── Filing a personal-space doc INTO a research project (Living Roadmap
+    #    SPR-13 M3). The reader's personal space CONTINUOUSLY SUGGESTS filing a
+    #    created deliverable / saved read into a semantically-matching research
+    #    project; on EXPLICIT accept (never auto), the surface emits this event.
+    #    Filing is a LINK, not a copy: the handler sets documents.investigation_id
+    #    THROUGH THE SINGLE-WRITER FUNNEL (the /events/typed side-effect handler →
+    #    runtime/db_lock connect_write) — a direct ``UPDATE documents`` is
+    #    forbidden (it would bypass the only-writer invariant). The §9 chain
+    #    (claim→chunk→document→ip_holder_id) stays intact; ip_holder_id is
+    #    untouched (immutable on filing). 1:N — a document belongs to 0..1
+    #    investigation (documents.investigation_id). specs SPR-13.
+    DOCUMENT_FILED_INTO_INVESTIGATION = "document.filed_into_investigation"
 
 
 # Schema version stamped into every emitted row. Bump when any payload
@@ -418,7 +525,91 @@ class ActionType(str, Enum):
 #     the trajectory. Handoff-audit events over existing entities — NOT
 #     graph-write events; the seam moves a reference, never a copy.
 #     specs/antiek-unified/ SPR-03. 2026-05-25.
-EVENT_SCHEMA_VERSION: int = 16
+# v17: Living Roadmap SPR-14 — voice infrastructure (shared voice-in
+#     capture). One typed event (voice.captured) records a spoken capture
+#     transcribed via the live /voice/transcribe (Whisper today; MiMo-V2.5-ASR
+#     is the intended future backend behind the SAME route — a backend swap,
+#     no new event). It carries the transcript + audio_ref + the SHARED
+#     provenance discriminator source_kind ("user" | "ai" | "system"); a
+#     voice capture is ALWAYS source_kind="user" (human-authored), the §9
+#     reason voice-in can never be conflated with model output. The audio
+#     blob persists by reference through the single-writer typed-event
+#     funnel — no client side-store. specs/antiek-living-roadmap/ SPR-14.
+#     2026-05-27.
+# v18: Living Roadmap SPR-03 — block-canvas position persistence. One typed
+#     event (block.positioned) records where the operator dragged an
+#     insight/question block on the DRW "organism" canvas: node_id + (x, y)
+#     in the canvas's free 2D coordinate space, scoped to the investigation
+#     via the Event envelope's investigation_id. A canvas position is pure
+#     view-state, NOT a §9 provenance claim — it is persisted through the
+#     SAME single-writer typed-event funnel as every other state mutation
+#     precisely because the frontend has no other sanctioned writer (a
+#     client side-store would be a second source of truth that can diverge).
+#     The canvas re-derives positions by replaying these events (latest per
+#     node_id wins); a node with no event falls back to deterministic
+#     auto-layout. The optional ``region_id`` + ``region_label`` carry M4
+#     theme-grouping (a block dropped into a named region) through the SAME
+#     event — no second event type, no side store. specs/antiek-living-roadmap/
+#     SPR-03. 2026-05-28.
+# v19: Living Roadmap SPR-04 — highlight → float-menu NOTE. One typed event
+#     (marginalia.noted) records a user-authored note created by selecting text
+#     on any surface and choosing "Note" in the shared float-menu. It carries
+#     the note text + the selection excerpt + the selection's provenance
+#     (chunk_id; document_id rides the Event envelope) + the SHARED provenance
+#     discriminator source_kind pinned to the literal "user" — a marginalia note
+#     is human-authored, the §9 reason it can never be conflated with a model
+#     reply (the float-menu's Dialogue/Search/Deep-research RESULTS are
+#     model/retrieval-sourced; only this note is user-sourced). The note rides
+#     the SAME single-writer typed-event funnel as every other state mutation —
+#     no client side-store. specs/antiek-living-roadmap/ SPR-04. 2026-05-28.
+# v20: Living Roadmap SPR-07 — source.read → SiteSee "read" tint. One typed
+#     event (source.read) records that a reader DWELLED on a source long enough
+#     to count as "read" (the dwell threshold + its justification live in
+#     docs/decisions/spr-06-source-read-event-gap.md). It closes the SPR-06 gap:
+#     cited/saved were already substrate-derived, the per-source "read" signal
+#     was not — so SiteSee's "read" tint shipped dormant. The event carries NO
+#     body (§9.0) — only the document_id (Event envelope) + the chunk the read
+#     was attributed to + the dwell evidence (dwell_ms + page_count) that
+#     justified the verdict. It is the reader's OWN reading history (like a
+#     "saved" signal), NOT a §9 provenance claim about the world, so it carries
+#     no source_kind/grounding fields. Emitted ONCE per source per reading
+#     session through the single-writer funnel (no side store); SiteSee reads
+#     the resolved history and emits nothing itself. specs/antiek-living-roadmap/
+#     SPR-07. 2026-05-28.
+# v21: Living Roadmap SPR-08 — meta-reading deliverable. One typed event
+#     (read.meta_reading.generated) persists a one-shot, READ-ONLY, page-cited
+#     synthesis over the reader's OWNED corpus as a re-openable Read asset. It
+#     rides the single-writer funnel (NOT a client side-store) because the
+#     deliverable is substrate truth — it must survive reload, be re-opened /
+#     narrated, and (only on explicit user action) be promoted into Research via
+#     the EXISTING seam.read_to_research event (never a new silo, never auto).
+#     The running talk-to-book chat thread is NOT an event — it is ephemeral
+#     session view-state (sessionStorage, the usePosition precedent). The event
+#     records the report prose (model-generated synthesis grounded on owned
+#     servable chunks — a §9.0 withheld body never enters it because retrieval
+#     went through the search gate), the length-box (the hard pages/minutes
+#     budget the asset was built to), the corpus scope (hard|soft) + the exact
+#     owned document ids in scope (the defensible record it never reached the
+#     open internet — internet-agnostic), and page-cited chunk references. Built
+#     behind the "proposed (sign-off pending)" banner: the PROPOSED Research↔Read
+#     boundary, reversible to soft. specs/antiek-living-roadmap/ SPR-08.
+#     2026-05-28.
+# v22: Living Roadmap SPR-13 — filing a personal-space doc INTO a research
+#     project. One typed event (document.filed_into_investigation) records that
+#     the reader EXPLICITLY accepted a suggestion to file a created deliverable /
+#     saved read into a semantically-matching research project. Filing is a
+#     LINK, not a copy: the /events/typed side-effect handler sets
+#     documents.investigation_id THROUGH THE SINGLE-WRITER FUNNEL (runtime/db_lock
+#     connect_write) — a direct ``UPDATE documents`` is forbidden (it would
+#     bypass the only-writer invariant). The §9 provenance chain
+#     (claim→chunk→document→ip_holder_id) stays intact and ip_holder_id is
+#     untouched (immutable on filing). NEVER auto: the event fires only on an
+#     explicit user accept; the suggestion (substrate/books/personal_space.py
+#     match_document_to_investigations) only ranks. 1:N — a document belongs to
+#     0..1 investigation (documents.investigation_id, 1:N FK). The match score +
+#     question are recorded on the event so the filing decision is reconstructable
+#     (why this doc landed here). specs/antiek-living-roadmap/ SPR-13. 2026-05-28.
+EVENT_SCHEMA_VERSION: int = 23
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -496,6 +687,19 @@ class ContextLayer(BaseModel):
 # a tuple import). Keep in sync with constants.py manually; the test
 # suite asserts equivalence in ``test_events_schema``.
 ConfidenceLevel = Literal["high", "moderate", "low", "unknown"]
+
+# The SHARED provenance discriminator (Living Roadmap SPR-14 M3 / master-spec
+# §9). One vocabulary, deliberately NOT voice-specific, so every authored-vs-
+# generated distinction across the graph uses the same three values:
+#   "user"   — human-authored (voice-IN capture, a typed note, an operator edit)
+#   "ai"     — model-generated (a synthesized artifact; TTS narration of model
+#              text is labeled "ai" by the voice-OUT half — SPR-14 M2/M3)
+#   "system" — machine / non-authored (a deterministic pipeline emission)
+# It is a §9 violation to ever store voice-IN as anything other than "user":
+# conflating human speech with model output corrupts the provenance chain that
+# claim→chunk→document→ip_holder_id depends on. The other builder's TTS-out
+# labeling references the value "ai"; keep this list as the single source.
+ProvenanceSourceKind = Literal["user", "ai", "system"]
 
 
 class Claim(BaseModel):
@@ -1637,6 +1841,16 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     chase_value: int = Field(default=0, ge=0)
     # Hard budget cap in USD across the chase tree. Defaults to $2.
     chase_budget_usd: float = Field(default=2.0, ge=0.0)
+    # SPR-01 (Living Roadmap) M3: the curated fast/deep research tier the
+    # operator chose at the research entry. CLOSED set — its only legal
+    # values are the members of substrate.dispatch.research_tier.RESEARCH_TIERS
+    # ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro). Recorded ON the
+    # start event so the chosen tier is queryable after the fact (which
+    # provider Hermes preferred for this investigation). The tier→provider
+    # resolution lives in ONE place — substrate/dispatch/research_tier.py —
+    # never duplicated here. Defaults to "deep" (DEFAULT_RESEARCH_TIER): a
+    # cold research question is the high-value case.
+    research_tier: Literal["fast", "deep"] = "deep"
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):
@@ -2814,6 +3028,49 @@ class EditCapturedPayload(_PayloadBase):
     session_id: Optional[str] = None
 
 
+# ── Write workflow — draft provenance persistence (Write SPR-09) ─────
+
+
+class SectionDraftGeneratedPayload(_PayloadBase):
+    """A section's draft was generated by ``creative_writer`` and its
+    per-paragraph provenance persisted (Write SPR-09).
+
+    The X-ray view (paragraph → driving blocks → chunks → documents)
+    depends on ``prose_provenance`` surviving the generating request.
+    ``creative_writer`` returns ``prose_provenance`` (paragraph_index →
+    [block_ids]) ephemerally; this event — emitted only after a live
+    generation succeeds AND the voice gate passes — makes the
+    paragraph→blocks link DURABLE in the graph alongside the
+    ``deliverable_sections.prose_text`` / ``prose_provenance`` row write.
+
+    The link is the §9 moat made auditable: a maintainer can reconstruct,
+    for any generated paragraph, which blocks drove it (and from there the
+    chunks/documents via ``substrate.write.provenance.resolve_provenance``).
+    This is a composition/audit event — the underlying blocks/nodes are
+    untouched (outlines are views over nodes, per the moat).
+
+    ``prose_provenance`` keys are STRINGS here (paragraph indices) because
+    JSON object keys are strings; the reader parses them back to ints. The
+    map values are the block_ids creative_writer cited per paragraph (the
+    node_id for a graph-node block, the outline_block_id for a
+    user-originated one — the same id the inline citation names)."""
+
+    action_type: Literal[ActionType.SECTION_DRAFT_GENERATED] = ActionType.SECTION_DRAFT_GENERATED
+    section_id: str
+    deliverable_id: str
+    # paragraph_index (as a string key) → list of driving block_ids.
+    prose_provenance: dict[str, list[str]]
+    paragraph_count: int
+    # The distinct blocks cited across all paragraphs (deduped, sorted).
+    cited_block_ids: list[str]
+    # Did every substantive paragraph cite at least one attached block?
+    all_claims_cited: bool
+    # How many paragraphs were flagged unsupported (surfaced, never asserted).
+    unsupported_paragraph_count: int = 0
+    # The §5.5 voice gate score the prose passed at.
+    gate_score: Optional[float] = None
+
+
 # ── Cross-workflow seams (antiek-unified SPR-03) ─────────────────────
 #
 # One payload per seam. Every seam payload carries the same four
@@ -2930,6 +3187,291 @@ class SeamWriteToSpeakPayload(_SeamPayloadBase):
     outline_section_id: Optional[str] = None
 
 
+# ── Voice infrastructure — shared voice-in capture (SPR-14) ──────────
+
+
+class VoiceCapturedPayload(_PayloadBase):
+    """A spoken capture, transcribed and persisted through the single-writer
+    funnel (Living Roadmap SPR-14 M1/M3). Emitted by the shared
+    ``useVoiceCapture`` hook after record → transcribe; downstream
+    distillation (``substrate/books/voice_note`` → ``note.emerged``) is
+    unchanged and consumes this capture by event id.
+
+    ``source_kind`` is fixed to ``"user"`` here and is the §9 load-bearing
+    field: a voice capture is human-authored, never model output. The schema
+    pins it to the literal ``"user"`` (not the open :data:`ProvenanceSourceKind`) so a
+    voice capture can NEVER be persisted as ``"ai"``/``"system"`` — the
+    no-conflation invariant is enforced by the type, not by convention.
+
+    The audio blob rides by *reference* (``audio_ref`` — the same field
+    ``saveVoiceNote`` carries), never inline and never a client side-store:
+    the blob persists wherever the reference points, the event carries only
+    the pointer + the transcript.
+
+    ``transcript`` may be empty: a silent recording must NOT be given a
+    hallucinated transcript (SPR-14 rigor #3). ``transcript_status``
+    distinguishes a genuine empty/silent capture ("empty") from an ordinary
+    one ("ok"), so a downstream consumer never mistakes "" for "transcription
+    failed". A failed transcription — or an over-cap long clip — is surfaced to
+    the user and NEVER persisted; there is no such event (so no truncated/
+    "bounded" status is ever emitted, hence it is not in the Literal)."""
+
+    action_type: Literal[ActionType.VOICE_CAPTURED] = ActionType.VOICE_CAPTURED
+    # The §9 provenance label — pinned to "user" (a capture is human speech).
+    source_kind: Literal["user"] = "user"
+    transcript: str  # may be "" for a silent capture — never a hallucination
+    transcript_status: Literal["ok", "empty"] = "ok"
+    language: Optional[str] = None
+    duration_seconds: float = Field(ge=0.0, default=0.0)
+    # Reference to the persisted audio blob (e.g. an object key / URL). The
+    # blob is NOT inlined here; this is the pointer the typed-event funnel
+    # carries so there is no client-side side store.
+    audio_ref: Optional[str] = None
+
+
+class MarginaliaNotedPayload(_PayloadBase):
+    """A user-authored note created from a text selection via the shared
+    highlight → float-menu (Living Roadmap SPR-04 M2). The reader selects text
+    on any surface and chooses "Note"; the selection becomes a marginalia note
+    persisted through the single-writer funnel — never a client side-store.
+
+    ``source_kind`` is fixed to ``"user"`` and is the §9 load-bearing field,
+    identically to :class:`VoiceCapturedPayload`: a marginalia note is
+    human-authored, so it can NEVER be persisted as ``"ai"``/``"system"`` and
+    can never be conflated with a model reply in the one graph. (The
+    float-menu's OTHER actions — Dialogue / Search / Deep-research — produce
+    model/retrieval-sourced RESULTS, which are labelled by their own paths;
+    only this note is user-sourced.) The no-conflation invariant is enforced by
+    the type, not by convention.
+
+    Provenance (master-spec §9): the note chains claim→chunk→document like every
+    other claim. ``chunk_id`` is the chunk the selection lands in (when the host
+    can resolve it — a synthesis selection over a cited claim resolves a chunk;
+    a free-prose selection may not, so it is optional); the document id rides
+    the Event envelope (``document_id``). ``excerpt`` is the reader's OWN
+    selected text — what they highlighted — not retrieved body, so it carries no
+    §9.0-withheld-content risk (a reader reading their own selection). The §9.0
+    no-leak guard governs the float-menu's outbound SEARCH / DEEP-RESEARCH
+    payloads, not this note of one's own reading."""
+
+    action_type: Literal[ActionType.MARGINALIA_NOTED] = ActionType.MARGINALIA_NOTED
+    note_id: str
+    note_text: str
+    # The user's selected text (what they highlighted) — their own words on the
+    # page, the anchor the note hangs off. Not retrieved body; see class docs.
+    excerpt: str
+    # The §9 provenance label — pinned to "user" (a marginalia note is the
+    # reader's own authorship), the no-conflation invariant from the type.
+    source_kind: Literal["user"] = "user"
+    # The chunk the selection lands in, when the host resolves one (a synthesis
+    # selection over a cited claim resolves a chunk; a free-prose selection may
+    # not). Null is honest "no chunk resolved", never invented.
+    chunk_id: Optional[str] = None
+
+
+# ── Block-canvas position persistence — DRW "organism" view (SPR-03) ──
+
+
+class BlockPositionPayload(_PayloadBase):
+    """Where an insight/open-question block sits on the DRW canvas (Living
+    Roadmap SPR-03 M2/M4). Emitted on drag-end by the Canvas component.
+
+    The canvas is a FREE 2D coordinate space — NOT the reading-physics
+    in-document layout-map (that anchors widgets to text; this places nodes
+    on a whiteboard). ``x``/``y`` are canvas-local pixels; the canvas
+    re-derives layout by replaying these events (latest event per
+    ``node_id`` wins), so the persisted event is the SINGLE source of truth
+    for position. A node with no event falls back to deterministic
+    auto-layout client-side; we never persist the auto-layout coordinates
+    (only an operator drag emits an event).
+
+    Why an event and not a client side-store? A canvas position is graph
+    *view-state* the operator wants to survive reload. The only sanctioned
+    DuckDB writer is the host funnel through ``runtime/db_lock``; a
+    localStorage side-store would be a second source of truth that can
+    diverge from the substrate. So position rides the SAME typed-event funnel
+    as every other state mutation — the §-single-writer reason, identical to
+    why VoiceCapturedPayload carries its audio by reference rather than a
+    side-store.
+
+    A canvas position is NOT a §9 provenance claim — it asserts nothing about
+    the world, only about pixels — so it carries no source/grounding fields;
+    the block's provenance still lives on its graph node (source_document_id).
+
+    ``region_id`` (+ optional human ``region_label``) carries M4 theme
+    grouping through the SAME event: a block dropped into a named region
+    records its region here rather than as a second event type or a side
+    store. ``None`` means "ungrouped"."""
+
+    action_type: Literal[ActionType.BLOCK_POSITIONED] = ActionType.BLOCK_POSITIONED
+    # The graph node (insight or question) this position belongs to. Opaque
+    # handle echoed from the distill surface; never rendered as a label.
+    node_id: str
+    # Canvas-local coordinates (free 2D space, not the reading-physics map).
+    x: float
+    y: float
+    # M4 theme grouping — the region this block was dropped into (None =
+    # ungrouped). Persisted on the SAME event so grouping needs no side store.
+    region_id: Optional[str] = None
+    # Human-facing region name, when the operator named the region. Opaque
+    # otherwise; never required.
+    region_label: Optional[str] = None
+
+
+# ── Source read → SiteSee "read" tint (SPR-07 M4) ──────────────────────
+
+
+class SourceReadPayload(_PayloadBase):
+    """A reader dwelled on a source long enough to count as "read" (Living
+    Roadmap SPR-07 M4). It lights SiteSee's "read" citation tint, closing the
+    SPR-06 gap (``docs/decisions/spr-06-source-read-event-gap.md``): ``cited``
+    and ``saved`` were already substrate-derived; a per-source ``read`` signal
+    was not, so the tint shipped dormant.
+
+    WHY AN EVENT, NOT A CLIENT SIDE-STORE (PR-2 / PR-6, identical reasoning to
+    :class:`BlockPositionPayload`): a reader's read-history is substrate
+    view-state SiteSee resolves back from the log — the only sanctioned DuckDB
+    writer is the host funnel through ``runtime/db_lock``; a localStorage
+    side-store would be a second source of truth that can diverge. So it rides
+    the SAME single-writer typed-event funnel as every other state mutation.
+
+    EMITTED ONCE PER SOURCE PER READING SESSION (coalesced — the surface tracks
+    a per-session emitted-set, never a per-page emit), on a JUSTIFIED dwell
+    threshold (see the decision doc). It is a v1, reversible tint signal.
+
+    §9.0 — NO BODY. This event carries NO excerpt and no source text: only the
+    ``document_id`` (on the Event envelope), the ``chunk_id`` the read was
+    attributed to (the representative chunk SiteSee tints), and the dwell
+    EVIDENCE (``dwell_ms`` + ``page_count``) that justified the verdict — so a
+    maintainer can see WHY this counted as read. A withheld source's body never
+    rides this event because no body field exists (structurally impossible),
+    and the read of a withheld source is the reader's own dwell, not its
+    content.
+
+    NOT A §9 PROVENANCE CLAIM. It asserts the reader's OWN reading history
+    (like a "saved" signal), not a claim about the world, so it carries no
+    ``source_kind``/grounding fields (unlike VoiceCaptured / MarginaliaNoted,
+    which ARE user-authorship claims)."""
+
+    action_type: Literal[ActionType.SOURCE_READ] = ActionType.SOURCE_READ
+    # The chunk the read was attributed to — the representative chunk SiteSee
+    # anchors its "read" tint to (PR-4 semantic anchor). The document id rides
+    # the Event envelope. Null is honest "no chunk resolved", never invented.
+    chunk_id: Optional[str] = None
+    # The dwell EVIDENCE that justified the "read" verdict (the decision doc's
+    # threshold). Recorded so the verdict is reconstructable from the event
+    # alone — never the body, only the measurement.
+    dwell_ms: int = Field(ge=0, default=0)
+    # How many distinct pages the reader dwelled on this session before the
+    # threshold tripped (the other half of the justification — a single glance
+    # at one page is not a "read").
+    page_count: int = Field(ge=0, default=0)
+
+
+# ── Meta-reading deliverable → re-openable Read asset (SPR-08 M4) ──────────
+
+
+class MetaReadingCitation(_PayloadBase):
+    """One page-level citation in a saved meta-reading asset. It carries a
+    REFERENCE (chunk_id + the document + the resolved reader page), never the
+    source body — opening it re-derives the body through the §9.0 serve gate.
+    ``page_index`` is the 0-based reader page the chunk anchors to, or null when
+    ``section_path`` did not resolve to a ``Page N`` marker (then
+    ``page_resolved`` is False and the surface shows an honest "page not
+    pinpointed", never a fabricated page — rigor #1)."""
+
+    chunk_id: str
+    document_id: str
+    page_index: Optional[int] = None
+    page_resolved: bool = False
+
+
+class ReadMetaReadingGeneratedPayload(_PayloadBase):
+    """A one-shot, READ-ONLY, page-cited synthesis over the reader's OWNED
+    corpus, saved as a re-openable Read asset (Read SPR-08 M4).
+
+    It is substrate truth (re-open / narrate / promote-on-explicit-action), so
+    it rides the single-writer funnel — not a client side-store (which would
+    diverge from the graph). The running talk-to-book chat is the opposite case
+    (ephemeral session view-state, sessionStorage).
+
+    §9.0 — the ``report`` is MODEL-generated synthesis grounded on owned
+    SERVABLE chunks; a withheld body never enters it because retrieval went
+    through the search gate (restricted content excluded). The ``citations``
+    carry references, never bodies. ``corpus_document_ids`` is the defensible
+    record of EXACTLY which owned docs were in scope — the proof this never
+    reached the open internet (internet-agnostic; if it had, it would be
+    Research, not Read).
+
+    PROPOSED boundary (operator decision 2, sign-off pending): built behind the
+    "proposed (sign-off pending)" banner, reversible to a ``soft`` corpus scope.
+    Promotion into Research is the EXISTING ``seam.read_to_research`` event on
+    explicit user action only — never auto, never a new silo."""
+
+    action_type: Literal[ActionType.READ_META_READING_GENERATED] = (
+        ActionType.READ_META_READING_GENERATED
+    )
+    asset_id: str
+    # The reader's ask the synthesis answered (user-sourced prompt).
+    prompt: str
+    # The model-generated synthesis prose, already bounded to the length-box
+    # (built-to-size, not post-trimmed). Read-only — never edited in place.
+    report: str
+    # The hard length-box the asset was built to (operator decision 3).
+    length_unit: Literal["pages", "minutes"]
+    length_amount: int = Field(ge=1)
+    # True when the synthesis overran the budget and was cut to fit — labelled,
+    # never silently clipped (rigor #1).
+    truncated: bool = False
+    # The corpus scope: "hard" (the proposed boundary — owned servable docs,
+    # optionally an explicit pick) or "soft" (the rollback when sign-off is
+    # withheld — the whole owned readable corpus). NEITHER reaches the internet.
+    corpus_scope: Literal["hard", "soft"] = "hard"
+    # EXACTLY the owned document ids the synthesis drew on — the internet-
+    # agnostic record. An empty list is an honest "owned corpus was empty".
+    corpus_document_ids: list[str] = Field(default_factory=list)
+    # Page-cited references back into the SPR-07 reader.
+    citations: list[MetaReadingCitation] = Field(default_factory=list)
+
+
+class DocumentFiledIntoInvestigationPayload(_PayloadBase):
+    """The reader EXPLICITLY accepted a suggestion to file a personal-space
+    document into a research project (Read SPR-13 M3).
+
+    THE INVARIANT (operator decision 1 + out-of-scope list): filing is NEVER
+    automatic. The personal space CONTINUOUSLY SUGGESTS a match
+    (``match_document_to_investigations`` ranks projects by the doc's similarity
+    to each project's question); the file only happens on an EXPLICIT user
+    accept that emits this event. Decline leaves the doc put (no event).
+
+    FILING IS A LINK, NOT A COPY. The ``/events/typed`` side-effect handler sets
+    ``documents.investigation_id`` THROUGH THE SINGLE-WRITER FUNNEL (the host
+    ``connect_write`` lock = ``runtime/db_lock``) — a direct ``UPDATE documents``
+    is FORBIDDEN (it would bypass the only-writer invariant). The §9 provenance
+    chain (claim→chunk→document→ip_holder_id) is untouched; ``ip_holder_id`` is
+    immutable on filing. 1:N — a document belongs to 0..1 investigation
+    (``documents.investigation_id``).
+
+    The match ``score`` + the project ``question`` are recorded so the filing
+    decision is RECONSTRUCTABLE (a maintainer can see why this doc landed in this
+    project) — never re-derived guesswork."""
+
+    action_type: Literal[ActionType.DOCUMENT_FILED_INTO_INVESTIGATION] = (
+        ActionType.DOCUMENT_FILED_INTO_INVESTIGATION
+    )
+    # The document being filed. The handler sets ITS investigation_id; the
+    # document_id also rides the Event envelope (this field is the canonical
+    # subject the handler acts on, independent of the envelope's optional id).
+    filed_document_id: str
+    # The project the reader chose (the suggestion's top match, or the one they
+    # picked among >1 candidate). The handler writes THIS as the doc's
+    # investigation_id. The Event envelope's investigation_id is the same value.
+    target_investigation_id: str
+    # The match evidence — why this doc was suggested here (reconstructable).
+    match_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    target_question: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -3030,6 +3572,7 @@ TypedPayload = Annotated[
         BookServabilityChangedPayload,
         BookTakenDownPayload,
         EditCapturedPayload,
+        SectionDraftGeneratedPayload,
         SeamResearchToReadPayload,
         SeamReadToResearchPayload,
         SeamReadToWritePayload,
@@ -3037,6 +3580,12 @@ TypedPayload = Annotated[
         SeamSpeakToWritePayload,
         SeamSpeakToReadPayload,
         SeamWriteToSpeakPayload,
+        VoiceCapturedPayload,
+        MarginaliaNotedPayload,
+        BlockPositionPayload,
+        SourceReadPayload,
+        ReadMetaReadingGeneratedPayload,
+        DocumentFiledIntoInvestigationPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -3144,6 +3693,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.OUTLINE_BLOCK_REMOVED.value,
     # Write workflow SPR-02 — edit capture.
     ActionType.EDIT_CAPTURED.value,
+    # Write workflow SPR-09 — draft provenance persistence (X-ray).
+    ActionType.SECTION_DRAFT_GENERATED.value,
     # antiek-unified SPR-03 — cross-workflow seam handoffs.
     ActionType.SEAM_RESEARCH_TO_READ.value,
     ActionType.SEAM_READ_TO_RESEARCH.value,
@@ -3152,6 +3703,18 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.SEAM_SPEAK_TO_WRITE.value,
     ActionType.SEAM_SPEAK_TO_READ.value,
     ActionType.SEAM_WRITE_TO_SPEAK.value,
+    # Living Roadmap SPR-14 — voice-in capture provenance.
+    ActionType.VOICE_CAPTURED.value,
+    # Living Roadmap SPR-04 — highlight → float-menu user NOTE provenance.
+    ActionType.MARGINALIA_NOTED.value,
+    # Living Roadmap SPR-03 — block-canvas position persistence.
+    ActionType.BLOCK_POSITIONED.value,
+    # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
+    ActionType.SOURCE_READ.value,
+    # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
+    ActionType.READ_META_READING_GENERATED.value,
+    # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
+    ActionType.DOCUMENT_FILED_INTO_INVESTIGATION.value,
 })
 
 
@@ -3436,4 +3999,20 @@ __all__ = [
     "BookTakenDownPayload",
     # Write workflow SPR-02 — edit capture (v15 schema bump)
     "EditCapturedPayload",
+    # Write workflow SPR-09 — draft provenance persistence (v23 schema bump)
+    "SectionDraftGeneratedPayload",
+    # Voice infrastructure SPR-14 — shared provenance vocab + voice-in capture
+    "ProvenanceSourceKind",
+    "VoiceCapturedPayload",
+    # Highlight → float-menu user NOTE SPR-04 (v19 schema bump)
+    "MarginaliaNotedPayload",
+    # Block-canvas position persistence SPR-03 (v18 schema bump)
+    "BlockPositionPayload",
+    # Source read → SiteSee "read" tint SPR-07 (v20 schema bump)
+    "SourceReadPayload",
+    # Meta-reading deliverable → re-openable Read asset SPR-08 (v21 schema bump)
+    "MetaReadingCitation",
+    "ReadMetaReadingGeneratedPayload",
+    # Filing a personal-space doc into a research project SPR-13 (v22 bump)
+    "DocumentFiledIntoInvestigationPayload",
 ]

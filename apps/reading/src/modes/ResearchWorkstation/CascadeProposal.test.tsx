@@ -206,6 +206,86 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
   });
 });
 
+describe("CascadeProposal — renders the planner's REAL output, no placeholders (SPR-05 M2 honesty)", () => {
+  it("shows each sub-question's planner RATIONALE when present", async () => {
+    createPlanMock.mockResolvedValue({
+      ...CREATE_RESP,
+      tree: {
+        ...TREE,
+        root: planNode("pn-root", "How will the energy transition reshape geopolitics?", [
+          {
+            ...planNode("pn-1", "Which states gain leverage from critical-mineral supply?"),
+            rationale: "Lithium and cobalt concentration is the new oil map.",
+          } as never,
+        ]),
+      },
+    });
+    renderProposal();
+    // The question AND its real rationale (the planner's "why") both render.
+    expect(await screen.findByText(/critical-mineral supply/i)).toBeTruthy();
+    expect(screen.getByText(/Lithium and cobalt concentration is the new oil map/i)).toBeTruthy();
+  });
+
+  it("does NOT fabricate 'known insights' / 'open questions' blocks the planner never produced", async () => {
+    // The planner returns ONLY sub-questions (its real output). The surface
+    // must not paint hand-faked insight/open-question sections to match the
+    // sprint prose — it names that gap in code/handoff instead (rigor #1).
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    renderProposal();
+    await screen.findByText(/critical-mineral supply/i);
+    const dom = (document.body.textContent ?? "").toLowerCase();
+    // No fabricated section headers for artifacts that don't exist pre-run.
+    expect(dom).not.toContain("known insights");
+    expect(dom).not.toContain("open questions");
+    // What IS shown is the honest sub-question framing.
+    expect(screen.getByText(/Proposed sub-questions/i)).toBeTruthy();
+  });
+
+  it("an edited-then-approved plan launches (the edit re-opens the gate, launch runs the current tree)", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    // Editing returns a fresh tree with launchable reset — the gate re-opens.
+    editPlanMock.mockResolvedValue({
+      root_node_id: "q-pn-root",
+      tree: {
+        ...TREE,
+        root: {
+          ...TREE.root,
+          children: [
+            { ...(TREE.root.children[0] as object), question: "Reworded: who controls the minerals?" } as never,
+            ...TREE.root.children.slice(1),
+          ],
+        },
+      },
+      launchable: false,
+    });
+    approvePlanMock.mockResolvedValue({
+      root_node_id: "q-pn-root",
+      approval: { state: "approved", approved_at: "t", approved_by: "x", plan_version: 2 },
+      launchable: true,
+    });
+    launchPlanMock.mockResolvedValue({ session_id: "sess-edited", researches: [], aggregate_cap_usd: 10 });
+    const { onLaunched } = renderProposal();
+    await screen.findByText(/critical-mineral supply/i);
+    // Reword the first sub-question through the edit contract.
+    fireEvent.click(screen.getAllByRole("button", { name: "edit" })[0]);
+    const input = screen.getByLabelText("Edit sub-question");
+    fireEvent.change(input, { target: { value: "Reworded: who controls the minerals?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(editPlanMock).toHaveBeenCalledWith(
+        "q-pn-root",
+        expect.objectContaining({ op: "reword", question: "Reworded: who controls the minerals?" }),
+      ),
+    );
+    expect(await screen.findByText(/who controls the minerals/i)).toBeTruthy();
+    // Launch approves the CURRENT (edited) tree, then launches it.
+    fireEvent.click(await screen.findByRole("button", { name: /Start 3 researches/i }));
+    await waitFor(() => expect(approvePlanMock).toHaveBeenCalledWith("q-pn-root"));
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root"));
+    await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("sess-edited"));
+  });
+});
+
 describe("CascadeProposal — honest no-key state (M4)", () => {
   it("renders the shared AIActionFailure when the propose call fails (no provider keys)", async () => {
     createPlanMock.mockRejectedValue(new Error("HTTP 500"));

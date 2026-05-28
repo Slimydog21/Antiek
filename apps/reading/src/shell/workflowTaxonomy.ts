@@ -119,7 +119,10 @@ export const WORKFLOWS: Record<Exclude<Workflow, "shared">, WorkflowMeta> = {
     // you bring sources into (which is now a demoted power affordance,
     // reachable from the Library, not the door).
     tagline: "Open a book and read it with the AI alongside.",
-    nouns: ["Library", "Notebooks"],
+    // SPR-13 M4: "Meta-docs" sits AFTER "Library" — the reader's CREATED
+    // deliverables (a Read noun beside the raw library of source books), the
+    // meta-docs tab the personal space filters to.
+    nouns: ["Library", "Meta-docs", "Notebooks"],
     defaultRoute: "/library",
   },
   write: {
@@ -374,6 +377,20 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     blurb: "Friends-and-family invitee landing — unauthenticated, token-credentialed.",
     built: true,
     route: "/speak/invite/:token",
+  },
+  // SPR-11 — the Biography TEMPLATE. NOT a fifth workflow: a biography
+  // composes Research + Write + Speak over the ONE graph, so it is classified
+  // under Speak (the talk/voices surface it leads into), reachable from the
+  // home's "Start a biography" card — never a fifth rail door (that would
+  // imply a fifth product/graph, which the template-not-silo decision rejects;
+  // see docs/decisions/spr-11-biography-template-not-graph.md).
+  {
+    id: "Biography",
+    workflow: "speak",
+    label: "Biography",
+    blurb: "Start a biography — composes research, writing, and gathered voices over the one workspace (SPR-11).",
+    built: true,
+    route: "/biography",
   },
   // Speak SPR-08 ONE DOOR: the duplicate Interview surface folds into Speak
   // (mirrors the SPR-05 InvestigationsIndex fold). Their capability — capture,
@@ -666,14 +683,28 @@ export function isWorkflowDestination(
   return WORKFLOW_ORDER.includes(wf as Exclude<Workflow, "shared">);
 }
 
+// SPR-13 M4: the personal-space surfaces (the Read personal bed + the meta-docs
+// tab) are sub-surfaces of the Reading mode (no own MODE_TAXONOMY entry, like
+// MetaReading), but they ARE Read-workflow destinations — so the active rail
+// highlights Read when the operator is on them. Listed here so workflowForPath
+// resolves them without a (would-be-stale) taxonomy entry.
+const READ_SUBSURFACE_ROUTES: ReadonlyArray<{ workflow: Workflow; prefix: string }> = [
+  { workflow: "read", prefix: "/readings" },
+  { workflow: "read", prefix: "/meta-readings" },
+  { workflow: "read", prefix: "/read/meta-reading" },
+];
+
 /** Resolve which workflow a pathname belongs to (for active-rail state). */
 export function workflowForPath(pathname: string): Workflow {
   // Longest-prefix match against routed modes. Strip params for matching.
-  const candidates = MODE_TAXONOMY.filter((m) => m.route).map((m) => ({
-    workflow: m.workflow,
-    // Convert "/speak/:projectId" → "/speak" prefix.
-    prefix: m.route!.replace(/\/:.*/, ""),
-  }));
+  const candidates = [
+    ...MODE_TAXONOMY.filter((m) => m.route).map((m) => ({
+      workflow: m.workflow,
+      // Convert "/speak/:projectId" → "/speak" prefix.
+      prefix: m.route!.replace(/\/:.*/, ""),
+    })),
+    ...READ_SUBSURFACE_ROUTES,
+  ];
   // Sort by prefix length desc so "/speak/invite" beats "/speak".
   candidates.sort((a, b) => b.prefix.length - a.prefix.length);
   for (const c of candidates) {

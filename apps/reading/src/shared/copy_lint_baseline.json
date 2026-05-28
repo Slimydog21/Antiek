@@ -37,7 +37,7 @@
   "src/modes/Write/BlockRepository.tsx:136\tblock-id\tblock_id",
   "src/modes/Write/ContextWindow/ContextWindow.tsx:53\tblock-id\tblock_id",
   "src/modes/Write/ContextWindow/contextWindowState.ts:50\tn-claims\t[\"insight\", \"open_question\", \"claim\"]",
-  "src/modes/Write/Outline.tsx:168\tblock-id\tblock_id",
+  "src/modes/Write/Outline.tsx:206\tblock-id\tblock_id",
   "src/modes/Write/Repository/Repository.tsx:115\tblock-id\tblock_id",
   "src/modes/Write/Repository/dragToOutline.ts:38\tn-claims\t[\"insight\", \"open_question\", \"claim\"]",
   "src/modes/Write/Repository/dragToOutline.ts:56\tblock-id\tblock_id",

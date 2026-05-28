@@ -266,6 +266,9 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.BOOK_SERVABILITY_CHANGED]: null,
   [ActionType.BOOK_TAKEN_DOWN]: null,
   [ActionType.EDIT_CAPTURED]: null,
+  // Write SPR-09 — draft provenance persistence (X-ray); not narrated in the
+  // research timeline (it is a Write-surface composition event).
+  [ActionType.SECTION_DRAFT_GENERATED]: null,
   [ActionType.SEAM_RESEARCH_TO_READ]: null,
   [ActionType.SEAM_READ_TO_RESEARCH]: null,
   [ActionType.SEAM_READ_TO_WRITE]: null,
@@ -273,6 +276,25 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.SEAM_SPEAK_TO_WRITE]: null,
   [ActionType.SEAM_SPEAK_TO_READ]: null,
   [ActionType.SEAM_WRITE_TO_SPEAK]: null,
+  // SPR-14 — voice-in capture provenance; not narrated in the thinking stream.
+  [ActionType.VOICE_CAPTURED]: null,
+  // SPR-04 — a highlight → float-menu user note is reader marginalia, not
+  // research progress; never narrated in the thinking stream.
+  [ActionType.MARGINALIA_NOTED]: null,
+  // SPR-03 — block-canvas position is pure view-state (where a block sits on
+  // the organism canvas); never narrated as research progress.
+  [ActionType.BLOCK_POSITIONED]: null,
+  // SPR-07 — source.read is the reader's own reading history (lights SiteSee's
+  // "read" tint on the Read surface); not a Research thinking-stream beat.
+  [ActionType.SOURCE_READ]: null,
+  // SPR-08 — a saved meta-reading deliverable is a Read asset (a re-openable
+  // synthesis over the owned corpus); it is not a Research thinking-stream beat.
+  [ActionType.READ_META_READING_GENERATED]: null,
+  // SPR-13 — filing a personal-space doc into a project is a Read-side curation
+  // action (the reader accepting a suggestion); not a Research thinking-stream
+  // beat. The doc joins the project's substrate, but the narration belongs to
+  // the personal space, not the investigation's progress stream.
+  [ActionType.DOCUMENT_FILED_INTO_INVESTIGATION]: null,
 };
 
 /** The safe generic line for an action_type with no row — only reachable if

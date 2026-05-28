@@ -9,10 +9,13 @@ import {
   type DeliverableKind,
   type DeliverableSummary,
 } from "../../lib/api";
+import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
+import ConnectResearch from "./ConnectResearch";
 import { ContextWindow } from "./ContextWindow/ContextWindow";
 import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
+import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
 
@@ -42,6 +45,9 @@ export default function WriteHome() {
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [onRamp, setOnRamp] = useState<"idea" | "context" | null>(null);
+  // The piece-view surface: the outline loop, or the imported research canvas
+  // (M1 — the SPR-03 Canvas of the linked investigation's blocks).
+  const [pieceView, setPieceView] = useState<"outline" | "canvas">("outline");
 
   // The active tap-to-add handler, registered by the Outline (binds the tap to
   // the active section). A ref so re-registers don't re-render the repository.
@@ -107,20 +113,29 @@ export default function WriteHome() {
     });
   }, [navigate]);
 
-  // The "start a piece" action — the obvious way to begin (WX-01). The create
-  // button bug is fixed elsewhere; this is the working path into the loop.
+  // The "start a piece" action — the obvious way to begin (WX-01). SPR-09 M1:
+  // it now runs title → project-type → connect-to-research, so a piece is
+  // created WITH its backing investigation_root_id set (the link is set at
+  // creation; M1 reads it back to verify it exists).
   const [starting, setStarting] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const [newKind, setNewKind] = useState<DeliverableKind>("general_essay");
+  // Open-ended project type (M4): freeform text the AI interprets; presets seed.
+  const [projectType, setProjectType] = useState<{ freeform: string; kind: DeliverableKind }>(
+    { freeform: "", kind: "general_essay" },
+  );
 
-  async function startPiece(e: React.FormEvent) {
-    e.preventDefault();
+  async function createWithConnection(resolved: { investigationId: string; label: string }) {
     if (!newTitle.trim()) return;
     setStarting(true);
     try {
       const d = await createDeliverable({
         title: newTitle.trim(),
-        deliverable_kind: newKind,
+        // The freeform type resolves to the closest kind (ProjectType.resolveKind);
+        // a novel type falls to general_essay — never gated, never crashes.
+        deliverable_kind: projectType.kind,
+        // M1: the piece↔research link, set at creation (deliverables.
+        // investigation_root_id; reused, not a new column — see decision D-1).
+        investigation_root_id: resolved.investigationId,
       });
       navigate(`/write/${d.deliverable_id}`);
     } finally {
@@ -142,34 +157,36 @@ export default function WriteHome() {
           </p>
         </header>
 
-        <form
-          onSubmit={startPiece}
-          className="mb-6 flex flex-wrap items-center gap-2 rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-2"
-        >
+        <div className="mb-6 space-y-3 rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-2">
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             placeholder="What are you writing? (a title)"
-            className="min-w-[220px] flex-1 rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
+            className="w-full rounded border border-rule px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
           />
-          <select
-            value={newKind}
-            onChange={(e) => setNewKind(e.target.value as DeliverableKind)}
-            className="rounded border border-rule px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1"
-          >
-            <option value="general_essay">Essay</option>
-            <option value="research_memo">Research memo</option>
-            <option value="book_chapter">Book chapter</option>
-            <option value="biography_section">Biography section</option>
-            <option value="investor_brief">Investor brief</option>
-          </select>
-          <button
-            type="submit"
-            disabled={starting || !newTitle.trim()}
-            className="rounded bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-shadow-2 disabled:bg-glacial-1 dark:disabled:bg-slate-1"
-          >
-            {starting ? "Starting…" : "Start writing"}
-          </button>
+          {/* M4: open-ended project type — presets seed, do not gate. */}
+          <ProjectTypeField
+            value={projectType}
+            onChange={setProjectType}
+            disabled={starting}
+          />
+          {/* M1: the connect-to-research step. Pick a project (imports its
+              blocks onto the canvas) or none (auto-spawns + links a folder).
+              Either way the piece is created WITH investigation_root_id set. */}
+          {newTitle.trim() ? (
+            <ConnectResearch
+              pieceTitle={newTitle}
+              disabled={starting}
+              onConnect={(resolved) => void createWithConnection(resolved)}
+            />
+          ) : (
+            <p className="text-xs italic text-ink-mute dark:text-moonlight">
+              Name the piece to choose a research project to connect it to.
+            </p>
+          )}
+          {starting && (
+            <p className="text-xs text-ocean">Starting your piece…</p>
+          )}
           <button
             type="button"
             onClick={() => setOnRamp((v) => (v === "idea" ? null : "idea"))}
@@ -177,7 +194,7 @@ export default function WriteHome() {
           >
             or brainstorm from an idea
           </button>
-        </form>
+        </div>
 
         {onRamp === "idea" && (
           <div className="mb-6 rounded-md border border-rule dark:border-charcoal-1">
@@ -232,14 +249,41 @@ export default function WriteHome() {
             <h1 className="truncate font-serif text-xl font-semibold text-ink dark:text-bright">
               {detail?.title ?? (loading ? "Opening…" : "Piece")}
             </h1>
+            {/* M1: the active research connection is shown at all times. The
+                link is the read-back investigation_root_id (it EXISTS in the
+                substrate, not a UI claim). */}
+            {detail && (
+              <p
+                data-testid="active-connection"
+                className="mt-0.5 text-[11px] text-ink-mute dark:text-moonlight"
+              >
+                {detail.investigation_root_id ? (
+                  <>Connected to research · backing folder linked</>
+                ) : (
+                  <span className="text-emperor">No research connected</span>
+                )}
+              </p>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={() => setOnRamp((v) => (v === "context" ? null : "context"))}
-            className="shrink-0 text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
-          >
-            {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
-          </button>
+          <div className="flex shrink-0 items-center gap-3">
+            {/* M1: toggle to the imported SPR-03 Canvas of the linked research. */}
+            {detail?.investigation_root_id && (
+              <button
+                type="button"
+                onClick={() => setPieceView((v) => (v === "canvas" ? "outline" : "canvas"))}
+                className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
+              >
+                {pieceView === "canvas" ? "outline" : "research canvas"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setOnRamp((v) => (v === "context" ? null : "context"))}
+              className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
+            >
+              {onRamp === "context" ? "hide brainstorm" : "brainstorm a section"}
+            </button>
+          </div>
         </header>
 
         {onRamp === "context" && (
@@ -253,12 +297,22 @@ export default function WriteHome() {
         )}
 
         {detail ? (
-          <Outline
-            deliverableId={detail.deliverable_id}
-            sections={detail.sections}
-            onChanged={refresh}
-            registerAddHandler={registerAddHandler}
-          />
+          pieceView === "canvas" && detail.investigation_root_id ? (
+            // M1: the SPR-03 Canvas, IMPORTED (not re-implemented) — it loads
+            // the linked investigation's insight/question blocks onto the free
+            // 2D canvas. Positions persist via the SPR-03 typed-event funnel.
+            <div className="min-h-0 flex-1">
+              <Canvas investigationId={detail.investigation_root_id} />
+            </div>
+          ) : (
+            <Outline
+              deliverableId={detail.deliverable_id}
+              sections={detail.sections}
+              onChanged={refresh}
+              registerAddHandler={registerAddHandler}
+              investigationId={detail.investigation_root_id}
+            />
+          )
         ) : (
           <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
             {loading ? "Opening the piece…" : "That piece isn't available."}

@@ -197,6 +197,32 @@ export function ProductsLauncher({
         </div>
 
         <div className="overflow-y-auto p-5 space-y-6">
+          {/* SPR-12 M1 — the unified branded home, featured at the top of
+              the launcher so it is one click away from anywhere (the rail
+              logo is the other path). Not a MODE_TAXONOMY entry (Home is
+              shell chrome, not a workflow mode — it has no modes/Home/
+              index.tsx, so the completeness glob does not treat it as a
+              mode). Always shown, never filtered, so the front door is
+              never buried. */}
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
+              Home
+            </div>
+            <button
+              type="button"
+              data-testid="launcher-home"
+              onClick={() => {
+                navigate("/home");
+                onClose();
+              }}
+              className="w-full text-left px-2 py-1.5 rounded flex items-center gap-2 hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
+            >
+              <span className="flex-1 min-w-0 truncate text-[13px]">
+                Antiek home — what you can do, and where to start
+              </span>
+            </button>
+          </div>
+
           {wfGroups.length === 0 && runModes.length === 0 ? (
             <p className="text-sm italic text-shadow-1 dark:text-moonlight">
               No surfaces match “{query}”.

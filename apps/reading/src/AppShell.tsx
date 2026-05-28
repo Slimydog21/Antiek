@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { NavRail } from "./shell/NavRail";
+import { PenguinMascot } from "./shell/PenguinMascot";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
@@ -77,6 +78,15 @@ export function AppShell({ children }: Props) {
           <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
         </div>
       </div>
+
+      {/* SPR-12 M3 — the Penguin mascot IS the floating project home.
+          Mounted at shell level so it floats over the whole app (any
+          route), not inside one surface. Single-click floats the project
+          tree panel, double-click opens the project home, drag moves it
+          (clamped on-screen), idle waddle/wander (reduced-motion-safe).
+          This supersedes the old NavRail "+ project / Project tree"
+          button — the tree is now reached through the Penguin. */}
+      <PenguinMascot />
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />

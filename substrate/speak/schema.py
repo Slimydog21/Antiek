@@ -243,6 +243,29 @@ CREATE TABLE IF NOT EXISTS speak_publications (
 );
 
 -- ===========================================================================
+-- SPR-10 — AI verifier grades (kept, never discarded)
+-- ===========================================================================
+-- One row per graded interview (payout_verifier.py). The grade is what
+-- the AI verifier (NOT the requester) decided about how well a transcript
+-- answered the requester's information goal. A bad-but-honest or failing
+-- interview is RETAINED here + labelled (honest / gamed_risk) — only the
+-- payout is withheld; the transcript is never discarded. `score` feeds the
+-- §9 quality_scores routing in contributor.accrue_contributions.
+CREATE TABLE IF NOT EXISTS speak_interview_grades (
+    interview_id     TEXT PRIMARY KEY,
+    project_id       TEXT NOT NULL,
+    information_goal  TEXT,           -- the requester's goal this was graded against
+    score            DOUBLE NOT NULL DEFAULT 0.0,   -- in [0, 1]
+    passed           BOOLEAN NOT NULL DEFAULT FALSE, -- score >= PASSING_SCORE
+    honest           BOOLEAN NOT NULL DEFAULT FALSE, -- bad-but-honest vs gamed
+    gamed_risk       BOOLEAN NOT NULL DEFAULT FALSE, -- the OPEN Goodhart flag
+    rationale        TEXT,
+    graded_by        TEXT NOT NULL DEFAULT 'deterministic-rubric',
+    graded_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_speak_grades_project ON speak_interview_grades(project_id);
+
+-- ===========================================================================
 -- SPR-09 — physical-book orders (QUOTE only; no fulfillment)
 -- ===========================================================================
 -- A provider-agnostic order shape over the existing pdf/epub export.
@@ -274,6 +297,7 @@ SPEAK_SCHEMA_TABLES: tuple[str, ...] = (
     "speak_corroboration_members",
     "speak_contributors",
     "speak_accruals",
+    "speak_interview_grades",
     "speak_publications",
     "speak_book_orders",
 )

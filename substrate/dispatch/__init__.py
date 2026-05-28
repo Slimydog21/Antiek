@@ -16,6 +16,14 @@ from .base import (
     RawProviderResponse,
 )
 from .providers import AnthropicProvider, OpenAICompatProvider
+from .research_tier import (
+    DEFAULT_RESEARCH_TIER,
+    RESEARCH_TIERS,
+    ResearchTier,
+    ResearchTierTarget,
+    normalize_research_tier,
+    resolve_research_tier,
+)
 from .router import (
     DispatchConfig,
     DispatchResult,
@@ -44,4 +52,11 @@ __all__ = [
     "normalize_finish_reason",
     "AnthropicProvider",
     "OpenAICompatProvider",
+    # SPR-01 M3 — the curated fast/deep research-tier map.
+    "DEFAULT_RESEARCH_TIER",
+    "RESEARCH_TIERS",
+    "ResearchTier",
+    "ResearchTierTarget",
+    "normalize_research_tier",
+    "resolve_research_tier",
 ]

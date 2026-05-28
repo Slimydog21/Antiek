@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, createSection, type SectionResponse } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import FloatMenu from "../shared/FloatMenu/FloatMenu";
+import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import type { RewriteIntent } from "../shared/FloatMenu/floatMenuActions";
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { parsePaletteDrag } from "./Repository/dragToOutline";
 import { WriteEditor } from "./Editor/Editor";
 import { EDIT_CAPTURE_POLICY } from "./EditCapture";
+import SubAgentProposal from "./SubAgentProposal";
+import VoiceToDraft from "./VoiceToDraft";
+import Xray from "./Xray";
 import {
   blockDisplayText,
   generateSection,
@@ -50,6 +57,10 @@ export interface OutlineProps {
   onChanged: () => Promise<void> | void;
   /** A tap-to-add request the host wires to the active section (M1↔M2). */
   registerAddHandler?: (handler: (hit: RepositoryHit) => void) => void;
+  /** The piece's backing research folder (deliverables.investigation_root_id,
+   * SPR-09 M1). It buckets the voice-to-draft VOICE_CAPTURED event (M4) and is
+   * the parent of a spun sub-agent (M4). Falls back to the operator bucket. */
+  investigationId?: string | null;
 }
 
 export default function Outline({
@@ -57,6 +68,7 @@ export default function Outline({
   sections,
   onChanged,
   registerAddHandler,
+  investigationId,
 }: OutlineProps) {
   // The section a tapped repository block lands in (the last section, by
   // default — the writer is composing top-down). A null active section means
@@ -106,6 +118,7 @@ export default function Outline({
               section={s}
               sectionNumber={i + 1}
               onChanged={onChanged}
+              investigationId={investigationId ?? "__operator__"}
             />
           ))
         )}
@@ -125,11 +138,13 @@ function SectionCard({
   section,
   sectionNumber,
   onChanged,
+  investigationId,
 }: {
   deliverableId: string;
   section: SectionResponse;
   sectionNumber: number;
   onChanged: () => Promise<void> | void;
+  investigationId: string;
 }) {
   const [blocks, setBlocks] = useState<OutlineBlockView[]>([]);
   const [dropHover, setDropHover] = useState(false);
@@ -141,6 +156,23 @@ function SectionCard({
   const [genError, setGenError] = useState<{ reason: string | null } | null>(null);
   // The prose loaded into the real editor (M4). null = not yet generated.
   const [draftContent, setDraftContent] = useState<string | null>(null);
+  // M3: draft ↔ X-ray toggle. The X-ray reads the PERSISTED prose_provenance.
+  const [view, setView] = useState<"draft" | "xray">("draft");
+  // The persisted prose + provenance for the X-ray. Seeds from the section
+  // (read back from GET /deliverables/{id}) so a reload still X-rays; updates
+  // on each generation.
+  const [proseText, setProseText] = useState<string | null>(section.prose_text);
+  const [proseProvenance, setProseProvenance] = useState<Record<string, string[]>>(
+    section.prose_provenance ?? {},
+  );
+  // M4: the spin-a-sub-agent proposal over a highlighted claim (null = closed).
+  const [proposal, setProposal] = useState<{ text: string } | null>(null);
+
+  // M4: the FloatMenu host over the rendered editor. The page region is the
+  // selection SCOPE; highlighting prose opens the SHARED FloatMenu with the
+  // Write-only rewrite actions (imported, not re-implemented — D-3).
+  const editorScopeRef = useRef<HTMLDivElement>(null);
+  const selection = useFloatMenuSelection({ scopeRef: editorScopeRef, minLength: 4 });
 
   const refreshBlocks = useCallback(async () => {
     try {
@@ -153,6 +185,12 @@ function SectionCard({
   useEffect(() => {
     void refreshBlocks();
   }, [refreshBlocks, section.block_count]);
+
+  // Keep the persisted prose/provenance in sync if the section reloads.
+  useEffect(() => {
+    setProseText(section.prose_text);
+    setProseProvenance(section.prose_provenance ?? {});
+  }, [section.prose_text, section.prose_provenance]);
 
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -206,6 +244,11 @@ function SectionCard({
         // Load the real prose into the editor (M4). Plain prose becomes
         // editable paragraphs; the editor mounts in place of the textarea.
         setDraftContent(proseToEditorHtml(r.prose_text));
+        // M3: capture the PERSISTED provenance so the X-ray can read it back
+        // (the server persisted it via SECTION_DRAFT_GENERATED — the link
+        // exists in the graph, this is just the immediate echo).
+        setProseText(r.prose_text);
+        setProseProvenance(r.prose_provenance ?? {});
       }
     } catch (e) {
       // Honest no-key / no-result: a 503 (provider not configured) or any
@@ -216,6 +259,49 @@ function SectionCard({
       setGenerating(false);
     }
   }
+
+  // M3 + M4: regenerate the section (the drag-in-X-ray gesture, and the
+  // rewrite / make-stronger actions, both regenerate this section from its
+  // blocks via the SHIPPED generate path — never a new model path). The
+  // creative_writer re-anchors per-block, so the regenerated prose stays cited.
+  const handleRegenerate = useCallback(
+    async (_paragraphIndex?: number) => {
+      // This sprint's generate endpoint is section-granular (creative_writer
+      // expands a section). A per-paragraph regenerate maps onto a section
+      // regenerate that re-anchors all paragraphs; the affected paragraph is
+      // necessarily refreshed. (A true single-paragraph endpoint is a named
+      // follow-up — see handoff Open questions.)
+      await handleGenerate();
+    },
+    // handleGenerate is stable enough for this sprint's surface.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // M4: the FloatMenu rewrite intents → the SHIPPED paths.
+  const onRewrite = useCallback(
+    (intent: RewriteIntent, _sel: FloatMenuSelection) => {
+      // §9.0: a withheld selection arrives as null — refuse, never send a
+      // withheld body to a model or a spawn.
+      if (intent.safeText === null) {
+        window.alert(
+          "That selection includes a restricted source, so it can't be sent to rewrite or a sub-agent.",
+        );
+        return;
+      }
+      window.getSelection()?.removeAllRanges(); // collapse so the menu closes
+      if (intent.kind === "sub_agent") {
+        // Spin-a-sub-agent → launch a search + return an accept/reject proposal.
+        setProposal({ text: intent.safeText });
+        return;
+      }
+      // rewrite / make stronger → regenerate the section from its blocks (the
+      // cited, per-block creative_writer path). The highlighted span sits in
+      // the section being regenerated.
+      void handleRegenerate();
+    },
+    [handleRegenerate],
+  );
 
   const canGenerate = blocks.length > 0 && !generating;
 
@@ -280,7 +366,7 @@ function SectionCard({
       )}
 
       {/* Generate (M3) + honest states. */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={() => void handleGenerate()}
@@ -299,6 +385,27 @@ function SectionCard({
           <span className="text-xs text-ink-mute dark:text-moonlight">
             Add at least one block to draft from.
           </span>
+        )}
+        {/* M4: speak an idea into the section as a user-sourced block. */}
+        <VoiceToDraft
+          sectionId={section.section_id}
+          deliverableId={deliverableId}
+          investigationId={investigationId}
+          blockIndex={blocks.length}
+          onDrafted={async () => {
+            await refreshBlocks();
+            await onChanged();
+          }}
+        />
+        {/* M3: draft ↔ X-ray toggle (shown once there's persisted prose). */}
+        {proseText && (
+          <button
+            type="button"
+            onClick={() => setView((v) => (v === "xray" ? "draft" : "xray"))}
+            className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
+          >
+            {view === "xray" ? "draft" : "X-ray"}
+          </button>
         )}
       </div>
 
@@ -324,10 +431,42 @@ function SectionCard({
         </p>
       )}
 
+      {/* M4: the spin-a-sub-agent proposal (search + accept/reject). */}
+      {proposal && (
+        <div className="mt-3">
+          <SubAgentProposal
+            claimText={proposal.text}
+            parentInvestigationId={investigationId}
+            onAccept={() => setProposal(null)}
+            onReject={() => setProposal(null)}
+          />
+        </div>
+      )}
+
+      {/* M3 X-ray view — paragraph ↔ blocks over the PERSISTED provenance.
+          Toggled with the draft; no edit loss (the editor stays mounted in the
+          draft view, the X-ray reads the persisted map). */}
+      {view === "xray" && proseText && (
+        <div className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1">
+          <Xray
+            proseText={proseText}
+            proseProvenance={proseProvenance}
+            blocks={blocks}
+            // `idx` is the affected paragraph; handleRegenerate intentionally
+            // re-drafts the whole SECTION this sprint (the shipped endpoint is
+            // section-granular — D-2/D-3). The index is passed through for when
+            // a per-paragraph endpoint lands; today it is deliberately ignored.
+            onRegenerateParagraph={(idx) => void handleRegenerate(idx)}
+          />
+        </div>
+      )}
+
       {/* The real editor (M4) — mounted when a draft generated. Edits are
           CAPTURED only (EDIT_CAPTURE_POLICY: train is false, gated G8/Loop-3).
-          The bare textarea is retired; this is the editing surface. */}
-      {draftContent != null && (
+          The bare textarea is retired; this is the editing surface. The editor
+          region is the FloatMenu selection SCOPE: highlighting prose opens the
+          SHARED FloatMenu with Write's rewrite actions (imported, D-3). */}
+      {draftContent != null && view === "draft" && (
         <div className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1">
           {genResult?.status === "generated" &&
             genResult.unsupported_paragraphs &&
@@ -337,11 +476,27 @@ function SectionCard({
                 unsupported — verify before keeping.
               </p>
             )}
-          <WriteEditor
-            deliverableId={deliverableId}
-            sectionId={section.section_id}
-            initialContent={draftContent}
-            className="font-serif text-[15px] leading-relaxed text-ink dark:text-bright"
+          <div ref={editorScopeRef}>
+            <WriteEditor
+              deliverableId={deliverableId}
+              sectionId={section.section_id}
+              initialContent={draftContent}
+              investigationId={investigationId}
+              className="font-serif text-[15px] leading-relaxed text-ink dark:text-bright"
+            />
+          </div>
+          {/* The SHARED FloatMenu (imported), extended with Write's rewrite
+              actions via the rewriteActions prop. Read/Research hosts pass
+              nothing → unchanged. onDeepResearch reuses the spawn path. */}
+          <FloatMenu
+            selection={selection}
+            investigationId={investigationId}
+            onDeepResearch={(safeText) => {
+              if (safeText === null) return;
+              window.getSelection()?.removeAllRanges();
+              setProposal({ text: safeText });
+            }}
+            rewriteActions={{ onRewrite }}
           />
           {/* capture-not-train boundary (SPR-07 M4): the editor records edits
               (EDIT_CAPTURE_POLICY.capture); it trains NO model — that is gated.

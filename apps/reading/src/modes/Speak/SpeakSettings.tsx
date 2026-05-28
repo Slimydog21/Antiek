@@ -1,5 +1,7 @@
+import { useState } from "react";
+
 import { LemonButton } from "../../components/lemon";
-import type { EconomicsView } from "../../lib/speakApi";
+import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
 
 /**
  * SpeakSettings — the one calm tap (Product Depth SPR-08 M4).
@@ -38,6 +40,17 @@ export interface SpeakSettingsProps {
   actionNote: string | null;
   /** True while a gated action is in flight. */
   busy?: boolean;
+  /**
+   * Release graded payout (M3). The requester sets the goal + budget + cap;
+   * an AI verifier (not the requester) grades each interview; payout scales
+   * with the graded quality and routes via §9 into ESCROW (never disbursed
+   * pre-gate). Returns the honest accrued figure ($0 with no buyers).
+   */
+  onReleasePayout?: (args: {
+    informationGoal: string;
+    budgetUsd: string;
+    perInterviewCapUsd: string;
+  }) => Promise<PayoutReleaseView>;
 }
 
 export default function SpeakSettings({
@@ -48,8 +61,41 @@ export default function SpeakSettings({
   onQuoteBook,
   actionNote,
   busy = false,
+  onReleasePayout,
 }: SpeakSettingsProps) {
   const splitApplies = economics?.splitApplies ?? willBePublic;
+  // Read-only gate state. Deny-by-default; the surface shows these gated and
+  // never offers to close them — closing is an operator action, not a click.
+  const publishingGated = !(economics?.publicPublishingAllowed ?? false);
+  const disbursementGated = !(economics?.disbursementAllowed ?? false);
+
+  // M3 — the requester's information goal + budget + cap. Numbers come from
+  // the requester here, never from the air.
+  const [goal, setGoal] = useState("");
+  const [budget, setBudget] = useState("");
+  const [cap, setCap] = useState("");
+  const [release, setRelease] = useState<PayoutReleaseView | null>(null);
+  const [releaseBusy, setReleaseBusy] = useState(false);
+  const [releaseErr, setReleaseErr] = useState<string | null>(null);
+
+  const doRelease = async () => {
+    if (!onReleasePayout || !goal.trim()) return;
+    setReleaseBusy(true);
+    setReleaseErr(null);
+    try {
+      setRelease(
+        await onReleasePayout({
+          informationGoal: goal.trim(),
+          budgetUsd: budget.trim() || "0",
+          perInterviewCapUsd: cap.trim() || "0",
+        }),
+      );
+    } catch (e: unknown) {
+      setReleaseErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReleaseBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-5 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
@@ -68,6 +114,41 @@ export default function SpeakSettings({
             About someone {subjectStatusWord}.
           </p>
         )}
+      </section>
+
+      {/* M2 — the publish/invite matrix, mapped to the shipped backend. The
+          two dimensions (who can be invited × whether it's published) and
+          what each implies. The current project's cell is highlighted. */}
+      <section className="rounded border border-rule p-3 dark:border-charcoal-1">
+        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+          How invites &amp; publishing work
+        </h3>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <MatrixCell
+            title="Invite-only · kept private"
+            body="You invite the people who knew them. Nothing is published; you carry the cost. No earnings split."
+            active={!willBePublic}
+          />
+          <MatrixCell
+            title="Invite-only · published"
+            body="Invited voices, shared publicly. Ad-supported, so 70% of earnings goes to the contributors (no per-interview fee from you)."
+            active={willBePublic}
+          />
+          <MatrixCell
+            title="Open to chime in · kept private"
+            body="Anyone with the link can add a memory, but it stays private. (Open public contribution is gated until the multi-user phase.)"
+            active={false}
+          />
+          <MatrixCell
+            title="Open to chime in · published"
+            body="A public remembrance anyone can add to, shared with ad-economics and the 70% contributor split."
+            active={false}
+          />
+        </div>
+        <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+          A public story always shares 70% of earnings with contributors —
+          that's fixed, not something a requester can switch off.
+        </p>
       </section>
 
       {/* The honest split — shown, not paid */}
@@ -103,15 +184,23 @@ export default function SpeakSettings({
         )}
       </section>
 
-      {/* Publishing — gated */}
+      {/* Publishing — gated. The gate STATE is read from the backend and
+          shown; there is no affordance here to close it (operator-only). */}
       <section>
         <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
           Publishing
         </h3>
-        <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
-          Going public — and any earnings with it — is on hold until the legal
-          review is complete. You can try; we'll tell you plainly if it's not
-          ready yet.
+        <div className="mt-1 flex flex-wrap gap-2">
+          <GatePill
+            label="Public publishing"
+            gated={publishingGated}
+          />
+          <GatePill label="Payouts" gated={disbursementGated} />
+        </div>
+        <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+          {publishingGated
+            ? "Going public — and any earnings with it — is on hold until the legal review is complete. You can try; we'll tell you plainly if it's not ready yet."
+            : "Publishing is open. Going public shares the assembled story and routes the contributor split."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           <LemonButton variant="secondary" size="sm" disabled={busy} onClick={onPublish}>
@@ -128,6 +217,83 @@ export default function SpeakSettings({
         )}
       </section>
 
+      {/* M3 — AI-graded payout. The requester sets a goal + budget + cap; an
+          AI verifier (NOT the requester) grades each interview against the
+          goal; payout scales with the graded quality, routes via the §9
+          contributor split, and ACCRUES TO ESCROW (never disbursed pre-gate).
+          A requester cannot deny a passing interview — that guard lives in
+          the backend, not as a switch here. */}
+      {onReleasePayout && splitApplies && (
+        <section className="rounded border border-rule p-3 dark:border-charcoal-1">
+          <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+            What you're hoping to learn (and the budget for it)
+          </h3>
+          <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            Each contribution is graded on how well it answers this — by the
+            system, not by you. You can't withhold pay from a good answer; that
+            protects the people who shared. Nothing is paid out before the legal
+            review — this only sets aside what's owed.
+          </p>
+          <div className="mt-3 space-y-2">
+            <textarea
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              rows={2}
+              placeholder="e.g. What was his work, and what was he like during the war years?"
+              aria-label="What you're hoping to learn"
+              className="w-full rounded border border-rule bg-ice-0 p-2 font-serif text-[13px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+            />
+            <div className="flex flex-wrap gap-2">
+              <label className="flex items-center gap-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                Total budget $
+                <input
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="0"
+                  aria-label="Total budget in dollars"
+                  className="w-20 rounded border border-rule bg-ice-0 px-2 py-1 font-mono text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                />
+              </label>
+              <label className="flex items-center gap-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                Most per voice $
+                <input
+                  value={cap}
+                  onChange={(e) => setCap(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="0"
+                  aria-label="Most per voice in dollars"
+                  className="w-20 rounded border border-rule bg-ice-0 px-2 py-1 font-mono text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                />
+              </label>
+            </div>
+            <LemonButton
+              variant="secondary"
+              size="sm"
+              disabled={releaseBusy || !goal.trim()}
+              onClick={() => void doRelease()}
+            >
+              {releaseBusy ? "Grading…" : "Grade what's been shared & set aside what's owed"}
+            </LemonButton>
+            {releaseErr && (
+              <p className="font-mono text-[11px] text-emperor">{releaseErr}</p>
+            )}
+            {release && (
+              <p className="font-serif text-[12px] text-ink dark:text-bright">
+                Set aside so far:{" "}
+                <span className="font-mono font-semibold">${release.spentUsd}</span>
+                {release.budgetExhausted && " — budget reached"}
+                {release.cappedCount > 0 &&
+                  ` · ${release.cappedCount} voice${release.cappedCount === 1 ? "" : "s"} hit the per-voice cap`}
+                <span className="ml-1 text-ink-mute dark:text-moonlight">
+                  (owed, not paid — payouts open after the legal review)
+                </span>
+              </p>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Consent + removal */}
       <section>
         <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
@@ -141,5 +307,49 @@ export default function SpeakSettings({
         </p>
       </section>
     </div>
+  );
+}
+
+/** One cell of the publish/invite matrix (M2). The project's current cell is
+ *  highlighted; the others explain the options. */
+function MatrixCell({
+  title,
+  body,
+  active,
+}: {
+  title: string;
+  body: string;
+  active: boolean;
+}) {
+  return (
+    <div
+      className={`rounded border p-2 ${
+        active
+          ? "border-sun bg-sun/10 dark:border-sun"
+          : "border-rule dark:border-charcoal-1"
+      }`}
+    >
+      <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink dark:text-bright">
+        {title}
+        {active && <span className="ml-1 text-sun-deep dark:text-sun">· now</span>}
+      </p>
+      <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">{body}</p>
+    </div>
+  );
+}
+
+/** A read-only pill showing an operator gate's state. There is deliberately
+ *  no control to CLOSE a gate — that is an operator action, never a click. */
+function GatePill({ label, gated }: { label: string; gated: boolean }) {
+  return (
+    <span
+      className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${
+        gated
+          ? "border-rule text-ink-mute dark:border-charcoal-1 dark:text-moonlight"
+          : "border-sun text-ink dark:text-bright"
+      }`}
+    >
+      {label}: {gated ? "not yet activated" : "open"}
+    </span>
   );
 }

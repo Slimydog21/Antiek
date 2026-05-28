@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
-import { useWorkspace } from "../workspace/WorkspaceStore";
 import { useViewportTier } from "../workspace/useViewportTier";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
 import {
@@ -53,8 +52,21 @@ import Werner from "../brand/Werner";
  * `built: true` routed entry in the shared bucket of MODE_TAXONOMY, so
  * the ProductsLauncher renders + links it. More → click Operator / Trust
  * / Settings = one click in. ⌘K reaches them too.
+ *
+ * SPR-12 M3 — the old "New / Project tree" (+ project) utility button
+ * that lived here (it toggled the docked-left "shortcuts:projecttree"
+ * panel) is REMOVED. The project tree is now reached through the floating
+ * Penguin mascot (shell/PenguinMascot.tsx, mounted at AppShell level):
+ * single-click the Penguin floats the project tree, double-click opens
+ * the project. Superseding that rail button is the operator's ratified
+ * choice — see PenguinMascot.tsx for the full provenance comment.
+ *
+ * SPR-12 M1 — the top-left Werner mark now navigates to /home (the
+ * unified branded home) rather than "/" (the Research door). Reversible:
+ * the rejected alternative was making "/" itself the Home and moving
+ * Research to /research; that was passed over for blast radius (see
+ * modes/Home/Home.tsx for the recorded decision).
  */
-const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 
 function I({ d, size = 18 }: { d: string; size?: number }) {
   return (
@@ -84,7 +96,9 @@ const WF_ICONS: Record<Exclude<Workflow, "shared">, string> = {
 
 const UTIL_ICONS = {
   search: "M11 4 a7 7 0 1 1 0 14 a7 7 0 1 1 0 -14 M16 16 L21 21", // magnifier
-  plus: "M12 5 V19 M5 12 H19", // +
+  // SPR-12 M3 — the `plus` ("+ project / New / Project tree") glyph is
+  // gone: that button is superseded by the floating Penguin mascot, which
+  // now owns floating/opening the project tree.
   // "More" — the single non-workflow affordance. A grid glyph reads as
   // "all products / everything else", which is exactly what it opens.
   more: "M4 4 H10 V10 H4 Z M14 4 H20 V10 H14 Z M4 14 H10 V20 H4 Z M14 14 H20 V20 H14 Z", // ⊞ grid
@@ -166,21 +180,10 @@ export function NavRail() {
   const isMobile = tier === "sm" || tier === "md";
   const showRail = !isMobile || !collapsed;
 
-  // The project-tree dock toggle is preserved from the prior rail; it
-  // opens the content-first tree (zone 2) as a docked-left panel, the
-  // same path ⌘B uses. We expose it via the "New / tree" area.
-  const treeOpen = useWorkspace((s) => Boolean(s.panels[PROJECT_TREE_PANEL_ID]));
-  const openPanel = useWorkspace((s) => s.open);
-  const closePanel = useWorkspace((s) => s.close);
-  const toggleTree = () => {
-    if (treeOpen) closePanel(PROJECT_TREE_PANEL_ID);
-    else
-      openPanel(
-        "ProjectTree",
-        {},
-        { mode: "docked-left", title: "Project", id: PROJECT_TREE_PANEL_ID },
-      );
-  };
+  // SPR-12 M3 — the project-tree toggle that used to live on the rail is
+  // gone; the floating Penguin mascot (shell/PenguinMascot.tsx) now floats
+  // and opens the "shortcuts:projecttree" panel. The workspace store is no
+  // longer touched from here.
 
   const openSearch = () =>
     window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
@@ -228,33 +231,32 @@ export function NavRail() {
           </button>
         )}
 
-        {/* Werner mark pinned to top, returns to the Research home. */}
+        {/* Werner mark pinned to top. SPR-12 M1 — now opens the unified
+            branded home (/home), the product's front door, rather than the
+            Research door ("/"). The white box that used to sit behind this
+            mark is fixed in M4 (the idle pose is now an alpha-cut PNG), so
+            it blends into the sun-yellow button. */}
         <button
           type="button"
-          title="Antiek · Werner"
-          onClick={() => navigate("/")}
+          title="Antiek · home"
+          aria-label="Antiek home"
+          onClick={() => navigate("/home")}
           className="h-12 flex items-center justify-center border-b-edge border-sun bg-sun/95 hover:bg-sun"
         >
           <Werner mood="idle" size={28} />
         </button>
 
-        {/* Utility cluster (Search + New/tree) — visually subordinate to the
-            four doors: smaller icons, muted tokens, grouped above the
-            divider. Not workflow destinations. */}
+        {/* Utility cluster (Search) — visually subordinate to the four
+            doors: smaller icon, muted tokens, grouped above the divider.
+            Not a workflow destination. (SPR-12 M3 removed the "+ project /
+            Project tree" toggle that used to sit here; the Penguin mascot
+            owns the project tree now.) */}
         <nav className="pt-1 flex flex-col gap-0.5" aria-label="Utilities">
           <RailButton
             icon={<I d={UTIL_ICONS.search} size={15} />}
             label="Search"
             title="Search · ⌘K"
             onClick={openSearch}
-            variant="utility"
-          />
-          <RailButton
-            icon={<I d={UTIL_ICONS.plus} size={15} />}
-            label="New / Project tree"
-            title="Toggle the project tree (⌘B)"
-            active={treeOpen}
-            onClick={toggleTree}
             variant="utility"
           />
         </nav>

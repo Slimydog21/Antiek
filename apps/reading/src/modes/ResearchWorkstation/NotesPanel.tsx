@@ -42,6 +42,14 @@ export interface LiveNote {
   nodeId: string | null;
   /** How many times this note's text has changed (living-note signal). */
   refinements: number;
+  /**
+   * §9 provenance discriminator. "user" for a note the reader authored (an
+   * in-book FloatMenu marginalia note); null for a model-distilled note
+   * (note.emerged / question.identified — the absence IS "model"). The
+   * surface uses this to label a user note honestly and to NEVER conflate it
+   * with a model-emerged one.
+   */
+  sourceKind: "user" | null;
 }
 
 /**
@@ -80,6 +88,32 @@ export function deriveNotes(events: Event[]): LiveNote[] {
         confidence: asStr(p.confidence) ?? prior?.confidence ?? null,
         nodeId: asStr(p.node_id) ?? prior?.nodeId ?? null,
         refinements: prior?.refinements ?? 0,
+        // A distilled note has no source_kind — the absence is "model".
+        sourceKind: prior?.sourceKind ?? null,
+      });
+    } else if (e.action_type === "marginalia.noted") {
+      // Read SPR-07 M3 — an in-book FloatMenu NOTE. The reader highlighted a
+      // passage and authored a note; it is a USER-sourced per-book insight.
+      // The note text is what they wrote (note_text), the highlighted span
+      // (excerpt) is its anchor. §9: source_kind is pinned "user" on the
+      // event, carried here, and NEVER conflated with a model-emerged note.
+      const noteId = asStr(p.note_id);
+      const text = asStr(p.note_text);
+      if (!noteId || !text) continue;
+      if (!byId.has(noteId)) order.push(noteId);
+      const prior = byId.get(noteId);
+      byId.set(noteId, {
+        noteId,
+        kind: "insight",
+        text,
+        previousText: prior?.previousText ?? null,
+        confidence: prior?.confidence ?? null,
+        // The in-book note's graph node is content-addressed off its text and
+        // promoted host-side; the event itself carries no node_id, so the
+        // challenge affordance stays unavailable until a node_id is observed.
+        nodeId: prior?.nodeId ?? null,
+        refinements: prior?.refinements ?? 0,
+        sourceKind: "user",
       });
     } else if (e.action_type === "question.identified") {
       const noteId = asStr(p.question_id);
@@ -95,6 +129,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
         confidence: null,
         nodeId: prior?.nodeId ?? null,
         refinements: prior?.refinements ?? 0,
+        sourceKind: prior?.sourceKind ?? null,
       });
     } else if (e.action_type === "note.refined") {
       const noteId = asStr(p.note_id);
@@ -108,7 +143,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
         order.push(noteId);
         byId.set(noteId, {
           noteId, kind: "insight", text: newText, previousText: prevText,
-          confidence: null, nodeId: null, refinements: 1,
+          confidence: null, nodeId: null, refinements: 1, sourceKind: null,
         });
         continue;
       }

@@ -217,6 +217,7 @@ def promote_insight(
     extraction_confidence: Optional[float] = None,
     embedding_provider: Any = None,
     metadata: Optional[Dict[str, Any]] = None,
+    source_kind: Optional[str] = None,
     con: Optional[LockedConnection] = None,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
@@ -225,6 +226,16 @@ def promote_insight(
     ``supported_by`` is a sequence of *node ids* (claims/entities) the
     insight rests on; each becomes a ``supported_by`` edge carrying
     ``source_document_id`` + ``chunk_id`` for the originating source.
+
+    ``source_kind`` is the §9 provenance discriminator. A model-distilled
+    insight (the ``note.emerged`` path) leaves it ``None`` — the absence is
+    "model-emerged", the default shape. A *user-authored* insight (the
+    in-book marginalia note, ``marginalia.noted``) passes
+    ``source_kind="user"``, which is stamped into node metadata so the node
+    can NEVER be conflated with a model-emerged one downstream. The chunk the
+    note anchors to (``chunk_id``) is recorded on the node metadata too, so
+    block_search resolves the per-book document the same way it does for a
+    distilled insight.
     """
     nid = insight_node_id(text)
     edge_conf = (
@@ -242,11 +253,21 @@ def promote_insight(
                 "canonical_text": canonical_text(text),
             }
         )
+        # §9 provenance discriminator. Stamped only when the caller asserts
+        # one (the user-authored marginalia path). A model-emerged insight
+        # carries no source_kind — the absence IS "model", and we never
+        # invent a "user" label for a model note (nor the reverse).
+        if source_kind is not None:
+            node_meta["source_kind"] = source_kind
         # Grounding on the node itself (the supported_by edge also carries
         # it, but the living-note path resolves the note's document from node
         # metadata, and the distill surface reads grounding from the row).
+        # block_search resolves the document via metadata.chunk_id, so a
+        # marginalia note with no claim-node target still resolves its book.
         if source_document_id:
             node_meta.setdefault("source_document_id", source_document_id)
+        if chunk_id:
+            node_meta.setdefault("chunk_id", chunk_id)
         emb = (embedding_provider or _default_provider()).encode(text)
         insert_node(
             c,
@@ -445,6 +466,72 @@ def promote_from_question_event(
         metadata={
             "origin_event_id": event.get("event_id"),
             "origin_question_id": payload.get("question_id"),
+        },
+        embedding_provider=embedding_provider,
+        con=con,
+    )
+
+
+def promote_from_marginalia_event(
+    event: Dict[str, Any],
+    *,
+    con: Optional[LockedConnection] = None,
+    enabled: bool = False,
+    embedding_provider: Any = None,
+) -> Optional[str]:
+    """Promote a single ``marginalia.noted`` event into a **user-authored**
+    per-book insight node (Read SPR-07 M3).
+
+    This is the in-book FloatMenu NOTE path: the reader highlights a passage
+    and chooses "Note", emitting ``marginalia.noted`` (a §9-load-bearing
+    user-sourced event). Before this, that note never became a graph node, so
+    it was neither searchable nor visible in the ReadingCompanion. Here it
+    becomes a first-class ``insight`` node so the one graph holds it — but it
+    is kept DISTINCT from a model-emerged insight by stamping
+    ``source_kind="user"`` into node metadata (the §9 no-conflation
+    invariant: a model reply never inherits "user", a user note never inherits
+    a model label). The node is grounded on its book via the event envelope's
+    ``document_id`` and the selection's ``chunk_id`` (when one was resolved),
+    so a later block_search returns the per-book note.
+
+    The promoted node text is the user's ``note_text`` (their authored
+    comment), not the ``excerpt`` (the highlighted span) — the excerpt is
+    recorded in metadata as the anchor. Opt-in like the sibling paths (SPR-03
+    owns the always-on trigger).
+
+    §9.0 no-leak is preserved: ``marginalia.noted`` only ever carries the
+    reader's OWN selection on a gate-served surface (the float-menu's
+    outbound chokepoint already refuses a withheld selection upstream), so a
+    withheld source's body never enters this node — we promote only what the
+    event already legitimately holds.
+    """
+    if not enabled:
+        return None
+    payload = _event_payload(event)
+    text = payload.get("note_text")
+    if not isinstance(text, str) or not text.strip():
+        return None
+    investigation_id = event.get("investigation_id") or payload.get("investigation_id") or ""
+    # The document the selection sits in rides the Event envelope; the chunk
+    # (when the host resolved one) rides the payload. Either may be absent
+    # (honest null), and that is recorded — never invented.
+    document_id = event.get("document_id") or payload.get("document_id")
+    chunk_id = payload.get("chunk_id")
+    return promote_insight(
+        text=text.strip(),
+        investigation_id=investigation_id,
+        # A marginalia note is the reader's own authorship — the §9 label is
+        # pinned at the event and carried onto the node so the graph never
+        # conflates it with a model-emerged insight.
+        source_kind="user",
+        source_document_id=document_id,
+        chunk_id=chunk_id if isinstance(chunk_id, str) and chunk_id else None,
+        metadata={
+            "origin_event_id": event.get("event_id"),
+            "origin_note_id": payload.get("note_id"),
+            # The highlighted span the note hangs off (the reader's own words),
+            # kept for the surface; the node label is the authored note_text.
+            "excerpt": payload.get("excerpt"),
         },
         embedding_provider=embedding_provider,
         con=con,

@@ -129,7 +129,9 @@ describe("Speak project page", () => {
     expect(screen.queryByRole("button", { name: /try to publish/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
     // The split is displayed as attribution, labelled not-yet-paid, balance $0.
-    expect(await screen.findByText(/70%/)).toBeTruthy();
+    // (70% appears in both the split summary and the M2 matrix copy — assert
+    // the load-bearing split-as-attribution sentence specifically.)
+    expect(await screen.findByText(/70% of what it earns goes to the people/i)).toBeTruthy();
     expect(screen.getByText(/\$0\.00/)).toBeTruthy();
     expect(screen.getByText(/not a payment/i)).toBeTruthy();
     // No disbursement fired just from opening Settings.

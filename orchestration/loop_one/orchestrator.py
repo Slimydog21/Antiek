@@ -289,6 +289,13 @@ class InvestigationContext:
     chase_value: int = 0
     chase_budget_usd: float = 2.0
     parent_investigation_id: Optional[str] = None
+    # SPR-01 M3: the curated fast/deep research tier the operator chose at
+    # the research entry, threaded from the start payload. "fast" → MiMo
+    # V2.5 Pro, "deep" → DeepSeek V4 Pro (see
+    # substrate/dispatch/research_tier.py). Carried so a chase-spawned
+    # child inherits the parent's tier rather than silently snapping back
+    # to the default.
+    research_tier: str = "deep"
 
 
 def _action_value(action_type) -> str:
@@ -902,6 +909,7 @@ def make_loop_one_handler(
             chase_value=req.chase_value,
             chase_budget_usd=req.chase_budget_usd,
             parent_investigation_id=req.parent_investigation_id,
+            research_tier=req.research_tier,
         )
 
         async def run_and_maybe_chase() -> None:
@@ -1094,6 +1102,10 @@ async def _maybe_spawn_chase_child(
             chase_mode=ctx.chase_mode,
             chase_value=ctx.chase_value,
             chase_budget_usd=ctx.chase_budget_usd,
+            # SPR-01 M3: a chase-spawned child inherits the parent's
+            # research tier so the chosen fast/deep posture holds across
+            # the chase tree rather than snapping back to the default.
+            research_tier=ctx.research_tier,
         ),
         role="orchestrator",
         policy_id="orchestrator-chase",

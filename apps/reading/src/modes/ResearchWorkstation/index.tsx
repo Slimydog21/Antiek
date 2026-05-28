@@ -17,7 +17,7 @@ import SuggestedResearch from "./SuggestedResearch";
 import ThinkingStream from "./ThinkingStream";
 
 /**
- * Mode A — Research Workstation (S5 redesign).
+ * Mode A — Research Workstation (S5 redesign → Living-Roadmap SPR-05 M3).
  *
  * Layout shift from the legacy version:
  *   - InvestigationSidebar → docked-left panel (via PanelHost starter)
@@ -29,6 +29,32 @@ import ThinkingStream from "./ThinkingStream";
  *                            actually start a research)
  *   - ChaseSlideOver      → floating panel opened via workspace action
  *   - Trajectory / MasterMdViewer → main slot (unchanged surface)
+ *
+ * ── ROUTING / CONSOLIDATION MODEL (SPR-05 M3 — defensibility, rigor #5) ──
+ * The Research surface has exactly ONE home and ONE per-project view, and
+ * they are not competing tabs:
+ *
+ *   /            → THIS component, IDLE branch → <StartResearch embedded />.
+ *                  The IDLE home is the composer (start a research) ABOVE the
+ *                  MyResearch LOG (past + running projects). This is the
+ *                  operator's "the research home IS the research log" decision:
+ *                  "My Research" is folded INTO the workstation home, not a
+ *                  separate tab.
+ *   /inv/:id     → THIS component, with an id → <InvestigationCenter> (the
+ *                  SPR-03 canvas / DistillView). UNCHANGED — clicking a
+ *                  project row in the log navigates here.
+ *   /my-research → <MyResearch> standalone (App.tsx). KEPT non-breaking as the
+ *                  full-page log + launch bar; `/investigations` already
+ *                  redirects to it (App.tsx). The chord G+I + any deep link
+ *                  still resolve. The legacy InvestigationsIndex form is NOT
+ *                  routed (App.tsx retired it pre-SPR-05); the one start entry
+ *                  is the composer here.
+ *
+ * What was REJECTED: keeping "My Research" as its own primary tab beside the
+ * workstation (the two-tab model the operator's "two project tabs in research"
+ * complaint flagged). What would REVERSE this: the operator wanting a
+ * persistent cross-project home tab distinct from any single project — then
+ * promote /my-research back into the nav and make `/` the bare composer.
  *
  * The PanelHost wraps a starter list; AppShell (S4) provides the
  * surrounding NavRail + Topbar + dock zones. HighlightToolbar still
@@ -64,7 +90,8 @@ export default function ResearchWorkstation() {
       {investigationId ? (
         <InvestigationCenter investigationId={investigationId} />
       ) : (
-        <StartResearch />
+        // SPR-05 M3: the idle home is the consolidated composer + research log.
+        <StartResearch embedded />
       )}
     </PanelHost>
   );
@@ -124,7 +151,11 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   return (
     <div ref={centerRef} className="h-full overflow-y-auto relative">
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
-      <HighlightToolbar scopeRef={centerRef} onChaseThis={onChaseThis} />
+      <HighlightToolbar
+        scopeRef={centerRef}
+        onChaseThis={onChaseThis}
+        investigationId={investigationId}
+      />
     </div>
   );
 }
