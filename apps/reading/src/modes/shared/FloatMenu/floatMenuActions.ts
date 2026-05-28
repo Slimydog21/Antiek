@@ -171,6 +171,35 @@ export function buildDialoguePrompt(
   return quote + tail;
 }
 
+// ─── REWRITE (Write SPR-09 M4) ─────────────────────────────────────────────
+//
+// The Write surface (and ONLY Write) extends the shared menu with rewrite
+// actions. The menu shows them iff the host passes `rewriteActions` — Read /
+// Research / Speak hosts pass nothing and are unchanged (D-3: mode-gated, NOT a
+// fork). The actions are intents the HOST fulfils against the SHIPPED
+// creative_writer generate path (regenerate the paragraph the selection sits
+// in) and the SHIPPED spawn path (startInvestigation) — the menu never forks a
+// new model path. §9.0: any text sent to a model still routes through
+// `outboundText` (a withheld selection is refused).
+
+/** A rewrite intent the writer triggered over a highlighted span. The host
+ * maps it to the SHIPPED generate/spawn paths; the menu only carries the
+ * §9.0-safe text + the intent kind. */
+export type RewriteIntentKind = "rewrite" | "stronger" | "sub_agent";
+
+export interface RewriteIntent {
+  kind: RewriteIntentKind;
+  /** The §9.0-safe selection text (null ⇒ withheld; the host must refuse). */
+  safeText: string | null;
+}
+
+/** The rewrite-action descriptor a Write host hands the FloatMenu. `onRewrite`
+ * receives the intent (kind + §9.0-safe text); the host owns the actual
+ * regenerate (creative_writer) / spin-a-sub-agent (startInvestigation). */
+export interface RewriteActions {
+  onRewrite: (intent: RewriteIntent, selection: FloatMenuSelection) => void;
+}
+
 /** One-shot dialogue over the selection via /thought-partner. Throws
  * `ApiError` (status carried) on failure so the caller can branch the no-key
  * 503 case onto AIActionFailure, exactly as VoiceChaseButton.tsx:56 does. */

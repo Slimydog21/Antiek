@@ -356,6 +356,11 @@ class DeliverableDetailResponse(BaseModel):
     title: str
     deliverable_kind: str
     status: str
+    # SPR-09 M1: the piece↔research link, surfaced on the detail so the Write
+    # header can show the active connection and the canvas can import the
+    # linked research's blocks. Reading it back here is how M1 verifies the
+    # link EXISTS (not a UI claim) — see docs/decisions/spr-09-*.md (D-1).
+    investigation_root_id: Optional[str] = None
     sections: list[SectionResponse] = Field(default_factory=list)
 
 
@@ -2265,7 +2270,8 @@ def create_app(
         con = duckdb.connect(db, read_only=True)
         try:
             head = con.execute(
-                "SELECT deliverable_id, title, deliverable_kind, status "
+                "SELECT deliverable_id, title, deliverable_kind, status, "
+                "investigation_root_id "
                 "FROM deliverables WHERE deliverable_id = ?", [deliverable_id],
             ).fetchone()
             if head is None:
@@ -2295,7 +2301,8 @@ def create_app(
             ))
         return DeliverableDetailResponse(
             deliverable_id=head[0], title=head[1],
-            deliverable_kind=head[2], status=head[3], sections=sections,
+            deliverable_kind=head[2], status=head[3],
+            investigation_root_id=head[4], sections=sections,
         )
 
     @app.post("/sections", response_model=SectionResponse, status_code=201)

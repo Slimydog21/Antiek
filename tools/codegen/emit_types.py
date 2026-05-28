@@ -240,6 +240,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.OutlineBlockRemovedPayload,
     # Write workflow SPR-02 — edit capture.
     schema_module.EditCapturedPayload,
+    # Write workflow SPR-09 — draft provenance persistence (X-ray).
+    schema_module.SectionDraftGeneratedPayload,
     # Read workflow SPR-01 — servable-corpus legal-gate audit trail.
     schema_module.BookServabilityChangedPayload,
     schema_module.BookTakenDownPayload,

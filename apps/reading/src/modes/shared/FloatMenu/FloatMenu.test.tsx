@@ -148,12 +148,15 @@ function Host({
   investigationId = "inv-1",
   testId = "scope",
   provenance,
+  onRewrite,
 }: {
   onDeepResearch?: (t: string | null, s: FloatMenuSelection) => void;
   hybridEnabled?: boolean;
   investigationId?: string;
   testId?: string;
   provenance?: { servable?: boolean; chunkId?: string | null; documentId?: string | null };
+  /** SPR-09 M4: when given, the Write rewrite actions are passed (mode-gated). */
+  onRewrite?: (intent: { kind: string; safeText: string | null }, s: FloatMenuSelection) => void;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const selection = useFloatMenuSelection({
@@ -170,6 +173,7 @@ function Host({
         investigationId={investigationId}
         onDeepResearch={onDeepResearch}
         hybridEnabled={hybridEnabled}
+        rewriteActions={onRewrite ? { onRewrite } : undefined}
       />
     </div>
   );
@@ -226,6 +230,41 @@ describe("FloatMenu — open on selection (M1)", () => {
     selectTextIn(scope, "the selected passage text", { top: 400, left: 100, width: 120, height: 18 });
     const second = screen.getByRole("menu") as HTMLElement;
     expect(second.style.top).not.toBe(firstTop); // moved to the new rect
+  });
+
+  // ── SPR-09 M4 — rewrite actions are mode-gated (Write only), not a fork ──
+
+  it("does NOT show rewrite actions for a Read/Research host (rewriteActions absent)", () => {
+    render(<Host />); // no onRewrite → no rewriteActions
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    expect(screen.getByRole("menu")).toBeTruthy();
+    // The four core actions are unchanged; no rewrite items leak in.
+    expect(screen.queryByRole("menuitem", { name: "Rewrite" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Make stronger" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Spin a sub-agent" })).toBeNull();
+  });
+
+  it("shows rewrite actions for a Write host + routes text through the §9.0 chokepoint", () => {
+    const onRewrite = vi.fn();
+    render(<Host onRewrite={onRewrite} provenance={{ servable: true }} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    expect(screen.getByRole("menuitem", { name: "Rewrite" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Make stronger" }));
+    expect(onRewrite).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "stronger", safeText: expect.any(String) }),
+      expect.anything(),
+    );
+  });
+
+  it("§9.0 — a withheld selection hands the rewrite action a null safeText (host refuses)", () => {
+    const onRewrite = vi.fn();
+    render(<Host onRewrite={onRewrite} provenance={{ servable: false }} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rewrite" }));
+    expect(onRewrite).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "rewrite", safeText: null }),
+      expect.anything(),
+    );
   });
 
   it("clamps on-screen at the viewport right edge (rigor #3)", () => {

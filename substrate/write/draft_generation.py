@@ -220,6 +220,11 @@ class GenerationResult:
     citation_report: Optional[CitationReport]
     gate: Optional[GateResult]
     detail: str = ""
+    # The role's per-paragraph provenance (paragraph_index → [block_ids]).
+    # Empty for gap/invalid (nothing parsed). On a 'generated' result this is
+    # the map the X-ray persists + reads back (Write SPR-09 M3). Kept here so
+    # the caller does not need a second parse of the raw model output.
+    prose_provenance: dict = field(default_factory=dict)
 
 
 def generate_section(
@@ -265,6 +270,9 @@ def generate_section(
                 f"voice_style gate failed (score {gate.score} < {VOICE_STYLE_GATE}) — "
                 "the gate wins over the style prompt; regenerate"
             ),
+            # No provenance carried out of a gate-failed result: it never ships
+            # and never persists, so surfacing its map would be a draft that
+            # looks kept when it isn't.
         )
     detail = "generated"
     if report.unsupported_paragraphs:
@@ -277,6 +285,85 @@ def generate_section(
     return GenerationResult(
         status="generated", section_id=section_id, prose_text=result.prose_text,
         citation_report=report, gate=gate, detail=detail,
+        # The per-paragraph provenance the X-ray persists + reads back (M3).
+        prose_provenance=dict(result.prose_provenance),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Persistence — make the X-ray's paragraph→blocks link durable (SPR-09 M3)
+# ---------------------------------------------------------------------------
+
+
+def persist_section_draft(
+    con: Any,
+    *,
+    section_id: str,
+    deliverable_id: str,
+    result: GenerationResult,
+    report: CitationReport,
+    investigation_id: str = "__operator__",
+) -> Optional[str]:
+    """Persist a successful generation's prose + per-paragraph provenance, then
+    emit the audit event — both through the single-writer funnel.
+
+    The X-ray (paragraph → driving blocks → chunks → documents) needs
+    ``prose_provenance`` to survive the request that generated it. We write the
+    ``deliverable_sections`` row (``update_section_prose`` — already SHIPPED)
+    AND append a ``SECTION_DRAFT_GENERATED`` event in the SAME locked
+    connection, mirroring ``patch_section_prose`` (Sprint 15). The
+    paragraph→blocks link therefore EXISTS in the graph (a persisted row + a
+    persisted event), not just on screen — the §9 moat made auditable.
+
+    Only call this for a ``generated`` result: a gate_failed / invalid draft
+    never ships, so it must never persist provenance (no half-written draft).
+
+    Returns the emitted event_id (or None when events are disabled). Routes the
+    table write through ``con`` (a ``LockedConnection`` from
+    ``runtime/db_lock``) — no second writer, single-writer invariant intact.
+    """
+    if result.status != "generated":
+        raise ValueError(
+            f"persist_section_draft only persists a 'generated' result; "
+            f"got {result.status!r} (a gate_failed/invalid draft never ships)"
+        )
+    # Lazy imports: keep this module importable without the substrate event log
+    # / graph ops on a bare script path (mirrors the module's other fallbacks).
+    try:
+        from ..graph.ops import update_section_prose
+        from ..event_log import emit_typed
+    except ImportError:  # pragma: no cover — direct-script fallback
+        from substrate.graph.ops import update_section_prose  # type: ignore[no-redef]
+        from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.schemas.events import SectionDraftGeneratedPayload
+
+    # JSON object keys are strings — store paragraph indices as string keys so
+    # the persisted map round-trips losslessly (the reader parses back to int).
+    prov: dict[str, list[str]] = {
+        str(idx): list(blocks) for idx, blocks in result.prose_provenance.items()
+    }
+
+    # 1) The table row (the durable prose + provenance) — SHIPPED writer.
+    update_section_prose(
+        con, section_id=section_id,
+        prose_text=result.prose_text, prose_provenance=prov,
+    )
+
+    # 2) The audit event (the §9 link, append-only) — same locked context.
+    return emit_typed(
+        investigation_id,
+        SectionDraftGeneratedPayload(
+            section_id=section_id,
+            deliverable_id=deliverable_id,
+            prose_provenance=prov,
+            paragraph_count=len(_paragraphs(result.prose_text)),
+            cited_block_ids=list(report.cited_block_ids),
+            all_claims_cited=report.all_claims_cited,
+            unsupported_paragraph_count=len(report.unsupported_paragraphs),
+            gate_score=result.gate.score if result.gate else None,
+        ),
+        role="creative_writer",
+        policy_id=f"operator/{deliverable_id}",
     )
 
 

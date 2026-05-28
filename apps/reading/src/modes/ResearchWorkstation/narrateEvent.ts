@@ -266,6 +266,9 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.BOOK_SERVABILITY_CHANGED]: null,
   [ActionType.BOOK_TAKEN_DOWN]: null,
   [ActionType.EDIT_CAPTURED]: null,
+  // Write SPR-09 — draft provenance persistence (X-ray); not narrated in the
+  // research timeline (it is a Write-surface composition event).
+  [ActionType.SECTION_DRAFT_GENERATED]: null,
   [ActionType.SEAM_RESEARCH_TO_READ]: null,
   [ActionType.SEAM_READ_TO_RESEARCH]: null,
   [ActionType.SEAM_READ_TO_WRITE]: null,

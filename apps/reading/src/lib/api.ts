@@ -558,6 +558,10 @@ export interface DeliverableDetailResponse {
   title: string;
   deliverable_kind: DeliverableKind;
   status: string;
+  /** SPR-09 M1: the piece↔research link (deliverables.investigation_root_id).
+   * The Write header shows it; the canvas imports the linked research's blocks.
+   * Read back here to verify the link exists (not a UI claim). */
+  investigation_root_id: string | null;
   sections: SectionResponse[];
 }
 

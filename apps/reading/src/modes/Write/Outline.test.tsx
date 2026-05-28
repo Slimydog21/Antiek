@@ -157,4 +157,57 @@ describe("Outline — no id, honest generate, real editor", () => {
     );
     expect(container.querySelector("textarea")).toBeNull();
   });
+
+  // ── SPR-09 M2→M3 — generation provenance → X-ray (no edit loss on toggle) ──
+
+  it("captures generation provenance and X-rays it (paragraph→blocks)", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    const generated: GenerationResult = {
+      status: "generated",
+      section_id: "sec-1",
+      prose_text: `Para one [b: ${NODE_ID}].\n\nPara two [b: ${NODE_ID}].`,
+      // The PERSISTED map the server returned (SECTION_DRAFT_GENERATED).
+      prose_provenance: { "0": [NODE_ID], "1": [NODE_ID] },
+    };
+    generateSectionMock.mockResolvedValue(generated);
+    const { container } = render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 1 })]}
+        onChanged={vi.fn()}
+        investigationId="inv-1"
+      />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(container.querySelector(".ProseMirror")).toBeTruthy());
+    // The X-ray toggle appears once there's prose; toggling shows the X-ray.
+    await userEvent.click(await screen.findByRole("button", { name: /^X-ray$/i }));
+    expect(await screen.findByTestId("xray")).toBeTruthy();
+    // The first paragraph X-rays back to its driving block (the persisted map).
+    await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+    expect(await screen.findByTestId("xray-paragraph-blocks-0")).toBeTruthy();
+  });
+
+  it("X-ray reads back PERSISTED provenance on a reloaded section (no regenerate needed)", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    // The section already carries persisted prose + provenance (read back from
+    // GET /deliverables/{id}) — the X-ray works without re-running generate.
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[
+          section({
+            block_count: 1,
+            prose_text: `Prior para [b: ${NODE_ID}].`,
+            prose_provenance: { "0": [NODE_ID] },
+          }),
+        ]}
+        onChanged={vi.fn()}
+      />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    await userEvent.click(await screen.findByRole("button", { name: /^X-ray$/i }));
+    expect(await screen.findByTestId("xray")).toBeTruthy();
+  });
 });

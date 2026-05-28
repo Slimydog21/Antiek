@@ -11,6 +11,7 @@ import {
   outboundText,
   WITHHELD_OUTBOUND_REASON,
   type DialogueReply,
+  type RewriteActions,
   type SearchResult,
 } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
@@ -67,6 +68,11 @@ export interface FloatMenuProps {
    * immediately (= M2). When on, the clarifying-question path is reachable but
    * explicitly marked unfinished. See HYBRID_DECISION.md. */
   hybridEnabled?: boolean;
+  /** Write SPR-09 M4: rewrite actions ("rewrite this / make it stronger / spin
+   * a sub-agent"). ONLY the Write host passes this; Read/Research/Speak hosts
+   * omit it and the menu is byte-for-byte unchanged (D-3 — mode-gated, not a
+   * fork). The host owns the SHIPPED generate/spawn paths the intents map to. */
+  rewriteActions?: RewriteActions;
 }
 
 /** Clamp the menu on-screen at a viewport edge (rigor #3). The menu sits above
@@ -112,6 +118,7 @@ export default function FloatMenu({
   investigationId,
   onDeepResearch,
   hybridEnabled = false,
+  rewriteActions,
 }: FloatMenuProps) {
   const [view, setView] = useState<FloatMenuView>({ kind: "menu" });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -172,20 +179,51 @@ export default function FloatMenu({
       className="bg-ink text-bright rounded-md shadow-lg text-xs font-mono"
     >
       {view.kind === "menu" && (
-        <div className="flex items-stretch divide-x divide-charcoal-2">
-          <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
-          <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
-          <MenuButton label="Search" onClick={() => setView({ kind: "search" })} />
-          <MenuButton
-            label="Deep-research"
-            onClick={() => {
-              // DEEP-RESEARCH → the REUSED chase path (host wires
-              // ChaseThread + startInvestigation). §9.0: hand the host the
-              // guarded outbound text (null ⇒ withheld) so a withheld body
-              // never becomes a child investigation's spawn_context.
-              onDeepResearch(outboundText(selection), selection);
-            }}
-          />
+        <div className="flex flex-col">
+          <div className="flex items-stretch divide-x divide-charcoal-2">
+            <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
+            <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
+            <MenuButton label="Search" onClick={() => setView({ kind: "search" })} />
+            <MenuButton
+              label="Deep-research"
+              onClick={() => {
+                // DEEP-RESEARCH → the REUSED chase path (host wires
+                // ChaseThread + startInvestigation). §9.0: hand the host the
+                // guarded outbound text (null ⇒ withheld) so a withheld body
+                // never becomes a child investigation's spawn_context.
+                onDeepResearch(outboundText(selection), selection);
+              }}
+            />
+          </div>
+          {/* Write SPR-09 M4: rewrite actions, shown ONLY when the Write host
+              supplies them (D-3). Each routes the selection through the §9.0
+              chokepoint; the host maps the intent to the SHIPPED generate /
+              spawn path. */}
+          {rewriteActions && (
+            <div
+              data-floatmenu-rewrite
+              className="flex items-stretch divide-x divide-charcoal-2 border-t border-charcoal-2"
+            >
+              <MenuButton
+                label="Rewrite"
+                onClick={() =>
+                  rewriteActions.onRewrite({ kind: "rewrite", safeText: outboundText(selection) }, selection)
+                }
+              />
+              <MenuButton
+                label="Make stronger"
+                onClick={() =>
+                  rewriteActions.onRewrite({ kind: "stronger", safeText: outboundText(selection) }, selection)
+                }
+              />
+              <MenuButton
+                label="Spin a sub-agent"
+                onClick={() =>
+                  rewriteActions.onRewrite({ kind: "sub_agent", safeText: outboundText(selection) }, selection)
+                }
+              />
+            </div>
+          )}
         </div>
       )}
 

@@ -73,6 +73,28 @@ def seed():
             "document": doc, "gated_node": gnode}
 
 
+# ── SPR-09 M1 — the piece↔research link, verified by reading it back ──
+
+
+def test_create_deliverable_persists_investigation_root_link(client):
+    """M1 (decision D-1): the piece↔research link is the pre-shipped
+    `deliverables.investigation_root_id`. The acceptance bar is "verified by the
+    link EXISTING, not just the UI claiming it" — so assert the round trip: the
+    link given on create comes back on BOTH the create response and the detail
+    read from the substrate (not a UI mock)."""
+    created = client.post("/deliverables", json={
+        "title": "A connected piece", "deliverable_kind": "research_memo",
+        "investigation_root_id": "inv-root-xyz",
+    })
+    assert created.status_code == 201, created.text
+    body = created.json()
+    did = body["deliverable_id"]
+    assert body["investigation_root_id"] == "inv-root-xyz"
+    # Read it back from the substrate via the detail endpoint — the link exists.
+    detail = client.get(f"/deliverables/{did}").json()
+    assert detail["investigation_root_id"] == "inv-root-xyz"
+
+
 # ── SPR-01 — outline composition ───────────────────────────────────
 
 
@@ -236,3 +258,122 @@ def test_generate_empty_section_returns_gap(client, seed):
     r = client.post(f"/write/sections/{seed['section_id']}/generate")
     assert r.status_code == 200
     assert r.json()["status"] == "gap"  # never fabricated prose
+
+
+# ── SPR-09 M3 — persist prose_provenance through the funnel + X-ray read-back ──
+
+
+def _section_prose_row(deliverable_id: str):
+    import duckdb
+    con = duckdb.connect(default_db_path(), read_only=True)
+    try:
+        return con.execute(
+            "SELECT prose_text, prose_provenance FROM deliverable_sections "
+            "WHERE deliverable_id = ?", [deliverable_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+
+def test_persist_section_draft_round_trips_provenance_and_emits_event(seed, tmp_path):
+    """A generated draft's paragraph→blocks map must SURVIVE the request:
+    persisted to the section row AND emitted as a SECTION_DRAFT_GENERATED
+    event, both through the single-writer funnel. The X-ray reads it back."""
+    import json
+    from substrate.write.draft_generation import (
+        CitationReport, GateResult, GenerationResult, persist_section_draft,
+    )
+    from substrate.event_log import trajectory as read_trajectory
+
+    sec, node = seed["section_id"], seed["node"]
+    result = GenerationResult(
+        status="generated", section_id=sec,
+        prose_text=f"The thesis holds [b: {node}].\n\nA second paragraph [b: {node}].",
+        citation_report=None, gate=GateResult(score=0.92, passed=True, violations=[]),
+        prose_provenance={0: [node], 1: [node]},
+    )
+    report = CitationReport(
+        supported_paragraphs=[0, 1], unsupported_paragraphs=[],
+        fabricated_citations=[], uncited_blocks=[], cited_block_ids=[node],
+    )
+    with connect_write(default_db_path(), purpose="test/persist_draft") as con:
+        event_id = persist_section_draft(
+            con, section_id=sec, deliverable_id=seed["deliverable_id"],
+            result=result, report=report, investigation_id=seed["deliverable_id"],
+        )
+    assert event_id is not None
+
+    # (1) The section row carries the persisted prose + provenance (the X-ray
+    #     reads THIS back — not an on-screen claim).
+    row = _section_prose_row(seed["deliverable_id"])
+    assert row[0].startswith("The thesis holds")
+    persisted = json.loads(row[1])
+    assert persisted == {"0": [node], "1": [node]}  # string keys, round-tripped
+
+    # (2) The audit event EXISTS in the graph (the §9 link is a persisted
+    #     event, not just a UI render).
+    events = read_trajectory(seed["deliverable_id"])
+    drafted = [e for e in events if e.get("action_type") == "section.draft_generated"]
+    assert len(drafted) == 1
+    payload = drafted[0]["payload"]
+    assert payload["section_id"] == sec
+    assert payload["prose_provenance"] == {"0": [node], "1": [node]}
+    assert payload["all_claims_cited"] is True
+    assert node in payload["cited_block_ids"]
+
+
+def test_persist_refuses_gate_failed_draft(seed):
+    """A gate_failed/invalid draft never ships, so it must never persist
+    provenance (no half-written draft in the graph)."""
+    from substrate.write.draft_generation import GenerationResult, persist_section_draft
+    bad = GenerationResult(
+        status="gate_failed", section_id=seed["section_id"],
+        prose_text="slop", citation_report=None, gate=None,
+    )
+    with connect_write(default_db_path(), purpose="test/persist_bad") as con:
+        with pytest.raises(ValueError, match="only persists a 'generated'"):
+            persist_section_draft(
+                con, section_id=seed["section_id"],
+                deliverable_id=seed["deliverable_id"], result=bad,
+                report=None,  # type: ignore[arg-type]
+            )
+    # Nothing was written.
+    row = _section_prose_row(seed["deliverable_id"])
+    assert row[0] is None
+
+
+def test_xray_reads_persisted_provenance_via_get_deliverable(client, seed):
+    """After persistence, GET /deliverables/{id} surfaces prose_provenance on
+    the section — the contract the X-ray view consumes."""
+    import json
+    from substrate.write.draft_generation import (
+        CitationReport, GateResult, GenerationResult, persist_section_draft,
+    )
+    sec, node = seed["section_id"], seed["node"]
+    result = GenerationResult(
+        status="generated", section_id=sec,
+        prose_text=f"Grounded prose [b: {node}].",
+        citation_report=None, gate=GateResult(score=0.9, passed=True, violations=[]),
+        prose_provenance={0: [node]},
+    )
+    report = CitationReport(
+        supported_paragraphs=[0], unsupported_paragraphs=[], fabricated_citations=[],
+        uncited_blocks=[], cited_block_ids=[node],
+    )
+    with connect_write(default_db_path(), purpose="test/persist_xray") as con:
+        persist_section_draft(
+            con, section_id=sec, deliverable_id=seed["deliverable_id"],
+            result=result, report=report, investigation_id=seed["deliverable_id"],
+        )
+    detail = client.get(f"/deliverables/{seed['deliverable_id']}").json()
+    section = next(s for s in detail["sections"] if s["section_id"] == sec)
+    assert section["prose_provenance"] == {"0": [node]}
+    # And the block resolves through to its chunk → document (resolve_provenance
+    # chains the X-ray to source — not just block ids).
+    blk = client.post("/write/blocks", json={
+        "section_id": sec, "block_kind": "claim", "provenance_kind": "graph_node",
+        "node_id": node, "block_index": 0,
+    }).json()["outline_block_id"]
+    prov = client.get(f"/write/blocks/{blk}/provenance").json()
+    assert prov["status"] == "resolved"
+    assert prov["document_id"] == seed["document"]
