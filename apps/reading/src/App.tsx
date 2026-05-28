@@ -7,6 +7,7 @@ import CommandPalette from "./components/CommandPalette";
 import { AuthProvider, useAuth } from "./lib/auth";
 import Backtest from "./modes/Backtest";
 import Billing from "./modes/Billing";
+import Biography from "./modes/Biography";
 import BrainstormStation from "./modes/BrainstormStation";
 import Coordination from "./modes/Coordination";
 import CostConsent from "./modes/Coordination/CostConsent";
@@ -184,6 +185,13 @@ function AuthenticatedRoutes() {
         <Route path="/interview/:interviewId" element={<InterviewRedirect />} />
         <Route path="/speak" element={<SpeakIndex />} />
         <Route path="/speak/:projectId" element={<SpeakConsole />} />
+        {/* SPR-11 — the Biography TEMPLATE landing. A dedicated route (NOT a
+            fifth NavRail door — the four-door rail is sacred); reachable from
+            the home's "Start a biography" feature card. "Start a biography"
+            composes a Research folder + a Write deliverable + a Speak project
+            over the ONE graph (it is a template, not a fifth product/graph).
+            See docs/decisions/spr-11-biography-template-not-graph.md. */}
+        <Route path="/biography" element={<Biography />} />
         <Route path="/loop-3" element={<Loop3 />} />
         <Route path="/skill-rules" element={<SkillRules />} />
         <Route path="/skill-rules/:ruleId" element={<SkillRuleDetail />} />

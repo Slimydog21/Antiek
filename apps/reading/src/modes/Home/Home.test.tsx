@@ -6,9 +6,9 @@
  *  - ONE click reaches each of the four surfaces, at each surface's
  *    canonical door route (read from workflowTaxonomy, so a door re-home
  *    is honoured automatically);
- *  - biographies are featured AND honestly labelled (SPR-11's guided
- *    onboarding is not built, so the CTA goes to /speak — its real entry
- *    point today — and the copy says the full flow is still on its way).
+ *  - biographies are featured AND the CTA opens the dedicated /biography
+ *    landing (SPR-11) — a template over research + writing + voices, not a
+ *    separate place.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -30,6 +30,7 @@ function mount() {
         <Route path="/library" element={<div>READ SURFACE</div>} />
         <Route path="/write" element={<div>WRITE SURFACE</div>} />
         <Route path="/speak" element={<div>SPEAK SURFACE</div>} />
+        <Route path="/biography" element={<div>BIOGRAPHY SURFACE</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -70,15 +71,12 @@ describe("Home (SPR-12 M1)", () => {
     }
   });
 
-  it("features biographies and labels the unbuilt SPR-11 flow honestly", () => {
+  it("features biographies and opens the dedicated /biography landing (SPR-11)", () => {
     mount();
     const bio = screen.getByTestId("home-biographies");
     expect(bio).toBeTruthy();
-    // Honest: the copy says the guided onboarding is not built yet.
-    expect(bio.textContent).toMatch(/still on its way/i);
-    // The CTA goes to the Speak door (the real entry point today), not a
-    // faked SPR-11 route.
+    // The CTA opens the dedicated biography landing in one click.
     fireEvent.click(screen.getByTestId("home-biographies-cta"));
-    expect(screen.getByText(/SPEAK SURFACE/)).toBeTruthy();
+    expect(screen.getByText(/BIOGRAPHY SURFACE/)).toBeTruthy();
   });
 });

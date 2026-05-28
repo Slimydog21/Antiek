@@ -53,6 +53,14 @@ SPEAK_DISBURSEMENT_BLOCKED = "speak.disbursement.blocked"
 SPEAK_INTERVIEW_GRADED = "speak.interview.graded"
 SPEAK_PUBLISHED = "speak.published"
 SPEAK_BOOK_ORDER_QUOTED = "speak.book_order.quoted"
+# SPR-11 — a biography template was composed: ONE shared event recording the
+# three surface ids it wires together {investigation_id, deliverable_id,
+# project_id}. This event IS the Speak↔investigation link (create_project takes
+# no investigation arg); it is held in the shared trajectory log, NOT in a new
+# biography_* store. A Speak-local string (not a central ActionType) so the
+# codegen-staleness gate stays green with no TS drift — same doctrine as
+# SPEAK_INTERVIEW_GRADED above (EVENT_SCHEMA_VERSION unchanged).
+SPEAK_BIOGRAPHY_COMPOSED = "speak.biography.composed"
 
 # The full set, for tests + a future enum-promotion audit.
 SPEAK_ACTION_TYPES: frozenset[str] = frozenset({
@@ -73,6 +81,7 @@ SPEAK_ACTION_TYPES: frozenset[str] = frozenset({
     SPEAK_INTERVIEW_GRADED,
     SPEAK_PUBLISHED,
     SPEAK_BOOK_ORDER_QUOTED,
+    SPEAK_BIOGRAPHY_COMPOSED,
 })
 
 

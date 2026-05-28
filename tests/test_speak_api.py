@@ -130,6 +130,63 @@ def test_full_operator_journey_to_public_publish(client, monkeypatch):
     assert order["fulfilled"] is False
 
 
+# ── SPR-11 — the biography TEMPLATE composition, end-to-end ──────────────
+
+
+def test_biography_template_composes_three_surfaces_over_one_graph(client):
+    """SPR-11 M2 — "start a biography" provisions Research + Write + Speak
+    over the ONE graph, all wired to the same investigation identity. The
+    Write deliverable's research link == the investigation_id; the Speak
+    interview project is created and linked via the shared composition."""
+    # 1. The Research folder — created the normal way (POST /investigations).
+    r = client.post("/investigations", json={"question": "The life of Grandma."})
+    assert r.status_code == 202, r.text  # accepted; orchestrator runs async
+    investigation_id = r.json()["investigation_id"]
+
+    # 2. Compose the biography template on that Research folder.
+    r = client.post("/speak/biography", json={
+        "investigation_id": investigation_id, "subject_name": "Grandma",
+    })
+    assert r.status_code == 201, r.text
+    comp = r.json()
+    assert comp["investigation_id"] == investigation_id
+    assert comp["deliverable_id"] and comp["project_id"]
+
+    # 3. Write resolves to the SAME identity: the deliverable's research link
+    #    is the biography's investigation_id (not a second, orphan identity).
+    dlv = client.get(f"/deliverables/{comp['deliverable_id']}").json()
+    assert dlv["investigation_root_id"] == investigation_id
+
+    # 4. The Speak interview project is the shipped one — it appears in the
+    #    project index and accepts invites (the M3 talk flow).
+    projects = client.get("/speak/projects").json()["projects"]
+    assert any(p["project_id"] == comp["project_id"] for p in projects)
+
+
+def test_biography_invite_lands_on_talk_flow_for_that_project(client):
+    """SPR-11 M3 — an invite into the biography's Speak project drops the
+    recipient onto the talk-flow landing for THAT project (the captured
+    memory feeds the biography's shared graph, not a side store). Reuses the
+    shipped invite + token-landing flow (SPR-10)."""
+    investigation_id = client.post(
+        "/investigations", json={"question": "The life of Dad."}
+    ).json()["investigation_id"]
+    comp = client.post("/speak/biography", json={
+        "investigation_id": investigation_id, "subject_name": "Dad",
+    }).json()
+
+    # Invite a friend into the biography's Speak project.
+    iv = client.post(
+        f"/speak/projects/{comp['project_id']}/invites",
+        json={"informant_handle": "a friend"},
+    ).json()
+    token = iv["link"].split("token=")[1]
+
+    # The invitee's token lands on the talk flow for THIS biography's project.
+    landing = client.get(f"/speak/invite/{token}").json()
+    assert landing["project_id"] == comp["project_id"]
+
+
 # ── gate refusals (the load-bearing ones) ───────────────────────────────
 
 

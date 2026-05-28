@@ -378,6 +378,20 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/speak/invite/:token",
   },
+  // SPR-11 — the Biography TEMPLATE. NOT a fifth workflow: a biography
+  // composes Research + Write + Speak over the ONE graph, so it is classified
+  // under Speak (the talk/voices surface it leads into), reachable from the
+  // home's "Start a biography" card — never a fifth rail door (that would
+  // imply a fifth product/graph, which the template-not-silo decision rejects;
+  // see docs/decisions/spr-11-biography-template-not-graph.md).
+  {
+    id: "Biography",
+    workflow: "speak",
+    label: "Biography",
+    blurb: "Start a biography — composes research, writing, and gathered voices over the one workspace (SPR-11).",
+    built: true,
+    route: "/biography",
+  },
   // Speak SPR-08 ONE DOOR: the duplicate Interview surface folds into Speak
   // (mirrors the SPR-05 InvestigationsIndex fold). Their capability — capture,
   // transcript, corroboration, the per-informant index — is preserved inside

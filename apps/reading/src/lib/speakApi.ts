@@ -317,6 +317,52 @@ export async function releasePayout(
   };
 }
 
+/**
+ * SPR-11 — the Biography template composition over the ONE graph.
+ *
+ * A biography is a TEMPLATE composing Research + Write + Speak, NOT a fifth
+ * product or a fifth graph. The three ids it wires together all resolve to one
+ * shared identity (the investigationId): the Write deliverable's research link
+ * == the investigationId, and the Speak project is linked via the shared
+ * composition event. There is no biographyId — a biography is the composition,
+ * not its own entity.
+ */
+export interface BiographyComposition {
+  investigationId: string;
+  deliverableId: string;
+  projectId: string;
+}
+
+/**
+ * Provision a biography: a Research folder (created first via
+ * startInvestigation), then the Write deliverable scaffold + Speak interview
+ * project wired to that same Research folder over the shared substrate. The
+ * Research folder can be empty (no research run yet) and the Speak project
+ * empty (no voices yet) — both provision regardless (rigor #3 edge cases a/c).
+ */
+export async function createBiography(args: {
+  investigationId: string;
+  subjectName: string;
+  title?: string;
+}): Promise<BiographyComposition> {
+  const resp = await apiFetch("/speak/biography", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      investigation_id: args.investigationId,
+      subject_name: args.subjectName.trim(),
+      title: args.title,
+    }),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const data = await resp.json();
+  return {
+    investigationId: String(data.investigation_id ?? ""),
+    deliverableId: String(data.deliverable_id ?? ""),
+    projectId: String(data.project_id ?? ""),
+  };
+}
+
 export async function createPerson(name: string): Promise<string> {
   const trimmed = name.trim();
   const resp = await apiFetch("/speak/projects", {

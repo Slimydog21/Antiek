@@ -43,6 +43,7 @@ from runtime.db_lock import connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
+    biography_composition,
     consent as consent_mod,
     contributor as contributor_mod,
     corroboration,
@@ -144,6 +145,32 @@ class ProjectResponse(BaseModel):
     subject_status: str
     publish_intent: str
     invitation_mode: str
+
+
+class CreateBiographyRequest(BaseModel):
+    """SPR-11 — provision a biography TEMPLATE over the three surfaces.
+
+    ``investigation_id`` is the Research folder the frontend already
+    created via ``POST /investigations`` (the one-graph identity). This
+    endpoint wires the Write deliverable + the Speak project to it and
+    records the shared composition link event — it creates NO new store.
+    """
+
+    investigation_id: str = Field(..., min_length=1)
+    subject_name: str = Field(..., min_length=1, max_length=300)
+    title: Optional[str] = None
+    subject_status: str = "unknown"
+    publish_intent: str = "private_never_published"
+
+
+class BiographyCompositionResponse(BaseModel):
+    """The three surface ids a biography wires together — NO biography_id
+    (a biography is the composition of the three, not its own entity)."""
+
+    investigation_id: str
+    deliverable_id: str
+    project_id: str
+    composition_event_id: Optional[str]
 
 
 class InviteRequest(BaseModel):
@@ -248,6 +275,35 @@ async def create_project(req: CreateProjectRequest) -> ProjectResponse:
             topic_description=req.topic_description,
         )
     return ProjectResponse(**p.__dict__)
+
+
+@speak_router.post(
+    "/biography", response_model=BiographyCompositionResponse, status_code=201
+)
+async def create_biography(req: CreateBiographyRequest) -> BiographyCompositionResponse:
+    """SPR-11 — compose a biography TEMPLATE over Research + Write + Speak.
+
+    The Research folder (``investigation_id``) is created upstream
+    (``POST /investigations``); this wires the Write deliverable + the
+    Speak project to that SAME identity and records the shared composition
+    event. No new store/table — the §16 one-graph guard
+    (``test_biography_creates_no_new_store``) asserts this mechanically.
+    """
+    with _translate(), _write("speak/api:create_biography") as con:
+        comp = biography_composition.create_biography(
+            con,
+            investigation_id=req.investigation_id,
+            subject_name=req.subject_name,
+            title=req.title,
+            subject_status=req.subject_status,
+            publish_intent=req.publish_intent,
+        )
+    return BiographyCompositionResponse(
+        investigation_id=comp.investigation_id,
+        deliverable_id=comp.deliverable_id,
+        project_id=comp.project_id,
+        composition_event_id=comp.composition_event_id,
+    )
 
 
 @speak_router.get("/projects")

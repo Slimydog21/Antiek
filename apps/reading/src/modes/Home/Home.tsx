@@ -101,10 +101,10 @@ export function Home() {
           })}
         </nav>
 
-        {/* Biographies — featured. SPR-11 (the biography onboarding flow)
-            is NOT built yet, so this links honestly to the Speak door (its
-            entry point today) and labels what you can actually do there now,
-            rather than dressing up a flow that does not exist. */}
+        {/* Biographies — featured (SPR-11). A biography is a TEMPLATE that
+            composes research, writing, and gathered voices over the one
+            workspace — not a separate place. The CTA opens the dedicated
+            /biography landing where the guided flow begins. */}
         <section
           aria-label="Biographies"
           data-testid="home-biographies"
@@ -118,13 +118,14 @@ export function Home() {
               </h2>
               <p className="mt-1 text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
                 Start with a person you want to remember, invite the people who
-                knew them, and gather their voices. The full guided onboarding
-                is still on its way; today the Speak door is where you begin.
+                knew them, and gather their voices. The research you do, the
+                draft you write, and the voices you collect all live together
+                in one place, so each one feeds the others.
               </p>
               <button
                 type="button"
                 data-testid="home-biographies-cta"
-                onClick={() => navigate(WORKFLOWS.speak.defaultRoute)}
+                onClick={() => navigate("/biography")}
                 className={
                   "mt-3 inline-flex items-center rounded-hog border-edge border-sun " +
                   "bg-sun px-3 py-1.5 text-[13px] font-semibold text-ink shadow-z1 transition " +
