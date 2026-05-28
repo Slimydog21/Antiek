@@ -434,6 +434,59 @@ view → see "would be owed, not yet paid" → attempt a payout → get the hone
 G2/G3 refusal. The disbursement that this view refuses stays gated G2 (lawyer)
 + G3 (publisher opt-in) above — SPR-10 did not touch either.
 
+### Living Roadmap — the four-product interaction layer shipped to prod (2026-05-28)
+
+DOCUMENTATION ONLY — this note closes/changes NO gate. **G2, G3, G7, and G8
+stay OPEN.** The Living Roadmap run (15 sprints) shipped to `main` and prod and
+was verified live; it turned the AI on across the four surfaces and built the
+new interaction primitives, all behind the existing gates.
+
+- **Merged + deployed.** PR #16 (`a94d357`, the 15-sprint chain) + PR #15
+  (`d463c9e`, the D13 reconcile) are on `main`. Backend deployed via
+  `ansible-playbook playbooks/deploy.yml --skip-tags frontend`; frontend
+  auto-deployed via Cloudflare Pages. **Verified live:** prod `/health` reports
+  `schema_version: 23` (was 16 on the pre-run base `76c2002` — the dispositive
+  new-code marker) and `antiek.ai` serves HTTP 200.
+- **What's live now.** Research (home + plan-mode), Read (library + reader +
+  talk-to-book + meta-reading + personal-doc-space), Write (block-canvas →
+  outline → X-ray), and Speak (public/private feed + AI-graded payout +
+  compounding interviewer + biography template). Per-sprint rationale:
+  `docs/decisions/spr-09-write-canvas-xray-rewrite.md`,
+  `docs/decisions/spr-10-ai-graded-payout.md`,
+  `docs/decisions/spr-11-biography-template-not-graph.md`,
+  `docs/decisions/spr-13-personal-space-and-filing.md` (+ the SPR-0x docs).
+- **AI live on prod (observed).** `/health` shows 5 registered dispatch
+  providers (`anthropic, deepseek, hermes, openrouter, xiaomi`) — the
+  credentials gate the §9/SPR-10 note above treats as operator-bound is
+  satisfied for dispatch, so the keyed first-run capture (read a synthesis →
+  accrual view → honest G2/G3 payout refusal) is actionable now. (OpenAI/TTS
+  key status not separately confirmed; absent it, voice TTS degrades honestly.)
+- **Payout mechanism built BEHIND the gates.** Living Roadmap SPR-10 added the
+  AI-graded interview payout (`substrate/speak/payout_verifier.py`): a
+  verifier-shaped grader (honestly labelled a prompt-rubric, not a trained
+  grader) routes a passing transcript's payout via §9 contribution measurement
+  into ESCROW only — `release_payout` never calls `attempt_disbursement`, which
+  still refuses pre-G2/G3. Requester-cannot-deny is structural. No money path;
+  no gate touched.
+- **Two PROPOSED resolutions await operator sign-off** (shipped behind visible
+  "proposed — sign-off pending" banners, reversible): the auto-notebook concept
+  (`docs/decisions/spr-06-auto-notebook-proposed.md`) and the meta-reading
+  Research↔Read boundary (`docs/decisions/spr-08-meta-reading-boundary.md`).
+  Ratify or redirect each; the build reverts to a soft default if withheld.
+
+**New operator-discretion items from this run:**
+- Mint the visual baselines for the new shell/home/mascot: `cd apps/reading &&
+  npm run visualtest:update` (SPR-12 deferred this so it wouldn't enshrine a
+  pre-fix render).
+- Two PRE-EXISTING test flakes (NOT introduced here; flag to stabilize):
+  `apps/reading/src/components/ai/aiActionsEventBridge.test.ts` (vitest, passes
+  7/7 in isolation) and `tests/test_magic_link_auth.py::test_magic_link_rejects_tampered_token`
+  (pytest, passes in isolation; the last-base64-char tamper on a timestamped
+  token doesn't always change the signature).
+- Deploy reminder: the backend deploys with `--skip-tags frontend` — the
+  `deploy.yml` frontend play builds from the LOCAL working tree (so it inherits
+  uncommitted parallel-session WIP); the frontend ships via Pages-from-`main`.
+
 ### Reference docs for cross-session continuity
 
 - `docs/operator_gate_actions.md` — this file. Update on every gate
