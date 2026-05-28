@@ -1415,6 +1415,62 @@ def create_app(
                 except Exception:  # pragma: no cover — best-effort, backfill covers
                     pass
 
+            # Read SPR-13 M3 — filing a personal-space doc INTO a research
+            # project. The reader EXPLICITLY accepted a suggestion (the suggest
+            # path NEVER auto-files; this event only exists because the user
+            # clicked accept). Filing is a LINK, not a copy: we set the doc's
+            # investigation_id THROUGH THE SINGLE-WRITER FUNNEL (connect_write =
+            # runtime/db_lock) — a direct `UPDATE documents` outside this lock is
+            # forbidden (it would bypass the only-writer invariant). The §9 chain
+            # (claim→chunk→document→ip_holder_id) is untouched and ip_holder_id is
+            # NOT written (immutable on filing). Unlike marginalia (best-effort —
+            # the note is already durable + a backfill covers it), the filing
+            # write IS the point of the event: if it fails we surface a 503 so the
+            # client doesn't think a doc was filed when it wasn't (no silent
+            # divergence between the log and the documents table).
+            if action_value == "document.filed_into_investigation":
+                from runtime.db_lock import connect_write
+                from substrate.graph import default_db_path
+
+                payload = matching.get("payload") or {}
+                filed_doc = payload.get("filed_document_id")
+                target_inv = payload.get("target_investigation_id")
+                if not filed_doc or not target_inv:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            "document.filed_into_investigation requires "
+                            "filed_document_id + target_investigation_id."
+                        ),
+                    )
+                try:
+                    with connect_write(
+                        default_db_path(), purpose="api:file_document"
+                    ) as con:
+                        existing = con.execute(
+                            "SELECT document_id FROM documents WHERE document_id = ?",
+                            [filed_doc],
+                        ).fetchone()
+                        if existing is None:
+                            raise HTTPException(
+                                status_code=404,
+                                detail=f"document {filed_doc!r} not found; nothing filed.",
+                            )
+                        # 1:N — set the doc's single investigation home. ip_holder_id
+                        # + the chunk/claim chain are NOT touched (link, not copy).
+                        con.execute(
+                            "UPDATE documents SET investigation_id = ? "
+                            "WHERE document_id = ?",
+                            [target_inv, filed_doc],
+                        )
+                except HTTPException:
+                    raise
+                except Exception as exc:  # the write IS the point — surface it
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"filing write failed: {exc}",
+                    ) from exc
+
         return EmittedEventResponse(event_id=event_id, action_type=action_value)
 
     # ── GET trajectory ──────────────────────────────────────────

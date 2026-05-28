@@ -287,6 +287,11 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // SPR-08 — a saved meta-reading deliverable is a Read asset (a re-openable
   // synthesis over the owned corpus); it is not a Research thinking-stream beat.
   [ActionType.READ_META_READING_GENERATED]: null,
+  // SPR-13 — filing a personal-space doc into a project is a Read-side curation
+  // action (the reader accepting a suggestion); not a Research thinking-stream
+  // beat. The doc joins the project's substrate, but the narration belongs to
+  // the personal space, not the investigation's progress stream.
+  [ActionType.DOCUMENT_FILED_INTO_INVESTIGATION]: null,
 };
 
 /** The safe generic line for an action_type with no row — only reachable if

@@ -419,6 +419,19 @@ class ActionType(str, Enum):
     #    boundary, reversible to soft. specs/antiek-living-roadmap/ SPR-08.
     READ_META_READING_GENERATED = "read.meta_reading.generated"
 
+    # ── Filing a personal-space doc INTO a research project (Living Roadmap
+    #    SPR-13 M3). The reader's personal space CONTINUOUSLY SUGGESTS filing a
+    #    created deliverable / saved read into a semantically-matching research
+    #    project; on EXPLICIT accept (never auto), the surface emits this event.
+    #    Filing is a LINK, not a copy: the handler sets documents.investigation_id
+    #    THROUGH THE SINGLE-WRITER FUNNEL (the /events/typed side-effect handler →
+    #    runtime/db_lock connect_write) — a direct ``UPDATE documents`` is
+    #    forbidden (it would bypass the only-writer invariant). The §9 chain
+    #    (claim→chunk→document→ip_holder_id) stays intact; ip_holder_id is
+    #    untouched (immutable on filing). 1:N — a document belongs to 0..1
+    #    investigation (documents.investigation_id). specs SPR-13.
+    DOCUMENT_FILED_INTO_INVESTIGATION = "document.filed_into_investigation"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -567,7 +580,22 @@ class ActionType(str, Enum):
 #     behind the "proposed (sign-off pending)" banner: the PROPOSED Research↔Read
 #     boundary, reversible to soft. specs/antiek-living-roadmap/ SPR-08.
 #     2026-05-28.
-EVENT_SCHEMA_VERSION: int = 21
+# v22: Living Roadmap SPR-13 — filing a personal-space doc INTO a research
+#     project. One typed event (document.filed_into_investigation) records that
+#     the reader EXPLICITLY accepted a suggestion to file a created deliverable /
+#     saved read into a semantically-matching research project. Filing is a
+#     LINK, not a copy: the /events/typed side-effect handler sets
+#     documents.investigation_id THROUGH THE SINGLE-WRITER FUNNEL (runtime/db_lock
+#     connect_write) — a direct ``UPDATE documents`` is forbidden (it would
+#     bypass the only-writer invariant). The §9 provenance chain
+#     (claim→chunk→document→ip_holder_id) stays intact and ip_holder_id is
+#     untouched (immutable on filing). NEVER auto: the event fires only on an
+#     explicit user accept; the suggestion (substrate/books/personal_space.py
+#     match_document_to_investigations) only ranks. 1:N — a document belongs to
+#     0..1 investigation (documents.investigation_id, 1:N FK). The match score +
+#     question are recorded on the event so the filing decision is reconstructable
+#     (why this doc landed here). specs/antiek-living-roadmap/ SPR-13. 2026-05-28.
+EVENT_SCHEMA_VERSION: int = 22
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3349,6 +3377,44 @@ class ReadMetaReadingGeneratedPayload(_PayloadBase):
     citations: list[MetaReadingCitation] = Field(default_factory=list)
 
 
+class DocumentFiledIntoInvestigationPayload(_PayloadBase):
+    """The reader EXPLICITLY accepted a suggestion to file a personal-space
+    document into a research project (Read SPR-13 M3).
+
+    THE INVARIANT (operator decision 1 + out-of-scope list): filing is NEVER
+    automatic. The personal space CONTINUOUSLY SUGGESTS a match
+    (``match_document_to_investigations`` ranks projects by the doc's similarity
+    to each project's question); the file only happens on an EXPLICIT user
+    accept that emits this event. Decline leaves the doc put (no event).
+
+    FILING IS A LINK, NOT A COPY. The ``/events/typed`` side-effect handler sets
+    ``documents.investigation_id`` THROUGH THE SINGLE-WRITER FUNNEL (the host
+    ``connect_write`` lock = ``runtime/db_lock``) — a direct ``UPDATE documents``
+    is FORBIDDEN (it would bypass the only-writer invariant). The §9 provenance
+    chain (claim→chunk→document→ip_holder_id) is untouched; ``ip_holder_id`` is
+    immutable on filing. 1:N — a document belongs to 0..1 investigation
+    (``documents.investigation_id``).
+
+    The match ``score`` + the project ``question`` are recorded so the filing
+    decision is RECONSTRUCTABLE (a maintainer can see why this doc landed in this
+    project) — never re-derived guesswork."""
+
+    action_type: Literal[ActionType.DOCUMENT_FILED_INTO_INVESTIGATION] = (
+        ActionType.DOCUMENT_FILED_INTO_INVESTIGATION
+    )
+    # The document being filed. The handler sets ITS investigation_id; the
+    # document_id also rides the Event envelope (this field is the canonical
+    # subject the handler acts on, independent of the envelope's optional id).
+    filed_document_id: str
+    # The project the reader chose (the suggestion's top match, or the one they
+    # picked among >1 candidate). The handler writes THIS as the doc's
+    # investigation_id. The Event envelope's investigation_id is the same value.
+    target_investigation_id: str
+    # The match evidence — why this doc was suggested here (reconstructable).
+    match_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    target_question: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -3461,6 +3527,7 @@ TypedPayload = Annotated[
         BlockPositionPayload,
         SourceReadPayload,
         ReadMetaReadingGeneratedPayload,
+        DocumentFiledIntoInvestigationPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -3586,6 +3653,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.SOURCE_READ.value,
     # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
     ActionType.READ_META_READING_GENERATED.value,
+    # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
+    ActionType.DOCUMENT_FILED_INTO_INVESTIGATION.value,
 })
 
 
@@ -3882,4 +3951,6 @@ __all__ = [
     # Meta-reading deliverable → re-openable Read asset SPR-08 (v21 schema bump)
     "MetaReadingCitation",
     "ReadMetaReadingGeneratedPayload",
+    # Filing a personal-space doc into a research project SPR-13 (v22 bump)
+    "DocumentFiledIntoInvestigationPayload",
 ]

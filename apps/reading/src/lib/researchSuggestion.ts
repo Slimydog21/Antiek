@@ -94,3 +94,78 @@ export async function acceptPromotion(args: {
 
   return { investigation_id: started.investigation_id };
 }
+
+// ════════════════════════════════════════════════════════════════════════
+// SPR-13 M3 — file an EXISTING doc INTO an EXISTING project (suggest-not-auto)
+// ════════════════════════════════════════════════════════════════════════
+// A DIFFERENT path from acceptPromotion above (which LAUNCHES a new research):
+// here the personal space CONTINUOUSLY SUGGESTS filing a created deliverable /
+// saved read into a related EXISTING project when it semantically matches. Same
+// never-auto structure: a PURE suggest fn + an EXPLICIT-accept-only mutator. The
+// mutator is the ONLY thing that mutates, and it fires from a user click — never
+// on render, never on effect (the no-auto-ship invariant). Decline = do nothing.
+
+import type { ProjectMatch } from "../api/books";
+
+export interface FilingSuggestion {
+  /** The candidate projects to offer, best first (top match, or >1 on a tie —
+   * the surface names them; accept files into the ONE chosen, never all). */
+  candidates: ProjectMatch[];
+  /** A plain-language reason the surface shows. */
+  rationale: string;
+}
+
+/**
+ * Build the file-into-project SUGGESTION from the backend match result. PURE —
+ * it shapes a suggestion, it does NOT file. Returns null when nothing clears
+ * the threshold (the backend returns an empty match list), so the surface shows
+ * NO suggestion rather than a hollow one (decline-by-default).
+ */
+export function suggestFiling(args: {
+  matches: ProjectMatch[];
+}): FilingSuggestion | null {
+  if (!args.matches.length) return null;
+  const top = args.matches[0];
+  const more = args.matches.length - 1;
+  const rationale =
+    more > 0
+      ? `This looks related to “${top.question}” — and ${more} other project${more === 1 ? "" : "s"}. File it into one?`
+      : `This looks related to your research “${top.question}.” File it there?`;
+  return { candidates: args.matches, rationale };
+}
+
+export interface FilingResult {
+  investigation_id: string;
+}
+
+/**
+ * EXPLICIT filing — call ONLY from a user-accept handler. Files ONE document
+ * into ONE chosen project by emitting the ``document.filed_into_investigation``
+ * typed event through the single-writer funnel (postTypedEvent → /events/typed
+ * → the handler sets documents.investigation_id via runtime/db_lock). Filing is
+ * a LINK, not a copy — the §9 chain stays intact, ip_holder_id immutable.
+ *
+ * NEVER auto-invoked, NEVER files into >1 project (the caller passes the single
+ * project the user picked among the candidates — no double-filing).
+ */
+export async function acceptFiling(args: {
+  documentId: string;
+  investigationId: string;
+  matchScore: number;
+  question: string;
+}): Promise<FilingResult> {
+  await postTypedEvent({
+    investigation_id: args.investigationId,
+    document_id: args.documentId,
+    payload: {
+      action_type: "document.filed_into_investigation",
+      filed_document_id: args.documentId,
+      target_investigation_id: args.investigationId,
+      match_score: args.matchScore,
+      target_question: args.question,
+    },
+    role: "read/personal_space",
+    policy_id: "read/personal_space/file",
+  });
+  return { investigation_id: args.investigationId };
+}

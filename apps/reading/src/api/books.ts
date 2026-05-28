@@ -334,6 +334,113 @@ export async function generateMetaReading(
   return (await resp.json()) as MetaReadingResponse;
 }
 
+// ── SPR-13 — personal document space (collect / categorize / file) ────
+//
+// The reader's "bed of information that labels itself": their CREATED
+// deliverables (SPR-08 meta-readings) + saved reads (SPR-07 source.read),
+// reconstructed server-side from the event log — NO new store, NO localStorage
+// of substrate truth. Distinct from listBooks (the raw library of source books).
+
+/** One item in the personal space. ``kind`` distinguishes a created asset from
+ * a source-book read (the M4 visible distinction). ``open_route`` re-opens it. */
+export interface PersonalAsset {
+  asset_id: string;
+  kind: "meta_reading" | "saved_read";
+  title: string;
+  prompt: string | null;
+  document_ids: string[];
+  emitted_at: string | null;
+  open_route: string;
+}
+
+export interface PersonalSpaceResponse {
+  assets: PersonalAsset[];
+  count: number;
+}
+
+/** List the personal-space assets (Read SPR-13 M1), newest first. Substrate-
+ * backed (event-log scan), not a new store. */
+export async function listPersonalSpace(): Promise<PersonalSpaceResponse> {
+  const resp = await apiFetch(`${API_BASE}/meta-readings`);
+  if (!resp.ok) throw new Error(`GET /meta-readings: HTTP ${resp.status}`);
+  return (await resp.json()) as PersonalSpaceResponse;
+}
+
+export interface AssetCategory {
+  /** Stable unique key the surface renders on — two clusters can share a human
+   * label, so the id (not the label) is the safe React list key. */
+  category_id: string;
+  label: string;
+  asset_ids: string[];
+  /** "theme" when the label emerged from clustering; "recency" when the corpus
+   * was below the stability bound and we fell back honestly (never a fake label). */
+  ordering: "theme" | "recency";
+}
+
+export interface CategorizedSpaceResponse {
+  categories: AssetCategory[];
+  ordering: "theme" | "recency";
+  /** Asset-count below which categories don't stabilize → recency fallback. */
+  stability_bound: number;
+}
+
+/** Cluster the personal-space assets into SYSTEM-named categories (Read SPR-13
+ * M2). The system names the categories; the user never hand-organizes folders.
+ * Honest recency fallback below the stability bound. */
+export async function listPersonalSpaceCategories(): Promise<CategorizedSpaceResponse> {
+  const resp = await apiFetch(`${API_BASE}/meta-readings/categories`);
+  if (!resp.ok) throw new Error(`GET /meta-readings/categories: HTTP ${resp.status}`);
+  return (await resp.json()) as CategorizedSpaceResponse;
+}
+
+export interface ProjectMatch {
+  investigation_id: string;
+  question: string;
+  score: number;
+}
+
+export interface FileSuggestionResponse {
+  document_id: string;
+  matches: ProjectMatch[];
+}
+
+/** Ask which research projects a doc could be filed into (Read SPR-13 M3).
+ * SUGGEST-ONLY — this only ranks; filing is the explicit-accept event. 503 when
+ * the embedder is unavailable (the surface then shows no suggestion). */
+export async function getFileSuggestion(
+  documentId: string,
+): Promise<FileSuggestionResponse> {
+  const params = new URLSearchParams({ document_id: documentId });
+  const resp = await apiFetch(`${API_BASE}/meta-readings/file-suggestion?${params.toString()}`);
+  if (resp.status === 503) {
+    // Embedder unavailable — no suggestion, not an error the surface surfaces.
+    return { document_id: documentId, matches: [] };
+  }
+  if (!resp.ok) throw new Error(`GET /meta-readings/file-suggestion: HTTP ${resp.status}`);
+  return (await resp.json()) as FileSuggestionResponse;
+}
+
+export interface SavedMetaReading {
+  asset_id: string;
+  prompt: string;
+  report: string;
+  citations: BookCitation[];
+  length_unit: "pages" | "minutes";
+  length_amount: number;
+  truncated: boolean;
+  corpus_scope: "hard" | "soft";
+  corpus_document_ids: string[];
+}
+
+/** Re-open a saved meta-reading asset by id (Read SPR-13 M1 — opens back into
+ * the meta-doc view). Reads the saved event off the log. */
+export async function getSavedMetaReading(assetId: string): Promise<SavedMetaReading> {
+  const resp = await apiFetch(`${API_BASE}/meta-readings/${encodeURIComponent(assetId)}`);
+  if (resp.status === 404) throw new Error(`Saved reading ${assetId} not found.`);
+  if (!resp.ok) throw new Error(`GET /meta-readings/{id}: HTTP ${resp.status}`);
+  return (await resp.json()) as SavedMetaReading;
+}
+
 /** Human-readable label + Lemon tag colour for a servability status. One
  * source so Library cards and the reader badge never disagree. */
 export function servabilityLabel(s: Servability): { label: string; colour: "aurora" | "sun" | "muted" | "danger" } {

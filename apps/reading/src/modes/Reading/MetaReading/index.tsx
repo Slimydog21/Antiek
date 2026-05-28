@@ -1,8 +1,8 @@
-import { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { LemonButton } from "../../../components/lemon";
-import { generateMetaReading } from "../../../api/books";
+import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
@@ -37,6 +37,10 @@ type LengthUnit = "pages" | "minutes";
 
 export default function MetaReading() {
   const navigate = useNavigate();
+  // SPR-13 M1 — when an assetId is in the route, this surface RE-OPENS a saved
+  // meta-reading asset (read-only) rather than acting as the generator. The
+  // saved asset is loaded from the event log via the substrate read-path.
+  const { assetId } = useParams<{ assetId?: string }>();
   const [prompt, setPrompt] = useState("");
   const [unit, setUnit] = useState<LengthUnit>("pages");
   const [amount, setAmount] = useState(3);
@@ -45,6 +49,46 @@ export default function MetaReading() {
   const [deliverable, setDeliverable] = useState<MetaReadingResponse | null>(null);
   const [promoted, setPromoted] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
+
+  // Re-open a saved asset by id. Maps the saved shape onto MetaReadingResponse
+  // (the read-only render path is identical); the generation-only fields
+  // (word_budget / empty / context_chunk_count) are filled with honest
+  // re-open values (the asset already exists + is non-empty).
+  useEffect(() => {
+    if (!assetId) return;
+    let cancelled = false;
+    setBusy(true);
+    setError(null);
+    void getSavedMetaReading(assetId)
+      .then((saved) => {
+        if (cancelled) return;
+        setPrompt(saved.prompt);
+        setUnit(saved.length_unit);
+        setAmount(saved.length_amount);
+        setDeliverable({
+          asset_id: saved.asset_id,
+          report: saved.report,
+          citations: saved.citations,
+          length_unit: saved.length_unit,
+          length_amount: saved.length_amount,
+          word_budget: 0,
+          truncated: saved.truncated,
+          corpus_scope: saved.corpus_scope,
+          corpus_document_ids: saved.corpus_document_ids,
+          empty: false,
+          context_chunk_count: saved.citations.length,
+        });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
 
   // Open a cited book at a resolved page — seeds the SAME sessionStorage locator
   // usePosition owns, then routes to the reader (no parallel navigation).

@@ -30,6 +30,7 @@ import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
 import MetaReading from "./modes/Reading/MetaReading";
+import PersonalSpace from "./modes/Reading/PersonalSpace";
 import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
@@ -140,6 +141,16 @@ function AuthenticatedRoutes() {
             ranks static segments above params, so /read/meta-reading never
             resolves the book reader. */}
         <Route path="/read/meta-reading" element={<MetaReading />} />
+        {/* SPR-13 M1 — re-open a SAVED meta-reading asset by id (the personal
+            space item opens back into the meta-doc view). Declared after the
+            literal /read/meta-reading so it doesn't shadow the generator. */}
+        <Route path="/read/meta-reading/:assetId" element={<MetaReading />} />
+        {/* SPR-13 M1 — the personal document space (created deliverables +
+            saved reads, auto-categorized, suggest-file-into-project). */}
+        <Route path="/readings" element={<PersonalSpace />} />
+        {/* SPR-13 M4 — the meta-docs tab: the same personal space filtered to
+            created deliverables, after the Library in the Read nav. */}
+        <Route path="/meta-readings" element={<PersonalSpace metaDocsOnly />} />
         <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />

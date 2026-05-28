@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 21;
+export const EVENT_SCHEMA_VERSION = 22;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -136,6 +136,7 @@ export const ActionType = {
   MARGINALIA_NOTED: "marginalia.noted",
   SOURCE_READ: "source.read",
   READ_META_READING_GENERATED: "read.meta_reading.generated",
+  DOCUMENT_FILED_INTO_INVESTIGATION: "document.filed_into_investigation",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -2306,6 +2307,36 @@ export interface ReadMetaReadingGeneratedPayload {
 }
 
 /**
+ * The reader EXPLICITLY accepted a suggestion to file a personal-space
+ * document into a research project (Read SPR-13 M3).
+ * 
+ * THE INVARIANT (operator decision 1 + out-of-scope list): filing is NEVER
+ * automatic. The personal space CONTINUOUSLY SUGGESTS a match
+ * (``match_document_to_investigations`` ranks projects by the doc's similarity
+ * to each project's question); the file only happens on an EXPLICIT user
+ * accept that emits this event. Decline leaves the doc put (no event).
+ * 
+ * FILING IS A LINK, NOT A COPY. The ``/events/typed`` side-effect handler sets
+ * ``documents.investigation_id`` THROUGH THE SINGLE-WRITER FUNNEL (the host
+ * ``connect_write`` lock = ``runtime/db_lock``) — a direct ``UPDATE documents``
+ * is FORBIDDEN (it would bypass the only-writer invariant). The §9 provenance
+ * chain (claim→chunk→document→ip_holder_id) is untouched; ``ip_holder_id`` is
+ * immutable on filing. 1:N — a document belongs to 0..1 investigation
+ * (``documents.investigation_id``).
+ * 
+ * The match ``score`` + the project ``question`` are recorded so the filing
+ * decision is RECONSTRUCTABLE (a maintainer can see why this doc landed in this
+ * project) — never re-derived guesswork.
+ */
+export interface DocumentFiledIntoInvestigationPayload {
+  action_type: "document.filed_into_investigation";
+  filed_document_id: string;
+  target_investigation_id: string;
+  match_score?: number;
+  target_question?: string;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -2414,7 +2445,8 @@ export type TypedPayload =
   | MarginaliaNotedPayload
   | BlockPositionPayload
   | SourceReadPayload
-  | ReadMetaReadingGeneratedPayload;
+  | ReadMetaReadingGeneratedPayload
+  | DocumentFiledIntoInvestigationPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2469,6 +2501,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "dispatch.call",
   "distillation.delivered",
   "distillation.requested",
+  "document.filed_into_investigation",
   "document.loaded",
   "document.region_selected",
   "dp.routed",

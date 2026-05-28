@@ -63,6 +63,9 @@ const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: 
     { to: "/outcomes", label: "Outcomes audit" },
   ],
   read: [
+    // SPR-13 M4 — the personal space + its meta-docs tab, after the Library.
+    { to: "/readings", label: "Your readings" },
+    { to: "/meta-readings", label: "All meta-docs" },
     { to: "/documents", label: "All documents" },
     { to: "/notebooks", label: "All notebooks" },
     { to: "/sources", label: "All sources" },
