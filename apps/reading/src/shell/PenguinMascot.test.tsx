@@ -222,3 +222,79 @@ describe("PenguinMascot (SPR-12 M3)", () => {
     ).toBeNull();
   });
 });
+
+/**
+ * SPR-06 M5 — the AUTONOMOUS waddler. The mascot walks itself around the
+ * viewport on a chained timeout (not a rAF loop). Each claim asserted:
+ *  - by default a roam leg fires after the settle delay, MOVES the mascot,
+ *    and stays clamped on-screen (bounded);
+ *  - mid-stroll the foot-bob `werner-waddle` rides the bob span, then clears
+ *    when the leg ends (he walks, then rests);
+ *  - under prefers-reduced-motion he NEVER roams (position is the initial
+ *    seed even after a long elapse) — static, still clickable;
+ *  - the roam never fights a drag (a drag in flight pauses it).
+ */
+describe("PenguinMascot SPR-06 — autonomous roam", () => {
+  it("strolls to a new on-screen spot by itself, bounded to the viewport", () => {
+    const { container } = mount();
+    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const startLeft = parseFloat(el.style.left);
+    const startTop = parseFloat(el.style.top);
+    // Settle (1800ms) → first leg begins: position is retargeted + the foot
+    // bob is on while walking.
+    act(() => {
+      vi.advanceTimersByTime(1900);
+    });
+    const movedLeft = parseFloat(el.style.left);
+    const movedTop = parseFloat(el.style.top);
+    expect(
+      movedLeft !== startLeft || movedTop !== startTop,
+      "the mascot should have walked to a new spot on its own",
+    ).toBe(true);
+    expect(el.style.transition).toContain("left");
+    expect(container.querySelector(".werner-waddle")).toBeTruthy();
+    // Bounded: clamp keeps >= 80px reachable on every side (viewport 1200x800).
+    expect(movedLeft).toBeGreaterThanOrEqual(80 - 64);
+    expect(movedLeft).toBeLessThanOrEqual(1200 - 80);
+    expect(movedTop).toBeGreaterThanOrEqual(0);
+    expect(movedTop).toBeLessThanOrEqual(800 - 80);
+    // Leg ends (2600ms stroll) → bob clears + transition drops (so a drag
+    // stays instant), and he rests before the next leg.
+    act(() => {
+      vi.advanceTimersByTime(2700);
+    });
+    expect(container.querySelector(".werner-waddle")).toBeNull();
+    expect(el.style.transition).toBe("");
+  });
+
+  it("does NOT roam under prefers-reduced-motion (stays at the seed, still clickable)", () => {
+    mountReduced(true);
+    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const startLeft = parseFloat(el.style.left);
+    const startTop = parseFloat(el.style.top);
+    // Elapse well past several roam cycles — nothing should move.
+    act(() => {
+      vi.advanceTimersByTime(30000);
+    });
+    expect(parseFloat(el.style.left)).toBe(startLeft);
+    expect(parseFloat(el.style.top)).toBe(startTop);
+    // Still a clickable control (the float still fires on a lone click).
+    fireEvent.click(el);
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(s().panels[PROJECT_TREE_PANEL_ID]).toBeDefined();
+  });
+
+  it("a drag pauses the roam (no stroll transition fights the pointer)", () => {
+    mount();
+    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
+    // pointerDown must have cleared any scheduled/active stroll transition.
+    expect(el.style.transition).toBe("");
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: 300, clientY: 400 });
+    // Mid-drag the transition stays empty (the drag owns the position 1:1).
+    expect(el.style.transition).toBe("");
+    fireEvent.pointerUp(el, { pointerId: 1 });
+  });
+});
