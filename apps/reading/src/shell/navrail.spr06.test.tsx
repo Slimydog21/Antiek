@@ -100,4 +100,54 @@ describe("NavRail SPR-06 — bottom orientation + igloo home", () => {
     // No accessible name leaks onto the decorative mark itself.
     expect(within(home).queryByRole("img")).toBeNull();
   });
+
+  it("bottom orientation: the active workflow door carries aria-current=page + the top-edge accent marker (M2 active-route accent preserved, not just claimed)", () => {
+    // Render ON a real workflow route so workflowForPath() lights one door.
+    // The pre-existing SPR-06 tests never set initialEntries, so the active
+    // path was never exercised — this is the assertion that closes that gap.
+    const activeWf = WORKFLOW_ORDER[0];
+    render(
+      <MemoryRouter initialEntries={[WORKFLOWS[activeWf].defaultRoute]}>
+        <NavRail orientation="bottom" />
+      </MemoryRouter>,
+    );
+    const group = screen.getByTestId("navrail-workflows");
+    const current = group.querySelectorAll(
+      ':scope > button[aria-current="page"]',
+    );
+    // Exactly the one door for the active route is marked current.
+    expect(current).toHaveLength(1);
+    expect(current[0].querySelector(".sr-only")?.textContent?.trim()).toBe(
+      WORKFLOWS[activeWf].label,
+    );
+    // The accent slab sits on the rail's INNER (top) edge in bottom orientation.
+    const marker = current[0].querySelector(
+      'span[aria-hidden="true"].bg-ink',
+    );
+    expect(marker).toBeTruthy();
+    expect(marker?.className).toContain("top-0");
+    expect(marker?.className).toContain("h-1");
+    expect(marker?.className).toContain("rounded-b");
+  });
+
+  it("left orientation: the same active door reflects the accent to its inner (left) edge — the accent is preserved + axis-reflected, not dropped", () => {
+    const activeWf = WORKFLOW_ORDER[0];
+    render(
+      <MemoryRouter initialEntries={[WORKFLOWS[activeWf].defaultRoute]}>
+        <NavRail orientation="left" />
+      </MemoryRouter>,
+    );
+    const group = screen.getByTestId("navrail-workflows");
+    const current = group.querySelectorAll(
+      ':scope > button[aria-current="page"]',
+    );
+    expect(current).toHaveLength(1);
+    const marker = current[0].querySelector(
+      'span[aria-hidden="true"].bg-ink',
+    );
+    expect(marker).toBeTruthy();
+    expect(marker?.className).toContain("left-0");
+    expect(marker?.className).toContain("w-1");
+    expect(marker?.className).toContain("rounded-r");
+  });
 });
