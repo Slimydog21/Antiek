@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import LemonButton from "../../components/lemon/LemonButton";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
@@ -32,7 +31,7 @@ import {
 } from "../../reading-physics/minimap";
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
-import { openNotebook, openPdfPanel } from "../../workspace/actions";
+import { openPdfPanel } from "../../workspace/actions";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 
@@ -294,36 +293,24 @@ export default function MasterMdViewer({
                 </span>
               </>
             )}
-            <span className="ml-auto">
-              <LemonButton
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  // Opens the notebook editor as a floating panel, focused
-                  // on a notebook keyed to this answer (re-opening from the
-                  // same answer focuses the existing notebook, not a
-                  // duplicate). The block model + live-synthesis resolution
-                  // are architecture_notes §13; the copy here is plain
-                  // (no "synthesis-section block" / "slash menu" jargon —
-                  // SPR-04 M1 kills the jargon toasts).
-                  const nbId =
-                    "synthesis-" +
-                    (synthesis.question ?? "untitled")
-                      .toLowerCase()
-                      .replace(/[^a-z0-9]+/g, "-")
-                      .slice(0, 32);
-                  openNotebook({
-                    kind: "NotebookEditor",
-                    mode: "floating",
-                    notebookId: nbId,
-                    title: "Save to notebook",
-                  });
-                  toast.ok("Notebook open — you can drop this answer in.");
-                }}
-              >
-                Save to notebook
-              </LemonButton>
-            </span>
+            {/* SPR-06 M2 — the static "Save to notebook" affordance is REMOVED.
+                The operator's directive ("these notebooks should just be
+                automatically generated, not statically") supersedes manual
+                save-from-research: the auto-notebook (modes/Notebook/AutoNotebook.tsx,
+                /notebook/auto/:investigationId) is now the notebook surface,
+                derived live from this research's graph rather than a snapshot
+                saved from a button here. The manual TipTap Notebook editor stays
+                reachable as its own surface (/notebook/:id) — only the
+                save-FROM-research button is gone. No dead handler remains here.
+                SCOPE (honest): this removes the SYNTHESIS-LEVEL save from
+                MasterMdViewer. ClaimCard's claim-level "add to notebook"
+                (components/ClaimCard.tsx) intentionally REMAINS — it is a ratified
+                S7 affordance, and the auto-notebook is only PROPOSED, so retiring a
+                ratified surface on the strength of an unratified concept would be
+                over-reach. Whether M2 should also retire ClaimCard's save is an
+                operator sign-off decision (flagged in the handoff), coupled to the
+                auto-notebook ratification. NOTE: the auto-notebook is PROPOSED
+                (sign-off pending) — see docs/decisions/spr-06-auto-notebook-proposed.md. */}
           </div>
           {/* SPR-11 M3 → SPR-04 M4 — the quiet quality cue, now a DECLARED
               anchored widget the surface PLACES via the anchored-widgets facet

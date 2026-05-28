@@ -20,6 +20,7 @@ import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
 import Notebook from "./modes/Notebook";
+import AutoNotebook from "./modes/Notebook/AutoNotebook";
 import NotebooksIndex from "./modes/NotebooksIndex";
 import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
@@ -119,6 +120,17 @@ function AuthenticatedRoutes() {
         <Route path="/create/:deliverableId" element={<CreationStudio />} />
         <Route path="/brainstorm" element={<BrainstormStation />} />
         <Route path="/notebooks" element={<NotebooksIndex />} />
+        {/* SPR-06 — the auto-notebook (PROPOSED — sign-off pending). The
+            derived, always-current narrative VIEW of one research's
+            insight/question graph, behind a visible "proposed" banner. A
+            REVERSIBLE leaf: removing this route + AutoNotebook.tsx reverts to
+            the manual TipTap notebook below, which is untouched. Not a hard
+            dependency of any sprint. React-Router v6 ranks routes by SPECIFICITY
+            (the static "auto" segment outranks the ":notebookId" param), so "auto"
+            is never read as a notebook id — robust regardless of declaration order.
+            See docs/decisions/spr-06-auto-notebook-proposed.md. */}
+        <Route path="/notebook/auto/:investigationId" element={<AutoNotebook />} />
+        <Route path="/notebook/auto" element={<AutoNotebook />} />
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
         <Route path="/library" element={<Library />} />

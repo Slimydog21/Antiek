@@ -96,10 +96,19 @@ export default function OutcomesIndex() {
           )}
 
           {!loading && rows.length === 0 && !error && (
+            // SPR-06 M3 — the empty state explains what Outcomes IS (the
+            // cross-investigation grading / quality history of your
+            // investigations), so a first-time user isn't confused by a blank
+            // tab. Reuses the SHIPPED outcomes data (GET /outcomes →
+            // middleware.backtest.db.load_outcomes_for_synthesis, read by the
+            // Phase 8 gate); no new grading concept/table/rubric is introduced.
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">
-              No outcomes recorded yet for this filter. Grade a
-              synthesis at /outcomes/&lt;synthesis_id&gt; to populate
-              this view.
+              This is the grading / quality history of your
+              investigations — each row is a synthesis you graded
+              validated, falsified, or indeterminate, kept as the
+              cross-investigation record the Phase 8 gate reads. Nothing
+              graded yet for this filter; grade a synthesis at
+              /outcomes/&lt;synthesis_id&gt; and it appears here.
             </p>
           )}
 

@@ -111,6 +111,19 @@ function synth(over: Partial<ParsedSynthesis> = {}): ParsedSynthesis {
   };
 }
 
+describe("MasterMdViewer — no static save-to-notebook in the research flow (SPR-06 M2)", () => {
+  it("renders no 'Save to notebook' affordance (the auto-notebook supersedes it)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    // Wait for the synthesis to render so any header affordance would be present.
+    await waitFor(() => expect(screen.getByText("The claim holds.")).toBeTruthy());
+    // The static save-to-notebook button is GONE — the operator's directive is
+    // "automatically generated, not statically"; the auto-notebook is the surface.
+    expect(screen.queryByText(/save to notebook/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /save to notebook/i })).toBeNull();
+  });
+});
+
 describe("MasterMdViewer — named-source read (M1)", () => {
   it("renders the source as a named title + locator, never [N chunks]", async () => {
     getChunkMock.mockResolvedValue(
