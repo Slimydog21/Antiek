@@ -11,18 +11,36 @@ Surface:
   row + chunks + nodes). Returns ``IngestResult`` with the assigned
   ``document_id`` + chunk ids.
 
-Sprint 10 day 2-3 scope: abstract-only ingestion. Full-text PDF
-fetch + extraction lives in ``acquisition/books/`` (day 3-4).
+Abstract-only ingestion is ``ingest_paper``. SPR-02 adds the rights
+layer: ``ingest_paper_with_rights`` resolves the paper's declared license
+(``acquisition.arxiv.licenses``) and routes the full-text PDF through the
+shared servable-book gate; ``ArxivThrottle`` provides the cross-process
+conservative throttle + 429 ban sentinel.
 """
 
-from .adapter import IngestResult, arxiv_doc_id, ingest_paper
+from .adapter import (
+    IngestPaperWithRightsResult,
+    IngestResult,
+    arxiv_doc_id,
+    ingest_paper,
+    ingest_paper_with_rights,
+)
 from .client import ArxivPaper, fetch_by_id, search
+from .licenses import LicenseResolution, license_basis_string, resolve_license
+from .throttle import ArxivBanned, ArxivThrottle
 
 __all__ = [
+    "ArxivBanned",
     "ArxivPaper",
+    "ArxivThrottle",
+    "IngestPaperWithRightsResult",
     "IngestResult",
+    "LicenseResolution",
     "arxiv_doc_id",
     "fetch_by_id",
     "ingest_paper",
+    "ingest_paper_with_rights",
+    "license_basis_string",
+    "resolve_license",
     "search",
 ]

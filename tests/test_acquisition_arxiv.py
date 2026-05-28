@@ -96,6 +96,31 @@ _FEED_ZERO_ENTRIES = b"""<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+def _feed_with_license(license_xml: str) -> bytes:
+    """Build a one-entry feed whose <arxiv:license> element is
+    ``license_xml`` (pass "" for a missing-license entry). Mirrors the
+    real arXiv schema namespace usage."""
+    return (
+        b"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/2402.03300v1</id>
+    <updated>2024-02-15T12:00:00Z</updated>
+    <published>2024-02-05T09:15:33Z</published>
+    <title>Licensed Paper</title>
+    <summary>Abstract body.</summary>
+    <author><name>Jane Doe</name></author>
+    <arxiv:primary_category term="cs.AI"/>
+"""
+        + license_xml.encode("utf-8")
+        + b"""
+  </entry>
+</feed>
+"""
+    )
+
+
 def _mock_client(handler) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
 
@@ -195,6 +220,56 @@ def test_parse_collapses_summary_whitespace():
     assert "\n" not in p.abstract
     assert "This is the abstract." in p.abstract
     assert "multiple lines" in p.abstract
+
+
+# ---------------------------------------------------------------------------
+# B'. License URI parsing (SPR-02 M1) — covers the license set arXiv emits.
+# ---------------------------------------------------------------------------
+
+
+def test_parse_license_absent_is_none():
+    # The base fixture has no <arxiv:license> element.
+    p = _parse_response(_FEED_ONE_ENTRY)[0]
+    assert p.license_uri is None
+
+
+def test_parse_license_cc_by():
+    feed = _feed_with_license(
+        '<arxiv:license>http://creativecommons.org/licenses/by/4.0/</arxiv:license>'
+    )
+    p = _parse_response(feed)[0]
+    assert p.license_uri == "http://creativecommons.org/licenses/by/4.0/"
+
+
+def test_parse_license_cc_by_sa():
+    feed = _feed_with_license(
+        '<arxiv:license>http://creativecommons.org/licenses/by-sa/4.0/</arxiv:license>'
+    )
+    p = _parse_response(feed)[0]
+    assert p.license_uri == "http://creativecommons.org/licenses/by-sa/4.0/"
+
+
+def test_parse_license_cc0():
+    feed = _feed_with_license(
+        '<arxiv:license>http://creativecommons.org/publicdomain/zero/1.0/</arxiv:license>'
+    )
+    p = _parse_response(feed)[0]
+    assert "publicdomain/zero" in p.license_uri
+
+
+def test_parse_license_arxiv_default_terms():
+    feed = _feed_with_license(
+        '<arxiv:license>http://arxiv.org/licenses/nonexclusive-distrib/1.0/</arxiv:license>'
+    )
+    p = _parse_response(feed)[0]
+    assert p.license_uri == "http://arxiv.org/licenses/nonexclusive-distrib/1.0/"
+
+
+def test_parse_license_empty_element_is_none():
+    # An empty <arxiv:license/> element must parse to None, not "".
+    feed = _feed_with_license('<arxiv:license></arxiv:license>')
+    p = _parse_response(feed)[0]
+    assert p.license_uri is None
 
 
 # ---------------------------------------------------------------------------
