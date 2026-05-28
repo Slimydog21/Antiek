@@ -1396,6 +1396,25 @@ def create_app(
                 # Don't fail the POST because the broadcast failed.
                 pass
 
+            # Read SPR-07 M3 — an in-book FloatMenu NOTE (marginalia.noted)
+            # becomes a USER-AUTHORED per-book insight node in the one graph,
+            # so a later block_search returns it. Promotion is the single
+            # host-side mutation, serialized through db_lock (single-writer
+            # holds). Best-effort: the note is already durably on the log and
+            # the backfill is the safety net, so a promotion hiccup must NOT
+            # fail the note's persistence. §9: source_kind="user" is carried
+            # onto the node (promote_from_marginalia_event), never conflated
+            # with a model-emerged insight.
+            if action_value == "marginalia.noted":
+                try:
+                    from substrate.graph.insight_question import (
+                        promote_from_marginalia_event,
+                    )
+
+                    promote_from_marginalia_event(matching, enabled=True)
+                except Exception:  # pragma: no cover — best-effort, backfill covers
+                    pass
+
         return EmittedEventResponse(event_id=event_id, action_type=action_value)
 
     # ── GET trajectory ──────────────────────────────────────────

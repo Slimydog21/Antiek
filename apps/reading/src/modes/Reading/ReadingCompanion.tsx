@@ -96,7 +96,7 @@ export default function ReadingCompanion({
           <p className="px-4 py-6 text-sm font-serif text-ink-mute dark:text-moonlight leading-relaxed">
             {working
               ? "Working on it — notes will appear here as the thoughts land."
-              : "No notes yet. Highlight a passage to ask about it, or capture a voice note as you read — what you distil shows up here."}
+              : "No notes yet. Highlight a passage and choose Note, or capture a voice note as you read — your notes show up here."}
           </p>
         ) : (
           <ol className="space-y-2.5 px-4 py-4">
@@ -113,6 +113,15 @@ export default function ReadingCompanion({
                 />
                 <p className="min-w-0 flex-1 font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
                   {n.kind === "question" ? <span className="italic">Open question: </span> : null}
+                  {/* §9 honest attribution — a note the reader authored in-book
+                      (a marginalia note) is labelled as theirs, never shown as
+                      if the AI distilled it. A model-emerged note carries no
+                      such label (the absence is "model"). */}
+                  {n.sourceKind === "user" ? (
+                    <span className="mr-1 font-mono text-[11px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+                      Your note ·
+                    </span>
+                  ) : null}
                   {n.text}
                   {n.refinements > 0 && n.previousText && (
                     <span className="mt-1 block border-l-2 border-rule pl-2 font-serif text-[12px] italic leading-relaxed text-ink-mute dark:border-charcoal-1 dark:text-moonlight">

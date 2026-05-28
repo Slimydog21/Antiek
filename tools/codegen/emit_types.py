@@ -255,6 +255,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.MarginaliaNotedPayload,
     # Living Roadmap SPR-03 — block-canvas position persistence (DRW organism).
     schema_module.BlockPositionPayload,
+    # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
+    schema_module.SourceReadPayload,
 )
 
 # Re-exported Literal aliases. Name → list of allowed values.

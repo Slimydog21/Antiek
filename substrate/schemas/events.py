@@ -381,6 +381,24 @@ class ActionType(str, Enum):
     #    payloads, not this note of one's own reading.
     MARGINALIA_NOTED = "marginalia.noted"
 
+    # ── Source read → SiteSee "read" tint (Living Roadmap SPR-07 M4). When a
+    #    reader DWELLS on a source long enough to count as "read" (the
+    #    dwell-threshold rule is justified in
+    #    docs/decisions/spr-06-source-read-event-gap.md), the reading surface
+    #    emits ONE source.read event per source per reading session through the
+    #    single-writer funnel — the SAME funnel as every other state mutation,
+    #    so SiteSee's per-source read history is substrate-derived (PR-2/PR-6),
+    #    never a client side-store. It is the net-new signal the SPR-06 gap doc
+    #    filed: cited/saved were already substrate-derived, "read" was not. The
+    #    event carries NO body (§9.0): only the document_id (on the Event
+    #    envelope) + the chunk the read was attributed to + the dwell evidence
+    #    that justified the "read" verdict (so a maintainer can see WHY this
+    #    counted as read). It is NOT a §9 provenance claim about the world — it
+    #    asserts the reader's own reading history, like a "saved" signal — so it
+    #    carries no source_kind/grounding fields. SiteSee READS the resolved
+    #    history; it emits nothing and opens no writer of its own.
+    SOURCE_READ = "source.read"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -497,7 +515,21 @@ class ActionType(str, Enum):
 #     model/retrieval-sourced; only this note is user-sourced). The note rides
 #     the SAME single-writer typed-event funnel as every other state mutation —
 #     no client side-store. specs/antiek-living-roadmap/ SPR-04. 2026-05-28.
-EVENT_SCHEMA_VERSION: int = 19
+# v20: Living Roadmap SPR-07 — source.read → SiteSee "read" tint. One typed
+#     event (source.read) records that a reader DWELLED on a source long enough
+#     to count as "read" (the dwell threshold + its justification live in
+#     docs/decisions/spr-06-source-read-event-gap.md). It closes the SPR-06 gap:
+#     cited/saved were already substrate-derived, the per-source "read" signal
+#     was not — so SiteSee's "read" tint shipped dormant. The event carries NO
+#     body (§9.0) — only the document_id (Event envelope) + the chunk the read
+#     was attributed to + the dwell evidence (dwell_ms + page_count) that
+#     justified the verdict. It is the reader's OWN reading history (like a
+#     "saved" signal), NOT a §9 provenance claim about the world, so it carries
+#     no source_kind/grounding fields. Emitted ONCE per source per reading
+#     session through the single-writer funnel (no side store); SiteSee reads
+#     the resolved history and emits nothing itself. specs/antiek-living-roadmap/
+#     SPR-07. 2026-05-28.
+EVENT_SCHEMA_VERSION: int = 20
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3163,6 +3195,56 @@ class BlockPositionPayload(_PayloadBase):
     region_label: Optional[str] = None
 
 
+# ── Source read → SiteSee "read" tint (SPR-07 M4) ──────────────────────
+
+
+class SourceReadPayload(_PayloadBase):
+    """A reader dwelled on a source long enough to count as "read" (Living
+    Roadmap SPR-07 M4). It lights SiteSee's "read" citation tint, closing the
+    SPR-06 gap (``docs/decisions/spr-06-source-read-event-gap.md``): ``cited``
+    and ``saved`` were already substrate-derived; a per-source ``read`` signal
+    was not, so the tint shipped dormant.
+
+    WHY AN EVENT, NOT A CLIENT SIDE-STORE (PR-2 / PR-6, identical reasoning to
+    :class:`BlockPositionPayload`): a reader's read-history is substrate
+    view-state SiteSee resolves back from the log — the only sanctioned DuckDB
+    writer is the host funnel through ``runtime/db_lock``; a localStorage
+    side-store would be a second source of truth that can diverge. So it rides
+    the SAME single-writer typed-event funnel as every other state mutation.
+
+    EMITTED ONCE PER SOURCE PER READING SESSION (coalesced — the surface tracks
+    a per-session emitted-set, never a per-page emit), on a JUSTIFIED dwell
+    threshold (see the decision doc). It is a v1, reversible tint signal.
+
+    §9.0 — NO BODY. This event carries NO excerpt and no source text: only the
+    ``document_id`` (on the Event envelope), the ``chunk_id`` the read was
+    attributed to (the representative chunk SiteSee tints), and the dwell
+    EVIDENCE (``dwell_ms`` + ``page_count``) that justified the verdict — so a
+    maintainer can see WHY this counted as read. A withheld source's body never
+    rides this event because no body field exists (structurally impossible),
+    and the read of a withheld source is the reader's own dwell, not its
+    content.
+
+    NOT A §9 PROVENANCE CLAIM. It asserts the reader's OWN reading history
+    (like a "saved" signal), not a claim about the world, so it carries no
+    ``source_kind``/grounding fields (unlike VoiceCaptured / MarginaliaNoted,
+    which ARE user-authorship claims)."""
+
+    action_type: Literal[ActionType.SOURCE_READ] = ActionType.SOURCE_READ
+    # The chunk the read was attributed to — the representative chunk SiteSee
+    # anchors its "read" tint to (PR-4 semantic anchor). The document id rides
+    # the Event envelope. Null is honest "no chunk resolved", never invented.
+    chunk_id: Optional[str] = None
+    # The dwell EVIDENCE that justified the "read" verdict (the decision doc's
+    # threshold). Recorded so the verdict is reconstructable from the event
+    # alone — never the body, only the measurement.
+    dwell_ms: int = Field(ge=0, default=0)
+    # How many distinct pages the reader dwelled on this session before the
+    # threshold tripped (the other half of the justification — a single glance
+    # at one page is not a "read").
+    page_count: int = Field(ge=0, default=0)
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union over typed payloads
 # ---------------------------------------------------------------------------
@@ -3273,6 +3355,7 @@ TypedPayload = Annotated[
         VoiceCapturedPayload,
         MarginaliaNotedPayload,
         BlockPositionPayload,
+        SourceReadPayload,
     ],
     Field(discriminator="action_type"),
 ]
@@ -3394,6 +3477,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.MARGINALIA_NOTED.value,
     # Living Roadmap SPR-03 — block-canvas position persistence.
     ActionType.BLOCK_POSITIONED.value,
+    # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
+    ActionType.SOURCE_READ.value,
 })
 
 
@@ -3685,4 +3770,6 @@ __all__ = [
     "MarginaliaNotedPayload",
     # Block-canvas position persistence SPR-03 (v18 schema bump)
     "BlockPositionPayload",
+    # Source read → SiteSee "read" tint SPR-07 (v20 schema bump)
+    "SourceReadPayload",
 ]

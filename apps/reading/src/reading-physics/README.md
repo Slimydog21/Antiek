@@ -335,6 +335,15 @@ the surface wires the `source.read` emit + the event-log history resolution.
 This is the one net-new substrate signal the sprint allows; everything else is
 read from existing events.)
 
+> **Update (SPR-07 M4): NO LONGER DORMANT.** The `source.read` event is defined
+> (`substrate/schemas/events.py` `SourceReadPayload`/`SOURCE_READ`), emitted by
+> the reader on a justified dwell threshold
+> (`apps/reading/src/modes/Reading/sourceRead.ts`, wired in `modes/Reading/index.tsx`),
+> and resolved into the `SiteSeeSourceView.state` via
+> `apps/reading/src/modes/Reading/resolveCitationHistory.ts`. The `read` tint
+> lights for previously-read sources. Closure recorded in
+> `docs/decisions/spr-06-source-read-event-gap.md`.
+
 ### §9.0 — the hover card shows only bounded metadata (reused, not re-implemented)
 
 SiteSee's hover card **reuses the §9.0 servability gate exactly as the shipped

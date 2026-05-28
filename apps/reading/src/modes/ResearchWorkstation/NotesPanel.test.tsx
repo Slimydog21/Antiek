@@ -96,6 +96,31 @@ describe("deriveNotes — the pure reducer (M1 + M3)", () => {
     expect(notes[0].previousText).toBe("Acme is small.");
     expect(notes[0].refinements).toBe(1);
   });
+
+  it("turns an in-book FloatMenu NOTE (marginalia.noted) into a user-sourced insight row (M3)", () => {
+    // Read SPR-07 M3 — the in-book NOTE must render, tagged user-sourced so it
+    // is never conflated with a model-distilled note (§9).
+    const notes = deriveNotes([
+      ev("marginalia.noted", {
+        note_id: "mn-1",
+        note_text: "Provenance is the moat.",
+        excerpt: "the moat",
+        source_kind: "user",
+        chunk_id: null,
+      }),
+    ]);
+    expect(notes).toHaveLength(1);
+    expect(notes[0].kind).toBe("insight");
+    expect(notes[0].text).toBe("Provenance is the moat.");
+    expect(notes[0].sourceKind).toBe("user");
+  });
+
+  it("§9 — a model-emerged note carries no user source_kind (never conflated)", () => {
+    const notes = deriveNotes([
+      ev("note.emerged", { note_id: "n1", note_text: "Model-distilled note." }),
+    ]);
+    expect(notes[0].sourceKind).toBeNull();
+  });
 });
 
 describe("NotesPanel — render (M1)", () => {

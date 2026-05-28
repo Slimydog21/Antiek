@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 19;
+export const EVENT_SCHEMA_VERSION = 20;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -134,6 +134,7 @@ export const ActionType = {
   VOICE_CAPTURED: "voice.captured",
   BLOCK_POSITIONED: "block.positioned",
   MARGINALIA_NOTED: "marginalia.noted",
+  SOURCE_READ: "source.read",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -2214,6 +2215,45 @@ export interface BlockPositionPayload {
 }
 
 /**
+ * A reader dwelled on a source long enough to count as "read" (Living
+ * Roadmap SPR-07 M4). It lights SiteSee's "read" citation tint, closing the
+ * SPR-06 gap (``docs/decisions/spr-06-source-read-event-gap.md``): ``cited``
+ * and ``saved`` were already substrate-derived; a per-source ``read`` signal
+ * was not, so the tint shipped dormant.
+ * 
+ * WHY AN EVENT, NOT A CLIENT SIDE-STORE (PR-2 / PR-6, identical reasoning to
+ * :class:`BlockPositionPayload`): a reader's read-history is substrate
+ * view-state SiteSee resolves back from the log — the only sanctioned DuckDB
+ * writer is the host funnel through ``runtime/db_lock``; a localStorage
+ * side-store would be a second source of truth that can diverge. So it rides
+ * the SAME single-writer typed-event funnel as every other state mutation.
+ * 
+ * EMITTED ONCE PER SOURCE PER READING SESSION (coalesced — the surface tracks
+ * a per-session emitted-set, never a per-page emit), on a JUSTIFIED dwell
+ * threshold (see the decision doc). It is a v1, reversible tint signal.
+ * 
+ * §9.0 — NO BODY. This event carries NO excerpt and no source text: only the
+ * ``document_id`` (on the Event envelope), the ``chunk_id`` the read was
+ * attributed to (the representative chunk SiteSee tints), and the dwell
+ * EVIDENCE (``dwell_ms`` + ``page_count``) that justified the verdict — so a
+ * maintainer can see WHY this counted as read. A withheld source's body never
+ * rides this event because no body field exists (structurally impossible),
+ * and the read of a withheld source is the reader's own dwell, not its
+ * content.
+ * 
+ * NOT A §9 PROVENANCE CLAIM. It asserts the reader's OWN reading history
+ * (like a "saved" signal), not a claim about the world, so it carries no
+ * ``source_kind``/grounding fields (unlike VoiceCaptured / MarginaliaNoted,
+ * which ARE user-authorship claims).
+ */
+export interface SourceReadPayload {
+  action_type: "source.read";
+  chunk_id?: string | null;
+  dwell_ms?: number;
+  page_count?: number;
+}
+
+/**
  * Discriminated union over every typed payload. TS narrowing on
  * ``payload.action_type`` selects the right variant.
  */
@@ -2320,7 +2360,8 @@ export type TypedPayload =
   | SeamWriteToSpeakPayload
   | VoiceCapturedPayload
   | MarginaliaNotedPayload
-  | BlockPositionPayload;
+  | BlockPositionPayload
+  | SourceReadPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
@@ -2435,6 +2476,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "skill.auto_patch_applied",
   "skill.auto_patch_skipped",
   "skill_rule.promoted",
+  "source.read",
   "synthesis.archived",
   "synthesis.master_md_skipped",
   "synthesis.master_md_written",

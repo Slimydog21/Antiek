@@ -72,15 +72,29 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _node_chunk_id(metadata_text: Optional[str]) -> Optional[str]:
+def _node_meta(metadata_text: Optional[str]) -> dict:
     if not metadata_text:
-        return None
+        return {}
     try:
         meta = json.loads(metadata_text)
     except (json.JSONDecodeError, TypeError):
-        return None
-    cid = meta.get("chunk_id") if isinstance(meta, dict) else None
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _node_chunk_id(metadata_text: Optional[str]) -> Optional[str]:
+    cid = _node_meta(metadata_text).get("chunk_id")
     return str(cid) if cid else None
+
+
+def _node_source_document_id(metadata_text: Optional[str]) -> Optional[str]:
+    """The grounding document recorded directly on the node, used when the
+    node has no chunk anchor to resolve it through. A user-authored in-book
+    marginalia note (Read SPR-07 M3) carries its book here even when the
+    reader client could not resolve a chunk id — so a per-book search still
+    returns it."""
+    did = _node_meta(metadata_text).get("source_document_id")
+    return str(did) if did else None
 
 
 def search_blocks(
@@ -133,6 +147,21 @@ def search_blocks(
             ).fetchone()
             if doc_row is not None:
                 document_id, document_title, source_tier = doc_row
+
+        # Fallback: a node grounded directly on its document (no chunk anchor)
+        # — a user-authored in-book marginalia note when the reader client
+        # could not resolve a chunk id. Resolve title/tier from the document
+        # row so a per-book search/filter still returns it.
+        if document_id is None:
+            meta_doc = _node_source_document_id(metadata)
+            if meta_doc is not None:
+                document_id = meta_doc
+                doc_row = con.execute(
+                    "SELECT title, source_tier FROM documents WHERE document_id = ? LIMIT 1",
+                    [meta_doc],
+                ).fetchone()
+                if doc_row is not None:
+                    document_title, source_tier = doc_row
 
         if source_document_id is not None and document_id != source_document_id:
             continue

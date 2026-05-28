@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
 import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
+import FloatMenu from "../shared/FloatMenu/FloatMenu";
+import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import type {
+  FloatMenuSelection,
+  SelectionProvenance,
+} from "../shared/FloatMenu/useFloatMenuSelection";
 import ChaseThread from "../ResearchWorkstation/ChaseThread";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
@@ -14,6 +20,7 @@ import VoiceNote from "./VoiceNote";
 import { paginate } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
+import { emitSourceRead, isRead } from "./sourceRead";
 
 /**
  * Book reader — the Read workflow's reading surface (Read SPR-03).
@@ -83,43 +90,113 @@ export default function BookReader() {
         ? crypto.randomUUID().replace(/-/g, "").slice(0, 12)
         : Math.random().toString(36).slice(2, 14)),
   );
-  const { observePage } = useReaderImpressions(documentId, sessionId);
-  const [showVoice, setShowVoice] = useState(false);
-
   // The book's reading thread (Read SPR-06). One id ties the companion's
-  // notes, the reader's voice notes, and the paragraph rabbit-hole's parent
-  // together — they all read/append to the same thread. Not a user-facing
-  // label (copy-lint): it is passed to components, never rendered.
+  // notes, the reader's voice notes, the in-book float-menu NOTE, the
+  // source.read history, and the rabbit-hole's parent together — they all
+  // read/append to the same thread. Not a user-facing label (copy-lint): it is
+  // passed to components, never rendered.
   const readingThreadId = `read-${documentId}`;
 
-  // Paragraph highlight → inline rabbit-hole (Read SPR-06 M3). `selection`
-  // is the lifted passage the reader highlighted (with a viewport anchor for
-  // the inline affordance); `chasing` is the passage currently being chased
-  // (mounts ChaseThread inline beside the reading column, text + voice). The
-  // way home is free: closing the chase restores reading, and usePosition
-  // has held the page the whole time — never a one-way trip.
-  const [selection, setSelection] = useState<{ text: string; top: number; left: number } | null>(
-    null,
+  // §9.0 — the chunk the read/note is attributed to.
+  //
+  // HONEST GAP (Read SPR-07 M4, tightened): the reader client has NO chunk id
+  // to attribute to this sprint. BookDetail / FullTextResponse expose
+  // title/toc/full_text/servability — never per-chunk ids — and surfacing them
+  // is a backend change (a /books endpoint that returns chunk ids) deliberately
+  // OUT OF SCOPE here. So we attribute to null HONESTLY rather than invent a
+  // chunk id. Consequence, stated plainly so the M4 claim is not overstated:
+  //   • source.read EVENT + the SiteSee resolver are LIVE (sourceRead.ts);
+  //   • the SiteSee "read" tint keys on chunk_id, so it PAINTS only once a
+  //     real chunk anchor is resolved — a documented follow-up (a books
+  //     endpoint exposing chunk ids), NOT something this sprint claims paints
+  //     end-to-end.
+  // For the in-book NOTE: document_id still completes the claim→chunk→document
+  // chain (the note's per-book insight node is grounded on its document via
+  // node metadata, so block_search returns it per-book even with a null chunk —
+  // see substrate/graph/insight_question.promote_from_marginalia_event). The
+  // chunk anchor on the note is the SAME documented follow-up.
+  const representativeChunkId: string | null = null;
+
+  // source.read (SPR-07 M4) — fire ONCE per source per reading session on the
+  // justified dwell threshold, reusing the focused-dwell clock the ad-impression
+  // tracker already runs. A per-session guard (ref) coalesces it: never per-page
+  // spam, never refired. §9.0: the event carries no body (sourceRead.ts).
+  const readEmittedRef = useRef(false);
+  const onDwell = useCallback(
+    (dwell: { totalDwellMs: number; pagesSeen: number }) => {
+      if (readEmittedRef.current) return;
+      if (!isRead(dwell.totalDwellMs, dwell.pagesSeen)) return;
+      readEmittedRef.current = true;
+      void emitSourceRead({
+        documentId,
+        readingThreadId,
+        chunkId: representativeChunkId,
+        dwellMs: dwell.totalDwellMs,
+        pageCount: dwell.pagesSeen,
+      });
+    },
+    [documentId, readingThreadId],
   );
+  const { observePage } = useReaderImpressions(documentId, sessionId, onDwell);
+  const [showVoice, setShowVoice] = useState(false);
+
+  // ── In-book SPR-04 float-menu host (SPR-07 M2) ───────────────────────────
+  // The reader is the HOST for the SAME shared FloatMenu Research uses — it is
+  // REUSED, not re-implemented (verify by import: ../shared/FloatMenu/FloatMenu).
+  // The page <article> is the selection SCOPE; `resolveProvenance` resolves the
+  // book selection's document + its §9.0 servable flag so the menu's outbound
+  // chokepoint can refuse a withheld selection. The in-book highlight→action
+  // (the old inline "Go deeper" affordance) is GENERALIZED through this menu —
+  // Deep-research routes to the SAME ChaseThread the rabbit-hole used, so there
+  // is ONE in-book highlight primitive, consistent with the Research surface.
+  const articleRef = useRef<HTMLElement>(null);
+
+  // `chasing` is the passage currently being chased (mounts ChaseThread inline
+  // beside the reading column, text + voice). The way home is free: closing the
+  // chase restores reading, and usePosition has held the page the whole time.
   const [chasing, setChasing] = useState<string | null>(null);
 
-  const onSelectPassage = useCallback(() => {
-    const sel = typeof window !== "undefined" ? window.getSelection() : null;
-    const text = sel?.toString().trim() ?? "";
-    // A meaningful highlight only — a stray click clears the affordance.
-    if (!sel || sel.rangeCount === 0 || text.length < 8) {
-      setSelection(null);
-      return;
-    }
-    const rect = sel.getRangeAt(0).getBoundingClientRect();
-    setSelection({ text, top: rect.top, left: rect.left });
-  }, []);
+  // §9.0 servability of the open book — the in-book selection's servability.
+  // The reader renders only gate-served body (verified: getBookFullText returns
+  // full_text:null for a gated/taken-down book), so `book.servable_full_text`
+  // IS the selection's servable flag: a selection can only be from text the gate
+  // served. We pass it through so the FloatMenu chokepoint refuses Search/Deep-
+  // research over a non-servable book (defence in depth — the body can't even
+  // reach the DOM, but the outbound guard holds regardless).
+  const resolveProvenance = useCallback(
+    (_range: Range, _text: string): SelectionProvenance => ({
+      documentId,
+      chunkId: representativeChunkId,
+      servable: book?.servable_full_text ?? false,
+    }),
+    [documentId, book?.servable_full_text],
+  );
 
-  // Turning the page (or jumping via TOC) drops a stale highlight affordance —
-  // the anchored position would otherwise float over the wrong page. A chase
-  // already in flight is left alone (it owns its own passage, page-independent).
+  const selection = useFloatMenuSelection({
+    scopeRef: articleRef,
+    resolveProvenance,
+    minLength: 8,
+  });
+
+  // Deep-research → the EXISTING in-book chase (ChaseThread mounts inline
+  // beside the reading column, the same path the old "Go deeper" affordance
+  // used). §9.0: `safeSpawnText` is null when the selection crosses a withheld
+  // region — refuse rather than spawn on a withheld body (the chokepoint already
+  // refuses, so this is null only for a non-servable book; we never chase it).
+  const onDeepResearch = useCallback(
+    (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
+      if (safeSpawnText === null) return;
+      window.getSelection()?.removeAllRanges(); // collapse so the menu closes
+      setChasing(safeSpawnText);
+    },
+    [],
+  );
+
+  // Turning the page (or jumping via TOC) collapses a stale selection — the
+  // anchored menu would otherwise float over the wrong page. A chase already in
+  // flight is left alone (it owns its passage, page-independent).
   useEffect(() => {
-    setSelection(null);
+    window.getSelection()?.removeAllRanges();
   }, [pageIndex]);
 
   // Zero-buyer house fill: promote a servable book that isn't this one.
@@ -182,28 +259,27 @@ export default function BookReader() {
         <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
       </aside>
 
-      {/* Inline rabbit-hole affordance (Read SPR-06 M3). Floats by the
-          highlighted passage; "Go deeper on this passage" lifts it into an
-          inline chase (ChaseThread) beside the reading column. */}
-      {selection && !chasing && (
-        <div
-          className="fixed z-40 -translate-y-full -mt-2 flex items-center gap-1 rounded-md border border-ink bg-ink px-1 py-1 shadow-z2"
-          style={{ top: selection.top, left: selection.left }}
-          role="toolbar"
-          aria-label="Passage actions"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setChasing(selection.text);
-              setSelection(null);
-            }}
-            className="px-2 py-1 text-[12px] font-mono text-sun hover:text-bright rounded"
-            title="Follow this passage into a research, with a way back to the book"
-          >
-            Go deeper on this passage
-          </button>
-        </div>
+      {/* In-book SPR-04 float-menu (SPR-07 M2). Highlighting any passage in the
+          page <article> opens the SAME {Note · Dialogue · Search · Deep-research}
+          float component the Research surface uses — REUSED, not re-implemented.
+          It replaces the old single-action "Go deeper" toolbar (generalized:
+          Deep-research IS the rabbit-hole, now one of four consistent actions).
+          NOTE is scoped to the book's reading thread (M3): it lands in the
+          companion (deriveNotes renders marginalia.noted as a USER-sourced
+          note) AND is promoted host-side into a user-authored per-book insight
+          node grounded on this document, so a later block_search returns it
+          (substrate/graph/insight_question.promote_from_marginalia_event; the
+          /events/typed endpoint promotes on emit, backfill is the safety net).
+          §9: source_kind "user" is carried onto the node — never conflated with
+          a model-emerged insight. Deep-research routes to ChaseThread (below).
+          Hidden while a chase owns the column. §9.0: the outbound chokepoint
+          refuses Search/Deep-research over a non-servable book. */}
+      {!chasing && (
+        <FloatMenu
+          selection={selection}
+          investigationId={readingThreadId}
+          onDeepResearch={onDeepResearch}
+        />
       )}
 
       {/* Reading column */}
@@ -234,14 +310,15 @@ export default function BookReader() {
               here is deliberate, so a placeholder slot never implies live ads. */}
           <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
 
-          {/* Page body. Highlighting a passage (text or voice ask follows in
-              the inline chase) lifts it for the rabbit-hole affordance. The
-              handler fires on mouse-up + key-up so a keyboard selection works
-              too; a stray click with no real selection clears the affordance. */}
+          {/* Page body + the in-book float-menu SCOPE (M2). The shared
+              useFloatMenuSelection hook listens on `selectionchange` and opens
+              the menu only for selections inside this <article> — so a highlight
+              anywhere in the page body offers {Note · Dialogue · Search ·
+              Deep-research} by text or voice, the same primitive as Research.
+              No per-element mouse/key handler: the shared hook owns the read. */}
           <article
+            ref={articleRef}
             className="flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright"
-            onMouseUp={onSelectPassage}
-            onKeyUp={onSelectPassage}
           >
             {page ? (
               <PageBody text={page.text} />

@@ -3,19 +3,30 @@ import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/re
 import { MemoryRouter } from "react-router-dom";
 
 import type { BookSummary } from "../../api/books";
+import type { InvestigationSummary } from "../../lib/api";
 import BookCard from "./BookCard";
 import Library from "./index";
 
 // Hoisted mocks so the static `import Library` above binds to them.
-const { listBooksMock, curateBooksMock, navigateMock } = vi.hoisted(() => ({
+const { listBooksMock, curateBooksMock, listInvestigationsMock, navigateMock } = vi.hoisted(() => ({
   listBooksMock: vi.fn(),
   curateBooksMock: vi.fn(),
+  // M1: the active-research signal documentsByTheme ranks the shelf to.
+  // Default: no active research → the feed falls back to recency.
+  listInvestigationsMock: vi.fn<
+    () => Promise<{ count: number; investigations: InvestigationSummary[] }>
+  >(),
   navigateMock: vi.fn(),
 }));
 
 vi.mock("../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../api/books")>();
   return { ...actual, listBooks: listBooksMock, curateBooks: curateBooksMock };
+});
+
+vi.mock("../../lib/api", async (orig) => {
+  const actual = await orig<typeof import("../../lib/api")>();
+  return { ...actual, listInvestigations: listInvestigationsMock };
 });
 
 vi.mock("react-router-dom", async (orig) => {
@@ -47,6 +58,8 @@ const gatedBook: BookSummary = {
 beforeEach(() => {
   listBooksMock.mockReset();
   curateBooksMock.mockReset();
+  listInvestigationsMock.mockReset();
+  listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
 });
 afterEach(() => cleanup());
@@ -119,6 +132,40 @@ describe("Library", () => {
     // It is the Read door's honest "nothing to read in full yet" state — not
     // an upload prompt as the home (the wrestler is a demoted side affordance).
     expect(screen.queryByText(/Load a PDF to wrestle/)).toBeNull();
+  });
+
+  it("ranks the servable shelf to active research themes and SAYS so (M1 theme ordering)", async () => {
+    const stoic = { ...servableBook, document_id: "doc-stoic", title: "A Guide to Stoicism", author: "Anon" };
+    const novel = { ...servableBook, document_id: "doc-novel", title: "War and Peace", author: "Tolstoy" };
+    listBooksMock.mockResolvedValue({ books: [novel, stoic], count: 2 });
+    const activeInv: InvestigationSummary = {
+      investigation_id: "inv-1",
+      question: "How does Stoicism shape resilience?",
+      status: "in_progress",
+      started_at: null,
+      completed_at: null,
+      cost_usd_total: 0,
+      parent_investigation_id: null,
+    };
+    listInvestigationsMock.mockResolvedValue({ count: 1, investigations: [activeInv] });
+    renderLibrary();
+    // The honest label states the feed is theme-ranked, and names the theme.
+    const label = await screen.findByText(/Ranked to your active research/);
+    expect(label.textContent).toMatch(/stoicism/i);
+    // The matching book is ordered first (most-relevant).
+    const cards = screen.getAllByRole("button", { name: /^Open / });
+    expect(cards[0].getAttribute("aria-label")).toMatch(/Stoicism/);
+  });
+
+  it("falls back to recency with an HONEST label when there is no active research (thin-signal fallback)", async () => {
+    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
+    renderLibrary();
+    // It does not fabricate relevance — it admits it is showing recency.
+    await waitFor(() =>
+      expect(screen.getByText(/showing the most recently added first/)).toBeTruthy(),
+    );
+    expect(screen.queryByText(/Ranked to your active research/)).toBeNull();
   });
 
   it("curates the shelf by prompt, re-ranking to the curated order", async () => {

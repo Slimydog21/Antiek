@@ -15,6 +15,10 @@ const {
   recordAdImpressionsMock,
   navigateMock,
   useInvestigationMock,
+  postTypedEventMock,
+  searchBlocksMock,
+  startInvestigationMock,
+  apiFetchMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
@@ -23,6 +27,16 @@ const {
   recordAdImpressionsMock: vi.fn().mockResolvedValue(undefined),
   navigateMock: vi.fn(),
   useInvestigationMock: vi.fn(),
+  postTypedEventMock: vi.fn((_e: unknown) =>
+    Promise.resolve({ event_id: "ev-1", action_type: "marginalia.noted" }),
+  ),
+  searchBlocksMock: vi.fn((_q: string) => Promise.resolve({ count: 0, hits: [] })),
+  startInvestigationMock: vi.fn((_r: unknown) =>
+    Promise.resolve({ investigation_id: "child-1", status: "in_progress", start_event_id: "ev-s" }),
+  ),
+  apiFetchMock: vi.fn((_i: unknown, _init?: unknown) =>
+    Promise.resolve(new Response(JSON.stringify({ text: "reply" }), { status: 200 })),
+  ),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -34,6 +48,19 @@ vi.mock("../../api/books", async (orig) => {
     listBooks: listBooksMock,
     spinResearch: spinResearchMock,
     recordAdImpressions: recordAdImpressionsMock,
+  };
+});
+
+// The in-book FloatMenu host (M2) reaches lib/api through floatMenuActions +
+// sourceRead. Mock at the api boundary only (real components otherwise).
+vi.mock("../../lib/api", async (orig) => {
+  const actual = await orig<typeof import("../../lib/api")>();
+  return {
+    ...actual,
+    postTypedEvent: (e: unknown) => postTypedEventMock(e),
+    searchBlocks: (q: string) => searchBlocksMock(q),
+    startInvestigation: (r: unknown) => startInvestigationMock(r),
+    apiFetch: (i: unknown, init?: unknown) => apiFetchMock(i, init),
   };
 });
 
@@ -50,6 +77,44 @@ vi.mock("react-router-dom", async (orig) => {
 });
 
 afterEach(() => cleanup());
+
+// ── jsdom selection helper (mirrors FloatMenu.test.tsx) ──────────────
+// Build a REAL Range over the text node inside the scope element so the
+// shared useFloatMenuSelection hook's `scope.contains(range.…)` narrowing
+// passes, give the range a rect, and fire `selectionchange`.
+function selectTextIn(
+  scope: HTMLElement,
+  text: string,
+  rect = { top: 200, left: 100, width: 80, height: 18 },
+): void {
+  const node = scope.firstChild as Node | null;
+  const range = document.createRange();
+  if (node) {
+    range.selectNodeContents(node);
+  } else {
+    range.selectNodeContents(scope);
+  }
+  range.getBoundingClientRect = () =>
+    ({
+      ...rect,
+      right: rect.left + rect.width,
+      bottom: rect.top + rect.height,
+      x: rect.left,
+      y: rect.top,
+      toJSON() {
+        return rect;
+      },
+    }) as DOMRect;
+  vi.spyOn(window, "getSelection").mockReturnValue({
+    rangeCount: 1,
+    getRangeAt: () => range,
+    toString: () => text,
+    removeAllRanges: () => {},
+  } as unknown as Selection);
+  act(() => {
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+}
 
 // ── paginate (the locator scheme) ───────────────────────────────────
 
@@ -281,43 +346,79 @@ describe("BookReader", () => {
     expect(screen.getByText(/No notes yet/)).toBeTruthy();
   });
 
-  it("highlighting a passage offers an inline rabbit-hole; chasing mounts beside the passage with a way home (M3)", async () => {
+  // ── SPR-07 M2/M3: the SHARED SPR-04 float-menu, in-book ─────────────
+
+  it("highlighting a passage opens the SAME SPR-04 float-menu in-book (reused, not re-implemented)", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
     await renderReader();
     const para = await screen.findByText("The opening of the book.");
 
-    // No affordance until there's a real highlight.
-    expect(screen.queryByRole("toolbar", { name: /Passage actions/ })).toBeNull();
+    // No menu until there is a real highlight.
+    expect(screen.queryByRole("menu", { name: /Highlight actions/ })).toBeNull();
 
-    // Simulate a meaningful text selection inside the page body.
-    const selectionStub = {
-      rangeCount: 1,
-      toString: () => "The opening of the book.",
-      getRangeAt: () => ({ getBoundingClientRect: () => ({ top: 120, left: 80 }) }),
-    } as unknown as Selection;
-    vi.spyOn(window, "getSelection").mockReturnValue(selectionStub);
-    fireEvent.mouseUp(para);
+    // Highlight a passage inside the page <article>.
+    selectTextIn(para, "The opening of the book.");
 
-    // The inline affordance appears.
-    const goDeeper = await screen.findByRole("button", { name: /Go deeper on this passage/ });
-    fireEvent.click(goDeeper);
+    // The identical four-action float-menu opens (the SAME component Research
+    // uses — verified by import at the top of index.tsx).
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    expect(within(menu).getByRole("menuitem", { name: "Note" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Dialogue" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Search" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Deep-research" })).toBeTruthy();
+  });
 
-    // The inline chase mounts beside the reading column (the answer lands
-    // right there), seeded with the passage, with a reversible way home.
+  it("the in-book NOTE persists via postTypedEvent to the reading thread with a user-sourced label + provenance (M2/M3)", async () => {
+    postTypedEventMock.mockClear();
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const para = await screen.findByText("The opening of the book.");
+    selectTextIn(para, "The opening of the book.");
+
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Note" }));
+    const textarea = await screen.findByPlaceholderText(/Type a note/);
+    fireEvent.change(textarea, { target: { value: "a thought while reading" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save note/ }));
+
+    await waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(1));
+    const env = postTypedEventMock.mock.calls[0][0] as {
+      investigation_id: string;
+      document_id?: string;
+      payload: { action_type: string; source_kind: string; note_text: string };
+    };
+    // Lands on THIS book's reading thread (read-<documentId>) → the companion.
+    expect(env.investigation_id).toBe("read-doc-1");
+    expect(env.document_id).toBe("doc-1"); // provenance: document on the envelope
+    expect(env.payload.action_type).toBe("marginalia.noted");
+    expect(env.payload.source_kind).toBe("user"); // §9 user-sourced label
+    expect(env.payload.note_text).toBe("a thought while reading");
+  });
+
+  it("Deep-research in-book routes to the SAME ChaseThread, seeded with the passage, with a way home (generalized rabbit-hole, M2/M3)", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const para = await screen.findByText("The opening of the book.");
+    selectTextIn(para, "The opening of the book.");
+
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
+
+    // The inline chase mounts beside the reading column (the SAME ChaseThread
+    // the old "Go deeper" affordance used — now one of four float-menu actions).
     const chasePanel = await screen.findByRole("complementary", { name: /Following this passage/ });
-    // The passage is lifted into the chase (the blockquote shows it, and it
-    // also seeds the editable question) — proof the highlight seeded the chase.
     const lifted = within(chasePanel).getAllByText(/The opening of the book\./);
     expect(lifted.length).toBeGreaterThanOrEqual(1);
     const back = screen.getByRole("button", { name: /back to the book/ });
     fireEvent.click(back);
-    // Back to the companion — not a one-way trip; reading position is held by
-    // usePosition (the page never changed), so reading resumes where it was.
+    // Reversible: back to the companion, position held by usePosition.
     expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
   });
 
-  it("a taken-down (restricted) book renders no body — nothing to read or chase (servable-corpus honesty, §9.0)", async () => {
+  it("a taken-down (restricted) book renders no body — nothing to read, highlight, or chase (servable-corpus honesty, §9.0)", async () => {
     getBookMock.mockResolvedValue(
       makeDetail({ servability: "taken_down", servable_full_text: false, taken_down: true }),
     );
@@ -327,19 +428,20 @@ describe("BookReader", () => {
     await renderReader();
     await waitFor(() => expect(screen.getByText(/has been removed/)).toBeTruthy());
     // The body is never served, so there is no page to highlight and no
-    // paragraph affordance — the gate withholds at the source, the reader
-    // honestly reflects it.
+    // float-menu — the gate withholds at the source, the reader reflects it.
     expect(screen.getByText(/no readable pages/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /Go deeper on this passage/ })).toBeNull();
+    expect(screen.queryByRole("menu", { name: /Highlight actions/ })).toBeNull();
   });
 
-  it("a gated book serves only a bounded snippet — a highlight can chase only that gate-permitted text, never full text (§9.0)", async () => {
-    // The §9.0 safety of the inline chase rests on a client-side invariant: the
-    // reader can only ever render what the server-side gate served. A gated
-    // (metadata-only) book serves a BOUNDED snippet and withholds full_text, so
-    // the only highlightable text is that snippet — a chase can carry only
-    // gate-permitted text, never the withheld body. The taken-down test pins the
-    // no-body half; this pins the bounded-snippet half (RIGOR #3).
+  it("a gated book: a highlight on the bounded snippet refuses outbound Search — the withheld body never leaves the client (§9.0 no-leak)", async () => {
+    // The §9.0 safety rests on TWO layers: (1) the reader renders only the gate-
+    // served body (a gated book serves a bounded snippet, full_text withheld);
+    // (2) the FloatMenu's outboundText chokepoint refuses Search/Deep-research
+    // over a non-servable selection (servable===false from resolveProvenance,
+    // which reads book.servable_full_text). This pins BOTH: only the snippet is
+    // on screen, AND an outbound Search over it is refused (searchBlocks never
+    // called — the body never leaves the client).
+    searchBlocksMock.mockClear();
     getBookMock.mockResolvedValue(
       makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
     );
@@ -355,20 +457,16 @@ describe("BookReader", () => {
     await renderReader();
     // Only the gate-served snippet is on screen (full_text was withheld).
     const para = await screen.findByText(/A short gate-served preview\./);
-    const selectionStub = {
-      rangeCount: 1,
-      toString: () => "A short gate-served preview.",
-      getRangeAt: () => ({ getBoundingClientRect: () => ({ top: 120, left: 80 }) }),
-    } as unknown as Selection;
-    vi.spyOn(window, "getSelection").mockReturnValue(selectionStub);
-    fireEvent.mouseUp(para);
-    const goDeeper = await screen.findByRole("button", { name: /Go deeper on this passage/ });
-    fireEvent.click(goDeeper);
-    // The chase is seeded only with the bounded snippet — there is no full text
-    // anywhere for it to lift, because the gate never served any.
-    const chasePanel = await screen.findByRole("complementary", { name: /Following this passage/ });
-    expect(
-      within(chasePanel).getAllByText(/A short gate-served preview\./).length,
-    ).toBeGreaterThanOrEqual(1);
+    selectTextIn(para, "A short gate-served preview.");
+
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Search" }));
+
+    // The chokepoint refuses: the withheld reason shows, and searchBlocks was
+    // NEVER called — the snippet body never left the client.
+    await waitFor(() =>
+      expect(screen.getByText(/includes a restricted source/)).toBeTruthy(),
+    );
+    expect(searchBlocksMock).not.toHaveBeenCalled();
   });
 });

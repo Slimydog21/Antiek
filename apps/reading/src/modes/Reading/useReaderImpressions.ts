@@ -32,16 +32,42 @@ function nowMs(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
-export function useReaderImpressions(documentId: string, sessionId: string) {
+/** Cumulative focused-dwell evidence for the whole reading session, reported
+ * out of the hook so a consumer (the source.read emit, SPR-07 M4) can decide a
+ * "read" verdict from the SAME focused-dwell clock the ad-impression flush uses
+ * — not a second, divergent timer. `pagesSeen` is the count of DISTINCT pages
+ * the reader dwelled on this session. */
+export interface ReaderDwell {
+  totalDwellMs: number;
+  pagesSeen: number;
+}
+
+export function useReaderImpressions(
+  documentId: string,
+  sessionId: string,
+  /** Optional: called on each page-flush with the session's cumulative focused
+   * dwell + distinct pages seen. SPR-07 M4 uses this to fire source.read once
+   * per session on the dwell threshold — reusing this clock, not adding one. */
+  onDwell?: (dwell: ReaderDwell) => void,
+) {
   // Accumulated focused dwell for the current page + the wall-clock at
   // which the current focused interval started (null while hidden).
   const dwellMsRef = useRef(0);
   const focusedSinceRef = useRef<number | null>(nowMs());
   const pageRef = useRef<PageContext | null>(null);
+  // Session-cumulative dwell + the distinct pages dwelled on — the source.read
+  // evidence. Separate from dwellMsRef (which the ad flush zeroes per page); this
+  // never resets within a session, so it measures total time-on-book.
+  const sessionDwellMsRef = useRef(0);
+  const seenPagesRef = useRef<Set<number>>(new Set());
+  const onDwellRef = useRef(onDwell);
+  onDwellRef.current = onDwell;
 
   const accumulate = useCallback(() => {
     if (focusedSinceRef.current !== null) {
-      dwellMsRef.current += nowMs() - focusedSinceRef.current;
+      const delta = nowMs() - focusedSinceRef.current;
+      dwellMsRef.current += delta;
+      sessionDwellMsRef.current += delta;
       focusedSinceRef.current = null;
     }
   }, []);
@@ -71,6 +97,12 @@ export function useReaderImpressions(documentId: string, sessionId: string) {
     void recordAdImpressions(documentId, sessionId, items).catch(() => {
       /* best-effort — never disrupt reading */
     });
+    // Report the SESSION-cumulative dwell evidence (SPR-07 M4). The consumer
+    // decides the source.read "read" verdict from this; the hook just measures.
+    onDwellRef.current?.({
+      totalDwellMs: sessionDwellMsRef.current,
+      pagesSeen: seenPagesRef.current.size,
+    });
     resume();
   }, [accumulate, resume, documentId, sessionId]);
 
@@ -82,6 +114,7 @@ export function useReaderImpressions(documentId: string, sessionId: string) {
       if (pageRef.current && pageRef.current.pageIndex !== pageIndex) {
         flush();
       }
+      seenPagesRef.current.add(pageIndex); // distinct-pages evidence (M4)
       pageRef.current = { pageIndex, slots };
       // (Re)start the dwell clock for the page now showing.
       if (focusedSinceRef.current === null) focusedSinceRef.current = nowMs();
