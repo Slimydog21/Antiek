@@ -11,7 +11,7 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { ProductsLauncher } from "./ProductsLauncher";
-import Werner from "../brand/Werner";
+import IglooMark from "../brand/werner/marks/IglooMark";
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -66,7 +66,34 @@ import Werner from "../brand/Werner";
  * the rejected alternative was making "/" itself the Home and moving
  * Research to /research; that was passed over for blast radius (see
  * modes/Home/Home.tsx for the recorded decision).
+ *
+ * SPR-06 — TWO changes, both load-bearing for the always-on ad border
+ * (SPR-07), which needs all FOUR screen edges free + symmetric:
+ *
+ *   (1) ORIENTATION. The rail defaults to `orientation="bottom"` now: it
+ *       lays out horizontally along the bottom of the window so the main
+ *       working region above it can consume the full screen width with no
+ *       left gutter. The original vertical `orientation="left"` is kept
+ *       (stories / a rollback path), so the two layouts share ONE
+ *       component + one destination set — no parallel nav abstraction. The
+ *       four-door + More + Search semantics, the active accent, the chord
+ *       shortcuts, and the roles/labels are identical across orientations;
+ *       only the flex axis + the active-accent edge differ.
+ *
+ *   (2) HOME = IGLOO. The static top-left Werner mark that was the home
+ *       button is now an <IglooMark> (the operator's ask: the home penguin
+ *       becomes an igloo — Werner LIVES in the igloo, so home reads as
+ *       "where Werner lives", and the ONE penguin left in the app is the
+ *       autonomous roaming PenguinMascot, no longer competing with a second
+ *       static penguin). The control is unchanged otherwise: same /home
+ *       route, same accessible <button> with aria-label + focus ring.
  */
+
+/** Rail axis. `bottom` (default) is the SPR-06 shell layout — a horizontal
+ *  rail along the window bottom so the working region above it is full-width
+ *  and symmetric (the four edges SPR-07's border needs). `left` is the
+ *  original vertical rail, kept for stories + a rollback path. */
+export type Orientation = "left" | "bottom";
 
 function I({ d, size = 18 }: { d: string; size?: number }) {
   return (
@@ -117,6 +144,7 @@ function RailButton({
   onClick,
   title,
   variant = "utility",
+  orientation = "bottom",
 }: {
   icon: ReactNode;
   label: string;
@@ -124,6 +152,7 @@ function RailButton({
   onClick: () => void;
   title: string;
   variant?: "workflow" | "utility" | "more";
+  orientation?: Orientation;
 }) {
   const isWorkflow = variant === "workflow";
   const color = active
@@ -131,9 +160,18 @@ function RailButton({
     : isWorkflow
     ? "text-ice-2/80 hover:text-ice-1 hover:bg-white/10"
     : "text-ice-2/50 hover:text-ice-2/70 hover:bg-white/5";
+  // Workflow buttons keep the icon-above-label stack in both orientations
+  // (the four doors stay dominant + legible); utilities/More stay icon-only.
   const layout = isWorkflow
     ? "min-h-12 py-1 flex-col items-center justify-center"
     : "h-10 items-center justify-center";
+  // The active marker is a slab on the edge nearest the working region: the
+  // INNER edge of the rail. Left rail → its right edge; bottom rail → its
+  // top edge. Same "this door is live" read, reflected for the new axis.
+  const marker =
+    orientation === "left"
+      ? "absolute left-0 top-2 bottom-2 w-1 rounded-r bg-ink"
+      : "absolute top-0 left-2 right-2 h-1 rounded-b bg-ink";
   return (
     <button
       type="button"
@@ -141,18 +179,14 @@ function RailButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={
-        "mx-1.5 flex rounded relative " +
+        (orientation === "left" ? "mx-1.5 " : "my-0 mx-0.5 ") +
+        "flex rounded relative " +
         layout +
         " " +
         color
       }
     >
-      {active && (
-        <span
-          aria-hidden="true"
-          className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-ink"
-        />
-      )}
+      {active && <span aria-hidden="true" className={marker} />}
       <span className="leading-none" aria-hidden="true">
         {icon}
       </span>
@@ -169,7 +203,12 @@ function RailButton({
   );
 }
 
-export function NavRail() {
+type NavRailProps = {
+  /** Rail axis. Defaults to "bottom" (SPR-06 shell). See {@link Orientation}. */
+  orientation?: Orientation;
+};
+
+export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const activeWorkflow = workflowForPath(pathname);
@@ -179,6 +218,7 @@ export function NavRail() {
   const [launcherOpen, setLauncherOpen] = useState<boolean>(false);
   const isMobile = tier === "sm" || tier === "md";
   const showRail = !isMobile || !collapsed;
+  const isBottom = orientation === "bottom";
 
   // SPR-12 M3 — the project-tree toggle that used to live on the rail is
   // gone; the floating Penguin mascot (shell/PenguinMascot.tsx) now floats
@@ -209,6 +249,112 @@ export function NavRail() {
     );
   }
 
+  // Igloo home control (SPR-06 M4) — replaces the static Werner home penguin.
+  // Same /home route + accessible <button> (aria-label + visible focus ring);
+  // the mark is the only thing that changed (penguin → igloo). In the bottom
+  // rail its divider is on the trailing (right) edge instead of the bottom.
+  const homeButton = (
+    <button
+      type="button"
+      title="Antiek · home"
+      aria-label="Antiek home"
+      onClick={() => navigate("/home")}
+      className={
+        "shrink-0 flex items-center justify-center bg-sun/95 hover:bg-sun " +
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink " +
+        (isBottom ? "w-14 h-full border-r-edge border-sun" : "h-12 border-b-edge border-sun")
+      }
+    >
+      <IglooMark size={28} />
+    </button>
+  );
+
+  const searchButton = (
+    <RailButton
+      icon={<I d={UTIL_ICONS.search} size={15} />}
+      label="Search"
+      title="Search · ⌘K"
+      onClick={openSearch}
+      variant="utility"
+      orientation={orientation}
+    />
+  );
+
+  // THE FOUR WORKFLOWS (zone 1). Read from WORKFLOW_ORDER only — the rail
+  // can't drift from the source of truth. The group keeps its testid +
+  // role/label across orientations so the U-01 four-door guard + the screen
+  // reader both see the same nav regardless of axis.
+  const workflowGroup = (
+    <nav
+      className={
+        "flex gap-1 " + (isBottom ? "flex-row items-stretch" : "flex-1 flex-col")
+      }
+      aria-label="Workflows"
+      data-testid="navrail-workflows"
+    >
+      {WORKFLOW_ORDER.map((wf) => (
+        <RailButton
+          key={wf}
+          icon={<I d={WF_ICONS[wf]} />}
+          label={WORKFLOWS[wf].label}
+          title={`${WORKFLOWS[wf].label} - ${WORKFLOWS[wf].tagline}`}
+          active={activeWorkflow === wf}
+          onClick={() => selectWorkflow(wf)}
+          variant="workflow"
+          orientation={orientation}
+        />
+      ))}
+    </nav>
+  );
+
+  const moreButton = (
+    <RailButton
+      icon={<I d={UTIL_ICONS.more} size={15} />}
+      label="More"
+      title="More - all products, Operator, Trust, Settings"
+      active={launcherOpen}
+      onClick={() => setLauncherOpen(true)}
+      variant="more"
+      orientation={orientation}
+    />
+  );
+
+  // Bottom rail (SPR-06 default): a horizontal bar along the window bottom.
+  // Home (igloo) anchors the leading edge; the four doors sit centred so the
+  // eye lands on them; Search + More cluster on the trailing edge as
+  // overflow. The accent border is on TOP (its inner edge, toward the
+  // working region) — symmetric with the left rail's right border.
+  if (isBottom) {
+    return (
+      <>
+        <aside
+          className={
+            "h-14 w-full shrink-0 flex items-stretch bg-ink dark:bg-void border-t-edge border-sun " +
+            (isMobile ? "absolute bottom-0 left-0 z-40 shadow-z3" : "") +
+            (showRail ? "" : " hidden")
+          }
+          aria-label="Primary navigation"
+        >
+          {homeButton}
+          <nav className="flex items-center px-1.5" aria-label="Utilities">
+            {searchButton}
+          </nav>
+          <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
+          <div className="flex-1 flex items-center justify-center">
+            {workflowGroup}
+          </div>
+          <div className="mx-1.5 my-2 border-l border-white/10" aria-hidden="true" />
+          <nav className="flex items-center px-1.5" aria-label="More">
+            {moreButton}
+          </nav>
+        </aside>
+
+        <ProductsLauncher open={launcherOpen} onClose={() => setLauncherOpen(false)} />
+      </>
+    );
+  }
+
+  // Left rail (legacy / rollback / stories). Unchanged vertical layout.
   return (
     <>
       <aside
@@ -231,73 +377,23 @@ export function NavRail() {
           </button>
         )}
 
-        {/* Werner mark pinned to top. SPR-12 M1 — now opens the unified
-            branded home (/home), the product's front door, rather than the
-            Research door ("/"). The white box that used to sit behind this
-            mark is fixed in M4 (the idle pose is now an alpha-cut PNG), so
-            it blends into the sun-yellow button. */}
-        <button
-          type="button"
-          title="Antiek · home"
-          aria-label="Antiek home"
-          onClick={() => navigate("/home")}
-          className="h-12 flex items-center justify-center border-b-edge border-sun bg-sun/95 hover:bg-sun"
-        >
-          <Werner mood="idle" size={28} />
-        </button>
+        {homeButton}
 
-        {/* Utility cluster (Search) — visually subordinate to the four
-            doors: smaller icon, muted tokens, grouped above the divider.
-            Not a workflow destination. (SPR-12 M3 removed the "+ project /
-            Project tree" toggle that used to sit here; the Penguin mascot
-            owns the project tree now.) */}
+        {/* Utility cluster (Search) — visually subordinate to the four doors. */}
         <nav className="pt-1 flex flex-col gap-0.5" aria-label="Utilities">
-          <RailButton
-            icon={<I d={UTIL_ICONS.search} size={15} />}
-            label="Search"
-            title="Search · ⌘K"
-            onClick={openSearch}
-            variant="utility"
-          />
+          {searchButton}
         </nav>
 
         <div className="my-2 mx-3 border-t border-white/10" aria-hidden="true" />
 
-        {/* THE FOUR WORKFLOWS (zone 1). Read from WORKFLOW_ORDER only.
-            Variant + visible labels + stronger weight make doors dominant. */}
-        <nav
-          className="flex-1 flex flex-col gap-1"
-          aria-label="Workflows"
-          data-testid="navrail-workflows"
-        >
-          {WORKFLOW_ORDER.map((wf) => (
-            <RailButton
-              key={wf}
-              icon={<I d={WF_ICONS[wf]} />}
-              label={WORKFLOWS[wf].label}
-              title={`${WORKFLOWS[wf].label} - ${WORKFLOWS[wf].tagline}`}
-              active={activeWorkflow === wf}
-              onClick={() => selectWorkflow(wf)}
-              variant="workflow"
-            />
-          ))}
-        </nav>
+        {workflowGroup}
 
-        {/* Footer: single More affordance (overflow). Distinct from doors
-            because icon-only + muted + footer position. Opens launcher with
-            Operator/Trust/Settings + all deep modes. One click reachability. */}
+        {/* Footer: single More affordance (overflow). */}
         <nav
           className="border-t border-white/10 py-2 flex flex-col gap-1"
           aria-label="More"
         >
-          <RailButton
-            icon={<I d={UTIL_ICONS.more} size={15} />}
-            label="More"
-            title="More - all products, Operator, Trust, Settings"
-            active={launcherOpen}
-            onClick={() => setLauncherOpen(true)}
-            variant="more"
-          />
+          {moreButton}
         </nav>
       </aside>
 

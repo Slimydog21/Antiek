@@ -82,6 +82,19 @@
   --sans:  "Inter", system-ui, -apple-system, sans-serif;
   --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --serif: "Charter", "Iowan Old Style", Georgia, serif;
+
+  /* edge-reservation seam (SPR-06 M3) — the single source of truth for the
+     always-on ad border's inset. AppShell's outer frame reserves these four
+     edges as padding so the working region sits INSIDE them. DEFAULT 0:
+     SPR-06 frees the edges + defines the contract but paints nothing; SPR-07
+     mounts the border by setting these to its thickness and painting the
+     padding band. Keep all four so the border can be asymmetric if a future
+     layout needs it; SPR-07's symmetric border sets one shared value to all
+     four. Contract doc: docs/decisions/spr-06-edge-reservation-seam.md. */
+  --akb-border-inset-top:    0px;
+  --akb-border-inset-right:  0px;
+  --akb-border-inset-bottom: 0px;
+  --akb-border-inset-left:   0px;
 }
 
 @media (prefers-color-scheme: dark) {

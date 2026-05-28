@@ -24,11 +24,19 @@ import { useWorkspace } from "../workspace/WorkspaceStore";
  *                    viewport (reuses panelLayoutLogic.clampRectToViewport,
  *                    the same 80px-reachable rule the floating panels use)
  *                    so it can NEVER be lost off-screen.
- *   idle           → gentle waddle/wander (the Werner CSS `werner-idle`
- *                    sway), which COLLAPSES to a static frame under
- *                    `prefers-reduced-motion: reduce` (animations.css +
- *                    the live JS guard below, which also drops the
- *                    drift wander).
+ *   idle           → AUTONOMOUS WADDLE (SPR-06 M5). Werner walks himself
+ *                    around the viewport: every few seconds he picks a new
+ *                    random spot (clamped on-screen), then strolls there via
+ *                    a CSS left/top transition while the `werner-waddle` bob
+ *                    plays on the mark, so he reads as actually walking — not
+ *                    sliding. Between strolls he rests with the Werner
+ *                    breathing sway. The roam is driven by a single chained
+ *                    setTimeout (NOT a rAF loop / busy-loop): the main thread
+ *                    is idle except for the one re-arm at the end of each
+ *                    leg. It COLLAPSES to a static frame under
+ *                    `prefers-reduced-motion: reduce` (animations.css + the
+ *                    live JS guard below, which disables both the roam timer
+ *                    and the drift wander — he stays put, still clickable).
  *
  * It SUPERSEDES the left-rail "+ project / New / Project tree" utility
  * button (NavRail.tsx — the RailButton labelled "New / Project tree",
@@ -77,6 +85,9 @@ export function PenguinMascot() {
   const reduceMotion = usePrefersReducedMotion();
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // The bob wrapper (the span carrying the walk animation + idle wander). The
+  // `werner-waddle` foot-bob is toggled on it only while Werner is mid-stroll.
+  const bobRef = useRef<HTMLSpanElement | null>(null);
   // Position lives in a ref + is written straight to the DOM during a drag
   // (pointer-capture, like PanelHandle) so dragging doesn't thrash React.
   const pos = useRef(initialMascotPos());
@@ -85,6 +96,13 @@ export function PenguinMascot() {
   // Pending single-click float, deferred so a double-click can cancel it
   // (see onClick/onDoubleClick below). null = no float pending.
   const clickTimer = useRef<number | null>(null);
+  // The autonomous-roam scheduler. A single chained timeout (re-armed at the
+  // end of each leg) — never a rAF loop, so the main thread stays idle
+  // between strolls. Cleared on drag start, unmount, and reduced-motion.
+  const roamTimer = useRef<number | null>(null);
+  // Lets non-effect handlers (pointer-up) restart the roam after a drag
+  // paused it, without re-running the whole effect. null under reduced motion.
+  const roamRearm = useRef<((delay?: number) => void) | null>(null);
 
   const openTree = useWorkspace((s) => s.open);
   const setMode = useWorkspace((s) => s.setMode);
@@ -120,6 +138,76 @@ export function PenguinMascot() {
     return () => window.removeEventListener("resize", onResize);
   }, [applyPos]);
 
+  // ── Autonomous roam (SPR-06 M5). ──
+  // Werner strolls to a new random on-screen spot every few seconds. One
+  // chained timeout, no rAF loop. Disabled entirely under reduced motion
+  // (he stays put, still clickable) and while a drag is in flight (the drag
+  // owns the position). The walk itself is a CSS left/top transition; the
+  // foot-bob `werner-waddle` class rides on the bob span for the duration of
+  // the leg, then is removed so the resting sway takes over.
+  useEffect(() => {
+    if (reduceMotion || typeof window === "undefined") return;
+
+    const STROLL_MS = 2600; // how long one leg takes (matches the transition)
+    const REST_MIN_MS = 1800;
+    const REST_MAX_MS = 4200;
+
+    roamRearm.current = (delay = REST_MIN_MS) => {
+      if (roamTimer.current !== null) window.clearTimeout(roamTimer.current);
+      roamTimer.current = window.setTimeout(stepOnce, delay);
+    };
+
+    const stepOnce = () => {
+      const el = buttonRef.current;
+      const bob = bobRef.current;
+      // Don't wander mid-drag — the pointer owns the position then.
+      if (!el || dragStart.current) {
+        roamTimer.current = window.setTimeout(stepOnce, REST_MIN_MS);
+        return;
+      }
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      // A short hop, not a teleport: pick a target within ~22% of the
+      // viewport of the current spot so he ambles rather than darts.
+      const reach = Math.max(120, Math.min(vw, vh) * 0.22);
+      const target = clampRectToViewport(
+        {
+          x: pos.current.x + (Math.random() * 2 - 1) * reach,
+          y: pos.current.y + (Math.random() * 2 - 1) * reach,
+          width: MASCOT_SIZE,
+          height: MASCOT_SIZE,
+        },
+        { width: vw, height: vh },
+      );
+      pos.current = { x: target.x, y: target.y };
+      // Walk: ease the position over STROLL_MS + bob the feet while moving.
+      el.style.transition = `left ${STROLL_MS}ms ease-in-out, top ${STROLL_MS}ms ease-in-out`;
+      if (bob) bob.classList.add("werner-waddle");
+      applyPos();
+      // End-of-leg: stop the bob, drop the transition (so a drag stays
+      // instant), and re-arm after a randomised rest. The timer chain IS the
+      // loop — no continuous work between these wake-ups.
+      roamTimer.current = window.setTimeout(() => {
+        if (bobRef.current) bobRef.current.classList.remove("werner-waddle");
+        if (buttonRef.current) buttonRef.current.style.transition = "";
+        const rest = REST_MIN_MS + Math.random() * (REST_MAX_MS - REST_MIN_MS);
+        roamTimer.current = window.setTimeout(stepOnce, rest);
+      }, STROLL_MS);
+    };
+
+    // First hop after a short settle so the mascot doesn't lurch on mount.
+    roamTimer.current = window.setTimeout(stepOnce, REST_MIN_MS);
+    return () => {
+      if (roamTimer.current !== null) {
+        window.clearTimeout(roamTimer.current);
+        roamTimer.current = null;
+      }
+      roamRearm.current = null;
+      if (buttonRef.current) buttonRef.current.style.transition = "";
+      if (bobRef.current) bobRef.current.classList.remove("werner-waddle");
+    };
+  }, [reduceMotion, applyPos]);
+
   // ── Single-click: float the project tab. ──
   // Open the one project-tree panel in floating mode; if it already exists,
   // flip it to floating (the store's `open` focuses an existing id rather
@@ -146,6 +234,14 @@ export function PenguinMascot() {
     e.currentTarget.setPointerCapture(e.pointerId);
     dragStart.current = { x: e.clientX, y: e.clientY };
     moved.current = false;
+    // Hand the position to the pointer: kill any in-flight stroll transition
+    // + bob so the drag tracks the cursor 1:1 instead of easing behind it.
+    if (buttonRef.current) buttonRef.current.style.transition = "";
+    if (bobRef.current) bobRef.current.classList.remove("werner-waddle");
+    if (roamTimer.current !== null) {
+      window.clearTimeout(roamTimer.current);
+      roamTimer.current = null;
+    }
   }, []);
 
   const onPointerMove = useCallback(
@@ -179,6 +275,9 @@ export function PenguinMascot() {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
     dragStart.current = null;
+    // Resume roaming from wherever the operator dropped him (no-op under
+    // reduced motion — roamRearm is null then).
+    roamRearm.current?.();
   }, []);
 
   // Single vs. double-click. Two distinct gates:
@@ -258,11 +357,15 @@ export function PenguinMascot() {
         top: pos.current.y,
       }}
     >
-      {/* `wander` adds a slow positional drift on top of the breathing
-          sway; gated on reduceMotion so it is fully still for those users.
-          The Werner mark's own `werner-idle` keyframe is the breathing
-          part and is reduced-motion-guarded in animations.css. */}
+      {/* The bob wrapper. At rest it carries `penguin-mascot-wander` (a small
+          in-place drift on top of Werner's breathing sway); while Werner is
+          mid-stroll the roam effect adds `werner-waddle` here so his feet bob
+          as he walks. Both are gated/cleared under reduced motion so he is
+          fully still for those users (the roam effect early-returns, and the
+          wander class is dropped). The Werner mark's own `werner-idle`
+          breathing keyframe is reduced-motion-guarded in animations.css. */}
       <span
+        ref={bobRef}
         className={reduceMotion ? "" : "penguin-mascot-wander"}
         style={{ display: "block", width: MASCOT_SIZE, height: MASCOT_SIZE }}
       >
