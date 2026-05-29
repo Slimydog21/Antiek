@@ -89,6 +89,51 @@ class HealthResponse(BaseModel):
     schema_version: int
     subscriber_count: int
     registered_providers: list[str] = Field(default_factory=list)
+    # SPR-07 (antiek-foundation-v2): the commit SHA the running process was
+    # built from, so the prod-parity check (tools/prod_parity/check.py) can
+    # assert deployed-SHA == main-SHA. Sourced (in order) from the
+    # ANTIEK_BUILD_SHA env the deploy stamps, a git rev-parse of the local
+    # checkout for local dev, then the literal "unknown". See
+    # ``_resolve_build_sha`` below.
+    build_sha: str = "unknown"
+
+
+def _resolve_build_sha() -> str:
+    """Resolve the commit SHA the running process was built from.
+
+    SPR-07 (antiek-foundation-v2). Resolution order, first hit wins:
+
+    1. ``ANTIEK_BUILD_SHA`` env — stamped by the deploy (Ansible exports
+       the just-pulled ``git_pull.after`` into the service environment).
+       This is the authoritative source on prod.
+    2. ``git rev-parse HEAD`` of the local checkout — for local dev where
+       no deploy stamped the env. Best-effort; swallows any failure
+       (no git on PATH, not a checkout) and falls through.
+    3. The literal ``"unknown"`` — last resort, so /health never raises.
+
+    Called once at startup (the value is immutable for a process), so the
+    git subprocess cost is paid at most once per boot, not per request.
+    """
+    env_sha = os.environ.get("ANTIEK_BUILD_SHA", "").strip()
+    if env_sha:
+        return env_sha
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=_PKG_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:
+        # No git, not a checkout, or it timed out — fall through to
+        # "unknown" rather than failing the whole startup over a SHA.
+        pass
+    return "unknown"
 
 
 class InvestigationStartRequest(BaseModel):
@@ -1270,6 +1315,12 @@ def create_app(
     else:
         app.state.registered_providers = set()
 
+    # SPR-07 (antiek-foundation-v2): stamp the build SHA once at startup so
+    # /health can report the commit the running process was built from. The
+    # prod-parity check asserts this equals the tip of main; see
+    # tools/prod_parity/check.py and tools/prod_parity/README.md.
+    app.state.build_sha = _resolve_build_sha()
+
     if register_wrestling:
         # Imported lazily so tests that don't touch wrestling don't pay
         # the dispatch / context_pack import cost.
@@ -1367,6 +1418,7 @@ def create_app(
             registered_providers=sorted(
                 getattr(app.state, "registered_providers", set())
             ),
+            build_sha=getattr(app.state, "build_sha", "unknown"),
         )
 
     # ── POST typed event ────────────────────────────────────────

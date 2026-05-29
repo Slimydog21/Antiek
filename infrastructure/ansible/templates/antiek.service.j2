@@ -65,6 +65,16 @@ Environment="HF_HOME={{ antiek_state_dir }}/cache/hf"
 Environment="SENTENCE_TRANSFORMERS_HOME={{ antiek_state_dir }}/cache/sentence-transformers"
 Environment="TORCH_HOME={{ antiek_state_dir }}/cache/torch"
 
+# SPR-07 (antiek-foundation-v2): stamp the deployed commit SHA so /health
+# reports the true running SHA and the prod-parity check can assert
+# deployed-SHA == main. Set from the git_pull.after fact during deploy;
+# when unset (e.g. an out-of-band systemctl restart that didn't re-render
+# this template) the substrate's `_resolve_build_sha` falls back to a
+# `git rev-parse HEAD` of the install dir, which IS the deployed checkout.
+{% if antiek_build_sha is defined and antiek_build_sha %}
+Environment="ANTIEK_BUILD_SHA={{ antiek_build_sha }}"
+{% endif %}
+
 # ── THE LOAD-BEARING LINE ────────────────────────────────────────────────
 # --workers 1 — DO NOT CHANGE without first migrating off DuckDB.
 # --timeout-keep-alive 900 — matches the orchestrator's longest await.
