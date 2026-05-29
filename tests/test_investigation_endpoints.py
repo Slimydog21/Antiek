@@ -447,9 +447,16 @@ async def test_get_status_surfaces_chosen_research_tier(async_client):
 
 
 @pytest.mark.asyncio
-async def test_research_tier_defaults_to_deep_when_omitted(async_client):
-    """Omitting the tier defaults to 'deep' server-side (a cold research
-    question is the high-value case)."""
+async def test_research_tier_records_none_when_omitted_per_14_4(async_client):
+    """§14.4 measurement-window scoping: omitting the tier now RECORDS None,
+    not 'deep'. The persisted tier is consumed only by the synthesizer
+    override, and during the §14.4 window the synthesizer is pinned to Opus —
+    a schema-default 'deep' persisted on every run would silently displace it
+    the moment DeepSeek is keyed, corrupting the Sprint-20 measurement. The
+    research DISPATCH still defaults to deep at its consumption point
+    (normalize_research_tier(None) -> 'deep'); only the recorded/echoed value
+    is None. An explicit pick is still recorded + overrides — see
+    test_synthesizer_measurement_window_14_4.py."""
     await async_client.post(
         "/investigations",
         json={
@@ -458,7 +465,7 @@ async def test_research_tier_defaults_to_deep_when_omitted(async_client):
         },
     )
     r = await async_client.get("/investigations/inv-tier-default")
-    assert r.json()["research_tier"] == "deep"
+    assert r.json()["research_tier"] is None
 
 
 @pytest.mark.asyncio
