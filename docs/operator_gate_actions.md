@@ -1,6 +1,8 @@
 # Operator-only gate actions
 
-**Last touched 2026-05-23 (session-end snapshot).**
+**Last touched 2026-05-29 (Antiek Knowledge Base ship breadcrumb — see the
+2026-05-29 note in the Operator Activities section. Gate states G1–G8 are
+unchanged from the 2026-05-23 snapshot; this session closed no gate).**
 
 The audit identified eight binding gates blocking activation of substrate that
 is already shipped in code. **Engineering cannot close these gates.** Each one
@@ -344,6 +346,21 @@ Q1 2027 at the earliest** (G8).
 **Engineering scope of the spec is essentially complete as of 2026-05-23.**
 What's left is operator-bound action. Future-agent reading this section:
 DO NOT propose more engineering until the bottlenecks below clear.
+
+### 2026-05-29 — Antiek Knowledge Base initiative shipped (separate spec; no gate change)
+
+A separate initiative — the **Antiek Knowledge Base** (`~/specs/antiek-knowledge-base/`,
+11 sprints + REM-CC0: rights-aware corpus acquisition + the all-window
+per-second ad-economics mechanism) — shipped to `main` and to production on
+2026-05-29 (`origin/main` at `5413fdc`). It is recorded in full at
+`docs/decisions/antiek-knowledge-base-ship-2026-05-29.md`. It is called out
+here only to keep this breadcrumb honest: that work is **not** master-spec
+engineering, and it **closed no gate**. G2 and G3 stay ❌ open and remain the
+sole gate on every payout. The shipped ad-economics is live but verified to
+disburse **$0** while G2/G3 are open (the capstone asserts
+`DisbursementBlocked`); do not read the live ad surface as active payouts. The
+deploy-hygiene lesson it surfaced is at
+`docs/decisions/deploy-from-matching-checkout.md`.
 
 ### Action queue, in priority order
 
