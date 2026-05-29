@@ -6,13 +6,23 @@ SPR-08". It wires the three rights-correct connectors through a single plan:
 
     discover (each connector, as-is)
         → normalize to CandidateRef + assessable text + an ingest thunk
-        → cross-source dedup            (acquisition.corpus_quality.dedup_candidates)
+        → cross-source dedup            (acquisition.corpus_quality.dedup_candidates,
+                                         keyed on the single substrate.dedup identity)
         → corpus-quality gate           (acquisition.corpus_quality.assess_corpus_quality)
         → ingest the kept ∩ passing     (through the connectors' own connect_write path)
 
 The orchestration does NOT reimplement acquisition: discovery and ingest call
 the existing connector functions. It adds only the cross-source plan (dedup +
 gate + reporting) on top.
+
+Identity is ONE fact, computed once. ``dedup_candidates`` keys its cross-source
+clusters through ``substrate.dedup`` (DOI > ISBN-13 > arXiv-id > source-id >
+content-hash > title+author, LOW). The very key that decided a candidate is a
+duplicate is the key the plan stamps as that candidate's ``document_id`` basis
+(``substrate.dedup.identity_basis``) — the contract SPR-01 consumes to derive
+the content-stable ``document_id`` so a re-ingest is a no-op at BOTH the dedup
+layer and SPR-01's ``on_conflict=ignore`` merge. There is no second, divergent
+identity ladder: the dedup driver and the document_id basis are the same value.
 
 Two honest design boundaries, documented because the gate's strength depends
 on them (intellectual honesty):
@@ -81,6 +91,12 @@ from acquisition.corpus_quality import (  # noqa: E402
     assess_corpus_quality,
     dedup_candidates,
 )
+from substrate.dedup import (  # noqa: E402
+    Confidence,
+    IdentityKey,
+    identity_basis,
+    identity_key,
+)
 
 logger = logging.getLogger("tools.run_corpus_ingest")
 
@@ -91,9 +107,15 @@ logger = logging.getLogger("tools.run_corpus_ingest")
 # ---------------------------------------------------------------------------
 
 
-# An ingest thunk takes the target db_path and performs the real write through
-# the owning connector, returning a short human status (e.g. the document id).
-IngestThunk = Callable[[str], str]
+# An ingest thunk takes the target db_path AND the candidate's content-stable
+# document_id basis (the SPR-04 identity SPR-01 derives the document_id from),
+# performs the real write through the owning connector, and returns a short
+# human status. The basis is passed to the write boundary so the identity the
+# plan computed is the identity that reaches ingest — not a value computed and
+# discarded. SPR-01's merge consumes it as the on_conflict=ignore document_id;
+# until SPR-01 lands the connectors still mint their own ids, so today's thunks
+# accept the basis and forward/record it (the documented seam, not a no-op).
+IngestThunk = Callable[[str, str], str]
 
 
 @dataclass(frozen=True)
@@ -127,6 +149,44 @@ class PlannedCandidate:
             assess_body=self.assess_body,
         )
 
+    def identity(self) -> IdentityKey:
+        """The content-stable identity key — the SAME key
+        ``dedup_candidates`` keyed this candidate's cluster on (it keys through
+        ``substrate.dedup`` too), and (via ``identity_basis``) the basis SPR-01
+        turns into the document_id. The dedup decision and the idempotency
+        contract are the same fact, computed once.
+
+        ``CandidateRef`` carries the identity-bearing fields (doi / isbn /
+        arxiv_id / source_id / title / author / body), so this just resolves
+        that ref — there is no second projection that could disagree with what
+        dedup keyed on."""
+        return identity_key(self.ref.identity_record())
+
+
+@dataclass(frozen=True)
+class IdentityReport:
+    """Run-level identity coverage over the kept candidates — the per-key-type
+    distribution (incl. how many works rest only on the LOW-confidence
+    fallback, the rigor-#1 coverage gap a run must report rather than hide).
+
+    This is derived from the SAME ``substrate.dedup`` identity the cross-source
+    dedup keyed on, not a second pass: the key that decided each survivor's
+    identity is the key counted here and stamped as its document_id basis."""
+
+    kept: int
+    key_type_counts: dict[str, int]
+    low_confidence: int
+
+    def render(self) -> str:
+        dist = ", ".join(
+            f"{kt}={n}" for kt, n in sorted(self.key_type_counts.items())
+        )
+        return (
+            f"identity: {self.kept} works with stable ids; "
+            f"key types: {dist or '(none)'}; "
+            f"low-confidence fallback: {self.low_confidence}"
+        )
+
 
 @dataclass(frozen=True)
 class CorpusPlan:
@@ -138,10 +198,17 @@ class CorpusPlan:
     to_ingest: tuple[PlannedCandidate, ...]
     quality_rejected: tuple[tuple[PlannedCandidate, QualityVerdict], ...]
     quality_report: QualityRunReport
+    # The per-key-type identity distribution over the kept set (rigor #1) and
+    # the document_id basis SPR-01 consumes per kept candidate. Both are read
+    # off the SAME substrate.dedup identity that drove dedup above — not a
+    # second, report-only ladder.
+    identity_report: IdentityReport
+    document_id_bases: tuple[tuple[str, str], ...] = ()  # (ref_id, basis)
 
     def render(self) -> str:
         lines: list[str] = []
         lines.append(self.deduped.render())
+        lines.append(self.identity_report.render())
         lines.append(self.quality_report.render())
         if self.quality_rejected:
             lines.append("quality rejections:")
@@ -153,10 +220,13 @@ class CorpusPlan:
         lines.append("would ingest:")
         if not self.to_ingest:
             lines.append("  (nothing)")
+        bases = dict(self.document_id_bases)
         for pc in self.to_ingest:
             note = "" if pc.assess_body else "  [body not assessed pre-ingest]"
+            basis = bases.get(pc.ref.ref_id, "?")
             lines.append(
-                f"  [{pc.source}] {pc.ref.title or pc.ref.ref_id}{note}"
+                f"  [{pc.source}] {pc.ref.title or pc.ref.ref_id} "
+                f"(id-basis {basis}){note}"
             )
         return "\n".join(lines)
 
@@ -164,6 +234,12 @@ class CorpusPlan:
 def plan_corpus(candidates: Sequence[PlannedCandidate]) -> CorpusPlan:
     """Compute the ingest plan: dedup first (cheap, identity-based), then gate
     only the survivors (so we don't pay quality assessment for duplicates).
+
+    Dedup keys through the single ``substrate.dedup`` identity ladder, so the
+    cross-source collapse decision IS the SPR-04 identity. The identity report
+    and the per-candidate document_id basis are read off that same identity for
+    the kept set — there is no second collapse pass and no second ladder that
+    could disagree with what dedup actually did.
 
     Pure: no network, no DB, no ingest thunk is called. The plan a dry-run
     prints and the plan a real run executes are the SAME object — there is no
@@ -185,11 +261,34 @@ def plan_corpus(candidates: Sequence[PlannedCandidate]) -> CorpusPlan:
         else:
             quality_rejected.append((pc, verdict))
 
+    # Identity over the kept set, read off the SAME key dedup used. Each kept
+    # candidate's identity key is its document_id basis (the SPR-01 contract)
+    # AND its row in the per-key-type distribution (rigor #1). Computed once.
+    bases: list[tuple[str, str]] = []
+    key_type_counts: dict[str, int] = {}
+    low_confidence = 0
+    for pc in to_ingest:
+        ikey = pc.identity()
+        bases.append((pc.ref.ref_id, identity_basis(pc.ref.identity_record())))
+        key_type_counts[ikey.key_type.value] = (
+            key_type_counts.get(ikey.key_type.value, 0) + 1
+        )
+        if ikey.confidence is Confidence.LOW:
+            low_confidence += 1
+
+    identity_report = IdentityReport(
+        kept=len(to_ingest),
+        key_type_counts=key_type_counts,
+        low_confidence=low_confidence,
+    )
+
     return CorpusPlan(
         deduped=deduped,
         to_ingest=tuple(to_ingest),
         quality_rejected=tuple(quality_rejected),
         quality_report=aggregate_verdicts(verdicts),
+        identity_report=identity_report,
+        document_id_bases=tuple(bases),
     )
 
 
@@ -220,11 +319,16 @@ def execute_plan(
     if not db_path:
         raise ValueError("db_path is required for a real (non-dry-run) ingest")
 
+    bases = dict(plan.document_id_bases)
     ingested = failed = 0
     statuses: list[str] = []
     for pc in plan.to_ingest:
+        # The identity the plan computed reaches the write boundary: the thunk
+        # is handed this candidate's document_id basis (the SPR-01 contract),
+        # so the dedup identity and the ingest identity are the same value.
+        basis = bases[pc.ref.ref_id]
         try:
-            status = pc.ingest(db_path)
+            status = pc.ingest(db_path, basis)
         except Exception as exc:  # never let one item kill the batch
             failed += 1
             logger.warning(
@@ -233,7 +337,10 @@ def execute_plan(
             continue
         ingested += 1
         statuses.append(status)
-        logger.info("ingested [%s] %s → %s", pc.source, pc.ref.ref_id, status)
+        logger.info(
+            "ingested [%s] %s (id-basis %s) → %s",
+            pc.source, pc.ref.ref_id, basis, status,
+        )
     return ExecuteReport(
         planned=planned, ingested=ingested, failed=failed,
         dry_run=False, statuses=tuple(statuses),
@@ -400,7 +507,7 @@ def _arxiv_candidates(
     for p in papers:
         author = p.authors[0] if p.authors else None
 
-        def _ingest(db_path: str, _p: ArxivPaper = p) -> str:
+        def _ingest(db_path: str, _basis: str, _p: ArxivPaper = p) -> str:
             throttle.wait_if_needed()
             result = ingest_paper_with_rights(
                 _p, investigation_id=investigation_id, db_path=db_path
@@ -504,7 +611,7 @@ def _public_domain_candidates(
     for w in works:
         body = _fetch_pd_body(client, w, strip_gutenberg_boilerplate)
 
-        def _ingest(db_path: str, _w: PublicDomainWork = w) -> str:
+        def _ingest(db_path: str, _basis: str, _w: PublicDomainWork = w) -> str:
             outcome = ingest_work(
                 _w, client, investigation_id=investigation_id, db_path=db_path
             )
@@ -516,9 +623,15 @@ def _public_domain_candidates(
             PlannedCandidate(
                 ref=CandidateRef(
                     ref_id=f"{w.source}:{w.source_id}",
-                    source_id=w.source_id,
+                    # source_id is namespaced by source so a Gutenberg id and an
+                    # archive.org id can never collide at the source-id level.
+                    source_id=f"{w.source}:{w.source_id}",
                     title=w.title,
                     author=w.author,
+                    # The downloaded body (when a text format was served) lets a
+                    # body-bearing work key on its content-hash above the LOW
+                    # title fallback; empty when only a PDF is offered.
+                    body=body or None,
                 ),
                 source="public_domain",
                 assessable_text=body,
@@ -601,7 +714,8 @@ def _open_access_candidates(
         _urls = tuple(c.pdf_url_candidates or ([c.pdf_url] if c.pdf_url else ()))
 
         def _ingest(
-            db_path: str, _c: Candidate = c, _basis: str = basis, _urls=_urls
+            db_path: str, _doc_basis: str,
+            _c: Candidate = c, _license_basis: str = basis, _urls=_urls
         ) -> str:
             if not _urls or fetch_pdf is None:
                 return "skipped: no fetchable PDF"
@@ -613,7 +727,8 @@ def _open_access_candidates(
                     result = ingest_oa_item(
                         investigation_id=investigation_id,
                         doi=_c.doi, pdf_url=u, resolution=_c.resolution,
-                        license_basis=_basis, fetch_pdf=fetch_pdf, db_path=db_path,
+                        license_basis=_license_basis, fetch_pdf=fetch_pdf,
+                        db_path=db_path,
                     )
                     return f"{result.content_class} ({result.servability})"
                 except NotAPdf as exc:

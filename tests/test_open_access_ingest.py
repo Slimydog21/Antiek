@@ -714,7 +714,11 @@ def test_oa_ingest_thunk_walks_past_landing_to_next_candidate(monkeypatch):
         source="openalex", query="graph neural networks", author=None,
         dois=None, limit=1, investigation_id="inv-test",
     )
-    out = planned[0].ingest("/tmp/never-written.duckdb")
+    # The thunk now also receives the SPR-04 document_id basis (the identity the
+    # plan keyed dedup on, threaded to the write boundary). The OA license_basis
+    # is a separate, closed-over value — passing the doc basis does not disturb
+    # the per-URL walk.
+    out = planned[0].ingest("/tmp/never-written.duckdb", "doi:10.1/test")
 
     # the landing page was tried first and skipped; the real PDF then succeeded
     assert attempted == [

@@ -16,7 +16,6 @@ import pytest
 from acquisition.corpus_quality import (
     CandidateRef,
     CheckResultKind,
-    DedupKeyKind,
     aggregate_verdicts,
     assess_corpus_quality,
     check_metadata_completeness,
@@ -24,6 +23,10 @@ from acquisition.corpus_quality import (
     check_real_word_ratio,
     dedup_candidates,
 )
+
+# The dedup key kind is the single identity ladder in substrate.dedup — the
+# #23 cluster engine keys through it rather than carrying a private enum.
+from substrate.dedup import KeyType
 
 # --------------------------------------------------------------------------
 # Fixtures: representative text bodies.
@@ -237,7 +240,7 @@ def test_dedup_collapses_identical_doi() -> None:
     assert len(res.kept) == 1
     assert res.kept[0].ref_id == "a"  # first seen is canonical
     assert len(res.dropped) == 1
-    assert res.dropped[0].key_kind is DedupKeyKind.DOI
+    assert res.dropped[0].key_kind is KeyType.DOI
 
 
 def test_dedup_does_not_merge_distinct_dois_on_shared_title() -> None:
@@ -250,11 +253,16 @@ def test_dedup_does_not_merge_distinct_dois_on_shared_title() -> None:
     assert res.dropped == ()
 
 
-def test_dedup_cross_source_arxiv_and_oa_merge_on_title_author() -> None:
-    # THE central case the precedence rule exists to catch: the same paper
-    # found on arXiv (arxiv_id, no DOI) and via an OA aggregator (DOI, no
-    # arxiv_id). Neither shares the other's high key, so the highest key BOTH
-    # possess is title+author — and they must collapse.
+def test_dedup_title_author_only_match_does_not_silently_merge() -> None:
+    # SPR-04 contract reversal (documented): two records whose ONLY shared key
+    # is title+author do NOT merge. Under the pre-SPR-04 #23 rule arXiv (arxiv_id,
+    # no DOI) + OA (DOI, no arxiv_id) collapsed on the title+author bridge — but
+    # that is precisely the silent collapse on a LOW-confidence key the sprint
+    # forbids (two distinct papers by one author with a generic title would
+    # wrongly fuse). The safe trade: a cross-source pair sharing no STRONG id
+    # stays as two works (flagged) rather than risk a false merge. Real
+    # cross-source duplicates are caught on the stable id they actually share
+    # (see the DOI / arXiv / content-hash cases), not on the mutable title.
     arxiv = CandidateRef(
         ref_id="arxiv:2401.001", arxiv_id="2401.001",
         title="Scaling Laws for Corpora", author="Ada Lovelace",
@@ -264,15 +272,34 @@ def test_dedup_cross_source_arxiv_and_oa_merge_on_title_author() -> None:
         title="Scaling Laws for Corpora", author="Ada Lovelace",
     )
     res = dedup_candidates([arxiv, oa])
-    assert len(res.kept) == 1
-    assert res.kept[0].ref_id == "arxiv:2401.001"
-    assert len(res.dropped) == 1
-    assert res.dropped[0].key_kind is DedupKeyKind.TITLE_AUTHOR
+    assert len(res.kept) == 2
+    assert res.dropped == ()
 
 
-def test_dedup_cross_source_merge_is_order_insensitive() -> None:
+def test_dedup_generic_title_distinct_works_do_not_collapse() -> None:
+    # M3 acceptance criterion + the recorded collision note: two genuinely
+    # DIFFERENT works that share the generic title "History" by "Anonymous",
+    # each with no stable id, MUST stay two documents. The pre-SPR-04 #23 dedup
+    # collapsed them (the title+author hash matched), which is the false-merge
+    # the whole identity layer exists to prevent. The title+author level is now
+    # non-authoritative, so they stay apart.
+    a = CandidateRef(ref_id="g:1", source_id="gutenberg:1",
+                     title="History", author="Anonymous")
+    b = CandidateRef(ref_id="ia:1", source_id="archive:hist2",
+                     title="History", author="Anonymous")
+    res = dedup_candidates([a, b])
+    assert len(res.kept) == 2  # distinct source-ids → distinct works
+    # And with NO id at all (pure title collision) they still stay apart.
+    c = CandidateRef(ref_id="c", title="History", author="Anonymous")
+    d = CandidateRef(ref_id="d", title="History", author="Anonymous")
+    assert len(dedup_candidates([c, d]).kept) == 2
+
+
+def test_dedup_cross_source_merge_on_shared_doi_is_order_insensitive() -> None:
+    # The same paper on two sources that DO share a strong key (DOI) collapses,
+    # and the canonical is just whichever came first — order-insensitive count.
     arxiv = CandidateRef(
-        ref_id="arxiv:2401.001", arxiv_id="2401.001",
+        ref_id="arxiv:2401.001", arxiv_id="2401.001", doi="10.1/z",
         title="Scaling Laws for Corpora", author="Ada Lovelace",
     )
     oa = CandidateRef(
@@ -281,7 +308,6 @@ def test_dedup_cross_source_merge_is_order_insensitive() -> None:
     )
     fwd = dedup_candidates([arxiv, oa])
     rev = dedup_candidates([oa, arxiv])
-    # Same number kept either way; the canonical is just whichever came first.
     assert len(fwd.kept) == len(rev.kept) == 1
     assert rev.kept[0].ref_id == "oa:10.1/z"
 
@@ -302,45 +328,59 @@ def test_dedup_no_shared_key_cannot_merge() -> None:
     assert len(res.kept) == 2
 
 
-def test_dedup_collapses_transitive_chain() -> None:
-    # The chain-shadowing regression: A (title only) matches B on title; B also
-    # carries a DOI that C shares. Because the cluster accumulates B's DOI, C
-    # must collapse into the SAME work — not survive as a second copy of the
-    # DOI. (Under the old pairwise-vs-canonical rule, B was absorbed into A and
-    # its DOI was lost, so C wrongly survived: this test failed then.)
+def test_dedup_chain_collapses_on_shared_strong_key_not_on_title() -> None:
+    # The #23 chain-shadowing fix, re-stated under the SPR-04 LOW-key rule: the
+    # transitive collapse holds when the bridge is a STRONG key, and title-only
+    # records never silently fuse. A (title only) does NOT absorb B (DOI+title),
+    # because their only shared key is the non-authoritative title — A is itself
+    # a weak-identity record. C still collapses into B on the DOI they share.
     a = CandidateRef(ref_id="A", title="Same Title", author="Auth")
     b = CandidateRef(ref_id="B", doi="10.1/X", title="Same Title", author="Auth")
     c = CandidateRef(ref_id="C", doi="10.1/X", title="Different Title", author="Auth")
     res = dedup_candidates([a, b, c])
-    assert len(res.kept) == 1
-    assert res.kept[0].ref_id == "A"
-    assert {d.dropped_ref_id for d in res.dropped} == {"B", "C"}
-    # C collapsed on the DOI it shares with the already-absorbed B.
+    # A stands alone (title-only); B is canonical of the DOI cluster; C drops.
+    assert {x.ref_id for x in res.kept} == {"A", "B"}
+    assert {d.dropped_ref_id for d in res.dropped} == {"C"}
     c_drop = next(d for d in res.dropped if d.dropped_ref_id == "C")
-    assert c_drop.key_kind is DedupKeyKind.DOI
+    assert c_drop.key_kind is KeyType.DOI
 
 
-def test_dedup_ambiguous_title_bridge_does_not_fuse_conflicting_dois() -> None:
+def test_dedup_distinct_dois_sharing_title_with_title_only_bridge_stay_apart() -> None:
     # P and Q are DIFFERENT works (different DOIs) that share a title. R is a
-    # title-only record bridging them. A naive transitive union would wrongly
-    # fuse P+R+Q into one cluster; the conflict-veto must keep the two DOIs
-    # apart, assigning the ambiguous R to whichever work it matched first.
+    # title-only record. Under the LOW-key rule none of the three fuse on the
+    # shared title: P and Q stay apart on their conflicting DOIs, and R — having
+    # no strong key — is its own work rather than being silently folded in.
     p = CandidateRef(ref_id="P", doi="10.1/AAA", title="Shared", author="Z")
     r = CandidateRef(ref_id="R", title="Shared", author="Z")
     q = CandidateRef(ref_id="Q", doi="10.1/BBB", title="Shared", author="Z")
     res = dedup_candidates([p, r, q])
     kept_ids = {x.ref_id for x in res.kept}
-    # P and Q (distinct DOIs) both survive; R folds into the first match (P).
-    assert "P" in kept_ids and "Q" in kept_ids
-    assert "R" not in kept_ids
-    assert len(res.kept) == 2
+    assert kept_ids == {"P", "Q", "R"}
+    assert res.dropped == ()
+
+
+def test_dedup_collapses_on_isbn_and_source_id() -> None:
+    # The two identity levels #23 could not reach through the real pipeline:
+    # a public-domain book carrying an ISBN dedups on the ISBN-13 form across
+    # its ISBN-10 surface; and two records of the same Gutenberg work (no DOI,
+    # no body at discovery) dedup on the source-local id.
+    isbn10 = CandidateRef(ref_id="b1", isbn="0-306-40615-2", title="A Book")
+    isbn13 = CandidateRef(ref_id="b2", isbn="978-0-306-40615-7", title="A Book (repr)")
+    res = dedup_candidates([isbn10, isbn13])
+    assert len(res.kept) == 1
+    assert res.dropped[0].key_kind is KeyType.ISBN
+    g1 = CandidateRef(ref_id="g1", source_id="gutenberg:84", title="Frankenstein")
+    g2 = CandidateRef(ref_id="g2", source_id="gutenberg:84", title="Frankenstein; or, ...")
+    res2 = dedup_candidates([g1, g2])
+    assert len(res2.kept) == 1
+    assert res2.dropped[0].key_kind is KeyType.SOURCE_ID
 
 
 def test_dedup_records_drops_by_key_and_renders() -> None:
     a = CandidateRef(ref_id="a", doi="10.1/x", title="P", author="Q")
     b = CandidateRef(ref_id="b", doi="10.1/x", title="P", author="Q")
     res = dedup_candidates([a, b])
-    assert res.drops_by_key.get(DedupKeyKind.DOI) == 1
+    assert res.drops_by_key.get(KeyType.DOI) == 1
     rendered = res.render()
     assert "1 kept" in rendered and "1 dropped" in rendered
 
@@ -355,8 +395,10 @@ def _make_planned(ref, *, text, assess_body, sink, source="test", reason=None):
     ``sink`` (so a test can prove the dry-run never calls it)."""
     from tools.run_corpus_ingest import PlannedCandidate
 
-    def _ingest(db_path: str) -> str:
-        sink.append((ref.ref_id, db_path))
+    def _ingest(db_path: str, doc_basis: str) -> str:
+        # Record the document_id basis too: the SPR-04 identity the plan
+        # computed must REACH the write boundary, not be computed and discarded.
+        sink.append((ref.ref_id, db_path, doc_basis))
         return f"wrote {ref.ref_id}"
 
     return PlannedCandidate(
@@ -428,7 +470,9 @@ def test_execute_real_run_calls_thunks() -> None:
     assert report.dry_run is False
     assert report.ingested == 1
     assert report.failed == 0
-    assert sink == [("g", "/tmp/local.duckdb")]
+    # The thunk received the db_path AND the SPR-04 document_id basis — the
+    # identity the plan keyed dedup on is the identity that reached ingest.
+    assert sink == [("g", "/tmp/local.duckdb", "doi:10.1/good")]
 
 
 def test_execute_isolates_per_item_failure() -> None:
@@ -440,7 +484,7 @@ def test_execute_isolates_per_item_failure() -> None:
         text=GOOD_PROSE, assess_body=True, sink=sink,
     )
 
-    def _boom(db_path: str) -> str:
+    def _boom(db_path: str, doc_basis: str) -> str:
         raise RuntimeError("simulated ingest failure")
 
     boomer = PlannedCandidate(
