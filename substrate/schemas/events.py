@@ -1841,25 +1841,30 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     chase_value: int = Field(default=0, ge=0)
     # Hard budget cap in USD across the chase tree. Defaults to $2.
     chase_budget_usd: float = Field(default=2.0, ge=0.0)
-    # SPR-01 (Living Roadmap) M3: the curated fast/deep research tier the
-    # operator chose at the research entry. CLOSED set — its only legal
-    # values are the members of substrate.dispatch.research_tier.RESEARCH_TIERS
-    # ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro). Recorded ON the
-    # start event so the chosen tier is queryable after the fact (which
-    # provider Hermes preferred for this investigation). The tier→provider
-    # resolution lives in ONE place — substrate/dispatch/research_tier.py —
-    # never duplicated here.
+    # SPR-01 (Living Roadmap) M3 + SPR-01 (Foundation) §14.4: the curated
+    # fast/deep research tier the operator chose at the research entry.
+    # CLOSED set — its only legal values are the members of
+    # substrate.dispatch.research_tier.RESEARCH_TIERS ("fast" → MiMo V2.5
+    # Pro, "deep" → DeepSeek V4 Pro). Recorded ON the start event so the
+    # chosen tier is queryable after the fact (which provider was preferred
+    # for this investigation's RESEARCH lane). The tier→provider resolution
+    # lives in ONE place — substrate/dispatch/research_tier.py — never
+    # duplicated here.
     #
-    # §14.4 measurement-window scoping: default is None, NOT "deep". The
-    # persisted tier is consumed by exactly ONE dispatch role — the
-    # synthesizer override — and the §14.4 window pins the synthesizer to
-    # Opus (config.yaml). A schema-default "deep" persisted on every run
-    # would silently displace that Opus primary with DeepSeek the moment its
-    # key is set, corrupting the Sprint-20 measurement. None = "operator did
-    # not pick a tier → no synthesizer override → use the config-pinned
-    # primary". An explicit "fast"/"deep" still records + overrides. The
-    # research-dispatch default of "deep" is unchanged — applied at the
-    # consumption point via normalize_research_tier(None) → "deep".
+    # WHY Optional[str] = None (NOT the old default "deep"): the persisted
+    # value must distinguish an operator-EXPLICIT tier choice from "nothing
+    # was chosen, the system applied its default." When this field defaulted
+    # to "deep", a schema-default investigation was byte-indistinguishable
+    # from an operator who deliberately asked for the deep lane — and the
+    # synthesizer's override (interfaces/research/api/synthesizer.py:
+    # _research_tier_override) consumed that default-"deep" to silently
+    # re-route the §14.4-pinned Opus synthesizer onto DeepSeek the instant
+    # DEEPSEEK_API_KEY was set. None == "no explicit choice recorded → the
+    # research lane resolves the default (DEFAULT_RESEARCH_TIER, still
+    # "deep"); the synthesizer keeps its config pin." A non-null value ==
+    # "the operator explicitly chose this lane." DEFAULT_RESEARCH_TIER's
+    # meaning for the research-runner lane is UNCHANGED — see
+    # substrate/dispatch/research_tier.py.
     research_tier: Optional[Literal["fast", "deep"]] = None
 
 

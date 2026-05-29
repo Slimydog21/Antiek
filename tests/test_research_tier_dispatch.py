@@ -427,13 +427,115 @@ def _seam_events_dir(tmp_path, monkeypatch):
     yield
 
 
-def test_seam_recorded_deep_tier_dispatches_to_deepseek(
+def test_seam_recorded_deep_tier_does_NOT_displace_synthesizer(
     monkeypatch, _seam_events_dir,
 ):
-    """SEAM case 1: a recorded research_tier='deep' + DeepSeek registered →
-    the synthesizer dispatch actually targets deepseek/deepseek-v4-pro
-    (NOT the config's 'hermes' primary). Proves the recorded tier flows all
-    the way through _research_tier_override into the routed call."""
+    """SEAM case 1 — REWRITTEN for §14.4 (SPR-01 / Foundation).
+
+    PRE-FIX this test asserted the OPPOSITE: a recorded research_tier='deep'
+    with DeepSeek registered re-routed the SYNTHESIZER to
+    deepseek/deepseek-v4-pro, displacing the config primary. That was the
+    DEFECT — "deep" is DEFAULT_RESEARCH_TIER, so this path is byte-identical
+    to a schema-default investigation, and the moment DEEPSEEK_API_KEY is set
+    every default synthesis silently left Opus and §14.4 was voided.
+
+    The §14.4 rule: the research tier governs the RESEARCH lane, not the
+    human-read synthesis voice. A recorded "deep" (== the default tier) must
+    NOT displace the synthesizer's config primary EVEN when deepseek is live
+    — synthesis stays pinned during the measurement window. The provider is
+    deliberately registered here (the keys-PRESENT case) so this test fails
+    if the guard ever regresses to provider-presence-only.
+
+    (See tests/test_dispatch_synthesis_pin.py for the non-vacuous regression
+    that loads the REAL config.yaml and asserts the Opus primary by name.)"""
+    from interfaces.research.api import synthesizer as synth_mod
+    import substrate.dispatch.router as router
+
+    monkeypatch.setattr(
+        router.DispatchConfig, "from_yaml",
+        classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
+    )
+    hermes = _NamedStubProvider("hermes")
+    deepseek = _NamedStubProvider("deepseek")
+    register_provider(hermes)  # config primary
+    register_provider(deepseek)  # the 'deep' tier provider IS live
+
+    _emit_start_with_tier("inv-seam-deep", "deep")
+    # The override declines: "deep" == default ⇒ (None, None).
+    prov, model = synth_mod._research_tier_override("inv-seam-deep")
+    assert (prov, model) == (None, None)
+
+    text, policy_id = synth_mod._dispatch_once(
+        "synthesize this", _StartEventStub("inv-seam-deep"),
+    )
+    # Synthesizer stayed on the config primary, NOT on the live deepseek.
+    assert policy_id == "hermes/grok-4.3"
+    assert hermes.calls == ["grok-4.3"]
+    assert not deepseek.calls  # default-deep never displaced the pin
+    assert text == "hermes:grok-4.3"
+
+
+def test_seam_recorded_fast_tier_does_NOT_displace_synthesizer(
+    monkeypatch, _seam_events_dir,
+):
+    """SEAM case 2 — REWRITTEN for §14.4 (SPR-01 / Foundation sharpen).
+
+    PRE-SHARPEN this test asserted the OPPOSITE: a recorded
+    research_tier='fast' with MiMo registered re-routed the SYNTHESIZER to
+    xiaomi/mimo-v2.5-pro, displacing the config primary. That asserted a
+    DEFECT — it CONTRADICTED §14.4's own "uncorrupted Opus traffic"
+    rationale. The window exists to measure the human-read synthesis voice
+    on Opus; routing synthesis onto MiMo for the fast lane corrupts exactly
+    the traffic the Sprint-20 verdict is taken over.
+
+    The §14.4 rule (post-sharpen, internally consistent): while the window
+    is open NO research tier — fast, deep, default, or none — displaces the
+    synthesizer pin. The tier governs the RESEARCH lane only. MiMo is
+    deliberately registered here (the keys-PRESENT case) so this test fails
+    if the guard ever regresses to letting an explicit non-default tier
+    through.
+
+    (See tests/test_dispatch_synthesis_pin.py for the non-vacuous regression
+    that loads the REAL config.yaml; the fast-stays-pinned assertion there is
+    test_explicit_fast_also_stays_pinned_to_opus.)"""
+    from interfaces.research.api import synthesizer as synth_mod
+    import substrate.dispatch.router as router
+
+    monkeypatch.setattr(
+        router.DispatchConfig, "from_yaml",
+        classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
+    )
+    hermes = _NamedStubProvider("hermes")
+    mimo = _NamedStubProvider("xiaomi")
+    register_provider(hermes)  # config primary
+    register_provider(mimo)    # the 'fast' tier provider IS live
+
+    _emit_start_with_tier("inv-seam-fast", "fast")
+    # The override declines: during the §14.4 window the pin holds for fast.
+    prov, model = synth_mod._research_tier_override("inv-seam-fast")
+    assert (prov, model) == (None, None)
+
+    text, policy_id = synth_mod._dispatch_once(
+        "synthesize this", _StartEventStub("inv-seam-fast"),
+    )
+    # Synthesizer stayed on the config primary, NOT on the live MiMo.
+    assert policy_id == "hermes/grok-4.3"
+    assert hermes.calls == ["grok-4.3"]
+    assert not mimo.calls  # explicit-fast never displaced the pin
+    assert text == "hermes:grok-4.3"
+
+
+def test_explicit_deep_keeps_research_lane_but_not_synthesizer(
+    monkeypatch, _seam_events_dir,
+):
+    """M4 — role separation, both halves in one test for legibility.
+
+    Explicit "deep" must STILL resolve the RESEARCH lane to deepseek
+    (``resolve_research_tier`` — DEFAULT_RESEARCH_TIER's meaning for the
+    research lane is unchanged by the §14.4 fix), while the SYNTHESIZER pin
+    is NOT displaced (the override returns (None, None) for "deep" because
+    "deep" == the default tier, and §14.4 keeps synthesis on Opus during the
+    window). The two roles are genuinely separate consumers of the tier."""
     from interfaces.research.api import synthesizer as synth_mod
     import substrate.dispatch.router as router
 
@@ -446,22 +548,35 @@ def test_seam_recorded_deep_tier_dispatches_to_deepseek(
     register_provider(hermes)
     register_provider(deepseek)
 
-    _emit_start_with_tier("inv-seam-deep", "deep")
+    # RESEARCH LANE: explicit-deep still routes the research-runner to
+    # deepseek. (The research lane resolves the tier directly via the map;
+    # the synthesizer override is a separate code path.)
+    assert resolve_research_tier("deep").provider == "deepseek"
+    assert resolve_research_tier("deep").model == "deepseek-v4-pro"
+
+    # SYNTHESIZER: the §14.4 pin holds for "deep" (== default) even with
+    # deepseek live — the synthesizer override declines.
+    _emit_start_with_tier("inv-explicit-deep-sep", "deep")
+    assert synth_mod._research_tier_override("inv-explicit-deep-sep") == (None, None)
     text, policy_id = synth_mod._dispatch_once(
-        "synthesize this", _StartEventStub("inv-seam-deep"),
+        "synthesize this", _StartEventStub("inv-explicit-deep-sep"),
     )
-    # The override re-routed the synthesizer to DeepSeek V4 Pro.
-    assert policy_id == "deepseek/deepseek-v4-pro"
-    assert deepseek.calls == ["deepseek-v4-pro"]
-    assert not hermes.calls  # config primary was displaced by the live tier
-    assert text == "deepseek:deepseek-v4-pro"
+    assert policy_id == "hermes/grok-4.3"  # config primary, NOT deepseek
+    assert not deepseek.calls
 
 
-def test_seam_recorded_fast_tier_dispatches_to_mimo(
+def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
     monkeypatch, _seam_events_dir,
 ):
-    """SEAM case 2: a recorded research_tier='fast' + MiMo registered →
-    the synthesizer dispatch targets xiaomi/mimo-v2.5-pro."""
+    """M4 (sharpen) — the fast-lane twin of the deep role-separation test.
+
+    Explicit "fast" must STILL resolve the RESEARCH lane to MiMo
+    (``resolve_research_tier`` — the tier's meaning for the research lane is
+    unchanged by the §14.4 fix), while the SYNTHESIZER pin is NOT displaced
+    (the override returns (None, None) during the window even for an
+    explicit non-default tier). This is the assertion that proves the
+    sharpen-round correction did not nuke the tier system — it scoped the
+    pin off synthesis, not off the research lane."""
     from interfaces.research.api import synthesizer as synth_mod
     import substrate.dispatch.router as router
 
@@ -474,14 +589,18 @@ def test_seam_recorded_fast_tier_dispatches_to_mimo(
     register_provider(hermes)
     register_provider(mimo)
 
-    _emit_start_with_tier("inv-seam-fast", "fast")
+    # RESEARCH LANE: explicit-fast still routes the research-runner to MiMo.
+    assert resolve_research_tier("fast").provider == "xiaomi"
+    assert resolve_research_tier("fast").model == "mimo-v2.5-pro"
+
+    # SYNTHESIZER: the §14.4 pin holds for "fast" too, even with MiMo live.
+    _emit_start_with_tier("inv-explicit-fast-sep", "fast")
+    assert synth_mod._research_tier_override("inv-explicit-fast-sep") == (None, None)
     text, policy_id = synth_mod._dispatch_once(
-        "synthesize this", _StartEventStub("inv-seam-fast"),
+        "synthesize this", _StartEventStub("inv-explicit-fast-sep"),
     )
-    assert policy_id == "xiaomi/mimo-v2.5-pro"
-    assert mimo.calls == ["mimo-v2.5-pro"]
-    assert not hermes.calls
-    assert text == "xiaomi:mimo-v2.5-pro"
+    assert policy_id == "hermes/grok-4.3"  # config primary, NOT mimo
+    assert not mimo.calls
 
 
 def test_seam_recorded_tier_provider_unregistered_uses_config_primary(

@@ -192,31 +192,70 @@ def _empty_delivered_payload(
 
 
 def _research_tier_override(investigation_id: str):
-    """SPR-01 M3 — resolve the (provider, model) override for THIS
-    investigation's chosen fast/deep research tier, READ from the
-    persisted start event. Synthesis is the human-facing artifact, so it
-    is the one role where the fast/deep choice is most felt — so it is
-    where the recorded tier is consumed to actually change which provider
-    is routed to.
+    """Resolve the (provider, model) research-tier override for THIS
+    investigation's SYNTHESIZER dispatch, READ from the persisted start
+    event. Returns ``(provider, model)`` to swap the synthesizer's config
+    primary, or ``(None, None)`` to leave the config pin untouched.
 
-    Returns ``(provider, model)`` for the chosen tier, or ``(None, None)``
-    when no start event / no tier is recorded (legacy runs) — in which
-    case the synthesizer routes through the config default, unchanged.
+    §14.4 GUARD (SPR-01 / Foundation — the load-bearing reason this is NOT
+    "consume the recorded tier unconditionally"):
+    ------------------------------------------------------------------
+    The ``synthesis`` tier is PINNED to ``openrouter / anthropic/
+    claude-opus-4.7`` in config.yaml for the §14.4 measurement window
+    (2026-05-19 → Sprint-20). During that window the human-read synthesis
+    artifact MUST be produced by Opus so the Sprint-20 cost/quality verdict
+    is measured on UNCORRUPTED traffic. The synthesizer is a DIFFERENT role
+    from the research-runner: the fast/deep research-tier choice governs the
+    RESEARCH lane (which provider does the reasoning-heavy retrieval/
+    decomposition work), NOT the synthesis voice.
 
-    The override is a PREFERENCE that only takes effect when its provider
-    is ACTUALLY REGISTERED. If the resolved tier provider isn't registered
-    (its API key isn't set in this deploy — the common case until the
-    operator adds keys, AND the case in stub-provider tests), we return
-    ``(None, None)`` so the synthesizer uses the config's own primary +
-    fallback chain unchanged. This is deliberately stricter than relying on
-    the router's KeyError→fallback: it means a research-tier choice never
-    *displaces* a working config route with an unregistered provider — the
-    tier only ever *adds* routing when its provider is live. (It also keeps
-    the schema default of "deep" from silently re-routing every run onto an
-    absent DeepSeek key.)"""
-    from substrate.dispatch import resolve_research_tier
-    from substrate.dispatch.router import _PROVIDER_REGISTRY
+    The defect this guards: the start-event ``research_tier`` used to
+    default to "deep" (== DEFAULT_RESEARCH_TIER). A schema-DEFAULT "deep"
+    was byte-indistinguishable from an operator-EXPLICIT "deep", so the
+    instant ``DEEPSEEK_API_KEY`` was set (the literal "turn the AI on"
+    deploy), every default investigation's synthesis silently routed onto
+    DeepSeek and §14.4 was voided. The only prior guard was provider-
+    absence — which evaporates the moment the key is present.
 
+    THE RULE (hard-to-vary): while the §14.4 window is open, NO research-tier
+    choice — fast, deep, the schema default, or none — may displace the
+    synthesizer's config pin. The function therefore returns (None, None)
+    for EVERY recorded tier. Concretely:
+      • no start event / no recorded tier (legacy runs)      → (None, None)
+      • recorded tier is null  (schema default "no choice")  → (None, None)
+      • recorded tier == DEFAULT_RESEARCH_TIER ("deep")      → (None, None)
+      • recorded tier is explicit "fast"                     → (None, None)
+
+    WHY the pin holds for EVERY tier (the sharpen-round correction): an
+    earlier cut fired the override for an explicit non-default tier ("fast"
+    → MiMo). That CONTRADICTED §14.4's own rationale — the window exists to
+    measure Opus on the human-read artifact, and routing synthesis onto MiMo
+    for fast investigations corrupts exactly the traffic the verdict is taken
+    over. "The fast/deep choice is most felt at synthesis" is the steelman
+    for letting it through (recorded in the SPR-01 handoff); it loses during
+    the window because §14.4 measures the SYNTHESIS VOICE, and a measurement
+    taken over mixed Opus/MiMo voices answers no question. The tier choice
+    still does real work — it routes the RESEARCH lane (below) — it simply
+    does not touch synthesis until the pin lifts.
+
+    The function reads the recorded tier (rather than short-circuiting to
+    (None, None) on line one) on purpose: it keeps the start-event read as
+    the single point where the SUNSET lands, so when the Sprint-20 verdict
+    flips the pin, the per-tier synthesizer routing is re-enabled HERE with
+    one diff and the regression guard (tests/test_dispatch_synthesis_pin.py)
+    is the thing that flips with it — not scattered across call sites.
+
+    PRESERVED: this function feeds ONLY the synthesizer. The research-runner
+    lane still resolves DEFAULT_RESEARCH_TIER / an explicit "deep" / "fast"
+    to its provider via ``resolve_research_tier`` at its OWN call site —
+    DEFAULT_RESEARCH_TIER's meaning for the research lane is UNCHANGED.
+
+    SUNSET: when the Sprint-20 §14.4 verdict is recorded (or the window
+    auto-reverts), this guard's reason expires — see config.yaml ``synthesis``
+    tier and the SPR-06 invariant declaration. Lifting the guard is an
+    operator-ratified edit, not a silent one: re-enable the per-tier
+    override for explicit, non-default tiers below, and flip the matching
+    assertions in test_dispatch_synthesis_pin.py."""
     start_action = ActionType.INVESTIGATION_START_REQUESTED.value
     try:
         rows = trajectory(investigation_id)
@@ -225,11 +264,18 @@ def _research_tier_override(investigation_id: str):
     for r in rows:
         if r.get("action_type") == start_action:
             payload = r.get("payload")
-            if isinstance(payload, dict) and payload.get("research_tier"):
-                target = resolve_research_tier(payload["research_tier"])
-                # Only override when the tier's provider is live.
-                if target.provider in _PROVIDER_REGISTRY:
-                    return target.provider, target.model
+            if isinstance(payload, dict):
+                _recorded = payload.get("research_tier")  # noqa: F841
+                # §14.4 (window open): whatever was recorded — fast, deep,
+                # the default, or nothing — the synthesizer keeps its config
+                # pin. The recorded tier governs the research lane elsewhere,
+                # never the synthesis voice. SUNSET (Sprint-20 verdict):
+                # resolve `_recorded` to a (provider, model) here ONLY for an
+                # explicit non-default tier whose provider is live, e.g.
+                #     if _recorded and _recorded != DEFAULT_RESEARCH_TIER:
+                #         t = resolve_research_tier(_recorded)
+                #         if t.provider in _PROVIDER_REGISTRY:
+                #             return t.provider, t.model
             break
     return None, None
 
