@@ -127,12 +127,14 @@ export function AppShell({ children }: Props) {
       <PenguinMascot />
 
       {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
-          ONCE here (outside the seam frame, like the mascot) so it wraps every
-          lens — Read / Research / Write / Speak — with ONE code path. It SETS
-          the `--akb-border-inset-*` vars (default 0 in tokens.css) to its
-          thickness so the seam frame above shrinks the working region into the
-          reserved band; the border paints in that band and never overlaps,
-          clips, or shifts the working region. */}
+          ONCE here so it wraps every lens — Read / Research / Write / Speak —
+          with ONE code path. Its DOM position inside this frame is irrelevant
+          to layout: the border itself is `position: fixed` (inset-0), and it
+          SETS the `--akb-border-inset-*` vars on the document root (default 0
+          in tokens.css), which the seam frame `div` above inherits and reads as
+          padding — so the working region shrinks into the reserved band while
+          the fixed border paints in that band and never overlaps, clips, or
+          shifts the working region. */}
       <AdBorderMount />
 
       {/* Toast viewport — single mount-point for the whole app */}
