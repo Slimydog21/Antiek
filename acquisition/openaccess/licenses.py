@@ -26,6 +26,7 @@ from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 from acquisition.licenses_core import (  # noqa: F401
     CC_LICENSE_ROWS,
     CC_PDM_ROW,
+    CC_SHORT_CODE_ROWS,
     PUBLIC_DOMAIN_CONTENT_CLASS,
     SOURCE_DECLARED_OPEN_CONTENT_CLASS,
     LicenseResolution,
@@ -65,70 +66,20 @@ _PUBLISHER_SPECIFIC_ROW: LicenseRow = LicenseRow(
 )
 
 # OA aggregators emit CC licenses as compact codes ("cc-by", "cc-by-nc-nd",
-# "cc0") as often as full URIs. We add short-code rows to the OA table rather
-# than the shared CC core, because the codes are an OA-source vocabulary, not
-# part of the canonical (URI-keyed) legal table. The codes carry the SAME
-# NC/ND-before-BY ordering contract: "cc-by-nc" must precede "cc-by".
-_CC_SHORT_CODE_ROWS: tuple[LicenseRow, ...] = (
-    LicenseRow(
-        match="cc-by-nc",
-        content_class=GATED_DEFAULT_CONTENT_CLASS,
-        redistributable=False,
-        license_name="CC BY-NC (non-commercial)",
-        rationale=(
-            "NC forbids commercial reuse; Antiek's ad-funded serving is "
-            "commercial -> gated."
-        ),
-    ),
-    LicenseRow(
-        match="cc-by-nd",
-        content_class=GATED_DEFAULT_CONTENT_CLASS,
-        redistributable=False,
-        license_name="CC BY-ND (no-derivatives)",
-        rationale="ND bars derivative presentation -> gated (conservative).",
-    ),
-    LicenseRow(
-        match="cc-by-sa",
-        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
-        redistributable=True,
-        license_name="CC BY-SA",
-        rationale=(
-            "CC BY-SA permits redistribution with attribution + share-alike "
-            "-> servable as source_declared_open (not a §9.10 publisher "
-            "opt-in; 2026-05-29 remap)."
-        ),
-    ),
-    LicenseRow(
-        match="cc-by",
-        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
-        redistributable=True,
-        license_name="CC BY",
-        rationale=(
-            "CC BY permits redistribution with attribution -> servable as "
-            "source_declared_open (not a §9.10 publisher opt-in; 2026-05-29 "
-            "remap)."
-        ),
-    ),
-    LicenseRow(
-        match="cc0",
-        content_class=PUBLIC_DOMAIN_CONTENT_CLASS,
-        redistributable=True,
-        license_name="CC0 1.0 (public-domain dedication)",
-        rationale=(
-            "CC0 waives all rights -> public_domain (no rights holder, no "
-            "attribution obligation; 2026-05-29 remap)."
-        ),
-    ),
-)
+# "cc0") as often as full URIs. The compact-code rows live in the shared CC
+# home (``acquisition.licenses_core.CC_SHORT_CODE_ROWS``) so the OA resolver and
+# the classify() chokepoint share ONE verdict per code; this module composes
+# them in rather than forking a parallel copy. They carry the SAME
+# NC/ND-before-BY ordering contract: "cc-by-nc" precedes "cc-by".
 
-# The OA table: public-domain mark + the canonical CC URI rows + the CC
+# The OA table: public-domain mark + the canonical CC URI rows + the shared CC
 # short-code rows + the OA-specific gated signals. URI rows come before the
 # short-code rows so a full URI is classified by the canonical legal row; the
 # bronze/publisher-specific rows sit last (plain substrings, no CC collision).
 _OA_TABLE: tuple[LicenseRow, ...] = (
     (CC_PDM_ROW,)
     + CC_LICENSE_ROWS
-    + _CC_SHORT_CODE_ROWS
+    + CC_SHORT_CODE_ROWS
     + (_BRONZE_ROW, _PUBLISHER_SPECIFIC_ROW)
 )
 

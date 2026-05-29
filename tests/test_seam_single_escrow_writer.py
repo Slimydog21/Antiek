@@ -45,6 +45,11 @@ _SANCTIONED_ESCROW_CALLERS = frozenset({
     # SPR-05: per-second frame-attention border accrual — a third sanctioned
     # revenue source routing through the one writer (ip_holders.accrue_escrow).
     "substrate/ad_inventory/frame_attention_accrual.py",
+    # SPR-02 (corpus ingest): gated-mass-ingest escrow accrual — a fourth
+    # sanctioned revenue source. When the rights classifier gates an
+    # in-copyright work, escrow accrues to its pre_onboarded holder through the
+    # one writer; accrual ≠ disbursement (G2/G3 stay operator-only).
+    "substrate/ip_holders/gated_accrual.py",
 })
 
 
