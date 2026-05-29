@@ -1222,6 +1222,15 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Read SPR-09 — library catalog (paginated/filtered/searched view over the
+    # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
+    from .library import register_library_routes
+    register_library_routes(app)
+    # Read SPR-09 — ad-border surfaces: per-window frame-attention telemetry
+    # (composes the SPR-05 accrual engine + the one escrow seam; accrues, never
+    # disburses) + reader slot fill (house fill is the zero-buyer default).
+    from .ad_routes import register_ad_routes
+    register_ad_routes(app)
     # Read SPR-07 — text-to-speech for voice replies in the conversational
     # rabbit hole. Gated on the operator OpenAI key (503 without one).
     from .speech import register_speech_routes
