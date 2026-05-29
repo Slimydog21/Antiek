@@ -515,7 +515,9 @@ def test_orchestrator_dry_run_end_to_end_exercises_seam(monkeypatch, capsys) -> 
         # Three sources, with a genuine cross-source DOI duplicate (arxiv+oa+pmc
         # share 10.1/x), one Gutenberg book keyed on its source-id, and one
         # generic-title work that must stay LOW and never collapse.
-        return [
+        # discover_all returns a DiscoveryOutcome (SPR-03 rotation contract); the
+        # stub matches that shape — main() reads .candidates / .rotation_log.
+        return orch.DiscoveryOutcome(candidates=(
             _planned("arxiv:2401.1", source="arxiv", arxiv_id="2401.1",
                      doi="10.1/X", title="Scaling Laws", text=LONG_BODY,
                      assess_body=True, sink=sink),
@@ -527,7 +529,7 @@ def test_orchestrator_dry_run_end_to_end_exercises_seam(monkeypatch, capsys) -> 
                      source_id="project_gutenberg:84", title="Frankenstein",
                      author="Mary Shelley", text=OTHER_BODY, assess_body=True,
                      sink=sink),
-        ]
+        ), rotation_log=())
 
     monkeypatch.setattr(orch, "discover_all", _fake_discover)
     rc = orch.main(["--source", "arxiv", "--arxiv-query", "x", "--dry-run"])
@@ -558,14 +560,14 @@ def test_orchestrator_real_run_threads_basis_to_thunk(monkeypatch) -> None:
     sink: list = []
 
     def _fake_discover(args):
-        return [
+        return orch.DiscoveryOutcome(candidates=(
             _planned("oa:1", source="open_access", doi="10.1/AB",
                      title="A Paper", sink=sink),
             _planned("gutenberg:84", source="public_domain",
                      source_id="project_gutenberg:84", title="Frankenstein",
                      author="Mary Shelley", text=LONG_BODY, assess_body=True,
                      sink=sink),
-        ]
+        ), rotation_log=())
 
     monkeypatch.setattr(orch, "discover_all", _fake_discover)
     rc = orch.main([

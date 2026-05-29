@@ -400,8 +400,12 @@ def _arxiv_bulk_candidates(
     for p in papers:
         author = p.authors[0] if p.authors else None
 
-        def _ingest(db_path: str, _p: ArxivPaper = p) -> str:
+        def _ingest(db_path: str, _basis: str, _p: ArxivPaper = p) -> str:
             # Per-PDF fetch dodges export; throttle + PDF-vs-HTML check reused.
+            # _basis is the SPR-04 content-stable document_id basis, accepted at
+            # the write boundary like the other connectors' thunks; SPR-01's
+            # merge consumes it, today's ingest_paper_with_rights still mints its
+            # own id (the documented seam, identical to the export/PD/OA thunks).
             pdf_bytes = fetch_bulk_pdf(_p, throttle=persistent)
             _assert_pdf_body_quality(pdf_bytes, ref_id=f"arxiv:{_p.arxiv_id}")
             result = ingest_paper_with_rights(
