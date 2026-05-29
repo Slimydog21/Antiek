@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
 import { SceneChrome } from "./shell/SceneChrome";
@@ -124,6 +125,17 @@ export function AppShell({ children }: Props) {
           roaming the whole window, not a chrome element constrained by the
           ad-border inset.) */}
       <PenguinMascot />
+
+      {/* SPR-07 — the always-on, four-edge "Times-Square" ad border. Mounted
+          ONCE here so it wraps every lens — Read / Research / Write / Speak —
+          with ONE code path. Its DOM position inside this frame is irrelevant
+          to layout: the border itself is `position: fixed` (inset-0), and it
+          SETS the `--akb-border-inset-*` vars on the document root (default 0
+          in tokens.css), which the seam frame `div` above inherits and reads as
+          padding — so the working region shrinks into the reserved band while
+          the fixed border paints in that band and never overlaps, clips, or
+          shifts the working region. */}
+      <AdBorderMount />
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />

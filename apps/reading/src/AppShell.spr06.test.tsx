@@ -22,6 +22,10 @@ import { MemoryRouter } from "react-router-dom";
 // worker import lives behind PanelLayout; mocking it keeps the env happy while
 // preserving the prop contract (PanelLayout renders its mainSlot).
 vi.mock("./shell/PenguinMascot", () => ({ PenguinMascot: () => null }));
+// SPR-07 — the always-on ad border mounts here too; it has its own suite
+// (components/ad/*.test.*) and pulls usePrefersReducedMotion (matchMedia,
+// which jsdom lacks), so stub it to null exactly as the other heavy children.
+vi.mock("./components/ad/AdBorderMount", () => ({ AdBorderMount: () => null }));
 vi.mock("./shell/SceneChrome", () => ({
   SceneChrome: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
