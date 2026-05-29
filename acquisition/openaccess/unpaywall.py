@@ -33,6 +33,26 @@ DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.openaccess)"
 DEFAULT_TIMEOUT_S = 15.0
 
 
+class NotAPdf(ValueError):
+    """The fetched bytes are not a PDF (e.g. an HTML landing page served
+    200-OK). A counted, recoverable failure mode: the caller should try the
+    next candidate URL rather than abort the item. Subclasses ValueError so
+    OAThrottle.run_with_retry re-raises it immediately (a landing page will
+    not become a PDF on retry) instead of burning the retry budget."""
+
+
+def _looks_like_pdf(content: bytes, content_type: Optional[str]) -> bool:
+    """True when the response is plausibly a PDF. Rejects an HTML/text body
+    by content-type, then confirms the ``%PDF-`` magic bytes (first 1KB,
+    leading whitespace tolerated)."""
+    if content_type:
+        ct = content_type.lower()
+        if "application/pdf" not in ct and ("text/html" in ct or "text/plain" in ct):
+            return False
+    head = content[:1024].lstrip()
+    return head.startswith(b"%PDF-")
+
+
 @dataclass(frozen=True)
 class OAFullText:
     """A resolved best-OA full-text location for a DOI.
@@ -124,6 +144,13 @@ def download_pdf(
             with httpx.Client(follow_redirects=True) as c:
                 r = c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
         r.raise_for_status()
-        return r.content
+        content = r.content
+        if not _looks_like_pdf(content, r.headers.get("content-type")):
+            raise NotAPdf(
+                f"{pdf_url} returned non-PDF bytes "
+                f"(content-type={r.headers.get('content-type')!r}, "
+                f"head={content[:8]!r}) — likely a landing page, not a PDF"
+            )
+        return content
 
     return throttle.run_with_retry(_get) if throttle is not None else _get()

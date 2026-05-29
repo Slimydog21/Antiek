@@ -59,6 +59,19 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+# Defensive SSL bootstrap: a python.org-3.11 interpreter ships without a system
+# CA bundle (the arxiv-missing-ssl-env failure mode). Point at certifi when the
+# env is unset so the HTTPS handshake to arxiv.org / OA sources does not fail
+# silently mid-window. Idempotent and read-only w.r.t. the DB.
+if not os.environ.get("SSL_CERT_FILE"):
+    try:
+        import certifi
+
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+        os.environ.setdefault("SSL_CERT_DIR", os.path.dirname(certifi.where()))
+    except Exception:
+        pass  # certifi absent -> leave env as-is; fall through to system default
+
 from acquisition.corpus_quality import (  # noqa: E402
     CandidateRef,
     DedupResult,
@@ -238,25 +251,51 @@ def _arxiv_candidates(
     *, query: Optional[str], category: Optional[str],
     ids: Optional[Sequence[str]], limit: int, investigation_id: str,
 ) -> list[PlannedCandidate]:
+    import httpx
+
     from acquisition.arxiv import (
+        ArxivBanned,
         ArxivPaper,
         ArxivThrottle,
         ingest_paper_with_rights,
         search,
     )
     from acquisition.arxiv.client import fetch_by_id
+    from tools.ingest_arxiv import _request_with_429_sentinel
 
     throttle = ArxivThrottle()
     papers: list[ArxivPaper] = []
-    if ids:
-        for pid in ids:
+    # Isolate arXiv discovery like the PD/OA paths: a live 429 (export.arxiv.org
+    # IP-ban) is recorded to the throttle's banned_until sentinel (so the NEXT
+    # run honors the ban instead of re-hitting and EXTENDING it) and degrades to
+    # zero arXiv candidates — it must NOT abort the whole multi-source run.
+    # This does NOT let arXiv ingest SUCCEED while the ban is active; it only
+    # stops extending the ban and stops aborting PD+OA. arXiv resumes once
+    # banned_until elapses. (S2 metadata fallback is deliberately NOT used: S2
+    # omits the arXiv license element, so it would deny-gate every CC-BY paper.)
+    try:
+        if ids:
+            for pid in ids:
+                throttle.wait_if_needed()
+                p = _request_with_429_sentinel(
+                    throttle, lambda pid=pid: fetch_by_id(pid)
+                )
+                if p is not None:
+                    papers.append(p)
+        else:
             throttle.wait_if_needed()
-            p = fetch_by_id(pid)
-            if p is not None:
-                papers.append(p)
-    else:
-        throttle.wait_if_needed()
-        papers = list(search(query=query, category=category, max_results=limit))
+            papers = list(
+                _request_with_429_sentinel(
+                    throttle,
+                    lambda: search(query=query, category=category, max_results=limit),
+                )
+            )
+    except ArxivBanned as exc:
+        logger.error("arxiv banned, skipping arxiv discovery: %s", exc)
+        return []
+    except httpx.HTTPStatusError as exc:
+        logger.error("arxiv discovery http error, skipping arxiv: %s", exc)
+        return []
 
     out: list[PlannedCandidate] = []
     for p in papers:
@@ -286,6 +325,31 @@ def _arxiv_candidates(
     return out
 
 
+class _BodyCachingClient:
+    """Wraps a public-domain ``SourceClient`` and memoizes ``get_bytes`` by URL.
+
+    The amplifier behind the SPR-08 dry-run/real-run reliability gap: a
+    text-format work's body is fetched once by ``_fetch_pd_body`` (for the
+    quality gate) and again by ``ingest_work`` (for the write), doubling
+    gutendex load in the maintenance window — which is what pushed gutendex
+    into the 503/timeout regime a real run hit but a dry-run did not. Memoizing
+    by URL collapses that to a single fetch. ``get_json`` is deliberately NOT
+    cached (paging/metadata must stay live). The PD code paths use only these
+    two methods (verified)."""
+
+    def __init__(self, inner: object) -> None:
+        self._inner = inner
+        self._body_cache: dict[str, bytes] = {}
+
+    def get_json(self, url: str, *, params: Optional[dict] = None) -> dict:
+        return self._inner.get_json(url, params=params)  # type: ignore[attr-defined]
+
+    def get_bytes(self, url: str) -> bytes:
+        if url not in self._body_cache:
+            self._body_cache[url] = self._inner.get_bytes(url)  # type: ignore[attr-defined]
+        return self._body_cache[url]
+
+
 def _public_domain_candidates(
     *, subject: Optional[str], search_term: Optional[str],
     ids: Optional[Sequence[int]], curated: bool, limit: int,
@@ -294,20 +358,36 @@ def _public_domain_candidates(
     from acquisition.books.public_domain import (
         PublicDomainWork,
         SourceClient,
+        SourceError,
         gutenberg_candidates,
         ingest_work,
         strip_gutenberg_boilerplate,
     )
     from tools.ingest_public_domain import CURATED_GUTENBERG_IDS
 
-    client = SourceClient(min_interval_s=min_interval_s)
+    client = _BodyCachingClient(SourceClient(min_interval_s=min_interval_s))
     selected_ids: Optional[Sequence[int]] = ids
     if curated:
         selected_ids = list(CURATED_GUTENBERG_IDS)
         limit = max(limit, len(selected_ids))
-    works = gutenberg_candidates(
-        client, subject=subject, search=search_term, ids=selected_ids, limit=limit
-    )
+    try:
+        works = gutenberg_candidates(
+            client, subject=subject, search=search_term, ids=selected_ids, limit=limit
+        )
+    except SourceError as exc:
+        # A transient gutendex 503/timeout during PD discovery must NOT abort
+        # the whole run (and block OA, which runs after PD). Isolate it like the
+        # OA discovery path does per item; the run proceeds with the other
+        # sources and reports zero PD candidates this pass. This restores the
+        # contract SourceClient documents: a retry-exhausted request "raises
+        # SourceError for the caller to catch per-item — it must NOT abort the
+        # batch."
+        logger.warning(
+            "public-domain discovery failed (transient source error); "
+            "skipping PD this run: %s",
+            exc,
+        )
+        return []
 
     out: list[PlannedCandidate] = []
     for w in works:
@@ -390,15 +470,33 @@ def _open_access_candidates(
     for c in cands:
         basis = build_license_basis(c.resolution, source=c.source, how=c.how)
 
-        def _ingest(db_path: str, _c: Candidate = c, _basis: str = basis) -> str:
-            if not _c.pdf_url or fetch_pdf is None:
+        # Try each candidate PDF URL in order; a NotAPdf / landing-page response
+        # is a recoverable miss -> fall through to the next candidate. Only when
+        # ALL candidates fail does the item fail (still per-item isolated by
+        # execute_plan's per-candidate try/except). Falls back to the single
+        # pdf_url for the DOI-keyed sources, which expose no candidate list.
+        _urls = tuple(c.pdf_url_candidates or ([c.pdf_url] if c.pdf_url else ()))
+
+        def _ingest(
+            db_path: str, _c: Candidate = c, _basis: str = basis, _urls=_urls
+        ) -> str:
+            if not _urls or fetch_pdf is None:
                 return "skipped: no fetchable PDF"
-            result = ingest_oa_item(
-                investigation_id=investigation_id,
-                doi=_c.doi, pdf_url=_c.pdf_url, resolution=_c.resolution,
-                license_basis=_basis, fetch_pdf=fetch_pdf, db_path=db_path,
-            )
-            return f"{result.content_class} ({result.servability})"
+            from acquisition.openaccess.unpaywall import NotAPdf
+
+            last_exc: Optional[Exception] = None
+            for u in _urls:
+                try:
+                    result = ingest_oa_item(
+                        investigation_id=investigation_id,
+                        doi=_c.doi, pdf_url=u, resolution=_c.resolution,
+                        license_basis=_basis, fetch_pdf=fetch_pdf, db_path=db_path,
+                    )
+                    return f"{result.content_class} ({result.servability})"
+                except NotAPdf as exc:
+                    last_exc = exc
+                    continue
+            raise last_exc or ValueError("no candidate URL yielded a PDF")
 
         out.append(
             PlannedCandidate(
