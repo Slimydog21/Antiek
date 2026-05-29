@@ -52,6 +52,12 @@ class OpenAlexWork:
     best_oa_landing_url: Optional[str]
     license_uri: Optional[str]
     metadata: dict = field(default_factory=dict)
+    # Ordered, de-duped PDF-URL candidates (best/primary/locations[].pdf_url,
+    # then open_access.oa_url as a last-resort landing fallback). The OA ingest
+    # thunk tries these in order so a leading HTML landing page no longer
+    # detonates the whole work in pypdf. Defaulted, so existing positional
+    # construction sites and ``best_oa_pdf_url`` readers keep working.
+    pdf_url_candidates: tuple[str, ...] = ()
 
 
 def _normalize_doi(doi: Optional[str]) -> Optional[str]:
@@ -69,14 +75,27 @@ def _normalize_doi(doi: Optional[str]) -> Optional[str]:
 def _parse_work(raw: dict[str, Any]) -> OpenAlexWork:
     oa = raw.get("open_access") or {}
     best = raw.get("best_oa_location") or {}
+    primary = raw.get("primary_location") or {}
+    # Ordered, de-duped PDF candidates: prefer locations that DECLARE a pdf_url
+    # (a direct file) over open_access.oa_url (the best free-to-READ url, often
+    # an HTML landing page). The landing url is kept only as a last resort so a
+    # work with no declared pdf_url is still attempted, but is tried LAST.
+    ordered: list[str] = []
+    for loc in (best, primary, *(raw.get("locations") or [])):
+        u = (loc or {}).get("pdf_url")
+        if isinstance(u, str) and u and u not in ordered:
+            ordered.append(u)
+    oa_url = oa.get("oa_url")
+    if isinstance(oa_url, str) and oa_url and oa_url not in ordered:
+        ordered.append(oa_url)  # last-resort landing fallback
     return OpenAlexWork(
         openalex_id=str(raw.get("id") or ""),
         doi=_normalize_doi(raw.get("doi")),
         title=raw.get("title") or raw.get("display_name") or "",
         is_oa=bool(oa.get("is_oa")),
         oa_status=oa.get("oa_status"),
-        best_oa_pdf_url=best.get("pdf_url") or oa.get("oa_url"),
-        best_oa_landing_url=best.get("landing_page_url"),
+        best_oa_pdf_url=(ordered[0] if ordered else None),
+        best_oa_landing_url=best.get("landing_page_url") or primary.get("landing_page_url"),
         # The license lives on the best-OA-location; OpenAlex normalises it to
         # a CC short form ("cc-by") or a URI. Either matches the CC rows'
         # substrings; absent -> None -> gated by default.
@@ -86,6 +105,7 @@ def _parse_work(raw: dict[str, Any]) -> OpenAlexWork:
             "version": best.get("version"),
             "publication_year": raw.get("publication_year"),
         },
+        pdf_url_candidates=tuple(ordered),
     )
 
 

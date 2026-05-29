@@ -75,6 +75,12 @@ class Candidate:
     resolution: LicenseResolution
     source: str
     how: str
+    # Ordered PDF-URL candidates from OpenAlex (best/primary/locations[].pdf_url,
+    # then the landing url last). Empty for the DOI-keyed sources, which resolve
+    # a single best-OA pdf_url. The OA ingest thunk walks these in order so a
+    # leading HTML landing page no longer fails the whole item. Defaulted, so
+    # the unpaywall/pmc/doaj construction sites are unchanged.
+    pdf_url_candidates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -108,6 +114,7 @@ def _resolve_candidates(
                     doi=w.doi,
                     title=w.title,
                     pdf_url=w.best_oa_pdf_url,
+                    pdf_url_candidates=w.pdf_url_candidates,
                     license_uri=w.license_uri,
                     resolution=resolve_oa_license(w.license_uri),
                     source="OpenAlex best-OA-location",

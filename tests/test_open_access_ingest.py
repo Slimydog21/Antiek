@@ -587,3 +587,138 @@ def test_cli_openalex_requires_query(capsys):
     rc = ingest_open_access.main(["--source", "openalex", "--dry-run"])
     assert rc == 2
     assert "query" in capsys.readouterr().err.lower()
+
+
+# ---------------------------------------------------------------------------
+# fix/corpus-connector-resilience — OA PDF resolution (BLOCKER 3)
+#
+# Regression cover for the SPR-08 finding that 6/15 OpenAlex works failed
+# because the connector fetched an HTML landing page as the "PDF" and pypdf
+# choked ("invalid pdf header b'<!DO'"). Two new mechanisms:
+#   (A) _parse_work yields an ORDERED, de-duped pdf_url candidate list, with
+#       open_access.oa_url (often a landing page) tried LAST; and
+#   (B) download_pdf rejects a non-PDF 200 response as a typed NotAPdf so the
+#       ingest thunk walks to the next candidate instead of detonating.
+# These tests inject an httpx.MockTransport client (via _mock_client) — they do
+# NOT monkeypatch download_pdf itself, so the precheck is genuinely exercised.
+# ---------------------------------------------------------------------------
+
+_OPENALEX_LANDING_FIRST = {
+    "results": [
+        {
+            "id": "https://openalex.org/W777",
+            "doi": "https://doi.org/10.1/gnn",
+            "title": "Graph neural networks",
+            "open_access": {
+                "is_oa": True, "oa_status": "green",
+                "oa_url": "https://site.example/landing.html",  # landing page
+            },
+            "best_oa_location": {  # NO pdf_url — the real-world trap
+                "is_oa": True, "license": "cc-by",
+                "landing_page_url": "https://site.example/landing.html",
+            },
+            "primary_location": {"pdf_url": "https://repo.example/paper.pdf"},
+            "locations": [
+                {"pdf_url": "https://repo.example/paper.pdf"},      # dup
+                {"pdf_url": "https://mirror.example/paper.pdf"},
+            ],
+        }
+    ]
+}
+
+
+def test_openalex_parse_orders_pdf_candidates_oa_url_last():
+    """A work whose best_oa_location has no pdf_url still yields the declared
+    PDFs (primary + locations) first, de-duped, with the landing oa_url LAST —
+    and best_oa_pdf_url stays the first candidate for back-compat."""
+    work = openalex._parse_work(_OPENALEX_LANDING_FIRST["results"][0])
+    assert work.pdf_url_candidates == (
+        "https://repo.example/paper.pdf",
+        "https://mirror.example/paper.pdf",
+        "https://site.example/landing.html",
+    )
+    assert work.best_oa_pdf_url == "https://repo.example/paper.pdf"
+    assert work.pdf_url_candidates[-1] == "https://site.example/landing.html"
+
+
+def test_download_pdf_rejects_html_landing_page():
+    """A 200-OK text/html body (a landing page) raises NotAPdf rather than
+    returning HTML bytes that would detonate in pypdf downstream."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, headers={"content-type": "text/html; charset=utf-8"},
+            content=b"<!DOCTYPE html><html><head><title>Landing</title>",
+        )
+
+    with pytest.raises(unpaywall.NotAPdf):
+        unpaywall.download_pdf(
+            "https://site.example/landing.html",
+            client=_mock_client(handler), throttle=_no_sleep_throttle(),
+        )
+
+
+def test_download_pdf_accepts_real_pdf():
+    """A 200-OK application/pdf body with the %PDF- magic bytes is returned
+    unchanged (positive control for the precheck)."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, headers={"content-type": "application/pdf"}, content=_PDF_BYTES,
+        )
+
+    out = unpaywall.download_pdf(
+        "https://repo.example/paper.pdf",
+        client=_mock_client(handler), throttle=_no_sleep_throttle(),
+    )
+    assert out[:5] == b"%PDF-"
+
+
+def test_oa_ingest_thunk_walks_past_landing_to_next_candidate(monkeypatch):
+    """End-to-end at the orchestrator: the OA ingest thunk tries each candidate
+    URL in order, treats a NotAPdf as a recoverable miss, and succeeds on the
+    next real PDF — proving the SPR-08 fix without touching the prod DB."""
+    from acquisition.openaccess.unpaywall import NotAPdf
+    from tools import run_corpus_ingest as rci
+
+    cand = ingest_open_access.Candidate(
+        doi="10.1/gnn", title="Graph neural networks",
+        pdf_url="https://site.example/landing.html",
+        pdf_url_candidates=(
+            "https://site.example/landing.html",   # landing page -> NotAPdf
+            "https://repo.example/paper.pdf",       # real PDF -> success
+        ),
+        license_uri="cc-by", resolution=resolve_oa_license("cc-by"),
+        source="OpenAlex best-OA-location",
+        how="per OpenAlex best_oa_location.license",
+    )
+
+    attempted: list[str] = []
+
+    class _Result:
+        content_class = "restricted_pending_opt_in"
+        servability = "gated_metadata_only"
+
+    def _fake_ingest(*, investigation_id, doi, pdf_url, resolution,
+                     license_basis, fetch_pdf, db_path):
+        attempted.append(pdf_url)
+        if pdf_url.endswith("landing.html"):
+            raise NotAPdf("landing page, not a PDF")
+        return _Result()
+
+    monkeypatch.setattr(ingest_open_access, "_resolve_candidates",
+                        lambda **kw: [cand])
+    monkeypatch.setattr(ingest_open_access, "_source_fetcher",
+                        lambda source, throttle: (lambda url: b"%PDF-"))
+    monkeypatch.setattr("acquisition.openaccess.ingest.ingest_oa_item", _fake_ingest)
+
+    planned = rci._open_access_candidates(
+        source="openalex", query="graph neural networks", author=None,
+        dois=None, limit=1, investigation_id="inv-test",
+    )
+    out = planned[0].ingest("/tmp/never-written.duckdb")
+
+    # the landing page was tried first and skipped; the real PDF then succeeded
+    assert attempted == [
+        "https://site.example/landing.html",
+        "https://repo.example/paper.pdf",
+    ]
+    assert "restricted_pending_opt_in" in out
