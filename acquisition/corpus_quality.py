@@ -562,85 +562,117 @@ class DedupResult:
         return "\n".join(lines)
 
 
-def _shared_decision(
-    a: CandidateRef, b: CandidateRef
+@dataclass
+class _Cluster:
+    """A growing set of candidates judged to be ONE work. ``canonical`` is the
+    first (earliest-seen) member, kept in the output. ``keys`` accumulates the
+    UNION of every member's identifiers, per kind — this is what makes dedup
+    transitive AND conflict-safe: a later candidate is matched against the
+    whole cluster's known ids, not just the canonical's, so an id contributed
+    by an already-absorbed member can still catch a duplicate (closes the
+    chain-shadowing bug); and because a candidate only joins on a key whose
+    value is already in the cluster's set, a cluster can never accumulate two
+    conflicting values for a strong key (e.g. two different DOIs)."""
+
+    canonical: CandidateRef
+    keys: dict[DedupKeyKind, set[str]] = field(default_factory=dict)
+
+    def absorb(self, ref: CandidateRef) -> None:
+        for kind in _DEDUP_PRECEDENCE:
+            value = _dedup_key(ref, kind)
+            if value is not None:
+                self.keys.setdefault(kind, set()).add(value)
+
+
+def _cluster_decision(
+    ref: CandidateRef, cluster: _Cluster
 ) -> Optional[tuple[DedupKeyKind, str]]:
-    """Decide whether two candidates are the SAME work, on the highest-
-    precedence key BOTH possess.
+    """Is ``ref`` the SAME work as everything already in ``cluster``?
 
-    Walk precedence high→low. The first kind where BOTH carry a value is the
-    decisive one — and ONLY that one:
+    Walk precedence high→low. The first kind where the candidate carries a
+    value AND the cluster already knows ≥1 value for that kind is decisive —
+    and ONLY that one:
 
-    - equal values   → same work; return ``(kind, value)``.
-    - unequal values → different works; return ``None``. We do NOT fall
-      through to a lower key: two items with different DOIs are different
-      works even if their titles coincide, so a lower-key title match must
-      not resurrect them as duplicates.
+    - candidate's value is among the cluster's values → same work;
+      return ``(kind, value)``.
+    - candidate's value is NOT among them → different work; return ``None``.
+      We do NOT fall through to a lower key: a candidate whose DOI differs
+      from the cluster's DOI is a different work even if their titles coincide,
+      so a lower-key title match must never resurrect it as a duplicate.
 
-    A kind only one side carries is not *shared*, so it is skipped — which is
-    exactly what lets a cross-source pair collapse on title+author when one
-    side has a DOI and the other an arXiv id (neither shares the other's
-    high key, so title+author is the highest key both possess). When no key
-    is shared at all, the pair is not dedupable → ``None``.
+    A kind the candidate lacks, or the cluster has never seen, is not *shared*
+    at that level, so it is skipped — which is what lets a cross-source pair
+    collapse on title+author when one side has a DOI and the other an arXiv id
+    (neither shares the other's high key, so title+author is the highest key
+    both possess). When nothing is shared, the candidate starts a new cluster.
     """
     for kind in _DEDUP_PRECEDENCE:
-        va = _dedup_key(a, kind)
-        vb = _dedup_key(b, kind)
-        if va is None or vb is None:
-            continue  # not shared at this level — look lower
-        return (kind, va) if va == vb else None  # highest shared key decides
+        value = _dedup_key(ref, kind)
+        if value is None:
+            continue  # candidate has no value at this level
+        cluster_values = cluster.keys.get(kind)
+        if not cluster_values:
+            continue  # cluster has never seen this kind — not shared here
+        return (kind, value) if value in cluster_values else None
     return None  # no shared key → cannot dedup
 
 
 def dedup_candidates(candidates: Iterable[CandidateRef]) -> DedupResult:
     """Collapse duplicate candidate works across the three connectors.
 
-    Walks candidates in input order; the FIRST candidate seen for a given
-    work is the canonical one kept. A later candidate is dropped iff it is the
-    same work as an already-kept candidate under ``_shared_decision`` — i.e.
-    they agree on the highest-precedence key BOTH possess. Precedence:
-    DOI > arXiv id > source id > (normalized title+author) hash.
+    Walks candidates in input order; the FIRST candidate seen for a given work
+    is the canonical one kept. Each kept work is a CLUSTER that accumulates the
+    union of its members' identifiers. A later candidate is dropped iff it is
+    the same work as an existing cluster under ``_cluster_decision`` — i.e. it
+    agrees with the cluster on the highest-precedence key they share.
+    Precedence: DOI > arXiv id > source id > (normalized title+author) hash.
 
-    Decision rests on the highest key the two SHARE, not on either's own
-    highest key — so the central cross-source case collapses correctly: the
-    same paper discovered on arXiv (arxiv_id, no DOI) and via an OA aggregator
-    (DOI, no arxiv_id) shares neither high key, falls through to the title+
-    author hash they DO share, and dedups. Conversely two items with
-    different DOIs never merge on a coincidental shared title. The check is
-    pairwise (O(kept) per candidate) so it is order-insensitive in outcome;
+    Matching against the whole cluster (not just its canonical) is what makes
+    dedup transitive and order-robust: in the chain A(title only) ~ B(title +
+    DOI) ~ C(DOI, different title), B joins A on title and contributes its DOI
+    to the cluster, so C then joins on that DOI instead of surviving as a
+    second copy of the same work. The same mechanism stays conflict-safe: a
+    candidate with a DIFFERENT DOI than the cluster's is rejected at the DOI
+    level and never merges on a coincidental shared title, and a cluster can
+    therefore never hold two conflicting DOIs. The first cluster to match wins,
+    so a genuinely ambiguous title-only bridge is assigned deterministically to
+    one work rather than fusing two. Cost is O(clusters) per candidate;
     corpus-discovery batches are bounded (curated/limit-capped), so the
     quadratic worst case is not a concern at this layer.
     """
-    kept: list[CandidateRef] = []
+    clusters: list[_Cluster] = []
     dropped: list[DedupDrop] = []
     drops_by_key: dict[DedupKeyKind, int] = {}
 
     for cand in candidates:
-        match: Optional[tuple[str, DedupKeyKind, str]] = None
-        for canonical in kept:
-            decision = _shared_decision(cand, canonical)
+        matched: Optional[tuple[_Cluster, DedupKeyKind, str]] = None
+        for cluster in clusters:
+            decision = _cluster_decision(cand, cluster)
             if decision is not None:
                 kind, value = decision
-                match = (canonical.ref_id, kind, value)
-                break  # first (earliest-kept) canonical wins
+                matched = (cluster, kind, value)
+                break  # first (earliest) cluster wins
 
-        if match is not None:
-            kept_id, kind, value = match
+        if matched is not None:
+            cluster, kind, value = matched
             dropped.append(
                 DedupDrop(
                     dropped_ref_id=cand.ref_id,
-                    kept_ref_id=kept_id,
+                    kept_ref_id=cluster.canonical.ref_id,
                     key_kind=kind,
                     key_value=value,
                 )
             )
             drops_by_key[kind] = drops_by_key.get(kind, 0) + 1
+            cluster.absorb(cand)  # the cluster now knows this member's ids too
             continue
 
-        kept.append(cand)
+        new_cluster = _Cluster(canonical=cand)
+        new_cluster.absorb(cand)
+        clusters.append(new_cluster)
 
     return DedupResult(
-        kept=tuple(kept),
+        kept=tuple(c.canonical for c in clusters),
         dropped=tuple(dropped),
         drops_by_key=dict(drops_by_key),
     )

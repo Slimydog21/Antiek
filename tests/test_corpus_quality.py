@@ -302,6 +302,40 @@ def test_dedup_no_shared_key_cannot_merge() -> None:
     assert len(res.kept) == 2
 
 
+def test_dedup_collapses_transitive_chain() -> None:
+    # The chain-shadowing regression: A (title only) matches B on title; B also
+    # carries a DOI that C shares. Because the cluster accumulates B's DOI, C
+    # must collapse into the SAME work — not survive as a second copy of the
+    # DOI. (Under the old pairwise-vs-canonical rule, B was absorbed into A and
+    # its DOI was lost, so C wrongly survived: this test failed then.)
+    a = CandidateRef(ref_id="A", title="Same Title", author="Auth")
+    b = CandidateRef(ref_id="B", doi="10.1/X", title="Same Title", author="Auth")
+    c = CandidateRef(ref_id="C", doi="10.1/X", title="Different Title", author="Auth")
+    res = dedup_candidates([a, b, c])
+    assert len(res.kept) == 1
+    assert res.kept[0].ref_id == "A"
+    assert {d.dropped_ref_id for d in res.dropped} == {"B", "C"}
+    # C collapsed on the DOI it shares with the already-absorbed B.
+    c_drop = next(d for d in res.dropped if d.dropped_ref_id == "C")
+    assert c_drop.key_kind is DedupKeyKind.DOI
+
+
+def test_dedup_ambiguous_title_bridge_does_not_fuse_conflicting_dois() -> None:
+    # P and Q are DIFFERENT works (different DOIs) that share a title. R is a
+    # title-only record bridging them. A naive transitive union would wrongly
+    # fuse P+R+Q into one cluster; the conflict-veto must keep the two DOIs
+    # apart, assigning the ambiguous R to whichever work it matched first.
+    p = CandidateRef(ref_id="P", doi="10.1/AAA", title="Shared", author="Z")
+    r = CandidateRef(ref_id="R", title="Shared", author="Z")
+    q = CandidateRef(ref_id="Q", doi="10.1/BBB", title="Shared", author="Z")
+    res = dedup_candidates([p, r, q])
+    kept_ids = {x.ref_id for x in res.kept}
+    # P and Q (distinct DOIs) both survive; R folds into the first match (P).
+    assert "P" in kept_ids and "Q" in kept_ids
+    assert "R" not in kept_ids
+    assert len(res.kept) == 2
+
+
 def test_dedup_records_drops_by_key_and_renders() -> None:
     a = CandidateRef(ref_id="a", doi="10.1/x", title="P", author="Q")
     b = CandidateRef(ref_id="b", doi="10.1/x", title="P", author="Q")

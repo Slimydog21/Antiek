@@ -20,9 +20,13 @@ on them (intellectual honesty):
 1. **What text the gate sees, per source.** The OCR-garbage / real-word
    checks need the document body. We assess on the richest text available
    *without a connector rewrite*:
-     - public-domain: the actual downloaded body (Gutenberg plain text,
-       boilerplate-stripped) — the OCR/garble checks bite hardest here, which
-       is exactly the scanned-text source where they matter most;
+     - public-domain: the downloaded plain-text body (boilerplate-stripped)
+       WHEN Gutenberg serves a text format — that is where the OCR/garble
+       checks bite hardest. Note ``gutenberg_candidates`` PREFERS a PDF when
+       one is offered (most books have one), and a PDF body is extracted only
+       at ingest, not here; such works are gated metadata-only and flagged
+       ``[body not assessed pre-ingest]``. So the body checks run on the
+       text-format subset, honestly reported, not on every PD work;
      - arXiv: the abstract (born-digital LaTeX; full-PDF OCR garble is
        negligible, and the abstract is real prose ≥ the gate's token floor);
      - open-access: metadata only at discovery (the body is a publisher PDF

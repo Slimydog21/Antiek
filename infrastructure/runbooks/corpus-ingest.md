@@ -176,6 +176,16 @@ error-prone. Restore the snapshot instead.
   the connectors' license resolution + the SPR-04 retrieval gate. This script
   only adds documents; the gate that was already in prod governs what is
   served.
+- **It does not quality-assess every body before ingest.** The OCR/real-word
+  checks run on the text that is available *at discovery*: public-domain
+  text-format bodies and arXiv abstracts. Open-access bodies (and Gutenberg
+  works served only as PDF) are publisher/extracted PDFs fetched at ingest
+  time, so they enter on metadata + rights alone and are flagged
+  ``[body not assessed pre-ingest]`` in the plan. These are born-digital
+  sources where assessing a title would false-reject good papers; rights and
+  servability still gate them. If body-quality assessment of OA PDFs becomes a
+  requirement, it belongs in the connector's ingest path, not this
+  orchestrator.
 
 ## Re-running is safe (idempotent on identity)
 
