@@ -1,0 +1,87 @@
+"""CI drift-guard: every FastAPI route prefix MUST be in the Caddy
+``@api_routes`` allowlist, or Caddy serves the SPA HTML for that path in prod
+instead of proxying to uvicorn — silently breaking the API.
+
+The allowlist is a hand-maintained ONE-LINE ``path`` matcher in
+``infrastructure/ansible/templates/Caddyfile.j2`` (Caddy's tokenizer can't span
+lines). Because it's hand-maintained, it DRIFTS: it shipped missing
+``/library`` + ``/api/ad/*`` (SPR-09) and ``/books /coordination /corpus
+/meta-readings /speech`` — each a registered route the prod edge couldn't reach,
+discovered only by curling prod after deploy. This guard makes that drift a red
+CI check at the source, not a production surprise.
+"""
+
+from __future__ import annotations
+
+import glob
+import os
+import re
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(_HERE)
+_API_DIR = os.path.join(_REPO, "interfaces", "research", "api")
+_CADDY = os.path.join(
+    _REPO, "infrastructure", "ansible", "templates", "Caddyfile.j2"
+)
+
+# Routes deliberately NOT proxied to uvicorn (e.g. SPA-only paths). Empty
+# today — every registered API route should be reachable through the edge. If
+# a future route is intentionally SPA-only, add its top-level prefix here WITH
+# a one-line reason, so the exclusion is explicit and reviewed.
+_ALLOWLIST_EXCEPTIONS: set[str] = set()
+
+_DECORATOR = re.compile(
+    r"""@app\.(?:get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']"""
+)
+
+
+def _top_prefix(path: str) -> str:
+    seg = path.strip("/").split("/")[0].split("{")[0].strip("/")
+    return "/" + seg if seg else "/"
+
+
+def _registered_prefixes() -> set[str]:
+    out: set[str] = set()
+    for f in glob.glob(os.path.join(_API_DIR, "*.py")):
+        with open(f, encoding="utf-8") as fh:
+            for m in _DECORATOR.finditer(fh.read()):
+                p = _top_prefix(m.group(1))
+                if p != "/":
+                    out.add(p)
+    return out
+
+
+def _allowlist_prefixes() -> set[str]:
+    with open(_CADDY, encoding="utf-8") as fh:
+        line = next(l for l in fh if "@api_routes path" in l)
+    toks = line.split()[2:]  # tokens after "@api_routes" "path"
+    # tokens are glob prefixes like "/ad-impressions*" or "/api/ad/*" — strip
+    # the trailing "*" AND reduce to the top-level segment before comparing.
+    return {
+        "/" + t.strip("/").rstrip("*").strip("/").split("/")[0]
+        for t in toks
+        if t.startswith("/")
+    }
+
+
+def test_caddy_allowlist_covers_every_registered_route() -> None:
+    registered = _registered_prefixes()
+    allow = _allowlist_prefixes()
+    missing = sorted(
+        p for p in registered if p not in allow and p not in _ALLOWLIST_EXCEPTIONS
+    )
+    assert not missing, (
+        "Caddy @api_routes allowlist (infrastructure/ansible/templates/"
+        "Caddyfile.j2) is MISSING these registered route prefixes — prod would "
+        f"serve the SPA HTML for them instead of proxying to uvicorn: {missing}. "
+        "Add each to the @api_routes path line (or, if a route is intentionally "
+        "SPA-only, to _ALLOWLIST_EXCEPTIONS in this test with a reason)."
+    )
+
+
+def test_drift_guard_is_not_vacuous() -> None:
+    # If parsing silently broke (empty sets), the coverage test would pass
+    # vacuously. Pin both sides to be non-trivially populated so a regex/file
+    # regression reddens here instead of hiding the real gap.
+    assert len(_registered_prefixes()) >= 40
+    assert len(_allowlist_prefixes()) >= 40
