@@ -144,20 +144,24 @@ def check_voice_style(
 _MIN_DISTINCT_CHARS = 5
 
 
-def check_extraction_quality(note: CandidateNote) -> CheckResult:
-    """Reject extracted document text that is OCR garbage or near-empty before
-    it is ingested (SPR-03 M6).
+def assess_extraction_quality(text: str) -> CheckResult:
+    """Score a block of EXTRACTED DOCUMENT TEXT as real prose vs OCR garbage /
+    near-empty (SPR-03 M6). Operates on a plain string so it can run wherever
+    a body becomes available — both the §13.9 public-notes gate (via
+    ``check_extraction_quality`` below) AND the corpus-ingest path, which feeds
+    it the text ``read_pdf`` extracts from a fetched PDF body, BEFORE that body
+    is ingested. It is the one place these three signals live.
 
     This is a QUALITY decision only — it never touches ``content_class`` /
     servability (a passing extraction is still gated unless SPR-02's license
     logic establishes a held license; passing quality is not a license grant).
 
-    The heuristics are REUSED, not re-derived: ``acquisition.corpus_quality``
-    already owns the calibrated real-word-ratio and OCR-garbage checks with
-    their cited thresholds (``MIN_REAL_WORD_RATIO`` 0.60, ``MIN_TOKEN_COUNT``
-    20, ``MIN_ALPHA_CHAR_RATIO`` 0.50, …). We run those against the note's
-    extracted ``prose`` and add the explicit near-empty / single-repeated-glyph
-    guard the gate needs at this layer. Importing locally (like
+    The two ratio heuristics are REUSED, not re-derived: the corpus path's
+    ``acquisition.corpus_quality`` already owns the calibrated real-word-ratio
+    and OCR-garbage checks with their cited thresholds (``MIN_REAL_WORD_RATIO``
+    0.60, ``MIN_TOKEN_COUNT`` 20, ``MIN_ALPHA_CHAR_RATIO`` 0.50, …); this
+    function adds the explicit near-empty / single-repeated-glyph guard those
+    two ratio checks can paradoxically pass. Importing locally (like
     ``check_voice_style``) keeps the module load-cycle-free; the corpus module
     is pure stdlib.
     """
@@ -167,8 +171,7 @@ def check_extraction_quality(note: CandidateNote) -> CheckResult:
         check_real_word_ratio,
     )
 
-    text = note.prose or ""
-    stripped = text.strip()
+    stripped = (text or "").strip()
 
     # Near-empty guard — the cheapest, most decisive signal. An empty or
     # whitespace-only extraction is a failed extract, not a short document.
@@ -216,3 +219,12 @@ def check_extraction_quality(note: CandidateNote) -> CheckResult:
             "— extracted text is real prose",
         ),
     )
+
+
+def check_extraction_quality(note: CandidateNote) -> CheckResult:
+    """Gate adapter for the §13.9 public-notes pipeline: assess the note's
+    extracted ``prose`` with the shared ``assess_extraction_quality``. The
+    corpus-ingest path calls ``assess_extraction_quality`` directly on the PDF
+    body it extracts (it has no ``CandidateNote``), so the SAME three signals
+    bite on both ingest surfaces."""
+    return assess_extraction_quality(note.prose or "")

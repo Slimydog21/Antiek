@@ -240,25 +240,39 @@ def test_rotation_all_banned_halts_with_soonest_resume(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_ban_then_rotate_e2e_through_oa_fetch_path(tmp_path):
-    """END-TO-END (not a sentinel poke): a 429 raised inside the REAL OA
-    download_pdf path arms the persistent sentinel; a fresh throttle then sees
-    the ban and the orchestrator rotates to a non-banned source.
+def test_ban_then_rotate_e2e_through_orchestrator(tmp_path, monkeypatch):
+    """END-TO-END through the LIVE orchestrator (not a sentinel poke, not a
+    direct ``next_available_source`` call): a 429 raised inside the REAL OA
+    ``download_pdf`` path arms the persistent sentinel; the orchestrator's
+    ``discover_all`` — the production caller of source rotation — then SKIPS the
+    banned OA source and pulls the non-banned arXiv-bulk source instead.
 
-    Step 1: unpaywall.download_pdf hits a mocked 429 (transient) through the
-            OAThrottle.run_with_retry path. The throttle's max_retries is 0, so
-            the 429 propagates after one attempt — but note_response has armed
-            the sentinel for 'oa_unpaywall'.
-    Step 2: next_available_source over [oa_unpaywall, oa_pmc] now rotates to
-            oa_pmc because oa_unpaywall is banned.
+    This proves rotation as a SYSTEM behavior: the same ``SourceThrottle`` file
+    the OA fetch armed is the one ``discover_all`` reads (redirected via
+    ``ANTIEK_SOURCE_THROTTLE_PATH``), and the rotation decision is observable in
+    the returned ``rotation_log`` — not validated by reaching into the rotation
+    helper directly.
+
+    Step 1: ``unpaywall.download_pdf`` hits a mocked 429 through
+            ``OAThrottle.run_with_retry`` (max_retries=0 -> the 429 propagates
+            after one attempt) — but ``note_response`` armed the sentinel for
+            ``oa_unpaywall`` in the shared file.
+    Step 2: ``discover_all`` with --source open_access + arxiv (bulk) reads that
+            shared file, finds ``oa_unpaywall`` banned, logs the skip, and runs
+            ONLY the non-banned arXiv-bulk source — the banned OA source's
+            discovery adapter is never even entered.
     """
     from acquisition.openaccess import OAThrottle, unpaywall
+    from tools.run_corpus_ingest import build_parser, discover_all
 
     path = str(tmp_path / "throttle.json")
-    clock = _Clock()
-    persistent = SourceThrottle(state_path=path, now=clock.now, sleep=clock.sleep)
+    monkeypatch.setenv("ANTIEK_SOURCE_THROTTLE_PATH", path)
 
-    # A live fetch that the source answers with 429 (rate-limited).
+    # Step 1: arm the sentinel for oa_unpaywall through the REAL OA fetch path.
+    # SourceThrottle() inside the OA path reads ANTIEK_SOURCE_THROTTLE_PATH, so
+    # we let it default-construct (the env redirect is the shared-file contract).
+    persistent = SourceThrottle(state_path=path)
+
     def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, request=request)
 
@@ -267,25 +281,68 @@ def test_ban_then_rotate_e2e_through_oa_fetch_path(tmp_path):
         min_spacing_s=0.0, max_retries=0, sleep=lambda _s: None,
         persistent=persistent, source="oa_unpaywall",
     )
-
-    # Step 1: the 429 propagates (budget 0) AFTER arming the sentinel.
     with pytest.raises(httpx.HTTPStatusError):
         unpaywall.download_pdf(
             "https://oa.example/paper.pdf", client=client, throttle=throttle
         )
     client.close()
 
-    # The sentinel is now set for oa_unpaywall — proven by a FRESH throttle
-    # over the same file (process-restart) refusing before_request.
-    fresh = SourceThrottle(state_path=path, now=clock.now, sleep=clock.sleep)
-    assert fresh.is_banned("oa_unpaywall")
-    with pytest.raises(SourceBanned):
-        fresh.before_request("oa_unpaywall")
+    # The ban is on disk (process-restart-survivable): a fresh throttle sees it.
+    assert SourceThrottle(state_path=path).is_banned("oa_unpaywall")
 
-    # Step 2: rotation moves the run to a non-banned source instead of spinning.
-    decision = next_available_source(fresh, ["oa_unpaywall", "oa_pmc"])
-    assert decision.next_source == "oa_pmc"
-    assert [s for s, _ in decision.skipped] == ["oa_unpaywall"]
+    # Step 2: drive the LIVE orchestrator. It selects open_access (banned) +
+    # arxiv-bulk (not banned); rotation must skip OA and pull arxiv-bulk.
+    snapshot = os.path.join(_REPO, "tests/fixtures/arxiv/bulk_snapshot_sample.jsonl")
+    args = build_parser().parse_args([
+        "--source", "open_access", "--source", "arxiv",
+        "--oa-source", "unpaywall",
+        "--arxiv-source", "bulk", "--arxiv-bulk-snapshot", snapshot,
+        "--limit", "3", "--dry-run",
+    ])
+    outcome = discover_all(args)
+
+    # The banned OA source was SKIPPED (observable in the rotation log) and the
+    # non-banned arXiv-bulk source was pulled — rotation as a system behavior.
+    assert any("skip oa_unpaywall" in line for line in outcome.rotation_log)
+    assert not outcome.all_banned
+    assert outcome.candidates  # arXiv-bulk candidates came through
+    assert {c.source for c in outcome.candidates} == {"arxiv"}
+
+
+def test_all_sources_banned_halts_with_soonest_resume_e2e(tmp_path, monkeypatch):
+    """When EVERY selected source is banned, the LIVE ``discover_all`` returns a
+    clean all-banned halt carrying the soonest resume time — not a spin, not a
+    generic 'no candidates'. Proven through the orchestrator (the production
+    caller), reading the shared sentinel both sources' bans were written to."""
+    from tools.run_corpus_ingest import build_parser, discover_all
+
+    path = str(tmp_path / "throttle.json")
+    monkeypatch.setenv("ANTIEK_SOURCE_THROTTLE_PATH", path)
+
+    t = SourceThrottle(state_path=path)
+    # gutendex banned at the default floor (sooner); arxiv_pdf banned longer.
+    base = t.banned_until  # noqa: F841  (read for clarity below)
+    t.note_response("gutendex", 503)
+    soonest = t.banned_until("gutendex")
+    t.note_response(
+        "arxiv_pdf", 429,
+        {"Retry-After": str(int(DEFAULT_BAN_BACKOFF_S + 7200))},
+    )
+
+    args = build_parser().parse_args([
+        "--source", "public_domain", "--pd-curated",
+        "--source", "arxiv", "--arxiv-source", "bulk",
+        "--arxiv-bulk-snapshot",
+        os.path.join(_REPO, "tests/fixtures/arxiv/bulk_snapshot_sample.jsonl"),
+        "--limit", "3", "--dry-run",
+    ])
+    outcome = discover_all(args)
+
+    assert outcome.all_banned
+    assert not outcome.candidates
+    # The soonest resume is gutendex's default-floor ban, not arxiv's longer one.
+    assert outcome.soonest_resume == pytest.approx(soonest)
+    assert any("ALL sources banned" in line for line in outcome.rotation_log)
 
 
 def test_banned_source_before_request_never_fetches(tmp_path):

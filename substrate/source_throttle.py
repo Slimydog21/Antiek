@@ -284,6 +284,19 @@ class SourceThrottle:
         all_state.sources[source] = state
         self._write_all(all_state)
 
+    def note_response_at(self, source: str, banned_until: float) -> None:
+        """Arm ``source``'s ban sentinel at an EXPLICIT absolute expiry, taking
+        the LATER of any existing ban and the new one so a mirror never shortens
+        an active ban. Used to bridge a ban computed elsewhere (e.g. the
+        dedicated ``ArxivThrottle``'s export-endpoint ban) into this shared file
+        so the orchestrator's source rotation can see it — without re-deriving a
+        default that could disagree with the source-of-truth expiry."""
+        all_state = self._read_all()
+        state = self._source_state(all_state, source)
+        state.banned_until = max(state.banned_until, float(banned_until))
+        all_state.sources[source] = state
+        self._write_all(all_state)
+
 
 # ---------------------------------------------------------------------------
 # M3 — exponential backoff with jitter (transient-failure retry schedule).
