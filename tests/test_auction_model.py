@@ -91,6 +91,84 @@ def test_model_is_calibrated_on_holdout() -> None:
         assert abs(b.mean_predicted - b.mean_empirical) < 0.25
 
 
+def _miscalibrated_dataset(
+    n: int = 600,
+) -> tuple[list[tuple[float, ...]], list[float]]:
+    """A deterministic dataset whose labels come from a logit the model can
+    recover IN DIRECTION but is systematically OVER-CONFIDENT about in scale.
+
+    We generate labels as ``σ(GAIN · (w·x) + SHIFT)`` with a known affine
+    distortion (GAIN >> 1, SHIFT pulling toward the extremes). A logistic fit on
+    the raw features recovers a w pointing the right way, but its UNCALIBRATED
+    sigmoid ``σ(w·x)`` is far less confident than the true labels — so the raw
+    sigmoid is badly mis-calibrated. The Platt scaler (calib_a, calib_b) exists
+    precisely to absorb that affine gap; this dataset makes calibration do real
+    work, so a no-op Platt step would leave ECE high. No RNG — fixed LCG."""
+    true_w = [0.0, 1.5, 1.0, 0.8, 0.6, 0.9, 0.3, 0.2, 0.1]
+    assert len(true_w) == FEATURE_DIM
+    # The deliberate mis-calibration: amplify the logit hard and shove it
+    # outward so the empirical labels are far more extreme (0-or-1-ish) than the
+    # L2-regularized logistic fit can reach within its fixed iteration budget —
+    # so σ(w·x) stays systematically UNDER-confident (high raw ECE) while the
+    # Platt scaler, which can apply an unbounded affine on the logit, absorbs it.
+    gain = 12.0
+    shift_center = 2.0  # subtract the typical logit mean so labels span (0,1)
+    feats: list[tuple[float, ...]] = []
+    labels: list[float] = []
+    state = 98765
+    for _ in range(n):
+        x = [1.0]
+        for _j in range(FEATURE_DIM - 1):
+            state = (1103515245 * state + 12345) % (2**31)
+            x.append((state % 1000) / 1000.0)
+        xt = tuple(x)
+        z = sum(w * xi for w, xi in zip(true_w, xt, strict=True))
+        p = 1.0 / (1.0 + math.exp(-(gain * (z - shift_center))))
+        feats.append(xt)
+        labels.append(p)
+    return feats, labels
+
+
+def test_calibration_measurably_reduces_ece_vs_uncalibrated() -> None:
+    """Calibration must DO WORK: on a deliberately mis-calibrated dataset, the
+    Platt-calibrated prediction's ECE is well below the raw (uncalibrated)
+    sigmoid's ECE. This FAILS if calib_a/calib_b were removed or forced to a
+    no-op (a=1, b=0) — i.e. the test bites on calibration, unlike the
+    well-calibrated holdout case where the scaler is near-identity."""
+    feats, labels = _miscalibrated_dataset(n=600)
+    # Train (incl. Platt) on the first 400; measure on the held-out last 200.
+    model = train_model(feats[:400], labels[:400])
+    eval_x, eval_y = feats[400:], labels[400:]
+
+    # Calibrated ECE: bins of model.predict (which applies the Platt scaler).
+    cal_bins = reliability_table(model, eval_x, eval_y, n_bins=10)
+    cal_ece = expected_calibration_error(cal_bins)
+
+    # Raw/uncalibrated ECE: the same weights but σ(w·x) with NO Platt rescale —
+    # exactly what the model would emit if calibration were a no-op.
+    raw_model = AuctionModel(
+        weights=model.weights,
+        calib_a=1.0,
+        calib_b=0.0,
+        feature_schema_version=model.feature_schema_version,
+        model_schema_version=model.model_schema_version,
+        n_train=model.n_train,
+    )
+    raw_bins = reliability_table(raw_model, eval_x, eval_y, n_bins=10)
+    raw_ece = expected_calibration_error(raw_bins)
+
+    # The raw sigmoid must be CLEARLY mis-calibrated (else the test would not
+    # bite), and calibration must cut the error by a non-trivial margin.
+    assert raw_ece > 0.05, (
+        f"raw uncalibrated ECE {raw_ece} is not high enough for the test to "
+        "bite — the dataset is not actually mis-calibrated"
+    )
+    assert cal_ece < 0.5 * raw_ece, (
+        f"calibrated ECE {cal_ece} is not measurably below half the raw ECE "
+        f"{raw_ece} — the Platt calibration is doing no work"
+    )
+
+
 def test_model_learns_signal_beats_constant() -> None:
     """A trained model's mean-squared error must beat predicting the mean label
     (otherwise it learned nothing — the lift would be fake)."""

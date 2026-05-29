@@ -32,7 +32,7 @@ DATA SOURCE (offline, runnable on whatever it is given):
     from the substrate (READ-ONLY). If the corpus is empty/sparse it SAYS SO and
     falls back to the bundled synthetic fixture.
   * With no ``--db-path`` (the default for the verification gate) it runs on a
-    DETERMINISTIC SYNTHETIC FIXTURE and prints "[fixture: synthetic]" so the
+    DETERMINISTIC SYNTHETIC FIXTURE and prints "[data source: synthetic]" so the
     number is never mistaken for a production result.
 
 This tool is READ-ONLY against recorded data and writes nothing to any DB. It
@@ -106,14 +106,23 @@ class RankerResult:
 
 @dataclass(frozen=True)
 class ABReport:
-    """The honest head-to-head report. ``lift`` is learned-minus-rule on
-    value-per-impression; ``leader`` names the winner under the
-    measurably-better rule (rule-based leads on a tie or a non-positive lift —
-    the learned ranker leads ONLY on a positive measured lift)."""
+    """The honest head-to-head report. ``rule`` / ``learned`` are the HELD-OUT
+    (out-of-sample) results — the headline. ``lift`` is learned-minus-rule on
+    value-per-impression on that held-out partition; ``leader`` names the winner
+    under the measurably-better rule (rule-based leads on a tie or a non-positive
+    lift — the learned ranker leads ONLY on a positive measured lift).
+
+    ``in_sample_rule`` / ``in_sample_learned`` are the SAME-DATA contrast (the
+    model scored on the sessions it trained on); they are reported only labeled
+    ``[in-sample]`` so the in-sample number is never mistaken for the headline.
+    They are ``None`` when no split was made (e.g. a directly-constructed
+    report)."""
 
     rule: RankerResult
     learned: RankerResult
     data_source: str
+    in_sample_rule: Optional[RankerResult] = None
+    in_sample_learned: Optional[RankerResult] = None
 
     @property
     def lift(self) -> float:
@@ -125,9 +134,29 @@ class ABReport:
         return (self.lift / base * 100.0) if base else 0.0
 
     @property
+    def in_sample_lift(self) -> Optional[float]:
+        if self.in_sample_rule is None or self.in_sample_learned is None:
+            return None
+        return (
+            self.in_sample_learned.value_per_impression
+            - self.in_sample_rule.value_per_impression
+        )
+
+    @property
+    def in_sample_lift_pct(self) -> Optional[float]:
+        if self.in_sample_rule is None:
+            return None
+        lift = self.in_sample_lift
+        if lift is None:
+            return None
+        base = self.in_sample_rule.value_per_impression
+        return (lift / base * 100.0) if base else 0.0
+
+    @property
     def leader(self) -> str:
         # Measurably-better rule: learned must STRICTLY beat rule-based by a
-        # non-trivial margin to lead; otherwise rule-based stays the leader.
+        # non-trivial margin to lead; otherwise rule-based stays the leader. The
+        # lift here is the HELD-OUT lift — leadership is decided out-of-sample.
         return "learned" if self.lift > 1e-9 else "rule-based"
 
 
@@ -160,38 +189,93 @@ def _score_ranker(
     )
 
 
-def evaluate(
-    sessions: Sequence[EvalSession], *, data_source: str
-) -> ABReport:
-    """Train a model on the sessions' (feature, realized-value) pairs, then
-    score learned vs rule-based on the SAME sessions and report the lift.
+def train_from_sessions(sessions: Sequence[EvalSession]) -> AuctionModel:
+    """Train a calibrated value scorer from recorded/synthetic sessions.
 
-    The training label is each candidate's realized value normalized to [0,1]
-    over the dataset (so the logistic's [0,1] target is well-defined). Note the
-    train-and-eval-on-same-sessions design is the offline-replay convention; the
-    retrain runbook describes the held-out promote gate for production."""
-    # Build the training set: one (features, label) per (session, candidate).
+    The SINGLE owner of the session → (feature, label) → model transform.
+    ``evaluate()`` and the retrain runbook both call THIS — neither re-hand-rolls
+    the loop. The training label is each candidate's realized value normalized to
+    [0,1] over the supplied sessions (so the logistic's [0,1] target is
+    well-defined). Deterministic: no shuffle, no RNG — ``train_model`` itself is
+    fixed-init batch gradient descent, so the same sessions yield a byte-identical
+    artifact. Raises if there are no (session, candidate) pairs to learn from."""
     feats: list[tuple[float, ...]] = []
-    raw_labels: list[float] = []
     pairs: list[tuple[PageContext, TargetedInventoryItem, float]] = []
     for s in sessions:
         for ti in s.candidates:
             v = s.realized_value.get(ti.item.inventory_id, 0.0)
             pairs.append((s.context, ti, v))
     if not pairs:
-        raise ValueError("no (session, candidate) pairs to evaluate")
+        raise ValueError("no (session, candidate) pairs to train from")
 
     max_v = max(v for _, _, v in pairs) or 1.0
+    labels: list[float] = []
     for ctx, ti, v in pairs:
         cand = AuctionCandidate(item=ti.item, targeting=ti.targeting)
         feats.append(extract_features(ctx, cand))
-        raw_labels.append(min(1.0, max(0.0, v / max_v)))
+        labels.append(min(1.0, max(0.0, v / max_v)))
+    return train_model(feats, labels)
 
-    model = train_model(feats, raw_labels)
 
-    rule = _score_ranker("rule-based", sessions, model=None)
-    learned = _score_ranker("learned", sessions, model=model)
-    return ABReport(rule=rule, learned=learned, data_source=data_source)
+# Fraction of sessions held out for OUT-OF-SAMPLE evaluation. Deterministic
+# (no shuffle): the first (1 - this) fraction trains, the tail evaluates.
+EVAL_HOLDOUT_FRACTION = 0.4
+
+
+def evaluate(
+    sessions: Sequence[EvalSession], *, data_source: str
+) -> ABReport:
+    """Train on a TRAIN partition, report the HEADLINE lift on a HELD-OUT
+    (out-of-sample) eval partition — the honest lift, not an in-sample one.
+
+    The split is a deterministic prefix/suffix cut (no shuffle, reproducible): the
+    leading ``1 - EVAL_HOLDOUT_FRACTION`` of sessions trains the model, the
+    trailing ``EVAL_HOLDOUT_FRACTION`` evaluates learned-vs-rule lift. The model
+    never sees the eval sessions during training, so the reported lift is a real
+    generalization estimate rather than the overstated train-on-eval number. An
+    in-sample contrast (model scored on its own training sessions) is also
+    computed and surfaced ONLY labeled ``[in-sample]``.
+
+    When there are too few sessions to split (≤1), it falls back to training and
+    evaluating on all of them and reports that single number as the headline
+    (still honest — it just cannot hold data out)."""
+    if not any(s.candidates for s in sessions):
+        raise ValueError("no (session, candidate) pairs to evaluate")
+
+    n = len(sessions)
+    n_eval = int(round(n * EVAL_HOLDOUT_FRACTION))
+    # Need at least one training session AND one eval session to split; else
+    # degrade to train==eval (documented; honest about the lack of holdout).
+    can_split = n_eval >= 1 and (n - n_eval) >= 1
+    if can_split:
+        train_sessions = list(sessions[: n - n_eval])
+        eval_sessions = list(sessions[n - n_eval :])
+    else:
+        train_sessions = list(sessions)
+        eval_sessions = list(sessions)
+
+    model = train_from_sessions(train_sessions)
+
+    # Headline: out-of-sample (or full-set when we could not hold out).
+    rule = _score_ranker("rule-based", eval_sessions, model=None)
+    learned = _score_ranker("learned", eval_sessions, model=model)
+
+    # Contrast: in-sample (model scored on the sessions it trained on). Only
+    # meaningful when we actually held data out; otherwise it equals the headline
+    # and we leave it None to avoid a misleading duplicate.
+    in_rule: Optional[RankerResult] = None
+    in_learned: Optional[RankerResult] = None
+    if can_split:
+        in_rule = _score_ranker("rule-based", train_sessions, model=None)
+        in_learned = _score_ranker("learned", train_sessions, model=model)
+
+    return ABReport(
+        rule=rule,
+        learned=learned,
+        data_source=data_source,
+        in_sample_rule=in_rule,
+        in_sample_learned=in_learned,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -326,9 +410,12 @@ def load_sessions(db_path: Optional[str]) -> tuple[list[EvalSession], str]:
 
 
 def format_report(report: ABReport) -> str:
+    held_out = report.in_sample_rule is not None
+    eval_kind = "HELD-OUT (out-of-sample)" if held_out else "full set (no holdout)"
     lines = [
         "=== SPR-10 Ad-Auction A/B Eval: learned vs rule-based ===",
         f"[data source: {report.data_source}]",
+        f"[eval partition: {eval_kind} — the headline lift is computed here]",
         "",
         "metric: attention-weighted realized value per filled impression",
         "        (SPR-05 per-second frame value — the platform's unit of account)",
@@ -341,10 +428,19 @@ def format_report(report: ABReport) -> str:
         f"{report.learned.n_filled:>9}{report.learned.total_value:>14.4f}"
         f"{report.learned.value_per_impression:>12.5f}",
         "",
-        f"lift (learned - rule): {report.lift:+.6f} value/imp "
-        f"({report.lift_pct:+.2f}%)",
-        f"LEADER under measurably-better rule: {report.leader.upper()}",
+        f"HEADLINE lift (learned - rule, {eval_kind}): "
+        f"{report.lift:+.6f} value/imp ({report.lift_pct:+.2f}%)",
     ]
+    if held_out and report.in_sample_lift is not None:
+        lines.append(
+            f"  [in-sample] contrast lift (train-on-eval, NOT the headline): "
+            f"{report.in_sample_lift:+.6f} value/imp "
+            f"({report.in_sample_lift_pct:+.2f}%)"
+        )
+    lines.append(
+        f"LEADER under measurably-better rule (decided out-of-sample): "
+        f"{report.leader.upper()}"
+    )
     if report.leader == "rule-based":
         lines.append(
             "  → learned did NOT measurably beat rule-based; rule-based stays the "

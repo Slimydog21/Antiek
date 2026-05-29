@@ -69,27 +69,30 @@ leads ONLY on a positive measured lift.
 Only if step 1 shows a positive lift on **recorded** data. Train and write the
 small JSON artifact (a handful of floats + a version stamp):
 
+Use the SHARED training helper `train_from_sessions(sessions)` — the one owner
+of the session → (feature, label) → model transform. The A/B harness's
+`evaluate()` calls the SAME helper, so the artifact you promote is trained by
+exactly the code the eval measured (no hand-rolled, drift-prone copy of the
+loop here). It is deterministic: the same sessions yield a byte-identical
+artifact.
+
 ```bash
 ./.venv/bin/python - <<'PY'
-from tools.auction_ab_eval import load_sessions, evaluate
-from substrate.ad_inventory.auction_features import AuctionCandidate, extract_features
-from substrate.ad_inventory.auction_model import train_model
+from tools.auction_ab_eval import load_sessions, train_from_sessions
 
 sessions, source = load_sessions("/home/antiek/.antiek/research_graph.duckdb")
 print("data source:", source)
-feats, labels, pairs = [], [], []
-for s in sessions:
-    for ti in s.candidates:
-        pairs.append((s.context, ti, s.realized_value.get(ti.item.inventory_id, 0.0)))
-maxv = max(v for _, _, v in pairs) or 1.0
-for ctx, ti, v in pairs:
-    feats.append(extract_features(ctx, AuctionCandidate(item=ti.item, targeting=ti.targeting)))
-    labels.append(min(1.0, max(0.0, v / maxv)))
-model = train_model(feats, labels)
+model = train_from_sessions(sessions)
 open("/home/antiek/.antiek/auction_model.json", "w").write(model.to_json())
 print("wrote artifact; n_train =", model.n_train)
 PY
 ```
+
+> Note: `train_from_sessions` trains on ALL the sessions you give it — for the
+> promoted production artifact that is intentional (use every recorded example).
+> The A/B harness's `evaluate()` instead trains on a TRAIN partition and reports
+> lift on a HELD-OUT partition, so the headline lift you read in step 1 is an
+> honest out-of-sample number, not the in-sample fit.
 
 The artifact stamps `feature_schema_version` + `model_schema_version`; loading
 refuses a stale feature schema (the coefficients would be positionally wrong),

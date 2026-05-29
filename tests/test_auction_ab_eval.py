@@ -44,7 +44,15 @@ def test_runs_on_synthetic_fixture_and_reports_lift() -> None:
     sessions, source = load_sessions(None)
     assert "synthetic" in source
     report = evaluate(sessions, data_source=source)
-    assert report.rule.n_sessions == len(sessions)
+    # The headline is evaluated on a HELD-OUT partition — a non-empty PROPER
+    # subset of the sessions (the model never trained on it).
+    assert 0 < report.rule.n_sessions < len(sessions)
+    assert report.rule.n_sessions == report.learned.n_sessions
+    # The in-sample contrast partition is the rest and is disjoint in size.
+    assert report.in_sample_rule is not None
+    assert (
+        report.in_sample_rule.n_sessions + report.rule.n_sessions == len(sessions)
+    )
     assert report.learned.n_filled > 0
     # Lift is a finite number (may be +/-); the report names a leader honestly.
     assert isinstance(report.lift, float)

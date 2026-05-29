@@ -26,10 +26,17 @@ rule-based matcher would return whenever the learned path cannot run.
 
 WHAT THE LEARNED PATH ACTUALLY CHANGES:
 It does NOT bypass ``MIN_MATCH_SCORE`` or the flat-topic fallback — it only
-reorders the targeted candidates by predicted value before the existing
-selection runs, and (when ≥1 candidate clears the rule threshold) picks the
-clearing candidate with the highest predicted value × CPM. The rule-based
-selection's invariants (threshold, flat-fallback, determinism) are preserved.
+reorders the targeted candidates by the SINGLE auction objective
+(predicted value × CPM — the Axon "expected value of the impression") before
+the existing selection runs, and (when ≥1 candidate clears the rule threshold)
+picks the clearing candidate with the highest predicted value × CPM. The
+rule-based selection's invariants (threshold, flat-fallback, determinism) are
+preserved.
+
+ONE OBJECTIVE, ONE FEATURE EXTRACTION (SPR-10 sharpen): every candidate's
+features are extracted AT MOST ONCE per ``select_ad`` call, and the ordering
+``rank_candidates`` produces is the SAME objective the selection consumes — no
+candidate is scored twice and no ordering is computed then thrown away.
 """
 
 from __future__ import annotations
@@ -76,66 +83,99 @@ def _load_model_from_env() -> Optional[AuctionModel]:
         return None
 
 
+def _score_once(
+    context: PageContext,
+    targeted_inventory: list[TargetedInventoryItem],
+    model: AuctionModel,
+) -> list[tuple[float, TargetedInventoryItem]]:
+    """Extract features and predict value for each candidate EXACTLY ONCE.
+
+    Returns ``(predicted_value, ti)`` pairs in input order. This is the single
+    feature-extraction point per ``select_ad`` call; both ``rank_candidates``
+    and the selection path consume its output, so no candidate is ever scored
+    twice. A feature/predict error PROPAGATES (it is not swallowed here) so the
+    learned path degrades WHOLESALE to the rule-based matcher via
+    ``select_ad``'s guard — a broken model must never produce an arbitrary pick
+    from a demoted score; it must fall back to the proven rule-based result
+    (rigor #1: a model problem never blanks or distorts a slot)."""
+    scored: list[tuple[float, TargetedInventoryItem]] = []
+    for ti in targeted_inventory:
+        cand = AuctionCandidate(item=ti.item, targeting=ti.targeting)
+        value = model.predict(extract_features(context, cand))
+        scored.append((value, ti))
+    return scored
+
+
+def _ordered_by_objective(
+    scored: list[tuple[float, TargetedInventoryItem]],
+) -> list[tuple[float, TargetedInventoryItem]]:
+    """Sort scored candidates descending by the SINGLE auction objective —
+    predicted_value × CPM (the Axon "expected value of the impression") —
+    tie-broken by CPM then inventory_id for determinism (matching the
+    rule-based ordering discipline)."""
+    return sorted(
+        scored,
+        key=lambda sv: (
+            sv[0] * float(sv[1].item.cpm_usd),
+            float(sv[1].item.cpm_usd),
+            sv[1].item.inventory_id,
+        ),
+        reverse=True,
+    )
+
+
 def rank_candidates(
     *,
     context: PageContext,
     targeted_inventory: list[TargetedInventoryItem],
     model: AuctionModel,
 ) -> list[TargetedInventoryItem]:
-    """Re-order the targeted inventory by the model's predicted value.
+    """Re-order the targeted inventory by the SINGLE auction objective.
 
-    PURE w.r.t. the model (no I/O): for each candidate, extract M1 features and
-    score them. Sort descending by predicted value, tie-break by CPM then
-    inventory_id (matching the rule-based determinism). Any per-candidate
-    feature/predict error places that candidate at the BACK rather than
-    aborting the whole ranking — one bad candidate cannot blank the slot."""
-    scored: list[tuple[float, float, str, TargetedInventoryItem]] = []
-    for ti in targeted_inventory:
-        try:
-            cand = AuctionCandidate(item=ti.item, targeting=ti.targeting)
-            value = model.predict(extract_features(context, cand))
-        except Exception:
-            value = -1.0  # demote a candidate that errors; never abort
-        scored.append((value, float(ti.item.cpm_usd), ti.item.inventory_id, ti))
-    scored.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
-    return [t[3] for t in scored]
+    PURE w.r.t. the model (no I/O): each candidate's M1 features are extracted
+    and scored ONCE, then the list is ordered descending by
+    predicted_value × CPM (the Axon "expected value of the impression"),
+    tie-broken by CPM then inventory_id (matching the rule-based determinism).
+    This is the SAME objective the selection path uses, so the ordering this
+    returns is the one actually consumed — nothing is computed then discarded.
+    A feature/predict error propagates (so a broken model degrades wholesale to
+    rule-based in ``select_ad`` rather than emitting an arbitrary order)."""
+    scored = _score_once(context, targeted_inventory, model)
+    return [ti for _, ti in _ordered_by_objective(scored)]
 
 
 def _learned_select(
     *,
     context: PageContext,
-    ranked: list[TargetedInventoryItem],
-    model: AuctionModel,
+    scored: list[tuple[float, TargetedInventoryItem]],
     flat_inventory_fallback: Optional[list[AdInventoryItem]],
 ) -> Optional[AdInventoryItem]:
-    """Pick from the rule-eligible candidates by predicted value × CPM.
+    """Pick from the rule-eligible candidates by the single objective.
 
-    Preserves the rule-based invariants: only candidates clearing
-    ``MIN_MATCH_SCORE`` (and with non-empty targeting) are eligible; if none
-    clear, delegate to the rule-based core so the flat-topic fallback still
-    runs. Among clearing candidates the learned path orders by
-    predicted_value × CPM (the Axon "expected value of the impression" objective),
-    tie-broken by CPM then inventory_id for determinism."""
-    eligible: list[tuple[float, float, str, AdInventoryItem]] = []
-    for ti in ranked:
-        if ti.targeting.is_empty:
-            continue
-        if score_inventory_match(context, ti.targeting) < MIN_MATCH_SCORE:
-            continue
-        cand = AuctionCandidate(item=ti.item, targeting=ti.targeting)
-        value = model.predict(extract_features(context, cand))
-        ev = value * float(ti.item.cpm_usd)
-        eligible.append((ev, float(ti.item.cpm_usd), ti.item.inventory_id, ti.item))
+    Consumes the ALREADY-SCORED ``(predicted_value, ti)`` pairs (features were
+    extracted once in :func:`_score_once`; this re-extracts nothing). Preserves
+    the rule-based invariants: only candidates clearing ``MIN_MATCH_SCORE`` (and
+    with non-empty targeting) are eligible; if none clear, delegate to the
+    rule-based core so the flat-topic fallback still runs. Among clearing
+    candidates the learned path picks the highest predicted_value × CPM (the
+    Axon "expected value of the impression" objective), tie-broken by CPM then
+    inventory_id for determinism."""
+    eligible = [
+        (value, ti)
+        for value, ti in scored
+        if not ti.targeting.is_empty
+        and score_inventory_match(context, ti.targeting) >= MIN_MATCH_SCORE
+    ]
 
     if eligible:
-        eligible.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
-        return eligible[0][3]
+        best = _ordered_by_objective(eligible)[0][1]
+        return best.item
 
     # No targeted candidate cleared the threshold — defer to the rule-based
     # matcher so the flat-topic fallback (un-retagged advertisers) still serves.
     return select_targeted_ad_rule_based(
         context=context,
-        targeted_inventory=ranked,
+        targeted_inventory=[ti for _, ti in scored],
         flat_inventory_fallback=flat_inventory_fallback,
     )
 
@@ -175,15 +215,13 @@ def select_ad(
         )
 
     try:
-        ranked = rank_candidates(
-            context=context,
-            targeted_inventory=targeted_inventory,
-            model=eff_model,
-        )
+        # Extract features + predict ONCE per candidate; the selection path
+        # consumes these scores directly (no second extraction, no discarded
+        # ordering — they share the one predicted_value × CPM objective).
+        scored = _score_once(context, targeted_inventory, eff_model)
         return _learned_select(
             context=context,
-            ranked=ranked,
-            model=eff_model,
+            scored=scored,
             flat_inventory_fallback=flat_inventory_fallback,
         )
     except Exception:
