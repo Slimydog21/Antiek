@@ -114,7 +114,10 @@ def test_servability_projection_servable_classes():
     assert servability_of("user_owned") is ServabilityStatus.PLATFORM_AUTHORED
     assert servability_of("user_public_contribution") is ServabilityStatus.PLATFORM_AUTHORED
     assert servability_of("opt_in_licensed") is ServabilityStatus.PUBLISHER_OPTED_IN
-    for cc in ("public_domain", "user_owned", "opt_in_licensed"):
+    # 2026-05-29 remap: source_declared_open (CC-BY/CC-BY-SA) is its own servable
+    # status, distinct from PUBLISHER_OPTED_IN.
+    assert servability_of("source_declared_open") is ServabilityStatus.SOURCE_DECLARED_OPEN
+    for cc in ("public_domain", "user_owned", "opt_in_licensed", "source_declared_open"):
         assert is_servable_full_text(servability_of(cc))
 
 
@@ -132,7 +135,7 @@ def test_projection_allowlist_matches_constant():
     projected = {
         cc for cc in (
             "public_domain", "user_owned", "user_public_contribution",
-            "opt_in_licensed", "restricted_pending_opt_in",
+            "opt_in_licensed", "source_declared_open", "restricted_pending_opt_in",
         )
         if is_servable_full_text(servability_of(cc))
     }

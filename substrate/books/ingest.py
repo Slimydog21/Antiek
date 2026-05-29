@@ -46,6 +46,7 @@ from .servability import servability_of
 _VALID_BOOK_CONTENT_CLASSES: frozenset[str] = frozenset({
     "public_domain",
     "opt_in_licensed",
+    "source_declared_open",  # source-declared open license (CC-BY / CC-BY-SA); servable
     "user_owned",
     "user_public_contribution",
     "restricted_pending_opt_in",

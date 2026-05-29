@@ -26,6 +26,8 @@ from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 from acquisition.licenses_core import (  # noqa: F401
     CC_LICENSE_ROWS,
     CC_PDM_ROW,
+    PUBLIC_DOMAIN_CONTENT_CLASS,
+    SOURCE_DECLARED_OPEN_CONTENT_CLASS,
     LicenseResolution,
     LicenseRow,
     license_basis_string,
@@ -87,24 +89,35 @@ _CC_SHORT_CODE_ROWS: tuple[LicenseRow, ...] = (
     ),
     LicenseRow(
         match="cc-by-sa",
-        content_class="opt_in_licensed",
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
         redistributable=True,
         license_name="CC BY-SA",
-        rationale="CC BY-SA permits redistribution with attribution + share-alike.",
+        rationale=(
+            "CC BY-SA permits redistribution with attribution + share-alike "
+            "-> servable as source_declared_open (not a §9.10 publisher "
+            "opt-in; 2026-05-29 remap)."
+        ),
     ),
     LicenseRow(
         match="cc-by",
-        content_class="opt_in_licensed",
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
         redistributable=True,
         license_name="CC BY",
-        rationale="CC BY permits redistribution with attribution -> servable.",
+        rationale=(
+            "CC BY permits redistribution with attribution -> servable as "
+            "source_declared_open (not a §9.10 publisher opt-in; 2026-05-29 "
+            "remap)."
+        ),
     ),
     LicenseRow(
         match="cc0",
-        content_class="opt_in_licensed",
+        content_class=PUBLIC_DOMAIN_CONTENT_CLASS,
         redistributable=True,
         license_name="CC0 1.0 (public-domain dedication)",
-        rationale="CC0 waives all rights -> freely redistributable.",
+        rationale=(
+            "CC0 waives all rights -> public_domain (no rights holder, no "
+            "attribution obligation; 2026-05-29 remap)."
+        ),
     ),
 )
 
@@ -125,8 +138,12 @@ def resolve_oa_license(license_uri: Optional[str]) -> LicenseResolution:
 
     Deny-by-default: ``None`` / empty / unmatched (including bronze with no
     declared license) resolves to ``GATED_DEFAULT_CONTENT_CLASS`` with
-    ``redistributable=False``. CC-BY / CC-BY-SA / CC0 (URI or short code) ->
-    servable; the CC Public-Domain Mark -> public_domain (servable); bronze /
-    publisher-specific / unknown -> gated.
+    ``redistributable=False``. Resolved classes (2026-05-29 remap):
+      - CC-BY / CC-BY-SA (URI or short code) -> ``source_declared_open``
+        (servable; source-declared open license, NOT a §9.10 publisher opt-in);
+      - CC0 (URI or short code) -> ``public_domain`` (servable; public-domain
+        dedication);
+      - CC Public-Domain Mark -> ``public_domain`` (servable);
+      - bronze / publisher-specific / CC-NC / CC-ND / unknown -> gated.
     """
     return resolve_against_table(license_uri, _OA_TABLE)

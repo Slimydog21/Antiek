@@ -361,9 +361,11 @@ def ingest_paper_with_rights(
     The rights flow:
 
       1. Resolve ``paper.license_uri`` via ``acquisition.arxiv.licenses``.
-         CC-BY / CC-BY-SA / CC0 -> ``opt_in_licensed`` (servable). arXiv
-         default terms / NC / ND / unknown / missing -> gated. The
-         unknown-fallback is deny-by-default — never guessed servable.
+         CC-BY / CC-BY-SA -> ``source_declared_open`` and CC0 ->
+         ``public_domain`` (both servable; 2026-05-29 remap — neither is a
+         §9.10 publisher opt-in). arXiv default terms / NC / ND / unknown /
+         missing -> gated. The unknown-fallback is deny-by-default — never
+         guessed servable.
       2. Build a ``license_basis`` audit string (license name + URI for
          servable; a "why gated" string otherwise).
       3. Fetch the PDF (injected ``pdf_bytes`` in tests; ``fetch_pdf`` or

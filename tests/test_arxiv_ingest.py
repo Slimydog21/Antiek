@@ -6,8 +6,8 @@ and the PDF is injected as bytes (a tiny real PDF built via
 network.
 
 The asserted split is the invariant in action:
-  - a CC-BY paper -> opt_in_licensed, servable_full_text True, basis names
-    the license + URI;
+  - a CC-BY paper -> source_declared_open (2026-05-29 remap), servable_full_text
+    True, basis names the license + URI;
   - a default-arXiv-terms paper -> gated, servable_full_text False.
 And --dry-run writes nothing.
 """
@@ -115,7 +115,8 @@ def test_cc_by_paper_ingests_servable(temp_db_and_events):
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
     )
-    assert res.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY -> source_declared_open (servable, not §9.10 opt-in).
+    assert res.content_class == "source_declared_open"
     assert res.redistributable is True
     assert res.servable_full_text is True
     # Basis names the license + URI for the audit trail.
@@ -180,7 +181,8 @@ def test_ingest_persists_basis_in_substrate(temp_db_and_events):
         con.close()
     assert row is not None
     assert "creativecommons.org/licenses/by/4.0" in row[0]
-    assert content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY -> source_declared_open.
+    assert content_class == "source_declared_open"
 
 
 def test_empty_pdf_raises(temp_db_and_events):
@@ -300,7 +302,8 @@ def test_cli_real_run_splits_servable_and_gated(
     finally:
         con.close()
     classes = sorted(r[1] for r in rows)
-    assert "opt_in_licensed" in classes
+    # 2026-05-29 remap: the CC-BY paper now lands in source_declared_open.
+    assert "source_declared_open" in classes
     assert GATED_DEFAULT_CONTENT_CLASS in classes
 
 

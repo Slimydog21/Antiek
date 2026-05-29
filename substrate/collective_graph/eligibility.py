@@ -16,9 +16,13 @@ class CollectiveGraphDocument:
     document_id: str
     note_id: str
     owner_user_id: str
-    content_class: str  # "user_public_contribution" | "opt_in_licensed" | "public_domain"
+    content_class: str  # "user_public_contribution" | "opt_in_licensed" | "source_declared_open" | "public_domain"
     quality_gate_result: Optional[QualityGateResult]
-    # The §9.10 publisher state — only relevant for content_class="opt_in_licensed"
+    # The claim state of the rights holder. Relevant for classes that HAVE a
+    # rights holder with attribution rights but require a claim before payout:
+    # "opt_in_licensed" (§9.10 publisher claim) and "source_declared_open"
+    # (CC-BY / CC-BY-SA: attribution is owed but the holder must still claim to
+    # be paid). public_domain has no holder to claim, so this is ignored there.
     ip_holder_claimed: bool = False
 
 
@@ -41,15 +45,28 @@ NON_ATTRIBUTABLE_CONTENT_CLASSES = frozenset({
 })
 
 
+# Content classes that DO have a rights holder with attribution rights but
+# must NOT pay out until that holder claims. opt_in_licensed is a §9.10
+# publisher; source_declared_open (CC-BY / CC-BY-SA) carries an attribution
+# obligation to an as-yet-unclaimed holder. Until the holder claims, the
+# accrual sits in escrow rather than being released (mirrors the §9.10
+# escrow-not-payout gap). public_domain is NOT here: it has no holder to claim.
+CLAIM_GATED_CONTENT_CLASSES = frozenset({
+    "opt_in_licensed",
+    "source_declared_open",
+})
+
+
 def is_attribution_eligible(doc: CollectiveGraphDocument) -> bool:
     """Per §13.9: a document earns rev-share IFF
     (a) its gate result is PASS_PUBLIC, AND
     (b) its content_class permits attribution, AND
-    (c) for publisher-licensed content, the publisher has claimed.
+    (c) for content with an unclaimed rights holder (publisher opt-in OR a
+        source-declared CC-BY/CC-BY-SA work), the holder has claimed.
     """
     if doc.content_class in NON_ATTRIBUTABLE_CONTENT_CLASSES:
         return False
-    if doc.content_class == "opt_in_licensed" and not doc.ip_holder_claimed:
+    if doc.content_class in CLAIM_GATED_CONTENT_CLASSES and not doc.ip_holder_claimed:
         return False
     if doc.quality_gate_result is None:
         return False
@@ -67,7 +84,12 @@ def is_ad_eligible(doc: CollectiveGraphDocument) -> bool:
     """
     if not is_attribution_eligible(doc):
         return False
-    if doc.content_class not in {"user_public_contribution", "opt_in_licensed", "public_domain"}:
+    if doc.content_class not in {
+        "user_public_contribution",
+        "opt_in_licensed",
+        "source_declared_open",
+        "public_domain",
+    }:
         return False
     if doc.quality_gate_result is None:
         return False
@@ -97,6 +119,11 @@ def compute_eligibility(doc: CollectiveGraphDocument) -> EligibilityFlags:
             reason = f"content_class={doc.content_class} is non-attributable"
         elif doc.content_class == "opt_in_licensed" and not doc.ip_holder_claimed:
             reason = "publisher has not claimed under §9.10"
+        elif doc.content_class == "source_declared_open" and not doc.ip_holder_claimed:
+            reason = (
+                "source-declared open (CC-BY/CC-BY-SA) rights holder has not "
+                "claimed; accrues to escrow, not payout"
+            )
         else:
             reason = "attribution-ineligible"
     else:
