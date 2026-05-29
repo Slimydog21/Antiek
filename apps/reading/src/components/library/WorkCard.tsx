@@ -9,11 +9,13 @@ import { servabilityLabel } from "../../api/books";
  * Title / author / source / servability, with a CLEAR servable-vs-gated
  * affordance:
  *   • servable (full text) → "Read" — opens the reader (/read/:id).
- *   • gated (metadata only) → "Claim to read" — surfaces the metadata + the
- *     claim path; it NEVER implies, or requests, a full-text body. There is no
- *     "broken open": a gated card's action is honest about what it does (show
- *     metadata / register interest), so the user is never sent to a reader that
- *     would only show a withheld notice.
+ *   • gated (metadata only) → "Claim to read" — opens the reader's gate-safe
+ *     surface (the record + a bounded, server-gated preview; the reader passes
+ *     `assetId=null` for a gated work so its column is untagged and no attention
+ *     can accrue). It NEVER requests or renders the full-text body — a claim/
+ *     metadata affordance, not a body request. (The caller, LibraryView, routes
+ *     both Read and Claim through the reader, which branches servable-vs-gated;
+ *     see its grid comment. This card itself only chooses which handler fires.)
  *   • taken down → no action, labelled "Removed".
  *
  * §9.0 at the UI boundary: this card renders ONLY the metadata the `/library`

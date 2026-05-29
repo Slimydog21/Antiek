@@ -126,11 +126,37 @@ describe("LibraryView", () => {
     expect(screen.queryByText(/Nothing is readable in full/i)).toBeNull();
   });
 
-  it("the consumed payload is metadata only — no body field exists on a work", () => {
-    setResult({ works: [servable], total: 1 });
+  it("a gated work renders the claim/metadata affordance — never a full-text Read or a body", () => {
+    const gated: BookSummary = {
+      document_id: "doc-g",
+      title: "Gated Work",
+      author: "Bram",
+      servability: "gated_metadata_only",
+      servable_full_text: false,
+      page_count: 0,
+      cover_uri: null,
+      ip_holder_id: null,
+      taken_down: false,
+    };
+    setResult({ works: [gated], total: 1 });
     renderView();
-    expect(screen.getAllByText("Servable Work").length).toBeGreaterThan(0);
-    // BookSummary has no body key; assert the shape the view consumes.
+    // The gated card's action is the claim/metadata affordance (its accessible
+    // name is "View metadata and claim to read …") — NOT a full-text "Read …"
+    // open. This is the IA half of §9.0: the shelf never offers a body open for
+    // a gated work.
+    expect(
+      screen.getByRole("button", { name: /claim to read/i }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Read /i })).toBeNull();
+  });
+
+  it("the consumed contract type carries no body channel (frontend half of §9.0)", () => {
+    // The REAL §9.0 body-withholding is enforced + tested SERVER-SIDE
+    // (tests/test_library_api.py::test_gated_body_absent_from_every_payload and
+    // the ad-route body-absent tests). This complementary assertion only pins
+    // the frontend invariant: the `BookSummary` shape the view binds to has no
+    // body field to leak through in the first place — it is a contract-shape
+    // guard, not the §9.0 guarantee itself.
     const keys = Object.keys(servable);
     expect(keys).not.toContain("full_text");
     expect(keys).not.toContain("raw_text");
