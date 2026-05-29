@@ -182,13 +182,26 @@ export function PenguinMascot() {
       pos.current = { x: target.x, y: target.y };
       // Walk: ease the position over STROLL_MS + bob the feet while moving.
       el.style.transition = `left ${STROLL_MS}ms ease-in-out, top ${STROLL_MS}ms ease-in-out`;
-      if (bob) bob.classList.add("werner-waddle");
+      if (bob) {
+        // The at-rest `penguin-mascot-wander` and the walking `werner-waddle`
+        // both set `animation` on this one node — stacking them means the
+        // later rule wins and the walk bob is silently suppressed. Swap them
+        // so the feet actually bob while strolling; restore wander at rest.
+        bob.classList.remove("penguin-mascot-wander");
+        bob.classList.add("werner-waddle");
+      }
       applyPos();
       // End-of-leg: stop the bob, drop the transition (so a drag stays
       // instant), and re-arm after a randomised rest. The timer chain IS the
       // loop — no continuous work between these wake-ups.
       roamTimer.current = window.setTimeout(() => {
-        if (bobRef.current) bobRef.current.classList.remove("werner-waddle");
+        if (bobRef.current) {
+          // Back to rest: drop the walk bob, restore the idle wander. (This
+          // effect only runs when reduceMotion is false, so re-adding the
+          // wander class here is always motion-safe.)
+          bobRef.current.classList.remove("werner-waddle");
+          bobRef.current.classList.add("penguin-mascot-wander");
+        }
         if (buttonRef.current) buttonRef.current.style.transition = "";
         const rest = REST_MIN_MS + Math.random() * (REST_MAX_MS - REST_MIN_MS);
         roamTimer.current = window.setTimeout(stepOnce, rest);
@@ -237,12 +250,18 @@ export function PenguinMascot() {
     // Hand the position to the pointer: kill any in-flight stroll transition
     // + bob so the drag tracks the cursor 1:1 instead of easing behind it.
     if (buttonRef.current) buttonRef.current.style.transition = "";
-    if (bobRef.current) bobRef.current.classList.remove("werner-waddle");
+    if (bobRef.current) {
+      // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
+      // `penguin-mascot-wander`. A drag ends the stroll, so swap back to the
+      // wander (gated on reduceMotion so a reduced-motion drag stays still).
+      bobRef.current.classList.remove("werner-waddle");
+      if (!reduceMotion) bobRef.current.classList.add("penguin-mascot-wander");
+    }
     if (roamTimer.current !== null) {
       window.clearTimeout(roamTimer.current);
       roamTimer.current = null;
     }
-  }, []);
+  }, [reduceMotion]);
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {

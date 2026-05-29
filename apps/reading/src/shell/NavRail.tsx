@@ -179,7 +179,7 @@ function RailButton({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={
-        (orientation === "left" ? "mx-1.5 " : "my-0 mx-0.5 ") +
+        (orientation === "left" ? "mx-1.5 " : "mx-0.5 ") +
         "flex rounded relative " +
         layout +
         " " +

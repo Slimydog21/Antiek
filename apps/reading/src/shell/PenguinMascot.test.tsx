@@ -297,4 +297,68 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
     expect(el.style.transition).toBe("");
     fireEvent.pointerUp(el, { pointerId: 1 });
   });
+
+  // Round-3 hardening (audit MINOR/correctness): the walk bob `werner-waddle`
+  // and the at-rest `penguin-mascot-wander` both set `animation` on the SAME
+  // bob span. Stacked, the later rule wins and the walk is silently
+  // suppressed. They must be mutually exclusive; this reddens if the override
+  // regression returns.
+  it("walk bob and idle wander are mutually exclusive (the walk animation isn't suppressed by the always-on wander)", () => {
+    const { container } = mount();
+    // Settle (1800ms) → first leg begins.
+    act(() => {
+      vi.advanceTimersByTime(1900);
+    });
+    // Mid-stroll: walking class ON, idle wander OFF — one node can't run both.
+    expect(container.querySelector(".werner-waddle")).toBeTruthy();
+    expect(container.querySelector(".penguin-mascot-wander")).toBeNull();
+    // End of leg (2600ms stroll) → back to rest: wander restored, walk cleared.
+    act(() => {
+      vi.advanceTimersByTime(2700);
+    });
+    expect(container.querySelector(".werner-waddle")).toBeNull();
+    expect(container.querySelector(".penguin-mascot-wander")).toBeTruthy();
+  });
+
+  // Grabbing him mid-stroll must end the walk AND restore the idle wander —
+  // not leave him with no animation class (a dead frame) until the next leg.
+  it("a drag mid-stroll restores the idle wander (the walk/wander invariant holds across a drag)", () => {
+    const { container } = mount();
+    act(() => {
+      vi.advanceTimersByTime(1900);
+    });
+    // Mid-stroll: walking.
+    expect(container.querySelector(".werner-waddle")).toBeTruthy();
+    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
+    // Drag took over → walk cleared, idle wander restored (no dead frame).
+    expect(container.querySelector(".werner-waddle")).toBeNull();
+    expect(container.querySelector(".penguin-mascot-wander")).toBeTruthy();
+    fireEvent.pointerUp(el, { pointerId: 1 });
+  });
+
+  // Round-3 hardening (audit MAJOR/acceptance): SPR-06 M5 claims the waddler
+  // "never blocks interaction with the working region" + "no focus trap" but
+  // shipped with NO non-vacuous test — the exact claimed-but-untested class
+  // that bit the active-route accent in round 2. jsdom has no layout/hit
+  // testing, so we assert the deterministic structural proxies: the mascot is
+  // a single self-sized fixed control, NOT a viewport-covering overlay (which
+  // would swallow every click in the working region), and it adds exactly one
+  // tab stop (no nested focusables → focus can move past it, no trap).
+  it("M5 non-interference: the mascot is a single self-sized control, not a click-swallowing / focus-trapping overlay", () => {
+    mount();
+    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    // (a) Pointer isolation — sized to itself (MASCOT_SIZE = 64px), never the
+    //     viewport. A regression to 100vw/100vh / 100% would swallow clicks.
+    expect(el.style.width).toBe("64px");
+    expect(el.style.height).toBe("64px");
+    expect(el.style.width).not.toMatch(/v[wh]|%/);
+    // (b) Focus isolation — the mascot is one <button> (one tab stop) with no
+    //     nested focusable nodes, so keyboard focus moves past it (no trap).
+    expect(el.tagName).toBe("BUTTON");
+    const nestedFocusable = el.querySelectorAll(
+      'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+    );
+    expect(nestedFocusable.length).toBe(0);
+  });
 });
