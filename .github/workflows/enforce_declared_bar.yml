@@ -1,0 +1,151 @@
+name: enforce-declared-bar
+
+# SPR-03 (Antiek Foundation v2) — Enforce the bar you DECLARE.
+#
+# pyproject.toml declares a strict contract: [tool.mypy] strict = true
+# and [tool.ruff.lint] select = E,F,I,B,UP,SIM,RET — BOTH with no
+# files=/exclude= narrowing, so the declared scope is the whole repo
+# (~559 source files). Until this sprint the only CI place running
+# strict typing was substrate_floor.yml over ~3 files, and ci.yml was
+# pytest-only with an explicit "Why pytest only … Defer" comment.
+#
+# STEELMAN of that prior "Defer": it was a reasonable call. Turning on
+# mypy --strict + ruff over 559 files cold would have blocked every PR
+# on day one against a pre-existing backlog — pure flag-day pain for no
+# regression caught. This job keeps that same caution (zero retroactive
+# block) WHILE closing the declared-vs-enforced gap: it runs the declared
+# tools over the declared scope but subtracts a committed, dated baseline
+# of the violations that exist today, failing only on NEW violations in
+# code that has no baseline entry. The backlog becomes a visible,
+# shrink-only allow-list instead of silent rot.
+#
+# This is ADDITIVE — substrate_floor.yml and ci.yml are untouched.
+#
+# BURN-DOWN RULE (read before touching a baseline file):
+#   tools/lints/README.md — the allow-list SHRINKS ONLY. Entries may be
+#   removed as violations are fixed; they may NEVER be added, and the
+#   baseline may NEVER be re-minted to silence a NEW red. All new code is
+#   held to the full strict contract.
+#
+# Tool versions are PINNED below (RUFF_VERSION / MYPY_VERSION) AND the full
+# transitive dependency set is pinned in tools/lints/constraints.txt, so the
+# committed baseline reproduces in CI rather than against whatever the
+# resolver picks today. mypy --strict resolves the REAL import graph, so the
+# RESOLVED DEPENDENCY SET — not just the tool versions — determines its
+# findings: a missing extra or a drifted transitive pin can flip a baselined
+# key into a spurious NEW red on clean code (reproduced: `.[dev]`-only yields
+# 11 spurious NEW mypy violations). Bumping a pin, editing the extras, or
+# re-freezing the lock is a deliberate act that requires re-capturing the
+# baseline in the SAME PR (and only ever to shrink it) — see
+# tools/lints/README.md and the header of tools/lints/constraints.txt.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # let the operator trigger from the Actions tab
+
+concurrency:
+  group: enforce-declared-bar-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Match ci.yml: Node 24 for JS-based actions (checkout/setup-python).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Pinned so the dated baseline is reproducible. Bumping either pin is a
+  # deliberate change that MUST re-capture the matching baseline in the
+  # same PR (capture only ever shrinks the floor — tools/lints/README.md).
+  RUFF_VERSION: "0.15.15"
+  MYPY_VERSION: "2.1.0"
+
+jobs:
+  declared-bar:
+    name: mypy --strict + ruff (declared scope, baselined)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          # Same interpreter as ci.yml — the substrate is developed and
+          # type-checked on 3.14; cross-version drift in resolution would
+          # desync the committed baseline.
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install Antiek + dev deps under the pinned lock (mypy needs the import graph)
+        run: |
+          python -m pip install --upgrade pip
+          # mypy --strict resolves the REAL import graph, so its findings
+          # depend on the EXACT installed dependency set — not just on the
+          # ruff/mypy pins. The committed baselines (tools/lints/baselines/*)
+          # are only reproducible if this job installs the same resolved set
+          # they were captured against. Two ways the gate would red SPURIOUSLY
+          # on clean code without the lock below:
+          #   1. A MISSING extra drops an import, so mypy can't see a symbol's
+          #      types and a baselined key flips NEW (verified: `.[dev]`-only
+          #      yields 11 spurious NEW mypy violations).
+          #   2. TRANSITIVE-PIN DRIFT — a later resolve of a different numpy/
+          #      torch/pydantic could shadow a different error at a baselined
+          #      site and flip that key NEW.
+          # tools/lints/constraints.txt pins the FULL resolved set the
+          # baselines were captured against and removes (2). We install the
+          # full extras superset UNDER that constraint, which removes (1).
+          # `-c` only pins a package's version IF it gets installed, so the
+          # macOS-frozen lock is safe on ubuntu (platform-only wheels that
+          # don't resolve here are simply not constrained). Provenance +
+          # regeneration rule: header of tools/lints/constraints.txt.
+          pip install -c tools/lints/constraints.txt \
+            -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+          pip install -c tools/lints/constraints.txt \
+            "ruff==${RUFF_VERSION}" "mypy==${MYPY_VERSION}"
+          # Surface the resolved set in the job log so a future red can be
+          # diffed against the lock at a glance (debug aid, not a gate).
+          pip freeze --exclude-editable | sort
+
+      - name: ruff check (declared [tool.ruff.lint] scope, baselined)
+        # NO path / NO --exclude argument: ruff discovers files via its own
+        # pyproject config over the whole repo — the declared scope. The
+        # runner subtracts tools/lints/baselines/declared_ruff.json and
+        # fails ONLY on a ruff finding with no baseline entry. Burn-down +
+        # re-mint rules: tools/lints/README.md.
+        #
+        # NO --check-stale here (deliberate): the enforce gate must stay
+        # GREEN on the unmodified tree (G2). A baselined violation that no
+        # longer reproduces is a STALE entry, not a NEW violation — and
+        # staleness is environment-sensitive (a transitive-pin or
+        # interpreter-patch drift can shift which baseline keys reproduce
+        # without any source change). Folding stale into rc would red CI on
+        # clean code, contradicting the M2/G2 "green on HEAD" contract.
+        # Stale-detection lives in the LOCAL burn-down re-capture loop
+        # (tools/lints/README.md step 2), where it is supposed to fire.
+        run: |
+          python -m tools.lints.declared_bar enforce ruff \
+            --baseline-file tools/lints/baselines/declared_ruff.json
+
+      - name: mypy --strict (declared [tool.mypy] scope, baselined)
+        # strict comes from pyproject [tool.mypy] (strict = true); we pass
+        # the declared wheel packages (substrate skills acquisition … runtime)
+        # — that package list IS the declared scope, NOT a substrate_floor
+        # 3-file narrowing. NO files=/exclude= flag narrows below it. The
+        # runner subtracts tools/lints/baselines/declared_mypy.json and fails
+        # ONLY on a strict error with no baseline entry. Burn-down + re-mint
+        # rules: tools/lints/README.md.
+        #
+        # NO --check-stale here (same reason as the ruff step above): stale
+        # baseline entries are environment-sensitive and would red CI on the
+        # unmodified tree, breaking G2. mypy is the more drift-prone of the
+        # two — ~138 of the 1185 baseline findings are import-resolution
+        # (import-not-found) keys that depend on the exact installed
+        # dependency set, so any pin/interpreter drift would mark them stale.
+        # Stale-detection runs in the local re-capture loop, not this gate.
+        run: |
+          python -m tools.lints.declared_bar enforce mypy \
+            --baseline-file tools/lints/baselines/declared_mypy.json

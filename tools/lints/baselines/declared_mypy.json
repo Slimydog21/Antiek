@@ -1,0 +1,7117 @@
+{
+  "generated_at": "2026-05-29T18:13:51.735274+00:00",
+  "lint": "declared_bar_mypy",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 29,
+      "path": "acquisition/arxiv/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 84,
+      "path": "acquisition/arxiv/adapter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 69,
+      "path": "acquisition/arxiv/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 155,
+      "path": "acquisition/arxiv/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 86,
+      "path": "acquisition/arxiv/throttle.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 87,
+      "path": "acquisition/arxiv/throttle.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 90,
+      "path": "acquisition/arxiv/throttle.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 107,
+      "path": "acquisition/books/adapter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 59,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 146,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 148,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 151,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 153,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 191,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 197,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 246,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 279,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 289,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 304,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 383,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 409,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 491,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 492,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 514,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 515,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 516,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 534,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 544,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 596,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 28,
+      "path": "acquisition/books/reader.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 168,
+      "path": "acquisition/books/reader.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 211,
+      "path": "acquisition/books/reader.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 211,
+      "path": "acquisition/books/reader.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 252,
+      "path": "acquisition/books/reader.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 22,
+      "path": "acquisition/openaccess/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 41,
+      "path": "acquisition/openaccess/doaj.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 80,
+      "path": "acquisition/openaccess/doaj.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 94,
+      "path": "acquisition/openaccess/doaj.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 149,
+      "path": "acquisition/openaccess/doaj.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 150,
+      "path": "acquisition/openaccess/doaj.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 158,
+      "path": "acquisition/openaccess/doaj.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 23,
+      "path": "acquisition/openaccess/ingest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 26,
+      "path": "acquisition/openaccess/licenses.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 54,
+      "path": "acquisition/openaccess/openalex.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 145,
+      "path": "acquisition/openaccess/openalex.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 153,
+      "path": "acquisition/openaccess/openalex.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 156,
+      "path": "acquisition/openaccess/openalex.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 30,
+      "path": "acquisition/openaccess/pmc.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 84,
+      "path": "acquisition/openaccess/pmc.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 139,
+      "path": "acquisition/openaccess/pmc.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 147,
+      "path": "acquisition/openaccess/pmc.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 118,
+      "path": "acquisition/openaccess/spike_runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 28,
+      "path": "acquisition/openaccess/unpaywall.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 115,
+      "path": "acquisition/openaccess/unpaywall.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 123,
+      "path": "acquisition/openaccess/unpaywall.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 82,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 104,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 108,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 127,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 150,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 154,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:misc",
+      "line": 166,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:return-value",
+      "line": 168,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:return-value",
+      "line": 170,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:return-value",
+      "line": 172,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 178,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 190,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 208,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 208,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:misc",
+      "line": 232,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 258,
+      "path": "acquisition/podcasts/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 47,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 74,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 99,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 111,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 137,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 164,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 184,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 274,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 283,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 287,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 431,
+      "path": "acquisition/search/exa/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 104,
+      "path": "acquisition/search/exa/adapter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 336,
+      "path": "acquisition/search/exa/adapter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 439,
+      "path": "acquisition/search/exa/adapter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 75,
+      "path": "acquisition/search/exa/cache.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 111,
+      "path": "acquisition/search/exa/cache.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 119,
+      "path": "acquisition/search/exa/cache.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 170,
+      "path": "acquisition/search/exa/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 209,
+      "path": "acquisition/search/exa/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:operator",
+      "line": 230,
+      "path": "acquisition/search/exa/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:operator",
+      "line": 240,
+      "path": "acquisition/search/exa/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 251,
+      "path": "acquisition/search/exa/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 264,
+      "path": "acquisition/search/exa/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 278,
+      "path": "acquisition/search/exa/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 52,
+      "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 120,
+      "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 144,
+      "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 287,
+      "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 293,
+      "path": "acquisition/twitter/adapter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 125,
+      "path": "acquisition/urls/adapter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 176,
+      "path": "acquisition/urls/client_browserbase.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "acquisition/urls/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 39,
+      "path": "acquisition/urls/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 113,
+      "path": "acquisition/urls/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 129,
+      "path": "acquisition/urls/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 131,
+      "path": "acquisition/urls/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 176,
+      "path": "acquisition/video/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 72,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 76,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 76,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 101,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 104,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 115,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 116,
+      "path": "compounding/skill_growth/gate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 118,
+      "path": "interfaces/research/api/ad_impressions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 129,
+      "path": "interfaces/research/api/ad_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 239,
+      "path": "interfaces/research/api/ad_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 131,
+      "path": "interfaces/research/api/advertisers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 142,
+      "path": "interfaces/research/api/advertisers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 305,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 365,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 670,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 757,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 769,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 789,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 812,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 910,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 911,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 912,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 913,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:name-defined",
+      "line": 938,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 1075,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 1112,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 1130,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 1132,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 1135,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 1575,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 1592,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 1724,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 2127,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 2128,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 2141,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 2142,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 2142,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 2152,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 2153,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:dict-item",
+      "line": 2159,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 2162,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 2163,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 2203,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 2204,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 2204,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 2214,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 2215,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 2363,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 2431,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-redef",
+      "line": 2649,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2664,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2665,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2666,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2670,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2673,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 2692,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 2692,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2710,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2720,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2721,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2725,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2728,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 2752,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 2752,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2773,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2784,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 2785,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 2985,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 3548,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 3688,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 3705,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 4355,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 4419,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 4420,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 4429,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 4430,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 4439,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 4440,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 4459,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 4460,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 4463,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 4515,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 4892,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 5034,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 5035,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 5036,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 5110,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 5341,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 5448,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 173,
+      "path": "interfaces/research/api/auth.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 180,
+      "path": "interfaces/research/api/auth.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 472,
+      "path": "interfaces/research/api/books.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 568,
+      "path": "interfaces/research/api/books.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 691,
+      "path": "interfaces/research/api/books.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 885,
+      "path": "interfaces/research/api/books.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 889,
+      "path": "interfaces/research/api/books.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 119,
+      "path": "interfaces/research/api/broadcast.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 48,
+      "path": "interfaces/research/api/campaigns.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 69,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 89,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 103,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 108,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 115,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 121,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 162,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 192,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 248,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 253,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 254,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 261,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 268,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 277,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 289,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 309,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 323,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 342,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 343,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 370,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 399,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 407,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 433,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 439,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 445,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 464,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 93,
+      "path": "interfaces/research/api/connector.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:list-item",
+      "line": 104,
+      "path": "interfaces/research/api/connector.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 121,
+      "path": "interfaces/research/api/connector.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 161,
+      "path": "interfaces/research/api/connector.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 261,
+      "path": "interfaces/research/api/connector.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 60,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 73,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 73,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 89,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 119,
+      "path": "interfaces/research/api/cross_doc.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 146,
+      "path": "interfaces/research/api/decomposer.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 164,
+      "path": "interfaces/research/api/evidence_retriever.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 99,
+      "path": "interfaces/research/api/grounding.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 113,
+      "path": "interfaces/research/api/grounding.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 116,
+      "path": "interfaces/research/api/grounding.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 149,
+      "path": "interfaces/research/api/grounding.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 99,
+      "path": "interfaces/research/api/note_taking.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 146,
+      "path": "interfaces/research/api/note_taking.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 147,
+      "path": "interfaces/research/api/parameter_extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 99,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 310,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 343,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 367,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 414,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 434,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 447,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 455,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 468,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 481,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 492,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 518,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 534,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 545,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 557,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 567,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 583,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 605,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 636,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 667,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 727,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 761,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 770,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 790,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 847,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 860,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 194,
+      "path": "interfaces/research/api/synthesizer.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 308,
+      "path": "interfaces/research/api/synthesizer.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 382,
+      "path": "interfaces/research/api/synthesizer.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 417,
+      "path": "interfaces/research/api/synthesizer.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 201,
+      "path": "interfaces/research/api/visual.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 202,
+      "path": "interfaces/research/api/visual.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 259,
+      "path": "interfaces/research/api/visual.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 260,
+      "path": "interfaces/research/api/visual.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 266,
+      "path": "interfaces/research/api/visual.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 267,
+      "path": "interfaces/research/api/visual.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 117,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 279,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 411,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 466,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 538,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 636,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 86,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 114,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 123,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 187,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 202,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 212,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 221,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 247,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 254,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 273,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 293,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 300,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 313,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 320,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 332,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 357,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 386,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 412,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 165,
+      "path": "interfaces/research/environments/decomposer_env.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 101,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 224,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 305,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 452,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 476,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 491,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 527,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 71,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 72,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 75,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 126,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 129,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 142,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 243,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 56,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 57,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 66,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 67,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 197,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 225,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 272,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 272,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 274,
+      "path": "middleware/archive/archive.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 28,
+      "path": "middleware/backtest/analysis.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 47,
+      "path": "middleware/backtest/analysis.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 125,
+      "path": "middleware/backtest/db.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 146,
+      "path": "middleware/backtest/db.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 25,
+      "path": "middleware/cohort/analysis.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 32,
+      "path": "middleware/cohort/analysis.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 19,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 20,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 28,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 29,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 48,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 52,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 53,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 75,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 98,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 101,
+      "path": "middleware/constraint_check/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 54,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 55,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 59,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 60,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 85,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 181,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 250,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 59,
+      "path": "middleware/ip_holder_resolver/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 66,
+      "path": "middleware/ip_holder_resolver/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 68,
+      "path": "middleware/ip_holder_resolver/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 81,
+      "path": "middleware/ip_holder_resolver/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 94,
+      "path": "middleware/ip_holder_resolver/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 115,
+      "path": "middleware/ip_holder_resolver/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 23,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 24,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 35,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 36,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 63,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 81,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 89,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 90,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 92,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 97,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 132,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 120,
+      "path": "middleware/outcomes/recorder.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 28,
+      "path": "middleware/source_tier/aggregate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 32,
+      "path": "middleware/source_tier/aggregate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 39,
+      "path": "middleware/source_tier/overrides_db.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 46,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 47,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 51,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 52,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 152,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 249,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 254,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 273,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 345,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 351,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 380,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 386,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 405,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 43,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 44,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 53,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 54,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 150,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 179,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 184,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 205,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 28,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 29,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 30,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 34,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 38,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 39,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 71,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 75,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 126,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 158,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 162,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 164,
+      "path": "middleware/temporal/staleness.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 39,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 40,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 41,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 51,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 54,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 55,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 276,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 114,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 115,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 153,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 156,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 176,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 187,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 221,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 231,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:call-arg",
+      "line": 53,
+      "path": "orchestration/continuous/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 49,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 52,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 52,
+      "path": "orchestration/interview/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 58,
+      "path": "orchestration/interview/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 66,
+      "path": "orchestration/interview/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 89,
+      "path": "orchestration/interview/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 61,
+      "path": "orchestration/loop_one/coordinator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 139,
+      "path": "orchestration/loop_one/coordinator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 144,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 144,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 216,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 301,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 304,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 397,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 435,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 463,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 503,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 513,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 545,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 559,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 589,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 597,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 608,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 624,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 633,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 648,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 690,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 703,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 709,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 711,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 712,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 714,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 717,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 720,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 722,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 731,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 744,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 746,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 748,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 751,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:union-attr",
+      "line": 754,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 798,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 825,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 890,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 912,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 1077,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 1096,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 1102,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 1108,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 1119,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 21,
+      "path": "orchestration/phase_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 22,
+      "path": "orchestration/phase_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "orchestration/phase_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "orchestration/phase_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 51,
+      "path": "orchestration/phase_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 76,
+      "path": "orchestration/phase_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 100,
+      "path": "orchestration/phase_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 37,
+      "path": "orchestration/phase_log/log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 45,
+      "path": "orchestration/phase_log/log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 90,
+      "path": "orchestration/phase_log/log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 111,
+      "path": "orchestration/phase_log/log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 141,
+      "path": "orchestration/phase_log/log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 287,
+      "path": "orchestration/phase_log/log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 290,
+      "path": "orchestration/phase_log/log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 41,
+      "path": "orchestration/phase_runner/cli.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 63,
+      "path": "orchestration/phase_runner/cli.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 72,
+      "path": "orchestration/phase_runner/cli.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 81,
+      "path": "orchestration/phase_runner/cli.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 100,
+      "path": "orchestration/phase_runner/cli.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 114,
+      "path": "orchestration/phase_runner/cli.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 208,
+      "path": "orchestration/phase_runner/cli.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 47,
+      "path": "orchestration/phase_runner/postconditions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 48,
+      "path": "orchestration/phase_runner/postconditions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 58,
+      "path": "orchestration/phase_runner/postconditions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 59,
+      "path": "orchestration/phase_runner/postconditions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 46,
+      "path": "orchestration/phase_runner/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 53,
+      "path": "orchestration/phase_runner/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:name-defined",
+      "line": 65,
+      "path": "orchestration/rlm/bridge.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 99,
+      "path": "orchestration/rlm/session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 119,
+      "path": "processing/embedding/embed.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 45,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 46,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 47,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 53,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 57,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 58,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 62,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 63,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 64,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 70,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 74,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 75,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 22,
+      "path": "roles/_json_decode.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 52,
+      "path": "roles/_json_decode.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 26,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 27,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 28,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 34,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 35,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 36,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 37,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 38,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 54,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 77,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 83,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 90,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 22,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 23,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 24,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 29,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 32,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 83,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 83,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 92,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 99,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 110,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 113,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 147,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 147,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 170,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 170,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 174,
+      "path": "roles/cascade_planner/persist.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "roles/cascade_planner/planner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "roles/cascade_planner/planner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:call-arg",
+      "line": 60,
+      "path": "roles/cascade_planner/planner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:misc",
+      "line": 60,
+      "path": "roles/cascade_planner/planner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:call-arg",
+      "line": 61,
+      "path": "roles/cascade_planner/planner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 83,
+      "path": "roles/cascade_planner/planner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 58,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 62,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 64,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 67,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 70,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 72,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 144,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 156,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 196,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 239,
+      "path": "roles/cascade_planner/tree_contract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 75,
+      "path": "roles/challenger/resolver.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 37,
+      "path": "roles/connector/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 89,
+      "path": "roles/connector/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 126,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 137,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 138,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 139,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 140,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 141,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 142,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 150,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 158,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 159,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 160,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 161,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 162,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 175,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 24,
+      "path": "roles/decomposer/paraphrase.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 25,
+      "path": "roles/decomposer/paraphrase.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 29,
+      "path": "roles/decomposer/paraphrase.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "roles/decomposer/paraphrase.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 42,
+      "path": "roles/decomposer/paraphrase.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 27,
+      "path": "roles/decomposer/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 36,
+      "path": "roles/decomposer/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 48,
+      "path": "roles/decomposer/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 103,
+      "path": "roles/decomposer/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 39,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 43,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 80,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 81,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 82,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 84,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 101,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 162,
+      "path": "roles/decomposer/seeds.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 29,
+      "path": "roles/evidence_retriever/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 80,
+      "path": "roles/evidence_retriever/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 26,
+      "path": "roles/grounder/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 69,
+      "path": "roles/interviewer/drivers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 35,
+      "path": "roles/note_taker/distill.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 36,
+      "path": "roles/note_taker/distill.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:call-arg",
+      "line": 79,
+      "path": "roles/note_taker/distill.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 32,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 33,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 34,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 35,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 39,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 40,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 41,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 42,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 71,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 78,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 153,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 159,
+      "path": "roles/note_taker/distill_query.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 21,
+      "path": "roles/note_taker/document_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 22,
+      "path": "roles/note_taker/document_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 23,
+      "path": "roles/note_taker/document_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 28,
+      "path": "roles/note_taker/document_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 29,
+      "path": "roles/note_taker/document_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "roles/note_taker/document_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "roles/note_taker/document_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 41,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 42,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 43,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 44,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 48,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 49,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 50,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 53,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 73,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 77,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 77,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 107,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 159,
+      "path": "roles/note_taker/living_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 23,
+      "path": "roles/note_taker/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "roles/note_taker/scheduler.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "roles/note_taker/scheduler.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 42,
+      "path": "roles/note_taker/scheduler.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 74,
+      "path": "roles/note_taker/scheduler.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 24,
+      "path": "roles/note_taker/step_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 28,
+      "path": "roles/note_taker/step_pass.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 42,
+      "path": "roles/parameter_extractor/converter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 48,
+      "path": "roles/parameter_extractor/converter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 62,
+      "path": "roles/parameter_extractor/converter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 82,
+      "path": "roles/parameter_extractor/converter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 109,
+      "path": "roles/parameter_extractor/converter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 126,
+      "path": "roles/parameter_extractor/converter.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 37,
+      "path": "roles/parameter_extractor/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 84,
+      "path": "roles/parameter_extractor/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 39,
+      "path": "roles/style_extractor/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 78,
+      "path": "roles/style_extractor/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 53,
+      "path": "roles/synthesizer/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 137,
+      "path": "roles/synthesizer/parser.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 230,
+      "path": "roles/synthesizer/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 84,
+      "path": "roles/voice_note_followup/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 85,
+      "path": "roles/voice_note_followup/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 89,
+      "path": "roles/voice_note_followup/prompt.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 214,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 217,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 220,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 225,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 228,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 448,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 479,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 500,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 502,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 506,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-var",
+      "line": 507,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 510,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 539,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 548,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 42,
+      "path": "runtime/remote_exec/cost.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 43,
+      "path": "runtime/remote_exec/cost.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 49,
+      "path": "runtime/remote_exec/cost.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 50,
+      "path": "runtime/remote_exec/cost.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 51,
+      "path": "runtime/remote_exec/cost.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 52,
+      "path": "runtime/remote_exec/cost.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 97,
+      "path": "runtime/remote_exec/cost.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 51,
+      "path": "runtime/remote_exec/factory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 55,
+      "path": "runtime/remote_exec/factory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 56,
+      "path": "runtime/remote_exec/factory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 57,
+      "path": "runtime/remote_exec/factory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 61,
+      "path": "runtime/remote_exec/factory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 43,
+      "path": "runtime/remote_exec/funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 49,
+      "path": "runtime/remote_exec/funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 50,
+      "path": "runtime/remote_exec/funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 51,
+      "path": "runtime/remote_exec/funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 45,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 46,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 70,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 71,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 78,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 79,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 90,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 91,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 123,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 124,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 259,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 289,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 30,
+      "path": "runtime/research_runner/budget.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 35,
+      "path": "runtime/research_runner/budget.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 36,
+      "path": "runtime/research_runner/budget.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 32,
+      "path": "runtime/research_runner/daytona_gated.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 66,
+      "path": "runtime/research_runner/daytona_gated.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 48,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 49,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 66,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 67,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 68,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 72,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 139,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 143,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 146,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 149,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 158,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 159,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 292,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 392,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 30,
+      "path": "runtime/research_runner/promotion_funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 31,
+      "path": "runtime/research_runner/promotion_funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 38,
+      "path": "runtime/research_runner/promotion_funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 39,
+      "path": "runtime/research_runner/promotion_funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 42,
+      "path": "runtime/research_runner/promotion_funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 54,
+      "path": "runtime/research_runner/promotion_funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 55,
+      "path": "runtime/research_runner/promotion_funnel.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 359,
+      "path": "runtime/weekly_report.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 401,
+      "path": "runtime/weekly_report.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 402,
+      "path": "runtime/weekly_report.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 433,
+      "path": "runtime/weekly_report.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 435,
+      "path": "runtime/weekly_report.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 49,
+      "path": "skills/domain/auto_patch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 50,
+      "path": "skills/domain/auto_patch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 57,
+      "path": "skills/domain/auto_patch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 58,
+      "path": "skills/domain/auto_patch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 64,
+      "path": "skills/domain/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 109,
+      "path": "skills/domain/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 171,
+      "path": "skills/domain/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 177,
+      "path": "skills/domain/extract.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 33,
+      "path": "skills/domain/master_md.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 34,
+      "path": "skills/domain/master_md.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 35,
+      "path": "skills/domain/master_md.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 42,
+      "path": "skills/domain/master_md.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 43,
+      "path": "skills/domain/master_md.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 44,
+      "path": "skills/domain/master_md.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 393,
+      "path": "skills/domain/master_md.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 160,
+      "path": "skills/domain/patch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 27,
+      "path": "skills/verification/agreement.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 59,
+      "path": "skills/verification/agreement.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 67,
+      "path": "skills/verification/agreement.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 70,
+      "path": "skills/verification/agreement.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 82,
+      "path": "skills/verification/agreement.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 39,
+      "path": "skills/verification/redispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 46,
+      "path": "skills/verification/redispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 85,
+      "path": "skills/verification/redispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 88,
+      "path": "skills/verification/redispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 91,
+      "path": "skills/verification/redispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 31,
+      "path": "skills/verification/rlm.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 38,
+      "path": "skills/verification/rlm.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 54,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 58,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 59,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 63,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 67,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 68,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 144,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 245,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 485,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 510,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 511,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 512,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 513,
+      "path": "skills/verification/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 101,
+      "path": "substrate/ad_inventory/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 110,
+      "path": "substrate/ad_inventory/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 353,
+      "path": "substrate/ad_inventory/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 418,
+      "path": "substrate/ad_inventory/advertiser_onboarding.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 180,
+      "path": "substrate/ad_inventory/attribution_audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 229,
+      "path": "substrate/ad_inventory/attribution_explain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 208,
+      "path": "substrate/ad_inventory/decisions_log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 35,
+      "path": "substrate/ad_inventory/event_emit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:name-defined",
+      "line": 163,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:name-defined",
+      "line": 164,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 159,
+      "path": "substrate/ad_inventory/transfer_initiator.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 61,
+      "path": "substrate/ai_actions/actions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 78,
+      "path": "substrate/ai_actions/actions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 79,
+      "path": "substrate/ai_actions/actions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 137,
+      "path": "substrate/ai_actions/actions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 197,
+      "path": "substrate/ai_actions/actions.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 34,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 35,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 56,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 57,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 118,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 119,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 146,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 147,
+      "path": "substrate/ai_actions/handlers.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 72,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 201,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 211,
+      "path": "substrate/auth/email_provider.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 126,
+      "path": "substrate/auth/magic_link.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 53,
+      "path": "substrate/autoresearch/proposal.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 54,
+      "path": "substrate/autoresearch/proposal.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 83,
+      "path": "substrate/autoresearch/proposal.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 35,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 42,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 44,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 52,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 69,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 71,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 83,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 93,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 95,
+      "path": "substrate/autoresearch/wedge3_sweep.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 322,
+      "path": "substrate/billing/kyc.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 45,
+      "path": "substrate/books/book_qa.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 105,
+      "path": "substrate/books/book_qa.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 133,
+      "path": "substrate/books/book_qa.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 267,
+      "path": "substrate/books/meta_reading.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 174,
+      "path": "substrate/books/model.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 284,
+      "path": "substrate/books/personal_space.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 149,
+      "path": "substrate/books/voice_note.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 11,
+      "path": "substrate/cli/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 13,
+      "path": "substrate/cli/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 17,
+      "path": "substrate/cli/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 37,
+      "path": "substrate/cli/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 13,
+      "path": "substrate/cli/compact.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 19,
+      "path": "substrate/cli/compact.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 20,
+      "path": "substrate/cli/compact.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 21,
+      "path": "substrate/cli/compact.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 22,
+      "path": "substrate/cli/compact.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 185,
+      "path": "substrate/cli/compact.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 10,
+      "path": "substrate/cli/hooks.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 13,
+      "path": "substrate/cli/hooks.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 14,
+      "path": "substrate/cli/hooks.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 143,
+      "path": "substrate/cli/hooks.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 9,
+      "path": "substrate/cli/queue.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 45,
+      "path": "substrate/cli/queue.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 56,
+      "path": "substrate/context_pack/assembler.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 60,
+      "path": "substrate/context_pack/assembler.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 61,
+      "path": "substrate/context_pack/assembler.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 62,
+      "path": "substrate/context_pack/note_budget.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 100,
+      "path": "substrate/context_pack/note_budget.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 103,
+      "path": "substrate/context_pack/note_budget.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 33,
+      "path": "substrate/context_pack/note_injection.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 37,
+      "path": "substrate/context_pack/note_injection.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 38,
+      "path": "substrate/context_pack/note_injection.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 31,
+      "path": "substrate/context_pack/note_retrieval.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 60,
+      "path": "substrate/context_pack/style_guide.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 116,
+      "path": "substrate/context_pack/style_guide.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 75,
+      "path": "substrate/cross_graph/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 104,
+      "path": "substrate/cross_graph/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 111,
+      "path": "substrate/cross_graph/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 342,
+      "path": "substrate/cross_graph/__main__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 120,
+      "path": "substrate/cross_graph/ask_expert.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 139,
+      "path": "substrate/cross_graph/event_emit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 63,
+      "path": "substrate/cross_graph/federation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 64,
+      "path": "substrate/cross_graph/federation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 66,
+      "path": "substrate/cross_graph/federation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 58,
+      "path": "substrate/cross_graph/outbound_transport.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 180,
+      "path": "substrate/cross_graph/outbound_transport.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 181,
+      "path": "substrate/cross_graph/outbound_transport.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 435,
+      "path": "substrate/cross_graph/partner_identity.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 48,
+      "path": "substrate/dispatch/providers/anthropic.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 53,
+      "path": "substrate/dispatch/providers/openai_compat.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 21,
+      "path": "substrate/dispatch/providers/openai_tts.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 24,
+      "path": "substrate/dispatch/providers/openai_tts.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 138,
+      "path": "substrate/dispatch/providers/vision_anthropic.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 262,
+      "path": "substrate/dispatch/providers/vision_anthropic.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 118,
+      "path": "substrate/dispatch/research_tier.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 28,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 44,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 45,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 46,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 445,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 459,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 460,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 484,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 485,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 500,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 501,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 23,
+      "path": "substrate/dp_shuffler/event_emit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 192,
+      "path": "substrate/dp_shuffler/production.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "substrate/edit/authoring_trajectory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 54,
+      "path": "substrate/edit/authoring_trajectory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 76,
+      "path": "substrate/edit/authoring_trajectory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 81,
+      "path": "substrate/edit/authoring_trajectory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 130,
+      "path": "substrate/edit/authoring_trajectory.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 35,
+      "path": "substrate/edit/edit_pair.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 84,
+      "path": "substrate/edit/edit_pair.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 46,
+      "path": "substrate/edit/harvest_authoring.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 47,
+      "path": "substrate/edit/harvest_authoring.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 59,
+      "path": "substrate/edit/harvest_authoring.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 64,
+      "path": "substrate/edit/harvest_authoring.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 103,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 104,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 151,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 172,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 224,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 290,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 338,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 341,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 492,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 493,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 549,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 617,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 619,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 630,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 653,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 665,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 670,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 675,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 681,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 686,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 730,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 87,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 89,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 92,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 93,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 95,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 39,
+      "path": "substrate/gap_detection/candidates.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 43,
+      "path": "substrate/gap_detection/candidates.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 71,
+      "path": "substrate/gap_detection/candidates.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 59,
+      "path": "substrate/gap_detection/contradiction.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 31,
+      "path": "substrate/gap_detection/ranking.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 55,
+      "path": "substrate/gap_detection/ranking.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 34,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 35,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 36,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 48,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 49,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 50,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 51,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 82,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 84,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 115,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 130,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 150,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-redef",
+      "line": 206,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 258,
+      "path": "substrate/graph/backfill_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 54,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 55,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 63,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 64,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 68,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 101,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 144,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 149,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 150,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 178,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 185,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 271,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 298,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 331,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 361,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 364,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 546,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 68,
+      "path": "substrate/graph/migrate_v9_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 72,
+      "path": "substrate/graph/migrate_v9_insight_question.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 38,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 39,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 40,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 49,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 50,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 51,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 342,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 343,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 414,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 79,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 79,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 82,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 137,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 252,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 254,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 255,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 261,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 274,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 287,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-call",
+      "line": 291,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 406,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 450,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 485,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 566,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 571,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 573,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 661,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 680,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 707,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 50,
+      "path": "substrate/graph/schema.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 54,
+      "path": "substrate/graph/schema.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 38,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 42,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 70,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 144,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 259,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 292,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 323,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 342,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 35,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 43,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 68,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 74,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 85,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 115,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 124,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 127,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 137,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 177,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 238,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 296,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 355,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 371,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 413,
+      "path": "substrate/graph/traverse.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 113,
+      "path": "substrate/graph_per_user/key_provider.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 116,
+      "path": "substrate/graph_per_user/key_provider.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 60,
+      "path": "substrate/ip_holders/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 72,
+      "path": "substrate/ip_holders/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 229,
+      "path": "substrate/ip_holders/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 143,
+      "path": "substrate/legal_gate/audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 156,
+      "path": "substrate/legal_gate/audit.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 49,
+      "path": "substrate/legal_gate/gate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 83,
+      "path": "substrate/legal_gate/gate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 109,
+      "path": "substrate/legal_gate/gate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 44,
+      "path": "substrate/legal_gate/predicate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 71,
+      "path": "substrate/legal_gate/predicate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 111,
+      "path": "substrate/legal_gate/predicate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 125,
+      "path": "substrate/legal_gate/predicate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 137,
+      "path": "substrate/legal_gate/predicate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:assignment",
+      "line": 156,
+      "path": "substrate/legal_gate/predicate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 23,
+      "path": "substrate/loop_3/trajectory_harvest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 24,
+      "path": "substrate/loop_3/trajectory_harvest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 29,
+      "path": "substrate/loop_3/trajectory_harvest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 41,
+      "path": "substrate/loop_3/trajectory_harvest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 46,
+      "path": "substrate/loop_3/unlock_gate.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 22,
+      "path": "substrate/loop_3/verifiers_env.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 30,
+      "path": "substrate/loop_3/verifiers_env.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 46,
+      "path": "substrate/loop_3/verifiers_env.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 117,
+      "path": "substrate/loop_3/verifiers_env.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 78,
+      "path": "substrate/marketplace_metrics/book_escrow.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:dict-item",
+      "line": 137,
+      "path": "substrate/marketplace_metrics/book_escrow.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 170,
+      "path": "substrate/marketplace_metrics/book_escrow.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 24,
+      "path": "substrate/marketplace_metrics/data_sources.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 25,
+      "path": "substrate/marketplace_metrics/data_sources.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 97,
+      "path": "substrate/marketplace_metrics/data_sources.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 46,
+      "path": "substrate/marketplace_metrics/from_conn.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 68,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 82,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 103,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 138,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 182,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 27,
+      "path": "substrate/research_bridge/detect_external.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 19,
+      "path": "substrate/research_bridge/eval/labels.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 76,
+      "path": "substrate/research_bridge/eval/scoring.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 24,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 32,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 120,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 149,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 236,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 603,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 634,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 57,
+      "path": "substrate/research_bridge/extractors.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 83,
+      "path": "substrate/research_bridge/extractors.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 96,
+      "path": "substrate/research_bridge/extractors.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 112,
+      "path": "substrate/research_bridge/extractors.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 13,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 25,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 26,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 27,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 30,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 96,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 108,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 109,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 266,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 269,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 270,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 583,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 616,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 675,
+      "path": "substrate/research_bridge/gap.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 24,
+      "path": "substrate/research_bridge/ingest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 40,
+      "path": "substrate/research_bridge/ingest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 41,
+      "path": "substrate/research_bridge/ingest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 44,
+      "path": "substrate/research_bridge/ingest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 45,
+      "path": "substrate/research_bridge/ingest.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 33,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 42,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 43,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 44,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 45,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 46,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 47,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 72,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 77,
+      "path": "substrate/research_bridge/ingest_file.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 16,
+      "path": "substrate/research_bridge/llm_dispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 17,
+      "path": "substrate/research_bridge/llm_dispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 18,
+      "path": "substrate/research_bridge/llm_dispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 24,
+      "path": "substrate/research_bridge/llm_dispatch.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 11,
+      "path": "substrate/research_bridge/paste_log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 15,
+      "path": "substrate/research_bridge/paste_log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 52,
+      "path": "substrate/research_bridge/paste_log.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 11,
+      "path": "substrate/research_bridge/schema.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 15,
+      "path": "substrate/research_bridge/schema.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 25,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 31,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 32,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 33,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 43,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 51,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 51,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 55,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 99,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 2831,
+      "path": "substrate/schemas/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 2832,
+      "path": "substrate/schemas/events.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 97,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 98,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 116,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 120,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 144,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 154,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 159,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 174,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 182,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 204,
+      "path": "substrate/speak/async_interview.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 69,
+      "path": "substrate/speak/drw_gap_source.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 40,
+      "path": "substrate/speak/independence.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 26,
+      "path": "substrate/speak/interviewer_capture.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 35,
+      "path": "substrate/speak/interviewer_capture.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 147,
+      "path": "substrate/speak/invitations.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 161,
+      "path": "substrate/speak/invitations.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 200,
+      "path": "substrate/speak/invitations.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 213,
+      "path": "substrate/speak/invitations.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 132,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 166,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 174,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 177,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 244,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 130,
+      "path": "substrate/speak/publish.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 195,
+      "path": "substrate/telemetry_preferences/preferences.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 47,
+      "path": "substrate/trust_center/publication.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 96,
+      "path": "substrate/trust_center/publication.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 161,
+      "path": "substrate/voice_style/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:valid-type",
+      "line": 161,
+      "path": "substrate/voice_style/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:misc",
+      "line": 191,
+      "path": "substrate/voice_style/rubric.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 75,
+      "path": "substrate/write/block_search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 31,
+      "path": "substrate/write/brainstorm_blocks.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 36,
+      "path": "substrate/write/brainstorm_blocks.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 37,
+      "path": "substrate/write/brainstorm_blocks.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 44,
+      "path": "substrate/write/draft_generation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:arg-type",
+      "line": 107,
+      "path": "substrate/write/draft_generation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 227,
+      "path": "substrate/write/draft_generation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 336,
+      "path": "substrate/write/draft_generation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 337,
+      "path": "substrate/write/draft_generation.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 39,
+      "path": "substrate/write/folders.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 45,
+      "path": "substrate/write/folders.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 46,
+      "path": "substrate/write/folders.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 47,
+      "path": "substrate/write/folders.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 54,
+      "path": "substrate/write/folders.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 42,
+      "path": "substrate/write/migrate_outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 47,
+      "path": "substrate/write/migrate_outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 48,
+      "path": "substrate/write/migrate_outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 30,
+      "path": "substrate/write/outline.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 34,
+      "path": "substrate/write/outline.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 55,
+      "path": "substrate/write/outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 61,
+      "path": "substrate/write/outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 62,
+      "path": "substrate/write/outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 63,
+      "path": "substrate/write/outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 142,
+      "path": "substrate/write/outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 243,
+      "path": "substrate/write/outline_block.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 32,
+      "path": "substrate/write/promote_context.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 37,
+      "path": "substrate/write/promote_context.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 38,
+      "path": "substrate/write/promote_context.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 44,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 70,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 101,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 111,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 117,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:type-arg",
+      "line": 134,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 184,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-untyped-def",
+      "line": 248,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 39,
+      "path": "substrate/write/trace.py"
+    }
+  ]
+}
