@@ -88,6 +88,13 @@ dev = [
   # with "unrecognized arguments: -n auto" before any test runs.
   # H5 (2026-05-18) surfaced this — it was breaking CI cleanly.
   "pytest-xdist>=3.6",
+  # SPR-04's attribution golden/property suite (tests/test_attribution_golden.py)
+  # hard-imports `hypothesis` for its property tests. It was present in the
+  # operator venv (transitively) but undeclared, so a clean CI checkout aborted
+  # at COLLECTION ("No module named 'hypothesis'") before any test ran — masking
+  # the rest of the suite. Declared here so the property tests actually run on CI
+  # (declaring keeps the gate; importorskip would silently disable it).
+  "hypothesis>=6.100",
   "ruff>=0.6",
   "mypy>=1.11",
   "types-PyYAML",
