@@ -41,6 +41,21 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import connect_read  # type: ignore[no-redef]
 
+# The deny-by-default servability polarity is owned by the book full-text
+# path (substrate/books/servability.py). The chunk/search gate below routes
+# its full-text servability decision through that single predicate rather
+# than re-implementing the polarity here — see search()'s §9.0 gate.
+try:
+    from ..books.servability import (
+        is_content_class_servable_full_text,
+        servable_full_text_content_classes,
+    )
+except ImportError:  # pragma: no cover — direct-script fallback
+    from substrate.books.servability import (  # type: ignore[no-redef]
+        is_content_class_servable_full_text,
+        servable_full_text_content_classes,
+    )
+
 
 # ---------------------------------------------------------------------------
 # EmbeddingModel — injectable for tests
@@ -123,11 +138,35 @@ PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
     "operator_only",
 })
 
-# Content classes that the substrate may withhold from retrieval
-# depending on policy_tag. Per master-spec §9.0 §9.10.
+# The named restricted-content vocabulary (master-spec §9.0 / §9.10).
+#
+# SPR-05: this is NO LONGER the search-gate's polarity. The non-privileged
+# chunk gate is now a deny-by-default ALLOWLIST routed through the owned
+# servability predicate (see search()), so it denies NULL/unknown without
+# consulting this set. The constant is retained because it is the canonical
+# name of the restricted class — imported by substrate/attribution/compute.py
+# (the akb money-path, out of this sprint's scope) and asserted by
+# tests/test_retrieval_time_gate.py — and because the privileged-bypass
+# semantics below still reason about "the restricted class". It is a
+# vocabulary anchor, not the enforcement polarity.
 RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
     "restricted_pending_opt_in",
 })
+
+
+def chunk_full_text_servable(content_class: Optional[str]) -> bool:
+    """The chunk/search §9.0 verdict for a ``content_class`` on a
+    non-privileged retrieval path: may this class's full text appear in
+    search results?
+
+    Exactly the predicate the SQL gate in :func:`search` enforces
+    (``content_class IN servable_full_text_content_classes()``), exposed as
+    a pure function so the cross-path polarity test can assert chunk-path
+    and book-path agreement class-by-class without spinning up a DuckDB.
+    It delegates to the owned predicate in
+    ``substrate/books/servability.py``; there is no second polarity here.
+    NULL and unrecognised classes are DENIED (deny-by-default)."""
+    return is_content_class_servable_full_text(content_class)
 
 
 def search(
@@ -238,19 +277,40 @@ def search(
     if source_tier_max is not None:
         sql += " AND d.source_tier <= ?"
         params.append(int(source_tier_max))
-    # Sprint 18 retrieval-time gate (master-spec §9.0). The gate
-    # excludes restricted_pending_opt_in content from any retrieval
-    # path whose policy_tag is not privileged. NULL content_class is
-    # treated as legacy/grandfathered and passes — this is acceptable
-    # because the Sprint 16 telemetry ran on pre-gate data and the
-    # backfill to populate content_class for legacy documents lands
-    # alongside Sprint 18 ip_holders onboarding.
+    # §9.0 retrieval-time gate — deny-by-default (SPR-05).
+    #
+    # The non-privileged retrieval path serves a chunk's parent document
+    # only when its content_class resolves to FULL-TEXT-SERVABLE through
+    # the owned predicate in substrate/books/servability.py
+    # (is_content_class_servable_full_text == is_servable_full_text(
+    # servability_of(content_class))). NULL and any unrecognised
+    # content_class collapse to GATED_METADATA_ONLY there and are absent
+    # from the derived allowlist — so they are DENIED, the same verdict the
+    # book full-text path reaches over the same column. This replaced the
+    # earlier fail-open denylist (an OR-NULL-or-NOT-IN-restricted clause),
+    # under which a NULL/unknown class *passed*. §9.0 is deny-by-default
+    # for a legal reason: unknown provenance is legally indistinguishable
+    # from restricted (Hachette v. Internet Archive, 2d Cir. 2024; Bartz v.
+    # Anthropic), so it must deny.
+    #
+    # Legacy carve-out (SPR-05 M2): NONE NEEDED. The previous OR-NULL
+    # clause grandfathered every legacy chunk whose content_class was never
+    # populated — exactly the blanket NULL/unknown fail-open §9.0 forbids,
+    # not a finite enumerable set, so it cannot be expressed as a named,
+    # auditable `legacy_chunk_grandfathered` carve-out. The legitimate
+    # legacy concern is honoured the only defensible way: the Sprint 18
+    # ip_holders backfill populates content_class for genuinely-servable
+    # legacy documents (public_domain / open / opt-in), after which they
+    # re-enter the allowlist on provenance, not on a NULL hole. Until a
+    # document carries an established servable class it stays gated. Should
+    # legal review later require specific named legacy works to remain
+    # servable before backfill, the place to encode that is a finite,
+    # enumerated document-id carve-out at this gate — never a NULL pass.
     if policy_tag not in PRIVILEGED_POLICY_TAGS:
-        placeholders = ",".join("?" for _ in RESTRICTED_CONTENT_CLASSES)
-        sql += (
-            f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
-        )
-        params.extend(RESTRICTED_CONTENT_CLASSES)
+        servable_classes = sorted(servable_full_text_content_classes())
+        placeholders = ",".join("?" for _ in servable_classes)
+        sql += f" AND d.content_class IN ({placeholders})"
+        params.extend(servable_classes)
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 

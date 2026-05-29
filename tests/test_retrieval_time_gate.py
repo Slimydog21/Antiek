@@ -97,9 +97,14 @@ def test_default_policy_excludes_restricted(db_with_chunks):
     assert "doc-restricted" not in doc_ids, (
         "default policy_tag exposed restricted content; legal gate broken"
     )
-    # Legacy null-content_class is grandfathered (passes the gate).
-    assert "doc-legacy" in doc_ids
-    # Public + licensed both pass.
+    # SPR-05 strictening: legacy NULL content_class is now DENIED on the
+    # chunk path (deny-by-default), matching the book full-text path. The
+    # old fail-open that grandfathered NULL was the hole SPR-05 closed —
+    # see substrate/graph/search.py §9.0 gate and tests/test_servability_polarity.py.
+    assert "doc-legacy" not in doc_ids, (
+        "NULL content_class must be denied on the chunk path (deny-by-default)"
+    )
+    # Public + licensed both pass (legitimately-servable classes unaffected).
     assert "doc-public" in doc_ids
     assert "doc-licensed" in doc_ids
 
