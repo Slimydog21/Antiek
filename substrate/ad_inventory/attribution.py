@@ -80,8 +80,9 @@ class AttributionAlgorithm(str, enum.Enum):
 # as ineligible (deny-by-default for the EARN gate, matching the deny-by-default
 # posture of the §9.0 RENDER gate).
 PUBLIC_GRAPH_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "public_domain",              # out-of-copyright; public + servable
+    "public_domain",              # out-of-copyright / CC0; public + servable
     "opt_in_licensed",            # publisher claimed via §9.10; public + servable
+    "source_declared_open",       # source-declared open (CC-BY/CC-BY-SA); public + servable; accrues into pool/escrow
     "user_public_contribution",   # user-posted to the public graph (§13.9)
     "restricted_pending_opt_in",  # gated-but-public: body withheld, EARNS to escrow
 })

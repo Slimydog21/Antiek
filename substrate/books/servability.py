@@ -53,6 +53,11 @@ class ServabilityStatus(str, Enum):
     PUBLIC_DOMAIN = "public_domain"
     PLATFORM_AUTHORED = "platform_authored"
     PUBLISHER_OPTED_IN = "publisher_opted_in"
+    # A truthful status for a source-declared open license (CC-BY / CC-BY-SA):
+    # servable, but NOT a §9.10 publisher opt-in. Deliberately NOT folded into
+    # PUBLISHER_OPTED_IN — these works were opened at the source, not claimed
+    # by a publisher.
+    SOURCE_DECLARED_OPEN = "source_declared_open"
     GATED_METADATA_ONLY = "gated_metadata_only"
     TAKEN_DOWN = "taken_down"
 
@@ -67,6 +72,7 @@ _CONTENT_CLASS_TO_STATUS: dict[str, ServabilityStatus] = {
     "user_owned": ServabilityStatus.PLATFORM_AUTHORED,
     "user_public_contribution": ServabilityStatus.PLATFORM_AUTHORED,
     "opt_in_licensed": ServabilityStatus.PUBLISHER_OPTED_IN,
+    "source_declared_open": ServabilityStatus.SOURCE_DECLARED_OPEN,
 }
 
 # The statuses that permit full-text serving. The complement of this set
@@ -75,6 +81,7 @@ _SERVABLE_STATUSES: frozenset[ServabilityStatus] = frozenset({
     ServabilityStatus.PUBLIC_DOMAIN,
     ServabilityStatus.PLATFORM_AUTHORED,
     ServabilityStatus.PUBLISHER_OPTED_IN,
+    ServabilityStatus.SOURCE_DECLARED_OPEN,
 })
 
 

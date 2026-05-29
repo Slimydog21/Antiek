@@ -4,7 +4,8 @@ The OA license mapping shares the CC core with arXiv (``licenses_core``) and
 adds the OA-specific rows. The load-bearing cases asserted directly:
 
   - bronze OA -> gated (free-to-read is NOT free-to-redistribute);
-  - CC-BY / CC-BY-SA / CC0 -> servable;
+  - CC-BY / CC-BY-SA -> servable as source_declared_open (2026-05-29 remap);
+  - CC0 -> servable as public_domain (2026-05-29 remap);
   - CC Public-Domain Mark -> servable as public_domain;
   - unknown / missing -> gated (deny-by-default).
 
@@ -47,24 +48,28 @@ from substrate.constants import GATED_DEFAULT_CONTENT_CLASS  # noqa: E402
 def test_cc_by_is_servable(uri):
     r = resolve_oa_license(uri)
     assert r.redistributable is True
-    assert r.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY is source-declared-open, NOT a §9.10 publisher opt-in.
+    assert r.content_class == "source_declared_open"
 
 
 def test_cc_by_sa_is_servable():
     r = resolve_oa_license("https://creativecommons.org/licenses/by-sa/4.0/")
     assert r.redistributable is True
-    assert r.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY-SA is source-declared-open, NOT a §9.10 publisher opt-in.
+    assert r.content_class == "source_declared_open"
 
 
 def test_cc0_is_servable():
     r = resolve_oa_license("https://creativecommons.org/publicdomain/zero/1.0/")
     assert r.redistributable is True
-    assert r.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC0 is a public-domain dedication -> public_domain.
+    assert r.content_class == "public_domain"
 
 
 def test_public_domain_mark_is_servable_public_domain():
-    """CC Public-Domain Mark marks an already-public-domain work -> servable,
-    but as public_domain (distinct from CC0's opt_in_licensed lane)."""
+    """CC Public-Domain Mark marks an already-public-domain work -> servable
+    as public_domain. (Post-2026-05-29 remap, CC0 also lands in public_domain;
+    PDM and CC0 now share the public_domain lane — both lack a rights holder.)"""
     r = resolve_oa_license("https://creativecommons.org/publicdomain/mark/1.0/")
     assert r.redistributable is True
     assert r.content_class == "public_domain"

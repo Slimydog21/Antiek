@@ -503,10 +503,12 @@ PROCESS_SKILL_PROPOSAL_THRESHOLD: Final[int] = 3
 # unknown / NULL / restricted content resolves to metadata-only here.
 #
 # Maps to the documents.content_class vocabulary (schema.py V2 §18):
-#   public_domain             → out-of-copyright; servable
+#   public_domain             → out-of-copyright / CC0 dedication; servable
 #   user_owned                → platform/operator-authored (Write workflow); servable
 #   user_public_contribution  → user-posted to public graph (§13.9); servable
 #   opt_in_licensed           → publisher claimed via §9.10 opt-in; servable
+#   source_declared_open      → source-declared open license (CC-BY / CC-BY-SA);
+#                               servable; NOT a §9.10 opt-in and NOT public domain
 # Everything else (restricted_pending_opt_in, NULL, unrecognised) is
 # gated to metadata-only and never served full text.
 SERVABLE_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
@@ -514,7 +516,16 @@ SERVABLE_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
     "user_owned",
     "user_public_contribution",
     "opt_in_licensed",
+    "source_declared_open",
 })
+
+# source-declared open license (CC-BY / CC-BY-SA found in source metadata);
+# servable; NOT a §9.10 publisher opt-in and NOT public domain. Distinct from
+# opt_in_licensed (which means EXACTLY "a publisher claimed the work via the
+# §9.10 opt-in flow") so the reader display and the rev-share payout gate read
+# a truthful provenance: the open license was declared AT THE SOURCE, not
+# claimed by a publisher.
+SOURCE_DECLARED_OPEN_CONTENT_CLASS: Final[str] = "source_declared_open"
 
 # The documents.content_class value that means "gated": withheld from
 # full-text serving AND from the ad/attribution chunk-retrieval path,
@@ -543,9 +554,10 @@ TAKEDOWN_CONTENT_CLASS: Final[str] = GATED_DEFAULT_CONTENT_CLASS
 # column. The order is the deny-by-default reading order: the first three
 # serve full text, the last two do not.
 BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (
-    "public_domain",       # out-of-copyright; full text servable
+    "public_domain",       # out-of-copyright / CC0; full text servable
     "platform_authored",   # operator/Write-workflow authored; servable
     "publisher_opted_in",  # publisher claimed via §9.10 opt-in; servable
+    "source_declared_open",  # source-declared open license (CC-BY / CC-BY-SA); servable
     "gated_metadata_only",  # default: metadata/snippet only, full text withheld
     "taken_down",          # removed on demand; full text purged
 )

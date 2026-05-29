@@ -403,8 +403,11 @@ CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
 -- policy_tag in {'private_research', 'operator_only'}.
 --
 -- content_class values:
---   'public_domain'                 → unrestricted retrieval
---   'opt_in_licensed'               → unrestricted retrieval (publisher claimed)
+--   'public_domain'                 → unrestricted retrieval (incl. CC0 dedication)
+--   'opt_in_licensed'               → unrestricted retrieval (publisher claimed via §9.10)
+--   'source_declared_open'          → unrestricted retrieval; source-declared open
+--                                     license (CC-BY / CC-BY-SA). Servable, NOT a
+--                                     §9.10 publisher opt-in and NOT public domain
 --   'restricted_pending_opt_in'     → restricted: only retrievable on
 --                                     policy_tag in {private_research, operator_only}
 --   'user_owned'                    → only the owner_user_id user can retrieve

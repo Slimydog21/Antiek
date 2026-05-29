@@ -50,21 +50,24 @@ from substrate.constants import GATED_DEFAULT_CONTENT_CLASS  # noqa: E402
 def test_cc_by_is_servable(uri):
     r = resolve_license(uri)
     assert r.redistributable is True
-    assert r.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY is source-declared-open, NOT a §9.10 publisher opt-in.
+    assert r.content_class == "source_declared_open"
     assert "CC BY" in r.license_name
 
 
 def test_cc_by_sa_is_servable():
     r = resolve_license("http://creativecommons.org/licenses/by-sa/4.0/")
     assert r.redistributable is True
-    assert r.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY-SA is source-declared-open, NOT a §9.10 publisher opt-in.
+    assert r.content_class == "source_declared_open"
     assert "BY-SA" in r.license_name
 
 
 def test_cc0_is_servable():
     r = resolve_license("http://creativecommons.org/publicdomain/zero/1.0/")
     assert r.redistributable is True
-    assert r.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC0 is a public-domain dedication -> public_domain.
+    assert r.content_class == "public_domain"
     assert "CC0" in r.license_name
 
 

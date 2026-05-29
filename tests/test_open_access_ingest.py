@@ -6,7 +6,7 @@ the HTTP path uses ``httpx.MockTransport``. The PDF is injected as fixture
 bytes built via ``acquisition.books.public_domain.text_to_pdf``.
 
 The asserted split is the invariant in action across all four sources:
-  - a CC-BY item -> opt_in_licensed, servable_full_text True;
+  - a CC-BY item -> source_declared_open (2026-05-29 remap), servable_full_text True;
   - a bronze / CC-BY-NC / no-license item -> gated, servable_full_text False.
 """
 
@@ -236,7 +236,8 @@ def test_unpaywall_cc_by_is_servable():
     ft = unpaywall.parse_response(_UNPAYWALL_CC_BY, "10.1371/journal.pone.0000308")
     assert ft.pdf_url == "https://journals.example/article.pdf"
     assert ft.resolution.redistributable is True
-    assert ft.resolution.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY -> source_declared_open.
+    assert ft.resolution.content_class == "source_declared_open"
 
 
 def test_unpaywall_bronze_is_gated():
@@ -405,7 +406,8 @@ def test_ingest_cc_by_is_servable(temp_db_and_events):
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
     )
-    assert out.content_class == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY -> source_declared_open (servable, not §9.10 opt-in).
+    assert out.content_class == "source_declared_open"
     assert out.servable_full_text is True
 
 
@@ -458,7 +460,8 @@ def test_ingest_persists_basis_and_class(temp_db_and_events):
         con.close()
     assert "Unpaywall" in basis
     assert "creativecommons.org/licenses/by/4.0" in basis
-    assert cc == "opt_in_licensed"
+    # 2026-05-29 remap: CC-BY -> source_declared_open.
+    assert cc == "source_declared_open"
 
 
 def test_ingest_empty_pdf_raises(temp_db_and_events):
@@ -550,7 +553,8 @@ def test_cli_real_run_splits_servable_and_gated(temp_db_and_events, monkeypatch)
         )
     finally:
         con.close()
-    assert "opt_in_licensed" in classes
+    # 2026-05-29 remap: the CC-BY (servable) item now lands in source_declared_open.
+    assert "source_declared_open" in classes
     assert GATED_DEFAULT_CONTENT_CLASS in classes
 
 
