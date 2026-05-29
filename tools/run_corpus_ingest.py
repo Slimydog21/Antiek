@@ -883,6 +883,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=25, help="per-source max")
     p.add_argument("--investigation-id", default="inv-corpus", help="investigation id stamped on docs")
     p.add_argument("--db-path", help="target DuckDB (required for a real run)")
+    p.add_argument(
+        "--staging-db",
+        help=(
+            "write the ingest to a separate staging DuckDB instead of the live "
+            "DB (SPR-01 keystone). The live API keeps serving the live DB during "
+            "the ingest; merge the staged rows in with tools/merge_staging.py. "
+            "When set, --db-path / --allow-prod-write are not needed."
+        ),
+    )
     p.add_argument("--dry-run", action="store_true", help="plan only; write nothing")
     p.add_argument(
         "--allow-prod-write", action="store_true",
@@ -1055,7 +1064,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
 
-    if not args.dry_run:
+    # Staging mode (SPR-01 keystone): the ingest writes to a separate staging
+    # DuckDB off the live hot path. The live API keeps serving the live DB
+    # throughout; tools/merge_staging.py later copies the staged rows in
+    # through one bounded connect_write. The prod-write guard and lock pre-
+    # flight do NOT apply — staging is never the prod substrate, and the live
+    # writer is not held during the ingest.
+    write_target = args.db_path
+    if args.staging_db and not args.dry_run:
+        from runtime.staging_db import resolve_ingest_target
+
+        write_target = resolve_ingest_target(
+            db_path=args.db_path, staging_db=args.staging_db
+        )
+
+    if not args.dry_run and not args.staging_db:
         if not args.db_path:
             print("error: --db-path is required for a real run", file=sys.stderr)
             return 2
@@ -1107,12 +1130,23 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
 
     plan = plan_corpus(candidates)
-    header = "DRY RUN — nothing written\n" if args.dry_run else "INGEST PLAN\n"
+    if args.dry_run:
+        header = "DRY RUN — nothing written\n"
+    elif args.staging_db:
+        header = f"STAGING INGEST → {write_target}\n"
+    else:
+        header = "INGEST PLAN\n"
     print(header + plan.render())
 
-    report = execute_plan(plan, db_path=args.db_path, dry_run=args.dry_run)
+    report = execute_plan(plan, db_path=write_target, dry_run=args.dry_run)
     if report.dry_run:
         print(f"\ndry-run: {report.planned} would be ingested; wrote nothing")
+    elif args.staging_db:
+        print(
+            f"\nstaged {report.ingested} / {report.planned} planned; "
+            f"{report.failed} failed — now merge with "
+            f"`python -m tools.merge_staging --live-db <live> --staging-db {write_target}`"
+        )
     else:
         print(
             f"\ningested {report.ingested} / {report.planned} planned; "
