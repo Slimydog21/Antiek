@@ -247,10 +247,78 @@ def execute_plan(
 # ---------------------------------------------------------------------------
 
 
+def _arxiv_bulk_candidates(
+    *, snapshot_path: str, category: Optional[str], limit: int,
+    investigation_id: str,
+) -> list[PlannedCandidate]:
+    """Discover arXiv candidates from the LOCAL bulk metadata snapshot — never
+    touching the export API (the path that 429-banned the box). The per-PDF
+    fetch (at ingest) reuses the shared SourceThrottle (key ``arxiv_pdf``) + the
+    shared assert_pdf check. Candidate shape matches the export path so dedup /
+    rights / quality are unchanged."""
+    import os as _os
+
+    from acquisition.arxiv import (
+        ArxivPaper,
+        bulk_candidates_from_path,
+        fetch_bulk_pdf,
+        ingest_paper_with_rights,
+    )
+    from substrate.source_throttle import SourceThrottle
+
+    if not snapshot_path or not _os.path.exists(snapshot_path):
+        raise SystemExit(
+            "error: --arxiv-source bulk needs --arxiv-bulk-snapshot pointing at "
+            "a downloaded arxiv-metadata-oai-snapshot.json (JSON-Lines). See the "
+            "runbook; the snapshot is fetched out-of-band, never via export."
+        )
+
+    papers = bulk_candidates_from_path(
+        snapshot_path, category=category, limit=limit
+    )
+    persistent = SourceThrottle()
+
+    out: list[PlannedCandidate] = []
+    for p in papers:
+        author = p.authors[0] if p.authors else None
+
+        def _ingest(db_path: str, _p: ArxivPaper = p) -> str:
+            # Per-PDF fetch dodges export; throttle + PDF-vs-HTML check reused.
+            pdf_bytes = fetch_bulk_pdf(_p, throttle=persistent)
+            result = ingest_paper_with_rights(
+                _p, investigation_id=investigation_id,
+                pdf_bytes=pdf_bytes, db_path=db_path,
+            )
+            return f"{result.content_class} ({result.servability})"
+
+        out.append(
+            PlannedCandidate(
+                ref=CandidateRef(
+                    ref_id=f"arxiv:{p.arxiv_id}",
+                    arxiv_id=p.arxiv_id,
+                    title=p.title,
+                    author=author,
+                ),
+                source="arxiv",
+                assessable_text=p.abstract,  # born-digital; abstract is prose
+                assess_body=True,
+                ingest=_ingest,
+            )
+        )
+    return out
+
+
 def _arxiv_candidates(
     *, query: Optional[str], category: Optional[str],
     ids: Optional[Sequence[str]], limit: int, investigation_id: str,
+    arxiv_source: str = "export", bulk_snapshot: Optional[str] = None,
 ) -> list[PlannedCandidate]:
+    if arxiv_source == "bulk":
+        return _arxiv_bulk_candidates(
+            snapshot_path=bulk_snapshot or "", category=category,
+            limit=limit, investigation_id=investigation_id,
+        )
+
     import httpx
 
     from acquisition.arxiv import (
@@ -363,9 +431,16 @@ def _public_domain_candidates(
         ingest_work,
         strip_gutenberg_boilerplate,
     )
+    from substrate.source_throttle import SourceBanned, SourceThrottle
     from tools.ingest_public_domain import CURATED_GUTENBERG_IDS
 
-    client = _BodyCachingClient(SourceClient(min_interval_s=min_interval_s))
+    # SHARED persistent ban sentinel for gutendex (the 2026-05-29 503 source).
+    # A 429/503 now survives a process restart; an already-banned gutendex
+    # raises SourceBanned and PD self-skips instead of re-hitting the source.
+    persistent = SourceThrottle()
+    client = _BodyCachingClient(
+        SourceClient(min_interval_s=min_interval_s, persistent=persistent)
+    )
     selected_ids: Optional[Sequence[int]] = ids
     if curated:
         selected_ids = list(CURATED_GUTENBERG_IDS)
@@ -374,6 +449,11 @@ def _public_domain_candidates(
         works = gutenberg_candidates(
             client, subject=subject, search=search_term, ids=selected_ids, limit=limit
         )
+    except SourceBanned as exc:
+        logger.warning(
+            "public-domain source banned (sentinel active); skipping PD: %s", exc
+        )
+        return []
     except SourceError as exc:
         # A transient gutendex 503/timeout during PD discovery must NOT abort
         # the whole run (and block OA, which runs after PD). Isolate it like the
@@ -457,13 +537,25 @@ def _open_access_candidates(
 ) -> list[PlannedCandidate]:
     from acquisition.openaccess import OAThrottle
     from acquisition.openaccess.ingest import build_license_basis, ingest_oa_item
+    from substrate.source_throttle import SourceBanned, SourceThrottle
     from tools.ingest_open_access import Candidate, _resolve_candidates, _source_fetcher
 
-    throttle = OAThrottle()
-    cands: list[Candidate] = _resolve_candidates(
-        source=source, query=query, author=author,
-        dois=dois, limit=limit, throttle=throttle,
-    )
+    # Front the OA throttle with the SHARED persistent ban sentinel keyed per
+    # aggregator (oa_unpaywall / oa_pmc / ...). A 429/503 now survives a process
+    # restart, and an already-banned aggregator raises SourceBanned here so this
+    # source self-skips (returns []) instead of aborting the whole run — the
+    # same per-source isolation #23 gave PD/arXiv, now backed by a sentinel.
+    persistent = SourceThrottle()
+    oa_source_key = f"oa_{source}"
+    throttle = OAThrottle(persistent=persistent, source=oa_source_key)
+    try:
+        cands: list[Candidate] = _resolve_candidates(
+            source=source, query=query, author=author,
+            dois=dois, limit=limit, throttle=throttle,
+        )
+    except SourceBanned as exc:
+        logger.error("open-access source banned, skipping OA discovery: %s", exc)
+        return []
     fetch_pdf = _source_fetcher(source, throttle) if source != "doaj" else None
 
     out: list[PlannedCandidate] = []
@@ -494,8 +586,13 @@ def _open_access_candidates(
                     )
                     return f"{result.content_class} ({result.servability})"
                 except NotAPdf as exc:
+                    # Landing page / corrupt PDF — try the next candidate URL.
                     last_exc = exc
                     continue
+                except SourceBanned as exc:
+                    # The aggregator got banned mid-ingest: stop trying its URLs
+                    # (re-hitting extends the ban) and surface a counted miss.
+                    raise ValueError(f"source banned during ingest: {exc}") from exc
             raise last_exc or ValueError("no candidate URL yielded a PDF")
 
         out.append(
@@ -576,6 +673,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--arxiv-query", help="arXiv: search query")
     p.add_argument("--arxiv-category", help="arXiv: category, e.g. cs.LG")
     p.add_argument("--arxiv-ids", help="arXiv: comma-separated ids")
+    p.add_argument(
+        "--arxiv-source", choices=("export", "bulk"), default="export",
+        help=(
+            "arXiv transport: 'export' (the Atom API, for small incremental "
+            "pulls) or 'bulk' (the local metadata snapshot, dodging the "
+            "export-API 429 for mass volume)"
+        ),
+    )
+    p.add_argument(
+        "--arxiv-bulk-snapshot",
+        help=(
+            "arXiv: path to the local arxiv-metadata-oai-snapshot.json "
+            "(JSON-Lines); required when --arxiv-source bulk"
+        ),
+    )
     # open-access selectors
     p.add_argument(
         "--oa-source", choices=("openalex", "unpaywall", "pmc", "doaj"),
@@ -623,7 +735,10 @@ def discover_all(args: argparse.Namespace) -> list[PlannedCandidate]:
         not sources and (args.pd_subject or args.pd_search or args.pd_ids or args.pd_curated)
     )
     want_arxiv = "arxiv" in sources or (
-        not sources and (args.arxiv_query or args.arxiv_category or args.arxiv_ids)
+        not sources and (
+            args.arxiv_query or args.arxiv_category or args.arxiv_ids
+            or args.arxiv_bulk_snapshot
+        )
     )
     want_oa = "open_access" in sources or (
         not sources and args.oa_source
@@ -641,6 +756,8 @@ def discover_all(args: argparse.Namespace) -> list[PlannedCandidate]:
             query=args.arxiv_query, category=args.arxiv_category,
             ids=_csv_strs(args.arxiv_ids), limit=args.limit,
             investigation_id=args.investigation_id,
+            arxiv_source=args.arxiv_source,
+            bulk_snapshot=args.arxiv_bulk_snapshot,
         )
     if want_oa:
         if not args.oa_source:

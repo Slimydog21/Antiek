@@ -1,0 +1,260 @@
+"""arXiv BULK-dataset discovery — dodges the export-API 429 (SPR-03 M4).
+
+The 2026-05-29 prod run got the box's IP 429-banned by ``export.arxiv.org``
+and stayed banned; an in-process throttle did nothing across restarts (the
+dedicated ``ArxivThrottle`` now persists that ban, but a banned export API
+still yields ZERO arXiv volume until the ban elapses). For MASS volume we must
+not touch the export API at all.
+
+arXiv publishes its full metadata as a bulk snapshot — the Kaggle / GCS
+``arxiv-metadata-oai-snapshot.json`` dataset: one JSON object PER LINE
+(JSON-Lines), ~2.5M records. This module iterates that local snapshot
+line-by-line (it is multi-GB — we NEVER materialize it all in memory; the
+disk budget is the operator's, the snapshot is downloaded out-of-band per the
+runbook) and yields the SAME ``ArxivPaper`` shape the export adapter's
+``client._parse_entry`` produces, so the downstream rights / quality / dedup
+logic is byte-for-byte unchanged. The export API stays reachable for small
+incremental pulls (``--arxiv-source export``); bulk is the volume path.
+
+Per-record license is the snapshot's ``license`` field — the SAME rights
+anchor the export Atom ``<license>`` element carries — so a bulk-discovered
+paper gates exactly as an export-discovered one (a missing license -> None ->
+deny-by-default). The per-PDF fetch (``fetch_bulk_pdf``) reuses the shared
+``substrate.source_throttle.SourceThrottle`` (source key ``arxiv_pdf``) and the
+shared ``acquisition.openaccess.pdf_detect.assert_pdf`` check — it does NOT
+re-implement throttling or PDF sniffing.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from typing import IO, TYPE_CHECKING, Iterator, Optional
+
+from .client import ArxivPaper
+
+if TYPE_CHECKING:
+    import httpx
+
+    from substrate.source_throttle import SourceThrottle
+
+# arXiv's PDF host throttle key — see substrate.source_throttle. arXiv PDFs are
+# arxiv.org (not export.arxiv.org), but a burst can still trip an IP ban, so
+# the per-PDF fetch is spaced at the documented 3s ceiling.
+ARXIV_PDF_SOURCE_KEY = "arxiv_pdf"
+
+
+def _parse_versions(record: dict) -> tuple[str, datetime, datetime]:
+    """Derive (version_suffix, published_at, updated_at) from the snapshot's
+    ``versions`` list + ``update_date``.
+
+    ``versions`` is ``[{"version": "v1", "created": "<RFC822>"}, ...]``. The
+    first entry's ``created`` is the original submission (published); the last
+    entry's version is the current version suffix. ``update_date`` (an ISO
+    ``YYYY-MM-DD``) is the snapshot's last-update stamp. Missing/partial data
+    degrades to the epoch + empty suffix rather than crashing the stream — a
+    single malformed record must not abort a 2.5M-line iteration.
+    """
+    versions = record.get("versions") or []
+    version_suffix = ""
+    published_at = _EPOCH
+    if versions:
+        last = versions[-1]
+        if isinstance(last, dict):
+            version_suffix = str(last.get("version") or "")
+        first = versions[0]
+        if isinstance(first, dict) and first.get("created"):
+            published_at = _parse_rfc822(str(first["created"])) or _EPOCH
+
+    updated_at = published_at
+    upd = record.get("update_date")
+    if upd:
+        try:
+            updated_at = datetime.fromisoformat(str(upd)).replace(tzinfo=timezone.utc)
+        except ValueError:
+            updated_at = published_at
+    return version_suffix, published_at, updated_at
+
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def _parse_rfc822(value: str) -> Optional[datetime]:
+    """arXiv ``versions[].created`` is an RFC-822 date
+    (``Mon, 2 Apr 2007 19:18:42 GMT``). Parse to tz-aware UTC; return None on
+    any failure so the caller can fall back to the epoch."""
+    from email.utils import parsedate_to_datetime
+
+    try:
+        dt = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def record_to_paper(record: dict) -> ArxivPaper:
+    """Map ONE bulk-snapshot record to an ``ArxivPaper`` — the SAME shape the
+    export adapter yields, so downstream logic is unchanged.
+
+    Field parity with ``client._parse_entry``:
+      - ``arxiv_id``      <- snapshot ``id`` (base id, no version suffix)
+      - ``version``       <- last ``versions[].version`` (e.g. "v2")
+      - ``title``         <- ``title`` (whitespace-collapsed, like export)
+      - ``authors``       <- ``authors_parsed`` ("Last, First" rebuilt) or the
+                             raw ``authors`` string split on " and "
+      - ``abstract``      <- ``abstract`` (whitespace-collapsed)
+      - ``categories``    <- ``categories`` (space-separated -> list)
+      - ``license_uri``   <- ``license`` (the rights anchor; None -> gated)
+      - ``abs_url``/``pdf_url`` <- derived from the base id, identical to export
+    """
+    arxiv_id = str(record.get("id") or "").strip()
+    if not arxiv_id:
+        raise ValueError("bulk record has no id")
+
+    version_suffix, published_at, updated_at = _parse_versions(record)
+
+    title = " ".join(str(record.get("title") or "").split())
+    abstract = " ".join(str(record.get("abstract") or "").split())
+
+    authors = _authors(record)
+    categories = [c for c in str(record.get("categories") or "").split() if c]
+    primary_category = categories[0] if categories else None
+
+    license_uri = record.get("license")
+    license_uri = str(license_uri).strip() if license_uri else None
+
+    return ArxivPaper(
+        arxiv_id=arxiv_id,
+        version=version_suffix,
+        title=title,
+        authors=authors,
+        abstract=abstract,
+        categories=categories,
+        primary_category=primary_category,
+        published_at=published_at,
+        updated_at=updated_at,
+        abs_url=f"https://arxiv.org/abs/{arxiv_id}",
+        pdf_url=f"https://arxiv.org/pdf/{arxiv_id}",
+        license_uri=license_uri,
+        raw_id=arxiv_id,
+        metadata={"source": "arxiv_bulk", "doi": record.get("doi")},
+    )
+
+
+def _authors(record: dict) -> list[str]:
+    """Rebuild a "First Last" author list. ``authors_parsed`` is
+    ``[[last, first, suffix], ...]`` (the structured form); fall back to the
+    free-text ``authors`` string split on the " and " arXiv uses."""
+    parsed = record.get("authors_parsed")
+    if isinstance(parsed, list) and parsed:
+        out: list[str] = []
+        for entry in parsed:
+            if isinstance(entry, (list, tuple)) and entry:
+                last = str(entry[0]).strip()
+                first = str(entry[1]).strip() if len(entry) > 1 else ""
+                name = f"{first} {last}".strip()
+                if name:
+                    out.append(name)
+        if out:
+            return out
+    raw = record.get("authors")
+    if raw:
+        return [a.strip() for a in str(raw).split(" and ") if a.strip()]
+    return []
+
+
+def iter_bulk_candidates(
+    snapshot: IO[str],
+    *,
+    category: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> Iterator[ArxivPaper]:
+    """Stream ``ArxivPaper`` candidates from an open JSON-Lines snapshot.
+
+    ``snapshot`` is an open text file object iterated LINE BY LINE — never
+    read whole — so a multi-GB dataset stays within the box's memory budget.
+    ``category`` filters to records whose category list contains that exact
+    category (e.g. ``cs.LG``); ``limit`` caps the number yielded.
+
+    A malformed/blank line is skipped (a 2.5M-line dataset has occasional
+    cruft; one bad line must not abort the iteration). NO export-API request
+    is ever made on this path.
+    """
+    yielded = 0
+    for line in snapshot:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict):
+            continue
+        try:
+            paper = record_to_paper(record)
+        except ValueError:
+            continue
+        if category is not None and category not in paper.categories:
+            continue
+        yield paper
+        yielded += 1
+        if limit is not None and yielded >= limit:
+            return
+
+
+def bulk_candidates_from_path(
+    snapshot_path: str,
+    *,
+    category: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> list[ArxivPaper]:
+    """Convenience: open the snapshot at ``snapshot_path`` and materialize up
+    to ``limit`` candidates. The materialization is bounded by ``limit`` (the
+    iterator stops early), so this never holds more than ``limit`` records —
+    the streaming guarantee is preserved for any sane limit."""
+    with open(snapshot_path, "r", encoding="utf-8") as fh:
+        return list(iter_bulk_candidates(fh, category=category, limit=limit))
+
+
+def fetch_bulk_pdf(
+    paper: ArxivPaper,
+    *,
+    throttle: "SourceThrottle",
+    client: "Optional[httpx.Client]" = None,
+) -> bytes:
+    """Fetch a bulk-discovered paper's PDF, reusing the shared SourceThrottle
+    (key ``arxiv_pdf``) for cross-process spacing/ban-safety and the shared
+    ``assert_pdf`` layered check. Raises ``NotAPdf`` on a landing page / corrupt
+    PDF (a counted per-item miss) and ``SourceBanned`` while the PDF host is
+    banned. ``client`` is an injectable httpx.Client for tests.
+
+    Deliberately NOT a re-implementation: throttling lives in SourceThrottle,
+    PDF detection in pdf_detect, the URL convention in ArxivPaper.pdf_url.
+    """
+    import httpx
+
+    from acquisition.openaccess.pdf_detect import assert_pdf
+
+    from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
+
+    # Cross-process gate: spacing + ban sentinel for the arXiv PDF host.
+    throttle.before_request(ARXIV_PDF_SOURCE_KEY)
+
+    headers = {"User-Agent": DEFAULT_USER_AGENT}
+    url = paper.pdf_url
+    if client is not None:
+        r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+    else:
+        with httpx.Client(follow_redirects=True) as c:
+            r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+    if r.status_code in (429, 503):
+        throttle.note_response(ARXIV_PDF_SOURCE_KEY, r.status_code, dict(r.headers))
+    r.raise_for_status()
+    content = r.content
+    assert_pdf(content, content_type=r.headers.get("content-type"), url=url)
+    return content

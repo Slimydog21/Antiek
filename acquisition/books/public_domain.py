@@ -54,9 +54,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 
 import requests
+
+if TYPE_CHECKING:
+    from substrate.source_throttle import SourceThrottle as SourceThrottleT
 
 logger = logging.getLogger("acquisition.books.public_domain")
 
@@ -126,6 +129,8 @@ class SourceClient:
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         session: Optional[requests.Session] = None,
+        persistent: Optional["SourceThrottleT"] = None,
+        source: str = "gutendex",
     ) -> None:
         self._min_interval_s = min_interval_s
         self._max_retries = max_retries
@@ -134,8 +139,19 @@ class SourceClient:
         self._session.headers.update({"User-Agent": _USER_AGENT})
         self._lock = threading.Lock()
         self._last_request_at = 0.0
+        # Optional SHARED cross-process ban sentinel (SPR-03). When set, every
+        # request consults before_request(source) — which raises SourceBanned
+        # while gutendex is banned and enforces the persisted min-interval
+        # across restarts — and a 429/503 arms the sentinel so a re-run does
+        # not re-hit the source the prod 503s came from. None keeps the
+        # pre-SPR-03 in-process-only behavior (the existing PD adapter tests).
+        self._persistent = persistent
+        self._source = source
 
     def _throttle(self) -> None:
+        if self._persistent is not None:
+            # Raises SourceBanned while banned; enforces persisted spacing.
+            self._persistent.before_request(self._source)
         with self._lock:
             elapsed = time.monotonic() - self._last_request_at
             wait = self._min_interval_s - elapsed
@@ -161,6 +177,14 @@ class SourceClient:
                 self._backoff(attempt, reason=str(exc))
                 continue
             if resp.status_code == 429 or resp.status_code >= 500:
+                # Arm the cross-process ban sentinel on the "stop hitting me"
+                # statuses (429 rate-limit / 503 overloaded) so a re-run honors
+                # the ban — the exact failure the prod 503 run had no defense
+                # against. Other 5xx are transient-only (retry-with-backoff).
+                if self._persistent is not None and resp.status_code in (429, 503):
+                    self._persistent.note_response(
+                        self._source, resp.status_code, dict(resp.headers)
+                    )
                 last_exc = SourceError(
                     f"{url} returned {resp.status_code}"
                 )

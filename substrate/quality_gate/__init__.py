@@ -33,6 +33,7 @@ from .gate import (
 )
 from .checks import (
     SourceTierBounds,
+    check_extraction_quality,
     check_verification,
     check_voice_style,
     check_source_tier,
@@ -45,6 +46,7 @@ __all__ = [
     "QualityGateResult",
     "QualityGateVerdict",
     "SourceTierBounds",
+    "check_extraction_quality",
     "check_source_tier",
     "check_verification",
     "check_voice_style",
