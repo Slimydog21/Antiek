@@ -27,6 +27,14 @@ dependencies = [
   "pyyaml>=6.0",
   "python-dateutil>=2.9",
   "orjson>=3.10",
+  # SPR-01 public-domain connector imports `requests` at module top level and
+  # lazily imports `reportlab` for the Gutenberg text→PDF bridge. Both were
+  # previously only transitively present; declared here as core so the
+  # acquisition/books path imports cleanly (the corpus-ingest orchestrator
+  # exercises the Gutenberg path). Not a new heavy dep — both are existing
+  # imports being made explicit.
+  "requests>=2.31",
+  "reportlab>=4.0",
 ]
 
 [project.optional-dependencies]
