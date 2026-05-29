@@ -39,6 +39,10 @@ export interface FrameAttentionResult {
 
 export interface UseFrameAttentionOptions {
   lens: Lens;
+  /** The current window's id. When it changes (a lens switch is a new window)
+   *  the sampler restarts: ``second_index`` returns to 0 so the new window's
+   *  batch is 0-based per the contract. Optional so a static story can omit it. */
+  windowId?: string;
   /** Called once per second with the in-frame asset set for that second. */
   onSecond: (result: FrameAttentionResult) => void;
   /** The scroll/measurement root — the working region. Defaults to the
@@ -115,7 +119,7 @@ function dwellMs(opts: { scrolledSinceLast: boolean; hasSelection: boolean }): n
 }
 
 export function useFrameAttention(opts: UseFrameAttentionOptions): void {
-  const { lens, onSecond, rootSelector = "[data-akb-shell-frame]", enabled = true } = opts;
+  const { lens, windowId, onSecond, rootSelector = "[data-akb-shell-frame]", enabled = true } = opts;
   // Keep the callback fresh without re-arming the 1Hz timer (rigor #3: no spin).
   const onSecondRef = useRef(onSecond);
   onSecondRef.current = onSecond;
@@ -189,5 +193,7 @@ export function useFrameAttention(opts: UseFrameAttentionOptions): void {
       clearInterval(timer);
       window.removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
     };
-  }, [enabled, rootSelector]);
+    // windowId in the deps so a lens switch (new window) re-arms the sampler
+    // and restarts second_index at 0 — each window's batch is 0-based.
+  }, [enabled, rootSelector, windowId]);
 }

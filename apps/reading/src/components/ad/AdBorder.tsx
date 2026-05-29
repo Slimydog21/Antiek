@@ -96,6 +96,7 @@ export function AdBorder({
   // which the backend weighs as a house second. No fabricated impression.
   useFrameAttention({
     lens,
+    windowId,
     enabled: samplingEnabled,
     onSecond: ({ second }) => emitterRef.current?.record(second),
   });

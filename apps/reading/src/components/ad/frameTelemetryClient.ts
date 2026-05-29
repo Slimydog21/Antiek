@@ -96,7 +96,12 @@ export class FrameTelemetryEmitter {
 
   private buffer: FrameSecond[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
-  private readonly boundFlushOnHide = () => this.flushOnVisibilityChange();
+  // pagehide is terminal — flush unconditionally (its visibilityState is
+  // unreliable / often still "visible" as the page tears down). A
+  // visibilitychange flushes ONLY when actually hidden so →visible never
+  // double-sends. Two distinct handlers, not one gated on visibilityState.
+  private readonly boundFlushOnPageHide = () => void this.flush("hidden");
+  private readonly boundFlushOnVisibility = () => this.flushOnVisibilityChange();
   private started = false;
 
   constructor(opts: FrameTelemetryEmitterOptions) {
@@ -122,8 +127,8 @@ export class FrameTelemetryEmitter {
       // visibilitychange→hidden covers tab-switch / background. Both flush via
       // the keepalive beacon so the batch survives the navigation that fires
       // them (a plain fetch would be cancelled mid-navigation).
-      window.addEventListener("pagehide", this.boundFlushOnHide);
-      document.addEventListener("visibilitychange", this.boundFlushOnHide);
+      window.addEventListener("pagehide", this.boundFlushOnPageHide);
+      document.addEventListener("visibilitychange", this.boundFlushOnVisibility);
     }
   }
 
@@ -134,8 +139,8 @@ export class FrameTelemetryEmitter {
       this.timer = null;
     }
     if (typeof document !== "undefined") {
-      window.removeEventListener("pagehide", this.boundFlushOnHide);
-      document.removeEventListener("visibilitychange", this.boundFlushOnHide);
+      window.removeEventListener("pagehide", this.boundFlushOnPageHide);
+      document.removeEventListener("visibilitychange", this.boundFlushOnVisibility);
     }
     this.started = false;
     void this.flush("stop");
@@ -148,7 +153,7 @@ export class FrameTelemetryEmitter {
 
   private flushOnVisibilityChange(): void {
     // Only flush when actually hidden — a visibilitychange→visible must not
-    // double-send. pagehide has no visibilityState so always flush there.
+    // double-send. (pagehide is handled separately and always flushes.)
     if (typeof document !== "undefined" && document.visibilityState === "visible") {
       return;
     }
