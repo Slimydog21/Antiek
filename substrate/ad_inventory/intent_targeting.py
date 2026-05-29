@@ -161,6 +161,51 @@ def select_targeted_ad(
     flat-topic ``select_lead_gen_ad`` behavior over the fallback list.
     This keeps un-retagged advertisers serving while the gradual
     rollout completes.
+
+    LEARNED PATH (SPR-10): when ``ANTIEK_LEARNED_AD_RANKER`` is set, this
+    delegates to ``auction_ranker.select_ad``, which re-orders candidates by a
+    learned value model and picks among the SAME rule-eligible set — then
+    degrades to this rule-based logic on any model failure. The signature and
+    return type are unchanged, so callers (``ad_impressions.py``) need no edit;
+    the flag flips learned↔rule with no code change. The import is lazy to keep
+    the rule-based path free of the model machinery and to avoid an import
+    cycle.
+    """
+    # SPR-10 seam: route to the learned ranker iff the flag is on. The lazy
+    # import keeps the default (rule-based) path independent of the model
+    # modules and breaks the auction_ranker → intent_targeting cycle. The
+    # ranker degrades to ``select_targeted_ad_rule_based`` (NOT this function),
+    # so a learned-path failure cannot re-enter the flag check and recurse.
+    from .auction_ranker import learned_ranker_enabled
+
+    if learned_ranker_enabled():
+        from .auction_ranker import select_ad as _learned_select_ad
+
+        return _learned_select_ad(
+            context=context,
+            targeted_inventory=targeted_inventory,
+            flat_inventory_fallback=flat_inventory_fallback,
+        )
+
+    return select_targeted_ad_rule_based(
+        context=context,
+        targeted_inventory=targeted_inventory,
+        flat_inventory_fallback=flat_inventory_fallback,
+    )
+
+
+def select_targeted_ad_rule_based(
+    *,
+    context: PageContext,
+    targeted_inventory: list[TargetedInventoryItem],
+    flat_inventory_fallback: Optional[list[AdInventoryItem]] = None,
+) -> Optional[AdInventoryItem]:
+    """The flag-independent rule-based selection core (the Sprint 25+ matcher).
+
+    This is the guaranteed fallback the SPR-10 learned ranker degrades to, and
+    the body ``select_targeted_ad`` runs when the flag is off. Kept as a
+    separate function (not re-entering ``select_targeted_ad``) so the learned
+    path's fallback cannot loop back through the flag check.
     """
     scored: list[tuple[float, Decimal, str, AdInventoryItem]] = []
     for ti in targeted_inventory:
@@ -225,4 +270,5 @@ __all__ = [
     "context_from_decomposer_topics",
     "score_inventory_match",
     "select_targeted_ad",
+    "select_targeted_ad_rule_based",
 ]
