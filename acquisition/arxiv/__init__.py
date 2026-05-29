@@ -27,20 +27,27 @@ from .adapter import (
 )
 from .client import ArxivPaper, fetch_by_id, search
 from .licenses import LicenseResolution, license_basis_string, resolve_license
+from .oai_pmh import HarvestState, OaiPmhHarvester
+from .oai_records import build_census, parse_record, parse_records
 from .throttle import ArxivBanned, ArxivThrottle
 
 __all__ = [
     "ArxivBanned",
     "ArxivPaper",
     "ArxivThrottle",
+    "HarvestState",
     "IngestPaperWithRightsResult",
     "IngestResult",
     "LicenseResolution",
+    "OaiPmhHarvester",
     "arxiv_doc_id",
+    "build_census",
     "fetch_by_id",
     "ingest_paper",
     "ingest_paper_with_rights",
     "license_basis_string",
+    "parse_record",
+    "parse_records",
     "resolve_license",
     "search",
 ]

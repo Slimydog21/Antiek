@@ -15,8 +15,8 @@ terms) and composes the arXiv table from it + the shared CC rows.
 The mapping is a DATA TABLE, not scattered conditionals, so a reviewer reads
 ONE table and sees which licenses are servable and why.
 
-The set of license URIs arXiv actually emits (the
-``{http://arxiv.org/schemas/atom}license`` element):
+The set of license URIs arXiv actually emits (the OAI-PMH arXiv-format
+``{http://arxiv.org/OAI/arXiv/}license`` element):
 https://info.arxiv.org/help/license/index.html
 """
 
