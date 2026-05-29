@@ -1,0 +1,15 @@
+{
+  "_doc": "SPR-04 M5 golden fixture. Fixed inputs → known per-asset outputs for A/B/C. Hand-derived in test_attribution_golden.py. doc-A is tier-1 (high trust), doc-B is tier-4. Three chunk citations: ch-1->doc-A, ch-2->doc-B, ch-3->doc-A.",
+  "inputs": {
+    "chunk_to_document": {"ch-1": "doc-A", "ch-2": "doc-B", "ch-3": "doc-A"},
+    "chunk_to_claim_confidence": {"ch-1": 1.0, "ch-2": 1.0, "ch-3": 0.4},
+    "document_to_source_tier": {"doc-A": 1, "doc-B": 4},
+    "claim_load_bearing_scores": {"cl-1": 0.9, "cl-2": 0.3, "cl-3": 0.1},
+    "chunk_to_claim_id": {"ch-1": "cl-1", "ch-2": "cl-2", "ch-3": "cl-3"}
+  },
+  "expected": {
+    "A": {"doc-A": 0.6666666666666666, "doc-B": 0.3333333333333333},
+    "B": {"doc-A": 0.7777777777777778, "doc-B": 0.2222222222222222},
+    "C": {"doc-A": 0.7692307692307692, "doc-B": 0.23076923076923075}
+  }
+}
