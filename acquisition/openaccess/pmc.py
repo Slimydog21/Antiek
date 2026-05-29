@@ -159,7 +159,7 @@ def download_pdf(
     """Download PMC PDF bytes. Transient errors retry via the throttle."""
 
     def _get() -> bytes:
-        from .unpaywall import NotAPdf, _looks_like_pdf
+        from .pdf_detect import assert_pdf
 
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         if client is not None:
@@ -169,12 +169,9 @@ def download_pdf(
                 r = c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
         r.raise_for_status()
         content = r.content
-        if not _looks_like_pdf(content, r.headers.get("content-type")):
-            raise NotAPdf(
-                f"{pdf_url} returned non-PDF bytes "
-                f"(content-type={r.headers.get('content-type')!r}) — not a PDF "
-                "(PMC ?pdf=render can return an HTML interstitial)"
-            )
+        # PMC ?pdf=render can return an HTML interstitial; the shared layered
+        # detector (content-type / %PDF- / pypdf parse) rejects it as NotAPdf.
+        assert_pdf(content, content_type=r.headers.get("content-type"), url=pdf_url)
         return content
 
     return throttle.run_with_retry(_get) if throttle is not None else _get()

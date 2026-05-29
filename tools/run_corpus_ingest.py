@@ -247,10 +247,92 @@ def execute_plan(
 # ---------------------------------------------------------------------------
 
 
+def _arxiv_bulk_candidates(
+    *, snapshot_path: str, category: Optional[str], limit: int,
+    investigation_id: str,
+) -> list[PlannedCandidate]:
+    """Discover arXiv candidates from the LOCAL bulk metadata snapshot — never
+    touching the export API (the path that 429-banned the box). The per-PDF
+    fetch (at ingest) reuses the shared SourceThrottle (key ``arxiv_pdf``) + the
+    shared assert_pdf check. Candidate shape matches the export path so dedup /
+    rights / quality are unchanged.
+
+    Body-quality boundary (intellectual honesty): the bulk snapshot carries only
+    metadata + the abstract, NOT the body. The body is the PDF fetched at
+    ingest. Assessing the abstract at discovery would be assessing the wrong
+    text — a ~120-word abstract clears the token/real-word floors trivially
+    while a truncated/OCR-garbled PDF body could still slip in. So discovery
+    gates METADATA ONLY (``assess_body=False``), and the REAL body extracted
+    from the fetched PDF is gated inside the ingest thunk via
+    ``substrate.quality_gate.assess_extraction_quality`` BEFORE the document is
+    written — OCR garbage in the PDF body is a counted per-item rejection, not a
+    silent ingest."""
+    import os as _os
+
+    from acquisition.arxiv import (
+        ArxivPaper,
+        bulk_candidates_from_path,
+        fetch_bulk_pdf,
+        ingest_paper_with_rights,
+    )
+    from substrate.source_throttle import SourceThrottle
+
+    if not snapshot_path or not _os.path.exists(snapshot_path):
+        raise SystemExit(
+            "error: --arxiv-source bulk needs --arxiv-bulk-snapshot pointing at "
+            "a downloaded arxiv-metadata-oai-snapshot.json (JSON-Lines). See the "
+            "runbook; the snapshot is fetched out-of-band, never via export."
+        )
+
+    papers = bulk_candidates_from_path(
+        snapshot_path, category=category, limit=limit
+    )
+    persistent = SourceThrottle()
+
+    out: list[PlannedCandidate] = []
+    for p in papers:
+        author = p.authors[0] if p.authors else None
+
+        def _ingest(db_path: str, _p: ArxivPaper = p) -> str:
+            # Per-PDF fetch dodges export; throttle + PDF-vs-HTML check reused.
+            pdf_bytes = fetch_bulk_pdf(_p, throttle=persistent)
+            _assert_pdf_body_quality(pdf_bytes, ref_id=f"arxiv:{_p.arxiv_id}")
+            result = ingest_paper_with_rights(
+                _p, investigation_id=investigation_id,
+                pdf_bytes=pdf_bytes, db_path=db_path,
+            )
+            return f"{result.content_class} ({result.servability})"
+
+        out.append(
+            PlannedCandidate(
+                ref=CandidateRef(
+                    ref_id=f"arxiv:{p.arxiv_id}",
+                    arxiv_id=p.arxiv_id,
+                    title=p.title,
+                    author=author,
+                ),
+                source="arxiv",
+                # Metadata-only at discovery: the abstract is NOT the body. The
+                # body is gated from the fetched PDF in _ingest (see docstring).
+                assessable_text="",
+                assess_body=False,
+                ingest=_ingest,
+            )
+        )
+    return out
+
+
 def _arxiv_candidates(
     *, query: Optional[str], category: Optional[str],
     ids: Optional[Sequence[str]], limit: int, investigation_id: str,
+    arxiv_source: str = "export", bulk_snapshot: Optional[str] = None,
 ) -> list[PlannedCandidate]:
+    if arxiv_source == "bulk":
+        return _arxiv_bulk_candidates(
+            snapshot_path=bulk_snapshot or "", category=category,
+            limit=limit, investigation_id=investigation_id,
+        )
+
     import httpx
 
     from acquisition.arxiv import (
@@ -261,9 +343,24 @@ def _arxiv_candidates(
         search,
     )
     from acquisition.arxiv.client import fetch_by_id
+    from substrate.source_throttle import SourceThrottle
     from tools.ingest_arxiv import _request_with_429_sentinel
 
     throttle = ArxivThrottle()
+    # The export API keeps its dedicated ArxivThrottle (its #23 tests pin it).
+    # But the orchestrator's source rotation reads the SHARED sentinel, so when
+    # the export endpoint bans us we mirror that ban under the arxiv_export key
+    # in the shared file — the NEXT run's discover_all then rotates AWAY from
+    # arXiv at the top of the run instead of entering this branch to re-discover
+    # a banned endpoint. This is the bridge that makes export bans participate
+    # in rotation without disturbing ArxivThrottle.
+    shared = SourceThrottle()
+
+    def _mirror_export_ban() -> None:
+        until = throttle.banned_until()
+        if until > 0:
+            shared.note_response_at(ARXIV_EXPORT_KEY, until)
+
     papers: list[ArxivPaper] = []
     # Isolate arXiv discovery like the PD/OA paths: a live 429 (export.arxiv.org
     # IP-ban) is recorded to the throttle's banned_until sentinel (so the NEXT
@@ -292,9 +389,11 @@ def _arxiv_candidates(
             )
     except ArxivBanned as exc:
         logger.error("arxiv banned, skipping arxiv discovery: %s", exc)
+        _mirror_export_ban()
         return []
     except httpx.HTTPStatusError as exc:
         logger.error("arxiv discovery http error, skipping arxiv: %s", exc)
+        _mirror_export_ban()
         return []
 
     out: list[PlannedCandidate] = []
@@ -363,9 +462,16 @@ def _public_domain_candidates(
         ingest_work,
         strip_gutenberg_boilerplate,
     )
+    from substrate.source_throttle import SourceBanned, SourceThrottle
     from tools.ingest_public_domain import CURATED_GUTENBERG_IDS
 
-    client = _BodyCachingClient(SourceClient(min_interval_s=min_interval_s))
+    # SHARED persistent ban sentinel for gutendex (the 2026-05-29 503 source).
+    # A 429/503 now survives a process restart; an already-banned gutendex
+    # raises SourceBanned and PD self-skips instead of re-hitting the source.
+    persistent = SourceThrottle()
+    client = _BodyCachingClient(
+        SourceClient(min_interval_s=min_interval_s, persistent=persistent)
+    )
     selected_ids: Optional[Sequence[int]] = ids
     if curated:
         selected_ids = list(CURATED_GUTENBERG_IDS)
@@ -374,6 +480,11 @@ def _public_domain_candidates(
         works = gutenberg_candidates(
             client, subject=subject, search=search_term, ids=selected_ids, limit=limit
         )
+    except SourceBanned as exc:
+        logger.warning(
+            "public-domain source banned (sentinel active); skipping PD: %s", exc
+        )
+        return []
     except SourceError as exc:
         # A transient gutendex 503/timeout during PD discovery must NOT abort
         # the whole run (and block OA, which runs after PD). Isolate it like the
@@ -457,13 +568,25 @@ def _open_access_candidates(
 ) -> list[PlannedCandidate]:
     from acquisition.openaccess import OAThrottle
     from acquisition.openaccess.ingest import build_license_basis, ingest_oa_item
+    from substrate.source_throttle import SourceBanned, SourceThrottle
     from tools.ingest_open_access import Candidate, _resolve_candidates, _source_fetcher
 
-    throttle = OAThrottle()
-    cands: list[Candidate] = _resolve_candidates(
-        source=source, query=query, author=author,
-        dois=dois, limit=limit, throttle=throttle,
-    )
+    # Front the OA throttle with the SHARED persistent ban sentinel keyed per
+    # aggregator (oa_unpaywall / oa_pmc / ...). A 429/503 now survives a process
+    # restart, and an already-banned aggregator raises SourceBanned here so this
+    # source self-skips (returns []) instead of aborting the whole run — the
+    # same per-source isolation #23 gave PD/arXiv, now backed by a sentinel.
+    persistent = SourceThrottle()
+    oa_source_key = f"oa_{source}"
+    throttle = OAThrottle(persistent=persistent, source=oa_source_key)
+    try:
+        cands: list[Candidate] = _resolve_candidates(
+            source=source, query=query, author=author,
+            dois=dois, limit=limit, throttle=throttle,
+        )
+    except SourceBanned as exc:
+        logger.error("open-access source banned, skipping OA discovery: %s", exc)
+        return []
     fetch_pdf = _source_fetcher(source, throttle) if source != "doaj" else None
 
     out: list[PlannedCandidate] = []
@@ -494,8 +617,13 @@ def _open_access_candidates(
                     )
                     return f"{result.content_class} ({result.servability})"
                 except NotAPdf as exc:
+                    # Landing page / corrupt PDF — try the next candidate URL.
                     last_exc = exc
                     continue
+                except SourceBanned as exc:
+                    # The aggregator got banned mid-ingest: stop trying its URLs
+                    # (re-hitting extends the ban) and surface a counted miss.
+                    raise ValueError(f"source banned during ingest: {exc}") from exc
             raise last_exc or ValueError("no candidate URL yielded a PDF")
 
         out.append(
@@ -514,6 +642,39 @@ def _open_access_candidates(
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# Body-quality gate at ingest (M6 wired into the corpus path).
+# ---------------------------------------------------------------------------
+
+
+class BodyQualityRejected(ValueError):
+    """The PDF body failed the extraction-quality gate (OCR garbage /
+    near-empty). A ValueError subclass so ``execute_plan``'s per-item
+    try/except counts it as a per-item failure (the run continues), and the
+    reason is carried for the run summary — the body never enters the corpus."""
+
+
+def _assert_pdf_body_quality(pdf_bytes: bytes, *, ref_id: str) -> None:
+    """Gate the REAL extracted PDF body before ingest. This is where M6's
+    ``assess_extraction_quality`` becomes load-bearing on the corpus path: the
+    bulk arXiv body arrives as a PDF (not text), so corpus_quality's
+    discovery-time checks never see it — they ran metadata-only. We extract the
+    body with the same ``read_pdf`` the ingest uses and reject OCR garbage /
+    near-empty extracts as a counted miss, BEFORE ``ingest_paper_with_rights``
+    writes anything. Quality-only: this never touches content_class /
+    servability."""
+    from acquisition.books.reader import read_pdf
+    from substrate.quality_gate import CheckResultKind, assess_extraction_quality
+
+    body = read_pdf(pdf_bytes).markdown
+    verdict = assess_extraction_quality(body)
+    if verdict.kind is CheckResultKind.FAIL:
+        raise BodyQualityRejected(
+            f"{ref_id}: extracted PDF body failed quality gate "
+            f"({'; '.join(verdict.reasons)})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +737,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--arxiv-query", help="arXiv: search query")
     p.add_argument("--arxiv-category", help="arXiv: category, e.g. cs.LG")
     p.add_argument("--arxiv-ids", help="arXiv: comma-separated ids")
+    p.add_argument(
+        "--arxiv-source", choices=("export", "bulk"), default="export",
+        help=(
+            "arXiv transport: 'export' (the Atom API, for small incremental "
+            "pulls) or 'bulk' (the local metadata snapshot, dodging the "
+            "export-API 429 for mass volume)"
+        ),
+    )
+    p.add_argument(
+        "--arxiv-bulk-snapshot",
+        help=(
+            "arXiv: path to the local arxiv-metadata-oai-snapshot.json "
+            "(JSON-Lines); required when --arxiv-source bulk"
+        ),
+    )
     # open-access selectors
     p.add_argument(
         "--oa-source", choices=("openalex", "unpaywall", "pmc", "doaj"),
@@ -612,45 +788,148 @@ def _csv_strs(value: Optional[str]) -> Optional[list[str]]:
     return [x.strip() for x in value.split(",") if x.strip()]
 
 
-def discover_all(args: argparse.Namespace) -> list[PlannedCandidate]:
-    """Run the selected sources' discovery adapters and concatenate. A source
-    is included when explicitly named in --source, or (when --source is
-    omitted) when any of its selectors is present."""
+def _arxiv_throttle_key(arxiv_source: str) -> str:
+    """The persistent-throttle key whose ban means 'arXiv is unreachable now'.
+    The bulk path's reachability is its PDF host (``arxiv_pdf``); the export
+    path's is the dedicated ``ArxivThrottle``, which records its ban under the
+    ``arxiv_export`` key in the SAME shared sentinel file."""
+    return ARXIV_PDF_KEY if arxiv_source == "bulk" else ARXIV_EXPORT_KEY
+
+
+# The shared-sentinel keys each selected source's reachability hangs on. These
+# are the keys the live fetch paths arm via note_response on a 429/503, so a ban
+# recorded by one run's fetch is exactly what the NEXT run's rotation reads.
+ARXIV_PDF_KEY = "arxiv_pdf"
+ARXIV_EXPORT_KEY = "arxiv_export"
+GUTENDEX_KEY = "gutendex"
+
+
+@dataclass(frozen=True)
+class DiscoveryOutcome:
+    """What ``discover_all`` produced. ``candidates`` is the concatenation of
+    every NON-banned source's discovery. ``all_banned`` + ``soonest_resume``
+    are set only when every selected source's sentinel was active — the clean
+    halt the orchestrator surfaces so a resume is informed (M3 criterion 3).
+    ``rotation_log`` is the ordered, human-readable record of which sources were
+    skipped (banned) and which were attempted (M3 criterion 4)."""
+
+    candidates: tuple[PlannedCandidate, ...]
+    rotation_log: tuple[str, ...]
+    all_banned: bool = False
+    soonest_resume: float = 0.0
+
+
+def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
+    """Drive discovery THROUGH ban-aware source rotation. A source is selected
+    when explicitly named in --source, or (when --source is omitted) when any of
+    its selectors is present. The orchestrator then consults the shared
+    persistent sentinel and ROTATES over the selected sources in priority order:
+    a source whose ban sentinel is active is skipped (recorded in the rotation
+    log) instead of being fetched and re-extending its ban; the run pulls the
+    remaining non-banned sources. When EVERY selected source is banned, discovery
+    returns a clean all-banned halt carrying the soonest resume time, rather than
+    spinning. This is the live use of ``next_available_source`` —
+    ``discover_all`` is the production caller, not a test.
+    """
+    from substrate.source_throttle import SourceThrottle, next_available_source
+
     sources = set(args.sources or [])
-    candidates: list[PlannedCandidate] = []
 
     want_pd = "public_domain" in sources or (
         not sources and (args.pd_subject or args.pd_search or args.pd_ids or args.pd_curated)
     )
     want_arxiv = "arxiv" in sources or (
-        not sources and (args.arxiv_query or args.arxiv_category or args.arxiv_ids)
+        not sources and (
+            args.arxiv_query or args.arxiv_category or args.arxiv_ids
+            or args.arxiv_bulk_snapshot
+        )
     )
     want_oa = "open_access" in sources or (
         not sources and args.oa_source
     )
+    if want_oa and not args.oa_source:
+        raise SystemExit("error: open-access needs --oa-source")
 
+    # Map each selected source to (rotation key, discovery thunk), in priority
+    # order. The rotation key is the sentinel key whose ban means the source is
+    # unreachable right now; the thunk runs that source's discovery adapter.
+    runners: list[tuple[str, Callable[[], list[PlannedCandidate]]]] = []
     if want_pd:
-        candidates += _public_domain_candidates(
-            subject=args.pd_subject, search_term=args.pd_search,
-            ids=_csv_ints(args.pd_ids), curated=args.pd_curated,
-            limit=args.limit, investigation_id=args.investigation_id,
-            min_interval_s=args.pd_min_interval,
-        )
+        runners.append((
+            GUTENDEX_KEY,
+            lambda: _public_domain_candidates(
+                subject=args.pd_subject, search_term=args.pd_search,
+                ids=_csv_ints(args.pd_ids), curated=args.pd_curated,
+                limit=args.limit, investigation_id=args.investigation_id,
+                min_interval_s=args.pd_min_interval,
+            ),
+        ))
     if want_arxiv:
-        candidates += _arxiv_candidates(
-            query=args.arxiv_query, category=args.arxiv_category,
-            ids=_csv_strs(args.arxiv_ids), limit=args.limit,
-            investigation_id=args.investigation_id,
-        )
+        runners.append((
+            _arxiv_throttle_key(args.arxiv_source),
+            lambda: _arxiv_candidates(
+                query=args.arxiv_query, category=args.arxiv_category,
+                ids=_csv_strs(args.arxiv_ids), limit=args.limit,
+                investigation_id=args.investigation_id,
+                arxiv_source=args.arxiv_source,
+                bulk_snapshot=args.arxiv_bulk_snapshot,
+            ),
+        ))
     if want_oa:
-        if not args.oa_source:
-            raise SystemExit("error: open-access needs --oa-source")
-        candidates += _open_access_candidates(
-            source=args.oa_source, query=args.oa_query, author=args.oa_author,
-            dois=_csv_strs(args.oa_dois), limit=args.limit,
-            investigation_id=args.investigation_id,
-        )
-    return candidates
+        runners.append((
+            f"oa_{args.oa_source}",
+            lambda: _open_access_candidates(
+                source=args.oa_source, query=args.oa_query, author=args.oa_author,
+                dois=_csv_strs(args.oa_dois), limit=args.limit,
+                investigation_id=args.investigation_id,
+            ),
+        ))
+
+    throttle = SourceThrottle()
+    keys = [k for k, _ in runners]
+    by_key = dict(runners)
+    candidates: list[PlannedCandidate] = []
+    rotation_log: list[str] = []
+
+    # Rotate left-to-right: each pass picks the next non-banned source, runs it,
+    # then re-evaluates the REMAINING sources (a source can get banned mid-run by
+    # its own fetch, so the next pass re-reads the sentinel). Sources skipped as
+    # banned in a pass are dropped from the remaining set too — they've been
+    # logged and must not be re-picked or trigger a spurious all-banned once a
+    # real source was pulled. The skipped/next decision is logged so rotation is
+    # observable — not silent dead code. The all-banned halt fires only when the
+    # remaining set is exhausted with NO source ever pulled.
+    remaining = list(keys)
+    pulled_any = False
+    while remaining:
+        decision = next_available_source(throttle, remaining)
+        if decision.skipped:
+            line = decision.render()
+            rotation_log.append(line)
+            logger.info("rotation: %s", line)
+        if decision.all_banned:
+            if pulled_any:
+                # Some sources ran; the rest are banned — that is a partial run,
+                # not an all-banned halt. The skip is logged above; stop here.
+                break
+            return DiscoveryOutcome(
+                candidates=tuple(candidates),
+                rotation_log=tuple(rotation_log),
+                all_banned=True,
+                soonest_resume=decision.soonest_banned_until,
+            )
+        chosen = decision.next_source
+        assert chosen is not None  # not all_banned => a source was chosen
+        candidates += by_key[chosen]()
+        pulled_any = True
+        # Drop the chosen source AND the banned ones we just skipped past it.
+        skipped_keys = {s for s, _ in decision.skipped}
+        remaining = [k for k in remaining if k != chosen and k not in skipped_keys]
+
+    return DiscoveryOutcome(
+        candidates=tuple(candidates),
+        rotation_log=tuple(rotation_log),
+    )
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -674,13 +953,36 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _assert_lock_free(args.db_path)
 
     try:
-        candidates = discover_all(args)
+        outcome = discover_all(args)
     except SystemExit:
         raise
     except Exception as exc:  # network / parse failure during discovery
         print(f"error: discovery failed: {exc}", file=sys.stderr)
         return 1
 
+    # Surface the rotation decisions so a skip is observable, not silent.
+    for line in outcome.rotation_log:
+        print(f"rotation: {line}", file=sys.stderr)
+
+    # All configured sources banned -> clean halt recording the soonest resume,
+    # NOT a generic 'no candidates' (M3 criterion 3): the operator/SPR-09
+    # scheduler reads this to time a resume instead of re-hitting banned sources.
+    if outcome.all_banned:
+        from datetime import datetime, timezone
+
+        resume = outcome.soonest_resume
+        when = (
+            datetime.fromtimestamp(resume, tz=timezone.utc).isoformat()
+            if resume > 0 else "unknown"
+        )
+        print(
+            f"all configured sources are banned; halting cleanly. soonest "
+            f"resume at banned_until={resume:.0f} ({when}) — re-run after then.",
+            file=sys.stderr,
+        )
+        return 3
+
+    candidates = list(outcome.candidates)
     if not candidates:
         print("no candidates discovered (check your selectors)", file=sys.stderr)
         return 1
