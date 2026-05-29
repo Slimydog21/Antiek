@@ -296,15 +296,51 @@ def test_m6_we_did_not_close_or_flip_the_gate(monkeypatch):
 
 
 def test_m6_no_stripe_path_invoked():
-    """The harness imports NO module under tools/stripe_connect/. (If it did, a
-    disbursement path could exist; it must not.)"""
+    """Importing the harness must pull in NO module under tools/stripe_connect/.
+    (If it did, a disbursement path could exist; it must not.)
+
+    Checked in a FRESH subprocess, NOT against this session's ``sys.modules``.
+    The shared pytest session imports stripe_connect via sibling suites
+    (test_stripe_connect, test_stripe_payouts, test_payout_pipeline_integration,
+    …), so a process-global ``sys.modules`` scan is order-dependent: it passes
+    only when this test happens to run before any of them and proves nothing
+    about the harness itself. A clean interpreter that imports *only* the
+    harness isolates the harness's real transitive import graph — which is the
+    invariant we actually care about.
+    """
+    import subprocess
     import sys
-    # The harness module is imported at the top of this test file.
-    stripe_mods = [m for m in sys.modules
-                   if m.startswith("tools.stripe_connect")]
-    # Importing the e2e tests + the harness must not have pulled in any
-    # stripe_connect module.
-    assert not stripe_mods, f"stripe_connect was imported: {stripe_mods}"
+
+    probe = (
+        "import sys, tools.verify_ad_economics\n"
+        "mods = sorted(m for m in sys.modules "
+        "if m.startswith('tools.stripe_connect'))\n"
+        "print('STRIPE_MODS=' + ','.join(mods))\n"
+    )
+    env = dict(os.environ)
+    # Reproduce this interpreter's import path so the child resolves the same
+    # packages (works under both the editable install and a PYTHONPATH run).
+    env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, (
+        "harness failed to import in a clean interpreter: "
+        f"{result.stderr.strip()}"
+    )
+    marker = [ln for ln in result.stdout.splitlines()
+              if ln.startswith("STRIPE_MODS=")]
+    assert marker, (
+        f"import probe produced no marker; stdout={result.stdout!r} "
+        f"stderr={result.stderr!r}"
+    )
+    stripe_mods = [m for m in marker[0].split("=", 1)[1].split(",") if m]
+    assert not stripe_mods, (
+        f"importing the harness pulled in stripe_connect: {stripe_mods}"
+    )
     # And the harness source contains no reference to the stripe_connect package.
     src = ve.__file__
     with open(src, encoding="utf-8") as fh:
