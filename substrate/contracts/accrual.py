@@ -41,8 +41,17 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict
 
-# Which attribution concern produced the accrual. Both emit this same shape.
-AccrualSource = Literal["publisher_impression", "speak_contribution"]
+# Which attribution concern produced the accrual. All emit this same shape.
+# ``frame_attention_second`` is the SPR-05 third source: the always-on
+# "Times-Square border" per-second frame-attention engine
+# (``substrate/ad_inventory/frame_attention_accrual.py``). It converges on this
+# one wire-shape rather than a separate path — the seam test asserts that every
+# attribution concern emits THIS contract, so a third source on the same shape
+# is the consistent move. ``disbursable`` stays fixed ``False`` for it too:
+# frame-attention accrues into escrow and never disburses (G2/G3 gate).
+AccrualSource = Literal[
+    "publisher_impression", "speak_contribution", "frame_attention_second"
+]
 
 
 class AccrualContract(BaseModel):
