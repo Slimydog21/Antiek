@@ -12,19 +12,36 @@ Response shape this adapter parses (Anthropic Messages API):
   "stop_reason": "end_turn" | "max_tokens" | "stop_sequence" | "tool_use",
   "stop_sequence": null,
   "usage": {
-    "input_tokens": N,
+    "input_tokens": N,                  // tokens AFTER the last cache breakpoint — cache-EXCLUSIVE
     "output_tokens": M,
-    "cache_creation_input_tokens": N,   // tokens that wrote to cache this call
-    "cache_read_input_tokens": N        // tokens served FROM cache this call (subset of input_tokens)
+    "cache_creation_input_tokens": N,   // tokens WRITTEN to cache this call (premium 1.25x write rate)
+    "cache_read_input_tokens": N        // tokens READ from cache this call (discounted 0.1x read rate)
   }
 }
 ```
 
-Watch-item: Anthropic's ``cache_read_input_tokens`` is the cached subset
-of ``input_tokens``. We surface this on ``NormalizedUsage.cached_input_tokens``
-so the router can apply the cached-input discount in
-``_compute_cost_usd``. ``cache_creation_input_tokens`` is the first-write
-cost and is folded into ``input_tokens`` already — do not double-count.
+Usage normalization (the cost-accounting watch-item): per the Anthropic
+Messages API prompt-caching schema, ``input_tokens`` is the number of
+input tokens "which were not read from or used to create a cache (that
+is, tokens after the last cache breakpoint)" — it is the cache-EXCLUSIVE
+remainder, NOT an inclusive total. ``cache_read_input_tokens`` and
+``cache_creation_input_tokens`` are reported SEPARATELY and are NOT
+contained in ``input_tokens``. The true total input is therefore
+``cache_read_input_tokens + cache_creation_input_tokens + input_tokens``.
+
+``NormalizedUsage`` expects an INCLUSIVE ``input_tokens`` (the router's
+single cost function subtracts the cached/written subsets uniformly across
+providers). So ``normalize_usage`` below sums the three Anthropic fields
+into an inclusive total and forwards the cached-read and cache-write
+subsets separately, letting ``_compute_cost_usd`` bill cache_read at the
+discounted rate and cache_creation at the premium write rate.
+
+NOTE: the earlier comment here claimed ``input_tokens`` "already includes
+cached tokens" — that was FALSE for the real Anthropic API and caused the
+router's ``paid_input = max(0, input - cached)`` to double-subtract and
+clamp to zero on a cache hit (underbilling, and silently dropping the
+premium cache_creation writes). OpenAI/DeepSeek ``prompt_tokens`` genuinely
+IS inclusive, so the false symmetry assumption held there but not here.
 """
 
 from __future__ import annotations
@@ -226,14 +243,28 @@ class AnthropicProvider:
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
         if not raw_usage:
             return NormalizedUsage(input_tokens=0, output_tokens=0)
-        # ``input_tokens`` already includes cached tokens — Anthropic's
-        # accounting treats cache_read as a discount, not a subtraction.
-        # We pass the cached count separately so the router applies the
-        # cached-input rate to that subset.
+        # Anthropic's ``input_tokens`` is the cache-EXCLUSIVE remainder
+        # ("tokens after the last cache breakpoint" — Anthropic Messages
+        # API prompt-caching schema). ``cache_read_input_tokens`` and
+        # ``cache_creation_input_tokens`` are reported SEPARATELY and are
+        # NOT inside ``input_tokens``. ``NormalizedUsage`` expects an
+        # INCLUSIVE total, so we sum all three to present the router an
+        # inclusive ``input_tokens`` and forward the read/write subsets so
+        # ``_compute_cost_usd`` can bill cache_read at the discounted rate
+        # and cache_creation at the premium (1.25x base input) write rate.
+        # WHY this changed: the previous adapter forwarded the
+        # cache-exclusive remainder verbatim, so the router's
+        # ``max(0, input - cached)`` double-subtracted and clamped to zero
+        # on a normal cache hit — underbilling and dropping the premium
+        # cache_creation writes entirely.
+        input_remainder = int(raw_usage.get("input_tokens", 0) or 0)
+        cache_read = int(raw_usage.get("cache_read_input_tokens", 0) or 0)
+        cache_creation = int(raw_usage.get("cache_creation_input_tokens", 0) or 0)
         return NormalizedUsage(
-            input_tokens=int(raw_usage.get("input_tokens", 0) or 0),
+            input_tokens=input_remainder + cache_read + cache_creation,
             output_tokens=int(raw_usage.get("output_tokens", 0) or 0),
-            cached_input_tokens=int(raw_usage.get("cache_read_input_tokens", 0) or 0),
+            cached_input_tokens=cache_read,
+            cache_creation_input_tokens=cache_creation,
         )
 
     def close(self) -> None:

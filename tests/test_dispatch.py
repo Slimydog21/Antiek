@@ -4,8 +4,9 @@ What this file proves:
 
 1. ``dispatch`` routes by role → tier → provider correctly.
 2. The DispatchCall event lands with all required fields populated.
-3. **Anthropic-shaped usage** (``input_tokens`` / ``output_tokens`` /
-   ``cache_read_input_tokens``) normalizes correctly.
+3. **Anthropic-shaped usage** (cache-EXCLUSIVE ``input_tokens`` +
+   ``cache_read_input_tokens`` + ``cache_creation_input_tokens``) normalizes
+   to an INCLUSIVE ``input_tokens`` (SPR-01).
 4. **OpenAI-shaped usage** (``prompt_tokens`` / ``completion_tokens`` /
    ``prompt_tokens_details.cached_tokens``) normalizes correctly.
 5. The fallback chain triggers when the primary raises ProviderError —
@@ -78,11 +79,15 @@ class _MockAnthropicProvider:
             )
         return RawProviderResponse(
             text="anthropic response text",
+            # Anthropic's ``input_tokens`` is the cache-EXCLUSIVE remainder
+            # (tokens after the last cache breakpoint); cache_read /
+            # cache_creation are reported SEPARATELY and are NOT inside it.
+            # Inclusive input total here = 1200 + 800 + 0 = 2000.
             raw_usage={
-                "input_tokens": 1200,
+                "input_tokens": 1200,            # post-breakpoint remainder
                 "output_tokens": 350,
                 "cache_creation_input_tokens": 0,
-                "cache_read_input_tokens": 800,  # 800 of the 1200 were cached
+                "cache_read_input_tokens": 800,  # read from cache, NOT in input_tokens
             },
             finish_reason=self._finish,
             latency_ms=890,
@@ -90,10 +95,18 @@ class _MockAnthropicProvider:
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
+        # Mirror the production AnthropicProvider contract (SPR-01): the raw
+        # ``input_tokens`` is cache-exclusive, so sum in cache_read and
+        # cache_creation to present the router an INCLUSIVE total, and forward
+        # both subsets so cost is billed at their own rates.
+        remainder = int(raw_usage.get("input_tokens", 0))
+        cache_read = int(raw_usage.get("cache_read_input_tokens", 0))
+        cache_creation = int(raw_usage.get("cache_creation_input_tokens", 0))
         return NormalizedUsage(
-            input_tokens=int(raw_usage.get("input_tokens", 0)),
+            input_tokens=remainder + cache_read + cache_creation,
             output_tokens=int(raw_usage.get("output_tokens", 0)),
-            cached_input_tokens=int(raw_usage.get("cache_read_input_tokens", 0)),
+            cached_input_tokens=cache_read,
+            cache_creation_input_tokens=cache_creation,
         )
 
 
@@ -233,15 +246,18 @@ def test_dispatch_emits_dispatch_call_event(_events_dir):
 
 
 def test_anthropic_usage_normalization(_events_dir):
-    """Watch-item: Anthropic returns input_tokens / output_tokens, with
-    cache_read_input_tokens for the cached subset."""
+    """Watch-item: Anthropic's raw ``input_tokens`` is the cache-EXCLUSIVE
+    remainder; cache_read / cache_creation are reported separately. The
+    adapter sums them into an INCLUSIVE ``input_tokens`` (SPR-01) and forwards
+    the cached-read subset for the router's cached-input discount."""
     register_provider(_MockAnthropicProvider())
     register_provider(_MockOpenAICompatProvider())
     result = dispatch(
         "hi", "synthesizer", investigation_id="inv-an",
         config=_two_tier_config(),
     )
-    assert result.usage.input_tokens == 1200
+    # Inclusive total = remainder(1200) + cache_read(800) + cache_creation(0).
+    assert result.usage.input_tokens == 2000
     assert result.usage.output_tokens == 350
     assert result.usage.cached_input_tokens == 800
 
@@ -271,11 +287,12 @@ def test_cost_uses_cached_pricing_discount(_events_dir):
         "hi", "synthesizer", investigation_id="inv-cost",
         config=_two_tier_config(),
     )
-    # 1200 input total, 800 cached, 400 paid-full.
+    # Inclusive input = 2000 (1200 remainder + 800 cache_read), 800 cached,
+    # 0 cache_creation, so paid-full = max(0, 2000-800-0) = 1200.
     # Synthesis pricing: $15/Mtok input, $1.5/Mtok cached input, $75/Mtok output.
-    # cost = (400/1e6)*15 + (800/1e6)*1.5 + (350/1e6)*75
-    #      = 0.006 + 0.0012 + 0.02625 = 0.03345
-    assert result.cost_usd == pytest.approx(0.03345, rel=1e-6)
+    # cost = (1200/1e6)*15 + (800/1e6)*1.5 + (350/1e6)*75
+    #      = 0.018 + 0.0012 + 0.02625 = 0.04545
+    assert result.cost_usd == pytest.approx(0.04545, rel=1e-6)
 
 
 def test_fallback_chain_triggers_on_primary_failure(_events_dir):
