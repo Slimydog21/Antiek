@@ -135,6 +135,8 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ExaLookupResult,
     # SPR-08 M4 — sub-model for ReadMetaReadingGeneratedPayload.citations.
     schema_module.MetaReadingCitation,
+    # Foundation v2 SPR-02 — sub-model for GroundednessScoredPayload.per_claim.
+    schema_module.ClaimGroundednessVerdict,
 )
 
 # Payload models, in the same order as the TypedPayload union.
@@ -177,6 +179,10 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ConstraintLoopResolvedPayload,
     schema_module.OutcomeRecordedPayload,
     schema_module.RubricScoredPayload,
+    # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
+    # event that replaces the Phase-6 except-pass swallow.
+    schema_module.GroundednessScoredPayload,
+    schema_module.GroundednessFailedPayload,
     schema_module.PhaseEnterPayload,
     schema_module.PhaseExitPayload,
     schema_module.PhaseVerifyPayload,

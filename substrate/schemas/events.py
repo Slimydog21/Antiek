@@ -446,6 +446,19 @@ class ActionType(str, Enum):
     #    investigation (documents.investigation_id). specs SPR-13.
     DOCUMENT_FILED_INTO_INVESTIGATION = "document.filed_into_investigation"
 
+    # ── Foundation v2 SPR-02 — groundedness eval (truth axis) + the
+    #    failure event that replaces the Phase-6 except-pass swallow.
+    #    groundedness.scored is the per-synthesis claim-entailment signal
+    #    emitted NON-blocking alongside rubric.scored (which stays as the
+    #    SECONDARY form-axis signal). groundedness.failed surfaces a scorer
+    #    crash on the live path so the signal can never silently vanish:
+    #    "non-blocking" means the loop continues, NOT that the signal
+    #    disappears. Validate-first — neither event gates a merge this
+    #    sprint; the promote-to-gate criterion lives in
+    #    substrate/eval/groundedness/PROMOTE_TO_GATE.md.
+    GROUNDEDNESS_SCORED = "groundedness.scored"
+    GROUNDEDNESS_FAILED = "groundedness.failed"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -609,7 +622,20 @@ class ActionType(str, Enum):
 #     0..1 investigation (documents.investigation_id, 1:N FK). The match score +
 #     question are recorded on the event so the filing decision is reconstructable
 #     (why this doc landed here). specs/antiek-living-roadmap/ SPR-13. 2026-05-28.
-EVENT_SCHEMA_VERSION: int = 23
+# v23: Foundation v2 SPR-02 — groundedness eval (truth axis). Two typed
+#     events: groundedness.scored carries the per-synthesis claim-entailment
+#     score (mean per-claim groundedness over the EXISTING claim→chunk
+#     provenance) + the per-claim verdicts, emitted NON-blocking on the
+#     live Phase-6 path alongside the (now explicitly SECONDARY, form-axis)
+#     rubric.scored; groundedness.failed surfaces a scorer crash so the
+#     signal can never silently vanish — it REPLACES the Phase-6
+#     except-pass swallow ("never block on rubric"), which dropped the
+#     signal on any crash. Non-blocking means the loop continues, not that
+#     the signal disappears. Validate-first: neither event is merge-blocking
+#     this sprint (the promote-to-gate criterion is written + dated in
+#     substrate/eval/groundedness/PROMOTE_TO_GATE.md, the flip happens
+#     later). specs/antiek-foundation-v2/ SPR-02. 2026-05-29.
+EVENT_SCHEMA_VERSION: int = 24
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1396,6 +1422,74 @@ class RubricScoredPayload(_PayloadBase):
     judged_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     final_score: float = Field(ge=0.0, le=1.0)
     notes: str = ""
+
+
+# Foundation v2 SPR-02 — groundedness (claim-entailment, truth axis).
+
+
+class ClaimGroundednessVerdict(BaseModel):
+    """One per-claim entailment verdict. ``score`` is the claim's
+    groundedness in [0, 1]; ``supported`` is the binary verdict the
+    backend reached (score above its supported-threshold). ``cited_chunk_ids``
+    is the EXISTING claim→chunk provenance the verdict rests on — a claim
+    with no cited chunk cannot be grounded (``score`` floors at 0.0,
+    ``supported`` False), which is the truth-axis distinction from the
+    style rubric's citation_density (density counts citations but never
+    checks they SUPPORT the claim)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str
+    score: float = Field(ge=0.0, le=1.0)
+    supported: bool
+    cited_chunk_ids: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class GroundednessScoredPayload(_PayloadBase):
+    """Emitted NON-blocking on the live Phase-6 path (Foundation v2
+    SPR-02) alongside the SECONDARY form-axis ``rubric.scored``. The
+    truth-axis signal: for each load-bearing thesis claim, does the
+    EVIDENCE it cites ENTAIL the claim? ``groundedness_score`` is the
+    mean per-claim score over claims that carry chunk citations;
+    ``per_claim`` rides along for inspection. ``backend`` records which
+    entailment backend produced the verdicts (``lexical`` deterministic
+    default, or ``llm_judge``) so a reader knows whether the number is
+    reproducible. ``scored_claims`` / ``total_claims`` make the coverage
+    explicit (analogy-only claims with no chunk citation are excluded
+    from the mean but counted in ``total_claims``).
+
+    Observability-only this sprint — it gates nothing until M5's
+    promote-to-gate criterion is met in a later sprint."""
+
+    action_type: Literal[ActionType.GROUNDEDNESS_SCORED] = ActionType.GROUNDEDNESS_SCORED
+    scorer_id: str
+    backend: Literal["lexical", "llm_judge"]
+    groundedness_score: float = Field(ge=0.0, le=1.0)
+    scored_claims: int = Field(ge=0)
+    total_claims: int = Field(ge=0)
+    supported_threshold: float = Field(ge=0.0, le=1.0)
+    per_claim: list[ClaimGroundednessVerdict] = Field(default_factory=list)
+    notes: str = ""
+
+
+class GroundednessFailedPayload(_PayloadBase):
+    """Emitted when the groundedness (or style-rubric) scorer raises on
+    the live Phase-6 path. This is the event that REPLACES the Phase-6
+    ``except Exception: pass`` swallow (Foundation v2 SPR-02): a scorer
+    crash must SURFACE, never silently drop the quality signal. The phase
+    stays non-blocking — the orchestrator logs + emits this and proceeds —
+    so "non-blocking" never again means "the signal disappeared".
+
+    ``stage`` says which scorer crashed (``groundedness`` or ``rubric``);
+    ``error_type`` + ``error`` carry the exception class + message for
+    triage."""
+
+    action_type: Literal[ActionType.GROUNDEDNESS_FAILED] = ActionType.GROUNDEDNESS_FAILED
+    scorer_id: str
+    stage: Literal["groundedness", "rubric"]
+    error_type: str
+    error: str
 
 
 # ---------------------------------------------------------------------------
@@ -3532,6 +3626,8 @@ TypedPayload = Annotated[
         ConstraintLoopResolvedPayload,
         OutcomeRecordedPayload,
         RubricScoredPayload,
+        GroundednessScoredPayload,
+        GroundednessFailedPayload,
         PhaseEnterPayload,
         PhaseExitPayload,
         PhaseVerifyPayload,
@@ -3647,6 +3743,10 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.CONSTRAINT_LOOP_RESOLVED.value,
     ActionType.OUTCOME_RECORDED.value,
     ActionType.RUBRIC_SCORED.value,
+    # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
+    # event that replaces the Phase-6 except-pass swallow.
+    ActionType.GROUNDEDNESS_SCORED.value,
+    ActionType.GROUNDEDNESS_FAILED.value,
     ActionType.PHASE_ENTER.value,
     ActionType.PHASE_EXIT.value,
     ActionType.PHASE_VERIFY.value,
