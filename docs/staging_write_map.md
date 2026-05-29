@@ -122,3 +122,30 @@ holder ids; document_id anti-joined) → `book_assets` (FK → documents) →
 `chunks` (FK → documents) → `nodes` (no FK to documents; ordered last for
 clarity). One `connect_write` transaction wraps all five copies so an
 interruption rolls back atomically and a re-run inserts only net-new ids.
+
+## Column-order safety (not a positional `s.*`)
+
+The copy is **column-explicit** — `INSERT INTO t (c1…cn) SELECT s.c1…s.cn`,
+with the column list read from the LIVE catalog at merge time
+(`information_schema.columns`, filtered on `table_catalog` because the schema
+spans every ATTACHed DB) — never `SELECT s.*`.
+
+Why this matters: a positional `s.*` is correct only while staging and live
+share identical column *order*. That holds today because both bootstrap from
+`init_database`, which adds `content_class`/`ip_holder_id` to `documents` via
+`ALTER TABLE ADD COLUMN` so they land positionally last (verified: positions
+13, 14 on a fresh init). But `init_database` runs `migrate_v9_insight_question`,
+which **rebuilds** `nodes`/`edges`, and a future migration could rebuild and
+**reorder** any merged table on the long-lived prod DB while a freshly
+bootstrapped staging file keeps the new order. A positional copy would then
+shuffle data into the wrong columns with nothing to catch it.
+
+Guard: before the first insert (before `BEGIN`), `_assert_schema_compatible`
+(`tools/merge_staging.py`) compares every merged table's column **names AND
+order** between staging and live and raises `SchemaDivergence` — aborting the
+whole merge, writing nothing — if any diverge. With names+order proven equal,
+the explicit-column copy is correct by construction. Tests:
+`test_merge_into_migration_path_live_db` (merge into a live DB built via the
+rebuilding migration path, not a fresh init) and
+`test_schema_divergence_aborts_merge_before_any_insert` (forced order
+divergence → merge aborts, live untouched).
