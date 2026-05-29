@@ -1848,9 +1848,19 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # start event so the chosen tier is queryable after the fact (which
     # provider Hermes preferred for this investigation). The tier→provider
     # resolution lives in ONE place — substrate/dispatch/research_tier.py —
-    # never duplicated here. Defaults to "deep" (DEFAULT_RESEARCH_TIER): a
-    # cold research question is the high-value case.
-    research_tier: Literal["fast", "deep"] = "deep"
+    # never duplicated here.
+    #
+    # §14.4 measurement-window scoping: default is None, NOT "deep". The
+    # persisted tier is consumed by exactly ONE dispatch role — the
+    # synthesizer override — and the §14.4 window pins the synthesizer to
+    # Opus (config.yaml). A schema-default "deep" persisted on every run
+    # would silently displace that Opus primary with DeepSeek the moment its
+    # key is set, corrupting the Sprint-20 measurement. None = "operator did
+    # not pick a tier → no synthesizer override → use the config-pinned
+    # primary". An explicit "fast"/"deep" still records + overrides. The
+    # research-dispatch default of "deep" is unchanged — applied at the
+    # consumption point via normalize_research_tier(None) → "deep".
+    research_tier: Optional[Literal["fast", "deep"]] = None
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):

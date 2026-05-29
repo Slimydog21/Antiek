@@ -301,8 +301,9 @@ def ingest_servable_book(
     classification has exactly one home.
 
     Pass ``content_class`` only when a license is established
-    (``public_domain``, ``opt_in_licensed``, ``user_owned``). Omit it for
-    anything aggregated with unknown rights — it lands gated.
+    (``public_domain``, ``source_declared_open``, ``opt_in_licensed``,
+    ``user_owned``). Omit it for anything aggregated with unknown rights — it
+    lands gated.
     """
     # substrate is a lower layer than acquisition; importing it here keeps
     # the dependency arrow pointing the right way (acquisition → substrate).

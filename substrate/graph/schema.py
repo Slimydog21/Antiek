@@ -403,8 +403,11 @@ CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
 -- policy_tag in {'private_research', 'operator_only'}.
 --
 -- content_class values:
---   'public_domain'                 → unrestricted retrieval
---   'opt_in_licensed'               → unrestricted retrieval (publisher claimed)
+--   'public_domain'                 → unrestricted retrieval (incl. CC0 dedication)
+--   'opt_in_licensed'               → unrestricted retrieval (publisher claimed via §9.10)
+--   'source_declared_open'          → unrestricted retrieval; source-declared open
+--                                     license (CC-BY / CC-BY-SA). Servable, NOT a
+--                                     §9.10 publisher opt-in and NOT public domain
 --   'restricted_pending_opt_in'     → restricted: only retrievable on
 --                                     policy_tag in {private_research, operator_only}
 --   'user_owned'                    → only the owner_user_id user can retrieve
@@ -951,6 +954,37 @@ CREATE INDEX IF NOT EXISTS idx_write_log_logged_at ON write_log(logged_at);
 """
 
 
+# SPR-04 — attribution_audit. Append-only, reproducible record of every
+# contribution-weighting attribution computation: the FULL inputs + the
+# algorithm + a math-version stamp + the per-asset output split + a timestamp.
+# This is the trust layer for the §9 ad economics: a claiming publisher (or
+# counsel) must be able to REPLAY exactly why they earned what they earned
+# (defensibility). Mirrors the payout_decisions audit-table shape (V6). Never
+# disburses — records only. Module: substrate/ad_inventory/attribution_audit.py.
+ANTIEK_GRAPH_SCHEMA_V10_ATTRIBUTION_AUDIT_SQL = """
+CREATE TABLE IF NOT EXISTS attribution_audit (
+    audit_id            TEXT PRIMARY KEY,
+    impression_set_ref  TEXT NOT NULL,
+    page_id             TEXT NOT NULL,
+    algorithm           TEXT NOT NULL CHECK (algorithm IN (
+        'equal_split_per_chunk_citation',
+        'claim_confidence_times_source_tier',
+        'load_bearing_via_secondary_pass'
+    )),
+    algorithm_version   TEXT NOT NULL,
+    -- Canonical-JSON of the exact kwargs the algorithm was called with, so the
+    -- computation can be replayed against the math it was stamped with.
+    inputs_json         TEXT NOT NULL,
+    shares_json         TEXT NOT NULL,
+    computed_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_attribution_audit_impression_set
+    ON attribution_audit(impression_set_ref);
+CREATE INDEX IF NOT EXISTS idx_attribution_audit_page
+    ON attribution_audit(page_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1001,6 +1035,9 @@ def init_database(con: LockedConnection) -> None:
     # not a static SQL string.
     from .migrate_v9_insight_question import migrate as _migrate_v9_insight_question
     _migrate_v9_insight_question(con)
+    # SPR-04 — attribution_audit (append-only reproducible attribution record).
+    # Pure idempotent CREATE IF NOT EXISTS; runs last, FK-references nothing.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V10_ATTRIBUTION_AUDIT_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:

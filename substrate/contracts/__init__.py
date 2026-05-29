@@ -32,7 +32,7 @@ from __future__ import annotations
 # Bump on ANY change to a committed contract's field shape; mirrors
 # ``EVENT_SCHEMA_VERSION``. The codegen staleness check ties the generated TS
 # (``apps/reading/src/generated/contracts.ts``) to this version.
-CONTRACT_SCHEMA_VERSION: int = 1
+CONTRACT_SCHEMA_VERSION: int = 2
 
 from .accrual import AccrualContract, AccrualSource
 from .conformance import (

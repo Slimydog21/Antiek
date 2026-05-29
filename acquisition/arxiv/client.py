@@ -58,6 +58,13 @@ class ArxivPaper:
     updated_at: datetime
     abs_url: str
     pdf_url: str
+    # The license URI arXiv declares for THIS paper (the
+    # {http://arxiv.org/schemas/atom}license element). ``None`` when the
+    # entry carries no license element. This is the rights anchor: the
+    # license — not the fact that arXiv is free to read — is what decides
+    # whether Antiek may redistribute the full text. See
+    # ``acquisition.arxiv.licenses`` for the URI → servable-class mapping.
+    license_uri: Optional[str] = None
     raw_id: str = ""  # the full <id> URI as returned by arXiv
     metadata: dict = field(default_factory=dict)
 
@@ -158,6 +165,14 @@ def _parse_entry(entry: ET.Element) -> ArxivPaper:
     )
     primary = primary_el.get("term") if primary_el is not None else None
 
+    # Same arXiv schema namespace as primary_category. The license URI
+    # is the element TEXT (not an attribute). Absent element → None,
+    # which the licenses mapping treats as "no grant → gated".
+    lic_el = entry.find("{http://arxiv.org/schemas/atom}license")
+    license_uri = (
+        lic_el.text.strip() if lic_el is not None and lic_el.text else None
+    )
+
     return ArxivPaper(
         arxiv_id=base_id,
         version=version,
@@ -170,6 +185,7 @@ def _parse_entry(entry: ET.Element) -> ArxivPaper:
         updated_at=_parse_iso((updated_el.text or "").strip()),
         abs_url=f"https://arxiv.org/abs/{base_id}",
         pdf_url=f"https://arxiv.org/pdf/{base_id}",
+        license_uri=license_uri,
         raw_id=raw_id,
     )
 

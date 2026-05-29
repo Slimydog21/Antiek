@@ -11,6 +11,7 @@ import type {
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ChaseThread from "../ResearchWorkstation/ChaseThread";
+import ReadingColumn from "../../components/reader/ReadingColumn";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ReadingCompanion from "./ReadingCompanion";
@@ -323,24 +324,27 @@ export default function BookReader() {
               here is deliberate, so a placeholder slot never implies live ads. */}
           <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
 
-          {/* Page body + the in-book float-menu SCOPE (M2). The shared
-              useFloatMenuSelection hook listens on `selectionchange` and opens
-              the menu only for selections inside this <article> — so a highlight
-              anywhere in the page body offers {Note · Dialogue · Search ·
-              Deep-research} by text or voice, the same primitive as Research.
-              No per-element mouse/key handler: the shared hook owns the read. */}
-          <article
+          {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
+              attribution markers (SPR-09 M3). The shared useFloatMenuSelection
+              hook listens on `selectionchange` and opens the menu only for
+              selections inside this <article>; ReadingColumn forwards the ref so
+              that scope is preserved verbatim. The load-bearing addition: when
+              the gate served full text (a SERVABLE asset), the column carries
+              `data-akb-asset-id={documentId}` so SPR-07's shell-level
+              useFrameAttention — which scans the working region for
+              [data-akb-asset-id] — finally detects an in-frame IP asset and the
+              per-second telemetry stops being all-house-seconds. §9.0: a gated /
+              taken-down work never reaches here with a body (the snippet path
+              below renders the notice), so a tagged column is only ever a
+              servable asset; attribution can never accrue to withheld text. We
+              pass no chunkId — the books read path exposes no per-chunk id for
+              the linear body, and we never fabricate one (asset-level is
+              correct, per the contract's cover/title-card case). */}
+          <ReadingColumn
             ref={articleRef}
-            className="flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright"
-          >
-            {page ? (
-              <PageBody text={page.text} />
-            ) : (
-              <p className="text-shadow-1 dark:text-moonlight italic">
-                This book has no readable pages.
-              </p>
-            )}
-          </article>
+            assetId={book.servable_full_text ? documentId : null}
+            text={page?.text ?? ""}
+          />
 
           {/* Per-page actions: voice note + spin a deep research. */}
           {page && (
@@ -450,32 +454,6 @@ export default function BookReader() {
           THIS is the new multi-turn surface. */}
       <TalkToBook documentId={documentId} title={book.title} onJumpToPage={jumpToPage} />
     </div>
-  );
-}
-
-/** Render a page's markdown body as readable prose: `#`/`##` lines become
- * headings, blank-line-separated runs become paragraphs. Deliberately
- * light — the served body is already cleaned text, not rich markup. */
-function PageBody({ text }: { text: string }) {
-  const blocks = text.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
-  return (
-    <>
-      {blocks.map((block, i) => {
-        const heading = block.match(/^(#{1,3})\s+(.*)$/);
-        if (heading) {
-          return (
-            <h2 key={i} className="font-serif font-semibold text-lg mt-4 mb-2 text-ink dark:text-bright">
-              {heading[2]}
-            </h2>
-          );
-        }
-        return (
-          <p key={i} className="mb-3 whitespace-pre-wrap">
-            {block}
-          </p>
-        );
-      })}
-    </>
   );
 }
 

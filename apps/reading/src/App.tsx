@@ -17,6 +17,7 @@ import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
 import Home from "./modes/Home/Home";
 import Library from "./modes/Library";
+import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
@@ -137,6 +138,11 @@ function AuthenticatedRoutes() {
         <Route path="/notebook/:notebookId" element={<Notebook />} />
         <Route path="/documents" element={<DocumentsIndex />} />
         <Route path="/library" element={<Library />} />
+        {/* SPR-09 M2 — the paginated browse view over the new /library catalog
+            endpoint (Unit A). ADDITIVE: a static segment declared before any
+            /library param route, so it never shadows the feature-rich Library
+            door above. Reachable from the Library header's "Browse all" link. */}
+        <Route path="/library/browse" element={<LibraryView />} />
         {/* SPR-08 M4 — meta-reading surface (PROPOSED, sign-off pending).
             Literal route declared BEFORE /read/:documentId; React-Router v6
             ranks static segments above params, so /read/meta-reading never

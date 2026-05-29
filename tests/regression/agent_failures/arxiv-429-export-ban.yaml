@@ -33,17 +33,32 @@ actual_failure: |
   hours; operator manual intervention required.
 
 harness_check_that_now_catches: |
-  GAP — the canonical mitigation per the memory entry is "PDF
-  endpoint + S2 fallback work" and a banned_until sentinel. The
-  sentinel needs to live in a shared store (DuckDB write_log table
-  or a file under ~/.antiek/) that survives across processes and is
-  consulted before every request. The PDF/S2 fallback exists in code
-  but the throttle integration is uneven.
+  acquisition/arxiv/throttle.py — ArxivThrottle enforces >=3s
+  request spacing (arXiv's stated terms-of-use ceiling) AND persists
+  spacing + banned_until in a CROSS-PROCESS JSON state file, so a
+  second shell honors the first's rate-limit history instead of
+  re-triggering the ban. On a 429, note_response() sets a
+  banned_until sentinel (Retry-After-aware, else a conservative
+  30-min default); the next wait_if_needed() raises ArxivBanned so
+  the batch pauses. The CLI tools/ingest_arxiv.py wraps every live
+  request in this throttle and, on a real 429 raised by the search
+  client OR the per-paper PDF fetch, calls note_response() (persisting
+  the sentinel) and halts the batch. Closed end-to-end by
+  test_live_429_pdf_fetch_sets_sentinel_and_halts_batch in
+  tests/test_arxiv_ingest.py, which drives the LIVE run_batch path with
+  a 429-returning fetch and asserts the banned_until sentinel is written
+  to the state file and the batch backs off. The throttle mechanism
+  itself is unit-covered by test_throttle_state_survives_across_instances
+  + test_429_sets_ban_and_subsequent_request_raises in
+  tests/test_arxiv_licenses.py.
 
-fix_commit: GAP
+fix_commit: SPR-02
 
 notes: |
-  See also: arxiv-missing-ssl-env, undersized-metadata-cache,
-  banned-until-sentinel-absent. The 2026-05-17 memory entry
-  consolidates all four into a single arxiv-ingestion-failures
-  cluster — fixing them in sequence is the right move.
+  Closed together with banned-until-sentinel-absent (same
+  ArxivThrottle mechanism — the sentinel IS the throttle's ban
+  state). See also: arxiv-missing-ssl-env (still GAP — needs a
+  broader runtime/ssl_bootstrap helper, out of SPR-02 scope),
+  undersized-metadata-cache (still GAP). Alternate-source (PDF/S2)
+  fallback on ban is a future enhancement; the cross-process pause
+  is the invariant-respecting fix shipped here.

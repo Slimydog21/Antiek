@@ -37,11 +37,20 @@ from .advertiser_onboarding import (
     suspend_advertiser,
 )
 from .attribution import (
+    ATTRIBUTION_ALGORITHM_VERSION,
     AttributionAlgorithm,
     AttributionResult,
+    EligibilityDecision,
     compute_attribution_option_a,
     compute_attribution_option_b,
     compute_attribution_option_c,
+    eligibility_decision,
+    eligible_shares,
+    monetization_eligible,
+)
+from .auction_ranker import (
+    learned_ranker_enabled,
+    select_ad,
 )
 from .intent_targeting import (
     MIN_MATCH_SCORE,
@@ -51,6 +60,7 @@ from .intent_targeting import (
     context_from_decomposer_topics,
     score_inventory_match,
     select_targeted_ad,
+    select_targeted_ad_rule_based,
 )
 from .payout import (
     PayoutRouter,
@@ -67,9 +77,14 @@ __all__ = [
     "AdvertiserRecord",
     "AdvertiserRegistry",
     "AdvertiserStatus",
+    "ATTRIBUTION_ALGORITHM_VERSION",
     "AttributionAlgorithm",
     "AttributionResult",
     "BiddingPolicy",
+    "EligibilityDecision",
+    "eligibility_decision",
+    "eligible_shares",
+    "monetization_eligible",
     "InventoryTargeting",
     "LeadGenAdInventory",
     "MIN_MATCH_SCORE",
@@ -89,10 +104,13 @@ __all__ = [
     "distribute_with_gates",
     "enforce_per_document_daily_cap",
     "is_serving",
+    "learned_ranker_enabled",
     "reject_advertiser",
     "score_inventory_match",
+    "select_ad",
     "select_lead_gen_ad",
     "select_targeted_ad",
+    "select_targeted_ad_rule_based",
     "submit_application",
     "suspend_advertiser",
 ]

@@ -113,8 +113,23 @@ class InvestigationStartRequest(BaseModel):
     # CLOSED set; recorded on the start event so the chosen tier is
     # queryable. "fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro (the
     # tier→provider map lives in substrate/dispatch/research_tier.py).
-    # Defaults to "deep" — a cold research question is the high-value case.
-    research_tier: Literal["fast", "deep"] = "deep"
+    #
+    # §14.4 measurement-window scoping (default is None, NOT "deep"): the
+    # persisted tier is consumed by exactly ONE dispatch role — the
+    # synthesizer (`_research_tier_override`) — and the §14.4 window pins the
+    # synthesizer to openrouter/claude-opus-4.7 (config.yaml) to gather the
+    # Opus-primary syntheses the Sprint-20 verdict needs. A schema-default
+    # "deep" would persist on EVERY run and, once DEEPSEEK_API_KEY is set,
+    # silently displace that Opus primary with deepseek — corrupting the
+    # measurement. So we persist a tier only when the operator EXPLICITLY
+    # picks one; None means "no override → use the config-pinned primary".
+    # The research-dispatch default of "deep" is unchanged — it is applied at
+    # the consumption point via normalize_research_tier(None) → "deep" where a
+    # concrete tier is actually needed; only the synthesizer-displacing
+    # override is gated on an explicit choice. Reconsider-if: once the §14.4
+    # window closes (Sprint 20 verdict landed), the operator may restore a
+    # "deep" default if deep-synthesizer routing is then desired.
+    research_tier: Optional[Literal["fast", "deep"]] = None
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -1222,6 +1237,15 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Read SPR-09 — library catalog (paginated/filtered/searched view over the
+    # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
+    from .library import register_library_routes
+    register_library_routes(app)
+    # Read SPR-09 — ad-border surfaces: per-window frame-attention telemetry
+    # (composes the SPR-05 accrual engine + the one escrow seam; accrues, never
+    # disburses) + reader slot fill (house fill is the zero-buyer default).
+    from .ad_routes import register_ad_routes
+    register_ad_routes(app)
     # Read SPR-07 — text-to-speech for voice replies in the conversational
     # rabbit hole. Gated on the operator OpenAI key (503 without one).
     from .speech import register_speech_routes

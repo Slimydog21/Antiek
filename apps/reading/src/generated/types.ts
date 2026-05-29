@@ -1352,7 +1352,7 @@ export interface InvestigationStartRequestedPayload {
   chase_mode?: "off" | "depth" | "duration";
   chase_value?: number;
   chase_budget_usd?: number;
-  research_tier?: "fast" | "deep";
+  research_tier?: "fast" | "deep" | null;
 }
 
 /**

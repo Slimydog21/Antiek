@@ -42,6 +42,9 @@ _ESCROW_WRITER_MODULE = "substrate/ip_holders/__init__.py"
 _SANCTIONED_ESCROW_CALLERS = frozenset({
     "substrate/speak/contributor.py",                 # contributor split (seam #3)
     "substrate/marketplace_metrics/book_escrow.py",   # Read book/publisher escrow
+    # SPR-05: per-second frame-attention border accrual — a third sanctioned
+    # revenue source routing through the one writer (ip_holders.accrue_escrow).
+    "substrate/ad_inventory/frame_attention_accrual.py",
 })
 
 
@@ -169,6 +172,15 @@ def test_both_concerns_emit_the_single_accrual_shape():
         share_fraction=0.7,
     )
     assert b.disbursable is False
+    # SPR-05's per-second frame-attention accrual is the third producer on this
+    # one shape: it accrues integer cents and is equally non-disbursable.
+    c = AccrualContract(
+        accrual_id="acc-frame-1",
+        source="frame_attention_second",
+        source_ref="frame-acc-deadbeef",
+        amount_cents=125,
+    )
+    assert c.disbursable is False
     # A producer cannot flip disbursable — it is Literal[False].
     import pydantic
 

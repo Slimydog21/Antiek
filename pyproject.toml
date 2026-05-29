@@ -27,6 +27,14 @@ dependencies = [
   "pyyaml>=6.0",
   "python-dateutil>=2.9",
   "orjson>=3.10",
+  # SPR-01 public-domain connector imports `requests` at module top level and
+  # lazily imports `reportlab` for the Gutenberg text→PDF bridge. Both were
+  # previously only transitively present; declared here as core so the
+  # acquisition/books path imports cleanly (the corpus-ingest orchestrator
+  # exercises the Gutenberg path). Not a new heavy dep — both are existing
+  # imports being made explicit.
+  "requests>=2.31",
+  "reportlab>=4.0",
 ]
 
 [project.optional-dependencies]
@@ -80,6 +88,13 @@ dev = [
   # with "unrecognized arguments: -n auto" before any test runs.
   # H5 (2026-05-18) surfaced this — it was breaking CI cleanly.
   "pytest-xdist>=3.6",
+  # SPR-04's attribution golden/property suite (tests/test_attribution_golden.py)
+  # hard-imports `hypothesis` for its property tests. It was present in the
+  # operator venv (transitively) but undeclared, so a clean CI checkout aborted
+  # at COLLECTION ("No module named 'hypothesis'") before any test ran — masking
+  # the rest of the suite. Declared here so the property tests actually run on CI
+  # (declaring keeps the gate; importorskip would silently disable it).
+  "hypothesis>=6.100",
   "ruff>=0.6",
   "mypy>=1.11",
   "types-PyYAML",

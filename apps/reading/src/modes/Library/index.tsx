@@ -173,17 +173,30 @@ export default function Library() {
           <header className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1>
-              {/* Read SPR-06: the PDF wrestler, demoted from the Read door to a
-                  bring-your-own affordance. Reachable for the power case (read a
-                  PDF you brought), no longer the home — the shelf is. */}
-              <button
-                type="button"
-                onClick={() => navigate("/wrestle")}
-                className="shrink-0 mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
-                title="Read a PDF you bring yourself"
-              >
-                bring your own PDF →
-              </button>
+              <div className="shrink-0 mt-1 flex items-center gap-4">
+                {/* SPR-09 M2: the paginated browse view over the catalog endpoint
+                    — for scanning the whole shelf a page at a time. Additive to
+                    the theme-ranked door. */}
+                <button
+                  type="button"
+                  onClick={() => navigate("/library/browse")}
+                  className="text-xs font-mono text-shadow-1 dark:text-moonlight underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
+                  title="Browse the whole catalog, a page at a time"
+                >
+                  browse all →
+                </button>
+                {/* Read SPR-06: the PDF wrestler, demoted from the Read door to a
+                    bring-your-own affordance. Reachable for the power case (read a
+                    PDF you brought), no longer the home — the shelf is. */}
+                <button
+                  type="button"
+                  onClick={() => navigate("/wrestle")}
+                  className="text-xs font-mono text-shadow-1 dark:text-moonlight underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
+                  title="Read a PDF you bring yourself"
+                >
+                  bring your own PDF →
+                </button>
+              </div>
             </div>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               A licensed shelf of what can be aggregated — public-domain works,
