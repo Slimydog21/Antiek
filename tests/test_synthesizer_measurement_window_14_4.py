@@ -12,10 +12,15 @@ on every investigation start would override the §14.4-pinned
 corrupting the Sprint-20 Opus-vs-Grok measurement.
 
 The fix (two sites): the request model (``app.InvestigationStartRequest``) and
-the persisted payload (``InvestigationStartRequestedPayload``) now default
-``research_tier`` to ``None``. A tier is recorded — and the synthesizer
-override fires — ONLY on an explicit operator pick. These tests load the REAL
-config and drive the REAL override path with DeepSeek registered.
+the persisted payload (``InvestigationStartRequestedPayload``) default
+``research_tier`` to ``None`` (operator-explicit vs schema-default is now
+distinguishable). And — the load-bearing rule — while the §14.4 window is open
+the synthesizer pin holds for EVERY tier: ``_research_tier_override`` returns
+``(None, None)`` for fast/deep/default/none alike, so no research-tier choice
+displaces the Opus synthesis voice the Sprint-20 verdict is measured over. The
+recorded tier still drives the RESEARCH lane at its own call site. These tests
+load the REAL config and drive the REAL override path with DeepSeek registered;
+the comprehensive pin guard lives in ``tests/test_dispatch_synthesis_pin.py``.
 """
 
 from __future__ import annotations
@@ -91,9 +96,17 @@ def test_default_investigation_does_not_displace_opus(events_dir, deepseek_live)
     assert _research_tier_override("inv-default-14-4") == (None, None)
 
 
-def test_explicit_deep_still_overrides_to_deepseek(events_dir, deepseek_live):
-    """An EXPLICIT operator 'deep' pick still records + overrides — the fix
-    scopes off the schema default, it does not remove the feature."""
+def test_explicit_deep_stays_pinned_during_window(events_dir, deepseek_live):
+    """During the §14.4 measurement window the synthesizer pin holds for EVERY
+    tier — including an operator-EXPLICIT 'deep'. The window exists to measure
+    the human-read synthesis voice on uncorrupted Opus traffic, so routing
+    synthesis onto DeepSeek for explicit-deep investigations would corrupt
+    exactly the traffic the Sprint-20 verdict is taken over. The override is
+    therefore (None, None) for fast/deep/default/none alike; the recorded tier
+    still drives the RESEARCH lane at its own call site. (Superseded the
+    earlier scope-off-the-default-only semantics; the per-tier synthesizer
+    routing is re-enabled with one diff in _research_tier_override + the
+    test_dispatch_synthesis_pin.py guard when the verdict lifts the pin.)"""
     emit_typed(
         "inv-explicit-deep",
         InvestigationStartRequestedPayload(
@@ -101,10 +114,7 @@ def test_explicit_deep_still_overrides_to_deepseek(events_dir, deepseek_live):
         ),
         role="operator",
     )
-    assert _research_tier_override("inv-explicit-deep") == (
-        "deepseek",
-        "deepseek-v4-pro",
-    )
+    assert _research_tier_override("inv-explicit-deep") == (None, None)
 
 
 def test_start_request_model_defaults_tier_to_none():
