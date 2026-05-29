@@ -34,12 +34,16 @@
     #   2. Else → serve from /var/www/antiek-app with SPA fallback.
     #
     # The API prefix list comes from every `@app.X("/foo")` decorator
-    # in interfaces/research/api/*.py (42 top-level prefixes — incl. the
-    # SPR-09 /library catalog API + /api/ad/* telemetry+fill routes; their
-    # absence served the SPA HTML instead of proxying to uvicorn). Keep
-    # this list ONE-LINE — Caddy's tokenizer for `path` matcher
-    # arguments doesn't honor backslash line continuation.
-    @api_routes path /.well-known/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/ad/* /attribution* /auth/* /backtest* /billing* /blocks/* /campaigns* /chunks* /creator-payouts* /cross-graph/* /deliverables* /documents* /events/* /federation* /health /interview-projects* /interviews* /investigations* /library* /loop-3/* /notebooks* /ops/* /outcomes* /payouts* /publishers* /quality-gate* /sections* /skill-rules* /sources* /stats* /thought-partner /trajectory/* /trust-center* /voice/* /voice-notes* /watch-for-later* /ws/*
+    # in interfaces/research/api/*.py (47 top-level prefixes). A route
+    # missing from this list is served the SPA HTML instead of proxying
+    # to uvicorn — which silently breaks that API in prod. This list had
+    # DRIFTED (it was missing /books /coordination /corpus /meta-readings
+    # /speech, plus the SPR-09 /library + /api/ad/*); the drift is now
+    # CI-guarded by tests/test_caddy_allowlist_coverage.py, which fails
+    # if any registered route prefix is absent here. Keep this list
+    # ONE-LINE — Caddy's tokenizer for `path` matcher arguments doesn't
+    # honor backslash line continuation.
+    @api_routes path /.well-known/* /ad-impressions* /ad-inventory* /advertisers* /ai/* /api/ad/* /attribution* /auth/* /backtest* /billing* /blocks/* /books* /campaigns* /chunks* /coordination* /corpus* /creator-payouts* /cross-graph/* /deliverables* /documents* /events/* /federation* /health /interview-projects* /interviews* /investigations* /library* /loop-3/* /meta-readings* /notebooks* /ops/* /outcomes* /payouts* /publishers* /quality-gate* /sections* /skill-rules* /sources* /speech* /stats* /thought-partner /trajectory/* /trust-center* /voice/* /voice-notes* /watch-for-later* /ws/*
 
     # ~14 paths overlap between backend API + frontend React Router
     # (e.g. /investigations, /notebooks, /billing, /sources). Backend
