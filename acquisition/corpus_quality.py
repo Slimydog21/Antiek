@@ -16,9 +16,15 @@ Two pure, deterministic, dependency-light layers that sit BETWEEN discovery
 - **M2 — cross-source dedup** (`dedup_candidates`): collapses duplicate works
   discovered across the arXiv / public-domain / open-access connectors. Pure
   function over a normalized `CandidateRef` (NOT the heavyweight connector
-  types) so the dedup logic does not depend on all three. Precedence, highest
-  first: DOI > arXiv id > source id > (normalized title+author) hash. The
-  `DedupResult` records which key caused each drop so a run can show its dedup
+  types) so the dedup logic does not depend on all three. Identity — what value
+  a candidate carries at each precedence level, and the precedence order itself
+  — is NOT defined here: it is the single ladder in `substrate.dedup`
+  (DOI > ISBN-13 > arXiv-id > source-id > content-hash > title+author, LOW).
+  `dedup_candidates` owns only the CLUSTERING engine (transitive, conflict-safe
+  cross-source collapse) and keys its clusters through
+  `substrate.dedup.dedup_key`, so there is exactly one definition of identity in
+  the codebase, not a second ladder beside it. The `DedupResult` records which
+  key (a `substrate.dedup.KeyType`) caused each drop so a run can show its dedup
   decisions (defensibility).
 
 No new heavy dependency: the heuristics use only the stdlib (`re`,
@@ -33,12 +39,20 @@ number, so no magic number is unjustified (rigor card).
 from __future__ import annotations
 
 import enum
-import hashlib
 import re
-import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Optional
+
+# Identity — the precedence ladder AND the per-level normalizers — lives in
+# exactly one place. This module owns the cross-source CLUSTERING engine and
+# keys it through these; it does not re-derive a second ladder (the divergent
+# title+author hash / normalizer that used to live here is deleted).
+from substrate.dedup import (
+    IdentityRecord,
+    KeyType,
+    dedup_key,
+)
 
 # ---------------------------------------------------------------------------
 # Shared verdict shape — MIRRORS substrate.quality_gate.gate.CheckResult.
@@ -448,23 +462,18 @@ def aggregate_verdicts(verdicts: Iterable[QualityVerdict]) -> QualityRunReport:
 # ---------------------------------------------------------------------------
 
 
-class DedupKeyKind(str, enum.Enum):
-    """Which identifier collapsed two candidates, highest precedence first."""
-
-    DOI = "doi"
-    ARXIV_ID = "arxiv_id"
-    SOURCE_ID = "source_id"
-    TITLE_AUTHOR = "title_author"
-
-
-# Precedence order, HIGHEST first. Two candidates are "the same work" only if
-# they share the highest-precedence identifier BOTH possess — so a candidate
-# with a DOI never collides with a DOI-less candidate on a lower key.
-_DEDUP_PRECEDENCE: tuple[DedupKeyKind, ...] = (
-    DedupKeyKind.DOI,
-    DedupKeyKind.ARXIV_ID,
-    DedupKeyKind.SOURCE_ID,
-    DedupKeyKind.TITLE_AUTHOR,
+# The cluster-precedence ladder is NOT redefined here — it is the single
+# ``substrate.dedup`` ladder, highest first. Two candidates are "the same work"
+# only if they share the highest-precedence identifier BOTH possess, so a
+# candidate with a DOI never collides with a DOI-less candidate on a lower key.
+# The LOW-confidence title+author level is the documented last resort.
+_DEDUP_PRECEDENCE: tuple[KeyType, ...] = (
+    KeyType.DOI,
+    KeyType.ISBN,
+    KeyType.ARXIV,
+    KeyType.SOURCE_ID,
+    KeyType.CONTENT,
+    KeyType.TITLE_AUTHOR,
 )
 
 
@@ -477,57 +486,45 @@ class CandidateRef:
     function over this ref, so it does not depend on the three heavyweight
     connector types. ``ref_id`` is an opaque caller handle echoed back in the
     result (e.g. the connector record's own id) so a drop can be traced to
-    its origin.
+    its origin. The fields mirror ``substrate.dedup.IdentityRecord``'s
+    identity-bearing fields, and :meth:`identity_record` projects one into the
+    other so dedup keys through the single identity ladder there — including
+    ``isbn`` (so public-domain books with an ISBN dedup on it) and ``body``
+    (so a metadata-poor work with a real extracted body dedups on its
+    content-hash rather than falling straight to the LOW title fallback).
     """
 
     ref_id: str
     doi: Optional[str] = None
     arxiv_id: Optional[str] = None
     source_id: Optional[str] = None  # gutenberg/archive identifier
+    isbn: Optional[str] = None  # ISBN-10 or ISBN-13, any hyphenation
     title: Optional[str] = None
     author: Optional[str] = None
+    body: Optional[str] = None  # extracted body, when available at discovery
+
+    def identity_record(self) -> IdentityRecord:
+        """Project into the single ``substrate.dedup`` identity record so dedup
+        keys through ONE identity ladder. ``source`` is not identity-bearing
+        (it is provenance), so a constant placeholder is fine here — the
+        orchestrator's collapse pass carries the real per-source provenance."""
+        return IdentityRecord(
+            ref_id=self.ref_id,
+            source="",  # provenance, not identity; collapse() carries the real one
+            doi=self.doi,
+            isbn=self.isbn,
+            arxiv_id=self.arxiv_id,
+            source_id=self.source_id,
+            title=self.title,
+            author=self.author,
+            body=self.body,
+        )
 
 
-_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
-_WS_RE = re.compile(r"\s+", re.UNICODE)
-
-
-def _normalize_text(value: Optional[str]) -> str:
-    """Normalization-stable text key: NFKC, casefold, strip punctuation,
-    collapse whitespace. Used for the title+author fallback so trivial
-    formatting differences across sources do not defeat dedup."""
-    if not value:
-        return ""
-    norm = unicodedata.normalize("NFKC", value)
-    norm = norm.casefold()
-    norm = _PUNCT_RE.sub(" ", norm)
-    return _WS_RE.sub(" ", norm).strip()
-
-
-def _title_author_hash(title: Optional[str], author: Optional[str]) -> Optional[str]:
-    nt = _normalize_text(title)
-    na = _normalize_text(author)
-    if not nt:
-        # No title → no stable fallback key; cannot dedup on title+author.
-        return None
-    digest = hashlib.sha256(f"{nt}\x00{na}".encode()).hexdigest()
-    return digest[:16]
-
-
-def _dedup_key(ref: CandidateRef, kind: DedupKeyKind) -> Optional[str]:
-    """The candidate's value for one precedence level, or None when absent."""
-    if kind is DedupKeyKind.DOI:
-        d = (ref.doi or "").strip().casefold()
-        return d or None
-    if kind is DedupKeyKind.ARXIV_ID:
-        a = (ref.arxiv_id or "").strip().casefold()
-        return a or None
-    if kind is DedupKeyKind.SOURCE_ID:
-        s = (ref.source_id or "").strip().casefold()
-        return s or None
-    if kind is DedupKeyKind.TITLE_AUTHOR:
-        return _title_author_hash(ref.title, ref.author)
-    return None
+def _ref_key(ref: CandidateRef, kind: KeyType) -> Optional[str]:
+    """The candidate's normalized value for one precedence level, or None —
+    via the single ``substrate.dedup`` normalizer, never a local copy."""
+    return dedup_key(ref.identity_record(), kind)
 
 
 @dataclass(frozen=True)
@@ -536,7 +533,7 @@ class DedupDrop:
 
     dropped_ref_id: str
     kept_ref_id: str
-    key_kind: DedupKeyKind
+    key_kind: KeyType
     key_value: str
 
 
@@ -548,7 +545,7 @@ class DedupResult:
 
     kept: tuple[CandidateRef, ...]
     dropped: tuple[DedupDrop, ...]
-    drops_by_key: Mapping[DedupKeyKind, int] = field(default_factory=dict)
+    drops_by_key: Mapping[KeyType, int] = field(default_factory=dict)
 
     def render(self) -> str:
         lines = [
@@ -575,18 +572,18 @@ class _Cluster:
     conflicting values for a strong key (e.g. two different DOIs)."""
 
     canonical: CandidateRef
-    keys: dict[DedupKeyKind, set[str]] = field(default_factory=dict)
+    keys: dict[KeyType, set[str]] = field(default_factory=dict)
 
     def absorb(self, ref: CandidateRef) -> None:
         for kind in _DEDUP_PRECEDENCE:
-            value = _dedup_key(ref, kind)
+            value = _ref_key(ref, kind)
             if value is not None:
                 self.keys.setdefault(kind, set()).add(value)
 
 
 def _cluster_decision(
     ref: CandidateRef, cluster: _Cluster
-) -> Optional[tuple[DedupKeyKind, str]]:
+) -> Optional[tuple[KeyType, str]]:
     """Is ``ref`` the SAME work as everything already in ``cluster``?
 
     Walk precedence high→low. The first kind where the candidate carries a
@@ -605,14 +602,25 @@ def _cluster_decision(
     collapse on title+author when one side has a DOI and the other an arXiv id
     (neither shares the other's high key, so title+author is the highest key
     both possess). When nothing is shared, the candidate starts a new cluster.
+
+    The LOW-confidence guard: a candidate whose ONLY shared key is the
+    title+author fallback does NOT merge — a generic-title collision
+    ("History"/"Anonymous") must never collapse two distinct works on the weak
+    key. This mirrors ``substrate.dedup.collapse``'s LOW-key rule, so the two
+    layers agree on what a fallback key can decide.
     """
     for kind in _DEDUP_PRECEDENCE:
-        value = _dedup_key(ref, kind)
+        value = _ref_key(ref, kind)
         if value is None:
             continue  # candidate has no value at this level
         cluster_values = cluster.keys.get(kind)
         if not cluster_values:
             continue  # cluster has never seen this kind — not shared here
+        if kind is KeyType.TITLE_AUTHOR:
+            # The fallback is never authoritative for a merge: two distinct
+            # works sharing a generic title stay apart. (The strong-key levels
+            # above already returned for any genuine duplicate.)
+            return None
         return (kind, value) if value in cluster_values else None
     return None  # no shared key → cannot dedup
 
@@ -624,8 +632,9 @@ def dedup_candidates(candidates: Iterable[CandidateRef]) -> DedupResult:
     is the canonical one kept. Each kept work is a CLUSTER that accumulates the
     union of its members' identifiers. A later candidate is dropped iff it is
     the same work as an existing cluster under ``_cluster_decision`` — i.e. it
-    agrees with the cluster on the highest-precedence key they share.
-    Precedence: DOI > arXiv id > source id > (normalized title+author) hash.
+    agrees with the cluster on the highest-precedence STRONG key they share.
+    Precedence is the single ``substrate.dedup`` ladder: DOI > ISBN-13 >
+    arXiv-id > source-id > content-hash > (title+author, LOW — never merges).
 
     Matching against the whole cluster (not just its canonical) is what makes
     dedup transitive and order-robust: in the chain A(title only) ~ B(title +
@@ -639,13 +648,21 @@ def dedup_candidates(candidates: Iterable[CandidateRef]) -> DedupResult:
     one work rather than fusing two. Cost is O(clusters) per candidate;
     corpus-discovery batches are bounded (curated/limit-capped), so the
     quadratic worst case is not a concern at this layer.
+
+    Note the transitive-chain example above keys on title+author only via a
+    cluster that ALREADY holds a strong key (the DOI B contributed): two
+    works whose ONLY commonality is a generic title never merge, because the
+    title+author level is non-authoritative on its own (see
+    ``_cluster_decision``). That is the same LOW-confidence rule
+    ``substrate.dedup.collapse`` applies, so the orchestrator's two collapse
+    surfaces agree.
     """
     clusters: list[_Cluster] = []
     dropped: list[DedupDrop] = []
-    drops_by_key: dict[DedupKeyKind, int] = {}
+    drops_by_key: dict[KeyType, int] = {}
 
     for cand in candidates:
-        matched: Optional[tuple[_Cluster, DedupKeyKind, str]] = None
+        matched: Optional[tuple[_Cluster, KeyType, str]] = None
         for cluster in clusters:
             decision = _cluster_decision(cand, cluster)
             if decision is not None:
