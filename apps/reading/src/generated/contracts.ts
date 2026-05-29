@@ -9,7 +9,7 @@
 // Write/Speak) build against. The provisional ReaderSurfaceContract is a
 // Python Protocol (behavior, not data) and is intentionally not emitted here.
 
-export const CONTRACT_SCHEMA_VERSION = 1;
+export const CONTRACT_SCHEMA_VERSION = 2;
 
 /**
  * One rendered layer of an assembled context pack: its kind, the source
@@ -119,7 +119,7 @@ export interface ServableEntryContract {
  */
 export interface AccrualContract {
   accrual_id: string;
-  source: "publisher_impression" | "speak_contribution";
+  source: "publisher_impression" | "speak_contribution" | "frame_attention_second";
   ip_holder_id?: string | null;
   source_ref: string;
   amount_cents?: number;
