@@ -764,6 +764,117 @@ def _open_access_candidates(
 
 
 # ---------------------------------------------------------------------------
+# Open-textbook discovery (SPR-05). One adapter for the four connectors —
+# OpenStax / LibreTexts / DOAB / MIT OCW. Each connector reads its source's own
+# license field; the rights decision is classify() (SPR-02) INSIDE
+# ingest_textbook, never here. This adapter only normalizes discovery records
+# into PlannedCandidates and closes over ingest_textbook for the write.
+# ---------------------------------------------------------------------------
+
+
+# The textbook source key -> (connector module name, discover-kwargs builder).
+# ``--source textbooks`` expands to all four (the family sub-selector).
+TEXTBOOK_SOURCES = ("openstax", "libretexts", "doab", "mit_ocw")
+
+
+def _textbook_candidates(
+    *, source: str, limit: int, investigation_id: str,
+    libretexts_library: Optional[str] = None,
+    doab_query: Optional[str] = None,
+    ocw_query: Optional[str] = None,
+) -> list[PlannedCandidate]:
+    """Discover one open-textbook source's candidates as PlannedCandidates.
+
+    The connector reads each item's DECLARED license; ``ingest_textbook``
+    routes it through ``classify()`` (SPR-02) and lands it via
+    ``ingest_servable_book`` (SPR-01 staging target). Discovery is throttled +
+    ban-aware through the shared ``SourceThrottle`` (SPR-03), keyed per source.
+    Body is the textbook PDF fetched at ingest, with the SPR-03 PDF-vs-HTML
+    extraction gate inside ``ingest_textbook`` — so the gate sees no body at
+    discovery and runs metadata-only (``assess_body=False``), exactly like the
+    OA path.
+    """
+    from acquisition.textbooks import (
+        SourceError as TextbookSourceError,
+        ThrottledClient,
+        ingest_textbook,
+    )
+    from substrate.source_throttle import SourceBanned, SourceThrottle
+
+    if source == "openstax":
+        from acquisition.textbooks import openstax as connector
+        discover_kwargs: dict = {}
+    elif source == "libretexts":
+        from acquisition.textbooks import libretexts as connector
+        discover_kwargs = {"library": libretexts_library}
+    elif source == "doab":
+        from acquisition.textbooks import doab as connector
+        discover_kwargs = {"query": doab_query}
+    elif source == "mit_ocw":
+        from acquisition.textbooks import mit_ocw as connector
+        discover_kwargs = {"query": ocw_query}
+    else:  # pragma: no cover - guarded by argparse choices
+        raise SystemExit(f"error: unknown textbook source {source!r}")
+
+    persistent = SourceThrottle()
+    client = ThrottledClient(persistent=persistent, source=source)
+    try:
+        works = connector.discover(client, limit=limit, **discover_kwargs)
+    except SourceBanned as exc:
+        logger.warning("textbook source %s banned; skipping: %s", source, exc)
+        return []
+    except TextbookSourceError as exc:
+        # A transient discovery failure must not abort the multi-source run
+        # (identical isolation to the PD/OA discovery paths).
+        logger.warning(
+            "textbook source %s discovery failed (transient); skipping: %s",
+            source, exc,
+        )
+        return []
+
+    out: list[PlannedCandidate] = []
+    for w in works:
+        def _ingest(db_path: str, _basis: str, _w=w) -> str:
+            outcome = ingest_textbook(
+                _w, client, investigation_id=investigation_id, db_path=db_path
+            )
+            if outcome.ingested:
+                return (
+                    f"{outcome.content_class} ({outcome.servability}) "
+                    f"[{outcome.word_count} words]"
+                )
+            return f"skipped: {outcome.skipped_reason}"
+
+        out.append(
+            PlannedCandidate(
+                ref=CandidateRef(
+                    ref_id=f"{w.source}:{w.source_id}",
+                    # Namespace the source-local id by source so a slug from one
+                    # textbook source can't collide with another at the
+                    # source-id dedup level.
+                    source_id=f"{w.source}:{w.source_id}",
+                    isbn=w.isbn,
+                    title=w.title,
+                    author=w.author,
+                ),
+                source=w.source,
+                # The body is the textbook PDF fetched at ingest, gated there by
+                # the SPR-03 extraction-quality check — so discovery has no body
+                # to assess and runs metadata-only (like the OA path).
+                assessable_text="",
+                assess_body=False,
+                ingest=_ingest,
+                allow_null_author_reason=(
+                    "open textbook with no recorded author"
+                    if not (w.author and w.author.strip())
+                    else None
+                ),
+            )
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Body-quality gate at ingest (M6 wired into the corpus path).
 # ---------------------------------------------------------------------------
 
@@ -844,8 +955,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--source", action="append", dest="sources",
-        choices=("public_domain", "arxiv", "open_access"),
-        help="source to include (repeatable); default: all selected sources",
+        choices=(
+            "public_domain", "arxiv", "open_access",
+            # SPR-05 open-textbook family: four named source values matching
+            # the existing flag style. ``--source textbooks`` is the family
+            # sub-selector that expands to all four.
+            "textbooks", "openstax", "libretexts", "doab", "mit_ocw",
+        ),
+        help=(
+            "source to include (repeatable); default: all selected sources. "
+            "'textbooks' selects all four open-textbook connectors "
+            "(openstax, libretexts, doab, mit_ocw)"
+        ),
     )
     # public-domain selectors
     p.add_argument("--pd-subject", help="public-domain: Gutenberg subject")
@@ -879,6 +1000,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--oa-query", help="open-access: openalex search query")
     p.add_argument("--oa-author", help="open-access: openalex author")
     p.add_argument("--oa-dois", help="open-access: comma-separated DOIs")
+    # open-textbook selectors (SPR-05)
+    p.add_argument(
+        "--libretexts-library",
+        help="textbooks: LibreTexts library to discover from (e.g. 'chem')",
+    )
+    p.add_argument("--doab-query", help="textbooks: DOAB/OAPEN search query")
+    p.add_argument("--ocw-query", help="textbooks: MIT OCW search query")
     # shared
     p.add_argument("--limit", type=int, default=25, help="per-source max")
     p.add_argument("--investigation-id", default="inv-corpus", help="investigation id stamped on docs")
@@ -978,6 +1106,24 @@ def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
     if want_oa and not args.oa_source:
         raise SystemExit("error: open-access needs --oa-source")
 
+    # SPR-05 open-textbook family. ``--source textbooks`` expands to all four;
+    # each connector is also individually selectable by its source name. When
+    # --source is omitted entirely, a textbook source is selected if any of its
+    # selectors is present (libretexts-library / doab-query / ocw-query); OpenStax
+    # has no required selector, so it joins only when explicitly named.
+    want_textbooks = "textbooks" in sources
+    selected_textbooks: list[str] = []
+    for ts in TEXTBOOK_SOURCES:
+        if want_textbooks or ts in sources:
+            selected_textbooks.append(ts)
+    if not sources:
+        if args.libretexts_library and "libretexts" not in selected_textbooks:
+            selected_textbooks.append("libretexts")
+        if args.doab_query and "doab" not in selected_textbooks:
+            selected_textbooks.append("doab")
+        if args.ocw_query and "mit_ocw" not in selected_textbooks:
+            selected_textbooks.append("mit_ocw")
+
     # Map each selected source to (rotation key, discovery thunk), in priority
     # order. The rotation key is the sentinel key whose ban means the source is
     # unreachable right now; the thunk runs that source's discovery adapter.
@@ -1010,6 +1156,20 @@ def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
                 source=args.oa_source, query=args.oa_query, author=args.oa_author,
                 dois=_csv_strs(args.oa_dois), limit=args.limit,
                 investigation_id=args.investigation_id,
+            ),
+        ))
+    for ts in selected_textbooks:
+        # The rotation key is the source name — the SAME key the textbook
+        # ThrottledClient arms on a 429/503, so a ban recorded by one run's
+        # fetch is what the next run's rotation reads. ``ts=ts`` binds the loop
+        # variable into each lambda (else all four would capture the last ts).
+        runners.append((
+            ts,
+            lambda ts=ts: _textbook_candidates(
+                source=ts, limit=args.limit,
+                investigation_id=args.investigation_id,
+                libretexts_library=args.libretexts_library,
+                doab_query=args.doab_query, ocw_query=args.ocw_query,
             ),
         ))
 
