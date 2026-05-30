@@ -560,6 +560,83 @@ class _BodyCachingClient:
         return self._body_cache[url]
 
 
+def _pd_curated_book_candidates(
+    *, limit: int, investigation_id: str,
+) -> list[PlannedCandidate]:
+    """Discover from the five Wave-2 PD book connectors (SPR-06) registered in
+    ``acquisition.books.registry``. Each connector fetches through its OWN
+    SPR-03 throttle (keyed by source) and establishes PD per item; the
+    servable/gated/skip verdict is delegated to ``classify()`` inside
+    ``classify_and_ingest`` (never a local boolean). A per-source discovery
+    failure is isolated (logged, skipped) so one source down does not abort the
+    curated spine — the gutendex-503 lesson generalized across sources."""
+    from acquisition.books.pd_connector_base import (
+        BookCandidate,
+        ThrottledFetcher,
+        classify_and_ingest,
+    )
+    from acquisition.books.registry import PD_CURATED_SOURCES
+    from substrate.source_throttle import SourceBanned, SourceThrottle
+
+    persistent = SourceThrottle()
+    out: list[PlannedCandidate] = []
+    for src in PD_CURATED_SOURCES:
+        fetcher = ThrottledFetcher(source=src.key, persistent=persistent)
+        try:
+            cands = src.discover(fetcher, limit=limit)
+        except SourceBanned as exc:
+            logger.warning(
+                "pd-curated source %s banned (sentinel active); skipping: %s",
+                src.key, exc,
+            )
+            continue
+        except Exception as exc:  # one source's discovery must not abort the spine
+            logger.warning(
+                "pd-curated source %s discovery failed; skipping this run: %s",
+                src.key, exc,
+            )
+            continue
+
+        for c in cands:
+            def _ingest(
+                db_path: str, _basis: str,
+                _c: BookCandidate = c, _fetcher: ThrottledFetcher = fetcher,
+            ) -> str:
+                outcome = classify_and_ingest(
+                    _c, _fetcher, investigation_id=investigation_id,
+                    db_path=db_path,
+                )
+                if outcome.ingested:
+                    return f"{outcome.content_class} ({outcome.servability})"
+                return f"skipped: {outcome.skipped_reason}"
+
+            out.append(
+                PlannedCandidate(
+                    ref=CandidateRef(
+                        ref_id=c.source_id,
+                        # ISBN-13 (Hathi) keys above source-id when present.
+                        isbn=c.isbn,
+                        source_id=c.source_id,
+                        title=c.title,
+                        author=c.author,
+                    ),
+                    source="public_domain",
+                    # Body is fetched/extracted at ingest; gate metadata-only at
+                    # discovery (the PDF/epub body is quality-gated by the
+                    # reader's word floor inside the ingest path).
+                    assessable_text="",
+                    assess_body=False,
+                    ingest=_ingest,
+                    allow_null_author_reason=(
+                        f"{c.source} record exposes no author at discovery"
+                        if not (c.author and c.author.strip())
+                        else None
+                    ),
+                )
+            )
+    return out
+
+
 def _public_domain_candidates(
     *, subject: Optional[str], search_term: Optional[str],
     ids: Optional[Sequence[int]], curated: bool, limit: int,
@@ -648,6 +725,15 @@ def _public_domain_candidates(
                     else None
                 ),
             )
+        )
+
+    # SPR-06: the curated PD spine also rotates the five new PD book connectors
+    # (Standard Ebooks / Wikisource / Internet Archive / HathiTrust / LoC).
+    # Their fetch + rights verdict + dedup all compose the same Wave-1 spine;
+    # the cross-source dedup below collapses a work shared with Gutenberg.
+    if curated:
+        out += _pd_curated_book_candidates(
+            limit=limit, investigation_id=investigation_id,
         )
     return out
 
