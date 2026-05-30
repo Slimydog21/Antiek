@@ -10,6 +10,7 @@ import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
 import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PanelLayout } from "./workspace/PanelLayout";
+import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
 
@@ -119,13 +120,19 @@ export function AppShell({ children }: Props) {
           `relative` so it stacks above the absolute z-0 scene. */}
       <div className="relative h-full w-full flex flex-col">
         <Topbar />
-        <div className="flex-1 min-h-0 min-w-0">
+        <div className="relative flex-1 min-h-0 min-w-0">
           {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
               main slot: per-workflow action bar + in-scene tabs sit
               above the surface, while the Zustand panel workspace
               continues to dock left/right/bottom + float around it.
               The mode still mounts as a panel exactly as before. */}
           <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
+          {/* SPR-09 — transparent workspace windows float over the working
+              region + scene (this container is `relative` so the layer's
+              absolute inset-0 anchors here, between Topbar and the NavRail).
+              Renders nothing until a window opens. SPR-09's one-line wiring,
+              deferred to the AppShell owner so SPR-09 kept this file untouched. */}
+          <WindowsLayer />
         </div>
 
         {/* SPR-06 M2 — navigation moved from the LEFT rail to a horizontal
