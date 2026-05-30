@@ -19,8 +19,12 @@ Parses a publisher's catalog manifest and, per work:
      SERVING is withheld — servability is DERIVED from content_class.
   4. Links the work to the publisher's ip_holder (created ``pre_onboarded`` on
      first sight, REUSED on resubmission), keyed on the stable ``publisher_id``.
-  5. Accrues escrow to that holder via the EXISTING seam
-     (``substrate.ip_holders.accrue_escrow``) — accrual only, never disburses.
+  5. Accrues escrow to that holder via the SUBSTRATE-LAYER sanctioned seam
+     (``substrate.ip_holders.opt_in_accrual.accrue_opt_in_escrow``, which routes
+     through the ONE low-level writer ``ip_holders.accrue_escrow``) — accrual
+     only, never disburses, and the escrow write stays under ``substrate/`` (no
+     cross-layer ``accrue_escrow`` call reaching out of ``acquisition/``;
+     collision #3 / seam #3, enforced by ``test_seam_single_escrow_writer.py``).
      The disbursement modules under ``substrate/ad_inventory/`` (the money path)
      are never imported or called here; disbursement stays operator-gated
      (G2/G3). The G4 grep over this package finds no money-path token.
@@ -246,7 +250,8 @@ def ingest_entry(
     becomes ``publisher_grant`` (servable), an invalid/absent grant gates
     deny-by-default. The body is rendered deterministically and written through
     ``ingest_servable_book`` -> ``connect_write``. A servable work accrues
-    escrow to the linked holder via the existing seam (accrual only).
+    escrow to the linked holder via the substrate-layer sanctioned seam
+    (``opt_in_accrual.accrue_opt_in_escrow`` -> the one writer; accrual only).
 
     Shared by ``intake_manifest`` (manifest loop) and the orchestrator's
     per-candidate ingest thunk, so both routes make the SAME rights decision via
@@ -254,7 +259,7 @@ def ingest_entry(
     """
     from acquisition.books.adapter import ingest_servable_book
     from runtime.db_lock import connect_write
-    from substrate.ip_holders import accrue_escrow
+    from substrate.ip_holders.opt_in_accrual import accrue_opt_in_escrow
 
     validation = validate_grant(entry, catalog_grant=catalog_grant)
     ikey_basis = identity_basis(_identity_record(entry, entry.body_text))
@@ -296,9 +301,13 @@ def ingest_entry(
     accrued = False
     if classification.servable:
         # A servable opt-in work begins accruing to its publisher's holder via
-        # the EXISTING seam — accrual only; the money path is untouched.
+        # the SUBSTRATE-LAYER sanctioned seam (substrate/ip_holders/
+        # opt_in_accrual.py -> the ONE writer ip_holders.accrue_escrow) — the
+        # escrow write stays under substrate/, never a cross-layer accrue_escrow
+        # call out of acquisition/ (collision #3 / seam #3). Accrual only; the
+        # money path (payout/stripe_connect) is untouched, G2/G3 stay gated.
         with connect_write(db_path, purpose="opt_in/accrue") as con:
-            accrue_escrow(con, ip_holder_id, accrual_usd)
+            accrue_opt_in_escrow(con, ip_holder_id, accrual_usd)
         accrued = True
 
     return WorkOutcome(

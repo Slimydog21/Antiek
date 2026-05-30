@@ -50,6 +50,13 @@ _SANCTIONED_ESCROW_CALLERS = frozenset({
     # in-copyright work, escrow accrues to its pre_onboarded holder through the
     # one writer; accrual ≠ disbursement (G2/G3 stay operator-only).
     "substrate/ip_holders/gated_accrual.py",
+    # SPR-08 (§9.10 publisher opt-in): the opt-in intake seed accrual — a fifth
+    # sanctioned revenue source. A SERVABLE opt-in work seeds escrow to its
+    # publisher's pre_onboarded holder at intake. This substrate-layer seam
+    # keeps the escrow write under substrate/ (the acquisition/opt_in intake
+    # lane calls IT, never accrue_escrow directly across the layer boundary);
+    # accrual ≠ disbursement (G2/G3 stay operator-only).
+    "substrate/ip_holders/opt_in_accrual.py",
 })
 
 

@@ -302,8 +302,41 @@ def test_escrow_seam_imports_no_money_modules():
         assert "payout" not in line, line
         assert "stripe_connect" not in line, line
         assert "stripe" not in line.lower(), line
-    # And it imports the accrual seam it routes escrow through.
-    assert any("accrue_escrow" in line for line in import_lines)
+    # And it routes escrow through the SUBSTRATE-LAYER sanctioned seam
+    # (opt_in_accrual.accrue_opt_in_escrow), NOT a direct cross-layer
+    # accrue_escrow call out of acquisition/ (collision #3 / seam #3).
+    assert any("accrue_opt_in_escrow" in line for line in import_lines)
+    # The raw low-level writer is NOT imported directly by the acquisition lane.
+    assert not any(
+        "import accrue_escrow" in line or "import accrue_escrow," in line
+        for line in import_lines
+    )
+
+
+def test_opt_in_accrual_is_a_substrate_layer_sanctioned_caller():
+    """Collision #3 guard: the opt-in lane's intake-time escrow seed routes
+    through a SUBSTRATE-LAYER module that is on the single-escrow-writer
+    allowlist. This asserts (a) intake.py calls accrue_opt_in_escrow, (b) that
+    module lives under substrate/ip_holders/ and is the only place opt-in
+    escrow reaches the low-level accrue_escrow writer, and (c) it is on the
+    sanctioned-caller allowlist the seam test enforces."""
+    import inspect
+
+    from acquisition.opt_in import intake
+    from substrate.ip_holders import opt_in_accrual
+    from tests.test_seam_single_escrow_writer import _SANCTIONED_ESCROW_CALLERS
+
+    # (a) the acquisition lane calls the substrate seam, not the raw writer.
+    src = inspect.getsource(intake)
+    assert "accrue_opt_in_escrow(" in src
+    assert "accrue_escrow(" not in src  # never the raw writer in acquisition/
+
+    # (b) the substrate seam is the one that touches accrue_escrow.
+    seam_src = inspect.getsource(opt_in_accrual)
+    assert "accrue_escrow(" in seam_src
+
+    # (c) on the allowlist (so test_exactly_one_accrue_escrow_call_site passes).
+    assert "substrate/ip_holders/opt_in_accrual.py" in _SANCTIONED_ESCROW_CALLERS
 
 
 def test_escrow_not_accrued_for_gated_only_manifest(temp_db):
@@ -477,6 +510,49 @@ def test_classify_is_the_only_content_class_route():
     # No legacy direct-literal assignment of a servable content_class.
     assert 'content_class="opt_in_licensed"' not in src
     assert 'content_class="public_domain"' not in src
+
+
+def test_stamped_class_and_basis_are_exactly_classify_output(temp_db):
+    """Active provenance proof (stronger than the negative no-literal check):
+    the content_class + license_basis the intake STAMPS are exactly the values
+    classify() returns for the same source_declaration — both the servable and
+    the deny-by-default branch. If the intake ever derived a class some other
+    way, these would diverge."""
+    from acquisition.licenses_core import classify
+    from acquisition.opt_in.intake import (
+        _compose_basis,
+        _source_declaration_for,
+    )
+    from acquisition.opt_in.manifest import validate_grant
+
+    granted = parse_manifest(_manifest_dict(grant=True))
+    g_entry = granted.entries[0]
+    g_val = validate_grant(g_entry, catalog_grant=granted.catalog_grant)
+    g_decl = _source_declaration_for(granted.publisher, g_val)
+    g_cls = classify(None, g_decl, legitimate_source=True)
+
+    g_result = intake_manifest(granted, db_path=temp_db, embedder=_StubEmbedder())
+    (g_out,) = g_result.outcomes
+    # The stamped class is EXACTLY classify()'s class (the servable branch).
+    assert g_out.content_class == g_cls.content_class == "opt_in_licensed"
+    assert g_out.servable is g_cls.servable is True
+    # The stamped basis is classify()'s basis, extended only by _compose_basis
+    # (which appends the verbatim grant — never replaces classify()'s basis).
+    assert g_out.license_basis == _compose_basis(g_cls, g_val)
+    assert g_out.license_basis.startswith(g_cls.license_basis)
+
+    stripped = parse_manifest(_manifest_dict(grant=False))
+    s_entry = stripped.entries[0]
+    s_val = validate_grant(s_entry, catalog_grant=stripped.catalog_grant)
+    s_decl = _source_declaration_for(stripped.publisher, s_val)
+    s_cls = classify(None, s_decl, legitimate_source=True)
+
+    s_result = intake_manifest(stripped, db_path=temp_db, embedder=_StubEmbedder())
+    (s_out,) = s_result.outcomes
+    # The deny-by-default branch lands on classify()'s gated class, never servable.
+    assert s_out.content_class == s_cls.content_class == GATED_DEFAULT_CONTENT_CLASS
+    assert s_out.servable is s_cls.servable is False
+    assert s_cls.content_class not in SERVABLE_CONTENT_CLASSES
 
 
 # ---------------------------------------------------------------------------
