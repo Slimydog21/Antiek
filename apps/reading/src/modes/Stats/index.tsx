@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import LemonCard from "../../components/lemon/LemonCard";
+import { useInWindow } from "../../components/windows/windowHostContext";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -45,6 +46,11 @@ const TABLE_GROUPS: { title: string; tables: string[] }[] = [
 ];
 
 export default function Stats() {
+  // SPR-09 window-adaptation contract: when hosted inside a WorkspaceWindow,
+  // fill the window container (h-full, not h-screen) and drop the opaque
+  // full-bleed bg so the glass body + scene shows through. Both edits are
+  // gated on this flag, so the full-page route renders unchanged.
+  const inWindow = useInWindow();
   const [data, setData] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,8 +76,10 @@ export default function Stats() {
   }, [reload]);
 
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
+      <main
+        className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
+      >
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="flex items-baseline justify-between gap-3">
             <div>
