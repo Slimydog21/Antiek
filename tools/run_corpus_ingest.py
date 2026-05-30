@@ -679,6 +679,186 @@ def _fetch_pd_body(
     return text
 
 
+# The SPR-07 paper-aggregator oa-sources. These route through the papers
+# package (acquisition.papers.*), NOT the openaccess connectors — they are NEW
+# paper sources (CORE / S2 / bioRxiv-medRxiv / PLOS), disjoint from what
+# acquisition/openaccess/ already covers (OpenAlex / Unpaywall / PMC / DOAJ).
+PAPER_AGGREGATOR_OA_SOURCES = ("core", "semantic_scholar", "biorxiv", "medrxiv", "plos")
+
+
+def _paper_aggregator_candidates(
+    *, source: str, query: Optional[str], limit: int, investigation_id: str,
+    biorxiv_server: str = "biorxiv", biorxiv_interval: Optional[str] = None,
+) -> list[PlannedCandidate]:
+    """Discover + plan candidates from a SPR-07 paper aggregator (CORE / S2 /
+    bioRxiv-medRxiv / PLOS).
+
+    Every record's content_class is resolved ONLY by the chokepoint via
+    ``acquisition.papers.classify_paper`` — no source assigns a class by any
+    other route. A servable record fetches+stages its body through the shared
+    ``ingest_servable_paper`` (which composes ``ingest_servable_book`` ->
+    ``connect_write``); a gated record (closed S2, no-reuse biorxiv, unknown
+    CORE) is staged metadata+abstract only, body NEVER fetched. The
+    cross-process SourceThrottle carries each aggregator's ban sentinel so a
+    banned source self-skips. The body-quality (PDF-vs-HTML) reality check runs
+    via the shared ``assert_pdf`` inside the per-source fetch.
+    """
+    from acquisition.openaccess.pdf_detect import NotAPdf
+    from acquisition.papers import (
+        classify_paper,
+        ingest_servable_paper,
+        paper_candidate_ref,
+    )
+    from substrate.source_throttle import SourceBanned, SourceThrottle
+
+    persistent = SourceThrottle()
+
+    # Discover the source's raw records behind its throttle. A ban self-skips.
+    try:
+        records = _discover_paper_records(
+            source=source, query=query, limit=limit, throttle=persistent,
+            biorxiv_server=biorxiv_server, biorxiv_interval=biorxiv_interval,
+        )
+    except SourceBanned as exc:
+        logger.error("paper aggregator %s banned, skipping: %s", source, exc)
+        return []
+    except Exception as exc:  # network / parse failure isolated per-source
+        logger.warning("paper aggregator %s discovery failed, skipping: %s", source, exc)
+        return []
+
+    out: list[PlannedCandidate] = []
+    for rec in records:
+        classification = classify_paper(rec)
+        # Gated records (incl. servable-licensed-but-no-body) never fetch a body.
+        serve = classification.serve_body
+
+        def _ingest(
+            db_path: str, _basis: str,
+            _rec=rec, _cls=classification, _serve=serve,
+        ) -> str:
+            if not _serve:
+                # Gated / no-body: stage metadata + abstract only; body NEVER
+                # fetched-and-served. The abstract is landed as the source so
+                # the work is privately searchable, gated. Reuse the arXiv
+                # abstract-only adapter shape via a lightweight metadata stage.
+                return _stage_paper_metadata_only(
+                    _rec, _cls, investigation_id=investigation_id, db_path=db_path
+                )
+            # Servable: fetch the body behind the throttle + the PDF reality
+            # check, then stage the full text through the shared servable path.
+            try:
+                pdf_bytes = _fetch_paper_pdf(
+                    _rec, throttle=persistent, source=source
+                )
+            except NotAPdf as exc:
+                # OA-claimed but the "PDF" was an HTML landing page (the 6/15
+                # prod failure mode): a counted per-item miss, not a servable
+                # ingest. Surfaced for the rigor-#1 OA-claim-failure report.
+                raise ValueError(f"OA-claimed PDF was not a PDF: {exc}") from exc
+            result = ingest_servable_paper(
+                _rec, _cls, investigation_id=investigation_id,
+                pdf_bytes=pdf_bytes, db_path=db_path,
+            )
+            return f"{result.content_class} (servable={result.servable_full_text})"
+
+        # The body is fetched at ingest, so the quality gate runs metadata-only
+        # at discovery (assess_body=False) — assessing an abstract would
+        # spuriously reject a clean paper. The real PDF body's reality check is
+        # the shared assert_pdf in _fetch_paper_pdf.
+        out.append(
+            PlannedCandidate(
+                ref=paper_candidate_ref(rec),
+                source="open_access",
+                assessable_text="",
+                assess_body=False,
+                ingest=_ingest,
+                allow_null_author_reason=(
+                    None if rec.primary_author
+                    else f"{source} record exposes no author at discovery"
+                ),
+            )
+        )
+    return out
+
+
+def _discover_paper_records(
+    *, source: str, query: Optional[str], limit: int, throttle,
+    biorxiv_server: str, biorxiv_interval: Optional[str],
+):
+    """Dispatch to the right SPR-07 paper aggregator's discovery, returning raw
+    PaperRecords. Each connector reads its per-record declared license."""
+    if source == "core":
+        from acquisition.papers.core import search_works
+        return search_works(query=query or "", limit=limit, throttle=throttle)
+    if source == "semantic_scholar":
+        from acquisition.papers.semantic_scholar import search_papers
+        return search_papers(query=query or "", limit=limit, throttle=throttle)
+    if source in ("biorxiv", "medrxiv"):
+        from acquisition.papers.biorxiv import fetch_details
+        kwargs = {"server": biorxiv_server or source, "limit": limit, "throttle": throttle}
+        if biorxiv_interval:
+            kwargs["interval"] = biorxiv_interval
+        return fetch_details(**kwargs)
+    if source == "plos":
+        from acquisition.papers.plos import search_articles
+        return search_articles(query=query or "", limit=limit, throttle=throttle)
+    raise SystemExit(f"error: unknown paper aggregator oa-source {source!r}")
+
+
+def _fetch_paper_pdf(rec, *, throttle, source: str) -> bytes:
+    """Fetch a servable paper's PDF behind the shared throttle + the shared
+    PDF-vs-HTML reality check. Quality/reality only — content_class is already
+    decided by the chokepoint."""
+    import httpx
+
+    from acquisition.openaccess.pdf_detect import assert_pdf
+
+    throttle_key = {"core": "core", "semantic_scholar": "semantic_scholar",
+                    "plos": "plos"}.get(source, f"biorxiv_{source}")
+    throttle.before_request(throttle_key)
+    url = rec.pdf_url
+    with httpx.Client(follow_redirects=True) as c:
+        r = c.get(url, headers={"User-Agent": "Antiek/0.1 (acquisition.papers)"}, timeout=30.0)
+    if r.status_code in (429, 503):
+        throttle.note_response(throttle_key, r.status_code, dict(r.headers))
+    r.raise_for_status()
+    content = r.content
+    assert_pdf(content, content_type=r.headers.get("content-type"), url=url)
+    return content
+
+
+def _stage_paper_metadata_only(
+    rec, classification, *, investigation_id: str, db_path: str
+) -> str:
+    """Stage a GATED paper's metadata + abstract — body NEVER fetched/served.
+
+    The abstract is landed as a markdown document through the shared
+    servable-book classification path with the resolved GATED content_class +
+    the source-specific license_basis, so the row is an auditable gated decision
+    (not a silent omission) and the work is privately searchable. The body is
+    not fetched; servable_full_text is derived False from the gated class.
+    """
+    from acquisition.books.adapter import ingest_servable_book
+    from acquisition.books.public_domain import text_to_pdf
+
+    title = rec.title or rec.source_id
+    abstract = rec.abstract or ""
+    body = f"{title}\n\nAbstract:\n{abstract}\n\n(Metadata-only gated record; full text withheld.)"
+    # text_to_pdf yields a tiny PDF the shared reader/chunker accepts; the
+    # GATED content_class makes servable_full_text False — body never served.
+    pdf_bytes = text_to_pdf(body, title=title)
+    result = ingest_servable_book(
+        pdf_bytes,
+        investigation_id=investigation_id,
+        content_class=classification.content_class,
+        license_basis=classification.license_basis,
+        source_uri=(f"https://doi.org/{rec.doi}" if rec.doi else None),
+        provenance=rec.source,
+        db_path=db_path,
+    )
+    return f"{classification.content_class} (servable={result.servable_full_text}, metadata-only)"
+
+
 def _open_access_candidates(
     *, source: str, query: Optional[str], author: Optional[str],
     dois: Optional[Sequence[str]], limit: int, investigation_id: str,
@@ -871,14 +1051,30 @@ def build_parser() -> argparse.ArgumentParser:
             "(JSON-Lines); required when --arxiv-source bulk"
         ),
     )
-    # open-access selectors
+    # open-access selectors. The first four are the Wave-1 openaccess
+    # connectors; the last five (core / semantic_scholar / biorxiv / medrxiv /
+    # plos) are the SPR-07 paper aggregators routed through acquisition.papers.
     p.add_argument(
-        "--oa-source", choices=("openalex", "unpaywall", "pmc", "doaj"),
-        help="open-access aggregator",
+        "--oa-source",
+        choices=(
+            "openalex", "unpaywall", "pmc", "doaj",
+            "core", "semantic_scholar", "biorxiv", "medrxiv", "plos",
+        ),
+        help="open-access aggregator (incl. SPR-07 paper aggregators)",
     )
-    p.add_argument("--oa-query", help="open-access: openalex search query")
+    p.add_argument("--oa-query", help="open-access: search query (openalex / core / s2 / plos)")
     p.add_argument("--oa-author", help="open-access: openalex author")
     p.add_argument("--oa-dois", help="open-access: comma-separated DOIs")
+    # bioRxiv / medRxiv selectors (SPR-07)
+    p.add_argument(
+        "--biorxiv-server", choices=("biorxiv", "medrxiv", "both"),
+        default="biorxiv",
+        help="bioRxiv/medRxiv: which preprint server (default biorxiv)",
+    )
+    p.add_argument(
+        "--biorxiv-interval",
+        help="bioRxiv/medRxiv: date range, e.g. 2024-01-01/2024-12-31",
+    )
     # shared
     p.add_argument("--limit", type=int, default=25, help="per-source max")
     p.add_argument("--investigation-id", default="inv-corpus", help="investigation id stamped on docs")
@@ -1004,14 +1200,34 @@ def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
             ),
         ))
     if want_oa:
-        runners.append((
-            f"oa_{args.oa_source}",
-            lambda: _open_access_candidates(
-                source=args.oa_source, query=args.oa_query, author=args.oa_author,
-                dois=_csv_strs(args.oa_dois), limit=args.limit,
-                investigation_id=args.investigation_id,
-            ),
-        ))
+        if args.oa_source in PAPER_AGGREGATOR_OA_SOURCES:
+            # SPR-07 paper aggregator (CORE / S2 / bioRxiv-medRxiv / PLOS) —
+            # routed through acquisition.papers, not the openaccess connectors.
+            # Rotation key is the source's own throttle key so its ban sentinel
+            # participates in rotation like every other source.
+            paper_key = (
+                f"biorxiv_{args.biorxiv_server}"
+                if args.oa_source in ("biorxiv", "medrxiv")
+                else args.oa_source
+            )
+            runners.append((
+                paper_key,
+                lambda: _paper_aggregator_candidates(
+                    source=args.oa_source, query=args.oa_query,
+                    limit=args.limit, investigation_id=args.investigation_id,
+                    biorxiv_server=args.biorxiv_server,
+                    biorxiv_interval=args.biorxiv_interval,
+                ),
+            ))
+        else:
+            runners.append((
+                f"oa_{args.oa_source}",
+                lambda: _open_access_candidates(
+                    source=args.oa_source, query=args.oa_query, author=args.oa_author,
+                    dois=_csv_strs(args.oa_dois), limit=args.limit,
+                    investigation_id=args.investigation_id,
+                ),
+            ))
 
     throttle = SourceThrottle()
     keys = [k for k, _ in runners]
