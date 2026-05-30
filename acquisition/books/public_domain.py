@@ -629,10 +629,19 @@ def ingest_work(
 
     Rights discipline (rigor #1): a work with no explicit public-domain
     basis (``pd_basis is None``) is NEVER ingested servable — it returns a
-    skip outcome. A work WITH a basis is ingested via
-    ``ingest_servable_book`` with ``content_class="public_domain"`` and the
-    basis as ``license_basis``, so the body renders publicly with an audit
-    trail.
+    skip outcome.
+
+    THE BINDING (SPR-02 / SPR-10): the ``content_class`` + ``license_basis``
+    stamped on the asset come from the ONE classification chokepoint —
+    ``acquisition.licenses_core.classify()`` — exactly as
+    ``pd_connector_base.classify_and_ingest`` does, never a hardcoded
+    ``"public_domain"`` literal. We turn ``work.pd_basis`` (the source's
+    positive public-domain signal) into a ``source_declaration['public_domain']``
+    and call classify(); for a curated-Gutenberg PD work classify() returns the
+    servable ``public_domain`` verdict, so the existing servable outcome is
+    preserved while the rights decision stays single-source. (If classify() ever
+    GATED a work this path currently serves, the gate's verdict wins — we never
+    silently override servability.)
 
     All download / extraction failures are caught and returned as a skip
     outcome so the batch continues (M3 AC). Writes go through
@@ -646,7 +655,30 @@ def ingest_work(
             skipped_reason="no_explicit_public_domain_basis",
         )
 
+    from acquisition.licenses_core import classify
+
     from .adapter import ingest_servable_book
+
+    # THE BINDING: route the rights decision through classify(). The source's
+    # per-work public-domain signal (work.pd_basis, set only when the source
+    # explicitly asserted PD) is the positive source_declaration['public_domain']
+    # classify() consumes; legitimate_source=True because Gutenberg/archive.org
+    # are open PD repositories (the legitimacy argument gates circumvented
+    # access, which these are not). The verdict's content_class + license_basis
+    # are forwarded into ingest_servable_book — no local literal.
+    decision = classify(
+        None,
+        {"public_domain": work.pd_basis},
+        legitimate_source=True,
+    )
+    if not decision.ingest:
+        # Never reached for a legitimate PD source, but honour the gate rather
+        # than assume — a non-servable, circumvented-access verdict is a skip.
+        return IngestOutcome(
+            work=work,
+            ingested=False,
+            skipped_reason=f"classify_skip: {decision.license_basis}",
+        )
 
     try:
         raw = client.get_bytes(work.download_url)
@@ -670,9 +702,10 @@ def ingest_work(
         result = ingest_servable_book(
             pdf_bytes,
             investigation_id=investigation_id,
-            content_class="public_domain",
+            # THE BINDING: the classify() verdict, not a hardcoded literal.
+            content_class=decision.content_class,
             rights_holder_name=None,  # public domain has no rights holder to onboard
-            license_basis=work.pd_basis,
+            license_basis=decision.license_basis,
             provenance=work.source_uri,
             source_uri=work.source_uri,
             db_path=db_path,
