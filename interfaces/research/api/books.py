@@ -30,7 +30,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
-from substrate.books.serve import serve_full_text
+
+from .serve_guard import serve_full_text_guarded
 
 
 def _resolve_db_path() -> str:
@@ -409,7 +410,7 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            result = serve_full_text(con, document_id)
+            result = serve_full_text_guarded(con, document_id)
         finally:
             con.close()
         if not result.found:

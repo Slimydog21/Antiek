@@ -87,30 +87,24 @@ class ArxivOaiRecord:
 def classify_tier(license_uri: Optional[str]) -> RightsTier:
     """Map a license URI to its census tier. Deny-by-default to T3.
 
-    The verdict is DERIVED from the canonical license resolver, never
-    re-decided here: a tier cannot disagree with the servable-class mapping
-    (which is the legal home for CC semantics). The branch order encodes the
-    business meaning:
+    RECONCILED (SPR-02): this is now a thin DELEGATION to the authoritative
+    resolver ``substrate.rights.arxiv_tiers.resolve_tier`` — the ONE source of
+    truth that serving, ad-eligibility, and (future) payouts also cite. SPR-01
+    shipped a provisional copy of the mapping here (a redistributable->T1,
+    NC-by-display-name->T2, else->T3 branch); that copy is GONE so the tier
+    table cannot fork. ``RightsTier`` itself stays defined in this module (the
+    schema layer) and the census types here continue to consume it; only the
+    *decision* moved up to ``substrate.rights``.
 
-      * a redistributable resolution (CC0 -> public_domain, CC-BY/BY-SA ->
-        source_declared_open) is T1;
-      * a gated resolution that names a non-commercial license is T2;
-      * everything else gated — arXiv-default, all-rights-reserved, an
-        unrecognised URI, and (the load-bearing case) an absent/empty URI —
-        is T3.
-
-    NC detection keys off ``redistributable is False`` AND the resolved
-    ``license_name`` rather than re-substring-matching the URI, so the tiers
-    inherit the resolver's NC/ND-before-BY safety ordering for free.
+    The delegation is a lazy import for the same layering reason the previous
+    ``resolve_license`` import was lazy (see the module note): ``substrate``
+    sits below ``acquisition``, and ``arxiv_tiers`` itself reaches into
+    ``acquisition.arxiv.licenses``. Importing it at module top would invert the
+    layering and risk a cycle.
     """
-    from acquisition.arxiv.licenses import resolve_license  # lazy: see module note
+    from substrate.rights.arxiv_tiers import resolve_tier  # lazy: see module note
 
-    resolution = resolve_license(license_uri)
-    if resolution.redistributable:
-        return RightsTier.T1_REDISTRIBUTABLE
-    if "NC" in resolution.license_name:
-        return RightsTier.T2_NON_COMMERCIAL
-    return RightsTier.T3_DEFAULT_UNKNOWN
+    return resolve_tier(license_uri)
 
 
 @dataclass(frozen=True)

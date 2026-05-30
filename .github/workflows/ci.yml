@@ -112,6 +112,18 @@ jobs:
         run: |
           python tools/lint/boundary_check.py
 
+      - name: Serve-guard boundary check
+        # SPR-02 (arxiv-ingest): forbid direct serve_full_text() calls
+        # outside the allowlist (substrate/books/serve.py where it is
+        # defined, interfaces/research/api/serve_guard.py the guard, and
+        # test files). Every full-body serve must route through
+        # serve_full_text_guarded, which adds the independent license-tier
+        # drift check defending against a T3 body leaving Antiek storage.
+        # Models tools/lint/boundary_check.py (same path:line output, same
+        # exit-code contract). Sub-second on the full tree.
+        run: |
+          python tools/lint/serve_guard_check.py
+
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
         # substrate/schemas/ without regenerating
