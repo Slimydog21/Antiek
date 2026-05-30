@@ -17,9 +17,11 @@ from substrate.eval.groundedness.harness import (
     HALLUCINATED,
     LabeledSetError,
     load_labeled,
-    main as harness_main,
     score_labeled_set,
     score_traces,
+)
+from substrate.eval.groundedness.harness import (
+    main as harness_main,
 )
 
 _LABELED_FIXTURE = (
