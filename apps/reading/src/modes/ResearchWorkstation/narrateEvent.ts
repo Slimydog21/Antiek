@@ -295,6 +295,14 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // beat. The doc joins the project's substrate, but the narration belongs to
   // the personal space, not the investigation's progress stream.
   [ActionType.DOCUMENT_FILED_INTO_INVESTIGATION]: null,
+  // SPR-02 — claim-groundedness (truth-axis) quality signals. Observability-
+  // only this sprint and sibling to the suppressed RUBRIC_SCORED form-axis
+  // signal: the engine's per-synthesis quality telemetry, not a reader-facing
+  // research beat. Suppressed here (still in the log behind the raw-activity
+  // toggle); a future sprint that surfaces a quality cue in the stream moves
+  // these rows up to a narration — an additive, visible edit the gate enforces.
+  [ActionType.GROUNDEDNESS_SCORED]: null,
+  [ActionType.GROUNDEDNESS_FAILED]: null,
 };
 
 /** The safe generic line for an action_type with no row — only reachable if
