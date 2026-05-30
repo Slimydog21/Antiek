@@ -1,0 +1,62 @@
+/*
+ * Werner steering gait (SPR-05 / SPR-10).
+ *
+ * These extend the mascot's existing walk feel for the FOLLOW-driven and
+ * DIRECTED (waddle-to-button) strolls. The mascot already swaps the brand
+ * `werner-waddle` body-bob on its bob span while strolling (PenguinMascot.tsx
+ * + brand/werner/animated/animations.css); this file adds:
+ *
+ *   1. `werner-step` — a stronger, side-to-side foot-driven gait used on top
+ *      of (not instead of) the brand bob during a directed walk, so a
+ *      waddle-to-button reads as deliberate WALKING, not the ambient drift.
+ *   2. `werner-hit-bump` — the one-shot squash/lunge for SPR-10's Tom-&-Jerry
+ *      button bump, composed over an existing emote mark (no new SVG art).
+ *
+ * Both collapse to a still frame under prefers-reduced-motion (the media
+ * query at the foot of this file), matching the brand animations' own guard.
+ * No raw colour literals here — geometry only — so token-lint stays green.
+ */
+
+/* ── Directed walking gait — a fuller waddle than the ambient drift ──────
+ * A pronounced left-right rock + vertical step so the directed walk reads as
+ * footwork. Rides on the same bob span the mascot already toggles; period
+ * matches the brand werner-waddle (300ms) so the two stay in phase. */
+@keyframes werner-step {
+  0%   { transform: translateY(0) rotate(-3deg); }
+  25%  { transform: translateY(-2px) rotate(0deg); }
+  50%  { transform: translateY(0) rotate(3deg); }
+  75%  { transform: translateY(-2px) rotate(0deg); }
+  100% { transform: translateY(0) rotate(-3deg); }
+}
+.werner-step {
+  animation: werner-step 320ms ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+
+/* ── Tom-&-Jerry button bump (SPR-10) ───────────────────────────────────
+ * A brief squash-stretch lunge toward the target on arrival. One-shot:
+ * restarts only on remount, so SPR-10 keys the emote per fire. Short + cute,
+ * not disruptive (≈360ms). */
+@keyframes werner-hit-bump {
+  0%   { transform: scale(1, 1) translateY(0); }
+  35%  { transform: scale(1.12, 0.9) translateY(2px); }
+  55%  { transform: scale(0.94, 1.08) translateY(-3px); }
+  100% { transform: scale(1, 1) translateY(0); }
+}
+.werner-hit-bump {
+  animation: werner-hit-bump 360ms ease-out forwards;
+  transform-origin: 50% 100%;
+}
+
+/* ── Reduced-motion guard ───────────────────────────────────────────────
+ * Mirrors brand/werner/animated/animations.css: no involuntary motion. The
+ * directed gait and the bump both collapse to a still frame. (Reduced motion
+ * is also enforced in JS — the mascot freezes the stage and never starts a
+ * directed walk — so this is the second, declarative line of defence.) */
+@media (prefers-reduced-motion: reduce) {
+  .werner-step,
+  .werner-hit-bump {
+    animation: none !important;
+    transform: none !important;
+  }
+}
