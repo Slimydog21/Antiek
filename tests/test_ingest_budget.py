@@ -26,6 +26,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from acquisition.corpus_quality import CandidateRef  # noqa: E402
+from substrate.event_log.events import trajectory  # noqa: E402
 from substrate.ingest_budget import (  # noqa: E402
     DEFAULT_HARD_MIN_FREE_DISK_BYTES,
     DEFAULT_SOFT_MIN_FREE_DISK_BYTES,
@@ -273,3 +274,176 @@ def test_merge_not_started_when_governor_halts(tmp_path, monkeypatch):
     out = runner._do_merge(1, "count")
     assert out.get("skipped") == "budget_halt"
     assert merge_calls["n"] == 0           # merge never started
+
+
+# ---------------------------------------------------------------------------
+# The POSITIVE cadence path: a tripped trigger fires SPR-01's merge EXACTLY
+# once, resets the accumulator, and emits EVT_MERGE. The negative test above
+# only proves HALT *skips* a merge; this proves the live merge path runs once
+# per trip, composes the unchanged merge_staging, and never re-fires while the
+# accumulator is empty (the 'exactly one merge per cadence trip' property).
+# ---------------------------------------------------------------------------
+
+
+def _merge_runner(tmp_path, monkeypatch, *, merge_calls, clock):
+    """A non-dry-run runner with a live + staging DB path, an OK governor, faked
+    EMPTY discovery (so a round stages nothing — we drive the accumulator count
+    directly), and merge_staging replaced by a counting fake returning a real
+    MergeResult. discover_all is faked at module scope so no live network is
+    touched. Returns the runner."""
+    monkeypatch.setenv("ANTIEK_SOURCE_THROTTLE_PATH", str(tmp_path / "throttle.json"))
+
+    # Empty discovery: no new staging this round, so the ONLY thing that can
+    # trip the cadence is the count we set on the accumulator.
+    monkeypatch.setattr(
+        rci, "discover_all",
+        lambda args: rci.DiscoveryOutcome(candidates=(), rotation_log=()),
+    )
+
+    import tools.merge_staging as ms
+    from tools.merge_staging import MergeResult, TableMergeResult
+
+    def _fake_merge(*, live_db, staging_db, **_k):
+        merge_calls["n"] += 1
+        merge_calls["live_db"] = live_db
+        merge_calls["staging_db"] = staging_db
+        return MergeResult(
+            tables=(TableMergeResult(table="documents", inserted=7, skipped=0),),
+            window_s=0.012,
+        )
+    monkeypatch.setattr(ms, "merge_staging", _fake_merge)
+
+    args = _args(tmp_path, limit=25)
+    args.dry_run = False
+    args.staging_db = str(tmp_path / "staging.duckdb")
+    args.db_path = str(tmp_path / "live.duckdb")
+    # Seed a staging file so the accumulator exists (size trigger reads its size).
+    (tmp_path / "staging.duckdb").write_bytes(b"x" * 10)
+    gov = _gov(BudgetReading(free_disk_bytes=200 * _GIB, db_size_bytes=1 * _GIB, rss_bytes=1 * _GIB))
+    return rci.ContinuousRunner(
+        args, checkpoint=CheckpointStore(path=str(tmp_path / "cp.json")),
+        governor=gov, now=lambda: clock["t"], sleep=lambda s: None,
+    )
+
+
+def test_count_trigger_fires_merge_once_resets_and_emits(tmp_path, monkeypatch):
+    """A count trigger over the OK governor: should_merge -> _do_merge fires the
+    real (faked) merge_staging EXACTLY once, resets the accumulator (count=0,
+    last_merge_ts stamped to now), composes the UNCHANGED merge_staging with the
+    resolved live+staging paths, and emits an EVT_MERGE event carrying the
+    window + rows. No content_class is touched (the loop only schedules)."""
+    merge_calls = {"n": 0}
+    clock = {"t": 5000.0}
+    runner = _merge_runner(tmp_path, monkeypatch, merge_calls=merge_calls, clock=clock)
+
+    assert runner._accum is not None
+    runner._accum.count = rci.DEFAULT_MERGE_COUNT + 5   # trips the count trigger
+    prev_ts = runner._accum.last_merge_ts               # stamped at construction
+    # Advance the clock so the post-merge stamp is a NEW, distinguishable value.
+    clock["t"] = 5050.0
+
+    s = runner.run_round(1)
+
+    # Merge fired exactly once, through the unchanged merge_staging, on the
+    # resolved live + staging paths.
+    assert merge_calls["n"] == 1
+    assert merge_calls["live_db"] == runner.args.db_path
+    assert merge_calls["staging_db"] == runner._accum.staging_db
+    # Accumulator reset: count back to 0, last_merge_ts advanced to the new now.
+    assert runner._accum.count == 0
+    assert runner._accum.last_merge_ts == clock["t"]    # == 5050.0
+    assert runner._accum.last_merge_ts > prev_ts        # strictly advanced
+    # The round summary carries the merge, and an EVT_MERGE was emitted.
+    assert s["merged"] is not None
+    assert s["merged"]["trigger"] == "count"
+    assert s["merged"]["total_inserted"] == 7
+    assert s["merged"]["window_s"] == pytest.approx(0.012)
+    rows = trajectory(rci.SYSTEM_INVESTIGATION_ID, events_dir=runner.events_dir)
+    merge_events = [r for r in rows if r["action_type"] == rci.EVT_MERGE]
+    assert len(merge_events) == 1
+    assert merge_events[0]["payload"]["trigger"] == "count"
+
+
+def test_exactly_one_merge_per_cadence_trip(tmp_path, monkeypatch):
+    """Drive TWO rounds via run_round. Round 1 trips the count trigger and fires
+    one merge (resetting count to 0). Round 2 — with the accumulator now empty
+    and discovery returning nothing — must NOT fire a second merge. The property
+    is 'exactly one merge per trip', not 'a merge every round'."""
+    merge_calls = {"n": 0}
+    clock = {"t": 5000.0}
+    runner = _merge_runner(tmp_path, monkeypatch, merge_calls=merge_calls, clock=clock)
+
+    runner._accum.count = rci.DEFAULT_MERGE_COUNT + 1   # round 1 trips
+    s1 = runner.run_round(1)
+    assert merge_calls["n"] == 1
+    assert s1["merged"] is not None
+    assert runner._accum.count == 0
+
+    # Round 2: nothing staged (empty discovery), accumulator empty -> no merge.
+    clock["t"] = 6000.0
+    s2 = runner.run_round(2)
+    assert merge_calls["n"] == 1            # STILL one — no second merge fired
+    assert s2["merged"] is None
+
+
+def test_run_loop_fires_merge_then_stops_at_max_rounds(tmp_path, monkeypatch):
+    """End-to-end through the ONLY while-True loop: run() with max_rounds=1 drives
+    exactly one round, fires the merge on a tripped count trigger, and returns a
+    clean exit code 0 (bounded — no unbounded loop). This is the offline-bounded
+    form of the G5 continuous smoke (faked discovery + bounded max_rounds), not a
+    live-network run."""
+    merge_calls = {"n": 0}
+    clock = {"t": 5000.0}
+    runner = _merge_runner(tmp_path, monkeypatch, merge_calls=merge_calls, clock=clock)
+    runner.max_rounds = 1
+    runner._accum.count = rci.DEFAULT_MERGE_COUNT + 1
+
+    rc = runner.run()
+    assert rc == 0                          # clean, bounded exit
+    assert merge_calls["n"] == 1            # the single round fired one merge
+
+
+# ---------------------------------------------------------------------------
+# should_merge() trigger precedence — count, then size, then interval; never
+# fires with an empty accumulator (count == 0 short-circuits every trigger).
+# ---------------------------------------------------------------------------
+
+
+def test_should_merge_trigger_precedence(tmp_path):
+    """The first-tripped-trigger selector returns count before size before
+    interval, and returns None when nothing trips. A zero count never trips ANY
+    trigger (an empty accumulator must not fire a vacuous merge)."""
+    staging = tmp_path / "staging.duckdb"
+    staging.write_bytes(b"x" * 1024)        # 1 KiB on disk
+    accum = rci._StagingAccumulator(staging_db=str(staging), last_merge_ts=100.0)
+
+    # Nothing staged: no trigger regardless of thresholds / elapsed time.
+    assert accum.should_merge(
+        count_threshold=1, size_threshold=1, interval_threshold=1.0, now=1_000.0,
+    ) is None
+
+    # Count trips first when count >= count_threshold.
+    accum.count = 50
+    assert accum.should_merge(
+        count_threshold=50, size_threshold=10 ** 12, interval_threshold=10 ** 12, now=101.0,
+    ) == "count"
+
+    # Below count threshold but staging size over the size floor -> size.
+    accum.count = 1
+    assert accum.should_merge(
+        count_threshold=1_000, size_threshold=512, interval_threshold=10 ** 12, now=101.0,
+    ) == "size"
+
+    # Below count + size, but the merge interval has elapsed -> interval.
+    accum.count = 1
+    assert accum.should_merge(
+        count_threshold=1_000, size_threshold=10 ** 12, interval_threshold=10.0, now=200.0,
+    ) == "interval"
+
+    # The interval trigger needs a prior merge stamp (last_merge_ts > 0); a
+    # fresh accumulator that never merged does not trip interval on count==1.
+    fresh = rci._StagingAccumulator(staging_db=str(staging), last_merge_ts=0.0)
+    fresh.count = 1
+    assert fresh.should_merge(
+        count_threshold=1_000, size_threshold=10 ** 12, interval_threshold=10.0, now=10_000.0,
+    ) is None
