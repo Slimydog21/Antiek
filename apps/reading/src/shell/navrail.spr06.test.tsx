@@ -13,12 +13,35 @@
  *    live in shortcuts.ts + workflowTaxonomy and are not re-implemented per
  *    orientation — guarded here against an accidental fork).
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { NavRail } from "./NavRail";
 import { WORKFLOW_ORDER, WORKFLOWS } from "./workflowTaxonomy";
+
+// SPR-08 — the rail now renders on-bar KeyChips, which read
+// usePrefersReducedMotion (matchMedia). jsdom lacks matchMedia; stub it
+// exactly as the hotkey/ad/penguin suites already do. This adds no new
+// assertion — it only lets the real rail render its real children.
+beforeAll(() => {
+  if (!window.matchMedia) {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+  }
+});
 
 afterEach(cleanup);
 

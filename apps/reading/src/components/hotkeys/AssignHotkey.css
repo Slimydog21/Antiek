@@ -1,0 +1,73 @@
+/* AssignHotkey — SPR-08. */
+
+.antiek-assign-hotkey {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.antiek-assign-hotkey__current {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.antiek-assign-hotkey__clear {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.antiek-assign-hotkey__clear:hover {
+  color: var(--emperor);
+}
+
+.antiek-assign-hotkey__hint {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.antiek-assign-hotkey__capture {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  border: 2px dashed var(--rule);
+  border-radius: 6px;
+  background: var(--inset);
+  cursor: text;
+  outline-offset: 2px;
+}
+.antiek-assign-hotkey__capture:focus-visible {
+  border-color: var(--bar-accent);
+}
+
+.antiek-assign-hotkey__prompt {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.antiek-assign-hotkey__conflict {
+  margin: 10px 0 0 0;
+  font-size: 13px;
+  color: var(--sun-deep);
+}
+.antiek-assign-hotkey__conflict--blocked {
+  color: var(--emperor);
+}
+
+.antiek-assign-hotkey__ok {
+  margin: 10px 0 0 0;
+  font-size: 13px;
+  color: var(--aurora);
+}
+
+.antiek-assign-hotkey__footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

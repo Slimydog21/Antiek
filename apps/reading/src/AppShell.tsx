@@ -7,6 +7,7 @@ import { PenguinMascot } from "./shell/PenguinMascot";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
+import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PanelLayout } from "./workspace/PanelLayout";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
@@ -139,6 +140,12 @@ export function AppShell({ children }: Props) {
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />
+
+      {/* SPR-08 — the keyboard cheat-sheet. Mounted ONCE here so a single
+          uncontrolled instance self-subscribes to the HELP_TOGGLE window event
+          (fired by `?` in shortcuts.ts, guarded so it never fires while
+          typing); ESC closes it via LemonModal's focus trap. */}
+      <HotkeyHud />
     </div>
   );
 }

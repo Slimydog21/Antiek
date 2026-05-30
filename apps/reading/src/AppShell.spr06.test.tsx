@@ -14,9 +14,32 @@
  * the nav-is-the-bottom-rail ordering. A regression — nav drifting back to a
  * leading left column, or the seam frame losing its inset padding — reddens.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+
+// SPR-08 — the real NavRail (kept un-mocked here) now renders on-bar KeyChips,
+// which read usePrefersReducedMotion (matchMedia). jsdom lacks matchMedia;
+// stub it as the hotkey/ad/penguin suites already do. No new assertion — it
+// only lets the real rail render its real children.
+beforeAll(() => {
+  if (!window.matchMedia) {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+  }
+});
 
 // Heavy / separately-tested children → lightweight honest stand-ins. The PDF
 // worker import lives behind PanelLayout; mocking it keeps the env happy while
@@ -40,7 +63,18 @@ vi.mock("./workspace/PanelLayout", () => ({
     <div data-testid="main-region">{mainSlot}</div>
   ),
 }));
-vi.mock("./workspace/shortcuts", () => ({ useWorkspaceShortcuts: () => {} }));
+// SPR-08 — AppShell now mounts <HotkeyHud/>, which imports SHORTCUT_EVENTS
+// from this module; the mock must still export it (a real const, not the
+// keydown handler) so the HUD's HELP_TOGGLE listener resolves. The keydown
+// installer is the only thing stubbed.
+vi.mock("./workspace/shortcuts", () => ({
+  useWorkspaceShortcuts: () => {},
+  SHORTCUT_EVENTS: {
+    PALETTE_TOGGLE: "antiek:palette:toggle",
+    AISIDECAR_TOGGLE: "antiek:aisidecar:toggle",
+    HELP_TOGGLE: "antiek:help:toggle",
+  },
+}));
 vi.mock("./workspace/useWorkspaceHydration", () => ({
   useWorkspaceHydration: () => {},
 }));
