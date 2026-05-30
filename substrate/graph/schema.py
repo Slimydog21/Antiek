@@ -985,6 +985,48 @@ CREATE INDEX IF NOT EXISTS idx_attribution_audit_page
 """
 
 
+# SPR-06 (arxiv-ingest) — paper_author_accruals. The INTERNAL per-paper author
+# accrual ledger: for each T1 paper read that produced ad revenue, how much is
+# OWED to each author keyed by (arxiv_id, author_position), plus an explicit
+# UNATTRIBUTED entry (author_position = -1, reusing the held-never-misattributed
+# bucket semantics) that catches papers with no resolvable OpenAlex author.
+# Per-author rows + the unattributed row reconcile EXACTLY to the attributed
+# revenue (conservation-to-the-cent). Append-only, deterministic idempotent ids,
+# version stamps + inputs_json for replay. INTERNAL accounting ONLY — this
+# ledger writes NO escrow and disburses nothing (the substrate SPR-07 claim +
+# SPR-08 payout build on). Module: substrate/payouts/ledger.py (which also keeps
+# a defensive module-local ensure_tables). Mirrors the attribution_audit /
+# frame_attention_accrual append-only shape; FK-references nothing.
+ANTIEK_GRAPH_SCHEMA_V11_PAPER_AUTHOR_ACCRUALS_SQL = """
+CREATE TABLE IF NOT EXISTS paper_author_accruals (
+    accrual_id           TEXT PRIMARY KEY,
+    event_ref            TEXT NOT NULL,
+    ad_event_id          TEXT NOT NULL,
+    document_id          TEXT NOT NULL,
+    arxiv_id             TEXT NOT NULL,
+    -- 0-based byline position, or -1 for the explicit unattributed entry.
+    author_position      INTEGER NOT NULL,
+    orcid                TEXT,
+    -- 'author' | 'unattributed'.
+    attribution_kind     TEXT NOT NULL,
+    amount_cents         INTEGER NOT NULL DEFAULT 0,
+    -- The event's total attributed revenue, stamped on every row of the event
+    -- so reconciliation compares against the genuine total (summed per event).
+    attributed_cents     INTEGER NOT NULL DEFAULT 0,
+    split_policy_version TEXT NOT NULL,
+    ledger_version       TEXT NOT NULL,
+    -- Canonical-JSON of the exact inputs (source ad-event, attributed cents,
+    -- author positions) so "why is author X owed $Y" is replayable.
+    inputs_json          TEXT NOT NULL,
+    accrued_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_paper_author_accruals_arxiv
+    ON paper_author_accruals(arxiv_id);
+CREATE INDEX IF NOT EXISTS idx_paper_author_accruals_event
+    ON paper_author_accruals(ad_event_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1038,6 +1080,10 @@ def init_database(con: LockedConnection) -> None:
     # SPR-04 — attribution_audit (append-only reproducible attribution record).
     # Pure idempotent CREATE IF NOT EXISTS; runs last, FK-references nothing.
     con.execute(ANTIEK_GRAPH_SCHEMA_V10_ATTRIBUTION_AUDIT_SQL)
+    # SPR-06 (arxiv-ingest) — paper_author_accruals (internal per-paper author
+    # accrual ledger; (arxiv_id, author_position) keyed, conservation-to-the-cent,
+    # writes NO escrow). Pure idempotent CREATE IF NOT EXISTS; FK-references nothing.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V11_PAPER_AUTHOR_ACCRUALS_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:

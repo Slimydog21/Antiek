@@ -29,6 +29,7 @@ wrong holder, and never disburses.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Optional
@@ -47,6 +48,14 @@ from substrate.ad_inventory.reader_impressions import (
 from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET
 from substrate.event_log import emit_typed
 from substrate.schemas.events import RevShareDecidedPayload
+
+# Matches the sibling acquisition modules' convention (explicit dotted name,
+# e.g. acquisition/arxiv/store.py). Used to make a failure in the additive
+# author-attribution hook AUDITABLE — a silent swallow there would drop
+# per-author accrual that feeds researcher payouts with no trace (§9
+# traceability / defensibility), so the drop is logged while the escrow path
+# stays defensively isolated.
+logger = logging.getLogger("substrate.marketplace_metrics.book_escrow")
 
 
 @dataclass(frozen=True)
@@ -78,6 +87,57 @@ def _resolve_ip_holder(con: Any, document_id: str) -> Optional[str]:
     return row[0]
 
 
+def _accrue_payouts_ledger(
+    con: Any,
+    *,
+    document_id: str,
+    revenue_cents: int,
+    session_id: str,
+    impression_ids: list[str],
+) -> None:
+    """Thin, additive hook into the SPR-06 internal author-attribution ledger.
+
+    The ad-event id is the SAME stable per-session-per-document key the existing
+    rev-share split uses (``session:{session_id}:{document_id}``). That key is
+    per-session-CONSTANT, but the reader posts impressions INCREMENTALLY (one
+    page-flush at a time), so a constant key alone would mis-dedup two disjoint
+    page-flush batches that earned EQUAL revenue and DROP the second. To conserve
+    against that incremental-posting model we ALSO pass this batch's underlying
+    impression-id set (``impression_ids`` — derived from the same deduped
+    ``book_imps`` the escrow path sums), making the ledger's dedup unit the
+    impression set: disjoint batches (different slots/pages → different
+    impression ids) are DISTINCT events that both accrue, while a true retry of
+    the SAME impressions stays a no-op on both sides.
+
+    The ledger applies the T1 gate (re-derived from the immutable license_uri),
+    the arXiv check, and the zero-revenue check itself, so this is safe to call
+    for every book session — non-arXiv / T2 / T3 / zero-revenue emit nothing.
+    It writes NO escrow. Defensive: a failure in the additive attribution layer
+    must NEVER break the existing escrow accrual, so it is isolated — but the
+    drop is LOGGED (never silently swallowed), because this ledger feeds
+    researcher payouts and a systematic attribution failure must be auditable."""
+    try:
+        from substrate.payouts.ledger import accrue_paper_read
+
+        accrue_paper_read(
+            con,
+            document_id=document_id,
+            revenue_cents=revenue_cents,
+            ad_event_id=f"session:{session_id}:{document_id}",
+            impression_ids=impression_ids,
+        )
+    except Exception:
+        # Internal accounting only — never let it disturb the escrow path, but
+        # make the drop VISIBLE so a systematic attribution-layer failure is
+        # auditable (it feeds researcher payouts — §9 traceability).
+        logger.exception(
+            "payouts-ledger accrual failed for document_id=%s session_id=%s; "
+            "escrow path unaffected",
+            document_id,
+            session_id,
+        )
+
+
 def accrue_reading_session(
     con: Any,
     *,
@@ -99,6 +159,27 @@ def accrue_reading_session(
     book_imps = [i for i in deduped if i.document_id == document_id]
     revenue_cents = total_revenue_cents(book_imps)
     attention = sum(1 for i in book_imps if i.counted_attention)
+
+    # SPR-06 (arxiv-ingest) — additive internal author-attribution hook.
+    # For a T1 arXiv paper, ALSO accrue this session's ad revenue to the
+    # INTERNAL (arxiv_id, author_position) payouts ledger (an additive
+    # accounting layer over the SAME revenue — both HOLD, neither disburses, so
+    # no double-count of disbursable money). The ledger re-derives the T1 tier
+    # itself and emits nothing for non-arXiv / T2 / T3 / zero-revenue, so this
+    # is safe to call unconditionally. It writes NO escrow. Wrapped so an
+    # attribution-layer failure can never break the existing escrow accrual.
+    #
+    # Pass this batch's deduped impression-id set so the ledger's idempotency
+    # unit is the underlying impression set — the SAME dedup principle the escrow
+    # path uses (each impression counted once). The reader flushes impressions
+    # INCREMENTALLY under a constant session ad_event_id, so two disjoint
+    # page-flush batches that earn equal revenue must be DISTINCT ledger events
+    # (both accrue), while a true retry of the same impressions stays a no-op.
+    _accrue_payouts_ledger(
+        con, document_id=document_id, revenue_cents=revenue_cents,
+        session_id=session_id,
+        impression_ids=sorted(i.impression_id for i in book_imps),
+    )
 
     holder_id = _resolve_ip_holder(con, document_id)
     unattributed = holder_id is None
