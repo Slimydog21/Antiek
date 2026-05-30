@@ -32,8 +32,9 @@ gets wrong (it would happily score a zero-citation claim's *peers*).
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Sequence
+from typing import Any
 
 # Re-use the canonical verdict shape so an emitted event and an in-test
 # verdict are the same object — no parallel shape to drift.
@@ -236,7 +237,7 @@ def score_claim(
     claim: str,
     chunk_texts: Sequence[str],
     *,
-    cited_chunk_ids: Optional[Sequence[str]] = None,
+    cited_chunk_ids: Sequence[str] | None = None,
     backend: EntailmentBackend = lexical_entailment_score,
     supported_threshold: float = DEFAULT_SUPPORTED_THRESHOLD,
 ) -> ClaimGroundednessVerdict:

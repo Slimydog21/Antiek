@@ -21,13 +21,14 @@ Two resolution paths, both read-only:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Mapping, Optional, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 # (claim, cited_chunk_ids, chunk_texts)
 ClaimChunks = tuple[str, list[str], list[str]]
 
 # A chunk-text resolver maps a chunk_id to its text (or None if unknown).
-ChunkTextResolver = Callable[[str], Optional[str]]
+ChunkTextResolver = Callable[[str], str | None]
 
 
 def _components(payload: Any) -> list[Any]:
@@ -68,7 +69,7 @@ def mapping_chunk_text_resolver(chunk_texts: Mapping[str, str]) -> ChunkTextReso
     when the trace fixture carries the chunk text inline (so the eval is
     truly offline — no live DB required)."""
 
-    def _resolve(chunk_id: str) -> Optional[str]:
+    def _resolve(chunk_id: str) -> str | None:
         return chunk_texts.get(chunk_id)
 
     return _resolve
@@ -77,7 +78,7 @@ def mapping_chunk_text_resolver(chunk_texts: Mapping[str, str]) -> ChunkTextReso
 def duckdb_chunk_text_resolver(
     db_path: str,
     *,
-    chunk_ids: Optional[Sequence[str]] = None,
+    chunk_ids: Sequence[str] | None = None,
 ) -> ChunkTextResolver:
     """Live resolver: read chunk text from the EXISTING ``chunks`` table
     through the read-only connection funnel (``runtime/db_lock``). Loads
@@ -107,7 +108,7 @@ def duckdb_chunk_text_resolver(
     finally:
         con.close()
 
-    def _resolve(chunk_id: str) -> Optional[str]:
+    def _resolve(chunk_id: str) -> str | None:
         return resolved.get(chunk_id)
 
     return _resolve

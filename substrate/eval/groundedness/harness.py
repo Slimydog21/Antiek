@@ -39,8 +39,9 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from substrate.eval.groundedness.provenance import (
     duckdb_chunk_text_resolver,
@@ -101,7 +102,7 @@ class LabeledSetError(ValueError):
 
 def load_labeled(path: str) -> list[LabeledCase]:
     cases: list[LabeledCase] = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         for lineno, line in enumerate(f, 1):
             line = line.strip()
             if not line or line.startswith("#"):
@@ -224,7 +225,7 @@ def _iter_synthesis_payloads(events_dir: str) -> Iterable[tuple[str, dict]]:
 def score_traces(
     events_dir: str,
     *,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     threshold: float = DEFAULT_SUPPORTED_THRESHOLD,
 ) -> list[dict[str, Any]]:
     """Score every Phase-6 synthesis on disk. Returns one row per
@@ -260,7 +261,7 @@ def score_traces(
         # inline chunk_texts on the payload (some fixtures carry them)
         inline = payload.get("chunk_texts") or {}
 
-        def _resolve(chunk_id: str, _inline=inline) -> Optional[str]:
+        def _resolve(chunk_id: str, _inline=inline) -> str | None:
             if chunk_id in _inline:
                 return _inline[chunk_id]
             return db_resolver(chunk_id) if db_resolver else None
@@ -299,7 +300,7 @@ def _format_distribution(scores: list[float]) -> str:
     )
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m substrate.eval.groundedness.harness",
         description="Offline groundedness harness — score distribution + separation.",
