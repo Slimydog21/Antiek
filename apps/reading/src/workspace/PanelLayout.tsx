@@ -125,7 +125,7 @@ export function PanelLayout({ mainSlot }: Props) {
   }, []);
 
   return (
-    <div className="relative h-full w-full flex bg-ice-2 dark:bg-space-2 overflow-hidden">
+    <div className="relative h-full w-full flex bg-transparent overflow-hidden">{/* SPR-04: root made transparent (was bg-ice-2 dark:bg-space-2) so the z-0 living mountainscape shows through the glassy route surface; the docks below keep their opaque chrome bg for legibility. */}
       {/* LEFT DOCK */}
       <aside
         className={`flex flex-col shrink-0 border-r-edge border-sun bg-ice-1 dark:bg-charcoal-1 min-w-0 ${dockTransition}`}

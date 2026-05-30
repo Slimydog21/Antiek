@@ -251,8 +251,20 @@ export function SceneChrome({
 
       {/* The scene body. Either the real route view (children — with the
           panel workspace underneath) or, if nothing is built for this
-          workflow, the honest stub. */}
-      <div className="flex-1 min-h-0">
+          workflow, the honest stub.
+
+          SPR-04 — GLASS SURFACE. The working surface is now translucent
+          (bg-glass + backdrop-blur-glass, SPR-01 tokens) so the living
+          mountainscape behind the shell shows through as a frosted backdrop.
+          The glass tokens carry a high-alpha frost (~0.66–0.72) AND we blur
+          the scene behind, which together keep body text above the WCAG-AA
+          contrast floor over the moving scene (the SPR-01 glass legibility
+          contract). Under reduced-motion / no-scene the token degrades to its
+          opaque `--glass-bg-solid` fallback via the consumer's choice — here
+          we keep the blur+frost, which is already legible on a frozen frame.
+          A maintainer may raise the scrim alpha if a future busier scene
+          drops contrast; the seam is this one className. */}
+      <div className="flex-1 min-h-0 bg-glass backdrop-blur-glass">
         {built ? children : <WorkflowStub workflow={wf} />}
       </div>
     </div>
