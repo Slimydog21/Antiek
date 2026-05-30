@@ -1416,6 +1416,62 @@ def build_parser() -> argparse.ArgumentParser:
         "--pd-min-interval", type=float, default=1.0,
         help="public-domain: min seconds between source requests",
     )
+    # ---- SPR-09 continuous orchestration -----------------------------------
+    p.add_argument(
+        "--continuous", action="store_true",
+        help=(
+            "run the standing, resumable, box-bounded engine: cycle every "
+            "selected source, stage off the hot path, merge on a cadence, "
+            "checkpoint per source, and pace/halt against the box ceiling. "
+            "ONE process, ONE in-process loop — not a daemon, not a fan-out. "
+            "Requires --staging-db (or --dry-run)."
+        ),
+    )
+    p.add_argument(
+        "--status", action="store_true",
+        help=(
+            "print a READ-ONLY run-health snapshot reconstructed from the event "
+            "log + checkpoint store (per-source counts, reject rate, last-merge, "
+            "governor state, banned-until). Never takes the write lock."
+        ),
+    )
+    p.add_argument(
+        "--max-rounds", type=int, default=None, dest="max_rounds",
+        help="continuous: stop after this many rounds (default: until HALT)",
+    )
+    p.add_argument(
+        "--round-sleep-s", type=float, default=0.0, dest="round_sleep_s",
+        help="continuous: seconds to sleep between rounds (default: 0)",
+    )
+    # Merge-cadence thresholds (M4). Each merge holds the live writer briefly;
+    # the merge fires when ANY of these trips (count OR staging-size OR interval).
+    p.add_argument(
+        "--merge-count", type=int, default=DEFAULT_MERGE_COUNT, dest="merge_count",
+        help=(
+            f"continuous: merge after this many staged docs "
+            f"(default {DEFAULT_MERGE_COUNT})"
+        ),
+    )
+    p.add_argument(
+        "--merge-size-bytes", type=int, default=DEFAULT_MERGE_SIZE_BYTES,
+        dest="merge_size_bytes",
+        help=(
+            f"continuous: merge when the staging DB reaches this size in bytes "
+            f"(default {DEFAULT_MERGE_SIZE_BYTES})"
+        ),
+    )
+    p.add_argument(
+        "--merge-interval-s", type=float, default=DEFAULT_MERGE_INTERVAL_S,
+        dest="merge_interval_s",
+        help=(
+            f"continuous: merge at least this often in seconds "
+            f"(default {DEFAULT_MERGE_INTERVAL_S})"
+        ),
+    )
+    p.add_argument(
+        "--events-dir", dest="events_dir",
+        help="continuous/status: override the event-log directory (tests)",
+    )
     return p
 
 
@@ -1641,9 +1697,582 @@ def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
     )
 
 
+# ===========================================================================
+# SPR-09 — Continuous orchestration (box-bounded, resumable).
+#
+# A SINGLE resumable in-process loop, NOT a daemon and NOT a fan-out. It reuses
+# the EXACT discovery + plan + execute spine above (discover_all / plan_corpus /
+# execute_plan) and the EXACT staging->merge function (tools.merge_staging) and
+# the EXACT throttle/banned_until rotation (substrate.source_throttle). It adds
+# only the standing-engine concerns the one-shot path lacks: a budget governor
+# that PACEs/HALTs against the box ceiling, per-source checkpoints so a kill +
+# restart resumes without re-ingesting, a merge CADENCE (count/size/interval)
+# so the live API sees brief windows, and per-source observability to the event
+# log + a read-only --status snapshot. The orchestrator only SCHEDULES; it never
+# reclassifies (classify() stays the sole rights authority) and never reimple-
+# ments merge/throttle/dedup.
+# ===========================================================================
+
+import json as _json  # noqa: E402
+import time as _time  # noqa: E402
+
+from substrate.event_log.events import log_event, trajectory  # noqa: E402
+from substrate.ingest_budget import (  # noqa: E402
+    BudgetGovernor,
+    BudgetState,
+)
+from substrate.ingest_checkpoint import CheckpointStore  # noqa: E402
+
+# The investigation_id every continuous-engine event is filed under. A standing
+# corpus ingest is a system sweep, not a single user investigation, so it uses
+# the SYSTEM sentinel so `investigation_id = 'system'` lifts the whole run from
+# the event log (the same convention the substrate's bulk sweeps use).
+from substrate.constants import SYSTEM_INVESTIGATION_ID  # noqa: E402
+
+# Typed (free-form) event action_types for the continuous engine. The event log
+# accepts free-form action_type strings on the legacy log_event path (the typed
+# schema union is for the role pipeline); these are the ingest-engine vocabulary
+# the --status snapshot reconstructs from after a restart (M6).
+EVT_ROUND = "corpus.ingest.round"        # one rotation round summary
+EVT_SOURCE = "corpus.ingest.source"      # one source's per-round counts
+EVT_MERGE = "corpus.ingest.merge"        # one staging->merge (window_s, rows)
+EVT_GOVERNOR = "corpus.ingest.governor"  # a governor state change / decision
+EVT_HALT = "corpus.ingest.halt"          # clean halt (budget / all-banned)
+
+# Merge-cadence defaults (M4). Each merge holds the live writer for `window_s`
+# (seconds), so the cadence is tuned to keep windows brief + frequent enough
+# that staged work is not lost on a crash, while not merging so often that the
+# live writer is contended. Configurable via flags; rationale per value:
+DEFAULT_MERGE_COUNT = 200      # docs: ~one curated spine; a few-seconds merge.
+DEFAULT_MERGE_SIZE_BYTES = 256 * 1024 * 1024  # 256 MiB staged -> bounded window.
+DEFAULT_MERGE_INTERVAL_S = 15 * 60.0          # 15 min: a floor so a slow trickle
+#                                               still merges (staged work is not
+#                                               left unmerged indefinitely).
+
+# PACE-band throughput reduction (M5). In the PACE band the per-source limit is
+# scaled by this factor (fewer docs/round) so throughput measurably drops vs OK.
+PACE_LIMIT_FACTOR = 0.25
+
+
+@dataclass
+class _StagingAccumulator:
+    """Tracks staged-but-unmerged work so the cadence (M4) can decide WHEN to
+    fire SPR-01's merge. ``count`` is staged docs since the last merge;
+    ``staging_db`` is the path whose on-disk size is the size trigger;
+    ``last_merge_ts`` is when the last merge completed (epoch). Pure bookkeeping
+    — it never writes the DB."""
+
+    staging_db: str
+    count: int = 0
+    last_merge_ts: float = 0.0
+
+    def staging_size_bytes(self) -> int:
+        try:
+            return int(os.path.getsize(self.staging_db))
+        except OSError:
+            return 0
+
+    def should_merge(
+        self, *, count_threshold: int, size_threshold: int,
+        interval_threshold: float, now: float,
+    ) -> Optional[str]:
+        """Return the FIRST tripped trigger name (count|size|interval) or None.
+        Order is count, then size, then interval — whichever trips first; a
+        single call returns one reason so the caller fires exactly one merge."""
+        if self.count >= count_threshold and self.count > 0:
+            return "count"
+        if self.staging_size_bytes() >= size_threshold and self.count > 0:
+            return "size"
+        if (
+            self.count > 0
+            and self.last_merge_ts > 0
+            and (now - self.last_merge_ts) >= interval_threshold
+        ):
+            return "interval"
+        return None
+
+
+def _emit(action_type: str, payload: dict, *, events_dir: Optional[str] = None) -> None:
+    """Emit one continuous-engine event under the SYSTEM investigation. Filed on
+    the legacy free-form log_event path (no typed schema needed); telemetry is
+    best-effort and never breaks the run (log_event swallows write errors)."""
+    log_event(
+        SYSTEM_INVESTIGATION_ID, action_type,
+        payload=payload, role="corpus_ingest",
+        policy_id="orchestrator-deterministic", events_dir=events_dir,
+    )
+
+
+@dataclass
+class SourceRoundResult:
+    """Per-source outcome of one round (the M6 honesty unit): how many were
+    discovered, ingested-to-staging, and rejected, with the reject rate computed
+    HONESTLY (rejected / discovered) — never a hidden drop."""
+
+    source: str
+    discovered: int = 0
+    ingested: int = 0
+    rejected: int = 0
+    skipped_seen: int = 0  # already-ingested (resume dedup) — not a rejection
+    banned_until: float = 0.0
+
+    @property
+    def reject_rate(self) -> float:
+        denom = self.ingested + self.rejected
+        return (self.rejected / denom) if denom else 0.0
+
+    def to_payload(self) -> dict:
+        return {
+            "source": self.source,
+            "discovered": self.discovered,
+            "ingested": self.ingested,
+            "rejected": self.rejected,
+            "skipped_seen": self.skipped_seen,
+            "reject_rate": round(self.reject_rate, 4),
+            "banned_until": self.banned_until,
+        }
+
+
+class ContinuousRunner:
+    """The standing engine. ONE process, ONE in-process loop. Composes the
+    existing spine; mints no new merge/rate/dedup/rights logic.
+
+    Lifecycle of one round:
+      1. governor.check() — if HALT, persist checkpoint state is already durable
+         (it is written per-source as we go), emit a halt event, stop scheduling.
+      2. discover_all(args) — ban-aware rotation (SPR-03) picks non-banned
+         sources; a banned source is skipped this round and others advance.
+      3. For each discovered candidate, consult the checkpoint's dedup-basis
+         seen-set; skip an already-ingested basis (resume dedup, SPR-04 key).
+      4. plan_corpus + execute_plan stage the survivors (off the live writer).
+      5. record_unit() atomically advances each source's cursor + seen-set.
+      6. cadence check -> SPR-01 merge_staging when count/size/interval trips.
+      7. emit per-source + round + merge events (M6).
+
+    A SIGTERM/SIGKILL at any step loses at most the in-flight unit, which the
+    dedup basis (in the checkpoint + SPR-01's idempotent merge) makes a no-op on
+    restart. The cursor only ever advances.
+    """
+
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        *,
+        checkpoint: Optional[CheckpointStore] = None,
+        governor: Optional[BudgetGovernor] = None,
+        now: Callable[[], float] = _time.time,
+        sleep: Callable[[float], None] = _time.sleep,
+    ) -> None:
+        self.args = args
+        self.dry_run = bool(args.dry_run)
+        self.checkpoint = checkpoint or CheckpointStore()
+        # In dry-run there is no staging file; the live DB path is only read by
+        # the governor (size) — never written. Resolve the live DB for governor
+        # readings (size + the filesystem free space), defaulting safely.
+        self._live_db = args.db_path or ""
+        self.governor = governor or BudgetGovernor(
+            db_path=self._live_db, staging_dir=(
+                os.path.dirname(os.path.abspath(args.staging_db))
+                if args.staging_db else None
+            ),
+        )
+        self._now = now
+        self._sleep = sleep
+        self.events_dir = getattr(args, "events_dir", None)
+        # Cadence thresholds (M4) — flags with the documented defaults.
+        self.merge_count = int(getattr(args, "merge_count", DEFAULT_MERGE_COUNT))
+        self.merge_size = int(getattr(args, "merge_size_bytes", DEFAULT_MERGE_SIZE_BYTES))
+        self.merge_interval = float(
+            getattr(args, "merge_interval_s", DEFAULT_MERGE_INTERVAL_S)
+        )
+        self.max_rounds = getattr(args, "max_rounds", None)
+        self.round_sleep_s = float(getattr(args, "round_sleep_s", 0.0))
+        self._accum: Optional[_StagingAccumulator] = None
+        if args.staging_db and not self.dry_run:
+            self._accum = _StagingAccumulator(
+                staging_db=os.path.abspath(os.path.expanduser(args.staging_db)),
+                last_merge_ts=self._now(),
+            )
+
+    # -- per-round scheduling ------------------------------------------------
+
+    def _candidate_basis(self, pc: PlannedCandidate) -> str:
+        """The SPR-04 content-stable dedup basis for a candidate — the SAME
+        value the cross-source dedup keyed on and SPR-01 turns into the
+        document_id. NOT re-derived here: it calls substrate.dedup."""
+        return identity_basis(pc.ref.identity_record())
+
+    def _effective_limit(self, governor_state: BudgetState) -> int:
+        """The per-source discovery limit for this round. In the PACE band it is
+        scaled down so throughput measurably drops vs OK (M5)."""
+        base = int(self.args.limit)
+        if governor_state is BudgetState.PACE:
+            return max(1, int(base * PACE_LIMIT_FACTOR))
+        return base
+
+    def run_round(self, round_index: int) -> dict:
+        """Run ONE scheduling round. Returns a structured round summary (also
+        emitted to the event log). Does not loop — `run()` loops over this so a
+        test can drive a single round deterministically."""
+        now = self._now()
+        verdict = self.governor.check()
+
+        if verdict.state is BudgetState.HALT:
+            # Clean halt: per-source checkpoints are ALREADY durable (written as
+            # each unit completed). Do NOT start a new merge or schedule new
+            # work. Emit the halt reason so the operator/status sees WHY.
+            _emit(EVT_HALT, {
+                "round": round_index, "reason": "budget",
+                "governor": verdict.render(),
+            }, events_dir=self.events_dir)
+            _emit(EVT_GOVERNOR, {
+                "round": round_index, "state": verdict.state.value,
+                "reasons": list(verdict.reasons),
+            }, events_dir=self.events_dir)
+            return {
+                "round": round_index, "halted": True, "reason": "budget",
+                "governor_state": verdict.state.value,
+                "governor_reasons": list(verdict.reasons),
+                "sources": [], "merged": None,
+            }
+
+        # PACE/OK both schedule; PACE shrinks the per-source limit.
+        eff_limit = self._effective_limit(verdict.state)
+        # discover_all reads args.limit; pass the paced limit by a shallow copy
+        # so the source rotation + connector dispatch are reused UNCHANGED.
+        round_args = argparse.Namespace(**vars(self.args))
+        round_args.limit = eff_limit
+        outcome = discover_all(round_args)
+
+        _emit(EVT_GOVERNOR, {
+            "round": round_index, "state": verdict.state.value,
+            "reasons": list(verdict.reasons),
+            "free_disk_bytes": verdict.reading.free_disk_bytes,
+            "db_size_bytes": verdict.reading.db_size_bytes,
+            "rss_bytes": verdict.reading.rss_bytes,
+            "effective_limit": eff_limit,
+        }, events_dir=self.events_dir)
+
+        if outcome.all_banned:
+            _emit(EVT_HALT, {
+                "round": round_index, "reason": "all_banned",
+                "soonest_resume": outcome.soonest_resume,
+            }, events_dir=self.events_dir)
+            return {
+                "round": round_index, "halted": True, "reason": "all_banned",
+                "soonest_resume": outcome.soonest_resume,
+                "governor_state": verdict.state.value, "sources": [], "merged": None,
+            }
+
+        # Group discovered candidates by source, filtering already-seen bases
+        # (resume dedup, SPR-04 key) BEFORE planning so a re-ingest never even
+        # reaches staging. The cursor advances regardless (we made progress).
+        per_source: dict[str, SourceRoundResult] = {}
+        fresh: list[PlannedCandidate] = []
+        fresh_bases_by_source: dict[str, set[str]] = {}
+        for pc in outcome.candidates:
+            res = per_source.setdefault(pc.source, SourceRoundResult(source=pc.source))
+            res.discovered += 1
+            basis = self._candidate_basis(pc)
+            if self.checkpoint.has_seen(pc.source, basis):
+                res.skipped_seen += 1
+                continue
+            fresh.append(pc)
+            fresh_bases_by_source.setdefault(pc.source, set()).add(basis)
+
+        # Plan + execute the FRESH survivors through the unchanged spine. The
+        # plan is pure; execute_plan stages (or, in dry-run, writes nothing).
+        merged_summary: Optional[dict] = None
+        if fresh:
+            plan = plan_corpus(fresh)
+            # Map kept candidate -> its source so per-source ingested counts are
+            # honest (plan dedups across sources; the kept set is what stages).
+            kept_sources = [pc.source for pc in plan.to_ingest]
+            write_target = None
+            if not self.dry_run and self.args.staging_db:
+                from runtime.staging_db import resolve_ingest_target
+                write_target = resolve_ingest_target(
+                    db_path=self.args.db_path, staging_db=self.args.staging_db
+                )
+            report = execute_plan(plan, db_path=write_target, dry_run=self.dry_run)
+
+            # Attribute ingested/rejected per source. In dry-run nothing is
+            # written, so "ingested" is the planned-to-ingest count (what WOULD
+            # stage) — the dry-run reports the same plan a real run executes.
+            planned_ct = len(plan.to_ingest)
+            ingested_ct = planned_ct if self.dry_run else report.ingested
+            # Quality-rejected candidates, per source (honest reject rate, M6).
+            for pc, _verdict in plan.quality_rejected:
+                r = per_source.setdefault(pc.source, SourceRoundResult(source=pc.source))
+                r.rejected += 1
+            # Distribute ingested across the kept set's sources.
+            for src in kept_sources[:ingested_ct]:
+                per_source.setdefault(src, SourceRoundResult(source=src)).ingested += 1
+            if self._accum is not None:
+                self._accum.count += ingested_ct
+
+        # Advance each source's checkpoint ATOMICALLY (cursor + seen bases).
+        # The cursor is round-monotonic per source (we made progress this
+        # round); the seen-set unions the bases we just staged so a restart
+        # mid-round re-discovers but skips them.
+        for src, res in per_source.items():
+            new_bases = fresh_bases_by_source.get(src, set())
+            cur = self.checkpoint.cursor(src)
+            next_cursor = self._advance_cursor(cur)
+            self.checkpoint.record_unit(src, cursor=next_cursor, new_bases=new_bases)
+            res.banned_until = self._banned_until(src)
+            _emit(EVT_SOURCE, {"round": round_index, **res.to_payload()},
+                  events_dir=self.events_dir)
+
+        # Cadence (M4): fire SPR-01's merge if a trigger tripped. Exactly one
+        # merge per trip — should_merge returns one reason, we merge once.
+        if self._accum is not None:
+            trigger = self._accum.should_merge(
+                count_threshold=self.merge_count,
+                size_threshold=self.merge_size,
+                interval_threshold=self.merge_interval,
+                now=self._now(),
+            )
+            if trigger:
+                merged_summary = self._do_merge(round_index, trigger)
+
+        round_summary = {
+            "round": round_index,
+            "halted": False,
+            "governor_state": verdict.state.value,
+            "governor_reasons": list(verdict.reasons),
+            "effective_limit": eff_limit,
+            "rotation_log": list(outcome.rotation_log),
+            "sources": [res.to_payload() for res in per_source.values()],
+            "corpus_size_docs": self._corpus_size_docs(),
+            "last_merge_ts": (self._accum.last_merge_ts if self._accum else 0.0),
+            "merged": merged_summary,
+        }
+        _emit(EVT_ROUND, round_summary, events_dir=self.events_dir)
+        return round_summary
+
+    def _advance_cursor(self, current: Optional[str]) -> str:
+        """Advance a source's opaque cursor. We use a monotonic round counter so
+        the cursor strictly advances (never resets) across restarts — the
+        contract the resume test asserts. (Per-source pagination tokens are an
+        orchestration detail the connectors own; this engine's cursor records
+        rounds completed so resume never rewinds.)"""
+        try:
+            n = int(current) if current is not None else 0
+        except (TypeError, ValueError):
+            n = 0
+        return str(n + 1)
+
+    def _banned_until(self, source: str) -> float:
+        """Read SPR-03's banned_until sentinel for a source (read-only)."""
+        try:
+            from substrate.source_throttle import SourceThrottle
+            return SourceThrottle().banned_until(source)
+        except Exception:
+            return 0.0
+
+    def _corpus_size_docs(self) -> int:
+        """Live corpus document count, read-only (connect_read; never the write
+        lock). 0 / -1-safe when the DB is absent (dry-run / fresh box)."""
+        if not self._live_db or not os.path.exists(self._live_db):
+            return 0
+        try:
+            from runtime.db_lock import connect_read
+            con = connect_read(self._live_db)
+            try:
+                return int(con.execute("SELECT count(*) FROM documents").fetchone()[0])
+            finally:
+                con.close()
+        except Exception:
+            return 0
+
+    def _do_merge(self, round_index: int, trigger: str) -> dict:
+        """Fire SPR-01's merge_staging UNCHANGED. The budget governor is
+        re-checked first: if HALT, the merge is NOT started (the in-flight-merge
+        safety contract — never begin an endangering INSERT...SELECT). On
+        success, reset the staging accumulator + stamp last_merge_ts."""
+        assert self._accum is not None
+        pre = self.governor.check()
+        if pre.state is BudgetState.HALT:
+            _emit(EVT_HALT, {
+                "round": round_index, "reason": "budget_pre_merge",
+                "governor": pre.render(),
+            }, events_dir=self.events_dir)
+            return {"trigger": trigger, "skipped": "budget_halt",
+                    "governor": pre.render()}
+        if not self.args.db_path:
+            # No live DB to merge into (e.g. staging-only smoke). Reset the
+            # accumulator so the cadence does not re-fire every round.
+            self._accum.count = 0
+            self._accum.last_merge_ts = self._now()
+            return {"trigger": trigger, "skipped": "no_live_db"}
+
+        from tools.merge_staging import merge_staging
+        result = merge_staging(
+            live_db=self.args.db_path, staging_db=self._accum.staging_db
+        )
+        self._accum.count = 0
+        self._accum.last_merge_ts = self._now()
+        summary = {
+            "trigger": trigger,
+            "window_s": round(result.window_s, 4),
+            "total_inserted": result.total_inserted,
+            "tables": [
+                {"table": t.table, "inserted": t.inserted, "skipped": t.skipped}
+                for t in result.tables
+            ],
+        }
+        _emit(EVT_MERGE, {"round": round_index, **summary}, events_dir=self.events_dir)
+        return summary
+
+    # -- the loop ------------------------------------------------------------
+
+    def run(self) -> int:
+        """Drive rounds until HALT, all-banned, or max_rounds. The ONLY loop —
+        one process, one box. Returns a process exit code."""
+        round_index = 0
+        while True:
+            round_index += 1
+            summary = self.run_round(round_index)
+            print(_json.dumps(summary, default=str))
+            if summary.get("halted"):
+                reason = summary.get("reason")
+                print(f"continuous: halted cleanly ({reason})", file=sys.stderr)
+                return 0 if reason == "all_banned" else 0
+            if self.max_rounds and round_index >= self.max_rounds:
+                print(
+                    f"continuous: reached max_rounds={self.max_rounds}; stopping",
+                    file=sys.stderr,
+                )
+                return 0
+            if self.round_sleep_s > 0:
+                self._sleep(self.round_sleep_s)
+
+
+# ---------------------------------------------------------------------------
+# --status — a READ-ONLY snapshot reconstructed from persisted state (M6).
+# ---------------------------------------------------------------------------
+
+
+def status_snapshot(
+    *,
+    checkpoint: Optional[CheckpointStore] = None,
+    events_dir: Optional[str] = None,
+    db_path: Optional[str] = None,
+) -> dict:
+    """Reconstruct the run-health snapshot from PERSISTED state only — the event
+    log (per-source counts, reject rates, last-merge, governor state) + the
+    checkpoint store (cursors, seen-id counts) + the throttle sentinel
+    (banned_until). It survives a restart because it reads files, not in-memory
+    counters (M6 criterion 3).
+
+    READ-ONLY: it opens the live DB read-only (connect_read) at most for a
+    corpus-size count and NEVER calls connect_write — it cannot contend for the
+    single-writer lock while the API serves (M6 criterion 2 + SPR-10 read-only).
+    """
+    cp = checkpoint or CheckpointStore()
+
+    # Reconstruct per-source aggregates from the event log's source events.
+    rows = trajectory(SYSTEM_INVESTIGATION_ID, events_dir=events_dir)
+    per_source: dict[str, dict] = {}
+    last_merge_ts = 0.0
+    last_governor: Optional[dict] = None
+    for r in rows:
+        at = r.get("action_type")
+        payload = r.get("payload") or {}
+        if at == EVT_SOURCE:
+            src = payload.get("source")
+            if not src:
+                continue
+            agg = per_source.setdefault(src, {
+                "source": src, "discovered": 0, "ingested": 0,
+                "rejected": 0, "skipped_seen": 0, "banned_until": 0.0,
+            })
+            for k in ("discovered", "ingested", "rejected", "skipped_seen"):
+                agg[k] += int(payload.get(k, 0) or 0)
+            agg["banned_until"] = max(
+                agg["banned_until"], float(payload.get("banned_until", 0.0) or 0.0)
+            )
+        elif at == EVT_MERGE:
+            # last_merge_ts is the emission time of the most recent merge event.
+            last_merge_ts = r.get("emitted_at") or last_merge_ts
+        elif at == EVT_GOVERNOR:
+            last_governor = payload
+
+    # Honest reject rate per source (rejected / (ingested + rejected)).
+    sources_out = []
+    for src, agg in sorted(per_source.items()):
+        denom = agg["ingested"] + agg["rejected"]
+        agg["reject_rate"] = round(agg["rejected"] / denom, 4) if denom else 0.0
+        # Cursor + seen-count come from the checkpoint store (survives restart).
+        scp = cp.get(src)
+        agg["cursor"] = scp.cursor
+        agg["ingested_ids_seen"] = len(scp.ingested_ids_seen)
+        # Live banned_until from the sentinel (read-only) overrides the stale
+        # event value when present.
+        try:
+            from substrate.source_throttle import SourceThrottle
+            agg["banned_until"] = SourceThrottle().banned_until(src)
+        except Exception:
+            pass
+        sources_out.append(agg)
+
+    # Corpus size — read-only count, 0 when no live DB available.
+    corpus_size = 0
+    resolved_db = db_path or os.environ.get("ANTIEK_DUCKDB_PATH")
+    if resolved_db and os.path.exists(resolved_db):
+        try:
+            from runtime.db_lock import connect_read
+            con = connect_read(resolved_db)
+            try:
+                corpus_size = int(
+                    con.execute("SELECT count(*) FROM documents").fetchone()[0]
+                )
+            finally:
+                con.close()
+        except Exception:
+            corpus_size = 0
+
+    return {
+        "sources": sources_out,
+        "corpus_size_docs": corpus_size,
+        "last_merge_ts": last_merge_ts,
+        "governor": last_governor,
+        "checkpointed_sources": sorted(cp.all_sources().keys()),
+    }
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
+
+    # --status: read-only snapshot (M6). Reconstructs from the event log +
+    # checkpoint; never opens the write lock. Operator note: a prod --status
+    # against the live DB additionally reads the live corpus size read-only;
+    # offline (no live DB) it reports corpus_size_docs=0 with everything else
+    # reconstructed from persisted state.
+    if getattr(args, "status", False):
+        snap = status_snapshot(
+            events_dir=getattr(args, "events_dir", None),
+            db_path=args.db_path,
+        )
+        print(_json.dumps(snap, indent=2, default=str))
+        return 0
+
+    # --continuous: the standing engine (M2–M6). One process, one in-process
+    # loop. Composes discover_all + plan_corpus + execute_plan + merge_staging.
+    if getattr(args, "continuous", False):
+        if not args.dry_run and not args.staging_db:
+            print(
+                "error: --continuous requires --staging-db (the engine stages "
+                "off the live hot path and merges on a cadence; a direct live "
+                "write per round would defeat the brief-window contract). Use "
+                "--dry-run to plan without writing.",
+                file=sys.stderr,
+            )
+            return 2
+        runner = ContinuousRunner(args)
+        return runner.run()
 
     # Staging mode (SPR-01 keystone): the ingest writes to a separate staging
     # DuckDB off the live hot path. The live API keeps serving the live DB
