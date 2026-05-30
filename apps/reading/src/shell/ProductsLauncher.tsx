@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonTag } from "../components/lemon/LemonTag";
+import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
 import {
   MODE_TAXONOMY,
   WORKFLOWS,
@@ -144,6 +145,17 @@ export function ProductsLauncher({
     onClose();
   };
 
+  // SPR-09 M5 — additive "open in window" spawn. A window-eligible, built mode
+  // (contract-verified page, e.g. Library / Stats) can open as a transparent
+  // workspace window over the scene instead of navigating away. Navigate stays
+  // the default; this is the operator's explicit "alongside, not instead" path.
+  const openModeInWindow = (m: ModeEntry) => {
+    const kind = windowKindForRoute(m.route);
+    if (!m.built || !kind) return;
+    openWindow(kind);
+    onClose();
+  };
+
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -242,7 +254,7 @@ export function ProductsLauncher({
                         </h3>
                         <ul className="space-y-0.5">
                           {g.modes.map((m) => (
-                            <li key={m.id}>
+                            <li key={m.id} className="flex items-center gap-1">
                               <button
                                 type="button"
                                 disabled={!m.built}
@@ -250,7 +262,7 @@ export function ProductsLauncher({
                                 title={m.blurb}
                                 data-mode-id={m.id}
                                 className={
-                                  "w-full text-left px-2 py-1.5 rounded flex items-center gap-2 " +
+                                  "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
                                   (m.built
                                     ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
                                     : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
@@ -266,6 +278,18 @@ export function ProductsLauncher({
                                   </LemonTag>
                                 )}
                               </button>
+                              {m.built && windowKindForRoute(m.route) && (
+                                <button
+                                  type="button"
+                                  data-mode-window={m.id}
+                                  onClick={() => openModeInWindow(m)}
+                                  title={`Open ${m.label} in a floating window over the scene`}
+                                  aria-label={`Open ${m.label} in a window`}
+                                  className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
+                                >
+                                  ⊞
+                                </button>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -282,7 +306,7 @@ export function ProductsLauncher({
                   </div>
                   <ul className="space-y-0.5 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
                     {runModes.map((m) => (
-                      <li key={m.id}>
+                      <li key={m.id} className="flex items-center gap-1">
                         <button
                           type="button"
                           disabled={!m.built}
@@ -290,7 +314,7 @@ export function ProductsLauncher({
                           title={m.blurb}
                           data-mode-id={m.id}
                           className={
-                            "w-full text-left px-2 py-1.5 rounded flex items-center gap-2 " +
+                            "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
                             (m.built
                               ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
                               : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
@@ -306,6 +330,18 @@ export function ProductsLauncher({
                             </LemonTag>
                           )}
                         </button>
+                        {m.built && windowKindForRoute(m.route) && (
+                          <button
+                            type="button"
+                            data-mode-window={m.id}
+                            onClick={() => openModeInWindow(m)}
+                            title={`Open ${m.label} in a floating window over the scene`}
+                            aria-label={`Open ${m.label} in a window`}
+                            className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
+                          >
+                            ⊞
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
