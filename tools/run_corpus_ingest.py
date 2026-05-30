@@ -679,6 +679,90 @@ def _fetch_pd_body(
     return text
 
 
+def _opt_in_candidates(
+    *, manifest_path: Optional[str], limit: int, investigation_id: str,
+) -> list[PlannedCandidate]:
+    """Discover §9.10 publisher-opt-in candidates from a catalog manifest FILE.
+
+    This lane reaches NO network: a publisher hands the operator a catalog
+    manifest (their works + stable ids + an explicit serving grant), and this
+    adapter reads it locally. The rights decision for every work is made by the
+    ONE chokepoint (``acquisition.licenses_core.classify`` via
+    ``acquisition.opt_in.ingest_entry``) — a valid grant -> servable
+    (opt_in_licensed), an absent/invalid grant -> gated (deny-by-default). The
+    publisher's ip_holder is resolved ONCE (pre_onboarded if needed) and every
+    work links to it.
+
+    Each manifest entry becomes one PlannedCandidate so the orchestrator's
+    cross-source dedup + corpus-quality gate apply uniformly; the ingest thunk
+    runs ``ingest_entry`` (which writes through the connectors'
+    ``connect_write`` / staging path, never the live DB directly)."""
+    from acquisition.opt_in import ingest_entry, load_manifest, resolve_publisher_holder
+
+    if not manifest_path:
+        raise SystemExit(
+            "error: --oa-source opt_in needs --oa-query pointing at a publisher "
+            "catalog manifest JSON (see acquisition/opt_in/MANIFEST.md)."
+        )
+    manifest = load_manifest(manifest_path)
+    publisher = manifest.publisher
+
+    out: list[PlannedCandidate] = []
+    for entry in manifest.entries[:limit] if limit else manifest.entries:
+        body = entry.body_text
+        if body is None and entry.body_path:
+            try:
+                with open(entry.body_path, "r", encoding="utf-8") as f:
+                    body = f.read()
+            except OSError:
+                body = None
+
+        def _ingest(
+            db_path: str, _basis: str, _entry=entry, _publisher=publisher,
+            _catalog_grant=manifest.catalog_grant,
+        ) -> str:
+            # Holder resolution is idempotent (resolve-or-create keyed on the
+            # stable publisher_id), so resolving per-thunk reuses the one holder
+            # the whole manifest shares — no duplicate accounts.
+            holder_id, _ = resolve_publisher_holder(_publisher, db_path=db_path)
+            outcome = ingest_entry(
+                _entry, _publisher,
+                ip_holder_id=holder_id, db_path=db_path,
+                catalog_grant=_catalog_grant,
+                investigation_id=investigation_id,
+            )
+            if outcome.skipped_reason:
+                return f"skipped: {outcome.skipped_reason}"
+            servability = "servable" if outcome.servable else "gated"
+            return f"{outcome.content_class} ({servability})"
+
+        out.append(
+            PlannedCandidate(
+                ref=CandidateRef(
+                    ref_id=f"opt_in:{entry.doi or entry.isbn or entry.title}",
+                    doi=entry.doi,
+                    isbn=entry.isbn,
+                    title=entry.title,
+                    author=entry.author,
+                    # The body lets a metadata-poor work key on its content-hash
+                    # above the LOW title fallback (same as the PD path).
+                    body=body or None,
+                ),
+                source="open_access",
+                # The body IS the text we'd ingest → assess it when present.
+                assessable_text=body or "",
+                assess_body=bool(body),
+                ingest=_ingest,
+                allow_null_author_reason=(
+                    "opt-in catalog work with no recorded author"
+                    if not (entry.author and entry.author.strip())
+                    else None
+                ),
+            )
+        )
+    return out
+
+
 def _open_access_candidates(
     *, source: str, query: Optional[str], author: Optional[str],
     dois: Optional[Sequence[str]], limit: int, investigation_id: str,
@@ -873,10 +957,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     # open-access selectors
     p.add_argument(
-        "--oa-source", choices=("openalex", "unpaywall", "pmc", "doaj"),
-        help="open-access aggregator",
+        "--oa-source", choices=("openalex", "unpaywall", "pmc", "doaj", "opt_in"),
+        help=(
+            "open-access aggregator, OR 'opt_in' for the §9.10 publisher "
+            "opt-in lane (a publisher's own catalog manifest submitted with an "
+            "explicit serving grant). For opt_in, --oa-query is the path to the "
+            "catalog manifest JSON."
+        ),
     )
-    p.add_argument("--oa-query", help="open-access: openalex search query")
+    p.add_argument(
+        "--oa-query",
+        help=(
+            "open-access: openalex search query; for --oa-source opt_in, the "
+            "path to the publisher catalog manifest JSON"
+        ),
+    )
     p.add_argument("--oa-author", help="open-access: openalex author")
     p.add_argument("--oa-dois", help="open-access: comma-separated DOIs")
     # shared
@@ -930,6 +1025,9 @@ def _arxiv_throttle_key(arxiv_source: str) -> str:
 ARXIV_PDF_KEY = "arxiv_pdf"
 ARXIV_EXPORT_KEY = "arxiv_export"
 GUTENDEX_KEY = "gutendex"
+# The §9.10 opt-in lane reads a local manifest (no network), so its rotation
+# key is never armed by a 429/503 — it is always available.
+OPT_IN_KEY = "opt_in"
 
 
 @dataclass(frozen=True)
@@ -1003,7 +1101,18 @@ def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
                 bulk_snapshot=args.arxiv_bulk_snapshot,
             ),
         ))
-    if want_oa:
+    if want_oa and args.oa_source == "opt_in":
+        # The §9.10 publisher-opt-in lane reads a LOCAL catalog manifest and
+        # reaches no network, so it has no ban sentinel — it is keyed on its own
+        # always-available rotation key. --oa-query carries the manifest path.
+        runners.append((
+            OPT_IN_KEY,
+            lambda: _opt_in_candidates(
+                manifest_path=args.oa_query, limit=args.limit,
+                investigation_id=args.investigation_id,
+            ),
+        ))
+    elif want_oa:
         runners.append((
             f"oa_{args.oa_source}",
             lambda: _open_access_candidates(
