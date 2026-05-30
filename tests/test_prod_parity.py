@@ -22,7 +22,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from tools.prod_parity import check as parity
+from tools.prod_parity import check as parity  # noqa: E402  (intentional: sys.path bootstrap above)
 
 _GOOD_SHA = "a" * 40
 _OTHER_SHA = "b" * 40
