@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +40,6 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     NormalizedUsage,
-    Provider,
     ProviderError,
     RawProviderResponse,
     TierConfig,
@@ -52,8 +50,7 @@ from substrate.dispatch import (  # noqa: E402
     reset_provider_registry,
 )
 from substrate.event_log import trajectory  # noqa: E402
-from substrate.schemas import ActionType, DispatchCallPayload, Event  # noqa: E402
-
+from substrate.schemas import DispatchCallPayload, Event  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Mock providers
