@@ -1237,6 +1237,14 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Mountain Shell SPR-02 — Krea image-generation proxy. Holds the
+    # KREA_API_TOKEN server-side (the browser never sees it) and brokers
+    # scene-art generation under a daily budget + rate limit + kill-switch
+    # + TTL cache. With NO key it returns a typed 503 "disabled" signal
+    # (never a 500); SPR-04's living background renders a deterministic
+    # placeholder on that signal. Touches no DuckDB / db_lock.
+    from .krea_routes import register_krea_routes
+    register_krea_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
