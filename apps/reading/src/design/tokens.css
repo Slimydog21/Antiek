@@ -30,6 +30,13 @@
   --shadow-2:   #384858;
   --ink:        #0F1419;
 
+  /* Neutral "light" chrome border (AMS-SPR-01). A calm blue-grey — the
+     lightest neutral that still clears WCAG 1.4.11 3:1 on white cards
+     (#788596 on #FFFFFF = 3.75:1; on the #F4F7FA page = 3.49:1). A paler
+     glacial line would look lighter but fail the floor and vanish. Mirrors
+     tokens.ts `rule.day` + tailwind.config.js colors.rule. */
+  --rule:       #788596;
+
   /* aliases for readability */
   --page:       var(--ice-2);
   --card:       var(--ice-0);
@@ -39,7 +46,28 @@
   --muted:      var(--glacial-2);
   --text:       var(--ink);
   --text-muted: var(--shadow-1);
-  --border:     var(--sun);
+  /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
+     AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
+  --border:     var(--rule);
+
+  /* Preserved bottom-bar yellow accent (AMS-SPR-01; SPR-06 paints the bar
+     with this). Day = the brand lemon itself. Mirrors tokens.ts `barAccent`
+     + tailwind.config.js colors["bar-accent"]. */
+  --bar-accent: var(--sun);
+
+  /* Glass / transparency surfaces (AMS-SPR-01; SPR-03/04/09 consume these
+     to reveal the mountainscape behind the working surfaces). Day = a
+     near-white frost. --glass-bg-solid is the OPAQUE fallback for
+     prefers-reduced-motion / no-scene / low-power — same hue at alpha 1, so
+     a panel degrades to a flat card with no colour jump. LEGIBILITY: glass
+     alone does not guarantee 4.5:1 body-text contrast over a busy scene; the
+     consumer must add a scrim (raise alpha toward solid, or back the text
+     band). See tokens.ts `glass` for the full contract. Mirrors
+     tailwind.config.js (bg-glass / border-glass). */
+  --glass-bg:       rgba(251,252,253,0.72); /* --card-soft #FBFCFD @ 0.72 */
+  --glass-bg-solid: #FBFCFD;                /* opaque fallback == --card-soft */
+  --glass-border:   rgba(15,20,25,0.12);    /* --ink #0F1419 @ 0.12 hairline */
+  --glass-blur:     12px;                    /* backdrop-filter radius */
 
   /* werner — five fills for the single-source <Werner> component.
      Bill + foot lock to --sun so the mark carries the brand constant at every size.
@@ -111,6 +139,15 @@
     --shadow-2:   #A0AAB8;
     --ink:        #EEF1F6;
 
+    /* Neutral "light" chrome border, night. A calm slate — the lightest
+       neutral that still clears 3:1 on the night card (#606C7E on #1B202A =
+       3.07:1; on the #0D1019 page = 3.57:1). Mirrors tokens.ts `rule.night`.
+       Tailwind has no media-swap for a single color key, so border-rule
+       renders the DAY hex statically; this CSS var carries the night value
+       for elements that read var(--border)/var(--rule), and components keep
+       their explicit dark:border-charcoal-1 override. */
+    --rule:       #606C7E;
+
     --page:       #0D1019;
     --card:       #1B202A;
     --card-soft:  #13171F;
@@ -119,10 +156,26 @@
     --muted:      #6B7585;
     --text:       #EEF1F6;
     --text-muted: #6B7585;
-    --border:     var(--sun);
+    /* was var(--sun) #F5DF24; toned to neutral --rule for calmer chrome per
+       AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
+    --border:     var(--rule);
 
     --sun-deep:   #8A7300;
     --sun-glow:   #FFEC5F;
+
+    /* Preserved bottom-bar yellow accent, night (AMS-SPR-01; SPR-06). Uses
+       the warmer --sun-glow so the accent reads against the night sky.
+       Mirrors tokens.ts `barAccent.night` (#FFEC5F). */
+    --bar-accent: var(--sun-glow);
+
+    /* Glass / transparency surfaces, night (AMS-SPR-01; SPR-03/04/09). Deep
+       slate frost over the night sky. --glass-bg-solid is the opaque
+       reduced-motion / no-scene fallback (same hue, alpha 1). Legibility
+       contract: see day block + tokens.ts `glass`. */
+    --glass-bg:       rgba(27,32,42,0.66);  /* --card #1B202A @ 0.66 */
+    --glass-bg-solid: #1B202A;              /* opaque fallback == night --card */
+    --glass-border:   rgba(238,241,246,0.14); /* --ink(night) #EEF1F6 @ 0.14 */
+    --glass-blur:     12px;
 
     --werner-coat:  #0A0D14;
     --werner-belly: #DCE2EA;

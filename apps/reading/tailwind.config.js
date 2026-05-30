@@ -1,8 +1,11 @@
 /** @type {import('tailwindcss').Config} */
 // Antiek design tokens — Werner brand.
-// Sun-yellow outlining is the brand constant. Day = layered off-whites +
-// glacials. Night = ten-layer off-black "majestic night sky".
-// Source of truth: src/design/tokens.ts. Keep these in sync.
+// Sun-yellow outlining WAS the brand default border; AMS-SPR-01 retuned the
+// DEFAULT border to a calm neutral "light" rule while keeping sun as the
+// Werner + bottom-bar accent. Day = layered off-whites + glacials. Night =
+// ten-layer off-black "majestic night sky".
+// Source of truth: src/design/tokens.ts (+ tokens.css for the rgba/var tokens).
+// Keep these in sync — every value carrying an AMS-SPR-01 note mirrors one there.
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -14,6 +17,31 @@ export default {
         sun: "#F5DF24",
         "sun-deep": "#B89A00",
         "sun-glow": "#FCE85E",
+
+        // Neutral "light" chrome border (AMS-SPR-01). Was the default border
+        // = sun #F5DF24; the operator asked to "replace that yellowness with
+        // light." Day hex mirrors tokens.ts `rule.day` + tokens.css --rule
+        // (#788596 — a calm blue-grey; the lightest neutral that still clears
+        // WCAG 3:1 on white cards). Tailwind cannot media-swap a single color
+        // key, so border-rule renders this day hex statically; night is
+        // delivered via the CSS var (var(--border)/var(--rule) → #606C7E) on
+        // elements that read it, and components carry an explicit
+        // dark:border-charcoal-1 override. Keep in sync with tokens.ts/.css.
+        rule: "#788596",
+
+        // Preserved bottom-bar yellow accent (AMS-SPR-01; SPR-06 paints the
+        // bar with this). Resolves to the brand lemon. Mirrors tokens.ts
+        // `barAccent.day` + tokens.css --bar-accent. Night warmer glow is
+        // delivered via var(--bar-accent) (#FFEC5F) for var-driven consumers.
+        "bar-accent": "#F5DF24",
+
+        // Glass surfaces (AMS-SPR-01; SPR-03/04/09). Inherently mode-dependent
+        // rgba, so bg-glass / border-glass are wired to the CSS vars
+        // (tokens.css) rather than a static hex — they track day + night
+        // automatically. The contrast/scrim legibility contract lives in
+        // tokens.ts `glass`.
+        glass: "var(--glass-bg)",
+        "glass-solid": "var(--glass-bg-solid)",
 
         // Day surface ramp (off-whites + glacials)
         "ice-0": "#FFFFFF",
@@ -64,11 +92,24 @@ export default {
         "lift-night": "12px 12px 0 0 #8A7300",
       },
       borderColor: {
-        // The brand outline is the default border colour
-        DEFAULT: "#F5DF24",
+        // Default border = neutral "light" rule (AMS-SPR-01). Was the brand
+        // sun #F5DF24; re-pointed to rule #788596 so the everywhere-border
+        // reads calm and neutral, not bold yellow. Mirrors tokens.ts
+        // `rule.day` + tokens.css --rule. Night (#606C7E) is delivered via
+        // the CSS var on var(--border) consumers + dark:border-charcoal-1.
+        DEFAULT: "#788596",
+        // Explicit border-rule utility (mirror of colors.rule, day hex).
+        rule: "#788596",
+        // Translucent glass hairline (mode-tracking via the CSS var).
+        glass: "var(--glass-border)",
       },
       borderWidth: {
         edge: "2.5px",
+      },
+      // Glass backdrop blur (AMS-SPR-01; SPR-03/04/09 use backdrop-blur-glass).
+      // Mirrors tokens.css --glass-blur + tokens.ts `glass.*.blur` (12px).
+      backdropBlur: {
+        glass: "12px",
       },
       borderRadius: {
         hog: "6px",
