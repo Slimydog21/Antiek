@@ -46,11 +46,15 @@ Two ingest paths live here:
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 import re
 import sys
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
+
+logger = logging.getLogger("acquisition.arxiv.adapter")
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -322,27 +326,101 @@ class IngestPaperWithRightsResult:
 
 
 def _default_fetch_pdf(arxiv_id: str) -> bytes:
-    """Fetch a paper's PDF bytes from arxiv.org/pdf/<id>.
+    """Fetch a paper's PDF bytes from arxiv.org/pdf/<id>, host-rate-governed.
 
-    Reuses the client's httpx + User-Agent convention. Throttling + ban
-    safety are the CALLER's responsibility (the throttle is per-batch, not
-    per-fetch) — the CLI wraps this in ``ArxivThrottle``. Network / HTTP
-    errors propagate so the batch can record a per-item failure and
-    continue rather than ingesting an empty document.
+    Reuses the client's httpx + User-Agent convention. The HTTP send is routed
+    through ``acquisition.arxiv.rate_governor.governed_request`` (SPR-09 M1) so
+    this fallback fetcher honors the SAME host-global >= 3s spacing + 429
+    ban-sentinel as the OAI harvest and the on-demand ``pdf_fetch`` path —
+    closing the previously-ungoverned arxiv.org egress this function used to
+    be (its throttle was nominally "the caller's responsibility", which a future
+    caller of the adapter could forget). ``ArxivBanned`` propagates so an active
+    ban PAUSES the batch rather than re-hitting the endpoint; network / HTTP
+    errors propagate so the batch records a per-item failure and continues
+    rather than ingesting an empty document.
     """
     import httpx
 
     from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
+    from .rate_governor import (
+        arxiv_governed_client,
+        canonical_arxiv_throttle,
+        governed_request,
+    )
 
     url = f"https://arxiv.org/pdf/{arxiv_id}"
-    with httpx.Client(follow_redirects=True) as c:
-        r = c.get(
-            url,
-            headers={"User-Agent": DEFAULT_USER_AGENT},
-            timeout=DEFAULT_TIMEOUT_S,
-        )
+    # REDIRECT-SAFE (SPR-09 round-5): arxiv.org/pdf 302-redirects (e.g. to a
+    # versioned ``/pdf/<id>vN`` or ``.pdf`` URL, still an arXiv host). The client
+    # carries the per-hop hooks so each arXiv redirect hop is governed too; the
+    # outer ``governed_request`` governs the initial hop (the hooks defer to it).
+    # BOTH must use the SAME throttle instance so the initial-hop claim handshake
+    # matches (else the initial hop would be double-waited) — pin the canonical.
+    throttle = canonical_arxiv_throttle()
+    with arxiv_governed_client(throttle=throttle) as c:
+        def _send() -> httpx.Response:
+            return c.get(
+                url,
+                headers={"User-Agent": DEFAULT_USER_AGENT},
+                timeout=DEFAULT_TIMEOUT_S,
+            )
+
+        # Host-global rate gate: the send happens inside the governor's flock so
+        # this fetch serializes against every other arXiv job on the box.
+        r = governed_request(_send, throttle=throttle)
     r.raise_for_status()
     return r.content
+
+
+def _record_fetch_audit(
+    *,
+    db_path: Optional[str],
+    arxiv_id: str,
+    document_id: str,
+    source_url: str,
+    pdf_bytes: bytes,
+) -> None:
+    """SPR-09 M4 — emit the ``arxiv.fetch`` leg at the REAL production boundary.
+
+    This is the on-demand T1 full-text path the operator CLIs actually run
+    (``ingest_paper_with_rights`` → ``ingest_servable_book``), where the arXiv PDF
+    bytes are fetched and a servable T1 body is landed. The round-2 fetch-audit
+    lived in ``store.store_pdf_for_arxiv_row``, which has ZERO production callers
+    (tests only) — so ``trace(con, arxiv_id)`` never showed a fetch leg in
+    production and the "full fetch→serve→accrue trace" criterion was UNMET. This
+    is the production wiring.
+
+    Defensively isolated: a failure here must NEVER break the fetch / ingest, so
+    the whole body is wrapped + logged (exactly like the serve leg in
+    ``interfaces/research/api/books.py`` and the accrue leg in
+    ``book_escrow.py``). The audit takes its OWN write lock (the ingest's own
+    locks are already closed by the time we get the servable result back). §9.0:
+    provenance refs ONLY (source_url / sha256 / byte_size) — never the body."""
+    try:
+        from runtime.db_lock import connect_write
+        from substrate.audit.arxiv_audit import ARXIV_FETCH, record_event
+        from substrate.graph import default_db_path, ensure_initialized
+
+        resolved = ensure_initialized(db_path or default_db_path())
+        con = connect_write(resolved, purpose="arxiv_fetch_audit")
+        try:
+            record_event(
+                con,
+                arxiv_id=arxiv_id,
+                document_id=document_id,
+                kind=ARXIV_FETCH,
+                detail={
+                    "source_url": source_url,
+                    "sha256": hashlib.sha256(pdf_bytes).hexdigest(),
+                    "byte_size": len(pdf_bytes),
+                },
+            )
+        finally:
+            con.close()
+    except Exception:
+        logger.exception(
+            "arxiv_audit fetch-leg failed for arxiv_id=%s; fetch/ingest unaffected",
+            arxiv_id,
+        )
 
 
 def ingest_paper_with_rights(
@@ -408,6 +486,22 @@ def ingest_paper_with_rights(
         db_path=db_path,
         embedder=embedder,
     )
+
+    # SPR-09 M4 — emit the FETCH leg of the compliance trace at the REAL
+    # production boundary. The arXiv PDF bytes were just fetched and a body was
+    # landed; we record the fetch leg ONLY when the body is genuinely servable
+    # (a T1/redistributable store) so the fetch leg tracks a stored T1 body, not a
+    # gated attempt — mirroring the store path's "refused → no fetch leg" guard.
+    # Defensively isolated so a hook failure can never break the fetch/ingest;
+    # §9.0 records provenance refs only.
+    if result.servable_full_text:
+        _record_fetch_audit(
+            db_path=db_path,
+            arxiv_id=paper.arxiv_id,
+            document_id=result.document_id,
+            source_url=paper.pdf_url,
+            pdf_bytes=pdf_bytes,
+        )
 
     return IngestPaperWithRightsResult(
         document_id=result.document_id,

@@ -159,17 +159,23 @@ def test_drift_raise_is_independent_of_the_stored_rights_tier(db):
 
 def test_t1_servable_body_served_no_raise(db):
     """A doc with a servable content_class AND a T1 license_uri: the body is
-    served and the tier arm passes (T1 is body-servable). No raise."""
+    served and the tier arm passes (T1 is body-servable). No raise.
+
+    A real served T1 arXiv row always carries its ``arxiv_id`` (the OAI persist
+    path stamps it), so the body ships with a canonical_url link-back — which the
+    SPR-09 M2 link-back invariant now REQUIRES for any emitted arXiv body. We
+    assert both the body served AND the link-back present."""
     _insert(
         db, "doc-t1",
         content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS, body=_BODY,
-        license_uri=_T1_LICENSE,
+        license_uri=_T1_LICENSE, arxiv_id="2401.09999",
     )
     con = connect_read(db)
     try:
         result = serve_full_text_guarded(con, "doc-t1")
         assert result.servable is True
         assert result.full_text == _BODY
+        assert result.canonical_url == "https://arxiv.org/abs/2401.09999"  # link-back present
         assert _rights_context(con, "doc-t1").tier is RightsTier.T1_REDISTRIBUTABLE
     finally:
         con.close()
@@ -278,6 +284,42 @@ def test_tier_for_document_blank_license_uri_is_t3(db):
         assert _rights_context(con, "doc-blank-license").tier is RightsTier.T3_DEFAULT_UNKNOWN
         with pytest.raises(T3BodyServeError):
             serve_full_text_guarded(con, "doc-blank-license")
+    finally:
+        con.close()
+
+
+def test_whitespace_only_arxiv_id_yields_no_canonical_url(db):
+    """SPR-09 round-2 — a WHITESPACE-ONLY ``arxiv_id`` is treated as absent, so it
+    cannot produce a bogus ``canonical_url`` (``https://arxiv.org/abs/   ``).
+
+    Before the ``.strip()`` gate, ``arxiv_id="   "`` was truthy, so the guard
+    derived a junk link-back and would have shipped a T1 body 'attributed' to a
+    meaningless URL. Now ``_rights_context`` reports ``arxiv_id=None`` for a blank
+    id, so the link-back invariant REFUSES the body (deny-by-default) rather than
+    serve it with a junk link.
+
+    RED-THEN-GREEN: remove ``.strip()`` from ``_rights_context`` (revert to
+    ``and arxiv_id``) and ``_rights_context`` returns ``arxiv_id='   '`` →
+    ``canonical_url='https://arxiv.org/abs/   '`` → the body serves with a junk
+    link and ``LinkBackMissingError`` is NOT raised → this test fails."""
+    _insert(
+        db, "doc-ws-id",
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS, body=_BODY,
+        license_uri=_T1_LICENSE, arxiv_id="   ",  # whitespace-only → unusable
+    )
+    con = connect_read(db)
+    try:
+        from substrate.books.serve_guard import LinkBackMissingError
+
+        ctx = _rights_context(con, "doc-ws-id")
+        assert ctx.arxiv_id is None, (
+            "a whitespace-only arxiv_id must be treated as absent, not yield a "
+            f"bogus id ({ctx.arxiv_id!r})"
+        )
+        # The body would be emitted (servable T1), but with no usable arxiv_id the
+        # canonical_url is None → the link-back invariant refuses it.
+        with pytest.raises(LinkBackMissingError):
+            serve_full_text_guarded(con, "doc-ws-id")
     finally:
         con.close()
 

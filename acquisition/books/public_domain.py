@@ -151,11 +151,27 @@ class SourceClient:
         return self._request(url).content
 
     def _request(self, url: str, *, params: Optional[dict] = None) -> requests.Response:
+        # Host-global arXiv governance (SPR-09 root fix): this connector's own
+        # in-process throttle (``self._throttle``) governs its Gutenberg /
+        # archive.org spacing — UNCHANGED. The send is ADDITIONALLY routed
+        # through ``govern_if_arxiv`` so that IF a caller-supplied ``url`` ever
+        # resolved to an arXiv host it would also be held under the host-global
+        # arXiv flock; the actual gutendex.com / archive.org hosts are fetched
+        # directly (govern_if_arxiv is a no-op for them). A ``requests.Response``
+        # satisfies the ``status_code``/``headers`` response surface.
+        from acquisition.arxiv.rate_governor import (
+            canonical_arxiv_throttle,
+            govern_if_arxiv,
+        )
+
         last_exc: Optional[Exception] = None
         for attempt in range(self._max_retries):
             self._throttle()
             try:
-                resp = self._session.get(url, params=params, timeout=self._timeout_s)
+                def _send() -> requests.Response:
+                    return self._session.get(url, params=params, timeout=self._timeout_s)
+
+                resp = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
             except requests.RequestException as exc:
                 last_exc = exc
                 self._backoff(attempt, reason=str(exc))

@@ -113,12 +113,26 @@ def resolve_doi(
     url = _build_url(doi, email=email, base_url=base_url)
 
     def _get() -> dict:
+        # ``base_url`` is env/param-overridable, so route through the host-based
+        # gate: a non-arXiv API host (the default api.unpaywall.org) is fetched
+        # directly; were the base ever an arXiv host it would be governed.
+        from acquisition.arxiv.rate_governor import (
+            canonical_arxiv_throttle,
+            govern_if_arxiv,
+        )
+
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         if client is not None:
-            r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            def _send() -> httpx.Response:
+                return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         else:
             with httpx.Client(follow_redirects=True) as c:
-                r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+                def _send() -> httpx.Response:
+                    return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
         return r.json()
 
@@ -131,24 +145,74 @@ def download_pdf(
     *,
     client: Optional[httpx.Client] = None,
     throttle: Optional[OAThrottle] = None,
+    _arxiv_throttle: Optional["object"] = None,
 ) -> bytes:
     """Download PDF bytes from a resolved OA URL. Transient errors retry via
-    the throttle; the caller is responsible for verifying the bytes are a PDF
-    (a landing page masquerading as a PDF is a counted failure mode)."""
+    the (non-arXiv) ``OAThrottle``; the caller is responsible for verifying the
+    bytes are a PDF (a landing page masquerading as a PDF is a counted failure
+    mode).
+
+    HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``pdf_url`` is a RESOLVED,
+    variable URL — OpenAlex's ``best_oa_pdf_url`` for an arXiv-mirrored work is
+    ``https://arxiv.org/pdf/<id>``. So the actual HTTP send is routed through
+    ``govern_if_arxiv(pdf_url, _send, throttle=<canonical arXiv throttle>)``:
+    when the URL is an arXiv host the send goes through the host-global flock +
+    >=3s spacing + 429 ban sentinel on the SHARED ``~/.antiek/arxiv_throttle.json``
+    (so this OA fetch is concurrency-safe against the OAI harvest / pdf_fetch),
+    and when it is a non-arXiv host (the common publisher/PMC case) the send is
+    issued directly — the ``OAThrottle`` above still provides that path's spacing
+    + retry. This is HOST-based, not module-location-based: the same OA fetcher
+    is governed iff it lands an arXiv URL at runtime.
+
+    ``_arxiv_throttle`` is a TEST seam only: it overrides the canonical arXiv
+    throttle so a concurrency test can inject one with a fake clock + shared state
+    (the production path passes nothing → the real canonical throttle).
+
+    REDIRECT-SAFE (SPR-09 round-5): ``pdf_url`` is frequently a non-arXiv landing
+    / DOI-resolver URL (an OpenAlex ``oa_url`` candidate) that 302-REDIRECTS to
+    ``arxiv.org/pdf/<id>``. The initial-host ``govern_if_arxiv`` check would see
+    the non-arXiv landing host and miss that arXiv redirect hop. So the client
+    used here carries the per-hop arXiv request/response hooks
+    (``install_arxiv_request_hook`` / ``arxiv_governed_client``): EVERY hop whose
+    host is arXiv — including a redirect target — is governed by construction,
+    sharing the canonical throttle state + flock. The outer ``govern_if_arxiv``
+    still governs the initial hop when ``pdf_url`` is itself an arXiv host (the
+    hooks defer to it for that one hop, no double-wait, no deadlock)."""
+    from acquisition.arxiv.rate_governor import (
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+        install_arxiv_request_hook,
+    )
+
+    arxiv_throttle = _arxiv_throttle if _arxiv_throttle is not None else canonical_arxiv_throttle()
 
     def _get() -> bytes:
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         if client is not None:
-            r = client.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            # Govern every arXiv hop the CALLER's client follows, too.
+            install_arxiv_request_hook(client, throttle=arxiv_throttle)
+            def _send() -> httpx.Response:
+                return client.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(pdf_url, _send, throttle=arxiv_throttle)
+            content_type = r.headers.get("content-type")
+            r.raise_for_status()
+            content = r.content
         else:
-            with httpx.Client(follow_redirects=True) as c:
-                r = c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
-        r.raise_for_status()
-        content = r.content
-        if not _looks_like_pdf(content, r.headers.get("content-type")):
+            from acquisition.arxiv.rate_governor import arxiv_governed_client
+
+            with arxiv_governed_client(throttle=arxiv_throttle) as c:
+                def _send() -> httpx.Response:
+                    return c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+                r = govern_if_arxiv(pdf_url, _send, throttle=arxiv_throttle)
+                content_type = r.headers.get("content-type")
+                r.raise_for_status()
+                content = r.content
+        if not _looks_like_pdf(content, content_type):
             raise NotAPdf(
                 f"{pdf_url} returned non-PDF bytes "
-                f"(content-type={r.headers.get('content-type')!r}, "
+                f"(content-type={content_type!r}, "
                 f"head={content[:8]!r}) — likely a landing page, not a PDF"
             )
         return content

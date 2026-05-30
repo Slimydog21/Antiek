@@ -201,16 +201,35 @@ def web_search(query: str) -> str:
     if not _REQUESTS_AVAILABLE:
         return "web_search error: requests library not installed"
 
+    # Route every send through the host-based arXiv governor (SPR-09 round-5).
+    # serpapi.com / html.duckduckgo.com are NON-arXiv hosts, so ``govern_if_arxiv``
+    # is a NO-OP here (it calls ``send()`` directly) — but routing uniformly keeps
+    # this builtin tool on the governed seam (no raw external egress exported from
+    # ``substrate.graph`` outside the governor), exactly like the acquisition
+    # fetchers. Both hosts are static literals (no redirect-to-arXiv risk), so the
+    # initial-host check suffices and no per-hop hook is needed.
+    from acquisition.arxiv.rate_governor import (
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+    )
+
     serpapi_key = os.environ.get("SERPAPI_API_KEY")
     if serpapi_key:
         try:
-            r = requests.get(
-                "https://serpapi.com/search",
-                params={
-                    "q": query, "api_key": serpapi_key,
-                    "engine": "google", "num": 5,
-                },
-                timeout=15,
+            _serp_url = "https://serpapi.com/search"
+
+            def _serp_send() -> "requests.Response":
+                return requests.get(
+                    _serp_url,
+                    params={
+                        "q": query, "api_key": serpapi_key,
+                        "engine": "google", "num": 5,
+                    },
+                    timeout=15,
+                )
+
+            r = govern_if_arxiv(
+                _serp_url, _serp_send, throttle=canonical_arxiv_throttle()
             )
             r.raise_for_status()
             data = r.json()
@@ -230,12 +249,17 @@ def web_search(query: str) -> str:
             pass
 
     try:
-        r = requests.get(
-            "https://html.duckduckgo.com/html/",
-            params={"q": query},
-            headers={"User-Agent": "Mozilla/5.0 (compatible; Antiek/1.0)"},
-            timeout=15,
-        )
+        _ddg_url = "https://html.duckduckgo.com/html/"
+
+        def _ddg_send() -> "requests.Response":
+            return requests.get(
+                _ddg_url,
+                params={"q": query},
+                headers={"User-Agent": "Mozilla/5.0 (compatible; Antiek/1.0)"},
+                timeout=15,
+            )
+
+        r = govern_if_arxiv(_ddg_url, _ddg_send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
     except Exception as e:
         return f"web_search error: {e}"
@@ -306,18 +330,68 @@ def _parse_ddg_html(html: str, *, query: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+_FETCH_URL_MAX_REDIRECTS = 10
+
+
 def fetch_url(url: str) -> str:
     """Fetch a URL + extract text. Strips HTML tags, scripts, styles.
-    Returns the first ~5000 chars; caller may further truncate."""
+    Returns the first ~5000 chars; caller may further truncate.
+
+    ARXIV RATE GOVERNANCE (SPR-09 round-5). This is an LLM-callable builtin tool
+    (``_BUILTIN_TOOLS["fetch_url"]``, re-exported from ``substrate.graph``) that
+    fetches an ARBITRARY model-supplied URL — including, potentially, an
+    ``arxiv.org`` URL. It uses ``requests`` (not httpx), so the httpx per-request
+    event hook that makes the acquisition fetchers redirect-safe does NOT apply
+    here. To keep this off the existential arXiv egress surface, every hop is
+    routed through ``acquisition.arxiv.rate_governor.govern_if_arxiv`` on the
+    hop's OWN host: redirects are followed MANUALLY with ``allow_redirects=False``
+    so each ``Location`` host is re-checked and an arXiv hop — initial OR a
+    redirect target — is held under the host-global flock + >=3s spacing + 429 ban
+    sentinel (a non-arXiv hop is fetched directly, unchanged). A non-arXiv→arXiv
+    302 can no longer reach arXiv ungoverned. Zero production callers today, but it
+    is live-exported, so the governance is by construction, not by trust."""
     if not _REQUESTS_AVAILABLE:
         return "fetch_url error: requests library not installed"
+
+    from urllib.parse import urljoin
+
     try:
-        r = requests.get(
-            url,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; Antiek/1.0)"},
-            timeout=20, allow_redirects=True,
+        from acquisition.arxiv.rate_governor import (
+            canonical_arxiv_throttle,
+            govern_if_arxiv,
         )
-        r.raise_for_status()
+    except Exception as e:  # pragma: no cover — defensive: never fetch ungoverned
+        return f"fetch_url error: arXiv rate governor unavailable — {e!r}"
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; Antiek/1.0)"}
+    current = url
+    try:
+        # Manual redirect loop: each hop is governed on its OWN host so an arXiv
+        # redirect TARGET cannot be fetched ungoverned (requests' allow_redirects
+        # would follow it without the per-hop host check). ``govern_if_arxiv``
+        # routes an arXiv host through the host-global governor, a non-arXiv host
+        # directly. The 429 ban sentinel is recorded inside ``govern_if_arxiv``'s
+        # governed_request via the throttle's note_response.
+        for _ in range(_FETCH_URL_MAX_REDIRECTS + 1):
+            def _send(_u: str = current) -> "requests.Response":
+                return requests.get(
+                    _u, headers=headers, timeout=20, allow_redirects=False,
+                )
+
+            r = govern_if_arxiv(current, _send, throttle=canonical_arxiv_throttle())
+            if r.is_redirect or r.status_code in (301, 302, 303, 307, 308):
+                location = r.headers.get("Location") or r.headers.get("location")
+                if not location:
+                    break
+                current = urljoin(current, location)
+                continue
+            r.raise_for_status()
+            break
+        else:
+            return (
+                f"fetch_url error for {url!r}: too many redirects "
+                f"(> {_FETCH_URL_MAX_REDIRECTS})"
+            )
     except Exception as e:
         return f"fetch_url error for {url!r}: {e}"
 

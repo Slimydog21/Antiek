@@ -78,14 +78,28 @@ class WhisperTranscriber:
             data["language"] = language
         headers = {"Authorization": f"Bearer {self._api_key}"}
         url = f"{self._base_url}/audio/transcriptions"
+        # ``base_url`` is env/param-overridable, so route the send through the
+        # host-based gate. The default api.openai.com host is posted directly;
+        # were the base ever an arXiv host it would be governed.
+        from acquisition.arxiv.rate_governor import (
+            canonical_arxiv_throttle,
+            govern_if_arxiv,
+        )
+
         if self._client is not None:
-            r = self._client.post(
-                url, headers=headers, files=files, data=data,
-                timeout=DEFAULT_TIMEOUT_S,
-            )
+            def _send() -> httpx.Response:
+                return self._client.post(
+                    url, headers=headers, files=files, data=data,
+                    timeout=DEFAULT_TIMEOUT_S,
+                )
+
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         else:
             with httpx.Client(timeout=DEFAULT_TIMEOUT_S) as c:
-                r = c.post(url, headers=headers, files=files, data=data)
+                def _send() -> httpx.Response:
+                    return c.post(url, headers=headers, files=files, data=data)
+
+                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
         body = r.json()
         return Transcript(

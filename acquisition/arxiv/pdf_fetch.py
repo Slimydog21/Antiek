@@ -20,10 +20,14 @@ already decided the paper is worth fetching; the tier gate lives in ``store.py``
 What this module DOES NOT re-implement (diligence bar 4)
 -------------------------------------------------------
   * Rate limiting / the ban sentinel — REUSED from ``acquisition.arxiv.throttle``
-    (``ArxivThrottle.request`` does the >=3s spacing + 429 ``banned_until``). On a
-    ban this raises ``ArxivBanned`` and we DO NOT retry: re-hitting a banned
-    endpoint is precisely what extends the ban. The exception propagates so the
-    caller PAUSES the batch.
+    (``ArxivThrottle.request`` does the >=3s spacing + 429 ``banned_until``),
+    routed through ``acquisition.arxiv.rate_governor.governed_request`` (SPR-09 M1)
+    so the gate holds HOST-GLOBALLY: the throttle's critical section runs inside
+    an exclusive ``fcntl.flock`` shared with the OAI harvest, so a concurrent
+    harvest + this fetch cannot both fire inside one 3s window. On a ban this
+    raises ``ArxivBanned`` and we DO NOT retry: re-hitting a banned endpoint is
+    precisely what extends the ban. The exception propagates so the caller PAUSES
+    the batch.
   * The %PDF magic-byte precheck — REUSED from ``acquisition.openaccess.unpaywall``
     (``_looks_like_pdf`` + ``NotAPdf``), the shared helper the connector-resilience
     work (PR #23) added on the open-access path. arXiv serves an HTML interstitial
@@ -45,10 +49,13 @@ What this module adds (the genuinely arXiv-PDF-specific part)
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
+
+logger = logging.getLogger("antiek.acquisition.arxiv.pdf_fetch")
 
 from acquisition.arxiv.client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
 from acquisition.arxiv.throttle import ArxivBanned, ArxivThrottle  # noqa: F401  (re-export for callers)
@@ -98,6 +105,37 @@ def _pdf_url(arxiv_id: str) -> str:
     return f"https://arxiv.org/pdf/{arxiv_id}"
 
 
+def _record_fetch_audit(
+    audit_con: Any, fetched: "FetchedPdf"
+) -> None:
+    """SPR-09 M4 — record an ``arxiv.fetch`` leg after a successful, verified,
+    throttled fetch. Defensively isolated: a failure in the audit layer must NEVER
+    break the fetch (wrap + log). §9.0: we record provenance refs (source_url,
+    sha256, byte_size) + the resolved document_id ONLY — never the PDF body. The
+    caller supplies a write-locked ``audit_con``; when none is supplied the fetch
+    is un-audited (the network module stays pure)."""
+    try:
+        from acquisition.arxiv.adapter import arxiv_doc_id
+        from substrate.audit.arxiv_audit import ARXIV_FETCH, record_event
+
+        record_event(
+            audit_con,
+            arxiv_id=fetched.arxiv_id,
+            document_id=arxiv_doc_id(fetched.arxiv_id),
+            kind=ARXIV_FETCH,
+            detail={
+                "source_url": fetched.source_url,
+                "sha256": fetched.sha256,
+                "byte_size": fetched.byte_size,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "arxiv_audit fetch-leg failed for arxiv_id=%s; fetch unaffected",
+            fetched.arxiv_id,
+        )
+
+
 def fetch_pdf(
     arxiv_id: str,
     *,
@@ -105,15 +143,17 @@ def fetch_pdf(
     client: Optional[httpx.Client] = None,
     min_bytes: int = MIN_PDF_BYTES,
     max_bytes: int = MAX_PDF_BYTES,
+    audit_con: Any = None,
 ) -> FetchedPdf:
     """Fetch one arXiv paper's PDF on demand, rate-limited and verified.
 
     The flow, in order, every gate fail-closed:
 
-      1. ``throttle.request(send)`` — enforces >=3s spacing and raises
-         ``ArxivBanned`` (which we DO NOT catch here) if a ban sentinel is
-         active. The 429 ban-sentinel is recorded by ``note_response`` inside
-         ``request``; we never re-attempt.
+      1. ``governed_request(send, throttle=throttle)`` — enforces >=3s spacing
+         HOST-GLOBALLY (the throttle's critical section runs inside the governor's
+         host-global ``fcntl.flock``, SPR-09 M1) and raises ``ArxivBanned`` (which
+         we DO NOT catch here) if a ban sentinel is active. The 429 ban-sentinel
+         is recorded by ``note_response`` inside ``request``; we never re-attempt.
       2. ``raise_for_status`` — a non-2xx (404 for a withdrawn id, 5xx) raises
          ``httpx.HTTPStatusError`` so the caller records a per-item failure and
          leaves the row metadata-only (honesty bar 1: never fabricate a body).
@@ -129,12 +169,38 @@ def fetch_pdf(
     ``httpx.MockTransport`` client) so CI never touches the network; in prod a
     short-lived client is created per call with ``follow_redirects`` (arXiv 302s
     /pdf/<id> to the versioned PDF).
+
+    ``audit_con`` (SPR-09 M4): an OPTIONAL write-locked connection. When supplied,
+    a successful, verified fetch records an ``arxiv.fetch`` leg into the
+    ``arxiv_audit`` compliance trace (provenance refs only — §9.0 stores no body).
+    When ``None`` (the default), the fetch is un-audited and the network module
+    stays pure. NOTE (round-3 honesty): the PRODUCTION fetch leg is NOT emitted via
+    this parameter NOR via the store path. The on-demand T1 acquisition the
+    operator CLIs run is ``acquisition.arxiv.adapter.ingest_paper_with_rights`` →
+    ``acquisition.books.ingest_servable_book`` — and the production fetch leg is
+    emitted in ``ingest_paper_with_rights`` after a servable T1 body lands (see
+    ``acquisition.arxiv.adapter._record_fetch_audit``). This ``audit_con`` hook +
+    the ``store_pdf_for_arxiv_row`` emission are retained for their own (currently
+    test-exercised) boundaries, but the trace's fetch leg in PROD comes from the
+    adapter path.
     """
     url = _pdf_url(arxiv_id)
 
+    from acquisition.arxiv.rate_governor import (
+        arxiv_governed_client,
+        install_arxiv_request_hook,
+    )
+
     owns_client = client is None
     if owns_client:
-        client = httpx.Client(follow_redirects=True)
+        # REDIRECT-SAFE (SPR-09 round-5): arxiv.org/pdf 302-redirects (versioned
+        # /pdf/<id>vN, .pdf) — still arXiv hosts. The hook-carrying client governs
+        # each arXiv redirect hop; the outer governor governs the initial hop. The
+        # hook reuses ``throttle`` so the per-hop gate shares the caller's state.
+        client = arxiv_governed_client(throttle=throttle)
+    else:
+        # Govern arXiv redirect hops the CALLER's client follows, too.
+        install_arxiv_request_hook(client, throttle=throttle)
     try:
         def _send() -> httpx.Response:
             return client.get(
@@ -143,10 +209,20 @@ def fetch_pdf(
                 timeout=DEFAULT_TIMEOUT_S,
             )
 
-        # throttle.request pairs wait_if_needed() BEFORE and note_response() AFTER
-        # so a 429 records the ban sentinel and an active ban raises ArxivBanned
-        # before the send. We deliberately let ArxivBanned propagate.
-        resp = throttle.request(_send)
+        # SPR-09 M1: route the send through the host-global rate governor, passing
+        # the caller's OWN ``throttle`` so the >=3s spacing + 429 ``banned_until``
+        # engine are reused verbatim while the whole wait->send->note critical
+        # section is held under the host-global ``fcntl.flock``. A BARE
+        # ``throttle.request(_send)`` here only spaced WITHIN this process — a
+        # concurrent OAI harvest could fire inside the same 3s window. The governor
+        # serializes both against one flock + the canonical shared state.
+        # throttle.request (run inside the governor) pairs wait_if_needed() BEFORE
+        # and note_response() AFTER, so a 429 records the ban sentinel and an
+        # active ban raises ArxivBanned before the send. We deliberately let
+        # ArxivBanned propagate.
+        from acquisition.arxiv.rate_governor import governed_request
+
+        resp = governed_request(_send, throttle=throttle)
         resp.raise_for_status()
         content = resp.content
         content_type = resp.headers.get("content-type")
@@ -175,13 +251,19 @@ def fetch_pdf(
         )
 
     digest = hashlib.sha256(content).hexdigest()
-    return FetchedPdf(
+    fetched = FetchedPdf(
         arxiv_id=arxiv_id,
         source_url=url,
         content=content,
         sha256=digest,
         byte_size=size,
     )
+    # SPR-09 M4 — audit the successful fetch (FETCH leg of the compliance trace),
+    # only when the caller supplied a write-locked connection. Defensively
+    # isolated so it can never break the fetch; §9.0 records provenance refs only.
+    if audit_con is not None:
+        _record_fetch_audit(audit_con, fetched)
+    return fetched
 
 
 __all__ = [

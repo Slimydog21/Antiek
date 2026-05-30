@@ -12,9 +12,12 @@ The harvester:
 
   * issues ``ListRecords`` with a ``from``/``until`` incremental window;
   * pages through ``resumptionToken``s to completion;
-  * routes EVERY HTTP GET through the PR#23 persisted ``ArxivThrottle`` (>=3s
-    spacing, single connection, ``banned_until`` honored). Rate-limiting is NOT
-    re-implemented here — re-implementing it is the bug that banned the box;
+  * routes EVERY HTTP GET through the host-global rate governor
+    (``acquisition.arxiv.rate_governor.governed_request``, SPR-09 M1), which wraps
+    the PR#23 persisted ``ArxivThrottle`` (>=3s spacing, single connection,
+    ``banned_until`` honored) under an exclusive ``fcntl.flock`` so the gate holds
+    across ALL arXiv jobs on this box, not merely per-process. Rate-limiting is
+    NOT re-implemented here — re-implementing it is the bug that banned the box;
   * persists the resumption token + last datestamp after each page so a crash
     mid-harvest resumes from the last completed page rather than restarting.
 
@@ -207,12 +210,25 @@ class OaiPmhHarvester:
     # -- one page ------------------------------------------------------------
 
     def _fetch_page(self, url: str) -> _Page:
-        """GET one ListRecords page through the throttle, parse it.
+        """GET one ListRecords page through the host-global rate governor, parse it.
 
-        ``throttle.request`` performs the >=3s wait + the 429 ban bookkeeping;
-        an active ban surfaces as ``ArxivBanned`` from inside it (the harvest
-        PAUSES — re-hitting a banned endpoint is what extends the ban).
+        SPR-09 M1: the send is routed through
+        ``acquisition.arxiv.rate_governor.governed_request`` (passing the
+        harvester's OWN ``self._throttle`` so the >=3s spacing + the 429
+        ``banned_until`` engine are reused verbatim, never re-implemented) so the
+        whole ``wait_if_needed -> send -> note_response`` critical section is held
+        under the host-global ``fcntl.flock``. This is the busiest egress path; a
+        BARE ``self._throttle.request(send)`` here was the exact hole that let a
+        concurrent harvest + PDF fetch (or two harvests) both fire inside one 3s
+        window and IP-ban the box. ``governed_request`` builds a one-shot governor
+        over this throttle pointed at the CANONICAL default lock + state, so every
+        arXiv job on the host contends on the same flock. An active ban surfaces
+        as ``ArxivBanned`` from inside the governed call (the harvest PAUSES —
+        re-hitting a banned endpoint is what extends the ban); it propagates
+        unchanged.
         """
+        from acquisition.arxiv.rate_governor import governed_request
+
         headers = {"User-Agent": DEFAULT_USER_AGENT}
 
         def send() -> httpx.Response:
@@ -223,7 +239,7 @@ class OaiPmhHarvester:
             with httpx.Client() as c:
                 return c.get(url, headers=headers, timeout=self._timeout_s)
 
-        resp = self._throttle.request(send)
+        resp = governed_request(send, throttle=self._throttle)
         resp.raise_for_status()
 
         records = parse_records(resp.content)

@@ -123,6 +123,46 @@ class StoreOutcome:
     word_count: Optional[int] = None
 
 
+def _record_fetch_audit(
+    con: LockedConnection, *, arxiv_id: str, document_id: str, fetched: FetchedPdf
+) -> None:
+    """SPR-09 M4 — record the ``arxiv.fetch`` leg for ``store_pdf_for_arxiv_row``.
+
+    HONESTY NOTE (round-3): ``store_pdf_for_arxiv_row`` is TEST-ONLY today — it has
+    ZERO production callers (verified: the operator CLIs run
+    ``ingest_paper_with_rights`` → ``ingest_servable_book``, never this store
+    path). The round-2 claim that THIS was "the REAL production fetch→store
+    boundary" was wrong; the genuine production fetch leg is emitted in
+    ``acquisition.arxiv.adapter.ingest_paper_with_rights`` (the live on-demand T1
+    path). This emission is retained because the store path is a real (if
+    currently test-exercised) T1 fetch→store boundary and SHOULD carry a fetch
+    leg if it is ever wired into production — but the production trace's fetch leg
+    does NOT come from here.
+
+    §9.0: provenance refs ONLY (source_url / sha256 / byte_size) — never the body.
+    Defensively isolated: an audit-layer failure must NEVER break the store (wrap
+    + log), exactly like the serve/accrue legs (books.py / book_escrow.py)."""
+    try:
+        from substrate.audit.arxiv_audit import ARXIV_FETCH, record_event
+
+        record_event(
+            con,
+            arxiv_id=arxiv_id,
+            document_id=document_id,
+            kind=ARXIV_FETCH,
+            detail={
+                "source_url": fetched.source_url,
+                "sha256": fetched.sha256,
+                "byte_size": fetched.byte_size,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "arxiv_audit fetch-leg failed for arxiv_id=%s; store unaffected",
+            arxiv_id,
+        )
+
+
 def _read_doc_row(con: LockedConnection, document_id: str) -> Optional[dict]:
     """Return ``{license_uri, content_class, metadata}`` for the row, or None
     when the row is absent. Raises ``ValueError`` on malformed metadata JSON —
@@ -337,6 +377,16 @@ def store_pdf_for_arxiv_row(
                 "promoted T1 row must be servable; refusing to leave it in this "
                 "inconsistent state."
             )
+
+        # SPR-09 M4 — emit the FETCH leg for this store path. The body is now
+        # genuinely stored + servable on this locked connection, so a fetch leg is
+        # consistent with the lifecycle. NOTE (round-3): this store path is
+        # TEST-ONLY today; the PRODUCTION fetch leg is emitted in
+        # ``adapter.ingest_paper_with_rights`` (the live CLI path). Same locked
+        # connection; defensively isolated so it can never break the store.
+        _record_fetch_audit(
+            con, arxiv_id=arxiv_id, document_id=document_id, fetched=fetched
+        )
 
     return StoreOutcome(
         document_id=document_id,

@@ -67,6 +67,21 @@ from substrate.rights import (
 )
 
 
+class LinkBackMissingError(RuntimeError):
+    """Raised when the guard would emit a full body for an arXiv document
+    (a tier-resolved row) WITHOUT a ``canonical_url`` link-back (SPR-09 M2).
+
+    arXiv's terms require attribution back to the canonical arxiv.org abstract
+    page for any served body. ``canonical_url`` is derived as
+    ``https://arxiv.org/abs/{arxiv_id}`` ONLY when ``arxiv_id`` is present in
+    metadata; if a body-servable arXiv row is missing its ``arxiv_id`` (so the
+    link-back would be ``None``) emitting the body would ship it with NO
+    attribution. The guard refuses rather than serve an un-attributed arXiv
+    body — the same deny-by-default posture as the T3 body guard. (A non-arXiv
+    document — ``tier is None`` — is UNCONSTRAINED: its ``canonical_url`` is
+    legitimately ``None``.)"""
+
+
 class _RightsContext(NamedTuple):
     """The arXiv rights context read ONCE from ``documents.metadata``.
 
@@ -116,9 +131,17 @@ def _rights_context(con: Any, document_id: str) -> _RightsContext:
         return _RightsContext(None, None, None)
     license_uri = metadata["license_uri"]
     arxiv_id = metadata.get("arxiv_id")
+    # A whitespace-only arxiv_id is NOT a usable id: it would yield a bogus
+    # canonical_url ``https://arxiv.org/abs/   `` (and pass the link-back check
+    # with a meaningless link). Gate on a non-empty STRIPPED string so a
+    # blank/whitespace arxiv_id is treated as absent — the link-back invariant
+    # then refuses the body (deny-by-default) instead of shipping a junk link.
+    usable_arxiv_id = (
+        arxiv_id if isinstance(arxiv_id, str) and arxiv_id.strip() else None
+    )
     return _RightsContext(
         tier=resolve_tier(license_uri),
-        arxiv_id=arxiv_id if isinstance(arxiv_id, str) and arxiv_id else None,
+        arxiv_id=usable_arxiv_id,
         license_uri=license_uri if isinstance(license_uri, str) else None,
     )
 
@@ -154,6 +177,9 @@ def serve_full_text_guarded(con: Any, document_id: str) -> ServeResult:
     """
     result = serve_full_text(con, document_id)
     ctx = _rights_context(con, document_id)
+    canonical_url = (
+        f"https://arxiv.org/abs/{ctx.arxiv_id}" if ctx.arxiv_id else None
+    )
     if result.full_text is not None:
         if ctx.tier is not None and not body_servable(ctx.tier):
             raise T3BodyServeError(
@@ -168,12 +194,26 @@ def serve_full_text_guarded(con: Any, document_id: str) -> ServeResult:
                 f"only, coherent with acquisition.licenses_core); this is the "
                 f"deny-by-default serving boundary (master-spec §9.0)."
             )
+        # Link-back invariant (SPR-09 M2): a body emitted for an ARXIV document
+        # (tier resolved) MUST carry a canonical_url back to arxiv.org. The only
+        # way an arXiv body reaches here without one is a missing arxiv_id in
+        # metadata (canonical_url stays None). Refuse rather than serve an
+        # un-attributed arXiv body. Non-arXiv docs (tier None) are unconstrained:
+        # their canonical_url is legitimately None and this branch is skipped.
+        if ctx.tier is not None and canonical_url is None:
+            raise LinkBackMissingError(
+                f"LINK-BACK MISSING: serve gate cleared a full body for arXiv "
+                f"document {document_id!r} (tier {ctx.tier.value}, license "
+                f"{ctx.license_uri!r}) but no canonical_url could be derived — "
+                f"its metadata carries no usable arxiv_id, so the served body "
+                f"would ship with NO attribution back to the canonical "
+                f"arxiv.org/abs page. arXiv's terms require link-back for any "
+                f"served body; refusing to emit an un-attributed arXiv body "
+                f"(deny-by-default, master-spec §9.0)."
+            )
     # arXiv → ads gate on the tier (T1 only); non-arXiv → preserve today's
     # "ad rail on any servable book" behaviour. Single source of truth: ads_allowed.
     ad_eligible = ads_allowed(ctx.tier) if ctx.tier is not None else result.servable
-    canonical_url = (
-        f"https://arxiv.org/abs/{ctx.arxiv_id}" if ctx.arxiv_id else None
-    )
     return dataclasses.replace(
         result,
         tier=ctx.tier.value if ctx.tier is not None else None,
@@ -183,4 +223,4 @@ def serve_full_text_guarded(con: Any, document_id: str) -> ServeResult:
     )
 
 
-__all__ = ["serve_full_text_guarded"]
+__all__ = ["serve_full_text_guarded", "LinkBackMissingError"]

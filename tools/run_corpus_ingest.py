@@ -269,6 +269,11 @@ def _arxiv_candidates(
     # IP-ban) is recorded to the throttle's banned_until sentinel (so the NEXT
     # run honors the ban instead of re-hitting and EXTENDING it) and degrades to
     # zero arXiv candidates — it must NOT abort the whole multi-source run.
+    # SPR-09 M1: the throttle is threaded into search/fetch_by_id, which route the
+    # export-search GET through the host-global rate governor (fcntl.flock around
+    # the >=3s spacing + ban sentinel) so this discovery contends on the SAME gate
+    # as a concurrent OAI harvest / PDF fetch — two host jobs can no longer both
+    # fire in one 3s window.
     # This does NOT let arXiv ingest SUCCEED while the ban is active; it only
     # stops extending the ban and stops aborting PD+OA. arXiv resumes once
     # banned_until elapses. (S2 metadata fallback is deliberately NOT used: S2
@@ -276,9 +281,15 @@ def _arxiv_candidates(
     try:
         if ids:
             for pid in ids:
+                # Pre-flight ban check: if a sentinel is already active this raises
+                # ArxivBanned WITHOUT constructing any request, so discovery
+                # degrades to [] without touching the banned endpoint. The
+                # authoritative spacing + ban gate is the governor's flock (held
+                # inside search/fetch_by_id); this pre-check only short-circuits a
+                # known-banned run early.
                 throttle.wait_if_needed()
                 p = _request_with_429_sentinel(
-                    throttle, lambda pid=pid: fetch_by_id(pid)
+                    throttle, lambda pid=pid: fetch_by_id(pid, throttle=throttle)
                 )
                 if p is not None:
                     papers.append(p)
@@ -287,7 +298,10 @@ def _arxiv_candidates(
             papers = list(
                 _request_with_429_sentinel(
                     throttle,
-                    lambda: search(query=query, category=category, max_results=limit),
+                    lambda: search(
+                        query=query, category=category,
+                        max_results=limit, throttle=throttle,
+                    ),
                 )
             )
     except ArxivBanned as exc:

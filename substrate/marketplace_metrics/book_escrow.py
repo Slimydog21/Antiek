@@ -119,13 +119,44 @@ def _accrue_payouts_ledger(
     try:
         from substrate.payouts.ledger import accrue_paper_read
 
-        accrue_paper_read(
+        accrual = accrue_paper_read(
             con,
             document_id=document_id,
             revenue_cents=revenue_cents,
             ad_event_id=f"session:{session_id}:{document_id}",
             impression_ids=impression_ids,
         )
+        # SPR-09 M4 — record the ACCRUE leg into the arXiv fetch→serve→accrue
+        # compliance trace. Only a T1 arXiv accrual carries an arxiv_id; non-arXiv
+        # / T2 / T3 / zero-revenue events are non-accruable (no arxiv_id) and emit
+        # no audit row. §9.0: refs + cents only, NEVER any body. Defensively
+        # isolated INSIDE this already-isolated hook so an audit failure can never
+        # break accrual (which itself can never break escrow).
+        if accrual.accruable and accrual.arxiv_id:
+            try:
+                from substrate.audit.arxiv_audit import ARXIV_ACCRUE, record_event
+
+                record_event(
+                    con,
+                    arxiv_id=accrual.arxiv_id,
+                    document_id=document_id,
+                    kind=ARXIV_ACCRUE,
+                    reason=accrual.reason,
+                    amount_cents=accrual.attributed_cents,
+                    detail={
+                        "ad_event_id": accrual.ad_event_id,
+                        "event_ref": accrual.event_ref,
+                        "author_cents": accrual.author_cents,
+                        "unattributed_cents": accrual.unattributed_cents,
+                    },
+                )
+            except Exception:
+                logger.exception(
+                    "arxiv_audit accrue-leg failed for document_id=%s "
+                    "session_id=%s; accrual + escrow paths unaffected",
+                    document_id,
+                    session_id,
+                )
     except Exception:
         # Internal accounting only — never let it disturb the escrow path, but
         # make the drop VISIBLE so a systematic attribution-layer failure is

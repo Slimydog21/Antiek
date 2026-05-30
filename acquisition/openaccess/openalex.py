@@ -143,12 +143,26 @@ def _build_url(
 
 
 def _http_get(url: str, *, client: Optional[httpx.Client]) -> dict:
+    # ``url`` is built from an env/param-overridable base, so route through the
+    # host-based gate: the default api.openalex.org host is fetched directly;
+    # were the base ever an arXiv host it would be governed by the shared gate.
+    from acquisition.arxiv.rate_governor import (
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+    )
+
     headers = {"User-Agent": DEFAULT_USER_AGENT}
     if client is not None:
-        r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        def _send() -> httpx.Response:
+            return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     else:
         with httpx.Client(follow_redirects=True) as c:
-            r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            def _send() -> httpx.Response:
+                return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
     return r.json()
 

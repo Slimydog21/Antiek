@@ -1027,6 +1027,40 @@ CREATE INDEX IF NOT EXISTS idx_paper_author_accruals_event
 """
 
 
+# SPR-09 M4 (arxiv-ingest ToS-compliance) — arxiv_audit. The append-only,
+# arxiv_id-keyed fetch→serve→accrue→takedown compliance trace. ONE query
+# (substrate/audit/arxiv_audit.trace) reconstructs a paper's full lifecycle for a
+# ToS-compliance answer. §9.0: stores document_id/arxiv_id/refs/reason/tier/
+# counts ONLY — NEVER raw_text / snippet / served body (the writer rejects any
+# body-shaped detail key). ``kind`` is a CHECK-constrained namespaced STRING
+# (arxiv.fetch|serve|accrue|takedown), NOT a typed event payload — so this
+# touches NO codegen surface and never bumps EVENT_SCHEMA_VERSION. Append-only:
+# deterministic sha256 event_id (idempotent re-record), no in-place mutation.
+# Module: substrate/audit/arxiv_audit.py (which also keeps a defensive
+# module-local ensure_tables). Mirrors the attribution_audit append-only shape;
+# FK-references nothing.
+ANTIEK_GRAPH_SCHEMA_V12_ARXIV_AUDIT_SQL = """
+CREATE TABLE IF NOT EXISTS arxiv_audit (
+    event_id      TEXT PRIMARY KEY,
+    arxiv_id      TEXT NOT NULL,
+    document_id   TEXT NOT NULL,
+    kind          TEXT NOT NULL CHECK (kind IN (
+        'arxiv.fetch', 'arxiv.serve', 'arxiv.accrue', 'arxiv.takedown'
+    )),
+    reason        TEXT,
+    tier          TEXT,
+    amount_cents  INTEGER,
+    -- Canonical-JSON of NON-body refs/counters ONLY (§9.0 — never paper content).
+    detail_json   TEXT NOT NULL DEFAULT '{}',
+    recorded_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_arxiv_audit_arxiv
+    ON arxiv_audit(arxiv_id);
+CREATE INDEX IF NOT EXISTS idx_arxiv_audit_document
+    ON arxiv_audit(document_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1084,6 +1118,11 @@ def init_database(con: LockedConnection) -> None:
     # accrual ledger; (arxiv_id, author_position) keyed, conservation-to-the-cent,
     # writes NO escrow). Pure idempotent CREATE IF NOT EXISTS; FK-references nothing.
     con.execute(ANTIEK_GRAPH_SCHEMA_V11_PAPER_AUTHOR_ACCRUALS_SQL)
+    # SPR-09 M4 (arxiv-ingest) — arxiv_audit (append-only, arxiv_id-keyed
+    # fetch→serve→accrue→takedown compliance trace; §9.0 stores NO body, only
+    # refs/counts; namespaced string kinds, no typed-payload/codegen bump). Pure
+    # idempotent CREATE IF NOT EXISTS; FK-references nothing.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V12_ARXIV_AUDIT_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:

@@ -207,6 +207,14 @@ class ExaClient:
     # ── internals ────────────────────────────────────────────────
 
     def _post(self, path: str, body: dict) -> dict:
+        # ``base_url`` is env/param-overridable, so route each send through the
+        # host-based gate: the default api.exa.ai host is posted directly; were
+        # the base ever an arXiv host it would be governed by the shared gate.
+        from acquisition.arxiv.rate_governor import (
+            canonical_arxiv_throttle,
+            govern_if_arxiv,
+        )
+
         url = f"{self._base_url}{path}"
         headers = {
             "User-Agent": DEFAULT_USER_AGENT,
@@ -222,9 +230,12 @@ class ExaClient:
             while True:
                 attempt += 1
                 try:
-                    r = client.post(
-                        url, json=body, headers=headers, timeout=self._timeout_s
-                    )
+                    def _send() -> httpx.Response:
+                        return client.post(
+                            url, json=body, headers=headers, timeout=self._timeout_s
+                        )
+
+                    r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
                 except httpx.HTTPError as e:
                     if attempt < _MAX_RETRIES:
                         self._sleep(self._backoff_seconds(attempt))

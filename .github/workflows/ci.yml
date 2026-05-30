@@ -124,6 +124,31 @@ jobs:
         run: |
           python tools/lint/serve_guard_check.py
 
+      - name: arXiv rate-governor egress check
+        # SPR-09 M1: forbid a NEW direct arxiv.org HTTP egress outside the
+        # governed seam (acquisition/arxiv/rate_governor.py). Every arXiv
+        # request must route through the host-global flock'd governor so the
+        # >=3s rate ceiling cannot be circumvented by a second concurrent job.
+        # Models tools/lint/serve_guard_check.py (path:line, exit-code contract).
+        run: |
+          python tools/lint/rate_governor_check.py
+
+      - name: arXiv serve-invariants check
+        # SPR-09 M2: forbid a NEW SELECT/return of documents.raw_text (the
+        # materialized body) outside the serve allowlist — closes the
+        # "new endpoint reads raw_text directly, bypassing the tier gate"
+        # T3-rehost path. Complements the serve_full_text bypass scanner.
+        run: |
+          python tools/lint/serve_invariants_check.py
+
+      - name: arXiv contact-guard check
+        # SPR-09 M3: forbid a NEW provider.send( / OutboundEmail( site outside
+        # the allowlist (operator magic-link auth.py + the deny-by-default
+        # substrate/payouts/contact_guard.py). No outbound author email can be
+        # added unguarded; with no SPR-07 claim flow, all author email is blocked.
+        run: |
+          python tools/lint/contact_guard_check.py
+
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
         # substrate/schemas/ without regenerating
