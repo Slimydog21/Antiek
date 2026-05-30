@@ -159,6 +159,92 @@ def parse_works_response(payload: dict) -> List[OpenAlexWork]:
     return [_parse_work(w) for w in payload.get("results", [])]
 
 
+# ---------------------------------------------------------------------------
+# Enrichment helper (SPR-03): fetch the FULL raw work record by arXiv id / DOI.
+#
+# ``search_works`` / ``_parse_work`` deliberately REDUCE a work to the rights
+# router's lean view (id / doi / title / OA / license / pdf), DISCARDING the
+# authorships, ORCIDs, and referenced_works. arXiv enrichment (SPR-03) needs
+# exactly those discarded fields. Rather than fork a second HTTP client, this
+# helper REUSES the existing ``_build_url`` / ``_http_get`` / ``OAThrottle``
+# plumbing and returns the FIRST RAW result dict untouched, so the caller
+# (``acquisition.arxiv.enrich_openalex``) can read authorships + referenced_works
+# off the raw JSON. ``OpenAlexWork`` / ``_parse_work`` are NOT modified — the
+# rights router keeps its lean view.
+# ---------------------------------------------------------------------------
+
+
+def arxiv_doi(arxiv_id: str) -> str:
+    """The DataCite arXiv DOI for an arXiv id: ``10.48550/arXiv.<id>``.
+
+    arXiv mints a DataCite DOI for every paper under the ``10.48550`` prefix.
+    OpenAlex indexes the work under exactly this DOI, so it is the reliable
+    join key from an arXiv id (the arXiv OAI-PMH metadata carries NO DOI of its
+    own — verified — so the DOI must be derived, not read)."""
+    return f"10.48550/arXiv.{arxiv_id.strip()}"
+
+
+def fetch_work_record(
+    *,
+    arxiv_id: Optional[str] = None,
+    doi: Optional[str] = None,
+    client: Optional[httpx.Client] = None,
+    throttle: Optional[OAThrottle] = None,
+    base_url: Optional[str] = None,
+    mailto: str = POLITE_POOL_MAILTO,
+) -> Optional[dict]:
+    """Fetch ONE raw OpenAlex work record, joined by arXiv id (primary) or DOI.
+
+    Returns the FIRST raw result dict (the full OpenAlex JSON object, carrying
+    ``authorships`` + ``referenced_works`` + ``cited_by_count``), or ``None`` when
+    OpenAlex has no matching work. Never fabricates a match: a no-result query
+    returns ``None`` and the caller records a miss.
+
+    Join order (the caller may pass either or both):
+
+      1. ``arxiv_id`` (PRIMARY) — joined via the DataCite arXiv DOI
+         ``10.48550/arXiv.<arxiv_id>`` (``arxiv_doi``); the arXiv id itself is not
+         a native OpenAlex filter, but its minted DOI is the indexed key.
+      2. ``doi`` (FALLBACK) — an explicit DOI, tried only if ``arxiv_id`` is
+         absent OR produced no match.
+
+    REUSE, not a fork: this issues its request through the SAME ``_build_url`` /
+    ``_http_get`` / ``OAThrottle`` plumbing ``search_works`` uses — there is no
+    second HTTP client and no duplicate request logic. No ``open_access.is_oa``
+    filter is applied: enrichment wants the work's metadata regardless of OA
+    status — we are joining a citation/author record, not downloading a PDF.
+    """
+    if not arxiv_id and not doi:
+        raise ValueError("fetch_work_record requires arxiv_id or doi")
+
+    # PRIMARY: arXiv id -> its DataCite DOI. FALLBACK: the explicit DOI.
+    candidate_dois: list[str] = []
+    if arxiv_id:
+        candidate_dois.append(arxiv_doi(arxiv_id))
+    if doi and doi not in candidate_dois:
+        candidate_dois.append(doi)
+
+    for candidate in candidate_dois:
+        # OpenAlex's ``doi`` filter is case-insensitive and accepts the bare
+        # ``10.x/...`` form. One result is all we need; per_page=1 keeps it cheap.
+        url = _build_url(
+            search=None,
+            author=None,
+            filters=f"doi:{candidate}",
+            per_page=1,
+            mailto=mailto,
+            base_url=base_url,
+        )
+        if throttle is not None:
+            payload = throttle.run_with_retry(lambda: _http_get(url, client=client))
+        else:
+            payload = _http_get(url, client=client)
+        results = payload.get("results") or []
+        if results:
+            return results[0]
+    return None
+
+
 def search_works(
     *,
     search: Optional[str] = None,

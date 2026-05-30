@@ -58,6 +58,41 @@ class RightsTier(str, Enum):
 
 
 @dataclass(frozen=True)
+class EnrichedAuthor:
+    """One author of an arXiv paper, as disambiguated by OpenAlex (SPR-03 M2).
+
+    This is the typed shape stored under ``documents.metadata["openalex_enrichment"]
+    ["authors"]`` — it is ADDITIVE enrichment, never a rights or identity anchor
+    the payout case relies on. The arXiv OAI-PMH record stays authoritative for
+    license + tier; OpenAlex only contributes citation graph + author identity.
+
+    Fields:
+
+      * ``orcid`` — the author's ORCID identifier (e.g.
+        ``https://orcid.org/0000-0002-1825-0097``) when OpenAlex carries one,
+        else ``None``. NEVER invented: an absent ORCID stays ``None`` so SPR-07's
+        claim flow can tell "OpenAlex disambiguated this author to a real ORCID"
+        apart from "no identity was found." ORCID is the only stable cross-source
+        author key OpenAlex exposes.
+      * ``author_position`` — the author's 0-based index in the byline, preserving
+        the OpenAlex/arXiv ordering (first / middle / last authorship carries
+        meaning in academic credit). Derived from the authorship's position in the
+        ``authorships`` list, NOT re-sorted.
+      * ``display_name`` — the author's display name as OpenAlex records it. A
+        best-effort label, not an identity key (the ORCID is the key).
+
+    A plain frozen dataclass (not a Pydantic event payload), so it is NOT part of
+    the TypeScript codegen surface (``tools/codegen/emit_types.py`` reads only
+    ``substrate.schemas.events`` Pydantic models). It rides inside the metadata
+    JSON blob, which the reading UI reads as untyped JSON.
+    """
+
+    orcid: Optional[str]
+    author_position: int
+    display_name: str
+
+
+@dataclass(frozen=True)
 class ArxivOaiRecord:
     """One OAI-PMH ``<record>`` (metadataPrefix=arXiv), parsed.
 
