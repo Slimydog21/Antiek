@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
+import { Scene } from "./scene/Scene";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
@@ -85,7 +86,15 @@ export function AppShell({ children }: Props) {
     // docs/decisions/spr-06-edge-reservation-seam.md.
     <div
       data-akb-shell-frame
-      className="h-screen w-screen bg-ice-2 dark:bg-space-2 text-ink dark:text-bright overflow-hidden"
+      // SPR-04 — the frame background is now TRANSPARENT (was bg-ice-2 /
+      // dark:bg-space-2). The living mountainscape <Scene/> below paints the
+      // z-0 backdrop for the whole app, and the glass working surfaces float
+      // over it. The opaque ice/space surface is retained as the scene's OWN
+      // bottom-most layer (ProceduralSky's sky gradient uses the same token
+      // ramp), so there is no colour jump — the shell still reads ice by day,
+      // space by night, but now it can MOVE. text tokens stay on the frame so
+      // any chrome that doesn't set its own colour inherits readable ink.
+      className="h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
       style={{
         paddingTop: "var(--akb-border-inset-top)",
         paddingRight: "var(--akb-border-inset-right)",
@@ -94,10 +103,21 @@ export function AppShell({ children }: Props) {
         boxSizing: "border-box",
       }}
     >
+      {/* SPR-04 — the living mountainscape. FIRST child so it sits at the very
+          back (z-0), painted behind the column. It is `absolute inset-0 z-0
+          pointer-events-none`, so it never captures input and the chrome /
+          glass surfaces in the column below render ON TOP of it. Procedural
+          clouds + wind + snow run always-on; Krea art refreshes the sky on
+          mood change; it freezes to one frame under reduced-motion and pauses
+          on a hidden tab. (It lives INSIDE the seam frame so the ad border's
+          reserved band, when SPR-07 lights it up, frames the scene too.) */}
+      <Scene />
+
       {/* Vertical column: topbar · full-width working region · bottom rail.
           The working region carries NO left gutter — it spans the full
-          width between the (zero-inset) left/right seam edges, symmetric. */}
-      <div className="h-full w-full flex flex-col">
+          width between the (zero-inset) left/right seam edges, symmetric.
+          `relative` so it stacks above the absolute z-0 scene. */}
+      <div className="relative h-full w-full flex flex-col">
         <Topbar />
         <div className="flex-1 min-h-0 min-w-0">
           {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
