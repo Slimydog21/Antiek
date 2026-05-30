@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 
+import duckdb
 import httpx
+import pytest
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -130,6 +133,109 @@ def test_s2_closed_access_gated_ingest_thunk_never_fetches_body(monkeypatch):
     assert staged["called"] is True
     assert staged["class"] == GATED_DEFAULT_CONTENT_CLASS
     assert "restricted_pending_opt_in" in status
+
+
+@pytest.fixture
+def temp_substrate(monkeypatch):
+    """Real DuckDB + event-log substrate, isolated per test (matches the
+    convention in test_public_domain_ingest.py)."""
+    tmpdir = tempfile.mkdtemp(prefix="antiek-papers-s2-test-")
+    db_path = os.path.join(tmpdir, "graph.duckdb")
+    events_dir = os.path.join(tmpdir, "events")
+    os.makedirs(events_dir, exist_ok=True)
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    monkeypatch.setenv("ANTIEK_EVENT_LOG_DIR", events_dir)
+    yield {"db_path": db_path, "events_dir": events_dir, "tmpdir": tmpdir}
+
+
+class _StubEmbedder:
+    def encode(self, text: str) -> list[float]:
+        h = abs(hash(text)) % 64
+        v = [0.0] * 16
+        v[h % 16] = 1.0
+        return v
+
+
+def test_s2_closed_access_real_metadata_stage_is_gated_and_body_is_abstract(
+    temp_substrate, monkeypatch
+):
+    """G2 end-to-end against the REAL substrate (no monkeypatch of the stager):
+    drive the actual ``_stage_paper_metadata_only`` write for a closed S2 record
+    and assert at the row level that
+
+      1. the stored ``documents.content_class`` is ``restricted_pending_opt_in``,
+      2. ``book_assets.servable_full_text`` is DERIVED False (deny-by-default —
+         the gated class is not in SERVABLE_CONTENT_CLASSES),
+      3. the stored ``documents.raw_text`` body IS the abstract + the
+         withheld-notice line (SPR-10 audit fact: a gated paper's body == its
+         abstract, the full text was never fetched), and
+      4. the ``book_assets.license_basis`` row is non-empty and names the source.
+
+    This closes the gap the thunk test alone leaves open: the thunk test fakes
+    the stager (proving only that the body is never FETCHED); this test proves
+    the real metadata write yields a non-servable row whose body is the abstract.
+    """
+    import tools.run_corpus_ingest as orch
+
+    # The body must never be fetched even on the real path.
+    def _no_fetch(*a, **k):
+        raise AssertionError("a gated record must never fetch a body")
+
+    monkeypatch.setattr(orch, "_fetch_paper_pdf", _no_fetch)
+    # Use a deterministic stub embedder so the chunk/node writes succeed offline.
+    monkeypatch.setattr(
+        "processing.embedding.embed.default_embedding_provider",
+        lambda: _StubEmbedder(),
+    )
+
+    closed = next(
+        r for r in parse_search_response(_payload()) if r.doi == "10.1/closed-s2"
+    )
+    cls = classify_paper(closed)
+    assert cls.serve_body is False  # precondition: gated, no body
+
+    db_path = temp_substrate["db_path"]
+    status = orch._stage_paper_metadata_only(
+        closed, cls, investigation_id="inv-real", db_path=db_path
+    )
+    assert GATED_DEFAULT_CONTENT_CLASS in status
+
+    con = duckdb.connect(db_path)
+    try:
+        content_class, raw_text = con.execute(
+            "SELECT content_class, raw_text FROM documents "
+            "WHERE investigation_id = ?",
+            ["inv-real"],
+        ).fetchone()
+        # book_assets stores license_basis + taken_down; servable_full_text is
+        # DERIVED (never a stored column), so we project it from the stored
+        # content_class via the same substrate gate the serve path uses.
+        license_basis, taken_down = con.execute(
+            "SELECT b.license_basis, b.taken_down FROM book_assets b "
+            "JOIN documents d ON d.document_id = b.document_id "
+            "WHERE d.investigation_id = ?",
+            ["inv-real"],
+        ).fetchone()
+    finally:
+        con.close()
+
+    # 1. The gated class is what landed on the row — not a servable one.
+    assert content_class == GATED_DEFAULT_CONTENT_CLASS
+    assert content_class not in SERVABLE_CONTENT_CLASSES
+    # 2. servable_full_text is DERIVED False from the stored class (the §9.0
+    #    deny-by-default gate; restricted_pending_opt_in is not allowlisted).
+    from substrate.books.servability import is_servable_full_text, servability_of
+
+    status_derived = servability_of(content_class, taken_down=bool(taken_down))
+    assert is_servable_full_text(status_derived) is False
+    # 3. The stored body IS the abstract + withheld notice — never the full
+    #    text (which was never fetched). Pins finding (1)'s by-design fact.
+    assert raw_text
+    assert "This abstract is public; the body is paywalled." in raw_text
+    assert "withheld" in raw_text.lower()
+    # 4. The audit basis row is non-empty and names the source.
+    assert license_basis and license_basis.strip()
+    assert "semantic_scholar" in license_basis.lower()
 
 
 def test_s2_corpus_id_used_only_when_no_doi_or_arxiv():

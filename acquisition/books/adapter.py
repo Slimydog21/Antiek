@@ -290,6 +290,7 @@ def ingest_servable_book(
     source_uri: Optional[str] = None,
     db_path: Optional[str] = None,
     embedder: Optional[EmbeddingProvider] = None,
+    min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> IngestServableBookResult:
     """Read a PDF, ingest it as a document, and register it as a
     Read-workflow book under the servable-corpus gate.
@@ -304,6 +305,15 @@ def ingest_servable_book(
     (``public_domain``, ``source_declared_open``, ``opt_in_licensed``,
     ``user_owned``). Omit it for anything aggregated with unknown rights — it
     lands gated.
+
+    ``min_word_count`` is the floor below which ``ingest_pdf`` treats the
+    document as a failed extraction (a scanned/empty book) and returns early
+    WITHOUT writing a documents row. The default (100) is the full-book scan
+    heuristic; the gated metadata-only paper path passes a low floor because a
+    gated record's body is deliberately just its abstract — a short body there
+    is correct, not a failed extraction. If ``ingest_pdf`` skips on this floor,
+    no documents row exists and ``register_book`` would raise; we surface that
+    as an explicit skipped result instead of crashing the batch.
     """
     # substrate is a lower layer than acquisition; importing it here keeps
     # the dependency arrow pointing the right way (acquisition → substrate).
@@ -319,7 +329,23 @@ def ingest_servable_book(
         source_uri=source_uri,
         db_path=db_path,
         embedder=embedder,
+        min_word_count=min_word_count,
     )
+
+    # If ingest_pdf skipped (e.g. word_count below the floor), no documents row
+    # was written and register_book would raise. Return the skipped result with
+    # a derived deny-by-default servability rather than crashing — the caller
+    # (per-item-isolated in the batch) sees a clean skip.
+    if ingest_result.skipped_reason is not None:
+        from substrate.books.servability import is_servable_full_text, servability_of
+
+        skipped_status = servability_of(content_class, taken_down=False)
+        return IngestServableBookResult(
+            ingest=ingest_result,
+            document_id=ingest_result.document_id,
+            servability=skipped_status.value,
+            servable_full_text=is_servable_full_text(skipped_status),
+        )
 
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)

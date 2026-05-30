@@ -847,6 +847,12 @@ def _stage_paper_metadata_only(
     # text_to_pdf yields a tiny PDF the shared reader/chunker accepts; the
     # GATED content_class makes servable_full_text False — body never served.
     pdf_bytes = text_to_pdf(body, title=title)
+    # A gated record's body is deliberately just its (often short) abstract, so
+    # the full-book "scanned/empty" word-count floor (100) must NOT apply here —
+    # otherwise a paper with a sub-100-word abstract would be skip-dropped and
+    # never staged gated, defeating the private-search guarantee. Floor of 1
+    # keeps a genuinely empty body (no title, no abstract) skipped while always
+    # staging a record that carries any text.
     result = ingest_servable_book(
         pdf_bytes,
         investigation_id=investigation_id,
@@ -855,6 +861,7 @@ def _stage_paper_metadata_only(
         source_uri=(f"https://doi.org/{rec.doi}" if rec.doi else None),
         provenance=rec.source,
         db_path=db_path,
+        min_word_count=1,
     )
     return f"{classification.content_class} (servable={result.servable_full_text}, metadata-only)"
 
