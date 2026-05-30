@@ -4,7 +4,8 @@ HathiTrust, like Internet Archive, mixes public-domain and in-copyright works.
 The HathiTrust Bibliographic API exposes a per-item **rights code** that is the
 authoritative PD signal:
 
-  * ``pd`` / ``pdus`` → public domain → servable;
+  * ``pd`` / ``pdus`` / ``pdus-land`` → public domain (the latter two PD only
+    when viewed in the US, which is the serving jurisdiction) → servable;
   * ``ic`` / ``icus`` / ``und`` (in-copyright / undetermined) → NOT public
     domain → gated or skip, never servable;
   * any UNRECOGNIZED code → treated as undetermined → gated (deny-by-default;
@@ -36,20 +37,25 @@ BIB_API_BASE = "https://catalog.hathitrust.org/api/volumes/brief"
 # supply the bytes, and a real run uses the operator's keyed endpoint).
 PT_DOWNLOAD_BASE = "https://babel.hathitrust.org/cgi/imgsrv/download/pdf"
 
-# Rights codes that POSITIVELY establish public domain.
-_PD_RIGHTS_CODES = frozenset({"pd", "pdus"})
-# Rights codes that explicitly do NOT (in-copyright / undetermined). Listed so
-# the mapping is exhaustive + auditable; functionally identical to "not in the
-# PD set" because of deny-by-default, but naming them documents intent.
-_NON_PD_RIGHTS_CODES = frozenset({"ic", "icus", "und", "nobody", "pdus-land"})
+# Rights codes that POSITIVELY establish public domain. ``pdus`` and
+# ``pdus-land`` are PD only when viewed inside the US (HathiTrust's land-grant
+# digitization carries the ``pdus-land`` code for US-public-domain works) — the
+# US is the serving jurisdiction, so both are servable.
+_PD_RIGHTS_CODES = frozenset({"pd", "pdus", "pdus-land"})
+# Rights codes that explicitly do NOT establish PD (in-copyright /
+# undetermined). Listed so the in-copyright branch is auditable; functionally
+# identical to "not in the PD set" because of deny-by-default (this set is never
+# consulted for the verdict — an UNRECOGNIZED code gates exactly as these do),
+# but naming the real HathiTrust restriction codes documents intent.
+_NON_PD_RIGHTS_CODES = frozenset({"ic", "icus", "und"})
 
 
 def hathi_rights_input(rights_code: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     """THE one rights-code → classify-input mapping. Returns (license_uri,
-    pd_signal). ``pd``/``pdus`` → a positive pd_signal (classify resolves
-    public_domain); everything else (including UNRECOGNIZED codes) → (None,
-    None) → classify() gates it. Deny-by-default: an unknown code is never
-    servable."""
+    pd_signal). ``pd``/``pdus``/``pdus-land`` → a positive pd_signal (classify
+    resolves public_domain); everything else (including UNRECOGNIZED codes) →
+    (None, None) → classify() gates it. Deny-by-default: an unknown code is
+    never servable."""
     code = (rights_code or "").strip().lower()
     if code in _PD_RIGHTS_CODES:
         return None, f"HathiTrust rights={code}"
@@ -116,7 +122,7 @@ def discover(
 
     Tested against a recorded fixture. Each record's rights code is mapped to
     the classify() input; the servable/gated verdict is classify()'s at ingest
-    (pd/pdus → servable, ic/icus/und/unknown → gated)."""
+    (pd/pdus/pdus-land → servable, ic/icus/und/unknown → gated)."""
     ids = list(record_ids or [])[:limit]
     out: list[BookCandidate] = []
     for record_id in ids:

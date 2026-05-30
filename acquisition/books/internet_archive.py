@@ -60,10 +60,18 @@ _PD_RIGHTS_TOKENS = (
     "publicdomain",
     "no known copyright",
 )
+# Deny-first: any of these in the free text disqualifies the item BEFORE a PD
+# token can accept it. Broad on purpose — a false negation only conservatively
+# GATES a genuinely-PD item (chunked/embedded for private search, body
+# withheld), the §9.0-safe direction; the catastrophic error is the reverse.
 _NEGATIVE_TOKENS = (
     "all rights reserved",
+    "rights reserved",
     "in copyright",
+    "in-copyright",
     "copyrighted",
+    "under copyright",
+    "permission required",
     "not in the public domain",
     "not in public domain",
     "not public domain",
@@ -71,8 +79,12 @@ _NEGATIVE_TOKENS = (
 _NEGATED_PD_RE = re.compile(
     r"\b(?:not|no|isn't|is not)\s+(?:in\s+(?:the\s+)?)?public\s+domain"
 )
+# Any ©/(c) symbol, "copyright <year>", or a hedged copyright assertion
+# ("may be / still / possibly under/protected by copyright") denies PD even if
+# a "public domain" substring is also present — the higher-cost false positive.
 _COPYRIGHT_CLAIM_RE = re.compile(
     r"©|\bcopyright\s+(?:\(c\)\s*)?\d{4}|\(c\)\s*\d{4}"
+    r"|\b(?:may\s+be|still|possibly|likely)\s+(?:in\s+|under\s+|protected\s+by\s+)?copyright"
 )
 
 

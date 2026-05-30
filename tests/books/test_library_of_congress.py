@@ -113,6 +113,28 @@ def test_copyright_claim_rights_is_gated():
     assert uri is None and signal is None
 
 
+def test_hedged_copyright_assertion_with_pd_token_is_gated():
+    """Deny-first hardening: a rights statement that hedges ('may be / still
+    under copyright') while containing 'public domain' must still gate."""
+    for phrasing in (
+        "This item may be under copyright. Public domain status unverified.",
+        "Still under copyright in some jurisdictions; public domain in US.",
+        "Rights reserved by the donor; public domain claim not established.",
+    ):
+        uri, signal = loc.loc_rights_input({"rights": phrasing})
+        assert uri is None and signal is None, phrasing
+
+
+def test_no_known_copyright_restrictions_still_resolves_pd():
+    """Regression guard: 'No known copyright restrictions' (a canonical LoC PD
+    statement) must NOT be swallowed by the broadened negative set."""
+    uri, signal = loc.loc_rights_input(
+        {"rights": "No known copyright restrictions"}
+    )
+    assert uri is None
+    assert signal and "Library of Congress" in signal
+
+
 def test_license_basis_naming_for_servable(temp_substrate):
     items = [_loc_item("p5", rights="Public domain", lccn="55556666")]
     fetcher = _fetcher_for(items)

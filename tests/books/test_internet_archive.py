@@ -169,6 +169,32 @@ def test_copyright_claim_with_pd_token_is_gated():
     assert uri is None and signal is None
 
 
+def test_hedged_copyright_assertion_with_pd_token_is_gated():
+    """Deny-first hardening: an adversarial phrasing that asserts a possible
+    restriction while smuggling a 'public domain' substring must still gate.
+    A hedged copyright claim ('may be / still / possibly under copyright') is
+    caught before any PD token can accept it."""
+    for phrasing in (
+        "This work may be under copyright. Public domain status unconfirmed.",
+        "Item still under copyright outside the US; public domain in some.",
+        "Rights reserved by the estate. publicdomain claim disputed.",
+        "Possibly protected by copyright; treat as public domain at your risk.",
+    ):
+        uri, signal = ia.ia_rights_input({"rights": phrasing})
+        assert uri is None and signal is None, phrasing
+
+
+def test_no_known_copyright_restrictions_still_resolves_pd():
+    """Regression guard: the broadened negative set must NOT swallow the
+    canonical 'No known copyright restrictions' PD phrasing — deny-first
+    hardening only catches genuine restriction language."""
+    uri, signal = ia.ia_rights_input(
+        {"rights": "No known copyright restrictions."}
+    )
+    assert uri is None
+    assert signal and "public domain" in signal.lower()
+
+
 def test_two_layer_per_item_recheck_catches_mistagged_search_result(temp_substrate):
     """Defence in depth: a discovery query can return a stale/mis-tagged record,
     so the per-item layer-2 re-check re-runs the rights mapping on the item's
