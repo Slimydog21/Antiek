@@ -17,6 +17,12 @@ string to classify() and routes by the result. The rights field is read from
 the LibreTexts page metadata ``tags`` / ``properties`` (a license code such as
 ``ccby`` / ``ccbync`` and/or a ``licenseurl``); we prefer the URL, else the code.
 
+Crucially the connector also does NOT decide that an ambiguous LibreTexts
+"public domain" tag is a CC0/PDM dedication: a loose ``ccpd`` / ``publicdomain``
+tag is left unmapped so classify() gates it by default (§9.0). Only an explicit
+``cc0`` code or a real ``creativecommons.org/publicdomain/...`` URI reaches the
+public-domain class — and that decision is classify()'s, not this connector's.
+
 Compose, do not reimplement: shared ``ThrottledClient`` (SPR-03 ban-aware),
 ``classify()`` (SPR-02), ``ingest_textbook`` -> ``ingest_servable_book``
 (SPR-01 staging), dedup on the page id / content-hash (SPR-04, orchestrator).
@@ -37,9 +43,22 @@ LIBRETEXTS_CONTENT_URL = "https://api.libretexts.org/endpoint/content"
 
 # Compact license codes LibreTexts emits in page tags/properties, mapped to the
 # canonical CC short-code form classify() resolves. We do NOT decide the class
-# here — we only normalize the source's own code into the string classify()
-# already understands. NC/ND codes are normalized faithfully so classify()
-# gates them; flattening them would be the exact bug this milestone guards.
+# here — we only normalize the source's own code into a string classify()
+# ALREADY understands, then obey whatever class it returns. NC/ND codes are
+# normalized faithfully so classify() gates them; flattening them would be the
+# exact bug this milestone guards.
+#
+# Deny-by-default discipline (§9.0): this table NEVER promotes an AMBIGUOUS
+# source tag to a servable class on the connector's own semantic judgment. In
+# particular a loose LibreTexts "public domain" / "ccpd" tag is NOT mapped to
+# cc0 here — LibreTexts uses that label loosely (e.g. for US-government works
+# that are PD only in the US), so the connector must not decide it is a CC0/PDM
+# dedication. An ambiguous tag falls through unmapped to classify(), which gates
+# it by default (verified: classify('publicdomain') / classify('ccpd') ->
+# restricted_pending_opt_in). Only an EXPLICIT, unambiguous `cc0` code (or a
+# real CC0/PDM `creativecommons.org/publicdomain/...` URI taken via the
+# licenseurl path) resolves to public_domain — and that resolution is made by
+# classify(), not by this map.
 _LICENSE_CODE_TO_STRING = {
     "ccby": "cc-by",
     "cc-by": "cc-by",
@@ -53,8 +72,8 @@ _LICENSE_CODE_TO_STRING = {
     "cc-by-nc-sa": "cc-by-nc-sa",
     "ccbyncnd": "cc-by-nc-nd",
     "cc-by-nc-nd": "cc-by-nc-nd",
-    "ccpd": "cc0",  # LibreTexts "public domain" tag -> CC0 dedication
-    "publicdomain": "cc0",
+    # NOTE: deliberately NO "ccpd"/"publicdomain" -> "cc0" promotion. See the
+    # deny-by-default note above. An explicit cc0 code passes through as-is.
     "cc0": "cc0",
 }
 

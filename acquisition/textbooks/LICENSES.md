@@ -71,6 +71,13 @@ is NEVER flattened to `public_domain`.
   classify() through the same CC table.
 - **Routing:** CC-BY / CC-BY-SA → `source_declared_open`; CC-BY-NC / -ND /
   -NC-SA → gated (the SPR-02 class); no resolvable license → gated default.
+- **Deny-by-default on ambiguous tags:** an explicit `cc0` code (or a real
+  `creativecommons.org/publicdomain/...` URI via `licenseurl`) resolves to
+  `public_domain` *in classify()*. A LOOSE LibreTexts "public domain" / `ccpd`
+  tag is **not** promoted to CC0 by the connector (LibreTexts uses that label
+  loosely — e.g. US-gov works PD only in the US); it falls through unmapped to
+  classify(), which gates it by default. The connector never makes that
+  per-source rights judgment in a code map.
 
 ### DOAB / OAPEN (`doab.py`)
 - **Declared:** **per-book** (CC variants differ book to book).

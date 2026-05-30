@@ -89,11 +89,18 @@ def test_discover_reads_per_item_license():
 
 def test_ccbysa_ingests_servable(temp_substrate):
     w = _by_title(libretexts.discover(_client(), limit=10), "CC-BY-SA")
+    # The stored class is EXACTLY what a fresh classify() re-run yields for the
+    # declared license — not an independently-baked-in constant. If the operator
+    # ever changes the CC-BY-SA policy, this stays correct (it tracks classify).
+    expected = classify(w.declared_license, dict(w.source_declaration), legitimate_source=True)
     outcome = ingest_textbook(
         w, _client(), investigation_id="inv-test",
         db_path=temp_substrate["db_path"], embedder=StubEmbedder(),
     )
     assert outcome.ingested is True, outcome.skipped_reason
+    assert outcome.content_class == expected.content_class
+    assert outcome.servable_full_text is (expected.content_class in SERVABLE_CONTENT_CLASSES)
+    # CC-BY-SA is positively servable today; assert that explicitly too.
     assert outcome.content_class in SERVABLE_CONTENT_CLASSES
     assert outcome.content_class == "source_declared_open"
     assert outcome.servable_full_text is True
@@ -150,3 +157,79 @@ def test_ccbync_ingests_gated_body_withheld(temp_substrate):
     assert outcome.content_class == GATED_DEFAULT_CONTENT_CLASS
     assert outcome.servable_full_text is False
     assert outcome.servability == "gated_metadata_only"
+
+
+@pytest.mark.parametrize("ambiguous_tag", ["ccpd", "publicdomain", "public domain", "PublicDomain"])
+def test_ambiguous_public_domain_tag_gates_not_servable(ambiguous_tag):
+    """SHARPEN (finding 2): a LOOSE LibreTexts 'public domain' tag must NOT be
+    promoted to CC0/servable by the connector's own code map. LibreTexts uses
+    that label loosely (e.g. US-gov works PD only in the US), so the connector
+    leaves it unmapped; classify() then gates it by deny-by-default (§9.0).
+
+    The connector never assigns the class — proof is that the resolved class
+    equals a fresh classify() re-run of the SAME passed-through string, and that
+    string is the gated default, never public_domain."""
+    item = {
+        "id": "pd-loose",
+        "title": "Map: loosely-labelled public-domain Chemistry",
+        "license": ambiguous_tag,
+        "pdf_url": "https://chem.libretexts.org/pd.pdf",
+    }
+    client = FakeClient(
+        json_by_url={libretexts.LIBRETEXTS_CONTENT_URL: {"items": [item]}}
+    )
+    (w,) = libretexts.discover(client, limit=10)
+    result = w.classification()
+    # The connector passed the tag through unpromoted; classify() owns the verdict.
+    expected = classify(w.declared_license, {}, legitimate_source=True)
+    assert result.content_class == expected.content_class
+    # Deny-by-default: the ambiguous tag gates, is NOT servable, and is NEVER
+    # rounded up to public_domain by a connector-side semantic judgment.
+    assert result.content_class == GATED_DEFAULT_CONTENT_CLASS
+    assert result.content_class != "public_domain"
+    assert result.servable is False
+
+
+def test_explicit_cc0_code_still_resolves_public_domain_via_classify():
+    """SHARPEN (finding 2): the deny-by-default tightening must NOT break the
+    legitimate case — an EXPLICIT, unambiguous `cc0` code still passes through
+    to classify(), which resolves it to public_domain. The class still comes
+    from classify(), not the connector."""
+    item = {
+        "id": "cc0-explicit",
+        "title": "Map: explicitly CC0-dedicated Chemistry",
+        "license": "cc0",
+        "pdf_url": "https://chem.libretexts.org/cc0.pdf",
+    }
+    client = FakeClient(
+        json_by_url={libretexts.LIBRETEXTS_CONTENT_URL: {"items": [item]}}
+    )
+    (w,) = libretexts.discover(client, limit=10)
+    assert w.declared_license == "cc0"
+    result = w.classification()
+    expected = classify("cc0", {}, legitimate_source=True)
+    assert result.content_class == expected.content_class
+    assert result.content_class == "public_domain"
+    assert result.servable is True
+
+
+def test_cc0_publicdomain_uri_resolves_public_domain_via_classify():
+    """SHARPEN (finding 2): a REAL CC0 dedication URL (not a loose tag) still
+    resolves to public_domain. The licenseurl path hands the URI straight to
+    classify(); the connector makes no judgment."""
+    item = {
+        "id": "cc0-uri",
+        "title": "Map: CC0-URI-dedicated Chemistry",
+        "licenseurl": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "pdf_url": "https://chem.libretexts.org/cc0uri.pdf",
+    }
+    client = FakeClient(
+        json_by_url={libretexts.LIBRETEXTS_CONTENT_URL: {"items": [item]}}
+    )
+    (w,) = libretexts.discover(client, limit=10)
+    assert w.declared_license == "https://creativecommons.org/publicdomain/zero/1.0/"
+    result = w.classification()
+    expected = classify(w.declared_license, {}, legitimate_source=True)
+    assert result.content_class == expected.content_class
+    assert result.content_class == "public_domain"
+    assert result.servable is True
