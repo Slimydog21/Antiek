@@ -32,6 +32,7 @@ from substrate.books.servability import (
 from substrate.constants import (
     BOOK_DEFAULT_SERVABILITY,
     SERVABLE_CONTENT_CLASSES,
+    SOURCE_DECLARED_OPEN_CONTENT_CLASS,
     SYSTEM_INVESTIGATION_ID,
     TAKEDOWN_CONTENT_CLASS,
 )
@@ -643,6 +644,60 @@ def test_api_full_text_serves_servable(db, client):
 
 def test_api_full_text_unknown_404(db, client):
     assert client.get("/books/doc-nope/full-text").status_code == 404
+
+
+def _insert_arxiv_t1(db_path, document_id, *, arxiv_id, license_uri):
+    """Insert a servable arXiv doc (CC-BY / T1) the way the OAI persist path
+    stamps it — content_class ``source_declared_open`` (servable) plus a
+    metadata blob carrying ``license_uri`` + ``arxiv_id``. A deliberately LYING
+    stored ``rights_tier='T3'`` proves the response tier is re-derived from the
+    license URI, not echoed from the stored value."""
+    con = connect_write(db_path, purpose="insert-arxiv")
+    try:
+        insert_document(
+            con, document_id=document_id, source_tier=3,
+            document_type="academic_paper", title="An arXiv Paper",
+            author="A. Author", raw_text="OPEN ARXIV BODY. " * 60,
+            content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+            metadata={
+                "source": "arxiv_oai_pmh",
+                "license_uri": license_uri,
+                "arxiv_id": arxiv_id,
+                "rights_tier": "T3",  # a LIE; response must re-derive to T1
+            },
+        )
+    finally:
+        con.close()
+
+
+def test_api_full_text_response_carries_rights_context_for_t1_arxiv(db, client):
+    """ROUTE-SEAM ENFORCEMENT (Read SPR-05): the full-text JSON response must
+    carry the four rights-context fields the data-driven reader renders off —
+    ``tier``, ``ad_eligible``, ``canonical_url``, ``license`` — with the values
+    the guard resolved for a servable T1 (CC-BY) arXiv doc.
+
+    This is the test the critic's send-back demanded: it FAILS if ANY of the four
+    field-mappings (``tier=``, ``ad_eligible=``, ``canonical_url=``, ``license=``)
+    is deleted from the ``get_book_full_text`` handler, because the pydantic model
+    then defaults that field (``None`` / ``False``) and the assertion below sees
+    the wrong value. The four assertions are individually load-bearing — no one
+    of them can be removed without losing coverage of one mapping."""
+    _insert_arxiv_t1(
+        db, "doc-api-arxiv-t1",
+        arxiv_id="2405.00005",
+        license_uri="http://creativecommons.org/licenses/by/4.0/",
+    )
+    res = client.get("/books/doc-api-arxiv-t1/full-text")
+    assert res.status_code == 200
+    body = res.json()
+    # Serve decision: a servable T1 body is emitted.
+    assert body["servable"] is True
+    assert "OPEN ARXIV BODY" in body["full_text"]
+    # The four rights-context fields, each guarding one handler mapping.
+    assert body["tier"] == "T1"  # re-derived from the license, not the stored T3 lie
+    assert body["ad_eligible"] is True  # ads_allowed(T1)
+    assert body["canonical_url"] == "https://arxiv.org/abs/2405.00005"
+    assert body["license"] == "http://creativecommons.org/licenses/by/4.0/"
 
 
 # ---------------------------------------------------------------------------

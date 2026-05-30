@@ -224,6 +224,10 @@ function makeDetail(over: Partial<BookDetail> = {}): BookDetail {
 }
 
 function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
+  // Default to a NON-arXiv document (tier null): ad-eligibility equals servable
+  // (today's behaviour), no canonical/license. arXiv cases override `tier`
+  // (and ad_eligible/canonical_url/license) explicitly per the SPR-05 contract.
+  const servable = over.servable ?? true;
   return {
     document_id: "doc-1",
     servable: true,
@@ -233,6 +237,10 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
     title: "A Servable Book",
     author: "Auth",
     reason: "servable",
+    tier: null,
+    ad_eligible: servable,
+    canonical_url: null,
+    license: null,
     ...over,
   };
 }
@@ -431,6 +439,284 @@ describe("BookReader", () => {
     // float-menu — the gate withholds at the source, the reader reflects it.
     expect(screen.getByText(/no readable pages/)).toBeTruthy();
     expect(screen.queryByRole("menu", { name: /Highlight actions/ })).toBeNull();
+  });
+
+  // ── Read SPR-05: tiered reader surface (T1/T2/T3 + ad-gating) ───────
+  //
+  // The reader reads tier / ad-eligibility / canonical link off the GATE
+  // response (never a local flag). The AdBorder rails carry data-slot-id +
+  // aria-label="Recommended reading" (the house-fill state); their presence/
+  // absence in the DOM is the ad-gating assertion.
+
+  function adRails(container: HTMLElement): NodeListOf<Element> {
+    return container.querySelectorAll("[data-slot-id]");
+  }
+
+  it("T1 arXiv: hosts the extracted body, shows ad rails, Attribution + a canonical via-arXiv link", async () => {
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "public_domain", servable_full_text: true }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        tier: "T1",
+        ad_eligible: true,
+        canonical_url: "https://arxiv.org/abs/2401.00001",
+        license: "https://creativecommons.org/publicdomain/zero/1.0/",
+      }),
+    );
+    const { container } = await renderReader();
+    // The hosted extracted text renders through the SAME markdown reader.
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    // Ad rails present (T1 is ad-eligible).
+    expect(adRails(container).length).toBeGreaterThan(0);
+    // Attribution chrome + a canonical link that points at arxiv.org.
+    const attribution = container.querySelector("[aria-label='Attribution']") as HTMLElement;
+    expect(attribution).toBeTruthy();
+    const viaArxiv = within(attribution).getByText(/via arXiv/);
+    expect(viaArxiv.getAttribute("href")).toBe("https://arxiv.org/abs/2401.00001");
+    // No link-back frame on T1 — it hosts the body.
+    expect(container.querySelector("[data-arxiv-frame]")).toBeNull();
+  });
+
+  it("T2 arXiv (gated): renders the arXiv link-back, NO ad rails, NO hosted body, Attribution", async () => {
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        servable: false,
+        full_text: null,
+        snippet: null,
+        tier: "T2",
+        ad_eligible: false,
+        canonical_url: "https://arxiv.org/abs/2402.00002",
+        license: "https://creativecommons.org/licenses/by-nc/4.0/",
+        reason: "gated_metadata_only",
+        servability: "gated_metadata_only",
+      }),
+    );
+    const { container } = await renderReader();
+    // The link-back frame is the surface; its canonical target is arxiv.org
+    // (DOM-inspectable on data-canonical-url — the bare full-URL anchor was
+    // trimmed; the "Read on arXiv" CTA + Attribution's link are the two links).
+    const frame = await waitFor(() => {
+      const f = container.querySelector("[data-arxiv-frame]") as HTMLElement | null;
+      expect(f).toBeTruthy();
+      return f as HTMLElement;
+    });
+    expect(frame.getAttribute("data-canonical-url")).toBe("https://arxiv.org/abs/2402.00002");
+    expect(within(frame).getByText(/Read on arXiv/)).toBeTruthy();
+    // NO ad rails — body-serving + ads are {T1}-only.
+    expect(adRails(container).length).toBe(0);
+    // No hosted body reached the DOM (the gate served none, and we host none).
+    expect(screen.queryByText("The opening of the book.")).toBeNull();
+    // Attribution still renders (all tiers).
+    expect(container.querySelector("[aria-label='Attribution']")).toBeTruthy();
+    // §9.0 / rights: NO Antiek-served body — the only arXiv pointer is the
+    // canonical arxiv.org URL (bytes come from arXiv, never proxied by Antiek).
+    expect(container.querySelector("[data-akb-asset-id]")).toBeNull();
+  });
+
+  it("T3 arXiv (unknown/default): same link-back path as T2, NO ad rails, NO hosted body", async () => {
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        servable: false,
+        full_text: null,
+        snippet: null,
+        tier: "T3",
+        ad_eligible: false,
+        canonical_url: "https://arxiv.org/abs/2403.00003",
+        license: null,
+        reason: "restricted_pending_opt_in",
+        servability: "gated_metadata_only",
+      }),
+    );
+    const { container } = await renderReader();
+    const frame = await waitFor(() => {
+      const f = container.querySelector("[data-arxiv-frame]") as HTMLElement | null;
+      expect(f).toBeTruthy();
+      return f as HTMLElement;
+    });
+    expect(frame.getAttribute("data-canonical-url")).toBe("https://arxiv.org/abs/2403.00003");
+    expect(within(frame).getByText(/Read on arXiv/)).toBeTruthy();
+    expect(adRails(container).length).toBe(0);
+    expect(screen.queryByText("The opening of the book.")).toBeNull();
+    expect(container.querySelector("[aria-label='Attribution']")).toBeTruthy();
+  });
+
+  it("non-arXiv servable book: keeps its ad rails (regression — ad-gating must not turn them off)", async () => {
+    // tier null + ad_eligible true (the backend sets ad_eligible == servable for
+    // a non-arXiv work). This is exactly today's path and MUST keep the rails.
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody()); // tier:null, ad_eligible:true
+    const { container } = await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    expect(adRails(container).length).toBeGreaterThan(0);
+    // A non-arXiv doc has no canonical arXiv source, so Attribution renders
+    // nothing extra (no via-arXiv link).
+    expect(screen.queryByText(/via arXiv/)).toBeNull();
+    // Never a link-back frame for a non-arXiv work.
+    expect(container.querySelector("[data-arxiv-frame]")).toBeNull();
+  });
+
+  it("non-arXiv gated book: existing preview notice preserved + NO ad rails (ad_eligible false)", async () => {
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        servable: false,
+        full_text: null,
+        snippet: "Only a snippet is permitted.",
+        ad_eligible: false, // tier stays null (non-arXiv)
+        reason: "gated_metadata_only",
+        servability: "gated_metadata_only",
+      }),
+    );
+    const { container } = await renderReader();
+    // The existing gated notice is unchanged (no arXiv branch hijacked it).
+    await waitFor(() => expect(screen.getByText(/licensed for full reading/)).toBeTruthy());
+    expect(screen.getByText("Only a snippet is permitted.")).toBeTruthy();
+    // A non-ad-eligible gated work shows no ad rails.
+    expect(adRails(container).length).toBe(0);
+    // And it is NOT routed to the arXiv link-back frame (tier null).
+    expect(container.querySelector("[data-arxiv-frame]")).toBeNull();
+  });
+
+  // ── Read SPR-05 (round-2): the ad-eligibility gate is LOAD-BEARING ───
+  //
+  // The observePage slot list is gated on `body.ad_eligible`. A non-ad-eligible
+  // doc that HAS pages must register ZERO impression slots — registering top+
+  // bottom regardless would flush FALSE impressions into the SPR-06 accrual/
+  // money path. These two tests are the mutation guard: removing the
+  // `body?.ad_eligible &&` conditional (registering slots regardless) MUST turn
+  // the first one red.
+
+  it("LOAD-BEARING: a non-ad-eligible doc WITH pages registers ZERO impression slots (no false impressions)", async () => {
+    recordAdImpressionsMock.mockClear();
+    // A non-arXiv GATED book with a snippet: servable=false ⇒ ad_eligible=false,
+    // full_text=null, snippet present ⇒ paginates to exactly one page. So the
+    // observePage effect DOES run (pages.length === 1) — the discriminating
+    // input: a body that has pages but is NOT ad-eligible.
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        servable: false,
+        full_text: null,
+        snippet: "A gate-served snippet, one page of it.",
+        ad_eligible: false,
+        servability: "gated_metadata_only",
+        reason: "gated_metadata_only",
+      }),
+    );
+    const { container, unmount } = await renderReader();
+    // The snippet body paginated (pages exist), so observePage ran with the
+    // registered slot list — which, for a non-ad-eligible doc, MUST be empty.
+    await waitFor(() =>
+      expect(screen.getByText("A gate-served snippet, one page of it.")).toBeTruthy(),
+    );
+    // No ad rails on screen either (the render gate agrees with the slot gate).
+    expect(adRails(container).length).toBe(0);
+    // Unmount flushes the current page. With an EMPTY slot list the hook never
+    // calls recordAdImpressions (no slot ⇒ no impression). If the ad-eligibility
+    // conditional were removed, top+bottom slots would be registered and this
+    // unmount flush WOULD fire recordAdImpressions — so this assertion is the
+    // mutation guard.
+    unmount();
+    const adImpressionCalls = recordAdImpressionsMock.mock.calls.filter(
+      ([, , items]) =>
+        Array.isArray(items) &&
+        items.some((i: { slot_id: string }) => /:top$|:bottom$/.test(i.slot_id)),
+    );
+    expect(adImpressionCalls).toHaveLength(0);
+    expect(recordAdImpressionsMock).not.toHaveBeenCalled();
+  });
+
+  it("LOAD-BEARING: an ad-eligible doc DOES flush top+bottom ad impressions on a page change", async () => {
+    recordAdImpressionsMock.mockClear();
+    // A non-arXiv servable book: ad_eligible=true, multi-page body, so a Next
+    // click drives a real page change → the previous page's top+bottom slots
+    // flush. This is the positive half: the gate lets eligible rails through.
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody()); // tier null, ad_eligible true, 2 pages
+    await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await waitFor(() => expect(recordAdImpressionsMock).toHaveBeenCalled());
+    // The flushed impressions are the previous page's top+bottom ad slots.
+    const flushed = recordAdImpressionsMock.mock.calls.flatMap(([, , items]) =>
+      (items as { slot_id: string }[]).map((i) => i.slot_id),
+    );
+    expect(flushed.some((s) => /:top$/.test(s))).toBe(true);
+    expect(flushed.some((s) => /:bottom$/.test(s))).toBe(true);
+  });
+
+  it("a content-gated ad-eligible doc with NO stored body (full_text null, no pages) shows NO ad rails", async () => {
+    // An arXiv T1 whose license makes it ad-eligible, but whose body isn't
+    // stored yet: ad_eligible=true, full_text=null, snippet=null ⇒ pages.length
+    // 0. The rails must NOT mount around nothing. (Render is gated on
+    // `adEligible && pages.length > 0`.)
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "public_domain", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        tier: "T1",
+        ad_eligible: true,
+        full_text: null,
+        snippet: null,
+        canonical_url: "https://arxiv.org/abs/2401.99999",
+        license: "https://creativecommons.org/publicdomain/zero/1.0/",
+        servable: false,
+        reason: "body_not_stored",
+      }),
+    );
+    const { container } = await renderReader();
+    // Attribution still renders (T1 with canonical), but there are NO ad rails
+    // because there is no body to wrap.
+    await waitFor(() =>
+      expect(container.querySelector("[aria-label='Attribution']")).toBeTruthy(),
+    );
+    expect(adRails(container).length).toBe(0);
+    // Not the link-back frame either — T1 is the hosted-body tier (just empty).
+    expect(container.querySelector("[data-arxiv-frame]")).toBeNull();
+  });
+
+  it("a degenerate arXiv T2/T3 with canonical_url null degrades honestly — no body, no ad rails, an honest notice", async () => {
+    // Defence-in-depth: unreachable from the OAI persist path (arxiv_id is co-
+    // stamped with license_uri), but if a T2/T3 doc lost its canonical_url it
+    // must NOT fall through to the empty hosted-body view. It renders the
+    // link-unavailable notice and nothing else.
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        servable: false,
+        full_text: null,
+        snippet: null,
+        tier: "T3",
+        ad_eligible: false,
+        canonical_url: null,
+        license: null,
+        servability: "gated_metadata_only",
+        reason: "restricted_pending_opt_in",
+      }),
+    );
+    const { container } = await renderReader();
+    await waitFor(() =>
+      expect(container.querySelector("[data-arxiv-link-unavailable]")).toBeTruthy(),
+    );
+    expect(screen.getByText(/arXiv link isn’t available/)).toBeTruthy();
+    // No empty body, no link-back frame, no ad rails.
+    expect(container.querySelector("[data-arxiv-frame]")).toBeNull();
+    expect(adRails(container).length).toBe(0);
+    expect(screen.queryByText("The opening of the book.")).toBeNull();
   });
 
   it("a gated book: a highlight on the bounded snippet refuses outbound Search — the withheld body never leaves the client (§9.0 no-leak)", async () => {

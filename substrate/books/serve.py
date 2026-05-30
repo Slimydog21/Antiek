@@ -40,7 +40,29 @@ class ServeResult:
     """The outcome of a full-text serve request. ``full_text`` is populated
     ONLY for servable books; ``snippet`` is populated for gated books;
     both are ``None`` for taken-down books and for unknown document_ids.
-    ``reason`` explains a denial in human terms (audit / API messaging)."""
+    ``reason`` explains a denial in human terms (audit / API messaging).
+
+    The four trailing fields carry the arXiv RIGHTS context onto the serve
+    contract so a data-driven reader (Read SPR-05) can render the tier / ad
+    rail / canonical link / license off the backend response rather than a
+    local flag. They are populated ONLY by ``serve_full_text_guarded`` (the
+    one place that already reads ``documents.metadata`` for the tier
+    cross-check); the bare ``serve_full_text`` gate leaves them at their
+    backward-compatible defaults, so every existing construction site and
+    every non-arXiv book is byte-identical to before.
+
+    - ``tier``: the resolved ``RightsTier`` value (``'T1'|'T2'|'T3'``) for an
+      arXiv document (one carrying a ``license_uri`` in metadata); ``None``
+      for a non-arXiv document, where the tier arm is skipped.
+    - ``ad_eligible``: whether an ad rail may mount. For an arXiv document it
+      is ``ads_allowed(tier)`` (T1 only); for a non-arXiv document it
+      PRESERVES today's behaviour (``== servable``) so existing servable
+      books stay ad-eligible — no regression.
+    - ``canonical_url``: ``https://arxiv.org/abs/{arxiv_id}`` for an arXiv
+      document; ``None`` otherwise.
+    - ``license``: the arXiv ``license_uri`` (the rights anchor) for an arXiv
+      document; ``None`` otherwise.
+    """
 
     document_id: str
     found: bool
@@ -51,6 +73,12 @@ class ServeResult:
     title: Optional[str]
     author: Optional[str]
     reason: str
+    # Rights context (populated by serve_full_text_guarded; defaulted here so
+    # the bare gate and all existing construction sites are unchanged).
+    tier: Optional[str] = None
+    ad_eligible: bool = False
+    canonical_url: Optional[str] = None
+    license: Optional[str] = None
 
 
 def serve_full_text(con: Any, document_id: str) -> ServeResult:

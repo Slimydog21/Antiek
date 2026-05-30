@@ -51,6 +51,8 @@ function sourceLine(work: BookSummary): string {
       return "Antiek original";
     case "publisher_opted_in":
       return "Publisher licensed";
+    case "source_declared_open":
+      return "Open license";
     case "gated_metadata_only":
       return "Catalog record";
     case "taken_down":

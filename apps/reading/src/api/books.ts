@@ -13,6 +13,11 @@ export type Servability =
   | "public_domain"
   | "platform_authored"
   | "publisher_opted_in"
+  // A source-declared open license (CC-BY / CC-BY-SA): servable, but NOT a
+  // §9.10 publisher opt-in. Mirrors the backend ServabilityStatus enum, which
+  // defines this member (substrate/books/servability.py) — the union was
+  // missing it (drift fix).
+  | "source_declared_open"
   | "gated_metadata_only"
   | "taken_down";
 
@@ -55,6 +60,16 @@ export interface FullTextResponse {
   title: string | null;
   author: string | null;
   reason: string;
+  // Rights context (Read SPR-05). Data-driven: the reader reads these off the
+  // backend response, never a local flag. `tier` is the arXiv RightsTier
+  // ('T1'|'T2'|'T3') or null for a non-arXiv document; `ad_eligible` is the
+  // ad-rail gate (T1-only for arXiv; equals `servable` for non-arXiv,
+  // preserving today's behaviour); `canonical_url` is the arxiv.org/abs link
+  // or null; `license` is the license URI or null.
+  tier: "T1" | "T2" | "T3" | null;
+  ad_eligible: boolean;
+  canonical_url: string | null;
+  license: string | null;
 }
 
 export type CorpusStatus = "servable" | "gated" | "all";
@@ -451,6 +466,8 @@ export function servabilityLabel(s: Servability): { label: string; colour: "auro
       return { label: "Antiek original", colour: "aurora" };
     case "publisher_opted_in":
       return { label: "Publisher licensed", colour: "aurora" };
+    case "source_declared_open":
+      return { label: "Open license", colour: "aurora" };
     case "gated_metadata_only":
       return { label: "Preview only", colour: "sun" };
     case "taken_down":

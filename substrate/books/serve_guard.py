@@ -38,9 +38,10 @@ value: the whole point is to detect the case where a stored verdict disagrees
 with the license.
 
 Why it is a transparent pass-through TODAY (zero regression). Every existing
-book is non-arXiv → no ``license_uri`` in metadata → ``_tier_for_document``
-returns ``None`` → the tier arm is SKIPPED → behaviour is byte-identical to a
-bare ``serve_full_text`` call. Every arXiv row today sits at the gated floor
+book is non-arXiv → no ``license_uri`` in metadata → ``_rights_context``
+returns a tier of ``None`` → the tier arm is SKIPPED → the SERVE DECISION is
+identical to a bare ``serve_full_text`` call. Every arXiv row today sits at the
+gated floor
 (``restricted_pending_opt_in``), so ``serve_full_text`` returns
 ``full_text=None`` and the tier arm never even looks at the license. The guard
 only grows teeth when SPR-04 starts promoting T1 bodies — at which point a
@@ -52,59 +53,79 @@ side; ``tools/lint/serve_guard_check.py`` enforces that mechanically.
 
 from __future__ import annotations
 
+import dataclasses
 import json
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 from substrate.books.serve import ServeResult, serve_full_text
 from substrate.rights import (
     RightsTier,
     T3BodyServeError,
+    ads_allowed,
     body_servable,
     resolve_tier,
 )
 
 
-def _tier_for_document(con: Any, document_id: str) -> Optional[RightsTier]:
-    """Re-derive the rights tier for ``document_id`` from its IMMUTABLE arXiv
-    ``<license>`` URI, INDEPENDENTLY of any stored tier verdict.
+class _RightsContext(NamedTuple):
+    """The arXiv rights context read ONCE from ``documents.metadata``.
 
-    Reads ``documents.metadata`` (a TEXT-JSON column) and extracts the
-    ``license_uri`` the OAI persist path stamped in. Returns:
+    ``tier`` is the FRESH license-derived tier (re-derived off the immutable
+    ``license_uri`` via ``resolve_tier``, NEVER the stored ``rights_tier`` — so a
+    corrupt stored verdict cannot launder a body past the drift cross-check);
+    ``arxiv_id`` and ``license_uri`` are the raw values the OAI persist path
+    stamped in (``acquisition.arxiv.oai_persist._record_metadata``). All three
+    are ``None`` for a non-arXiv document (a row with no ``license_uri`` key),
+    which is how the serve contract distinguishes "arXiv paper" from "existing
+    book" downstream."""
 
-      * ``resolve_tier(license_uri)`` when the row carries a ``license_uri`` —
-        the tier derived FRESH from the raw license, so a corrupt stored
-        ``rights_tier`` / ``content_class`` cannot launder a body past this arm.
-      * ``None`` when the row is missing, has no metadata, has unparseable
-        metadata, or has no ``license_uri`` (every non-arXiv book) — the tier
-        arm is then SKIPPED, leaving behaviour identical to bare serving.
+    tier: Optional[RightsTier]
+    arxiv_id: Optional[str]
+    license_uri: Optional[str]
 
-    Deliberately does NOT read ``metadata['rights_tier']``: an independent
-    re-derivation off the license element is the entire defense. A present-but-
-    empty/whitespace ``license_uri`` still flows through ``resolve_tier``, which
-    deny-by-defaults it to T3 — i.e. a blanked-out license is treated as the
-    most restrictive tier, not skipped.
+
+def _rights_context(con: Any, document_id: str) -> _RightsContext:
+    """Read ``documents.metadata`` ONCE and project the arXiv rights context.
+
+    This is the SINGLE metadata read that backs BOTH the drift cross-check (via
+    ``.tier``) and the serve-contract enrichment (tier / canonical_url /
+    license). Defensive parsing: a missing row / missing metadata / unparseable
+    JSON / no ``license_uri`` key all yield a non-arXiv document (everything
+    ``None``), so the tier arm is skipped and behaviour is identical to bare
+    serving. For an arXiv row it returns the tier RE-DERIVED from the immutable
+    ``license_uri`` (so a corrupt stored ``rights_tier`` cannot launder
+    anything), plus the ``arxiv_id`` and ``license_uri`` the persist path wrote.
+    A present-but-blank ``license_uri`` is still an arXiv signal: it flows through
+    ``resolve_tier`` to T3 (deny-by-default), and its ``arxiv_id`` is still read.
     """
     row = con.execute(
         "SELECT metadata FROM documents WHERE document_id = ? LIMIT 1",
         [document_id],
     ).fetchone()
     if row is None or row[0] is None:
-        return None
+        return _RightsContext(None, None, None)
     try:
         metadata = json.loads(row[0])
     except (TypeError, ValueError, json.JSONDecodeError):
-        # Unparseable metadata is not a license signal — skip the tier arm and
-        # let the content_class gate stand alone (it already failed closed if it
-        # cleared this body). We do not infer a tier from a corrupt blob.
-        return None
+        # Unparseable metadata is not a license signal — treat as non-arXiv so
+        # the tier arm is skipped and the content_class gate stands alone (it
+        # already failed closed if it cleared this body). We do not infer a tier
+        # from a corrupt blob.
+        return _RightsContext(None, None, None)
     if not isinstance(metadata, dict) or "license_uri" not in metadata:
-        return None
-    return resolve_tier(metadata["license_uri"])
+        return _RightsContext(None, None, None)
+    license_uri = metadata["license_uri"]
+    arxiv_id = metadata.get("arxiv_id")
+    return _RightsContext(
+        tier=resolve_tier(license_uri),
+        arxiv_id=arxiv_id if isinstance(arxiv_id, str) and arxiv_id else None,
+        license_uri=license_uri if isinstance(license_uri, str) else None,
+    )
 
 
 def serve_full_text_guarded(con: Any, document_id: str) -> ServeResult:
     """Serve a full body through BOTH the content_class gate and an independent
-    license-tier cross-check.
+    license-tier cross-check, and stamp the arXiv RIGHTS context onto the result.
 
     Delegates to the binding ``serve_full_text`` gate, then — ONLY when that
     gate is about to emit a body (``full_text is not None``) — re-derives the
@@ -112,27 +133,54 @@ def serve_full_text_guarded(con: Any, document_id: str) -> ServeResult:
     ``T3BodyServeError``) if the license does not permit a body to leave storage
     on the current commercial surface ({T1} only). On the normal gated path
     ``full_text`` is ``None``, so the tier arm never fires; for a non-arXiv book
-    the tier is ``None`` and is skipped. The result object is returned UNCHANGED
-    in every non-drift case — the guard preserves ``.servable`` / ``.full_text``
-    / ``.snippet`` exactly so callers' downstream branching is untouched.
+    the tier is ``None`` and is skipped.
+
+    On the non-drift path the result is returned with the four rights fields
+    POPULATED so a data-driven reader (Read SPR-05) reads tier / ad-eligibility /
+    canonical link / license off the backend response, never a local flag. The
+    serve-decision fields (``.servable`` / ``.full_text`` / ``.snippet``) are
+    preserved EXACTLY (``dataclasses.replace`` only adds the rights fields), so
+    callers' downstream branching is untouched. There is ONE read of
+    ``documents.metadata`` — ``_rights_context`` — and its ``.tier`` backs BOTH
+    the drift cross-check and the enrichment, so the two can never diverge.
+
+    The ad-eligibility rule is REGRESSION-SAFE:
+      * arXiv document (tier resolvable) → ``ads_allowed(tier)`` (T1 only).
+      * non-arXiv document (tier ``None``) → ``servable`` — preserving today's
+        behaviour where the reader mounts ad rails on any servable book.
+    Ad-eligibility is derived ONLY from ``substrate.rights.ads_allowed`` /
+    ``resolve_tier`` (the single source of truth), never re-derived from
+    license/content_class here.
     """
     result = serve_full_text(con, document_id)
+    ctx = _rights_context(con, document_id)
     if result.full_text is not None:
-        tier = _tier_for_document(con, document_id)
-        if tier is not None and not body_servable(tier):
+        if ctx.tier is not None and not body_servable(ctx.tier):
             raise T3BodyServeError(
                 f"RIGHTS DRIFT: serve gate cleared a full body for "
                 f"{document_id!r} (content_class -> servable, reason="
                 f"{result.reason!r}) but its arXiv <license> resolves to "
-                f"{tier.value} — a non-body-servable tier ({tier!r}). A body "
-                f"present whose license forbids redistribution from Antiek "
+                f"{ctx.tier.value} — a non-body-servable tier ({ctx.tier!r}). A "
+                f"body present whose license forbids redistribution from Antiek "
                 f"storage is the cardinal redistribution violation; refusing "
                 f"to emit it. The body-servable tier is T1 only on the current "
                 f"commercial surface (T2 CC-BY-NC is non-commercial-display "
                 f"only, coherent with acquisition.licenses_core); this is the "
                 f"deny-by-default serving boundary (master-spec §9.0)."
             )
-    return result
+    # arXiv → ads gate on the tier (T1 only); non-arXiv → preserve today's
+    # "ad rail on any servable book" behaviour. Single source of truth: ads_allowed.
+    ad_eligible = ads_allowed(ctx.tier) if ctx.tier is not None else result.servable
+    canonical_url = (
+        f"https://arxiv.org/abs/{ctx.arxiv_id}" if ctx.arxiv_id else None
+    )
+    return dataclasses.replace(
+        result,
+        tier=ctx.tier.value if ctx.tier is not None else None,
+        ad_eligible=ad_eligible,
+        canonical_url=canonical_url,
+        license=ctx.license_uri,
+    )
 
 
 __all__ = ["serve_full_text_guarded"]

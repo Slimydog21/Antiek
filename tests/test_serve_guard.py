@@ -33,7 +33,7 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from substrate.books.serve_guard import (  # noqa: E402
-    _tier_for_document,
+    _rights_context,
     serve_full_text_guarded,
 )
 from runtime.db_lock import connect_read, connect_write  # noqa: E402
@@ -46,10 +46,12 @@ from substrate.graph.ops import insert_document  # noqa: E402
 from substrate.graph.schema import init_database  # noqa: E402
 from substrate.rights import RightsTier, T3BodyServeError  # noqa: E402
 
-# A real arXiv-default (T3, link-back-only) license URI, and a real CC-BY (T1)
-# URI — the two endpoints of the rights model the guard cross-checks against.
+# A real arXiv-default (T3, link-back-only) license URI, a real CC-BY (T1) URI,
+# and a real CC-BY-NC (T2, non-commercial-display-only) URI — the three tiers
+# the serve contract now carries.
 _T3_LICENSE = "http://arxiv.org/licenses/nonexclusive-distrib/1.0/"
 _T1_LICENSE = "http://creativecommons.org/licenses/by/4.0/"
+_T2_LICENSE = "http://creativecommons.org/licenses/by-nc/4.0/"
 _BODY = "THE FULL PAPER BODY THAT MUST NOT LEAK FOR A T3 PAPER. " * 30
 
 # Sentinel distinguishing "license_uri omitted" (non-arXiv book → no key in
@@ -69,11 +71,15 @@ def db(monkeypatch):
     return db_path
 
 
-def _insert(db, document_id, *, content_class, body, license_uri=_NO_LICENSE):
+def _insert(
+    db, document_id, *, content_class, body, license_uri=_NO_LICENSE, arxiv_id=None
+):
     """Insert a documents row. ``license_uri`` omitted → no ``license_uri`` key
     in metadata (a non-arXiv book); passed → an arXiv-style metadata blob with
     that URI (and a deliberately MISLEADING stored ``rights_tier`` to prove the
-    guard re-derives from the URI, not the stored value)."""
+    guard re-derives from the URI, not the stored value). ``arxiv_id``, when
+    given, is stamped into metadata the same way the OAI persist path writes it,
+    so the canonical_url projection can be exercised."""
     metadata = None
     if license_uri is not _NO_LICENSE:
         metadata = {
@@ -83,6 +89,8 @@ def _insert(db, document_id, *, content_class, body, license_uri=_NO_LICENSE):
             # passes can only have done so by re-deriving from license_uri.
             "rights_tier": "T1",
         }
+        if arxiv_id is not None:
+            metadata["arxiv_id"] = arxiv_id
     con = connect_write(db, purpose="setup")
     try:
         insert_document(
@@ -139,7 +147,7 @@ def test_drift_raise_is_independent_of_the_stored_rights_tier(db):
             ).fetchone()[0]
         )
         assert meta["rights_tier"] == "T1"  # the stored lie
-        assert _tier_for_document(con, "doc-lying-tier") is RightsTier.T3_DEFAULT_UNKNOWN
+        assert _rights_context(con, "doc-lying-tier").tier is RightsTier.T3_DEFAULT_UNKNOWN
         with pytest.raises(T3BodyServeError):
             serve_full_text_guarded(con, "doc-lying-tier")
     finally:
@@ -162,7 +170,7 @@ def test_t1_servable_body_served_no_raise(db):
         result = serve_full_text_guarded(con, "doc-t1")
         assert result.servable is True
         assert result.full_text == _BODY
-        assert _tier_for_document(con, "doc-t1") is RightsTier.T1_REDISTRIBUTABLE
+        assert _rights_context(con, "doc-t1").tier is RightsTier.T1_REDISTRIBUTABLE
     finally:
         con.close()
 
@@ -170,18 +178,35 @@ def test_t1_servable_body_served_no_raise(db):
 # ── Zero regression: non-arXiv book + normal gated arXiv row ─────────
 
 
-def test_non_arxiv_book_no_license_uri_served_unchanged(db):
-    """A non-arXiv servable book (no license_uri in metadata) is served
-    identically to a bare serve_full_text — the tier arm is SKIPPED, so there is
-    ZERO behavioural change for the existing book corpus."""
+def _assert_serve_decision_equal(guarded, bare):
+    """The guard now ENRICHES the result with the four rights-context fields
+    (Read SPR-05), so it is no longer byte-identical to the bare gate. Its
+    contract is that the SERVE-DECISION fields — what body, if any, leaves
+    storage — are preserved EXACTLY. Compare those, ignoring the additive
+    rights fields (tier/ad_eligible/canonical_url/license)."""
+    for f in ("document_id", "found", "servability", "servable",
+              "full_text", "snippet", "title", "author", "reason"):
+        assert getattr(guarded, f) == getattr(bare, f), f"serve-decision field {f} drifted"
+
+
+def test_non_arxiv_book_no_license_uri_serve_decision_unchanged(db):
+    """A non-arXiv servable book (no license_uri in metadata): the tier arm is
+    SKIPPED, so the SERVE DECISION is identical to a bare serve_full_text — ZERO
+    behavioural change to what body leaves storage for the existing corpus. The
+    guard additionally stamps the rights context (tier=None, ad_eligible==servable,
+    canonical_url=None, license=None) — additive, not a behavioural change."""
     _insert(db, "doc-book", content_class="public_domain", body=_BODY)  # no license_uri
     con = connect_read(db)
     try:
-        assert _tier_for_document(con, "doc-book") is None  # tier arm skipped
+        assert _rights_context(con, "doc-book").tier is None  # tier arm skipped
         guarded = serve_full_text_guarded(con, "doc-book")
         bare = serve_full_text(con, "doc-book")
-        assert guarded == bare
+        _assert_serve_decision_equal(guarded, bare)
         assert guarded.servable is True and guarded.full_text == _BODY
+        # Additive rights context for a non-arXiv book.
+        assert guarded.tier is None and guarded.license is None
+        assert guarded.canonical_url is None
+        assert guarded.ad_eligible == guarded.servable  # no ad regression
     finally:
         con.close()
 
@@ -202,8 +227,10 @@ def test_normal_gated_arxiv_doc_returns_snippet_no_raise(db):
         assert result.full_text is None
         assert result.snippet is not None  # bounded snippet, fair-use regime
         assert result.servable is False
-        # The guard returns the SAME object the bare gate would.
-        assert result == serve_full_text(con, "doc-gated-arxiv")
+        # The guard preserves the SERVE DECISION the bare gate made (no body
+        # emitted); it additionally stamps the rights context (tier='T3' here).
+        _assert_serve_decision_equal(result, serve_full_text(con, "doc-gated-arxiv"))
+        assert result.tier == "T3" and result.ad_eligible is False
     finally:
         con.close()
 
@@ -225,14 +252,14 @@ def test_gated_arxiv_with_t1_license_still_snippet_no_body(db):
         con.close()
 
 
-# ── _tier_for_document edge cases ───────────────────────────────────
+# ── _rights_context tier edge cases ─────────────────────────────────
 
 
 def test_tier_for_unknown_document_is_none(db):
     """No row → tier arm skipped (None), never a raise."""
     con = connect_read(db)
     try:
-        assert _tier_for_document(con, "doc-does-not-exist") is None
+        assert _rights_context(con, "doc-does-not-exist").tier is None
     finally:
         con.close()
 
@@ -248,7 +275,7 @@ def test_tier_for_document_blank_license_uri_is_t3(db):
     )
     con = connect_read(db)
     try:
-        assert _tier_for_document(con, "doc-blank-license") is RightsTier.T3_DEFAULT_UNKNOWN
+        assert _rights_context(con, "doc-blank-license").tier is RightsTier.T3_DEFAULT_UNKNOWN
         with pytest.raises(T3BodyServeError):
             serve_full_text_guarded(con, "doc-blank-license")
     finally:
@@ -275,8 +302,164 @@ def test_tier_for_document_unparseable_metadata_is_none(db):
         con.close()
     con = connect_read(db)
     try:
-        assert _tier_for_document(con, "doc-corrupt-meta") is None
+        assert _rights_context(con, "doc-corrupt-meta").tier is None
         # Skipped tier arm → behaves like the bare gate (body served on class).
         assert serve_full_text_guarded(con, "doc-corrupt-meta").servable is True
+    finally:
+        con.close()
+
+
+# ── Read SPR-05: the rights context carried onto the serve contract ─────
+#
+# serve_full_text_guarded now stamps four rights fields onto its ServeResult so a
+# data-driven reader renders tier / ad-rail / canonical link / license off the
+# backend response (never a local flag). The ad_eligible rule is REGRESSION-SAFE:
+# arXiv → ads_allowed(tier) (T1 only); non-arXiv → == servable (today's behaviour).
+
+
+def test_arxiv_t1_servable_is_ad_eligible_with_full_context(db):
+    """An arXiv T1 (CC-BY) doc at a servable class: body served, tier='T1',
+    ad_eligible True (ads_allowed(T1)), canonical_url + license populated."""
+    _insert(
+        db, "doc-t1-ads",
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS, body=_BODY,
+        license_uri=_T1_LICENSE, arxiv_id="2401.00001",
+    )
+    con = connect_read(db)
+    try:
+        r = serve_full_text_guarded(con, "doc-t1-ads")
+        assert r.servable is True and r.full_text == _BODY
+        assert r.tier == "T1"
+        assert r.ad_eligible is True  # ads_allowed(T1)
+        assert r.canonical_url == "https://arxiv.org/abs/2401.00001"
+        assert r.license == _T1_LICENSE
+    finally:
+        con.close()
+
+
+def test_arxiv_t1_gated_body_still_ad_eligible(db):
+    """THE discriminating case for the ad-eligibility rule (kills the
+    ``ad_eligible = result.servable`` mutation).
+
+    A CC-BY (T1) arXiv doc sitting at the gated content_class floor: the
+    content_class gate withholds the body (``servable=False``, ``full_text=None``),
+    yet ad-eligibility is LICENSE-based, not body-presence-based — ``ads_allowed(
+    T1)`` is ``True`` regardless of servability — so ``ad_eligible`` is ``True``.
+    This is the ONLY shipped row where ``ads_allowed(tier) != servable``, so it is
+    the only test that distinguishes the regression-safe rule
+    (``ads_allowed(ctx.tier) if ctx.tier else result.servable``) from the
+    ``= result.servable`` mutation: under the mutation ``ad_eligible`` would be
+    ``False`` here and this assertion fails."""
+    _insert(
+        db, "doc-t1-gated",
+        content_class=GATED_DEFAULT_CONTENT_CLASS, body=_BODY,
+        license_uri=_T1_LICENSE, arxiv_id="2404.00004",
+    )
+    con = connect_read(db)
+    try:
+        r = serve_full_text_guarded(con, "doc-t1-gated")
+        assert r.servable is False  # content_class gate withholds the body
+        assert r.full_text is None  # ...so no body leaves storage
+        assert r.tier == "T1"
+        # License-based: ads_allowed(T1) is True INDEPENDENT of servability. The
+        # `= result.servable` mutation would yield False here.
+        assert r.ad_eligible is True
+        assert r.canonical_url == "https://arxiv.org/abs/2404.00004"
+        assert r.license == _T1_LICENSE
+    finally:
+        con.close()
+
+
+def test_arxiv_t2_is_not_ad_eligible(db):
+    """An arXiv T2 (CC-BY-NC) doc at the gated floor (no body emitted → no drift
+    raise): tier='T2', ad_eligible False (NC is never ad-eligible)."""
+    _insert(
+        db, "doc-t2",
+        content_class=GATED_DEFAULT_CONTENT_CLASS, body=_BODY,
+        license_uri=_T2_LICENSE, arxiv_id="2402.00002",
+    )
+    con = connect_read(db)
+    try:
+        r = serve_full_text_guarded(con, "doc-t2")
+        assert r.tier == "T2"
+        assert r.ad_eligible is False  # CC-BY-NC: never ad-eligible
+        assert r.full_text is None  # gated floor, body not emitted
+        assert r.canonical_url == "https://arxiv.org/abs/2402.00002"
+        assert r.license == _T2_LICENSE
+    finally:
+        con.close()
+
+
+def test_arxiv_t3_is_not_ad_eligible(db):
+    """An arXiv T3 (arXiv-default) doc at the gated floor: tier='T3',
+    ad_eligible False (link-back-only, never ad-eligible)."""
+    _insert(
+        db, "doc-t3",
+        content_class=GATED_DEFAULT_CONTENT_CLASS, body=_BODY,
+        license_uri=_T3_LICENSE, arxiv_id="2403.00003",
+    )
+    con = connect_read(db)
+    try:
+        r = serve_full_text_guarded(con, "doc-t3")
+        assert r.tier == "T3"
+        assert r.ad_eligible is False
+        assert r.full_text is None
+        assert r.canonical_url == "https://arxiv.org/abs/2403.00003"
+        assert r.license == _T3_LICENSE
+    finally:
+        con.close()
+
+
+def test_non_arxiv_servable_book_stays_ad_eligible_no_regression(db):
+    """REGRESSION GUARD: a non-arXiv servable book (no license_uri) keeps
+    ad_eligible == servable (True here) — today's "ad rail on any servable book"
+    behaviour is preserved. tier/canonical_url/license are all None."""
+    _insert(db, "doc-book-servable", content_class="public_domain", body=_BODY)
+    con = connect_read(db)
+    try:
+        r = serve_full_text_guarded(con, "doc-book-servable")
+        assert r.servable is True
+        assert r.ad_eligible is True  # == servable (no regression)
+        assert r.tier is None
+        assert r.canonical_url is None
+        assert r.license is None
+    finally:
+        con.close()
+
+
+def test_non_arxiv_gated_book_is_not_ad_eligible(db):
+    """A non-arXiv GATED book (no license_uri, gated content_class) has
+    ad_eligible == servable == False — a non-servable book mounts no ad rail."""
+    _insert(
+        db, "doc-book-gated",
+        content_class=GATED_DEFAULT_CONTENT_CLASS, body=_BODY,
+    )
+    con = connect_read(db)
+    try:
+        r = serve_full_text_guarded(con, "doc-book-gated")
+        assert r.servable is False
+        assert r.ad_eligible is False  # == servable
+        assert r.tier is None
+        assert r.canonical_url is None
+        assert r.license is None
+    finally:
+        con.close()
+
+
+def test_arxiv_with_license_but_no_arxiv_id_has_null_canonical_url(db):
+    """An arXiv row carrying a license_uri but (defensively) no arxiv_id key:
+    tier + license still resolve, but canonical_url is None — we never fabricate
+    an arxiv.org link without the id."""
+    _insert(
+        db, "doc-no-id",
+        content_class=GATED_DEFAULT_CONTENT_CLASS, body=_BODY,
+        license_uri=_T3_LICENSE,  # arxiv_id omitted
+    )
+    con = connect_read(db)
+    try:
+        r = serve_full_text_guarded(con, "doc-no-id")
+        assert r.tier == "T3"
+        assert r.license == _T3_LICENSE
+        assert r.canonical_url is None
     finally:
         con.close()

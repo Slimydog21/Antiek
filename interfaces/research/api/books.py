@@ -161,6 +161,16 @@ class FullTextResponse(BaseModel):
     title: Optional[str]
     author: Optional[str]
     reason: str
+    # Rights context (Read SPR-05) — the data the reader renders off the
+    # backend response instead of a local flag. ``tier`` is the arXiv
+    # RightsTier value ('T1'|'T2'|'T3') or None for a non-arXiv document;
+    # ``ad_eligible`` is the ad-rail gate (T1-only for arXiv; == servable for
+    # non-arXiv, preserving today's behaviour); ``canonical_url`` is the
+    # arxiv.org/abs link or None; ``license`` is the license_uri or None.
+    tier: Optional[str] = None
+    ad_eligible: bool = False
+    canonical_url: Optional[str] = None
+    license: Optional[str] = None
 
 
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
@@ -424,6 +434,10 @@ def register_book_routes(app: FastAPI) -> None:
             title=result.title,
             author=result.author,
             reason=result.reason,
+            tier=result.tier,
+            ad_eligible=result.ad_eligible,
+            canonical_url=result.canonical_url,
+            license=result.license,
         )
 
     @app.post(

@@ -14,6 +14,8 @@ import ChaseThread from "../ResearchWorkstation/ChaseThread";
 import ReadingColumn from "../../components/reader/ReadingColumn";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
+import ArxivFrame from "./ArxivFrame";
+import Attribution from "./Attribution";
 import ReadingCompanion from "./ReadingCompanion";
 import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
@@ -238,12 +240,31 @@ export default function BookReader() {
   // page changes. Runs only once the body has paginated.
   useEffect(() => {
     if (pages.length === 0) return;
+    // Only register impression slots for the rails we actually render. The
+    // discriminating gate is `body.ad_eligible` AND having a paginated body:
+    //   • an ad-eligible body WITH pages shows top+bottom AdBorders, so it
+    //     registers their slots (they record impressions);
+    //   • a non-ad-eligible body (arXiv T2/T3, or any non-ad-eligible work)
+    //     shows no rails, so it registers NO slots — never a FALSE impression
+    //     for a rail that isn't on screen. This is load-bearing: a non-ad-
+    //     eligible doc registering slots would flush false impressions straight
+    //     into the SPR-06 accrual/money path.
+    //   • a content-gated ad-eligible doc whose body isn't stored yet
+    //     (ad_eligible true, full_text null → pages.length 0) is already
+    //     excluded by the early return above; the `pages.length > 0` here
+    //     mirrors the RENDER gate so the two never disagree.
+    // The empty observe (`[]`) still drives the prev-page flush.
     const base = `slot:${documentId}:p${pageIndex}`;
-    observePage(pageIndex, [
-      { slotId: `${base}:top`, fill: houseFill },
-      { slotId: `${base}:bottom`, fill: houseFill },
-    ]);
-  }, [pageIndex, houseFill, documentId, pages.length, observePage]);
+    observePage(
+      pageIndex,
+      body?.ad_eligible && pages.length > 0
+        ? [
+            { slotId: `${base}:top`, fill: houseFill },
+            { slotId: `${base}:bottom`, fill: houseFill },
+          ]
+        : [],
+    );
+  }, [pageIndex, houseFill, documentId, pages.length, observePage, body?.ad_eligible]);
 
   if (loading) {
     return <CenterNote>Opening the book…</CenterNote>;
@@ -259,6 +280,35 @@ export default function BookReader() {
   const { label, colour } = servabilityLabel(book.servability);
   const page = pages[pageIndex];
   const slotBase = `slot:${documentId}:p${pageIndex}`;
+
+  // ── Rights-tiered reader branch (Read SPR-05) ────────────────────────────
+  // Data-driven: read tier / ad-eligibility / canonical link off the GATE
+  // response (never a local flag — rigor #5). `tier === null` ⇒ a non-arXiv
+  // document, which stays on exactly today's path (the else-branch below, with
+  // ad rails gated on `ad_eligible`, which the backend sets == servable for
+  // non-arXiv, so it is unchanged). An arXiv T2 (gated, no hosted body) or T3
+  // (unknown/default) renders the link-back ArxivFrame with NO body and NO ad
+  // slots; only a redistributable arXiv T1 (hosted extracted text) and every
+  // non-arXiv book take the hosted-body path.
+  const isArxiv = body.tier !== null;
+  // An arXiv T2/T3 doc reads on arXiv. The normal case has a canonical_url (the
+  // gate stamps arxiv_id + license_uri together on persist, so it is co-present
+  // in practice). The link-back frame needs that URL.
+  const isArxivT2T3 = isArxiv && (body.tier === "T2" || body.tier === "T3");
+  const isArxivLinkBack = isArxivT2T3 && body.canonical_url !== null;
+  // Defence-in-depth: an arXiv T2/T3 doc that somehow lost its canonical_url
+  // (UNREACHABLE from the OAI persist path, where arxiv_id is co-stamped with
+  // license_uri) must NOT fall through to the hosted-body else-branch — that
+  // would render an empty body with no link-back (an M3 violation for that
+  // input). Degrade honestly: show the "read on arXiv (link unavailable)"
+  // notice, NO body, NO ad rails.
+  const isArxivLinkUnavailable = isArxivT2T3 && body.canonical_url === null;
+  // Ad rails (and their impression slots) render only when the body is BOTH
+  // ad-eligible AND actually paginated. A content-gated arXiv T1 (ad_eligible
+  // true, but body not yet stored → full_text null → pages.length 0) must NOT
+  // mount empty rails around nothing. Reads ad-eligibility off the gate body
+  // (never a local flag); `pages.length > 0` is the body-present condition.
+  const adEligible = body.ad_eligible && pages.length > 0;
 
   return (
     <div className="flex h-screen bg-ice-0 dark:bg-charcoal-2">
@@ -308,74 +358,124 @@ export default function BookReader() {
             </LemonTag>
           </header>
 
-          {!book.servable_full_text && (
-            <div className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
-              {book.servability === "taken_down"
-                ? "This title has been removed and is no longer available to read."
-                : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
+          {isArxivLinkBack ? (
+            /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO
+               body and serves NO ads here (body-serving + ad-eligibility are
+               {T1}-only, per the binding rights law). The reader renders the
+               link-back ArxivFrame (pointing at the gate-served canonical_url)
+               + the Attribution chrome, and nothing else: no ReadingColumn body,
+               no AdBorder slots, no in-book page actions. The iframe inside the
+               frame, if it loads at all, loads browser→arXiv — Antiek never
+               proxies arXiv bytes. The only thing that differs between T2 and T3
+               is the attribution label (handled inside ArxivFrame/Attribution). */
+            <ArxivFrame
+              canonicalUrl={body.canonical_url as string}
+              title={book.title}
+              author={book.author}
+              tier={body.tier as "T2" | "T3"}
+            />
+          ) : isArxivLinkUnavailable ? (
+            /* Degenerate arXiv T2/T3 with no canonical_url (defence-in-depth;
+               unreachable from the OAI persist path). Antiek hosts NO body for
+               these tiers and has no link to offer — so we render an HONEST
+               notice and nothing else: no empty ReadingColumn, no AdBorder
+               rails. This degrades the M3 contract gracefully rather than
+               falling through to an empty hosted-body view. */
+            <div
+              data-arxiv-link-unavailable
+              className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright"
+            >
+              This paper is read on arXiv, but its arXiv link isn’t available
+              right now. Try again later or search arXiv for the title above.
             </div>
-          )}
-
-          {/* Ad-border (top) — the v1 ad-border PLACEHOLDER (Read SPR-06 M4).
-              Visual position from v1, but always the zero-buyer house fill
-              here: no live ad serving, no attribution, no revenue math in this
-              sprint. Real ad economics (matching, attention-weighted accrual,
-              disbursement) are SPR-10 + Phase 4, gated G2/G3 — keeping them out
-              here is deliberate, so a placeholder slot never implies live ads. */}
-          <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
-
-          {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
-              attribution markers (SPR-09 M3). The shared useFloatMenuSelection
-              hook listens on `selectionchange` and opens the menu only for
-              selections inside this <article>; ReadingColumn forwards the ref so
-              that scope is preserved verbatim. The load-bearing addition: when
-              the gate served full text (a SERVABLE asset), the column carries
-              `data-akb-asset-id={documentId}` so SPR-07's shell-level
-              useFrameAttention — which scans the working region for
-              [data-akb-asset-id] — finally detects an in-frame IP asset and the
-              per-second telemetry stops being all-house-seconds. §9.0: a gated /
-              taken-down work never reaches here with a body (the snippet path
-              below renders the notice), so a tagged column is only ever a
-              servable asset; attribution can never accrue to withheld text. We
-              pass no chunkId — the books read path exposes no per-chunk id for
-              the linear body, and we never fabricate one (asset-level is
-              correct, per the contract's cover/title-card case). */}
-          <ReadingColumn
-            ref={articleRef}
-            assetId={book.servable_full_text ? documentId : null}
-            text={page?.text ?? ""}
-          />
-
-          {/* Per-page actions: voice note + spin a deep research. */}
-          {page && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-end gap-2">
-                <LemonButton
-                  type="button"
-                  variant="tertiary"
-                  size="sm"
-                  aria-pressed={showVoice}
-                  onClick={() => setShowVoice((v) => !v)}
-                >
-                  {showVoice ? "Close voice note" : "＋ Voice note"}
-                </LemonButton>
-                <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={page.text} />
-              </div>
-              {showVoice && (
-                <VoiceNote
-                  documentId={documentId}
-                  pageIndex={pageIndex}
-                  investigationId={readingThreadId}
-                />
+          ) : (
+            <>
+              {!book.servable_full_text && (
+                <div className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
+                  {book.servability === "taken_down"
+                    ? "This title has been removed and is no longer available to read."
+                    : "Preview only — this title isn’t licensed for full reading. You’re seeing a short snippet and its metadata."}
+                </div>
               )}
-            </div>
+
+              {/* Ad-border (top) — gated on `body.ad_eligible` (Read SPR-05 M4).
+                  The backend computes ad-eligibility regression-safely: arXiv →
+                  {T1}-only; non-arXiv → == servable (today's behaviour). So a
+                  non-arXiv servable book keeps its rails (unchanged), an arXiv T1
+                  gets rails, and any non-ad-eligible body shows NO rails. The fill
+                  is still the zero-buyer house PLACEHOLDER (no live ad serving /
+                  revenue math this sprint — that's SPR-06+/Phase 4, gated G2/G3). */}
+              {adEligible && (
+                <AdBorder slotId={`${slotBase}:top`} position="top" fill={houseFill} onOpenHouse={openHouse} />
+              )}
+
+              {/* Page body + the in-book float-menu SCOPE (M2) + the SPR-07
+                  attribution markers (SPR-09 M3). The shared useFloatMenuSelection
+                  hook listens on `selectionchange` and opens the menu only for
+                  selections inside this <article>; ReadingColumn forwards the ref so
+                  that scope is preserved verbatim. The load-bearing addition: when
+                  the gate served full text (a SERVABLE asset), the column carries
+                  `data-akb-asset-id={documentId}` so SPR-07's shell-level
+                  useFrameAttention — which scans the working region for
+                  [data-akb-asset-id] — finally detects an in-frame IP asset and the
+                  per-second telemetry stops being all-house-seconds. §9.0: a gated /
+                  taken-down work never reaches here with a body (the snippet path
+                  below renders the notice), so a tagged column is only ever a
+                  servable asset; attribution can never accrue to withheld text. We
+                  pass no chunkId — the books read path exposes no per-chunk id for
+                  the linear body, and we never fabricate one (asset-level is
+                  correct, per the contract's cover/title-card case). For an arXiv
+                  T1 the gate served extracted hosted TEXT (no PDF blob exists —
+                  see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
+                  through this SAME markdown column, no PDF.js. */}
+              <ReadingColumn
+                ref={articleRef}
+                assetId={book.servable_full_text ? documentId : null}
+                text={page?.text ?? ""}
+              />
+
+              {/* Per-page actions: voice note + spin a deep research. */}
+              {page && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-end gap-2">
+                    <LemonButton
+                      type="button"
+                      variant="tertiary"
+                      size="sm"
+                      aria-pressed={showVoice}
+                      onClick={() => setShowVoice((v) => !v)}
+                    >
+                      {showVoice ? "Close voice note" : "＋ Voice note"}
+                    </LemonButton>
+                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={page.text} />
+                  </div>
+                  {showVoice && (
+                    <VoiceNote
+                      documentId={documentId}
+                      pageIndex={pageIndex}
+                      investigationId={readingThreadId}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Ad-border (bottom) — gated on `body.ad_eligible` (M4). */}
+              {adEligible && (
+                <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
+              )}
+            </>
           )}
 
-          {/* Ad-border (bottom) */}
-          <AdBorder slotId={`${slotBase}:bottom`} position="bottom" fill={houseFill} onOpenHouse={openHouse} />
+          {/* Attribution (M3) — renders on ALL branches: it tells the reader
+              where the work came from + under what license. For an arXiv doc it
+              shows the canonical "via arXiv" link + tier/license chips; for a
+              non-arXiv doc it renders nothing extra (the servability badge above
+              stays the rights cue). Reads tier/canonical/license off the gate
+              response, never a local flag. */}
+          <Attribution body={body} />
 
-          {/* Pager */}
-          {pages.length > 0 && (
+          {/* Pager — hidden on the link-back branch (no hosted pages there). */}
+          {!isArxivLinkBack && pages.length > 0 && (
             <nav className="flex items-center justify-between border-t border-rule dark:border-charcoal-1 pt-3">
               <LemonButton
                 size="sm"
