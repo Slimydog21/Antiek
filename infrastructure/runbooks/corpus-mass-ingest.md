@@ -225,7 +225,7 @@ ALL pass**, non-zero with the failing check(s) + offending ids otherwise:
 | Check | What it proves | Owning sprint |
 |---|---|---|
 | `servable_without_basis` | every servable work has a non-empty `license_basis` | SPR-02 |
-| `gated_body_leak` | no `restricted_pending_opt_in` body renders on the public serve projection (asserted against `substrate.books.serve`, not the raw column) | SPR-02 |
+| `gated_body_leak` | no body renders full text on the public serve projection that shouldn't — both (b1) a gated `restricted_pending_opt_in` row AND (b2) a SERVABLE-classed row whose `license_basis` says `GATED:` (a mislabel the serve path would render); asserted against `substrate.books.serve`, not the raw column | SPR-02 |
 | `dedup_identity` | no two distinct docs share a stable identity (DOI/ISBN/arXiv/source-id/content-hash) | SPR-04 |
 | `extraction_quality` | no HTML-as-body (`<!DO…`), no empty body | SPR-03 |
 | `budget_ceiling` | corpus within the SPR-09 box ceiling (DB-size dimension) | SPR-09 |

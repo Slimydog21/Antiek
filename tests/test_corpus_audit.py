@@ -305,6 +305,80 @@ def test_gated_doc_renders_full_text_fails_check_b(db_path, monkeypatch):
     assert any("doc-gated-leak" in o for o in b.offending)
 
 
+def test_servable_class_over_gated_basis_fails_check_b(db_path):
+    """REAL-DATA proof for check (b) — no monkeypatch.
+
+    Arm (b2) catches the §9.0 catastrophe arm (b1) is structurally blind to: a
+    body that SHOULD be gated but was mislabeled with a SERVABLE content_class.
+    The REAL serve path trusts the column and renders the full body; arm (b1)
+    never selects the row because its class is ``public_domain``, not the gated
+    one. We plant exactly that real row — servable class, GATED license_basis —
+    and assert the audit fails (b) by cross-checking the served class against the
+    classify()-written basis on the GENUINE serve projection (``serve_full_text``
+    is NOT patched here). Removing the single defect (give the row a coherent
+    public-domain basis OR move it to the gated class) makes (b) pass — proven by
+    the sibling ``test_servable_class_coherent_basis_passes_check_b``."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        # PLANT: a SERVABLE-classed doc whose basis says it is GATED. This is a
+        # real corruption shape — a hand-stamped class, or a merge that copied a
+        # servable class onto a gated body. The real serve path WILL render it.
+        _insert_document(
+            con,
+            document_id="doc-mislabel",
+            content_class="public_domain",  # servable class ...
+            raw_text="IN-COPYRIGHT BODY THAT MUST NOT RENDER. " * 20,
+            source_uri="https://doi.org/10.7/mislabel",
+            title="Mislabelled Servable",
+            metadata='{"doi": "10.7/mislabel"}',
+        )
+        _insert_book_asset(
+            con,
+            document_id="doc-mislabel",
+            # ... but the classify()-written basis says GATED. Contradiction.
+            license_basis="GATED: no positively-established redistribution license",
+        )
+
+    # No monkeypatch: the REAL serve_full_text renders this servable-classed
+    # body, and check (b2) catches the class/basis contradiction on it.
+    result = run_audit(db_path, include_binding=False)
+    b = result.check(CHECK_GATED_LEAK)
+    assert not b.ok, "the real serve path renders a mislabelled servable body"
+    assert b.count >= 1
+    assert any("doc-mislabel" in o for o in b.offending)
+    # The mislabel is isolated to (b): basis is non-empty (so (a) is clean),
+    # the body is real text (so (d) is clean), the DOI is unique (so (c) is clean).
+    assert result.check(CHECK_SERVABLE_BASIS).ok
+    assert result.check(CHECK_DEDUP).ok
+    assert result.check(CHECK_EXTRACTION).ok
+    assert result.check(CHECK_BUDGET).ok
+
+
+def test_servable_class_coherent_basis_passes_check_b(db_path):
+    """Removing the single defect — a coherent public-domain basis on the same
+    servable row — makes check (b) pass. Proves (b2) bit on the class/basis
+    CONTRADICTION, not merely on the presence of a servable doc with a body."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-mislabel",
+            content_class="public_domain",
+            raw_text="A genuinely public-domain body that may render. " * 20,
+            source_uri="https://doi.org/10.7/coherent",
+            title="Coherent Servable",
+            metadata='{"doi": "10.7/coherent"}',
+        )
+        _insert_book_asset(
+            con,
+            document_id="doc-mislabel",
+            license_basis="public_domain: Project Gutenberg; US public domain",  # coherent
+        )
+    result = run_audit(db_path, include_binding=False)
+    assert result.check(CHECK_GATED_LEAK).ok
+    assert result.ok
+
+
 # ---------------------------------------------------------------------------
 # (c) dedup — two distinct docs share one DOI. FAILS (c).
 # ---------------------------------------------------------------------------

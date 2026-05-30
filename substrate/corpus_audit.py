@@ -16,12 +16,21 @@ gate the owning sprint already shipped (rigor #4 — consume, do not redefine):
   (a) servable-without-basis — every work whose ``content_class`` ∈
       ``substrate.constants.SERVABLE_CONTENT_CLASSES`` has a non-empty
       ``license_basis``. The allowlist is imported, never re-listed (SPR-02).
-  (b) gated-leak — a ``restricted_pending_opt_in`` body is NOT reachable on the
-      PUBLIC SERVE PROJECTION. We assert against the same serve path the API
-      uses (``substrate.books.serve.serve_full_text`` →
-      ``substrate.books.servability``), NOT merely ``content_class != restricted``:
-      a column check can pass while a body still leaks through the serve path,
-      so we prove a gated body does not render (SPR-02).
+  (b) gated-leak — TWO arms, both asserted against the PUBLIC SERVE PROJECTION
+      (``substrate.books.serve.serve_full_text`` → ``substrate.books.servability``),
+      NOT merely ``content_class != restricted``:
+        (b1) no ``restricted_pending_opt_in`` body renders on the serve path — a
+             gated doc returns at most a bounded snippet, never full text.
+        (b2) no SERVABLE-classed doc whose ``license_basis`` CONTRADICTS
+             servability (a ``GATED:``/circumvented basis) renders full text.
+             This is the catastrophic real-world §9.0 failure (b1 structurally
+             cannot see): a body that SHOULD be gated but was mislabeled with a
+             servable ``content_class`` — the serve path trusts the column and
+             renders it, while b1 never selects it (its class is not the gated
+             one). b2 cross-checks the served class against the basis the ONE
+             classify() chokepoint wrote, on the SAME serve projection, so a
+             class/basis desync (a hand-stamped class, a merge that corrupted a
+             row) is caught from REAL data — no stubbed serve path needed (SPR-02).
   (c) dedup identity — no two distinct documents share a stable identity
       (DOI / ISBN-13 / arXiv-id / source-id / content-hash), keyed through the
       ONE identity ladder in ``substrate.dedup`` (SPR-04).
@@ -127,6 +136,17 @@ ALL_CHECK_NAMES = (
 # An HTML landing page mis-stored as a body starts with the doctype — the
 # SPR-03 extraction-quality notion's canonical garbage marker.
 _HTML_BODY_HEAD = "<!do"
+
+# The prefix the ONE classify() chokepoint stamps on a GATED work's
+# license_basis (acquisition.licenses_core.license_basis_string for a
+# non-redistributable resolution, and CIRCUMVENTED_SKIP_BASIS). A SERVABLE
+# content_class carrying this basis is a class/basis contradiction — the body
+# the basis says is gated is being served. The check is case-insensitive on a
+# stripped basis so a leading-whitespace or lower-case variant still reads as a
+# gated basis (intellectual honesty: we never let a formatting nicety hide a
+# mislabel). This composes the basis tokens licenses_core owns; it mints no new
+# rights vocabulary.
+_GATED_BASIS_MARKERS = ("gated:", "skip: access was circumvented")
 
 
 # ---------------------------------------------------------------------------
@@ -234,18 +254,35 @@ def _check_servable_basis(con: Any) -> CheckResult:
 
 
 def _check_gated_leak(con: Any) -> CheckResult:
-    """(b) No gated body renders on the PUBLIC SERVE PROJECTION.
+    """(b) No gated body renders on the PUBLIC SERVE PROJECTION — two arms.
 
-    This is the headline §9.0 check. We do NOT trust ``content_class != gated``
-    as proof — we assert against the SAME serve path the API uses: for every
-    gated (``restricted_pending_opt_in``) document, call
-    ``serve_full_text(con, document_id)`` and require it returns NO full text
-    (``serve.full_text is None`` and ``serve.servable is False``). If the serve
-    projection ever leaked a gated body — a future bug in servability_of, a
-    takedown-flag desync, a content_class typo that resolved servable — this
-    fires. A gated book returning at most a bounded snippet is correct (Authors
-    Guild v. Google); a gated book returning full_text is the catastrophe this
-    whole spec exists to prevent."""
+    This is the headline §9.0 check. We do NOT trust the ``content_class``
+    column as proof; both arms assert against the SAME serve path the API uses
+    (``serve_full_text``), so a body the serve projection would render is the
+    thing we test, not a column comparison.
+
+    (b1) Every gated (``restricted_pending_opt_in``) document must return NO
+         full text on the serve path (``servable is False`` AND
+         ``full_text is None``). A bounded snippet is allowed (Authors Guild v.
+         Google); full text is the catastrophe this whole spec exists to
+         prevent. This catches a serve-path regression (a future bug in
+         servability_of, a takedown-flag desync) on an already-gated row.
+
+    (b2) Every SERVABLE-classed document whose ``license_basis`` CONTRADICTS its
+         class (a ``GATED:`` / circumvented-access basis — the marker the ONE
+         classify() chokepoint writes for a NON-servable resolution) is a
+         mislabel: the serve path TRUSTS the servable column and renders the
+         full body, while (b1) never selects it because its class is not the
+         gated one. We confirm the leak on the REAL serve projection
+         (``served.servable`` / ``served.full_text``) and flag it — so a
+         class/basis desync (a hand-stamped servable class over a gated body, a
+         merge that copied the wrong class onto a row) is caught from REAL data.
+         This is the exact "one in-copyright work mis-classed as servable and
+         served publicly" failure the capstone names; (b1) alone is structurally
+         blind to it. The basis is the classify()-written provenance on
+         ``book_assets`` — composing it here mints no new rights logic, it
+         cross-checks the served class against the chokepoint's own verdict."""
+    # --- arm (b1): gated rows must not render ---
     gated_ids = [
         r[0]
         for r in con.execute(
@@ -259,7 +296,31 @@ def _check_gated_leak(con: Any) -> CheckResult:
         # A gated doc must NOT be servable and must NOT return full text on the
         # public projection. snippet is allowed (bounded fair-use view).
         if served.servable or served.full_text is not None:
-            leaked.append(doc_id)
+            leaked.append(f"{doc_id} (gated body renders full text)")
+
+    # --- arm (b2): a servable class over a gated basis must not render ---
+    placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
+    mislabel_rows = con.execute(
+        f"""
+        SELECT d.document_id, b.license_basis
+          FROM documents d
+          JOIN book_assets b ON d.document_id = b.document_id
+         WHERE d.content_class IN ({placeholders})
+         ORDER BY d.document_id
+        """,
+        list(SERVABLE_CONTENT_CLASSES),
+    ).fetchall()
+    for doc_id, basis in mislabel_rows:
+        if not _basis_contradicts_servable(basis):
+            continue
+        # The basis says GATED but the class is servable. Confirm on the REAL
+        # serve projection that the body actually renders (so this is a true
+        # leak, not a benign label note): a servable-classed row renders full
+        # text by construction, which is precisely why the mislabel is a leak.
+        served = serve_full_text(con, doc_id)
+        if served.servable or served.full_text is not None:
+            leaked.append(f"{doc_id} (servable class over GATED basis renders full text)")
+
     ok = not leaked
     return CheckResult(
         name=CHECK_GATED_LEAK,
@@ -268,11 +329,29 @@ def _check_gated_leak(con: Any) -> CheckResult:
         offending=_bounded(leaked),
         detail=(
             f"no gated body reachable on the serve projection "
-            f"({len(gated_ids)} gated doc(s) checked)"
+            f"({len(gated_ids)} gated + {len(mislabel_rows)} servable doc(s) checked)"
             if ok
-            else f"{len(leaked)} gated body/bodies render full text on the public serve path"
+            else f"{len(leaked)} body/bodies render full text on the public serve path "
+            "despite a gated basis or gated class"
         ),
     )
+
+
+def _basis_contradicts_servable(basis: Optional[str]) -> bool:
+    """Whether a ``license_basis`` asserts the work is GATED.
+
+    A servable ``content_class`` carrying such a basis is a class/basis
+    contradiction — the body the basis says is withheld is being served. Reads
+    the markers the ONE classify() chokepoint writes
+    (``acquisition.licenses_core.license_basis_string`` for a non-redistributable
+    resolution, ``CIRCUMVENTED_SKIP_BASIS``); case-insensitive on a stripped
+    basis so a formatting variant cannot hide a mislabel. An empty/NULL basis is
+    NOT a contradiction here — that is check (a)'s job (servable-without-basis),
+    kept distinct so the two checks do not double-count the same row."""
+    if not basis or not basis.strip():
+        return False
+    head = basis.strip().lower()
+    return any(head.startswith(m) for m in _GATED_BASIS_MARKERS)
 
 
 def _check_dedup(con: Any) -> CheckResult:
@@ -341,7 +420,27 @@ def _document_identity_record(
     ``ref_id`` is the document_id itself so a record always has a unique,
     LOW-never-merges fallback. ``body`` feeds the content-hash level, which is
     how two book documents (which carry no DOI/ISBN at this layer) are caught
-    as a true duplicate of the same text."""
+    as a true duplicate of the same text.
+
+    METADATA-KEY CONTRACT (the audit's coverage depends on it — a surfaced
+    assumption, not silent). The corpus-wide dedup check (c) can only key a
+    document on a stable identifier the WRITE path stamped into
+    ``documents.metadata``. For the characterised first prod batch this is
+    real for both corpus types: arXiv papers carry ``metadata['arxiv_id']``
+    (acquisition.arxiv.adapter -> insert_document), and PD books key on the
+    content-hash of their extracted body (>= MIN_CONTENT_HASH_CHARS). It is a
+    KNOWN COVERAGE GAP for a DOI-only cross-source duplicate: the OA/PLOS/
+    bioRxiv connectors dedup on ``doi`` AT DISCOVERY but do not currently
+    persist ``doi`` onto the documents row (they store ``journal`` /
+    ``oa_status`` / etc.), so check (c)'s DOI rung is DEFENSIVE-ONLY until an
+    OA-direct write path lands. The contract any such write path MUST honour to
+    make the DOI rung live: stamp ``metadata['doi']`` (and ``metadata['isbn']``
+    where applicable) onto the documents row. This is read here as ``doi`` /
+    ``DOI`` and ``isbn`` / ``isbn13`` / ``ISBN`` so a connector that follows the
+    contract is covered without a further audit change. (The gap never produces
+    a FALSE collision — it only fails to catch a DOI-only duplicate the current
+    corpus does not contain; it is honestly recorded, not hidden behind a green
+    check.)"""
     meta: dict[str, Any] = {}
     if metadata:
         try:
