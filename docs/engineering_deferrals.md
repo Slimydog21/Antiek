@@ -431,6 +431,47 @@ changes only CI strictness (advisory→blocking), not behavior.
 
 ---
 
+## D14 — arXiv full-corpus S3 mirror (search index only)
+
+**Status:** ❌ Deferred. Not started (arXiv SPR-10).
+**Unlock criterion:** explicit operator approval **+** a proven full-text-search
+need **+** the committed cost report (~$830 egress).
+**Spec reference:** `~/specs/antiek-arxiv-ingest/sprint-10-deferred-s3-mirror-search-index.html`.
+**Blocks-what:** nothing on the arXiv mainline — tiered serving, accrual, and
+compliance all shipped without it (arXiv SPR-01..09 on `caffen/arxiv-ingest`).
+**Action when unlocked:** the mirror is a read-optimized search index *only* over
+substrate-owned data; DuckDB stays the primary store.
+
+## D15 — Uniform per-hop arXiv-governor hook on the metadata fetchers (defense-in-depth)
+
+**Status:** ❌ Deferred. **NOT a current hole.**
+**Unlock criterion:** anytime (a cheap tidy).
+**Spec reference:** `docs/decisions/arxiv-rate-governor-host-scoped.md`; arXiv SPR-09 (`7ae2318`).
+**Blocks-what:** nothing. Four JSON-metadata fetchers (`openalex._http_get`,
+`unpaywall.resolve_doi`, `doaj._get_json`, `pmc._search`) + the podcasts feed
+fetchers use `govern_if_arxiv`'s initial-host check on a `follow_redirects=True`
+client *without* the per-request hook; they hit static REST hosts that never
+bounce to arxiv.org, so there is no current ungoverned-redirect vector (the
+existential PDF / arbitrary-URL paths are all per-hop governed).
+**Action when unlocked:** attach `install_arxiv_request_hook` to those clients
+uniformly for defense-in-depth.
+
+## D16 — arXiv rate-governor scanner directory-scope is a manual allowlist
+
+**Status:** ❌ Deferred (documented residual). **NOT a current hole.**
+**Unlock criterion:** if/when arXiv egress is added in a new top-level directory.
+**Spec reference:** `tools/lint/rate_governor_check.py` (scope `acquisition/` +
+`substrate/graph/`); arXiv SPR-09 (`7ae2318`).
+**Blocks-what:** nothing now — the SPR-09 whole-tree audit confirmed no current
+arXiv egress outside those two directories. A future arXiv fetcher added in a new
+dir would be a regression risk until that dir joins `_EGRESS_SCAN_DIRS`.
+**Action when unlocked:** add the new dir to the scanner scope; or (the
+fully-global alternative) move enforcement to a global httpx transport on every
+external Client — the latter risks false-positives on the many legitimate
+non-arXiv fetchers, so it is deferred unless egress genuinely spreads.
+
+---
+
 ## Cross-reference: unlock criterion → deferrals it gates
 
 | Unlock criterion | Deferrals that close |
