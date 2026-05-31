@@ -36,8 +36,11 @@ from substrate.corpus_audit import (
     CHECK_DEDUP,
     CHECK_EXTRACTION,
     CHECK_GATED_LEAK,
+    CHECK_PERSONAL_NONATTRIB,
+    CHECK_PERSONAL_NOT_TRAINING,
     CHECK_SERVABLE_BASIS,
     CHECK_THIRD_PARTY_SERVABLE,
+    _check_personal_not_in_training_impl,
     assert_no_content_class_bypass,
     main as corpus_audit_main,
     run_audit,
@@ -859,6 +862,207 @@ def test_binding_folds_into_run_audit(db_path):
     result = run_audit(db_path, include_binding=True)
     assert result.check("content_class_binding").ok
     assert result.ok
+
+
+# ---------------------------------------------------------------------------
+# SPR-10 M1.b — personal_reading non-attributable + not-public-graph.
+#   A personal_reading row that the REAL is_attribution_eligible predicate would
+#   deem eligible (a desynced lane), OR membership of personal_reading in the
+#   public-graph set, FAILS the check. A correctly-laned personal_reading row
+#   PASSES. Composes the SPR-01 eligibility/attribution sets — no re-listing.
+# ---------------------------------------------------------------------------
+
+
+def test_personal_reading_nonattributable_passes_clean(db_path):
+    """A correctly-laned personal_reading document is non-attributable and absent
+    from the public graph — the check PASSES on it (the clean-corpus baseline for
+    the lane: this is the property the whole lane exists to hold)."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        # A lawfully-laned third-party reading: personal_reading, no basis needed
+        # (it is never served), document_type web_article.
+        _insert_document(
+            con,
+            document_id="doc-pr-clean",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " a personal-reading essay the owner fetched zzz",
+            source_uri="https://paulgraham.com/clean.html",
+            title="A Personal Reading",
+            document_type="web_article",
+        )
+    result = run_audit(db_path, include_binding=False)
+    n = result.check(CHECK_PERSONAL_NONATTRIB)
+    assert n.ok, n.detail
+    assert result.ok
+
+
+def test_personal_reading_attributable_fails_check_personal_nonattrib(db_path, monkeypatch):
+    """PLANT the single defect: the lane desyncs — personal_reading is dropped
+    from NON_ATTRIBUTABLE_CONTENT_CLASSES so the REAL is_attribution_eligible
+    predicate would now deem a personal_reading row attribution-eligible (the
+    §9.0 leak: the owner's private reading entering an ad-attribution split). The
+    check must FAIL and name the offending personal_reading document_id. Removing
+    the defect (the un-monkeypatched clean test above) makes it pass — proving the
+    check bites on the desync, not on the mere presence of a personal_reading row.
+
+    We monkeypatch the IMPORTED predicate's source set rather than hand-stamping a
+    column, because the defect this check exists to catch is exactly a lane-set
+    misconfiguration: a future edit that removed personal_reading from the
+    non-attributable set. The audit reads is_attribution_eligible LIVE, so the
+    desync surfaces through the real predicate."""
+    import substrate.collective_graph.eligibility as elig
+
+    # The desync: personal_reading no longer non-attributable. The predicate then
+    # falls through to the claim-gate + quality-gate branches; with the audit's
+    # PASS_PUBLIC probe + no claim-gate membership, it returns True — the leak.
+    patched = frozenset(elig.NON_ATTRIBUTABLE_CONTENT_CLASSES - {"personal_reading"})
+    monkeypatch.setattr(elig, "NON_ATTRIBUTABLE_CONTENT_CLASSES", patched)
+
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-pr-leak",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " a personal reading that a desync would expose qqq",
+            source_uri="https://paulgraham.com/leak.html",
+            title="A Personal Reading (desynced)",
+            document_type="web_article",
+        )
+    result = run_audit(db_path, include_binding=False)
+    n = result.check(CHECK_PERSONAL_NONATTRIB)
+    assert not n.ok, "a personal_reading row the predicate deems eligible must fail"
+    assert n.count == 1
+    assert any("doc-pr-leak" in o for o in n.offending)
+    assert not result.ok
+    # Isolated: the row carries a real body (so (d) clean), unique hash (so (c)
+    # clean), and is not on a servable class (so (a)/(f) clean).
+    assert result.check(CHECK_SERVABLE_BASIS).ok
+    assert result.check(CHECK_THIRD_PARTY_SERVABLE).ok
+    assert result.check(CHECK_DEDUP).ok
+    assert result.check(CHECK_EXTRACTION).ok
+
+
+# ---------------------------------------------------------------------------
+# SPR-10 M1.c — personal_reading never in a training/RL export (forward-guard).
+#   NON-VACUITY (rigor #1): the test materializes a fixture export TABLE
+#   populated from documents, points the check at it, plants ONE personal_reading
+#   row, asserts FAIL; removes that row, asserts PASS. Proves the check is
+#   falsifiable, not trivially always-green over a non-existent table.
+# ---------------------------------------------------------------------------
+
+
+def test_personal_not_training_forward_guard_passes_when_no_export(db_path):
+    """With the default (empty) TRAINING_EXPORT_TABLES — the origin/main reality
+    where no training/RL export builder exists — the check is honestly clean and
+    its detail SAYS it is a forward-guard (not a silent always-green)."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-pr-c",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " personal reading present but no export exists yyy",
+            source_uri="https://example.com/pr.html",
+            title="Personal Reading",
+            document_type="web_article",
+        )
+    result = run_audit(db_path, include_binding=False)
+    c = result.check(CHECK_PERSONAL_NOT_TRAINING)
+    assert c.ok
+    # Honest about WHY it is clean — it guards a not-yet-existent export surface.
+    assert "forward-guard" in c.detail
+    assert result.ok
+
+
+def test_personal_not_training_bites_on_planted_export_row(db_path):
+    """NON-VACUITY proof. Materialize a fixture export table populated from
+    documents, plant ONE personal_reading row into it, point the check at that
+    table via the injectable impl seam, and assert it FAILS naming the offender.
+    Then DELETE that row and assert it PASSES — proving the check bites on a real
+    planted export row, not on a non-existent table."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        # A real personal_reading document in the corpus ...
+        _insert_document(
+            con,
+            document_id="doc-pr-export",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " the owner's private reading that MUST NOT train www",
+            source_uri="https://paulgraham.com/private.html",
+            title="A Private Reading",
+            document_type="web_article",
+        )
+        # ... and a servable public-domain doc that legitimately MAY train.
+        _insert_document(
+            con,
+            document_id="doc-pd-export",
+            content_class="public_domain",
+            raw_text=_BODY_B + " a public-domain text that may legitimately train vvv",
+            source_uri="https://www.gutenberg.org/ebooks/4242",
+            title="A Trainable PD Text",
+        )
+        _insert_book_asset(
+            con, document_id="doc-pd-export",
+            license_basis="public_domain: Project Gutenberg; US public domain",
+        )
+        # The FIXTURE export table — a documents-derived training/RL selection. It
+        # naively selected ALL documents (the exact bug the check guards against):
+        # it carries the personal_reading row it must not.
+        con.execute(
+            """
+            CREATE TABLE training_export_fixture AS
+            SELECT document_id, raw_text FROM documents
+            """
+        )
+
+    # Point the check at the fixture export surface (the injectable impl seam —
+    # mirrors how a real builder would add its table name to TRAINING_EXPORT_TABLES).
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        biting = _check_personal_not_in_training_impl(con, ("training_export_fixture",))
+    finally:
+        con.close()
+    assert not biting.ok, "a personal_reading row in the export must FAIL the check"
+    assert biting.count == 1
+    assert any("doc-pr-export" in o for o in biting.offending)
+    # The servable PD row in the SAME export is NOT flagged — only personal_reading.
+    assert not any("doc-pd-export" in o for o in biting.offending)
+
+    # REMOVE the single defect — delete the personal_reading row from the export —
+    # and the check PASSES, proving it bit on that row, not on the table existing.
+    with connect_write(db_path, purpose="test-seed") as con:
+        con.execute(
+            "DELETE FROM training_export_fixture WHERE document_id = ?",
+            ["doc-pr-export"],
+        )
+    con = connect_read(db_path)
+    try:
+        clean = _check_personal_not_in_training_impl(con, ("training_export_fixture",))
+    finally:
+        con.close()
+    assert clean.ok, "with the personal_reading row removed the export is clean"
+
+
+def test_personal_not_training_unguardable_export_without_document_id(db_path):
+    """An export surface with NO document_id column is reported as un-guardable
+    (an honest FAIL), never silently passed — the check refuses to pretend it can
+    guard a table it cannot join back to documents. This is the intellectual-
+    honesty edge: a green check over an un-joinable export would be a lie."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        con.execute("CREATE TABLE bad_export AS SELECT raw_text FROM documents")
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        r = _check_personal_not_in_training_impl(con, ("bad_export",))
+    finally:
+        con.close()
+    assert not r.ok
+    assert any("un-guardable" in o for o in r.offending)
 
 
 # ---------------------------------------------------------------------------
