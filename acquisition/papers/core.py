@@ -122,14 +122,39 @@ def parse_works_response(payload: dict[str, Any]) -> list[PaperRecord]:
 def _http_post(
     url: str, body: dict[str, Any], *, api_key: Optional[str], client: Optional[httpx.Client]
 ) -> dict:
+    # HOST-GLOBAL arXiv GOVERNANCE (SPR-09 host-based seam): ``url`` is
+    # env/param-overridable (``ANTIEK_CORE_BASE_URL`` / ``base_url``), so the
+    # actual HTTP send is routed through ``govern_if_arxiv`` on the resolved URL.
+    # The default api.core.ac.uk host is non-arXiv → the send is issued DIRECTLY
+    # (govern_if_arxiv is a no-op; CORE's own ``SourceThrottle`` already spaced
+    # it before this call), so behavior is preserved. Were the base ever an arXiv
+    # host it would route through the host-global flock + >=3s spacing + 429 ban
+    # sentinel on the shared throttle state. The client (caller-passed or
+    # self-built) also carries the per-hop request hook so EVERY hop whose host is
+    # arXiv — initial OR a redirect target — is governed by construction.
+    from acquisition.arxiv.rate_governor import (
+        arxiv_governed_client,
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+        install_arxiv_request_hook,
+    )
+
     headers = {"User-Agent": DEFAULT_USER_AGENT, "Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     if client is not None:
-        r = client.post(url, json=body, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        install_arxiv_request_hook(client, throttle=canonical_arxiv_throttle())
+
+        def _send() -> httpx.Response:
+            return client.post(url, json=body, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     else:
-        with httpx.Client(follow_redirects=True) as c:
-            r = c.post(url, json=body, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        with arxiv_governed_client(throttle=canonical_arxiv_throttle()) as c:
+            def _send() -> httpx.Response:
+                return c.post(url, json=body, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
     return r.json()
 

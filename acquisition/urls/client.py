@@ -57,19 +57,49 @@ def fetch(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     follow_redirects: bool = True,
 ) -> FetchedHtml:
-    """GET ``url``. Raises ``httpx.HTTPStatusError`` on 4xx/5xx."""
+    """GET ``url``. Raises ``httpx.HTTPStatusError`` on 4xx/5xx.
+
+    HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is an ARBITRARY
+    caller-supplied URL (any web/news/blog source), so it could resolve to an
+    arXiv host (e.g. an ``arxiv.org/abs/<id>`` landing page passed as a generic
+    URL). The send is routed through ``govern_if_arxiv``: an arXiv host is held
+    under the host-global flock + >=3s spacing on the shared throttle state; any
+    other host is fetched directly (unchanged). Host-based, not
+    module-location-based.
+
+    REDIRECT-SAFE (SPR-09 round-5): an arbitrary URL may 302-REDIRECT to an arXiv
+    host (a non-arXiv shortener / DOI resolver → ``arxiv.org/abs/<id>``). The
+    initial-host ``govern_if_arxiv`` check would miss that arXiv redirect hop, so
+    the client carries the per-hop arXiv request/response hooks: EVERY hop whose
+    host is arXiv — including a redirect target — is governed by construction."""
+    from acquisition.arxiv.rate_governor import (
+        arxiv_governed_client,
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+        install_arxiv_request_hook,
+    )
+
     headers = {
         "User-Agent": DEFAULT_USER_AGENT,
         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
     }
     if client is not None:
-        r = client.get(
-            url, headers=headers, timeout=timeout_s,
-            follow_redirects=follow_redirects,
-        )
+        install_arxiv_request_hook(client, throttle=canonical_arxiv_throttle())
+        def _send() -> httpx.Response:
+            return client.get(
+                url, headers=headers, timeout=timeout_s,
+                follow_redirects=follow_redirects,
+            )
+
+        r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     else:
-        with httpx.Client(follow_redirects=follow_redirects) as c:
-            r = c.get(url, headers=headers, timeout=timeout_s)
+        with arxiv_governed_client(
+            throttle=canonical_arxiv_throttle(), follow_redirects=follow_redirects
+        ) as c:
+            def _send() -> httpx.Response:
+                return c.get(url, headers=headers, timeout=timeout_s)
+
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
     content_type = r.headers.get("content-type", "") or ""
     return FetchedHtml(

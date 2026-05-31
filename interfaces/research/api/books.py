@@ -24,13 +24,22 @@ with the single writer.
 
 from __future__ import annotations
 
+import logging
 from typing import Literal, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
-from substrate.books.serve import serve_full_text
+
+from .serve_guard import serve_full_text_guarded
+
+logger = logging.getLogger("antiek.interfaces.books")
+
+# arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
+# ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
+# arxiv_id is recoverable from it for the M4 serve-audit without re-reading the DB.
+_ARXIV_ABS_PREFIX = "https://arxiv.org/abs/"
 
 
 def _resolve_db_path() -> str:
@@ -39,6 +48,49 @@ def _resolve_db_path() -> str:
     path = default_db_path()
     ensure_initialized(path)
     return path
+
+
+def _record_arxiv_serve_audit(db_path: str, document_id: str, result) -> None:
+    """SPR-09 M4 — record an ``arxiv.serve`` leg for an arXiv full-text serve.
+
+    Defensively isolated: a failure here must NEVER break the serve, so the whole
+    body is wrapped. Only an arXiv doc carries a ``canonical_url`` (the
+    ``https://arxiv.org/abs/<id>`` link the guard stamps) — we derive the arxiv_id
+    from it and skip non-arXiv books. §9.0: we record only the served/gated REASON
+    + tier + servable flag, never the body. The audit takes its OWN write lock
+    (the serve itself ran on a read connection)."""
+    try:
+        canonical = getattr(result, "canonical_url", None)
+        if not canonical or not canonical.startswith(_ARXIV_ABS_PREFIX):
+            return  # non-arXiv book — no arXiv audit leg
+        arxiv_id = canonical[len(_ARXIV_ABS_PREFIX):]
+        if not arxiv_id:
+            return
+        from runtime.db_lock import connect_write
+        from substrate.audit.arxiv_audit import ARXIV_SERVE, record_event
+
+        con = connect_write(db_path, purpose="arxiv_serve_audit")
+        try:
+            record_event(
+                con,
+                arxiv_id=arxiv_id,
+                document_id=document_id,
+                kind=ARXIV_SERVE,
+                reason=result.reason,
+                tier=result.tier,
+                detail={
+                    "servable": bool(result.servable),
+                    "ad_eligible": bool(result.ad_eligible),
+                    "served_body": result.full_text is not None,
+                },
+            )
+        finally:
+            con.close()
+    except Exception:
+        logger.exception(
+            "arxiv_audit serve-leg failed for document_id=%s; serve unaffected",
+            document_id,
+        )
 
 
 # ── Response shapes ─────────────────────────────────────────────────
@@ -160,6 +212,16 @@ class FullTextResponse(BaseModel):
     title: Optional[str]
     author: Optional[str]
     reason: str
+    # Rights context (Read SPR-05) — the data the reader renders off the
+    # backend response instead of a local flag. ``tier`` is the arXiv
+    # RightsTier value ('T1'|'T2'|'T3') or None for a non-arXiv document;
+    # ``ad_eligible`` is the ad-rail gate (T1-only for arXiv; == servable for
+    # non-arXiv, preserving today's behaviour); ``canonical_url`` is the
+    # arxiv.org/abs link or None; ``license`` is the license_uri or None.
+    tier: Optional[str] = None
+    ad_eligible: bool = False
+    canonical_url: Optional[str] = None
+    license: Optional[str] = None
 
 
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
@@ -409,11 +471,20 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            result = serve_full_text(con, document_id)
+            result = serve_full_text_guarded(con, document_id)
         finally:
             con.close()
         if not result.found:
             raise HTTPException(status_code=404, detail="book_not_found")
+        # SPR-09 M4 — record the SERVE leg into the arXiv fetch→serve→accrue
+        # compliance trace. Hooked at the ENDPOINT (not inside serve_guard.py,
+        # which a parallel builder owns), AFTER the guard returns. Only an arXiv
+        # doc carries a canonical_url (https://arxiv.org/abs/<id>), from which we
+        # derive the arxiv_id; non-arXiv books emit no audit row. §9.0: we record
+        # the served/gated REASON + tier + servable flag only — NEVER the body.
+        # Defensively isolated: a failure in the audit layer must never break the
+        # serve (wrap + log), and the audit write takes its own write lock.
+        _record_arxiv_serve_audit(db, document_id, result)
         return FullTextResponse(
             document_id=result.document_id,
             servable=result.servable,
@@ -423,6 +494,10 @@ def register_book_routes(app: FastAPI) -> None:
             title=result.title,
             author=result.author,
             reason=result.reason,
+            tier=result.tier,
+            ad_eligible=result.ad_eligible,
+            canonical_url=result.canonical_url,
+            license=result.license,
         )
 
     @app.post(

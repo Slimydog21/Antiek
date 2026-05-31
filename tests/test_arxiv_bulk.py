@@ -35,11 +35,30 @@ if _REPO not in sys.path:
 
 from acquisition.arxiv import bulk  # noqa: E402
 from acquisition.arxiv.client import ArxivPaper  # noqa: E402
+from acquisition.arxiv.throttle import ArxivThrottle  # noqa: E402
 from acquisition.openaccess.pdf_detect import NotAPdf  # noqa: E402
 from substrate.source_throttle import (  # noqa: E402
     SourceBanned,
     SourceThrottle,
 )
+
+
+def _isolated_arxiv_throttle(tmp_path, monkeypatch) -> ArxivThrottle:
+    """Build an arXiv host-global governor throttle pointed at a TMP state file
+    with a fake clock + no-op sleep + zero spacing, and point the governor flock
+    at a tmp lock — so ``fetch_bulk_pdf``'s host-global arXiv governance is
+    exercised WITHOUT touching the real ``~/.antiek/arxiv_throttle.json`` /
+    ``.governor.lock`` and without a real 3s sleep. ``paper.pdf_url`` is an
+    ``arxiv.org`` host, so ``govern_if_arxiv`` engages this throttle for real."""
+    monkeypatch.setenv(
+        "ANTIEK_ARXIV_GOVERNOR_LOCK_PATH", str(tmp_path / "arxiv.governor.lock")
+    )
+    return ArxivThrottle(
+        state_path=str(tmp_path / "arxiv_throttle.json"),
+        min_spacing_s=0.0,
+        now=lambda: 1000.0,
+        sleep=lambda _s: None,
+    )
 
 
 # Two records in the documented Kaggle snapshot shape (trimmed to the
@@ -205,7 +224,7 @@ def _paper(arxiv_id="2401.00001") -> ArxivPaper:
     )
 
 
-def test_fetch_bulk_pdf_returns_real_pdf(tmp_path):
+def test_fetch_bulk_pdf_returns_real_pdf(tmp_path, monkeypatch):
     """A structurally-valid PDF body (built by the in-tree text_to_pdf, so it
     passes the assert_pdf pypdf-parse layer) is returned unchanged; the host is
     not banned."""
@@ -213,6 +232,7 @@ def test_fetch_bulk_pdf_returns_real_pdf(tmp_path):
 
     path = str(tmp_path / "throttle.json")
     throttle = SourceThrottle(state_path=path, now=lambda: 1000.0, sleep=lambda _s: None)
+    arxiv_throttle = _isolated_arxiv_throttle(tmp_path, monkeypatch)
 
     pdf = text_to_pdf("a real arxiv paper body " * 20, title="Bulk Paper")
 
@@ -223,17 +243,20 @@ def test_fetch_bulk_pdf_returns_real_pdf(tmp_path):
         )
 
     client = httpx.Client(transport=httpx.MockTransport(_handler))
-    out = bulk.fetch_bulk_pdf(_paper(), throttle=throttle, client=client)
+    out = bulk.fetch_bulk_pdf(
+        _paper(), throttle=throttle, client=client, _arxiv_throttle=arxiv_throttle
+    )
     client.close()
     assert out == pdf
     assert throttle.banned_until("arxiv_pdf") == 0.0  # not banned
 
 
-def test_fetch_bulk_pdf_rejects_html_landing_page(tmp_path):
+def test_fetch_bulk_pdf_rejects_html_landing_page(tmp_path, monkeypatch):
     """An HTML landing page (b'<!DO') served where a PDF was expected is a
     counted NotAPdf, not a crash — the shared assert_pdf check rejects it."""
     path = str(tmp_path / "throttle.json")
     throttle = SourceThrottle(state_path=path, now=lambda: 1000.0, sleep=lambda _s: None)
+    arxiv_throttle = _isolated_arxiv_throttle(tmp_path, monkeypatch)
 
     def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -243,37 +266,45 @@ def test_fetch_bulk_pdf_rejects_html_landing_page(tmp_path):
 
     client = httpx.Client(transport=httpx.MockTransport(_handler))
     with pytest.raises(NotAPdf):
-        bulk.fetch_bulk_pdf(_paper(), throttle=throttle, client=client)
+        bulk.fetch_bulk_pdf(
+            _paper(), throttle=throttle, client=client, _arxiv_throttle=arxiv_throttle
+        )
     client.close()
 
 
-def test_fetch_bulk_pdf_honors_active_ban_without_fetching(tmp_path):
+def test_fetch_bulk_pdf_honors_active_ban_without_fetching(tmp_path, monkeypatch):
     """When the arxiv_pdf host is already banned, fetch_bulk_pdf raises
     SourceBanned BEFORE issuing any request (re-hitting extends the ban)."""
     path = str(tmp_path / "throttle.json")
     throttle = SourceThrottle(state_path=path, now=lambda: 1000.0, sleep=lambda _s: None)
     throttle.note_response("arxiv_pdf", 429)  # ban the PDF host
+    arxiv_throttle = _isolated_arxiv_throttle(tmp_path, monkeypatch)
 
     def _handler(request: httpx.Request) -> httpx.Response:
         raise AssertionError("must not fetch while banned")
 
     client = httpx.Client(transport=httpx.MockTransport(_handler))
     with pytest.raises(SourceBanned):
-        bulk.fetch_bulk_pdf(_paper(), throttle=throttle, client=client)
+        bulk.fetch_bulk_pdf(
+            _paper(), throttle=throttle, client=client, _arxiv_throttle=arxiv_throttle
+        )
     client.close()
 
 
-def test_fetch_bulk_pdf_429_arms_sentinel(tmp_path):
+def test_fetch_bulk_pdf_429_arms_sentinel(tmp_path, monkeypatch):
     """A 429 from the PDF host arms the arxiv_pdf ban sentinel (so a re-run
     honors it) before the HTTPStatusError propagates."""
     path = str(tmp_path / "throttle.json")
     throttle = SourceThrottle(state_path=path, now=lambda: 1000.0, sleep=lambda _s: None)
+    arxiv_throttle = _isolated_arxiv_throttle(tmp_path, monkeypatch)
 
     def _handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, request=request)
 
     client = httpx.Client(transport=httpx.MockTransport(_handler))
     with pytest.raises(httpx.HTTPStatusError):
-        bulk.fetch_bulk_pdf(_paper(), throttle=throttle, client=client)
+        bulk.fetch_bulk_pdf(
+            _paper(), throttle=throttle, client=client, _arxiv_throttle=arxiv_throttle
+        )
     client.close()
     assert throttle.is_banned("arxiv_pdf")

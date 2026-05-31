@@ -33,16 +33,21 @@ from .bulk import (
 )
 from .client import ArxivPaper, fetch_by_id, search
 from .licenses import LicenseResolution, license_basis_string, resolve_license
+from .oai_pmh import HarvestState, OaiPmhHarvester
+from .oai_records import build_census, parse_record, parse_records
 from .throttle import ArxivBanned, ArxivThrottle
 
 __all__ = [
     "ArxivBanned",
     "ArxivPaper",
     "ArxivThrottle",
+    "HarvestState",
     "IngestPaperWithRightsResult",
     "IngestResult",
     "LicenseResolution",
+    "OaiPmhHarvester",
     "arxiv_doc_id",
+    "build_census",
     "bulk_candidates_from_path",
     "fetch_by_id",
     "fetch_bulk_pdf",
@@ -50,6 +55,8 @@ __all__ = [
     "ingest_paper_with_rights",
     "iter_bulk_candidates",
     "license_basis_string",
+    "parse_record",
+    "parse_records",
     "record_to_paper",
     "resolve_license",
     "search",

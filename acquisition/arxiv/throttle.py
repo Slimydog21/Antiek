@@ -37,7 +37,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping, Optional
+from typing import Callable, Mapping, Optional, Protocol
 
 # arXiv API terms of use: at most one request per three seconds. We honor
 # the ceiling, not a fraction of it, because the ban is IP-scoped and the
@@ -59,6 +59,15 @@ def default_state_path() -> str:
     if env:
         return env
     return str(Path.home() / ".antiek" / "arxiv_throttle.json")
+
+
+class _ResponseLike(Protocol):
+    """The minimal response surface ``request`` inspects — exactly what
+    ``httpx.Response`` exposes. Declared structurally so the throttle stays
+    free of an httpx import (it is a pure timing/state module)."""
+
+    status_code: int
+    headers: Mapping[str, str]
 
 
 class ArxivBanned(RuntimeError):
@@ -202,3 +211,25 @@ class ArxivThrottle:
         state = self._read_state()
         state.banned_until = self._now() + backoff
         self._write_state(state)
+
+    def request(
+        self,
+        send: "Callable[[], _ResponseLike]",
+    ) -> "_ResponseLike":
+        """Issue one throttled request and record its outcome.
+
+        ``send`` performs the actual HTTP GET and returns a response exposing
+        ``.status_code`` and ``.headers`` (an ``httpx.Response`` does). This
+        is the single seam every OAI-PMH page goes through, so the throttle's
+        >=3s spacing and 429 ban-sentinel are not re-implemented by the
+        harvester (re-implementing rate-limiting is exactly the bug that
+        IP-banned the box — see the module docstring). The wait BEFORE and the
+        ``note_response`` AFTER are paired here so a caller cannot accidentally
+        skip one half of the protocol.
+
+        Raises ``ArxivBanned`` (before sending) if a ban sentinel is active.
+        """
+        self.wait_if_needed()
+        resp = send()
+        self.note_response(resp.status_code, resp.headers)
+        return resp

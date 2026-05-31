@@ -226,6 +226,7 @@ def fetch_bulk_pdf(
     *,
     throttle: "SourceThrottle",
     client: "Optional[httpx.Client]" = None,
+    _arxiv_throttle: Optional["object"] = None,
 ) -> bytes:
     """Fetch a bulk-discovered paper's PDF, reusing the shared SourceThrottle
     (key ``arxiv_pdf``) for cross-process spacing/ban-safety and the shared
@@ -235,6 +236,34 @@ def fetch_bulk_pdf(
 
     Deliberately NOT a re-implementation: throttling lives in SourceThrottle,
     PDF detection in pdf_detect, the URL convention in ArxivPaper.pdf_url.
+
+    HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url = paper.pdf_url`` IS an
+    ``https://arxiv.org/pdf/<id>`` URL — the EXISTENTIAL arXiv egress. The two
+    throttles are layered, not duplicative:
+
+      * ``throttle`` (the per-source ``SourceThrottle``, key ``arxiv_pdf``) remains
+        the in-job ban sentinel — ``before_request`` raises ``SourceBanned``
+        BEFORE any send while the PDF host is banned, and ``note_response`` arms
+        that sentinel on a 429/503. Kept verbatim (the bulk path's own ban book).
+      * The canonical arXiv governor adds the HOST-GLOBAL ``fcntl.flock`` + >=3s
+        spacing + 429 sentinel on the SHARED ``~/.antiek/arxiv_throttle.json`` ON
+        TOP of the send, so this bulk fetch is concurrency-safe against the OAI
+        harvest / on-demand pdf_fetch / OA fetchers that may also land arxiv.org —
+        the un-spaced-parallel-stream race that historically IP-banned the box.
+
+    The actual send is routed through ``govern_if_arxiv(url, _send, ...)`` (an
+    arxiv.org host → the host-global gate; a non-arXiv host would be a no-op).
+
+    REDIRECT-SAFE: the client carries the per-hop arXiv request/response hooks
+    (``install_arxiv_request_hook`` / ``arxiv_governed_client``) so EVERY hop whose
+    host is arXiv — initial OR a redirect target — is governed by construction; the
+    outer ``govern_if_arxiv`` governs the initial hop (re-entrant, no double-wait,
+    no deadlock).
+
+    ``_arxiv_throttle`` is a TEST seam only: it overrides the canonical arXiv
+    governor throttle so a test injects one with a fake clock + tmp shared state
+    (the production path passes nothing → the real canonical throttle on the
+    shared ``~/.antiek/arxiv_throttle.json``).
     """
     import httpx
 
@@ -242,16 +271,37 @@ def fetch_bulk_pdf(
 
     from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
 
+    from acquisition.arxiv.rate_governor import (
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+        install_arxiv_request_hook,
+    )
+
+    arxiv_throttle = (
+        _arxiv_throttle if _arxiv_throttle is not None else canonical_arxiv_throttle()
+    )
+
     # Cross-process gate: spacing + ban sentinel for the arXiv PDF host.
     throttle.before_request(ARXIV_PDF_SOURCE_KEY)
 
     headers = {"User-Agent": DEFAULT_USER_AGENT}
     url = paper.pdf_url
     if client is not None:
-        r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        # Govern every arXiv hop the CALLER's client follows, too.
+        install_arxiv_request_hook(client, throttle=arxiv_throttle)
+
+        def _send() -> httpx.Response:
+            return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = govern_if_arxiv(url, _send, throttle=arxiv_throttle)
     else:
-        with httpx.Client(follow_redirects=True) as c:
-            r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        from acquisition.arxiv.rate_governor import arxiv_governed_client
+
+        with arxiv_governed_client(throttle=arxiv_throttle) as c:
+            def _send() -> httpx.Response:
+                return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(url, _send, throttle=arxiv_throttle)
     if r.status_code in (429, 503):
         throttle.note_response(ARXIV_PDF_SOURCE_KEY, r.status_code, dict(r.headers))
     r.raise_for_status()

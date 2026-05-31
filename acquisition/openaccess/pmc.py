@@ -137,12 +137,23 @@ def _search(
     url = _build_search_url(query, base_url=base_url)
 
     def _get() -> dict:
+        from acquisition.arxiv.rate_governor import (
+            canonical_arxiv_throttle,
+            govern_if_arxiv,
+        )
+
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         if client is not None:
-            r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            def _send() -> httpx.Response:
+                return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         else:
             with httpx.Client(follow_redirects=True) as c:
-                r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+                def _send() -> httpx.Response:
+                    return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
         return r.json()
 
@@ -156,22 +167,55 @@ def download_pdf(
     client: Optional[httpx.Client] = None,
     throttle: Optional[OAThrottle] = None,
 ) -> bytes:
-    """Download PMC PDF bytes. Transient errors retry via the throttle."""
+    """Download PMC PDF bytes. Transient errors retry via the (non-arXiv)
+    ``OAThrottle``.
 
+    HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``pdf_url`` is a RESOLVED,
+    variable URL read off Europe PMC's ``fullTextUrlList`` — PMC normally points
+    at an ``ncbi.nlm.nih.gov`` render URL, but the host is not statically known,
+    so the actual HTTP send is routed through ``govern_if_arxiv``. Were a row to
+    resolve to an arXiv host it would be governed by the host-global flock on the
+    shared throttle state; the ordinary non-arXiv PMC host is fetched directly
+    (the ``OAThrottle`` above provides that path's spacing/retry). Host-based, not
+    module-location-based — uniform with the unpaywall fetcher.
+
+    REDIRECT-SAFE (SPR-09 round-5): a PMC render URL can 302-REDIRECT to an arXiv
+    host; the client carries the per-hop arXiv request/response hooks so EVERY
+    hop whose host is arXiv — initial OR a redirect target — is governed by
+    construction (the initial-host ``govern_if_arxiv`` check alone would miss the
+    redirect hop)."""
     def _get() -> bytes:
+        from acquisition.arxiv.rate_governor import (
+            arxiv_governed_client,
+            canonical_arxiv_throttle,
+            govern_if_arxiv,
+            install_arxiv_request_hook,
+        )
+
         from .pdf_detect import assert_pdf
 
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         if client is not None:
-            r = client.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            install_arxiv_request_hook(client, throttle=canonical_arxiv_throttle())
+            def _send() -> httpx.Response:
+                return client.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(pdf_url, _send, throttle=canonical_arxiv_throttle())
+            content_type = r.headers.get("content-type")
+            r.raise_for_status()
+            content = r.content
         else:
-            with httpx.Client(follow_redirects=True) as c:
-                r = c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
-        r.raise_for_status()
-        content = r.content
+            with arxiv_governed_client(throttle=canonical_arxiv_throttle()) as c:
+                def _send() -> httpx.Response:
+                    return c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+                r = govern_if_arxiv(pdf_url, _send, throttle=canonical_arxiv_throttle())
+                content_type = r.headers.get("content-type")
+                r.raise_for_status()
+                content = r.content
         # PMC ?pdf=render can return an HTML interstitial; the shared layered
         # detector (content-type / %PDF- / pypdf parse) rejects it as NotAPdf.
-        assert_pdf(content, content_type=r.headers.get("content-type"), url=pdf_url)
+        assert_pdf(content, content_type=content_type, url=pdf_url)
         return content
 
     return throttle.run_with_retry(_get) if throttle is not None else _get()

@@ -19,8 +19,9 @@ checklist with minimum inputs and an explicit owner.
 | G6 autoresearch Wedge 1 verdict | ⏳ open | Phase 8 enforcing + Wedges 2-4 |
 | G7 six-month compounding demo | ⏳ calendar (~Nov 2026) | Multi-user pivot Sprint 22 |
 | G8 Loop 3 unlock criteria | ⏳ data-bound | RLM + SFT + hosted RL track |
+| G9 arXiv researcher-payout counsel/KYC | ❌ open (counsel) | arXiv SPR-07/08 (researcher identity + KYC/payout); branch `caffen/arxiv-ingest` |
 
-**3 closed, 2 calendar/data-bound, 3 that close this month with operator effort.**
+**3 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9).**
 
 ## Highest-leverage next action
 
@@ -35,7 +36,7 @@ for the §14.4 measurement, the §13.4 compounding-curve demonstration (G7), and
 the §15.3 voice-latency assessment. Substrate is healthy now (the May 17-18
 read-only-filesystem outage is resolved); operator usage is the bottleneck.
 
-The eight gates, with their current state and the action required:
+The nine gates, with their current state and the action required:
 
 ---
 
@@ -317,6 +318,40 @@ each correspond to one). The remaining three:
   should run a 5-minute interview and rate the latency 1-5.
 - **§15.4 Competitive durability** — no scheduled answer; revisit when
   Sprint 22 multi-user pivot closes.
+
+---
+
+## G9 — arXiv researcher-payout counsel/KYC gate (SPR-07/08)
+
+**Status:** ❌ OPEN
+**Owner:** Operator + counsel
+**Blocks:** The money-moving wave of the arXiv-ingest track — SPR-07 (researcher
+identity + ORCID opt-in claim) and SPR-08 (KYC + Stripe Connect self-onboard
+payout). Both are hard-blocked at the caffenagent run edge
+(`~/specs/antiek-arxiv-ingest/.caffenagent/state.json`, status `BLOCKED-GATE`);
+no autonomous code builds either until this closes. Distinct from G2/G3 — those
+gate *publisher* payouts; this gates *researcher* payouts.
+**Precondition:** The SPR-01 corpus census number (operator live-run of
+`tools/arxiv_census.py` — network-gated; arXiv is still 429-rate-limited per the
+ingestion-failures record).
+
+### Inputs needed for counsel
+- **GDPR lawful basis** for storing OpenAlex-derived author identity (ORCID /
+  display name / byline position, `substrate/schemas/documents.py::EnrichedAuthor`)
+  and for an ORCID-based opt-in claim flow. The SPR-06 accrual ledger keys
+  `(arxiv_id, author_position)` and is internal-only — it records who is owed but
+  *never contacts an author* (`substrate/payouts/ledger.py`, merged `8c0132f`).
+- **arXiv API ToS on author-email use.** The SPR-09 contact guard is
+  deny-by-default — *all* author-directed email is blocked until a claim exists
+  (`substrate/payouts/contact_guard.py`, merged `7ae2318`).
+- **KYC / tax obligations** for paying individual researchers (Stripe Connect
+  self-onboard, SPR-08).
+
+### Once closed
+SPR-07 builds the ORCID-keyed claim flow over the existing `(arxiv_id,
+author_position)` accrual ledger; SPR-08 wires KYC + Stripe Connect payout. The
+internal accrual + tiered-serving + compliance substrate already shipped (arXiv
+SPR-01..09 on `caffen/arxiv-ingest`); only the money-movement is gated.
 
 ---
 

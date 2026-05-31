@@ -11,8 +11,13 @@ CC-BY / CC-BY-SA / CC0 -> servable; arXiv default terms / NC / ND /
 unknown / missing -> GATED. ``--dry-run`` reports the would-be
 content_class + license per paper WITHOUT writing anything.
 
-All live arXiv requests go through ``ArxivThrottle`` (>= 3s spacing,
-cross-process, 429 -> ban sentinel) so a batch can't re-trigger the
+All live arXiv requests — the export-search discovery (``search`` /
+``fetch_by_id``) AND the per-paper PDF fetch — go through the host-global rate
+governor (``acquisition.arxiv.rate_governor``, SPR-09 M1), which wraps
+``ArxivThrottle`` (>= 3s spacing, cross-process, 429 -> ban sentinel) in an
+exclusive ``fcntl.flock`` so the gate holds across ALL arXiv jobs on the box,
+not merely per-process. A bare in-process throttle (the prior pattern) let two
+host jobs both fire in one 3s window — the exact race that re-triggered the
 IP-scoped ban documented in the arxiv-ingestion failure cluster.
 
 Usage:
@@ -101,16 +106,25 @@ def _discover(
     limit: int,
     throttle: ArxivThrottle,
 ) -> List[ArxivPaper]:
-    """Resolve selectors to a candidate list. Every live request is fronted
-    by the throttle's ``wait_if_needed`` so spacing + ban state are honored
-    process-wide. ``--ids`` fetch one paper at a time (arXiv's id_list could
-    batch, but per-id fetch keeps a partial failure from dropping the whole
-    list)."""
+    """Resolve selectors to a candidate list. Every live request passes the
+    CLI-owned ``throttle`` into ``search`` / ``fetch_by_id``, which route the
+    export-search GET through the host-global rate governor (SPR-09 M1): the
+    >=3s spacing + 429 ``banned_until`` sentinel are held inside the governor's
+    ``fcntl.flock`` across ALL arXiv jobs on the box, not merely in this process
+    — so a concurrent OAI harvest + this discovery cannot both fire in one 3s
+    window. ``--ids`` fetch one paper at a time (arXiv's id_list could batch, but
+    per-id fetch keeps a partial failure from dropping the whole list)."""
     if ids:
         papers: List[ArxivPaper] = []
         for pid in ids:
+            # Pre-flight ban check (raises ArxivBanned early, before any request
+            # is built, when a sentinel is already active). The authoritative
+            # spacing + ban gate is the governor's host-global flock, held inside
+            # fetch_by_id; this only short-circuits a known-banned run.
             throttle.wait_if_needed()
-            p = _request_with_429_sentinel(throttle, lambda: fetch_by_id(pid))
+            p = _request_with_429_sentinel(
+                throttle, lambda pid=pid: fetch_by_id(pid, throttle=throttle)
+            )
             if p is not None:
                 papers.append(p)
             else:
@@ -119,7 +133,10 @@ def _discover(
 
     throttle.wait_if_needed()
     return _request_with_429_sentinel(
-        throttle, lambda: search(query=query, category=category, max_results=limit)
+        throttle,
+        lambda: search(
+            query=query, category=category, max_results=limit, throttle=throttle
+        ),
     )
 
 

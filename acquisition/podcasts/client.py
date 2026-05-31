@@ -213,12 +213,24 @@ def fetch_feed(
         ) from e
 
     # Download via httpx so caller can inject MockTransport in tests.
+    # Host-global arXiv governance (SPR-09 root fix): ``feed_url`` is an
+    # arbitrary caller-supplied URL, routed through ``govern_if_arxiv`` so an
+    # arXiv host (if ever passed) is held under the host-global gate; any other
+    # host is fetched directly (unchanged).
+    from acquisition.arxiv.rate_governor import canonical_arxiv_throttle, govern_if_arxiv
+
     headers = {"User-Agent": DEFAULT_USER_AGENT}
     if client is not None:
-        r = client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        def _send() -> httpx.Response:
+            return client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
     else:
         with httpx.Client(follow_redirects=True) as c:
-            r = c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            def _send() -> httpx.Response:
+                return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
 
     parsed = feedparser.parse(r.content)
@@ -293,13 +305,23 @@ def fetch_episode_transcript(
 ) -> str:
     """Fetch a transcript file and normalize to plain text. Returns
     the cleaned text, or an empty string when the fetch fails."""
+    # Host-global arXiv governance (SPR-09 root fix): ``transcript_url`` is an
+    # arbitrary caller-supplied URL, routed through ``govern_if_arxiv``.
+    from acquisition.arxiv.rate_governor import canonical_arxiv_throttle, govern_if_arxiv
+
     headers = {"User-Agent": DEFAULT_USER_AGENT}
     try:
         if client is not None:
-            r = client.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            def _send() -> httpx.Response:
+                return client.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle())
         else:
             with httpx.Client(follow_redirects=True) as c:
-                r = c.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+                def _send() -> httpx.Response:
+                    return c.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+                r = govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException):
         return ""

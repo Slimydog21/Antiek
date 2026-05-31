@@ -231,7 +231,7 @@ def test_cli_dry_run_writes_nothing(temp_db_and_events, capsys, monkeypatch):
     # and neutralise the throttle's real state file.
     monkeypatch.setattr(
         "acquisition.arxiv.client._http_get",
-        lambda url, client=None: feed,
+        lambda url, client=None, throttle=None: feed,
     )
     monkeypatch.setenv(
         "ANTIEK_ARXIV_THROTTLE_PATH",
@@ -262,7 +262,7 @@ def test_cli_real_run_splits_servable_and_gated(
         "2402.20002": _feed("2402.20002", _ARXIV_DEFAULT),
     }
 
-    def fake_fetch_by_id(arxiv_id, *, client=None, base_url=None):
+    def fake_fetch_by_id(arxiv_id, *, client=None, base_url=None, throttle=None):
         return _parse_response(feeds[arxiv_id])[0]
 
     monkeypatch.setattr(ingest_arxiv, "fetch_by_id", fake_fetch_by_id)

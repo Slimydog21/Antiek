@@ -9,12 +9,20 @@ which is unbuilt.
    into the context that pre-seeds the Research workflow's planner. The
    case that bites (rigor #3): seeding a deep research with a *gated*
    book's full text would launder that text past the SPR-01 serve gate.
-   So the seed re-derives servability at the data layer (via
-   ``substrate.books.serve``) and **refuses to put gated full text in the
-   seed** — a gated book contributes title/author/TOC + the bounded
-   snippet only, exactly what the serve gate would expose. Defense in
-   depth: even if the caller hands us the selected passage text, we drop
-   it for a gated book.
+   So the seed re-derives servability at the data layer — through the
+   SPR-02 serving-boundary guard (``serve_full_text_guarded``, the single
+   sanctioned full-body serve path, which composes the content_class gate
+   with the independent license-tier cross-check) — and **refuses to put
+   gated full text in the seed**: a gated book contributes title/author/TOC
+   + the bounded snippet only, exactly what the serve gate would expose.
+   The guard lives in the SAME layer (``substrate.books.serve_guard``,
+   adjacent to ``serve.py``), so it is imported normally at module top — no
+   layering inversion, no cycle (serve_guard does not import passage_research).
+   For a non-arXiv book (no ``license_uri``) the guard is a transparent
+   pass-through, so behaviour here is unchanged; a genuine T3-body drift now
+   RAISES rather than seeding a forbidden body.
+   Defense in depth: even if the caller hands us the selected passage
+   text, we drop it for a gated book.
 
 2. **The two-way provenance link.** ``link_passage_to_research`` records
    that a passage spawned a research, and ``researches_for_passage`` /
@@ -33,8 +41,8 @@ from typing import Any, Optional
 from substrate.event_log import emit_typed, trajectory
 from substrate.schemas.events import QuestionEscalatedToResearchPayload
 
+from .serve_guard import serve_full_text_guarded
 from .servability import ServabilityStatus
-from .serve import serve_full_text
 
 # A passage is addressed by (document_id, page_index). We encode that as a
 # synthetic question_id so the existing escalation event can carry it
@@ -84,8 +92,12 @@ def build_research_seed(
     DROPPED and replaced by the bounded snippet the serve gate would
     expose — the seed can never carry gated full text, even if the caller
     supplies it.
+
+    Routes the full-body serve through the SPR-02 serving-boundary guard,
+    ``substrate.books.serve_guard.serve_full_text_guarded`` — same layer,
+    imported normally at module top (no inversion, no cycle).
     """
-    served = serve_full_text(con, document_id)
+    served = serve_full_text_guarded(con, document_id)
     if not served.found:
         raise ValueError(f"{document_id} is not a registered book")
 

@@ -115,12 +115,45 @@ def parse_details_response(payload: dict[str, Any], *, server: str) -> list[Pape
 
 
 def _http_get(url: str, *, client: Optional[httpx.Client]) -> dict:
+    """Fetch a biorxiv ``/details`` page as JSON.
+
+    HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is built from an
+    env/param-overridable ``base_url`` (``ANTIEK_BIORXIV_BASE_URL``), and some
+    paper-source candidate URLs in this tree can be ``arxiv.org`` hosts, so the
+    actual HTTP send is routed through ``govern_if_arxiv``. For the ordinary
+    ``api.biorxiv.org`` host the send is issued directly (the per-server
+    ``SourceThrottle`` in ``fetch_details`` still provides that path's spacing +
+    ban sentinel); were the URL ever to resolve to an arXiv host the send would
+    pass through the host-global flock + >=3s spacing + 429 ban sentinel on the
+    shared ``~/.antiek/arxiv_throttle.json``. Host-based, not
+    module-location-based — uniform with the openaccess fetchers.
+
+    REDIRECT-SAFE: the self-built client carries the per-hop arXiv request hook
+    (``arxiv_governed_client``) so EVERY hop whose host is arXiv — initial OR a
+    redirect target — is governed by construction; for a CALLER-passed client we
+    install the same hook. The outer ``govern_if_arxiv`` governs the initial hop
+    (re-entrant with the hook: no double-wait, no deadlock)."""
+    from acquisition.arxiv.rate_governor import (
+        arxiv_governed_client,
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+        install_arxiv_request_hook,
+    )
+
     headers = {"User-Agent": DEFAULT_USER_AGENT}
     if client is not None:
-        r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        install_arxiv_request_hook(client, throttle=canonical_arxiv_throttle())
+
+        def _send() -> httpx.Response:
+            return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     else:
-        with httpx.Client(follow_redirects=True) as c:
-            r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        with arxiv_governed_client(throttle=canonical_arxiv_throttle()) as c:
+            def _send() -> httpx.Response:
+                return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
     return r.json()
 

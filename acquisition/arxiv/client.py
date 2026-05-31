@@ -21,9 +21,12 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, List, Optional
 
 import httpx
+
+if TYPE_CHECKING:
+    from acquisition.arxiv.throttle import ArxivThrottle
 
 _ATOM_NS = {"a": "http://www.w3.org/2005/Atom"}
 _OPENSEARCH_NS = "{http://a9.com/-/spec/opensearch/1.1/}"
@@ -32,8 +35,17 @@ DEFAULT_BASE_URL = "https://export.arxiv.org/api/query"
 DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.arxiv)"
 DEFAULT_TIMEOUT_S = 15.0
 
-# arXiv rate-limits: one query / 3s. Callers issuing batches must
-# honor this themselves; client itself does not throttle.
+# arXiv rate-limits: one query / 3s. This export SEARCH API
+# (``export.arxiv.org``) is the endpoint that historically IP-banned the box
+# (project_researchmaxx_arxiv.md, 2026-05-17). SPR-09 M1: every GET here is
+# routed through the host-global rate governor
+# (``acquisition.arxiv.rate_governor.governed_request``) so the >=3s spacing +
+# 429 ``banned_until`` sentinel hold across ALL arXiv jobs on the box — a bare
+# per-call in-process timer (the prior pattern) let two host jobs both fire in
+# one 3s window, which is the exact race that banned the box. The throttle is
+# threaded in by the CLIs (which already construct an ``ArxivThrottle``); when a
+# caller omits it the governed seam owns the CANONICAL throttle, so even a caller
+# that forgets is host-globally spaced.
 _SORT_MAP = {
     "relevance": "relevance",
     "date": "submittedDate",
@@ -206,19 +218,54 @@ def _parse_response(xml_bytes: bytes) -> List[ArxivPaper]:
 
 
 def _http_get(
-    url: str, *, client: Optional[httpx.Client] = None,
+    url: str,
+    *,
+    client: Optional[httpx.Client] = None,
+    throttle: Optional["ArxivThrottle"] = None,
 ) -> bytes:
-    """One GET. Caller can inject an ``httpx.Client`` with a
-    ``MockTransport`` for tests; otherwise we build a short-lived
-    client."""
+    """One GET to the export SEARCH API, host-rate-governed (SPR-09 M1).
+
+    This is the 4th arXiv egress (the export-search API at
+    ``export.arxiv.org/api/query``) and the one that historically IP-banned the
+    box. The send is routed through
+    ``acquisition.arxiv.rate_governor.governed_request`` so the whole
+    ``wait_if_needed -> send -> note_response`` critical section runs inside the
+    host-global ``fcntl.flock`` — the >=3s spacing + 429 ``banned_until`` sentinel
+    therefore hold across the OAI harvest, the PDF fetch, AND this search, not
+    merely per-process. A BARE ``client.get`` here (the prior shape) only spaced
+    within this process, so a concurrent harvest + a ``search``/``fetch_by_id``
+    could both fire inside one 3s window — the exact un-spaced-parallel-stream
+    race the governor closes.
+
+    The ``throttle`` is threaded down by the CLIs (which own an ``ArxivThrottle``
+    and persist its 429 sentinel across invocations). When ``None``, the governed
+    seam constructs the CANONICAL default throttle, so even a caller that forgets
+    to pass one is still host-globally spaced + ban-aware. ``raise_for_status`` is
+    applied to the governed response AFTER the gated send; ``ArxivBanned`` (an
+    active ban) propagates from inside the governed call so the caller PAUSES.
+
+    Caller can inject an ``httpx.Client`` with a ``MockTransport`` for tests;
+    otherwise we build a short-lived client per call (single connection).
+    """
+    from acquisition.arxiv.rate_governor import governed_request
+
     headers = {"User-Agent": DEFAULT_USER_AGENT}
+
     if client is not None:
-        r = client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
-    else:
-        with httpx.Client() as c:
-            r = c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
-    r.raise_for_status()
-    return r.content
+        def _send() -> httpx.Response:
+            return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = governed_request(_send, throttle=throttle)
+        r.raise_for_status()
+        return r.content
+
+    with httpx.Client() as c:
+        def _send() -> httpx.Response:
+            return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = governed_request(_send, throttle=throttle)
+        r.raise_for_status()
+        return r.content
 
 
 def search(
@@ -230,17 +277,24 @@ def search(
     sort: str = "relevance",
     client: Optional[httpx.Client] = None,
     base_url: Optional[str] = None,
+    throttle: Optional["ArxivThrottle"] = None,
 ) -> List[ArxivPaper]:
     """Query arXiv. At least one of query/author/category must be set.
 
     ``sort`` is one of ``relevance`` / ``date`` / ``updated``.
     ``client`` is an injectable ``httpx.Client`` — tests pass a
-    ``MockTransport``-backed client; production passes ``None``."""
+    ``MockTransport``-backed client; production passes ``None``.
+
+    ``throttle`` is the cross-process ``ArxivThrottle`` (>=3s spacing + 429
+    sentinel) the host-global rate governor reuses; the CLIs thread theirs in so
+    a live 429's ban sentinel persists. When ``None``, the governed seam owns the
+    canonical throttle (SPR-09 M1) — this export-search egress is NEVER
+    ungoverned."""
     url = _build_search_url(
         query=query, author=author, category=category,
         max_results=max_results, sort=sort, base_url=base_url,
     )
-    body = _http_get(url, client=client)
+    body = _http_get(url, client=client, throttle=throttle)
     return _parse_response(body)
 
 
@@ -249,12 +303,16 @@ def fetch_by_id(
     *,
     client: Optional[httpx.Client] = None,
     base_url: Optional[str] = None,
+    throttle: Optional["ArxivThrottle"] = None,
 ) -> Optional[ArxivPaper]:
     """Fetch a single paper by id. Returns ``None`` when arXiv
-    returns no entries (id unknown)."""
+    returns no entries (id unknown).
+
+    ``throttle`` is threaded through to the host-global rate governor (SPR-09 M1)
+    exactly as in :func:`search`; this export-search egress is never ungoverned."""
     url = _build_search_url(
         ids=[arxiv_id], max_results=1, base_url=base_url,
     )
-    body = _http_get(url, client=client)
+    body = _http_get(url, client=client, throttle=throttle)
     papers = _parse_response(body)
     return papers[0] if papers else None
