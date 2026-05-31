@@ -174,6 +174,8 @@ class HostLocalRunner:
         events_dir: Optional[str] = None,
         seal_on_complete: bool = True,
         on_emit: Optional[Callable[[StepEvent], Awaitable[None]]] = None,
+        retrieval_substrate: Optional[object] = None,
+        reuse_role: str = "user_agent",
     ):
         self._loop_fn = loop_fn
         self._semaphore = asyncio.Semaphore(max_concurrency)
@@ -184,6 +186,17 @@ class HostLocalRunner:
         # Optional async hook the promotion funnel subscribes to so notes /
         # questions get drained as they are emitted.
         self._on_emit = on_emit
+        # AFF SPR-06 — the flywheel's reuse half. When a RetrievalSubstrate is
+        # injected, ``start`` retrieves prior knowledge units relevant to the
+        # plan's question and injects the §9.0-servable, token-bounded top-k into
+        # a reuse context layer + emits one knowledge.reused event, BEFORE the
+        # browse loop emits its first step. When it is None (the default + the
+        # automatic fallback when retrieval is unavailable), ``start`` behaves
+        # exactly as before — reuse is purely additive. This is NOT a new
+        # protocol method and NOT a forked runner (§16): it is an in-place
+        # extension of the existing ``start`` lifecycle stage.
+        self._retrieval_substrate = retrieval_substrate
+        self._reuse_role = reuse_role
         self._states: Dict[str, _ResearchState] = {}
 
     # -- protocol: start -----------------------------------------------
@@ -217,8 +230,47 @@ class HostLocalRunner:
             await st.queue.put(_STREAM_DONE)
             return Handle(investigation_id)
 
+        # AFF SPR-06 — retrieve + inject prior knowledge units ONCE, here, before
+        # the browse loop is scheduled (so the reuse layer + knowledge.reused
+        # event land before the first StepEvent the loop emits). No-op unless a
+        # RetrievalSubstrate was injected; non-fatal on any failure (a retrieval
+        # hiccup must degrade to "no reuse", never a dead investigation).
+        self._maybe_reuse_prior_knowledge(investigation_id, plan)
+
         st.task = asyncio.create_task(self._run(st))
         return Handle(investigation_id)
+
+    def _maybe_reuse_prior_knowledge(self, investigation_id: str, plan: ResearchPlan) -> None:
+        """AFF SPR-06 reuse hook (called exactly once from ``start``).
+
+        Composes ``substrate.context_pack.knowledge_reuse`` — retrieve prior
+        units relevant to ``plan.sub_question``, filter to §9.0-servable +
+        token-bounded top-k, inject a single reuse layer into a context pack, and
+        emit one ``knowledge.reused`` event on this investigation's JSONL. Lives
+        on the existing ``start`` path; adds no ResearchRunner protocol method."""
+        if self._retrieval_substrate is None:
+            return
+        try:
+            from substrate.context_pack.knowledge_reuse import (
+                assemble_context_pack_with_reuse,
+                retrieve_prior_units,
+            )
+        except ImportError:  # pragma: no cover — defensive
+            return
+        try:
+            units = retrieve_prior_units(
+                self._retrieval_substrate,
+                question_text=plan.sub_question,
+            )
+            assemble_context_pack_with_reuse(
+                role=self._reuse_role,
+                investigation_id=investigation_id,
+                layers=[],
+                units=units,
+                events_dir=self._events_dir,
+            )
+        except Exception:  # pragma: no cover — reuse never breaks a research
+            return
 
     # -- the per-research coroutine ------------------------------------
 

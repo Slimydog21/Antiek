@@ -141,6 +141,7 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
 PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DispatchCallPayload,
     schema_module.ContextPackAssembledPayload,
+    schema_module.KnowledgeReusedPayload,  # AFF SPR-06 — flywheel reuse half
     schema_module.DocumentLoadedPayload,
     schema_module.DocumentRegionSelectedPayload,
     schema_module.DistillationRequestedPayload,

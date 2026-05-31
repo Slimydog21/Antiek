@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 24;
+export const EVENT_SCHEMA_VERSION = 25;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -76,6 +76,7 @@ export const ActionType = {
   KE_LLM_RESPONSE_FAILED: "knowledge_extraction.llm_response.failed",
   DISPATCH_CALL: "dispatch.call",
   CONTEXT_PACK_ASSEMBLED: "context_pack.assembled",
+  KNOWLEDGE_REUSED: "knowledge.reused",
   GRAPH_TIER_ASSIGNED: "graph.tier.assigned",
   DOCUMENT_LOADED: "document.loaded",
   DOCUMENT_REGION_SELECTED: "document.region_selected",
@@ -194,7 +195,7 @@ export type ProvenanceSourceKind = "user" | "ai" | "system";
  * ``ContextPackAssembledPayload.layers``.
  */
 export interface ContextLayer {
-  kind: "session" | "long_term_skill" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
+  kind: "session" | "long_term_skill" | "reuse" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
   source: string;
   tokens: number;
 }
@@ -593,6 +594,39 @@ export interface ContextPackAssembledPayload {
   layers: ContextLayer[];
   budget_overrun: boolean;
   truncation_strategy_applied?: "head" | "tail" | "smart" | null;
+}
+
+/**
+ * AFF SPR-06 — emitted once per investigation start by
+ * ``substrate/context_pack/knowledge_reuse.py`` after the reuse layer is
+ * assembled into the pack. The queryable provenance of the flywheel's reuse
+ * decision: which prior knowledge units were injected, their REAL cosine
+ * scores, why each retrieved unit was injected or dropped, where each came
+ * from, and the ``CONTEXT_PACK_ASSEMBLED`` event this reuse rides on.
+ * 
+ * Field contract:
+ * 
+ * * ``reused_unit_ids`` / ``scores`` describe the INJECTED set only and are
+ *   EQUAL-LENGTH, in pack (similarity-desc, id-tiebreak) order. ``scores`` are
+ *   the real cosine similarities, never a floor (honesty, rigor #1).
+ * * ``decisions`` / ``source_investigation_ids`` describe EVERY retrieved unit
+ *   (injected + dropped), equal-length to each other. A ``decision`` is one of
+ *   ``injected`` | ``dropped-not-servable`` | ``dropped-over-budget`` |
+ *   ``dropped-low-relevance`` — the honest, distinct reason for the unit's fate.
+ * * ``context_pack_event_id`` is the assembled pack's event id, so a reuse
+ *   decision is joinable to exactly what the model saw.
+ * 
+ * An empty ``reused_unit_ids`` is valid and expected for a novel question or
+ * an all-non-servable / all-over-budget retrieval — the event is STILL emitted
+ * (reuse-of-nothing is recorded, not skipped).
+ */
+export interface KnowledgeReusedPayload {
+  action_type: "knowledge.reused";
+  reused_unit_ids: string[];
+  scores: number[];
+  decisions: string[];
+  source_investigation_ids: string[];
+  context_pack_event_id: string;
 }
 
 export interface DocumentLoadedPayload {
@@ -2448,6 +2482,7 @@ export interface DocumentFiledIntoInvestigationPayload {
 export type TypedPayload =
   | DispatchCallPayload
   | ContextPackAssembledPayload
+  | KnowledgeReusedPayload
   | DocumentLoadedPayload
   | DocumentRegionSelectedPayload
   | DistillationRequestedPayload
@@ -2640,6 +2675,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "investigation.failed",
   "investigation.spawned_from",
   "investigation.start_requested",
+  "knowledge.reused",
   "marginalia.noted",
   "note.compressed_doc_written",
   "note.emerged",
