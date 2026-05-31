@@ -8,6 +8,7 @@ import {
   WORKFLOWS,
   WORKFLOW_ORDER,
   type ModeEntry,
+  type Workflow,
 } from "./workflowTaxonomy";
 
 // The bare (param-free) routes the taxonomy declares. A param route's index
@@ -145,14 +146,32 @@ export function ProductsLauncher({
     onClose();
   };
 
-  // SPR-09 M5 — additive "open in window" spawn. A window-eligible, built mode
-  // (contract-verified page, e.g. Library / Stats) can open as a transparent
-  // workspace window over the scene instead of navigating away. Navigate stays
-  // the default; this is the operator's explicit "alongside, not instead" path.
+  // SPR-09 M5 — the legacy additive "open in window" spawn, retained for the
+  // window-eligible run/settings rows (Stats / Library) as a power affordance.
+  // A window-eligible, built mode (contract-verified page) opens as a
+  // transparent workspace window over the scene instead of navigating away.
   const openModeInWindow = (m: ModeEntry) => {
     const kind = windowKindForRoute(m.route);
     if (!m.built || !kind) return;
     openWindow(kind);
+    onClose();
+  };
+
+  // SPR-04 M1/M3 — the DEFAULT product activation. Clicking a product
+  // (Research / Read / Write / Speak) opens a `subaction` window over the scene
+  // listing that workflow's sub-actions, rather than navigating full-page. This
+  // is the windows-default keystone: the operator's first interaction with a
+  // product is a floating window, not a page swap. A stable per-workflow id
+  // means a second click on the same product FOCUSES the one window instead of
+  // duplicating it. The window id is threaded into the payload so a sub-action
+  // row click can close THIS window after it navigates to the chosen surface.
+  const openProductWindow = (workflow: Workflow) => {
+    const id = `win:subaction:${workflow}`;
+    openWindow(
+      "subaction",
+      { workflow, __windowId: id },
+      { id, title: WORKFLOWS[workflow as Exclude<Workflow, "shared">]?.label ?? "Sub-actions" },
+    );
     onClose();
   };
 
@@ -244,13 +263,44 @@ export function ProductsLauncher({
               {wfGroups.length > 0 && (
                 <div>
                   <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
-                    Go deeper in a workflow
+                    Open a product — or go deeper
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
                     {wfGroups.map((g) => (
                       <section key={g.workflow} aria-label={g.label}>
-                        <h3 className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
-                          {g.label}
+                        {/* SPR-04 M1/M3 — the PRODUCT header is the default
+                            product activation: clicking it opens a sub-action
+                            window over the scene (a window, not a navigation).
+                            The deep-mode rows below it remain direct navigates
+                            into specific surfaces. */}
+                        <h3 className="mb-2">
+                          <button
+                            type="button"
+                            data-product-window={g.workflow}
+                            onClick={() => openProductWindow(g.workflow as Workflow)}
+                            title={`Open ${g.label} — its sub-actions, in a window over the scene`}
+                            // The product-activation (sub-action) window and the
+                            // eligible-mode ⊞ "open in window" affordance share an
+                            // accessible-name STEM ("Open … in a window"). Today the
+                            // label sets are disjoint (workflow labels
+                            // Research/Read/Write/Speak vs the only eligible-mode
+                            // labels Substrate stats / Library — verified against
+                            // workflowTaxonomy.ts), but the namespaces could converge
+                            // if a future workflow label ever equalled an
+                            // eligible-mode label, making every getByRole({name}) in
+                            // the gates ambiguous. The interposed "workflow" keyword
+                            // keeps the two name-spaces provably disjoint by
+                            // construction (a product header is "Open <Workflow>
+                            // workflow in a window"; an eligible mode is "Open <Mode>
+                            // in a window" with no "workflow" token).
+                            aria-label={`Open ${g.label} workflow in a window`}
+                            className="w-full text-left font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright cursor-pointer flex items-center gap-1.5"
+                          >
+                            <span className="flex-1 min-w-0 truncate">{g.label}</span>
+                            <span aria-hidden="true" className="shrink-0 normal-case tracking-normal opacity-70">
+                              ⊞
+                            </span>
+                          </button>
                         </h3>
                         <ul className="space-y-0.5">
                           {g.modes.map((m) => (

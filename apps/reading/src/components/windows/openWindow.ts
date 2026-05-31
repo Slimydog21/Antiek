@@ -5,7 +5,7 @@ import { useWindows } from "../../workspace/windowsStore";
 import type { OpenWindowOptions } from "../../workspace/windowsStore";
 
 /**
- * openWindow — the spawn API for workspace windows (SPR-09 M5).
+ * openWindow — the spawn API for workspace windows (SPR-09 M5; INVERTED SPR-04).
  *
  * A `WindowKind` is a route-ish key identifying which product PAGE a window
  * hosts. The registry maps each kind to the real page component; the host
@@ -13,32 +13,47 @@ import type { OpenWindowOptions } from "../../workspace/windowsStore";
  * window's page inside a <WorkspaceWindow>.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * WINDOWS-VS-NAVIGATE POLICY (SPR-09 M5, rigor #2 — steelman of full-page)
+ * WINDOWS-VS-NAVIGATE POLICY — INVERTED in AMS2 SPR-04 (the windows-default
+ * keystone). The old SPR-09 policy made navigate the default and a window the
+ * additive "open in window" (⊞) affordance; v1 shipped that and the operator
+ * complaint #2 was "windows were manual, not the default" — they never saw a
+ * window because the default click always navigated full-page. SPR-04 inverts
+ * the default for CONTRACT-VERIFIED (within-contract) surfaces.
  * ─────────────────────────────────────────────────────────────────────────
- * Full-page navigation stays the DEFAULT and is correct for most actions:
- * it is simpler, needs zero adaptation, and matches a single focused task.
- * A window is justified ONLY when the operator's "multiple terminals" vision
- * applies — i.e. they want this surface ALONGSIDE another, floating over the
- * scene, not instead of it.
  *
- *   OPEN A WINDOW when:
- *     - the operator explicitly asks for a floating/secondary view
- *       ("open in window", asset/citation click that should not leave the
- *       current page, a side investigation kicked off mid-task),
- *     - the surface is reference-like and benefits from coexisting with the
- *       page that spawned it (Stats, Library shelf, a document, an outcome).
+ *   WINDOW IS THE DEFAULT for a within-contract surface — a page that satisfies
+ *   the window-adaptation contract (drops its opaque bg + fills its container,
+ *   owns no internal dock, does not need the full viewport) OR a window-native
+ *   page like `subaction`. The default (primary) click on a within-contract
+ *   product/asset opens a transparent, ad-bordered window over the scene. No
+ *   separate ⊞ button is needed for these — the window IS the click.
+ *     - a product activation (Research / Read / Write / Speak from the
+ *       launcher) opens a `subaction` window listing that workflow's
+ *       sub-actions over the scene (M1),
+ *     - a within-contract reference surface (Stats, the Library shelf, a
+ *       document, an outcome) opens as a floating window alongside the page
+ *       that spawned it (M2).
  *
- *   NAVIGATE FULL-PAGE when:
- *     - it is a primary workflow switch (Research ↔ Read ↔ Write ↔ Speak via
- *       the NavRail) — these are destinations, not floats,
- *     - the surface assumes the full viewport or owns its own dock/floating
- *       panel system (the ResearchWorkstation IDE, the PDF wrestler) — nesting
- *       a dock-owning page inside a window is out-of-contract,
+ *   NAVIGATE FULL-PAGE stays the default for:
+ *     - the NavRail's four PRIMARY workflow switches (Research ↔ Read ↔ Write
+ *       ↔ Speak) — these are destinations, not floats (NavRail is untouched),
+ *     - OUT-OF-CONTRACT surfaces — a page that assumes the full viewport or
+ *       owns its own dock/floating-panel system. These are NOT in WINDOW_PAGES
+ *       and must never be given a third adaptation to force them to float:
+ *         · ResearchWorkstation — the chat-first IDE owns a PanelHost dock
+ *           (docked sidebar + bottom chat) and the active /inv/:id view is
+ *           classified dense-opaque-keep (its body text must not ride over the
+ *           moving scene); nesting a dock-owning page in a window is
+ *           out-of-contract. → navigate.
+ *         · WrestleApp — the PDF wrestler assumes the full viewport for its
+ *           reading/region-selection surface. → navigate.
+ *       (See the page-by-page classification in windows/README.md.)
  *     - a deep/operator surface from the launcher that is a context switch,
- *       not a companion.
+ *       not a companion (Operator console, Trust, Settings, governance…).
  *
- * The ProductsLauncher keeps `navigate()` for its primary entries; it gains an
- * additive "open in window" affordance for the window-eligible kinds below.
+ * The legacy additive ⊞ "open in window" affordance is retained for
+ * window-eligible run/settings rows (a power affordance), but for a product
+ * activation the window is now the DEFAULT, not a secondary button.
  */
 
 export type WindowPageRenderer =
@@ -46,15 +61,24 @@ export type WindowPageRenderer =
   | LazyExoticComponent<ComponentType<Record<string, unknown>>>;
 
 /**
- * Window-eligible pages. ONLY pages that satisfy the window-adaptation
- * contract (drop opaque bg + fill container, no internal dock system) belong
- * here. Stats + Library are adapted in SPR-09 M4; more can be added as they
- * are verified contract-safe.
+ * Window-hostable pages. Two flavours live here, both contract-safe to float:
+ *
+ *   1. CONTRACT-VERIFIED route pages — pages that ALSO have a full-page route
+ *      and satisfy the (a)+(b) window-adaptation contract (drop opaque bg +
+ *      fill container, no internal dock). Stats + Library carry the two-line
+ *      `useInWindow()` diff (SPR-09 M4); more can be added as they are verified
+ *      contract-safe. These are mapped from routes via ROUTE_TO_KIND below.
+ *
+ *   2. WINDOW-NATIVE pages — purpose-built to render ONLY in a window, so they
+ *      are authored glass-native and need no (a)+(b) route contract. `subaction`
+ *      (SPR-04 M1, the SubActionList) is the first: it lists a workflow's
+ *      sub-actions and only ever appears as a product-activation window. It has
+ *      NO route, so it is deliberately absent from ROUTE_TO_KIND.
  *
  * NOT here (deliberately, per the policy above): ResearchWorkstation and
  * WrestleApp — they own their own dock/floating panel systems and assume the
  * full viewport, so hosting them inside a window is out-of-contract. They stay
- * full-page routes.
+ * full-page routes and the default click NAVIGATES (never given a 3rd edit).
  */
 export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageRenderer }> = {
   stats: {
@@ -64,6 +88,13 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
   library: {
     title: "Library",
     renderer: lazy(() => import("../../modes/Library")),
+  },
+  // SPR-04 M1 — the sub-action window. Window-native (no full-page route),
+  // hosted when a product is activated from the launcher. Reads { workflow }
+  // from its payload and lists that workflow's MODE_TAXONOMY entries.
+  subaction: {
+    title: "Sub-actions",
+    renderer: lazy(() => import("./SubActionList")),
   },
 };
 
