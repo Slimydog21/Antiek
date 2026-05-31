@@ -125,6 +125,21 @@ def test_segmentation_empty_returns_empty():
 # ── 5. End-to-end adapter via injected video record ────────────────
 
 
+@pytest.fixture(autouse=True)
+def _reset_youtube_rate_cap():
+    """The YouTube fetch cap (SPR-07) is a per-PROCESS in-process counter
+    (§16 box-bounded, no DB/daemon). Within one pytest process every test
+    shares that module global, so the rate-cap tests would otherwise leave
+    the counter advanced and trip YouTubeRateCapExceeded in a later test
+    whose video reaches the live fetch() path. Reset before and after every
+    test for deterministic, order-independent isolation."""
+    from acquisition.youtube import reset_youtube_fetch_counter
+
+    reset_youtube_fetch_counter()
+    yield
+    reset_youtube_fetch_counter()
+
+
 @pytest.fixture
 def temp_substrate(monkeypatch):
     tmp = tempfile.mkdtemp(prefix="antiek-yt-test-")
@@ -345,3 +360,454 @@ def test_ingest_video_transcript_lane_stable_on_reingest(temp_substrate):
         con.close()
     assert len(rows) == 1
     assert rows[0][0] == "personal_reading"
+
+
+# ── 7. SPR-07 M1: default class proven, skip paths write no row ─────
+
+
+def test_default_content_class_imported_constant_not_servable(temp_substrate):
+    """Default ingest persists the personal-lane CONSTANT, which is absent
+    from SERVABLE and present in NON_ATTRIBUTABLE — asserted by importing the
+    frozensets, no DB serve call needed (rigor #3, mechanically checkable)."""
+    import duckdb
+
+    from substrate.collective_graph.eligibility import (
+        NON_ATTRIBUTABLE_CONTENT_CLASSES,
+    )
+    from substrate.constants import (
+        PERSONAL_READING_CONTENT_CLASS,
+        SERVABLE_CONTENT_CLASSES,
+    )
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+    )
+    assert res.content_class == PERSONAL_READING_CONTENT_CLASS
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (cc,) = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert cc == PERSONAL_READING_CONTENT_CLASS
+    assert cc not in SERVABLE_CONTENT_CLASSES
+    assert cc in NON_ATTRIBUTABLE_CONTENT_CLASSES
+
+
+def test_no_transcript_skip_writes_no_documents_row(temp_substrate):
+    """The no_transcript early return must write ZERO documents rows, so a
+    skipped ingest cannot leak a rights class (M1 acceptance)."""
+    import duckdb
+
+    # No transcript at all, but a description long enough to clear
+    # min_word_count (50) so we do NOT hit the low_word_count branch —
+    # we want to exercise the no_transcript branch specifically. The
+    # description stays under min_word_count*4 (200) total markdown words
+    # so word_count lands in [50, 200) and the no_transcript guard fires.
+    long_desc = " ".join(f"word{i}" for i in range(80))  # 80 words, no captions
+    no_caps = YouTubeVideo(
+        video_id="ccccccccccc",
+        title="No captions here",
+        channel="C",
+        duration_seconds=600,
+        upload_date=None,
+        description=long_desc,
+        transcript=[],  # no transcript at all
+        transcript_source="missing",
+        watch_url="https://www.youtube.com/watch?v=ccccccccccc",
+        caption_kind="missing",
+    )
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=no_caps,
+    )
+    # The MILESTONE contract (M1) is: a skipped ingest writes ZERO documents
+    # rows, so it cannot leak a rights class. A no-captions video takes one of
+    # the two skip branches (no_transcript / low_word_count) — BOTH return
+    # before any insert_document and BOTH leave content_class=None. Assert the
+    # load-bearing property, not which incidental branch label fired.
+    assert res.skipped_reason in ("no_transcript", "low_word_count")
+    assert res.content_class is None  # nothing persisted
+    # The skip early-returns BEFORE ensure_initialized + any connect_write, so
+    # for a fresh temp db the documents table may not even exist — itself proof
+    # that zero rows (and zero rights classes) were written. Treat "table
+    # absent" and "table present with 0 matching rows" identically.
+    if not os.path.exists(temp_substrate["db_path"]):
+        doc_count = 0
+    else:
+        con = duckdb.connect(temp_substrate["db_path"])
+        try:
+            tables = {
+                r[0]
+                for r in con.execute(
+                    "SELECT table_name FROM information_schema.tables"
+                ).fetchall()
+            }
+            if "documents" not in tables:
+                doc_count = 0
+            else:
+                (doc_count,) = con.execute(
+                    "SELECT COUNT(*) FROM documents WHERE document_id = ?",
+                    [res.document_id],
+                ).fetchone()
+        finally:
+            con.close()
+    assert doc_count == 0
+
+
+# ── 8. SPR-07 M2: operator-only rate cap ───────────────────────────
+
+
+def test_rate_cap_at_cap_ok_then_over_cap_raises():
+    """note_youtube_fetch allows exactly YOUTUBE_MAX_FETCHES_PER_RUN
+    fetches per process; the (cap+1)-th raises YouTubeRateCapExceeded.
+    In-process only — reset between assertions (rigor #3 boundary case)."""
+    from acquisition.youtube import (
+        YOUTUBE_MAX_FETCHES_PER_RUN,
+        YouTubeRateCapExceeded,
+        note_youtube_fetch,
+        reset_youtube_fetch_counter,
+    )
+
+    reset_youtube_fetch_counter()
+    try:
+        # Exactly at the cap: no raise.
+        for _ in range(YOUTUBE_MAX_FETCHES_PER_RUN):
+            note_youtube_fetch()
+        # One over the cap: raises.
+        with pytest.raises(YouTubeRateCapExceeded):
+            note_youtube_fetch()
+    finally:
+        reset_youtube_fetch_counter()
+
+
+def test_rate_cap_resets_per_process():
+    """Reset clears the in-process counter (no DB / daemon state)."""
+    from acquisition.youtube import (
+        YOUTUBE_MAX_FETCHES_PER_RUN,
+        YouTubeRateCapExceeded,
+        note_youtube_fetch,
+        reset_youtube_fetch_counter,
+    )
+
+    reset_youtube_fetch_counter()
+    for _ in range(YOUTUBE_MAX_FETCHES_PER_RUN):
+        note_youtube_fetch()
+    with pytest.raises(YouTubeRateCapExceeded):
+        note_youtube_fetch()
+    reset_youtube_fetch_counter()
+    # Fresh budget after reset.
+    assert note_youtube_fetch() == 1
+    reset_youtube_fetch_counter()
+
+
+# ── 9. SPR-07 M3: narrow CC-BY servable exception (both branches) ───
+
+
+def test_cc_by_no_flag_stays_personal_reading_not_servable(temp_substrate):
+    """No confirmation flag → personal_reading, not servable, empty basis."""
+    import duckdb
+
+    from substrate.constants import (
+        PERSONAL_READING_CONTENT_CLASS,
+        SERVABLE_CONTENT_CLASSES,
+    )
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+        # operator_confirmed_cc_by defaults to False — the safe path.
+    )
+    assert res.content_class == PERSONAL_READING_CONTENT_CLASS
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        # license_basis lives on book_assets (the column corpus_audit reads),
+        # NOT on documents — LEFT JOIN so a personal_reading row with no
+        # book_assets entry yields a NULL basis (which is the correct state:
+        # the private lane carries no positive servable basis).
+        (cc, basis) = con.execute(
+            "SELECT d.content_class, b.license_basis "
+            "FROM documents d LEFT JOIN book_assets b "
+            "ON d.document_id = b.document_id "
+            "WHERE d.document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert cc == PERSONAL_READING_CONTENT_CLASS
+    assert cc not in SERVABLE_CONTENT_CLASSES
+    assert not basis  # no positive servable basis on the private lane
+
+
+def test_cc_by_flag_promotes_to_source_declared_open_servable(temp_substrate):
+    """operator_confirmed_cc_by=True → source_declared_open (servable) with a
+    non-empty, truthful license_basis. Both proven by reading the temp DB."""
+    import duckdb
+
+    from substrate.constants import (
+        SERVABLE_CONTENT_CLASSES,
+        SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+    )
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+        operator_confirmed_cc_by=True,
+    )
+    assert res.content_class == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        # license_basis is recorded on book_assets when a transcript is
+        # promoted to a servable class — the exact column corpus_audit's
+        # servable-basis / third-party-servable checks LEFT JOIN and read.
+        (cc, basis) = con.execute(
+            "SELECT d.content_class, b.license_basis "
+            "FROM documents d LEFT JOIN book_assets b "
+            "ON d.document_id = b.document_id "
+            "WHERE d.document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert cc == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+    assert cc in SERVABLE_CONTENT_CLASSES
+    assert basis and "CC-BY" in basis  # truthful, non-empty positive basis
+
+
+def test_cc_by_promotion_honored_even_with_auto_captions(temp_substrate):
+    """Provenance and license are orthogonal: an auto-captioned video the
+    operator confirms as CC-BY is still promoted (the CC-BY claim is about
+    the video's license, not the caption track)."""
+    import duckdb
+
+    from substrate.constants import SOURCE_DECLARED_OPEN_CONTENT_CLASS
+
+    auto_caps = _fake_video(30)
+    # Rebuild with caption_kind="auto" (frozen dataclass).
+    from dataclasses import replace
+
+    auto_caps = replace(auto_caps, caption_kind="auto")
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=auto_caps,
+        operator_confirmed_cc_by=True,
+    )
+    assert res.content_class == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+    assert res.caption_kind == "auto"
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (cc,) = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert cc == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+
+
+# ── 9b. SPR-07 M3 hardening: explicit content_class= is not an escape ──
+
+
+def test_explicit_servable_content_class_without_basis_is_rejected(temp_substrate):
+    """The explicit content_class= override (ranked above operator_confirmed_cc_by)
+    must NOT be a silent deny-by-default escape: passing a SERVABLE class with no
+    license_basis raises YouTubeContentClassRejected and writes NO row — closing
+    the gap where a servable class would slip past the AST literal-scanner as a
+    Name and only be caught later at audit time."""
+    import duckdb
+
+    from acquisition.youtube.adapter import YouTubeContentClassRejected
+    from substrate.constants import SOURCE_DECLARED_OPEN_CONTENT_CLASS
+
+    with pytest.raises(YouTubeContentClassRejected):
+        ingest_youtube(
+            "doesntmatter",
+            investigation_id="inv-yt-test",
+            db_path=temp_substrate["db_path"],
+            embedder=_StubEmbedder(),
+            video=_fake_video(30),
+            content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,  # servable, no basis
+        )
+    # The raise happens BEFORE any insert_document, so nothing leaked.
+    if not os.path.exists(temp_substrate["db_path"]):
+        doc_count = 0
+    else:
+        con = duckdb.connect(temp_substrate["db_path"])
+        try:
+            tables = {
+                r[0]
+                for r in con.execute(
+                    "SELECT table_name FROM information_schema.tables"
+                ).fetchall()
+            }
+            if "documents" not in tables:
+                doc_count = 0
+            else:
+                (doc_count,) = con.execute(
+                    "SELECT COUNT(*) FROM documents WHERE document_id = ?",
+                    ["doc-yt-aaaaaaaaaaa"],
+                ).fetchone()
+        finally:
+            con.close()
+    assert doc_count == 0
+
+
+def test_explicit_unknown_content_class_is_rejected(temp_substrate):
+    """An unrecognized content_class string is rejected (it would otherwise land
+    an unknown class on the row, slipping past the literal-scanner as a Name)."""
+    from acquisition.youtube.adapter import YouTubeContentClassRejected
+
+    with pytest.raises(YouTubeContentClassRejected):
+        ingest_youtube(
+            "doesntmatter",
+            investigation_id="inv-yt-test",
+            db_path=temp_substrate["db_path"],
+            embedder=_StubEmbedder(),
+            video=_fake_video(30),
+            content_class="totally_made_up_class",
+        )
+
+
+def test_explicit_servable_content_class_with_basis_is_accepted(temp_substrate):
+    """The override still WORKS for a legitimate caller: a servable class WITH an
+    explicit, non-empty license_basis is accepted and the basis lands on
+    book_assets (the column corpus_audit reads), so the row is audit-clean."""
+    import duckdb
+
+    from substrate.constants import (
+        SERVABLE_CONTENT_CLASSES,
+        SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+    )
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+        license_basis="CC-BY (caller-supplied, verified out of band)",
+    )
+    assert res.content_class == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (cc, basis) = con.execute(
+            "SELECT d.content_class, b.license_basis "
+            "FROM documents d LEFT JOIN book_assets b "
+            "ON d.document_id = b.document_id "
+            "WHERE d.document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert cc == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+    assert cc in SERVABLE_CONTENT_CLASSES
+    assert basis and "CC-BY" in basis  # positive basis recorded
+
+
+def test_explicit_personal_reading_content_class_needs_no_basis(temp_substrate):
+    """A non-servable explicit class (personal_reading) is accepted without a
+    basis — the basis requirement is scoped to SERVABLE classes only."""
+    from substrate.constants import (
+        PERSONAL_READING_CONTENT_CLASS,
+        SERVABLE_CONTENT_CLASSES,
+    )
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+        content_class=PERSONAL_READING_CONTENT_CLASS,
+    )
+    assert res.content_class == PERSONAL_READING_CONTENT_CLASS
+    assert res.content_class not in SERVABLE_CONTENT_CLASSES
+
+
+# ── 10. SPR-07 M4: caption provenance (human/auto/unknown) round-trip
+
+
+def _fake_video_with_caption_kind(kind: str) -> YouTubeVideo:
+    from dataclasses import replace
+
+    return replace(_fake_video(30), caption_kind=kind)
+
+
+@pytest.mark.parametrize("kind", ["human", "auto", "unknown"])
+def test_caption_kind_round_trips_into_metadata_and_result(
+    temp_substrate, kind
+):
+    """A fake video's caption provenance round-trips into
+    documents.metadata.caption_kind AND onto the result — no live network,
+    set on the injected YouTubeVideo via the video= seam (M4 acceptance)."""
+    import json
+
+    import duckdb
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video_with_caption_kind(kind),
+    )
+    assert res.caption_kind == kind
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (meta_raw,) = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    meta = meta_raw if isinstance(meta_raw, dict) else json.loads(meta_raw)
+    assert meta.get("caption_kind") == kind
+    # transcript_source still co-exists (not clobbered).
+    assert "transcript_source" in meta
+
+
+def test_transcript_provenance_unknown_not_defaulted_to_human(temp_substrate):
+    """Honesty (rigor #1): an 'unknown'-provenance track is persisted as
+    'unknown', never silently upgraded to 'human'."""
+    import json
+
+    import duckdb
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video_with_caption_kind("unknown"),
+    )
+    assert res.caption_kind == "unknown"
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (meta_raw,) = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    meta = meta_raw if isinstance(meta_raw, dict) else json.loads(meta_raw)
+    assert meta.get("caption_kind") == "unknown"
+    assert meta.get("caption_kind") != "human"
