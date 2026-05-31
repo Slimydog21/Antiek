@@ -71,7 +71,17 @@ def fetch_health(url: str, *, timeout: float = 10.0) -> dict:
     """
     base = url.rstrip("/")
     health_url = base if base.endswith("/health") else base + "/health"
-    req = urllib.request.Request(health_url, headers={"Accept": "application/json"})
+    # Cloudflare (fronting api.antiek.ai) 403s the default ``Python-urllib/*``
+    # User-Agent as a bot, so the parity probe never reached /health — the
+    # blocking deploy assert + the scheduled probe both false-red. Send a
+    # descriptive UA (verified: default urllib UA → 403, this UA → 200).
+    req = urllib.request.Request(
+        health_url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "antiek-prod-parity/1.0 (+https://antiek.ai)",
+        },
+    )
     with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (own URL)
         return json.loads(resp.read().decode("utf-8"))
 
