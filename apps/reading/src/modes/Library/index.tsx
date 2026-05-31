@@ -5,6 +5,7 @@ import type { BookSummary, CorpusStatus } from "../../api/books";
 import { curateBooks, listBooks } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
+import { useInWindow } from "../../components/windows/windowHostContext";
 import BookCard from "./BookCard";
 import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
@@ -38,6 +39,10 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
 
 export default function Library() {
   const navigate = useNavigate();
+  // SPR-09 window-adaptation contract: in a WorkspaceWindow, fill the
+  // container (h-full) and drop the opaque full-bleed bg so the glass shows
+  // through. Gated on this flag → the full-page route is unchanged.
+  const inWindow = useInWindow();
   const [status, setStatus] = useState<CorpusStatus>("servable");
   const [books, setBooks] = useState<BookSummary[]>([]);
   // Active research, the signal documentsByTheme ranks the shelf to (M1).
@@ -167,8 +172,10 @@ export default function Library() {
   }, [loading, status, books.length]);
 
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
+      <main
+        className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
+      >
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
             <div className="flex items-start justify-between gap-4">

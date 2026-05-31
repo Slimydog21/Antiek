@@ -1058,7 +1058,21 @@ from acquisition.arxiv.rate_governor import (  # noqa: E402
 )
 from acquisition.openaccess import unpaywall as oa_unpaywall  # noqa: E402
 
-_ARXIV_PDF_BODY = b"%PDF-1.5\n" + b"y" * 4096
+# A genuinely parseable minimal PDF: main's OA download path now verifies bytes
+# through the shared layered detector ``pdf_detect.assert_pdf`` (content-type +
+# %PDF magic + a real pypdf PARSE), so a ``%PDF-`` header followed by filler is
+# rejected. These governance tests only care about request SPACING, but the
+# fetch must complete, so the body must pass the parse layer.
+_ARXIV_PDF_BODY = (
+    b"%PDF-1.4\n"
+    b"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+    b"2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+    b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\n"
+    b"xref\n0 4\n"
+    b"0000000000 65535 f \n0000000009 00000 n \n"
+    b"0000000052 00000 n \n0000000101 00000 n \n"
+    b"trailer<</Size 4/Root 1 0 R>>\nstartxref\n164\n%%EOF\n"
+)
 
 
 def test_oa_download_pdf_of_arxiv_work_is_inside_the_host_global_governor_flock(

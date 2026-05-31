@@ -32,7 +32,18 @@ jobs:
   pytest:
     name: pytest
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 25 min (was 15). The 15-min ceiling was already under-provisioned: the
+    # base `main` suite runs ~14.4 min on this shared ubuntu-latest runner
+    # (~1.66x slower than dev hardware per the locked rubric-latency benchmark)
+    # and a recent `main` run was itself cancelled at 15.2 min. The corpus-ingest
+    # work adds ~40 test files, reliably tipping the full suite past 15 min ->
+    # the job was being cancelled (not failed) at the timeout. This raises ONLY
+    # the wall-clock ceiling; the gate still runs the FULL suite and still fails
+    # on any real test failure (nothing about what is checked changes, and the
+    # informational latency craft-signature baseline is untouched).
+    # Reconsider-if: the suite is sharded / xdist-parallelized, after which this
+    # can drop back toward 15. See docs/decisions/ci-pytest-timeout.md.
+    timeout-minutes: 25
 
     steps:
       - name: Checkout

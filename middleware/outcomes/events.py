@@ -22,9 +22,12 @@ from typing import Optional
 try:
     from ...event_log import emit_typed
     from ...schemas import (
+        ClaimGroundednessVerdict,
         DecisionAlignment,
         ExecutionRiskOutcome,
         FalsificationOutcome,
+        GroundednessFailedPayload,
+        GroundednessScoredPayload,
         OutcomeRecordedPayload,
         RubricScoredPayload,
         ThesisOutcome,
@@ -34,9 +37,12 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.schemas import (  # type: ignore[no-redef]
+        ClaimGroundednessVerdict,
         DecisionAlignment,
         ExecutionRiskOutcome,
         FalsificationOutcome,
+        GroundednessFailedPayload,
+        GroundednessScoredPayload,
         OutcomeRecordedPayload,
         RubricScoredPayload,
         ThesisOutcome,
@@ -142,4 +148,75 @@ def emit_rubric_scored(
         parent_event_id=parent_event_id,
         synthesis_id=synthesis_id,
         role="rubric_scorer",
+    )
+
+
+def emit_groundedness_scored(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    scorer_id: str,
+    backend: str,
+    groundedness_score: float,
+    scored_claims: int,
+    total_claims: int,
+    supported_threshold: float,
+    per_claim: Optional[list] = None,
+    notes: str = "",
+    parent_event_id: Optional[str] = None,
+) -> Optional[str]:
+    """Emit one GROUNDEDNESS_SCORED event (Foundation v2 SPR-02) — the
+    NON-blocking truth-axis signal emitted alongside the SECONDARY
+    form-axis ``rubric.scored``. ``per_claim`` is a list of
+    ``ClaimGroundednessVerdict`` (or dicts coercible to it). Scores are
+    in [0, 1]; out-of-range values raise at validation."""
+    verdicts: list[ClaimGroundednessVerdict] = []
+    for v in per_claim or []:
+        if isinstance(v, ClaimGroundednessVerdict):
+            verdicts.append(v)
+        else:
+            verdicts.append(ClaimGroundednessVerdict(**v))
+    return emit_typed(
+        investigation_id,
+        GroundednessScoredPayload(
+            scorer_id=scorer_id,
+            backend=backend,  # type: ignore[arg-type]
+            groundedness_score=float(groundedness_score),
+            scored_claims=int(scored_claims),
+            total_claims=int(total_claims),
+            supported_threshold=float(supported_threshold),
+            per_claim=verdicts,
+            notes=notes,
+        ),
+        parent_event_id=parent_event_id,
+        synthesis_id=synthesis_id,
+        role="groundedness_scorer",
+    )
+
+
+def emit_groundedness_failed(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    scorer_id: str,
+    stage: str,
+    error_type: str,
+    error: str,
+    parent_event_id: Optional[str] = None,
+) -> Optional[str]:
+    """Emit one GROUNDEDNESS_FAILED event (Foundation v2 SPR-02) — the
+    event that REPLACES the Phase-6 ``except Exception: pass`` swallow. A
+    scorer crash must SURFACE here (never a silent pass) while the phase
+    stays non-blocking. ``stage`` is ``"groundedness"`` or ``"rubric"``."""
+    return emit_typed(
+        investigation_id,
+        GroundednessFailedPayload(
+            scorer_id=scorer_id,
+            stage=stage,  # type: ignore[arg-type]
+            error_type=error_type,
+            error=error,
+        ),
+        parent_event_id=parent_event_id,
+        synthesis_id=synthesis_id,
+        role="groundedness_scorer",
     )

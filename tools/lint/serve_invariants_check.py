@@ -104,6 +104,11 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         "substrate/books/takedown.py",
         "substrate/research_bridge/extractor.py",
         "substrate/research_bridge/versioning.py",
+        # The standing corpus audit opens the DB READ-ONLY (connect_read, never
+        # connect_write) and reads raw_text only to assert corpus invariants
+        # (e.g. no servable doc with a NULL body); it never serves a body to a
+        # client — an internal auditor, like the extractor/versioning above.
+        "substrate/corpus_audit.py",
     }
 )
 

@@ -76,6 +76,11 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
     {
         "substrate/books/serve.py",
         "substrate/books/serve_guard.py",
+        # The standing corpus audit calls serve_full_text READ-ONLY to AUDIT the
+        # gate itself — it asserts a gated doc does NOT leak a body through the
+        # raw content_class projection. It wants the unguarded projection on
+        # purpose (the guarded path would raise); it never serves to a client.
+        "substrate/corpus_audit.py",
     }
 )
 

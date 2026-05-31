@@ -54,6 +54,13 @@ const SANCTIONED = new Set<string>([
   "src/brand/werner/animated/animations.css",
   "src/design/motion.css",
   "src/design/motion.ts",
+  // The reactive Werner mascot's waddle/bump poses (AMS SPR-05/10) — a
+  // dedicated motion home, the same kind of slot as animations.css above.
+  "src/werner/waddle.css",
+  // The living-mountainscape scene's consolidated keyframes (AMS SPR-04):
+  // krea crossfade + the scenery penguin's journey/bob. One motion home, not
+  // sprawled inline across the layer components.
+  "src/scene/scene.css",
 ]);
 
 /** `@keyframes <name>` — the high-signal "new motion vocabulary" marker. */

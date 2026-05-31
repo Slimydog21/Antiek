@@ -45,6 +45,18 @@ _SANCTIONED_ESCROW_CALLERS = frozenset({
     # SPR-05: per-second frame-attention border accrual — a third sanctioned
     # revenue source routing through the one writer (ip_holders.accrue_escrow).
     "substrate/ad_inventory/frame_attention_accrual.py",
+    # SPR-02 (corpus ingest): gated-mass-ingest escrow accrual — a fourth
+    # sanctioned revenue source. When the rights classifier gates an
+    # in-copyright work, escrow accrues to its pre_onboarded holder through the
+    # one writer; accrual ≠ disbursement (G2/G3 stay operator-only).
+    "substrate/ip_holders/gated_accrual.py",
+    # SPR-08 (§9.10 publisher opt-in): the opt-in intake seed accrual — a fifth
+    # sanctioned revenue source. A SERVABLE opt-in work seeds escrow to its
+    # publisher's pre_onboarded holder at intake. This substrate-layer seam
+    # keeps the escrow write under substrate/ (the acquisition/opt_in intake
+    # lane calls IT, never accrue_escrow directly across the layer boundary);
+    # accrual ≠ disbursement (G2/G3 stay operator-only).
+    "substrate/ip_holders/opt_in_accrual.py",
 })
 
 

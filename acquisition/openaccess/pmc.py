@@ -192,7 +192,7 @@ def download_pdf(
             install_arxiv_request_hook,
         )
 
-        from .unpaywall import NotAPdf, _looks_like_pdf
+        from .pdf_detect import assert_pdf
 
         headers = {"User-Agent": DEFAULT_USER_AGENT}
         if client is not None:
@@ -213,12 +213,9 @@ def download_pdf(
                 content_type = r.headers.get("content-type")
                 r.raise_for_status()
                 content = r.content
-        if not _looks_like_pdf(content, content_type):
-            raise NotAPdf(
-                f"{pdf_url} returned non-PDF bytes "
-                f"(content-type={content_type!r}) — not a PDF "
-                "(PMC ?pdf=render can return an HTML interstitial)"
-            )
+        # PMC ?pdf=render can return an HTML interstitial; the shared layered
+        # detector (content-type / %PDF- / pypdf parse) rejects it as NotAPdf.
+        assert_pdf(content, content_type=content_type, url=pdf_url)
         return content
 
     return throttle.run_with_retry(_get) if throttle is not None else _get()

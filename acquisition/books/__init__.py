@@ -24,6 +24,17 @@ from .public_domain import (
 )
 from .reader import PdfPage, ReadResult, read_pdf
 
+# SPR-06 Wave-2 PD connectors + their shared spine glue. Imported here so the
+# "connectors importable/registered" gate is a single package import and SPR-09
+# can rotate over the registry.
+from .pd_connector_base import (
+    BookCandidate,
+    FetchError,
+    IngestOutcome as PdConnectorIngestOutcome,
+    ThrottledFetcher,
+    classify_and_ingest,
+)
+
 __all__ = [
     "IngestBookResult",
     "IngestServableBookResult",
@@ -42,4 +53,10 @@ __all__ = [
     "read_pdf",
     "strip_gutenberg_boilerplate",
     "text_to_pdf",
+    # SPR-06
+    "BookCandidate",
+    "FetchError",
+    "PdConnectorIngestOutcome",
+    "ThrottledFetcher",
+    "classify_and_ingest",
 ]

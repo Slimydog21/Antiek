@@ -1,0 +1,30 @@
+{
+  "schema_version": "opt_in/1",
+  "publisher": {
+    "publisher_id": "mit-press",
+    "display_name": "MIT Press",
+    "legal_contact_email": "legal@mitpress.edu"
+  },
+  "works": [
+    {
+      "title": "On the Architecture of Knowledge Bases",
+      "author": "A. Editor",
+      "isbn": "978-0-262-04630-5",
+      "doi": "10.7551/mitpress/00001.001.0001",
+      "grant": {
+        "rights_holder": "MIT Press",
+        "scope": "per_work",
+        "granted_at": "2026-05-30",
+        "statement": "MIT Press hereby grants Antiek the right to serve the full text of this work under the per-second ad-border revenue-share terms, dated 2026-05-30."
+      },
+      "body_text": "This work examines how a single substrate can serve a knowledge base whose value compounds with corpus breadth. The argument proceeds in three movements. First, it establishes that servability must be gated by redistribution rights rather than mere availability: free to read is never free to redistribute. Second, it shows that a publisher opt-in lane is the only legitimate route by which in-copyright material becomes servable, because the rights holder themselves grants the serving right. Third, it derives the escrow accrual mechanism that routes revenue share to contributors from the first impression, long before any disbursement. The chapter closes by contrasting this lane with scraped intake, which remains gated forever. Each section is supported by worked examples drawn from the production corpus, and the appendix records the precise grant statement that establishes servability for this very volume, so that a rights inquiry years hence can be answered from the recorded basis alone, without the original manifest in hand."
+    },
+    {
+      "title": "An In-Copyright Work Submitted Without a Grant",
+      "author": "B. Writer",
+      "isbn": "978-0-262-04631-2",
+      "doi": "10.7551/mitpress/00002.001.0001",
+      "body_text": "This second work is included in the same manifest but carries no serving grant. Under deny-by-default it must be ingested gated: its full body is chunked and embedded into the graph for private search, but its full text is never served publicly. The absence of a grant is the only reason it gates; were the publisher to add a dated, in-scope grant in a later resubmission, the very same work would flip to servable, and were they to withdraw an existing grant, it would flip back to gated. Nothing else in the manifest can promote a work to servable. The intake summary records this work as gated and names the precise reason, so the rights audit can confirm that the gated state was an explicit decision rather than an oversight. This paragraph carries enough prose to clear the minimum ingest word count so the body genuinely enters the graph as a gated, body-withheld document rather than being skipped for being too thin to chunk."
+    }
+  ]
+}

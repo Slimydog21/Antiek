@@ -17,7 +17,7 @@
  * router because the mounting CONTRACT — what open() does — is what's
  * load-bearing; the rail is a thin caller of it.)
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
@@ -31,6 +31,28 @@ import {
 
 const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 const s = () => useWorkspace.getState();
+
+// SPR-08 — the rail now renders on-bar KeyChips (usePrefersReducedMotion →
+// matchMedia). jsdom lacks matchMedia; stub it as the other suites do. No new
+// assertion — it only lets the real rail render its real children.
+beforeAll(() => {
+  if (!window.matchMedia) {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+  }
+});
 
 beforeEach(() => {
   s().reset();

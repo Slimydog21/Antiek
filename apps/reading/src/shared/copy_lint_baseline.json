@@ -33,7 +33,7 @@
   "src/modes/SpeakIndex/index.tsx:77\tsubject-status\tsubject_status",
   "src/modes/SpeakIndex/index.tsx:78\tpublish-intent\tpublish_intent",
   "src/modes/SpeakInvite/index.tsx:34\tsubject-status\tsubject_status",
-  "src/modes/Stats/index.tsx:23\tn-chunks\t[\"investigations\", \"documents\", \"chunks\", \"nodes\", \"edges\"]",
+  "src/modes/Stats/index.tsx:24\tn-chunks\t[\"investigations\", \"documents\", \"chunks\", \"nodes\", \"edges\"]",
   "src/modes/Write/BlockRepository.tsx:136\tblock-id\tblock_id",
   "src/modes/Write/ContextWindow/ContextWindow.tsx:53\tblock-id\tblock_id",
   "src/modes/Write/ContextWindow/contextWindowState.ts:50\tn-claims\t[\"insight\", \"open_question\", \"claim\"]",

@@ -21,10 +21,11 @@ This module is PURE — no I/O, no DB, no network — so the mapping is unit
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
     SOURCE_DECLARED_OPEN_CONTENT_CLASS,
 )
 
@@ -182,6 +183,66 @@ CC_PDM_ROW: LicenseRow = LicenseRow(
 )
 
 
+# Compact CC codes ("cc-by", "cc-by-nc-nd", "cc0") that OA aggregators
+# (OpenAlex / Unpaywall / PMC / DOAJ) emit as often as full URIs. These carry
+# the SAME legal verdict as the URI rows above and so live HERE, the one CC
+# home, rather than being forked per source — the classify() chokepoint and
+# the OA resolver both compose this tuple. The codes carry the same
+# NC/ND-before-BY ordering contract: "cc-by-nc" must precede "cc-by", else a
+# CC-BY-NC code would match the bare "cc-by" row and be mis-served.
+CC_SHORT_CODE_ROWS: tuple[LicenseRow, ...] = (
+    LicenseRow(
+        match="cc-by-nc",
+        content_class=GATED_DEFAULT_CONTENT_CLASS,
+        redistributable=False,
+        license_name="CC BY-NC (non-commercial)",
+        rationale=(
+            "NC forbids commercial reuse; Antiek's ad-funded serving is "
+            "commercial -> gated."
+        ),
+    ),
+    LicenseRow(
+        match="cc-by-nd",
+        content_class=GATED_DEFAULT_CONTENT_CLASS,
+        redistributable=False,
+        license_name="CC BY-ND (no-derivatives)",
+        rationale="ND bars derivative presentation -> gated (conservative).",
+    ),
+    LicenseRow(
+        match="cc-by-sa",
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+        redistributable=True,
+        license_name="CC BY-SA",
+        rationale=(
+            "CC BY-SA permits redistribution with attribution + share-alike "
+            "-> servable as source_declared_open (not a §9.10 publisher "
+            "opt-in; 2026-05-29 remap)."
+        ),
+    ),
+    LicenseRow(
+        match="cc-by",
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+        redistributable=True,
+        license_name="CC BY",
+        rationale=(
+            "CC BY permits redistribution with attribution -> servable as "
+            "source_declared_open (not a §9.10 publisher opt-in; 2026-05-29 "
+            "remap)."
+        ),
+    ),
+    LicenseRow(
+        match="cc0",
+        content_class=PUBLIC_DOMAIN_CONTENT_CLASS,
+        redistributable=True,
+        license_name="CC0 1.0 (public-domain dedication)",
+        rationale=(
+            "CC0 waives all rights -> public_domain (no rights holder, no "
+            "attribution obligation; 2026-05-29 remap)."
+        ),
+    ),
+)
+
+
 def resolve_against_table(
     license_uri: Optional[str], table: tuple[LicenseRow, ...]
 ) -> LicenseResolution:
@@ -241,3 +302,233 @@ def license_basis_string(resolution: LicenseResolution) -> str:
     if uri:
         return f"GATED: {resolution.license_name} ({uri}) -- {resolution.rationale}"
     return f"GATED: {resolution.rationale}"
+
+
+# ---------------------------------------------------------------------------
+# THE rights-classification chokepoint (SPR-02). Exactly one function decides
+# every fetched work's content_class + whether it is ingested at all. Every
+# Wave-2 connector calls THIS; no connector assigns a content_class by any
+# other route. It composes the existing license-resolution engine
+# (resolve_against_table over the canonical CC table) rather than re-deriving
+# CC semantics — there is one legal home for "what is servable".
+# ---------------------------------------------------------------------------
+
+# The classify() decision lives over the SAME canonical CC rows the per-source
+# resolvers compose, so a CC license classifies identically here and inside
+# acquisition.arxiv / acquisition.openaccess (no divergent CC verdict). URI rows
+# come before the compact short-code rows so a full URI is classified by the
+# canonical legal row; both forms reach the chokepoint because a connector may
+# hand classify() either an aggregator short code or a full license URI.
+_CLASSIFY_TABLE: tuple[LicenseRow, ...] = (
+    (CC_PDM_ROW,) + CC_LICENSE_ROWS + CC_SHORT_CODE_ROWS
+)
+
+# license_basis values the classify branches stamp, named so the per-batch
+# rights audit (substrate.rights_audit) and a lawyer read the SAME tokens.
+PUBLISHER_GRANT_BASIS_PREFIX = "publisher_opt_in"
+PUBLIC_DOMAIN_DECLARED_BASIS = "public_domain: source-declared public-domain status"
+CIRCUMVENTED_SKIP_BASIS = (
+    "SKIP: access was circumvented (shadow library / paywall bypass) -- "
+    "never ingested; a non-servable work from an illegitimate source is not "
+    "stored at all"
+)
+
+
+@dataclass(frozen=True)
+class ClassificationResult:
+    """The single rights decision for one fetched work.
+
+    ``content_class`` is always a member of the substrate's book content-class
+    vocabulary (a servable class only when a license was positively
+    established; ``GATED_DEFAULT_CONTENT_CLASS`` otherwise). ``ingest`` is the
+    gated-mass-ingest vs never-ingest verdict: a positively-licensed work and a
+    GATED work from a *legitimate* source are ingested; a non-servable work
+    whose access was *circumvented* is NOT ingested at all (``ingest=False``).
+    ``servable`` is DERIVED from the class (membership in
+    SERVABLE_CONTENT_CLASSES) — never an independent flag that could drift.
+    ``accrual_eligible`` is True only for a gated work held for an
+    in-copyright reason (a rights holder exists) so M6's escrow accrual fires
+    for exactly those — never for public-domain / open-licensed works.
+    ``license_basis`` is the human-legible provenance a reviewer can read
+    months later in front of counsel; a servable result NEVER carries an empty
+    basis (impossible by construction)."""
+
+    content_class: str
+    ingest: bool
+    servable: bool
+    accrual_eligible: bool
+    license_basis: str
+    rationale: str
+
+    @property
+    def skipped(self) -> bool:
+        """A work that is not ingested (circumvented-access, never stored)."""
+        return not self.ingest
+
+
+def _is_truthy_pd_signal(value: Any) -> bool:
+    """Whether a ``source_declaration['public_domain']`` value is a POSITIVE
+    public-domain assertion. A bare ``True`` or a non-empty descriptive string
+    (e.g. a jurisdiction/date basis) counts; ``False`` / ``None`` / empty does
+    NOT (intellectual honesty: "we couldn't tell" never upgrades to servable)."""
+    if value is True:
+        return True
+    if isinstance(value, str):
+        return bool(value.strip())
+    return False
+
+
+def classify(
+    license: Optional[str],
+    source_declaration: Mapping[str, Any],
+    *,
+    legitimate_source: bool,
+) -> ClassificationResult:
+    """Map a work's license + source declaration to its rights class,
+    deny-by-default. THE single classification chokepoint (SPR-02).
+
+    Resolution order (first positive signal wins; everything else gates):
+
+    1. **Publisher grant** — ``source_declaration['publisher_grant']`` present
+       (a §9.10 opt-in: a publisher claimed the work) -> ``opt_in_licensed``
+       (servable). The basis names the rights holder.
+    2. **License string** — resolved against the canonical CC table
+       (``resolve_against_table``). A redistribution-granting CC license ->
+       its servable class (``public_domain`` for CC0/PDM,
+       ``source_declared_open`` for CC-BY/-SA). A recognised-but-restrictive
+       CC license (NC/ND) -> gated, with the basis naming *why*.
+    3. **Declared public domain** — a positive
+       ``source_declaration['public_domain']`` signal AND no contrary license
+       -> ``public_domain`` (servable).
+    4. **Everything else** — unknown, ambiguous, missing, or unrecognised ->
+       ``GATED_DEFAULT_CONTENT_CLASS`` (the deny-by-default safety branch).
+
+    Then the legitimacy gate decides ingest-vs-skip (M3):
+
+    - A **servable** work is ingested servable regardless of
+      ``legitimate_source`` (a public-domain text is lawful from any
+      legitimate fetch; this argument exists to gate the *non-servable* case).
+    - A **gated** work from a ``legitimate_source=True`` (open API, PD
+      repository, publisher-granted catalog) is ingested GATED — body stored,
+      withheld, graph-resident, escrow accruing if a rights holder exists.
+    - A **gated** work from a ``legitimate_source=False`` (circumvented access:
+      shadow library, paywall bypass) is NEVER ingested -> ``ingest=False``.
+
+    ``legitimate_source`` is keyword-only and has NO default, so a connector
+    cannot silently omit the legitimacy judgment — the omission is a TypeError,
+    not a quietly-gated ingest.
+    """
+    content_class, basis, rationale, accrual_eligible = _resolve_class(
+        license, source_declaration
+    )
+    servable = content_class in SERVABLE_CONTENT_CLASSES
+
+    # The legitimacy gate. A servable work is lawful to ingest from any
+    # legitimate fetch; only the non-servable (gated) branch consults
+    # legitimacy, and an illegitimate gated work is skipped outright (never
+    # stored) — gated mass-ingest is for in-copyright works a LAWFUL source
+    # surfaces, never for circumvented access.
+    if not servable and not legitimate_source:
+        return ClassificationResult(
+            content_class=content_class,
+            ingest=False,
+            servable=False,
+            accrual_eligible=False,
+            license_basis=CIRCUMVENTED_SKIP_BASIS,
+            rationale=(
+                "non-servable work from an illegitimate (circumvented-access) "
+                "source -> skip; never ingested, no body stored, no escrow."
+            ),
+        )
+
+    return ClassificationResult(
+        content_class=content_class,
+        ingest=True,
+        servable=servable,
+        accrual_eligible=accrual_eligible and not servable,
+        license_basis=basis,
+        rationale=rationale,
+    )
+
+
+def _resolve_class(
+    license: Optional[str],
+    source_declaration: Mapping[str, Any],
+) -> tuple[str, str, str, bool]:
+    """Resolve (content_class, license_basis, rationale, accrual_eligible)
+    BEFORE the legitimacy gate. Pure mapping of the positive signals; the
+    fallback is the deny-by-default gated class. ``accrual_eligible`` is True
+    only when the work gates for an in-copyright reason with a rights holder —
+    the M6 escrow seam keys off it."""
+    # 1. Publisher §9.10 opt-in grant — the publisher claimed the work.
+    grant = source_declaration.get("publisher_grant")
+    if grant:
+        rights_holder = _grant_rights_holder(grant)
+        holder_tag = f" ({rights_holder})" if rights_holder else ""
+        return (
+            SERVABLE_CONTENT_CLASS,  # "opt_in_licensed"
+            f"{PUBLISHER_GRANT_BASIS_PREFIX}{holder_tag}",
+            "publisher claimed the work via the §9.10 opt-in flow -> servable.",
+            False,
+        )
+
+    # 2. License string resolved against the canonical CC table.
+    if license and license.strip():
+        resolution = resolve_against_table(license, _CLASSIFY_TABLE)
+        if resolution.redistributable:
+            return (
+                resolution.content_class,
+                license_basis_string(resolution),
+                resolution.rationale,
+                False,
+            )
+        # A recognised-but-restrictive CC license (NC/ND) or an unrecognised
+        # URI -> gated. The basis names WHY. A declared license that gates is
+        # an in-copyright restriction; a rights holder exists -> accrual-eligible.
+        return (
+            GATED_DEFAULT_CONTENT_CLASS,
+            license_basis_string(resolution),
+            resolution.rationale,
+            True,
+        )
+
+    # 3. Declared public domain with no contrary license.
+    if _is_truthy_pd_signal(source_declaration.get("public_domain")):
+        pd_note = source_declaration.get("public_domain")
+        basis = (
+            f"public_domain: {pd_note}"
+            if isinstance(pd_note, str) and pd_note.strip()
+            else PUBLIC_DOMAIN_DECLARED_BASIS
+        )
+        return (
+            PUBLIC_DOMAIN_CONTENT_CLASS,
+            basis,
+            "source positively declared public-domain status -> servable.",
+            False,
+        )
+
+    # 4. Deny-by-default. Unknown / ambiguous / missing / in-copyright. A
+    # rights-holder existing (rights_holder declared) makes it accrual-eligible
+    # so escrow accrues to a pre-onboarded holder; an anonymous unknown work
+    # gates but accrues to nobody.
+    has_rights_holder = bool(
+        source_declaration.get("rights_holder")
+        or source_declaration.get("rights_holder_name")
+    )
+    return (
+        GATED_DEFAULT_CONTENT_CLASS,
+        "GATED: no positively-established redistribution license -> gated by "
+        "default (deny-by-default safety branch).",
+        "no positively-established license / unknown rights -> gated.",
+        has_rights_holder,
+    )
+
+
+def _grant_rights_holder(grant: Any) -> Optional[str]:
+    """Pull the rights-holder name out of a ``publisher_grant`` signal. The
+    signal is a mapping (``{'rights_holder': 'MIT Press', ...}``) for the rich
+    case; a bare truthy value (e.g. ``True``) is a grant with no named holder."""
+    if isinstance(grant, Mapping):
+        holder = grant.get("rights_holder") or grant.get("rights_holder_name")
+        return str(holder) if holder else None
+    return None

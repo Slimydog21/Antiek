@@ -27,6 +27,10 @@ export default defineConfig({
       // /auth/callback redirect need to be same-origin with the
       // page or the browser drops Set-Cookie.
       "/auth": "http://localhost:8000",
+      // Mountain Shell SPR-02 — the Krea scene-art proxy
+      // (krea_routes.py). Same-origin in dev so the browser never sees
+      // the server-held KREA_API_TOKEN and no CORS is involved.
+      "/krea": "http://localhost:8000",
       "/ws": {
         target: "ws://localhost:8000",
         ws: true,

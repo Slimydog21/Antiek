@@ -52,12 +52,11 @@ from __future__ import annotations
 
 import datetime as dt
 import enum
-import os
 import sys
 import types
 import typing
 from pathlib import Path
-from typing import Any, Optional, Union, get_args, get_origin
+from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -76,7 +75,6 @@ from substrate.schemas.events import (  # noqa: E402
     ActionType,
     Event,
 )
-
 
 # ---------------------------------------------------------------------------
 # Output path + header
@@ -135,6 +133,8 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ExaLookupResult,
     # SPR-08 M4 — sub-model for ReadMetaReadingGeneratedPayload.citations.
     schema_module.MetaReadingCitation,
+    # Foundation v2 SPR-02 — sub-model for GroundednessScoredPayload.per_claim.
+    schema_module.ClaimGroundednessVerdict,
 )
 
 # Payload models, in the same order as the TypedPayload union.
@@ -177,6 +177,10 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ConstraintLoopResolvedPayload,
     schema_module.OutcomeRecordedPayload,
     schema_module.RubricScoredPayload,
+    # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
+    # event that replaces the Phase-6 except-pass swallow.
+    schema_module.GroundednessScoredPayload,
+    schema_module.GroundednessFailedPayload,
     schema_module.PhaseEnterPayload,
     schema_module.PhaseExitPayload,
     schema_module.PhaseVerifyPayload,
@@ -323,7 +327,7 @@ def _is_optional(tp: Any) -> tuple[bool, Any]:
     if origin is Union or origin is types.UnionType:  # py3.10+ ``X | None``
         args = [a for a in get_args(tp) if a is not type(None)]
         if len(args) < len(get_args(tp)):
-            inner: Any = args[0] if len(args) == 1 else Union[tuple(args)]  # type: ignore[valid-type]
+            inner: Any = args[0] if len(args) == 1 else Union[tuple(args)]  # type: ignore[valid-type]  # noqa: UP007  (runtime Union construction, not an annotation)
             return True, inner
     return False, tp
 
@@ -450,11 +454,10 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
                      if isinstance(a, type) and issubclass(a, BaseModel)}
         if arg_names == _payload_model_names():
             return "TypedPayload"
-        parts = " | ".join(
+        return " | ".join(
             _python_to_ts(a, field_name=field_name, model_name=model_name)
             for a in non_none_args
         )
-        return parts
 
     raise UnsupportedType(
         f"{model_name}.{field_name}: unsupported type {tp!r} (origin={origin!r}, "
@@ -523,7 +526,6 @@ def _emit_typed_payload_union(lines: list[str]) -> None:
 
 def _emit_action_set(name: str, values: frozenset[str], lines: list[str]) -> None:
     """Emit a ``const X: ReadonlySet<ActionType> = new Set([...])``."""
-    items = ", ".join(f'"{v}"' for v in sorted(values))
     lines.append("")
     lines.append(f"export const {name}: ReadonlySet<ActionType> = new Set<ActionType>([")
     # One per line for diff legibility.
@@ -572,7 +574,7 @@ def render() -> str:
     return "\n".join(lines) + "\n"
 
 
-def write(output_path: Optional[Path] = None) -> Path:
+def write(output_path: Path | None = None) -> Path:
     """Render and write to ``output_path`` (defaults to
     ``apps/reading/src/generated/types.ts``). Creates parent dirs."""
     out = output_path or DEFAULT_OUTPUT
