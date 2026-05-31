@@ -229,6 +229,57 @@ def test_run_surfaces_robots_fail_open_warning(temp_substrate):
     assert summary.ingested_clean == 1
 
 
+def test_robots_fetch_failure_records_fail_open_warning():
+    """When robots.txt cannot be fetched/parsed we fail OPEN (RFC default) but
+    record WHY on the parser so the run surfaces a visible operator warning —
+    silently disabling robots is the weaker posture for a lane whose lawful-
+    acquisition stance is load-bearing."""
+
+    def _boom(_u: str) -> str:
+        raise OSError("connection refused")
+
+    rp = pg.load_robots(fetch_text=_boom)
+    marker = getattr(rp, "_antiek_robots_fail_open", None)
+    assert marker, "fail-open must be recorded when robots.txt cannot be fetched"
+    assert "failed OPEN" in marker
+    # Fail-open still means everything is allowed (RFC default).
+    assert pg.robots_allows(rp, "https://paulgraham.com/anything.html")
+
+
+def test_robots_applied_records_no_fail_open():
+    rp = pg.load_robots(robots_txt="User-agent: *\nDisallow: /x.html\n")
+    assert getattr(rp, "_antiek_robots_fail_open", "sentinel") is None
+
+
+def test_run_surfaces_robots_fail_open_warning(temp_substrate):
+    """A run whose robots load failed open carries the warning in its summary +
+    report so the operator is not misled into thinking the site allowed us."""
+
+    def _boom(_u: str) -> str:
+        raise OSError("connection refused")
+
+    report_path = os.path.join(temp_substrate["tmpdir"], "rep.json")
+    body = _read_fixture("greatwork.html")
+    url = "https://paulgraham.com/greatwork.html"
+    summary = pg.run(
+        investigation_id="inv-pg",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        articles_html=b'<a href="greatwork.html">GW</a>',
+        robots_fetch_text=_boom,
+        fetched_by_url={url: _fetched("greatwork", body)},
+        throttle=_no_sleep_throttle(),
+        report_path=report_path,
+        write_report=True,
+    )
+    assert any("failed OPEN" in w for w in summary.warnings)
+    with open(report_path, encoding="utf-8") as fh:
+        report = json.load(fh)
+    assert any("failed OPEN" in w for w in report["warnings"])
+    # The essay was still ingested (fail-open allows the fetch).
+    assert summary.ingested_clean == 1
+
+
 def test_run_robots_disallowed_essay_is_skipped_not_fetched(temp_substrate):
     body = _read_fixture("greatwork.html")
     summary = pg.run(
@@ -386,8 +437,11 @@ def test_incremental_second_run_adds_zero_rows(temp_substrate):
     try:
         (d1,) = con.execute("SELECT COUNT(*) FROM documents").fetchone()
         (c1,) = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
-        (h1,) = con.execute(
-            "SELECT content_hash FROM documents WHERE document_id = ?",
+        # The documents table has no content_hash column; the stored body is
+        # raw_text. We compare it directly to prove the no-op run did not mutate
+        # the body (the hash is derived from raw_text, so body-equal ⇒ hash-equal).
+        (b1,) = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
             [url_doc_id(url)],
         ).fetchone()
     finally:
@@ -398,8 +452,8 @@ def test_incremental_second_run_adds_zero_rows(temp_substrate):
     try:
         (d2,) = con.execute("SELECT COUNT(*) FROM documents").fetchone()
         (c2,) = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
-        (h2,) = con.execute(
-            "SELECT content_hash FROM documents WHERE document_id = ?",
+        (b2,) = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
             [url_doc_id(url)],
         ).fetchone()
     finally:
@@ -408,11 +462,11 @@ def test_incremental_second_run_adds_zero_rows(temp_substrate):
     assert s1.ingested_clean == 1
     assert d2 == d1, "second run added documents"
     assert c2 == c1, "second run added chunks"
-    # The unchanged body is detected (its hash == the stored hash) and the
-    # second run is a graph no-op — not silently re-ingested.
+    # The unchanged body is detected (its recomputed hash == the stored hash)
+    # and the second run is a graph no-op — not silently re-ingested.
     assert s2.skipped_unchanged == 1
     assert s2.ingested_clean == 0
-    assert h2 == h1, "unchanged second run mutated the stored content_hash"
+    assert b2 == b1, "unchanged second run mutated the stored body"
 
 
 def test_incremental_changed_content_is_reingested_same_doc_id(temp_substrate):

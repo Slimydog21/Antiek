@@ -543,9 +543,11 @@ def run(
 
 
 def _content_hash_of(page: FetchedHtml) -> str:
-    """The connector's content hash for a pre-fetched body (extract then hash),
-    so the driver's changed-detection matches the stored ``documents.content_hash``
-    exactly (both are ``content_hash(html_to_markdown(body).markdown)``)."""
+    """The content hash for a pre-fetched body (extract then hash). Matches the
+    hash ``_stored_content_hash`` recomputes from the persisted
+    ``documents.raw_text`` exactly — both are
+    ``content_hash(html_to_markdown(body).markdown)`` and ``raw_text`` IS that
+    markdown — so an unchanged re-fetch compares equal and a changed one differs."""
     from processing.chunking.chunker import content_hash
 
     md = html_to_markdown(page.body, base_url=page.final_url)
@@ -639,17 +641,25 @@ def _quality_for_injected(
 
 
 def _stored_content_hash(url: str, *, db_path: Optional[str]) -> Optional[str]:
-    """The content_hash recorded for this URL's document, if any.
+    """The content hash of this URL's already-stored document body, if any.
 
-    The connector writes the authoritative hash to ``documents.content_hash``
-    (``insert_document(..., content_hash="sha256:"+content_hash(text))``). The
-    graph DB this driver targets holds ``{documents, chunks, url_alias}`` — there
-    is NO ``events`` table — so the hash MUST be read off the ``documents`` row
-    keyed by the URL-stable ``document_id``. Returns None when the doc, column,
-    or DB is absent so a first run treats every essay as new.
+    The hash the connector emits lives only on the ``document.loaded`` EVENT
+    (``DocumentLoadedPayload.content_hash``), not as a column on the ``documents``
+    table (whose columns are document_id / source_uri / title / author /
+    published_at / source_tier / document_type / investigation_id / raw_text /
+    metadata / content_class / ip_holder_id / owner_user_id — verified, NO
+    content_hash column, NO events table in this graph DB). The robust,
+    schema-change-free source of truth is therefore to RECOMPUTE the hash from
+    the persisted body: ``documents.raw_text`` IS exactly the extracted markdown
+    the connector chunked, so ``"sha256:" + content_hash(raw_text)`` equals the
+    ``new_hash`` the driver computes for a freshly-fetched identical body
+    (verified: content_hash(raw_text) == content_hash(html_to_markdown(body))).
+    Returns None when the doc/DB is absent so a first run treats every essay as
+    new.
     """
     import duckdb
 
+    from processing.chunking.chunker import content_hash
     from substrate.graph import default_db_path
 
     resolved = db_path or default_db_path()
@@ -661,13 +671,13 @@ def _stored_content_hash(url: str, *, db_path: Optional[str]) -> Optional[str]:
     try:
         try:
             row = con.execute(
-                "SELECT content_hash FROM documents WHERE document_id = ?",
+                "SELECT raw_text FROM documents WHERE document_id = ?",
                 [document_id],
             ).fetchone()
         except Exception:
             return None
         if row and row[0]:
-            return row[0]
+            return "sha256:" + content_hash(row[0])
         return None
     finally:
         con.close()
