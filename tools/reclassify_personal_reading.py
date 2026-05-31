@@ -274,7 +274,20 @@ def _apply(con, sweep: Sequence[tuple[str, str, Optional[str]]]) -> int:
 def _scan_rollback(con) -> list[tuple[str, str, Optional[str]]]:
     """Find every row carrying a PRIOR_CLASS_KEY stamp — the rows a prior sweep
     moved. Returns ``(document_id, prior_class, metadata_json)``. JSON-extracts
-    in SQL via the ``->>`` operator so we only touch stamped rows."""
+    in SQL via ``json_extract_string`` so we only touch stamped rows.
+
+    The scan is keyed ONLY on the PRIOR_CLASS_KEY stamp, NOT re-filtered on
+    document_type. That is deliberate: the ``reclassify_*`` metadata keys are a
+    TOOL-OWNED NAMESPACE (grep confirms ``_apply`` here is the sole writer of
+    these keys anywhere in the tree), and ``_apply`` only ever stamps third-party
+    offending rows. So a stamped row IS, by construction, a row this tool swept —
+    the stamp is the implicit contract, and the prior_class it carries is the
+    authoritative thing to restore. Re-filtering on document_type would be a
+    LATENT BUG, not a tightening: if a row's document_type were corrected between
+    apply and rollback (e.g. a mis-typed web_article relabelled), a document_type
+    filter would silently orphan its stamp — leaving the row stranded on
+    personal_reading with no way back. Keying on the stamp restores exactly what
+    apply moved, regardless of any later document_type edit."""
     rows = con.execute(
         f"""
         SELECT document_id,

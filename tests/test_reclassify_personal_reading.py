@@ -320,6 +320,71 @@ def test_post_sweep_audit_clean_and_zero_third_party_servable(seeded_db):
     assert result.ok is True, result.to_dict()
 
 
+def test_audit_ok_is_NOT_the_content_class_detector(seeded_db):
+    """DEFENSIBILITY GUARD against over-reading ``run_audit().ok``.
+
+    ``run_audit`` does not (in this sprint) know about THIRD_PARTY_DOCUMENT_TYPES
+    or personal_reading — extending it to flag third-party doc_types on a servable
+    class directly is SPR-04's scope. So a future reader must NOT treat the audit
+    flipping True post-sweep as proof that the content_class leak is cured. This
+    test pins WHY the audit fails pre-sweep: it is the ORTHOGONAL
+    ``servable_without_basis`` check tripping on the seeded web/yt/tw rows (which
+    lack a book_assets license_basis), NOT a third-party-document-type detector.
+    The load-bearing gate for the content_class concern is the independent
+    COUNT==0 in the sibling test, asserted from the constants — keep them both."""
+    from substrate.corpus_audit import CHECK_SERVABLE_BASIS, run_audit
+
+    pre = run_audit(seeded_db)
+    assert pre.ok is False
+    failing = {c.name for c in pre.failed_checks}
+    # The ONLY failing check pre-sweep is the basis-absence check. If a future
+    # SPR-04 adds a genuine third-party-on-servable check to run_audit, this set
+    # will grow — and this assertion is the canary that the audit semantics
+    # changed (update the comment above, do not silently widen the set).
+    assert failing == {CHECK_SERVABLE_BASIS}, pre.to_dict()
+
+
+def test_sweep_cures_content_class_independent_of_the_basis_check(seeded_db):
+    """The content_class cure must NOT free-ride on the orthogonal basis check.
+
+    The seeded offending rows happen to lack a license_basis, so they trip
+    ``servable_without_basis`` AND the COUNT gate pre-sweep. To prove the
+    COUNT==0 gate bites on the content_class concern ALONE — independent of the
+    basis side effect — seed a third-party row that DOES carry a book_assets
+    license_basis. With a basis present, ``servable_without_basis`` would NOT flag
+    it (the audit could even read green on that row), yet it is STILL a leak: a
+    web_article on a servable class that the public path would serve. The sweep
+    must move it, and the constants-derived COUNT must drop it. This is the test
+    that would catch a regression where the sweep silently keyed on basis-absence
+    instead of document_type."""
+    # Add a third-party row WITH a license_basis to the seeded corpus.
+    with connect_write(seeded_db, purpose="reclassify-test-basis-seed") as con:
+        con.execute(
+            "INSERT INTO documents (document_id, source_uri, source_tier, "
+            "document_type, content_class, raw_text) VALUES (?, ?, 2, ?, ?, ?)",
+            [
+                "doc-web-basis",
+                "https://blog.example/with-basis.html",
+                "web_article",
+                "user_owned",
+                "Plain-text body for doc-web-basis. " * 4,
+            ],
+        )
+        con.execute(
+            "INSERT INTO book_assets (document_id, license_basis) VALUES (?, ?)",
+            ["doc-web-basis", "PUBLIC: hand-stamped (mislabel under test)"],
+        )
+
+    # 5 offending now: the original 4 + the basis-carrying one.
+    assert _count_third_party_on_servable(seeded_db) == 5
+    rcl.run(seeded_db, apply=True)
+    # All five — including the basis-carrying row the basis check would not flag —
+    # are off the servable set.
+    assert _count_third_party_on_servable(seeded_db) == 0
+    after = _classes(seeded_db)
+    assert after["doc-web-basis"] == PERSONAL_READING_CONTENT_CLASS
+
+
 def test_sweep_emits_typed_event(seeded_db, tmp_path, monkeypatch):
     """The sweep emits exactly one corpus.reclassify_personal_reading event whose
     payload carries the operation + rows + by_document_type — the only audit
