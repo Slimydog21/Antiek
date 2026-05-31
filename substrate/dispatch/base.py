@@ -60,12 +60,28 @@ class NormalizedUsage:
     """Provider-agnostic usage breakdown. Adapters convert their own raw
     usage shape into this on every successful call.
 
-    ``cached_input_tokens`` is a subset of ``input_tokens`` — the portion
-    served from the provider's prompt cache. It is reported when the
-    provider exposes it (Anthropic ``cache_read_input_tokens``, OpenAI
-    ``prompt_tokens_details.cached_tokens``), zero otherwise.
+    ``input_tokens`` is the INCLUSIVE total of input tokens billed for the
+    call: it MUST already contain ``cached_input_tokens`` and
+    ``cache_creation_input_tokens``. Some provider APIs report a
+    cache-exclusive remainder (Anthropic's ``input_tokens`` is "tokens
+    after the last cache breakpoint") while others report an inclusive
+    total (OpenAI/DeepSeek ``prompt_tokens`` already includes cached
+    tokens). Each adapter is responsible for converting its native shape
+    into this inclusive convention so the router's single cost function
+    can subtract the cached/written subsets uniformly.
 
-    The router uses ``(input_tokens, cached_input_tokens, output_tokens)``
+    ``cached_input_tokens`` is the subset of ``input_tokens`` served from
+    the provider's prompt cache at the discounted read rate (Anthropic
+    ``cache_read_input_tokens``, OpenAI ``prompt_tokens_details.cached_tokens``),
+    zero otherwise.
+
+    ``cache_creation_input_tokens`` is the subset of ``input_tokens``
+    written to the cache this call at the premium write rate (Anthropic
+    ``cache_creation_input_tokens``), zero otherwise / when the provider
+    does not expose a separate cache-write line.
+
+    The router uses
+    ``(input_tokens, cached_input_tokens, cache_creation_input_tokens, output_tokens)``
     together with the per-tier pricing entry to compute ``cost_usd``.
     Adapters MUST NOT compute cost themselves — keep pricing in one place.
     """
@@ -73,6 +89,7 @@ class NormalizedUsage:
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
 
 
 # ---------------------------------------------------------------------------

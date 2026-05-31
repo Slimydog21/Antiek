@@ -213,12 +213,41 @@ def _sha256_prefix(s: str, n: int = 12) -> str:
     return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()[:n]
 
 
+# Anthropic prompt-caching pricing multiplier: a 5-minute cache WRITE
+# (``cache_creation_input_tokens``) is billed at 1.25x the base input rate.
+# (Cache READS are 0.1x base input and are configured directly as
+# ``cached_input_per_mtok`` in config.yaml — e.g. synthesis input 5.0 ->
+# cached 0.50.) The write multiplier is derived from the base input rate
+# rather than stored as a separate config field so config.yaml pricing
+# stays a single source of truth and no new tier knob is required.
+# Source: Anthropic prompt-caching docs — 5-min cache write = 1.25x base
+# input price; cache read = 0.1x base input price.
+_CACHE_WRITE_MULTIPLIER = 1.25
+
+
 def _compute_cost_usd(usage: NormalizedUsage, pricing: TierPricing) -> float:
-    """One place computes cost. Adapters do not."""
-    paid_input = max(0, usage.input_tokens - usage.cached_input_tokens)
+    """One place computes cost. Adapters do not.
+
+    ``usage.input_tokens`` is the INCLUSIVE total (see ``NormalizedUsage``):
+    it already contains the cache-read and cache-write subsets. The paid,
+    uncached, non-written remainder is therefore the inclusive total minus
+    BOTH cached subsets. ``max(0, ...)`` guards only against a malformed
+    payload where the subsets exceed the total; on a normal cache hit the
+    inclusive total is >= cached so it no longer clamps to zero (the old
+    underbilling bug, which double-subtracted because Anthropic's adapter
+    reported a cache-exclusive ``input_tokens``)."""
+    paid_input = max(
+        0,
+        usage.input_tokens
+        - usage.cached_input_tokens
+        - usage.cache_creation_input_tokens,
+    )
     return (
         (paid_input / 1_000_000.0) * pricing.input_per_mtok
         + (usage.cached_input_tokens / 1_000_000.0) * pricing.cached_input_per_mtok
+        + (usage.cache_creation_input_tokens / 1_000_000.0)
+        * pricing.input_per_mtok
+        * _CACHE_WRITE_MULTIPLIER
         + (usage.output_tokens / 1_000_000.0) * pricing.output_per_mtok
     )
 
