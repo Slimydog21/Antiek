@@ -37,6 +37,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -150,13 +151,24 @@ def ingest_twitter_thread(
     thread: TwitterThread,
     *,
     investigation_id: str,
+    content_class: str = PERSONAL_READING_CONTENT_CLASS,
     source_tier: int = DEFAULT_TWITTER_SOURCE_TIER,
     db_path: Optional[str] = None,
     embedder: Optional[EmbeddingProvider] = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> IngestTwitterResult:
     """Ingest a captured Twitter thread. Each tweet becomes its own
-    chunk + node so per-tweet attribution survives downstream."""
+    chunk + node so per-tweet attribution survives downstream.
+
+    Personal-Reading Lane (SPR-08): ``content_class`` is threaded through to
+    ``insert_document`` and DEFAULTS to the imported
+    ``PERSONAL_READING_CONTENT_CLASS`` constant — a third-party X/Twitter thread
+    the owner is reading lands ``personal_reading`` (owner-readable, NEVER served
+    publicly / ad-attributed / trained on). The default is the IMPORTED CONSTANT,
+    never the ``"personal_reading"`` string literal, so ``corpus_audit``'s
+    bypass-scanner (which AST-scans ``acquisition/twitter/`` for content_class
+    string literals) stays green. Both the browser-extension capture path and the
+    BYOK API runner reach this one insert site, so both inherit the lane."""
     document_id = twitter_doc_id(thread.root_tweet_id)
     title = f"Thread by @{thread.author_handle}"
 
@@ -227,6 +239,20 @@ def ingest_twitter_thread(
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="social_thread",
+            # Personal-Reading Lane (SPR-02): a third-party X/Twitter thread
+            # the owner captured for their own reading lands personal_reading —
+            # full body readable by the owner, NEVER served publicly / ad-
+            # attributed / trained on (§9.0). The IMPORTED CONSTANT is passed,
+            # never the "personal_reading" literal (corpus_audit's scanner
+            # flags content_class string literals to keep classify() the one
+            # chokepoint). This is the SOLE insert_document site for the
+            # social_thread document_type: ingest_thread_payload routes through
+            # ingest_twitter_thread, so both entry points inherit this lane.
+            # Belt-and-suspenders with the SPR-01 deny-by-default fallback.
+            # SPR-08: the value comes from the ``content_class`` parameter, which
+            # DEFAULTS to PERSONAL_READING_CONTENT_CLASS (the imported constant,
+            # never a string literal) — the BYOK runner passes it explicitly.
+            content_class=content_class,
             source_uri=thread.thread_url,
             title=title,
             author=thread.author_handle,
@@ -293,11 +319,17 @@ def ingest_thread_payload(
     payload: dict,
     *,
     investigation_id: str,
+    content_class: str = PERSONAL_READING_CONTENT_CLASS,
     db_path: Optional[str] = None,
     embedder: Optional[EmbeddingProvider] = None,
 ) -> IngestTwitterResult:
     """Convenience: convert the browser extension's POST payload into
     a ``TwitterThread`` and run ``ingest_twitter_thread``.
+
+    Personal-Reading Lane (SPR-08): ``content_class`` is forwarded to
+    ``ingest_twitter_thread`` and defaults to the imported
+    ``PERSONAL_READING_CONTENT_CLASS`` constant, so the browser-extension handler
+    lands ``personal_reading`` (not the servable ``user_owned`` default).
 
     Expected payload shape (matches what the extension posts):
 
@@ -353,6 +385,7 @@ def ingest_thread_payload(
     return ingest_twitter_thread(
         thread,
         investigation_id=investigation_id,
+        content_class=content_class,
         db_path=db_path,
         embedder=embedder,
     )

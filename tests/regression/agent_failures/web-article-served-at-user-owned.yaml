@@ -1,0 +1,62 @@
+id: web-article-served-at-user-owned
+observed_at: 2026-05-31
+source: project_antiek_personal_lane.md
+agent: claude
+phase: acquisition_urls
+failure_type: servable_default_leak
+
+context_summary: |
+  The acquisition/urls connector ingested a third-party web article (a Paul
+  Graham essay the operator fetched for their own reading) by calling
+  insert_document(document_type="web_article") with NO content_class. The
+  documents schema column then supplied its default, content_class='user_owned',
+  which is a member of SERVABLE_CONTENT_CLASSES. The net effect: a copyrighted
+  third-party essay landed on a publicly-SERVABLE class — eligible for full-text
+  public serving and the per-second ad border. That is the exact §9.0
+  (Hachette / Bartz) catastrophe: serving someone else's copyrighted work and
+  monetizing it, on content the owner ingested only for private reading.
+
+input:
+  prompt: |
+    Ingest https://paulgraham.com/essay.html for my reading list.
+  env:
+    ANTIEK_DUCKDB_PATH: "/tmp/graph.duckdb"
+
+expected_behavior: |
+  A third-party web_article must land content_class='personal_reading' — the
+  owner-readable / public-non-servable lane: full body readable ONLY on the
+  owner / personal-space path, NEVER served to others, NEVER ad-attributed,
+  NEVER in a training/RL export. On the public serve path the body must not
+  render at all (serve_full_text with owner=False returns servable=False,
+  full_text=None).
+
+actual_failure: |
+  insert_document was called without content_class, so the schema default
+  'user_owned' applied. user_owned is in SERVABLE_CONTENT_CLASSES, so the
+  article became eligible for public full-text serving and ad attribution —
+  the personal-reading body leaked onto the monetized public path.
+
+harness_check_that_now_catches: |
+  Three layers now block this, all asserted in tests/test_personal_lane_read_side.py
+  and tests/test_acquisition_urls.py:
+  (1) WRITE side — acquisition/urls/adapter.py now passes
+  content_class=PERSONAL_READING_CONTENT_CLASS (the imported constant, not a
+  literal) at its insert_document call, so a web_article lands personal_reading
+  explicitly (covered by test_acquisition_urls.py::test_ingest_web_article_lands_personal_reading);
+  belt-and-suspenders with the SPR-01 insert_document deny-by-default fallback.
+  (2) READ side — tests/test_personal_lane_read_side.py proves a personal_reading
+  body never serves full text on the public serve path (serve_full_text owner=False
+  -> servable=False, full_text=None) and the owner still reads it in full.
+  (3) DB BACKSTOP — substrate/corpus_audit.py CHECK_THIRD_PARTY_SERVABLE refuses
+  any third-party document_type sitting on a SERVABLE class without a license_basis,
+  on the accumulated corpus, regardless of write route.
+
+fix_commit: SPR-02
+
+notes: |
+  The deny-by-default fallback landed in SPR-01 (substrate/graph/ops.py
+  insert_document); SPR-02 adds the explicit-at-write-site connector edit, the
+  extended corpus_audit AST bypass-scan over acquisition/{urls,youtube,twitter,
+  substack}/, and the standing DB check. Sibling fixture:
+  youtube-transcript-at-user-owned (same leak, video_transcript). Existing rows
+  already at user_owned are SPR-03's reclassify-sweep scope, not this fix.

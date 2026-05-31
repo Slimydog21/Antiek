@@ -30,7 +30,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from substrate.constants import SERVABLE_CONTENT_CLASSES, SERVE_SNIPPET_MAX_CHARS
+from substrate.constants import (
+    PERSONAL_READABLE_CONTENT_CLASSES,
+    PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
+    SERVE_SNIPPET_MAX_CHARS,
+)
 
 from .servability import ServabilityStatus, is_servable_full_text, servability_of
 
@@ -81,7 +86,7 @@ class ServeResult:
     license: Optional[str] = None
 
 
-def serve_full_text(con: Any, document_id: str) -> ServeResult:
+def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> ServeResult:
     """Resolve what body text may be served for ``document_id``.
 
     The single fetch returns ``content_class`` + ``raw_text`` + the
@@ -92,6 +97,20 @@ def serve_full_text(con: Any, document_id: str) -> ServeResult:
     between "gated" and "doesn't exist", and the library needs that
     difference. The gate is no less enforced for being applied after the
     fetch: a non-servable book's ``raw_text`` never leaves this function.
+
+    ``owner`` (Personal-Reading Lane SPR-01) is the OWNER full-read switch and
+    it defaults to ``False`` so the PUBLIC serve path is byte-identical to
+    before — every existing caller (the public serve, ``serve_full_text_guarded``,
+    ``curate``, ``passage_research``) stays on the narrow SERVABLE-only allowlist.
+    When ``owner=True`` (the operator / personal-space reader, the only caller
+    that may pass it), a ``personal_reading`` document additionally resolves to
+    its FULL body — the owner reads their own fetched third-party content in
+    full, exactly the lane's purpose — while everything else (servable, gated,
+    taken-down) behaves identically to the public path. This widens nothing on
+    the public default: the gate keys on ``PERSONAL_READABLE_CONTENT_CLASSES``
+    (= servable ∪ personal_reading) ONLY on the owner branch; the public branch
+    still keys on ``SERVABLE_CONTENT_CLASSES``. A taken-down personal_reading
+    document is still TAKEN_DOWN for the owner too (removal is absolute).
     """
     row = con.execute(
         """
@@ -116,11 +135,30 @@ def serve_full_text(con: Any, document_id: str) -> ServeResult:
     status = servability_of(content_class, taken_down=taken_down)
 
     if status is ServabilityStatus.TAKEN_DOWN:
-        # Removal demand honoured absolutely — no body, no snippet.
+        # Removal demand honoured absolutely — no body, no snippet. This wins
+        # over the owner branch too: a taken-down book is unreadable by anyone.
         return ServeResult(
             document_id=document_id, found=True, servability=status,
             servable=False, full_text=None, snippet=None,
             title=title, author=author, reason="taken_down",
+        )
+
+    # Owner full-read (Personal-Reading Lane SPR-01). On the OWNER path only, a
+    # personal_reading document resolves to its full body — the owner reads their
+    # own fetched third-party content in full. ``servable`` stays False because
+    # this body is NOT publicly servable / ad-eligible (the public path never
+    # reaches here for personal_reading: it falls through to the gated snippet
+    # branch below). The membership check is the PERSONAL_READABLE allowlist so a
+    # future content_class can't sneak full text out on the owner path either.
+    if (
+        owner
+        and content_class == PERSONAL_READING_CONTENT_CLASS
+        and content_class in PERSONAL_READABLE_CONTENT_CLASSES
+    ):
+        return ServeResult(
+            document_id=document_id, found=True, servability=status,
+            servable=False, full_text=raw_text, snippet=None,
+            title=title, author=author, reason="owner_personal_reading",
         )
 
     if is_servable_full_text(status):

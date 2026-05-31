@@ -41,16 +41,30 @@ gate the owning sprint already shipped (rigor #4 — consume, do not redefine):
       SPR-09 box ceiling, read through ``substrate.ingest_budget.BudgetGovernor``
       (the same governor the continuous engine consults). The audit never
       re-derives the ceiling number.
+  (f) third-party-on-servable — no document whose ``document_type`` ∈
+      ``substrate.constants.THIRD_PARTY_DOCUMENT_TYPES`` (web_article /
+      video_transcript / social_thread / newsletter_post) sits on a class in
+      ``SERVABLE_CONTENT_CLASSES`` without a positive ``license_basis``
+      (Personal-Reading Lane SPR-02). Such a third-party work is the OWNER's
+      private reading and MUST land ``personal_reading``; this is the standing
+      DB backstop for the connector deny-by-default lane. The check mirrors
+      ``_check_servable_basis``'s join exactly, scoped to the third-party types,
+      with both allowlists imported (never re-listed). A servable third-party
+      row WITH a real basis (a PG public-domain text via the urls connector, a
+      CC-BY transcript) is the lawful SPR-05/SPR-07 exception, deliberately NOT
+      flagged.
 
 Plus THE BINDING (SPR-10's headline enforcement), a STATIC check independent of
 any DB: ``content_class`` is decided by exactly ONE function —
-``acquisition.licenses_core.classify()``. :func:`assert_no_content_class_bypass`
-AST-walks every connector under ``acquisition/{books,textbooks,papers,opt_in}/``
+``acquisition.licenses_core.classify()`` (the public-corpus family) or passed as
+an imported constant by the third-party reading connectors (never a string
+literal). :func:`assert_no_content_class_bypass` AST-walks every connector under
+``acquisition/{books,textbooks,papers,opt_in,urls,youtube,twitter,substack}/``
 and asserts ZERO of them assign ``content_class`` to a string LITERAL (the
-retired anti-pattern) rather than forwarding a classify()-derived value. This is
-the assertion that keeps the rights audit single-source: if two places could
-mint a content_class, "every servable work has a basis" is no longer a property
-of one chokepoint.
+retired anti-pattern) rather than forwarding a classify()-derived value or an
+imported lane constant. This is the assertion that keeps the rights audit
+single-source: if two places could mint a content_class, "every servable work
+has a basis" is no longer a property of one chokepoint.
 
 ----------------------------------------------------------------------------
 §16 BOX-BOUNDED + READ-ONLY (a hard constraint, not a nicety)
@@ -104,8 +118,20 @@ from typing import Any, Optional
 # import of connect_write anywhere in this module (§16: the audit must not
 # contend for the single-writer lock while the live API serves).
 from runtime.db_lock import connect_read
+from substrate.ad_inventory.attribution import PUBLIC_GRAPH_CONTENT_CLASSES
 from substrate.books.serve import serve_full_text
-from substrate.constants import GATED_DEFAULT_CONTENT_CLASS, SERVABLE_CONTENT_CLASSES
+from substrate.collective_graph.eligibility import (
+    NON_ATTRIBUTABLE_CONTENT_CLASSES,
+    CollectiveGraphDocument,
+    is_attribution_eligible,
+)
+from substrate.constants import (
+    GATED_DEFAULT_CONTENT_CLASS,
+    NON_TRAINABLE_CONTENT_CLASSES,
+    PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
+    THIRD_PARTY_DOCUMENT_TYPES,
+)
 from substrate.dedup import (
     Confidence,
     IdentityRecord,
@@ -124,6 +150,50 @@ CHECK_GATED_LEAK = "gated_body_leak"
 CHECK_DEDUP = "dedup_identity"
 CHECK_EXTRACTION = "extraction_quality"
 CHECK_BUDGET = "budget_ceiling"
+# Personal-Reading Lane (SPR-02): no third-party document_type (web_article /
+# video_transcript / social_thread / newsletter_post) sits on a SERVABLE
+# content_class without a positive license_basis. This is the standing DB
+# backstop for the connector deny-by-default lane — it catches a third-party
+# row that slipped onto a servable class by ANY route (a future connector that
+# passes a servable class with no basis, a merge that copied a servable class
+# onto a third-party row, a manual reclassify) regardless of whether the static
+# bypass-scan saw the write site.
+CHECK_THIRD_PARTY_SERVABLE = "third_party_servable"
+
+# ── Personal-Reading Lane standing checks (SPR-10, the defensibility capstone) ──
+# The lane's correctness is a property of the WHOLE corpus at every moment, not of
+# any single connector. A connector that forgot to pass content_class=
+# personal_reading, a reclassify sweep that missed a row, or a future export job
+# that naively selected all `documents` each silently re-opens the §9.0 hole. The
+# three checks below are the standing DB backstops for the lane, in spec reading
+# order:
+#   (a) CHECK_THIRDPARTY_SERVABLE_NObasis — third-party document_types must never
+#       sit on a SERVABLE class with no positive license_basis (the write-side
+#       deny-by-default lane, asserted against the accumulated corpus). This is a
+#       DELIBERATE alias-shaped sibling of CHECK_THIRD_PARTY_SERVABLE above: the
+#       spec's M1 names it as a distinct personal-lane check, and we keep ONE
+#       implementation (no duplicate SQL) by having both names resolve through the
+#       same _check_third_party_servable body — registering a parallel literal
+#       would be the very anti-pattern THE BINDING forbids. (See run_audit.)
+#   (b) CHECK_PERSONAL_NONATTRIB — a personal_reading document must be
+#       non-attributable, absent from the public graph, AND withheld on the public
+#       serve path: 0 rows where content_class='personal_reading' would pass
+#       is_attribution_eligible, OR is a member of PUBLIC_GRAPH_CONTENT_CLASSES, OR
+#       renders a full body to a non-owner via serve_full_text(owner=False).
+#       Composes the SPR-01-finalized eligibility / attribution sets AND the shared
+#       serve chokepoint (all imported, never re-listed) — the money side AND the
+#       read side of the lane in one standing check.
+#   (c) CHECK_PERSONAL_NOT_TRAINING — a personal_reading document_id must never
+#       appear in a training/RL export selection. There is NO training/RL export
+#       builder on origin/main today (verified: no jsonl/parquet/to_training path
+#       materializes `documents` into a training corpus), so this is an HONEST
+#       FORWARD-GUARD: it scans a named export-producing view/table if one exists
+#       and asserts the exclusion; the test plants a personal_reading row into
+#       that fixture export table to prove the check is falsifiable (bites), then
+#       removes it to prove it passes clean. The day a real export builder lands,
+#       THAT sprint must source its selection through this check (see handoff).
+CHECK_PERSONAL_NONATTRIB = "personal_reading_nonattributable"
+CHECK_PERSONAL_NOT_TRAINING = "personal_reading_not_in_training"
 
 ALL_CHECK_NAMES = (
     CHECK_SERVABLE_BASIS,
@@ -131,7 +201,22 @@ ALL_CHECK_NAMES = (
     CHECK_DEDUP,
     CHECK_EXTRACTION,
     CHECK_BUDGET,
+    CHECK_THIRD_PARTY_SERVABLE,
+    CHECK_PERSONAL_NONATTRIB,
+    CHECK_PERSONAL_NOT_TRAINING,
 )
+
+# The training/RL export tables/views this corpus exports documents through. EMPTY
+# on origin/main (no export builder exists yet — verified 2026-05-31), so check
+# (c) is a forward-guard: it scans whatever export surfaces are named here and is
+# vacuously-but-honestly clean while the set is empty. The check's TEST injects a
+# fixture export table name to prove the scan bites on a planted personal_reading
+# row. When a real training/RL export builder lands, its source table/view name is
+# added here (and only here) — the check then guards the live export with no
+# further code change. Names are matched case-insensitively against the live DB's
+# table/view catalog; a name that does not exist is skipped (deny-by-default is on
+# the ROWS found, never an assumption that a table must exist).
+TRAINING_EXPORT_TABLES: tuple[str, ...] = ()
 
 # An HTML landing page mis-stored as a body starts with the doctype — the
 # SPR-03 extraction-quality notion's canonical garbage marker.
@@ -250,6 +335,302 @@ def _check_servable_basis(con: Any) -> CheckResult:
             if ok
             else f"{len(offenders)} servable work(s) with empty/missing license_basis"
         ),
+    )
+
+
+def _check_third_party_servable(con: Any) -> CheckResult:
+    """(f) No third-party document_type sits on a servable class without a basis.
+
+    Personal-Reading Lane (SPR-02). The third-party reading connectors (urls /
+    youtube / twitter / Substack) emit a ``document_type`` in
+    ``THIRD_PARTY_DOCUMENT_TYPES``; such a work is the OWNER's private reading
+    and MUST land ``personal_reading`` (owner-readable, public-non-servable) —
+    NEVER a publicly servable class. This check is the standing DB backstop for
+    that lane: it flags any third-party document sitting on a class in
+    ``SERVABLE_CONTENT_CLASSES`` that carries no positive ``license_basis``.
+
+    It mirrors :func:`_check_servable_basis` exactly — the same
+    ``documents LEFT JOIN book_assets`` join, the same NULL/empty-basis-is-no-
+    basis treatment — but scoped to the third-party types. The two allowlists
+    are IMPORTED from ``substrate.constants`` (``THIRD_PARTY_DOCUMENT_TYPES`` and
+    ``SERVABLE_CONTENT_CLASSES``), never re-listed here, so adding a servable
+    class or a third-party document_type updates this check automatically and it
+    can never silently desync from the connector lane.
+
+    WHY THE BASIS CARVE-OUT (intellectual honesty, not a loophole). A third-party
+    document_type with a servable class AND a real ``license_basis`` is NOT an
+    offender — that is the lawful exception SPR-05/SPR-07 rely on (a Project-
+    Gutenberg public-domain text reached through the urls connector, a CC-BY
+    YouTube transcript). Those land a POSITIVE rights class with a basis on
+    purpose; flagging them would false-positive the lawful open-content path. A
+    NULL/empty basis on a servable third-party row is the §9.0 leak this check
+    exists to catch — exactly the case the deny-by-default lane prevents going
+    forward, asserted here against the ACCUMULATED corpus where a per-write gate
+    cannot see a row a future merge introduced."""
+    tp_placeholders = ", ".join("?" for _ in THIRD_PARTY_DOCUMENT_TYPES)
+    sv_placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
+    rows = con.execute(
+        f"""
+        SELECT d.document_id
+          FROM documents d
+          LEFT JOIN book_assets b ON d.document_id = b.document_id
+         WHERE d.document_type IN ({tp_placeholders})
+           AND d.content_class IN ({sv_placeholders})
+           AND (b.license_basis IS NULL OR TRIM(b.license_basis) = '')
+         ORDER BY d.document_id
+        """,
+        list(THIRD_PARTY_DOCUMENT_TYPES) + list(SERVABLE_CONTENT_CLASSES),
+    ).fetchall()
+    offenders = [r[0] for r in rows]
+    ok = not offenders
+    return CheckResult(
+        name=CHECK_THIRD_PARTY_SERVABLE,
+        ok=ok,
+        count=len(offenders),
+        offending=_bounded(offenders),
+        detail=(
+            "no third-party document sits on a servable class without a basis"
+            if ok
+            else f"{len(offenders)} third-party document(s) on a servable class "
+            "with empty/missing license_basis (should be personal_reading)"
+        ),
+    )
+
+
+def _check_personal_nonattributable(con: Any) -> CheckResult:
+    """Personal-Reading Lane (SPR-10 M1.b): a ``personal_reading`` document is
+    NON-attributable, absent from the public graph, AND withheld on the public
+    serve path.
+
+    personal_reading is the OWNER's private third-party reading. It has no rights
+    basis to earn and no holder to ever pay, and it is the owner's alone to read —
+    so it MUST accrue zero ad attribution + zero IP escrow AND never render its
+    body to a public (non-owner) caller, all BY CONSTRUCTION. Three arms, each
+    asserted against the REAL surface the lane has to hold on (never a trusted
+    column), using the SPR-01-finalized sets (imported, never re-listed here):
+
+      * arm 1 — attribution: for every ``content_class='personal_reading'`` row,
+        ``is_attribution_eligible`` (collective_graph/eligibility) must return
+        False. We do not trust a column; we run the REAL predicate the §13.9
+        payout path runs, constructing the minimal ``CollectiveGraphDocument`` it
+        reads (content_class is the only field that decides the
+        NON_ATTRIBUTABLE_CONTENT_CLASSES branch, which short-circuits True before
+        any quality-gate field is consulted). A personal_reading row that the
+        predicate would deem eligible is the §9.0 leak this arm catches — e.g. if
+        a future edit dropped personal_reading from NON_ATTRIBUTABLE_CONTENT_CLASSES.
+
+      * arm 2 — public graph: ZERO ``content_class='personal_reading'`` rows are
+        members of ``PUBLIC_GRAPH_CONTENT_CLASSES`` (ad_inventory/attribution) —
+        i.e. ``monetization_eligible('personal_reading')`` is False, so no ad
+        reading session can surface the row and it never enters an attribution
+        split. This arm bites if personal_reading were ever added to the
+        public-graph set.
+
+      * arm 3 — public serve withhold (THE read-side lane invariant): for every
+        personal_reading row, the PUBLIC serve projection
+        (``serve_full_text(con, doc_id)`` with its ``owner=False`` default —
+        EXACTLY the call the public API makes) must return ``servable is False``
+        AND ``full_text is None`` (a bounded snippet is allowed; the full body is
+        the §9.0 catastrophe). This asserts against the REAL serve path the same
+        way :func:`_check_gated_leak` does — NOT a column comparison — so a
+        regression that renders a personal_reading body to a non-owner is caught
+        as a STANDING DB check, not only by the runbook's manual verification.
+        _check_gated_leak is structurally blind to this row: personal_reading is
+        neither the gated class (arm b1) nor a member of SERVABLE_CONTENT_CLASSES
+        (arm b2), so without this arm no standing check exercises the serve path
+        for personal_reading. The arm bites if a future edit added personal_reading
+        to the public full-body branch, or flipped the ``owner`` default, or a
+        merge mislabeled a gated body personal_reading on a serve path that leaks.
+
+    Every arm reads the IMPORTED sets / the SHARED serve chokepoint, so the audit
+    can never silently desync from the lane definition: change the set or the serve
+    path, change the check. The three arms are belt-and-suspenders over the SAME
+    lane invariant from the three surfaces (payout predicate + public-graph
+    membership + public serve projection) it has to hold on simultaneously."""
+    rows = con.execute(
+        "SELECT document_id FROM documents "
+        "WHERE content_class = ? ORDER BY document_id",
+        [PERSONAL_READING_CONTENT_CLASS],
+    ).fetchall()
+    personal_ids = [r[0] for r in rows]
+
+    # arm 2 (cheap, set-membership) — does the lane class sit in the public graph?
+    in_public_graph = PERSONAL_READING_CONTENT_CLASS in PUBLIC_GRAPH_CONTENT_CLASSES
+    # The lane definition also requires personal_reading be NON-attributable; we
+    # confirm via the real predicate per-row (arm 1). A constant document used for
+    # the class branch: is_attribution_eligible short-circuits on content_class
+    # membership in NON_ATTRIBUTABLE_CONTENT_CLASSES BEFORE reading any other
+    # field, so the placeholder note/owner/quality fields never decide the verdict
+    # for a correctly-laned row. (If the class were wrongly removed from the
+    # non-attributable set, the predicate would fall through to the quality-gate
+    # branch and — with no PASS_PUBLIC result — still return False; to make this
+    # arm BITE on that misconfiguration we attach a PASS_PUBLIC quality result so
+    # a desynced personal_reading row would read as eligible and be flagged.)
+    offenders: list[str] = []
+    for doc_id in personal_ids:
+        why: list[str] = []
+        # arm 1 — attribution-eligibility via the REAL payout predicate.
+        probe = CollectiveGraphDocument(
+            document_id=doc_id,
+            note_id=doc_id,
+            owner_user_id="audit-probe",
+            content_class=PERSONAL_READING_CONTENT_CLASS,
+            quality_gate_result=_pass_public_probe(),
+        )
+        if is_attribution_eligible(probe):
+            why.append("is_attribution_eligible=True")
+        # arm 2 — public-graph membership of the lane class (per-row so the
+        # offending id is actionable; the set-only case is surfaced once below).
+        if in_public_graph:
+            why.append("in PUBLIC_GRAPH_CONTENT_CLASSES")
+        # arm 3 — the public serve projection must WITHHOLD the body. We call the
+        # SAME serve chokepoint the API uses, with its public (owner=False)
+        # default, against REAL data — a full body to a non-owner is the leak.
+        served = serve_full_text(con, doc_id)
+        if served.servable or served.full_text is not None:
+            why.append("public serve renders full body (owner=False)")
+        if why:
+            offenders.append(f"{doc_id} ({'; '.join(why)})")
+
+    # If the class itself is misconfigured into the public graph, that is a corpus-
+    # level defect even with zero personal_reading rows present — surface it once.
+    if in_public_graph and not personal_ids:
+        offenders.append(
+            "content_class='personal_reading' is a member of "
+            "PUBLIC_GRAPH_CONTENT_CLASSES (lane misconfiguration; no rows needed)"
+        )
+
+    ok = not offenders
+    return CheckResult(
+        name=CHECK_PERSONAL_NONATTRIB,
+        ok=ok,
+        count=len(offenders),
+        offending=_bounded(offenders),
+        detail=(
+            f"all {len(personal_ids)} personal_reading doc(s) are non-attributable, "
+            "absent from the public graph, and withheld on the public serve path"
+            if ok
+            else f"{len(offenders)} personal_reading defect(s): attribution-eligible, "
+            "in the public graph, or rendered full-body to a non-owner (must be none)"
+        ),
+    )
+
+
+def _pass_public_probe() -> "QualityGateResult":
+    """A minimal PASS_PUBLIC quality-gate result used ONLY to probe
+    ``is_attribution_eligible`` in :func:`_check_personal_nonattributable`.
+
+    Constructed so that a personal_reading row would read as attribution-eligible
+    IF (and only if) the class were ever wrongly dropped from
+    ``NON_ATTRIBUTABLE_CONTENT_CLASSES`` — i.e. the probe makes the check BITE on
+    that misconfiguration rather than passing vacuously because no quality result
+    was attached. It mints no rights logic; it is a fixture for the real predicate."""
+    from substrate.quality_gate import QualityGateResult, QualityGateVerdict
+
+    return QualityGateResult(verdict=QualityGateVerdict.PASS_PUBLIC, checks=())
+
+
+def _check_personal_not_in_training(con: Any) -> CheckResult:
+    """Personal-Reading Lane (SPR-10 M1.c): no ``personal_reading`` document_id
+    appears in any training / RL export selection.
+
+    HONEST FORWARD-GUARD (rigor #1). There is NO content_class-selecting training/
+    RL export builder on origin/main today (verified 2026-05-31 — substrate/loop_3
+    is a budget/trajectory runner; it never materializes document BODIES by
+    content_class into a training corpus). So with the default empty
+    ``TRAINING_EXPORT_TABLES`` set, this check is vacuously clean — and we say so
+    rather than pretend it proves something. To keep it FALSIFIABLE (not an
+    always-green lie), the check scans whatever export views/tables are named in
+    ``TRAINING_EXPORT_TABLES`` (or the optional ``export_tables`` override the test
+    injects) and asserts ZERO personal_reading document_ids appear in them. The
+    test materializes a fixture export table containing one personal_reading row,
+    points the check at it, asserts it FAILS, then removes the row and asserts it
+    PASSES — proving the check bites.
+
+    The day a real training/RL export builder lands, THAT sprint adds its source
+    view/table name to ``TRAINING_EXPORT_TABLES`` (and only there) and this check
+    guards the live export with no further change. The forward-dependency is
+    recorded in the handoff and in docs/operator_gate_actions.md (the X
+    no-training entry cross-references this check by name).
+
+    Mechanism: for each named export surface that EXISTS in the live DB's catalog
+    (a name that does not exist is skipped — deny-by-default is on the ROWS found,
+    never an assumption a table must exist), join its ``document_id`` column back to
+    ``documents`` and flag any row whose ``content_class='personal_reading'``. An
+    export surface is REQUIRED to carry a ``document_id`` column to be guardable;
+    one without it is reported as un-guardable rather than silently passed."""
+    return _check_personal_not_in_training_impl(con, TRAINING_EXPORT_TABLES)
+
+
+def _check_personal_not_in_training_impl(
+    con: Any, export_tables: tuple[str, ...]
+) -> CheckResult:
+    """Implementation seam for :func:`_check_personal_not_in_training` — split so a
+    test can inject a fixture export table without monkeypatching a module global."""
+    # Live DB catalog (lower-cased table/view names) so a named export surface that
+    # does not yet exist is honestly skipped, not asserted-into-existence.
+    catalog = {
+        str(r[0]).lower()
+        for r in con.execute(
+            "SELECT table_name FROM information_schema.tables"
+        ).fetchall()
+    }
+    offenders: list[str] = []
+    scanned: list[str] = []
+    for table in export_tables:
+        if table.lower() not in catalog:
+            # Forward-guard: a named surface absent from the live DB is skipped.
+            continue
+        # The surface must carry a document_id column to be guardable.
+        cols = {
+            str(r[0]).lower()
+            for r in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE lower(table_name) = ?",
+                [table.lower()],
+            ).fetchall()
+        }
+        if "document_id" not in cols:
+            offenders.append(
+                f"{table} (un-guardable: no document_id column to join on)"
+            )
+            continue
+        scanned.append(table)
+        rows = con.execute(
+            f"""
+            SELECT e.document_id
+              FROM "{table}" e
+              JOIN documents d ON d.document_id = e.document_id
+             WHERE d.content_class = ?
+             ORDER BY e.document_id
+            """,
+            [PERSONAL_READING_CONTENT_CLASS],
+        ).fetchall()
+        for (doc_id,) in rows:
+            offenders.append(f"{doc_id} (in training export '{table}')")
+
+    ok = not offenders
+    if not export_tables:
+        detail = (
+            "forward-guard: no training/RL export surface declared "
+            "(TRAINING_EXPORT_TABLES is empty — no export builder exists yet)"
+        )
+    elif ok:
+        detail = (
+            f"no personal_reading document_id appears in {len(scanned)} declared "
+            f"training/RL export surface(s) ({', '.join(scanned) or 'none present'})"
+        )
+    else:
+        detail = (
+            f"{len(offenders)} personal_reading document(s) reachable from a "
+            "training/RL export surface (must be excluded — X no-training + §9.0)"
+        )
+    return CheckResult(
+        name=CHECK_PERSONAL_NOT_TRAINING,
+        ok=ok,
+        count=len(offenders),
+        offending=_bounded(offenders),
+        detail=detail,
     )
 
 
@@ -558,8 +939,26 @@ def _db_file_size(db_path: str) -> int:
 # ---------------------------------------------------------------------------
 
 # The connector packages whose content_class assignments must come ONLY from
-# classify(). These are the four directories the spec names.
-_BINDING_DIRS = ("books", "textbooks", "papers", "opt_in")
+# classify() (the public-corpus rights family) PLUS the third-party reading
+# connectors whose content_class must come from an imported constant, never a
+# string literal (Personal-Reading Lane SPR-02). The bypass-scanner flags only
+# NON-EMPTY string LITERALS, so the constant-based M1-M3 connector edits
+# (content_class=PERSONAL_READING_CONTENT_CLASS, an ast.Name) do NOT trip it —
+# but a FUTURE connector under one of these dirs that re-introduces
+# content_class="..." (a literal) WILL. "substack" is listed ahead of its SPR-06
+# connector landing: the scanner skips a dir that does not yet exist
+# (assert_no_content_class_bypass: ``if not sub_dir.is_dir(): continue``), so the
+# allowlist is ready the moment acquisition/substack/ appears.
+_BINDING_DIRS = (
+    "books",
+    "textbooks",
+    "papers",
+    "opt_in",
+    "urls",
+    "youtube",
+    "twitter",
+    "substack",
+)
 _BINDING_ROOT = "acquisition"
 
 
@@ -723,6 +1122,9 @@ def run_audit(
             _check_dedup(con),
             _check_extraction(con),
             _check_budget(con, db_path, governor),
+            _check_third_party_servable(con),
+            _check_personal_nonattributable(con),
+            _check_personal_not_in_training(con),
         ]
     finally:
         con.close()

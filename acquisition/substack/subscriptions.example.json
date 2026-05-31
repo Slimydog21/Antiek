@@ -1,0 +1,18 @@
+{
+  "publications": [
+    {
+      "name": "Example Substack publication (substack.com subdomain)",
+      "base_url": "https://example.substack.com"
+    },
+    {
+      "name": "Example publication with an explicit feed_url",
+      "feed_url": "https://example.substack.com/feed"
+    },
+    {
+      "name": "Example custom-domain publication (not *.substack.com)",
+      "base_url": "https://www.example-newsletter.com",
+      "source_tier": 4
+    }
+  ],
+  "_comment": "EXAMPLE ONLY — never commit real subscriptions. Copy to acquisition/substack/subscriptions.json (gitignored) or supply an operator path. Each entry needs a 'name' plus either 'feed_url' or 'base_url' (which gets '/feed' appended). 'source_tier' is optional (defaults to DEFAULT_SUBSTACK_SOURCE_TIER=4). Mirrors acquisition/opt_in/example_manifest.json."
+}

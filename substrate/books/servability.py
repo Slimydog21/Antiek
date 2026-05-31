@@ -39,6 +39,7 @@ from typing import Optional
 
 from substrate.constants import (
     BOOK_DEFAULT_SERVABILITY,
+    PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
 )
 
@@ -60,6 +61,17 @@ class ServabilityStatus(str, Enum):
     SOURCE_DECLARED_OPEN = "source_declared_open"
     GATED_METADATA_ONLY = "gated_metadata_only"
     TAKEN_DOWN = "taken_down"
+    # Owner-reads-in-full / public-non-servable (Personal-Reading Lane SPR-01).
+    # content_class='personal_reading' is the owner's private third-party reading:
+    # the owner reads it in full on the personal/operator path, but it is NEVER
+    # publicly servable and NEVER ad-attributable. Deliberately NOT a member of
+    # _SERVABLE_STATUSES below — is_servable_full_text(PERSONAL_READABLE) is False
+    # — and NOT mapped through _CONTENT_CLASS_TO_STATUS, so the drift assertion
+    # (_PROJECTED_SERVABLE == SERVABLE_CONTENT_CLASSES) is untouched. It is a
+    # distinct status from GATED_METADATA_ONLY so the library can render "your
+    # reading" (owner can open it in full) distinctly from a gated book (the
+    # owner cannot read a gated copyrighted book in full).
+    PERSONAL_READABLE = "personal_readable"
 
 
 # content_class → servable ServabilityStatus. Only the four allowlisted
@@ -101,13 +113,21 @@ def servability_of(
     1. ``taken_down`` wins over everything → ``TAKEN_DOWN``. A removal
        demand is honoured regardless of the underlying license.
     2. An allowlisted ``content_class`` maps to its servable status.
-    3. Everything else — ``restricted_pending_opt_in``, ``None``, an
+    3. ``personal_reading`` resolves to ``PERSONAL_READABLE`` (owner reads in
+       full / public never servable) — a DISTINCT branch BEFORE the generic
+       fall-through so it is not silently flattened to gated (the owner CAN read
+       it in full, a gated copyrighted book they cannot; the library renders the
+       two differently). It is still non-servable on the public path
+       (``is_servable_full_text(PERSONAL_READABLE)`` is False).
+    4. Everything else — ``restricted_pending_opt_in``, ``None``, an
        unrecognised value — resolves to ``GATED_METADATA_ONLY``
        (deny-by-default). This is the branch that catches "aggregated
        from online with unknown rights".
     """
     if taken_down:
         return ServabilityStatus.TAKEN_DOWN
+    if content_class == PERSONAL_READING_CONTENT_CLASS:
+        return ServabilityStatus.PERSONAL_READABLE
     if content_class is None:
         return ServabilityStatus.GATED_METADATA_ONLY
     return _CONTENT_CLASS_TO_STATUS.get(

@@ -519,6 +519,82 @@ SERVABLE_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
     "source_declared_open",
 })
 
+# ── The fourth rights state: personal_reading (Personal-Reading Lane SPR-01) ──
+#
+# The first three rights states answer "may Antiek serve this body to the
+# public / accrue ad attribution / train on it?":
+#   * SERVABLE_CONTENT_CLASSES (above)        → yes, full body servable
+#   * restricted_pending_opt_in (gated)       → body withheld, EARNS to escrow
+#                                               (a copyrighted-but-public work
+#                                               whose holder may still onboard)
+#   * user_owned                              → private operator/Write content,
+#                                               servable to its owner, not public
+#
+# personal_reading is the FOURTH state and it is categorically different from
+# all three: it is third-party copyrighted content the OWNER fetched for their
+# OWN reading (a Paul Graham essay, a YouTube transcript, a subscribed Substack
+# post, the owner's own tweets). It has NO positive rights basis that would let
+# Antiek serve it publicly or monetize it, AND — unlike restricted_pending_opt_in
+# — it must NEVER earn (there is no rights-holder onboarding flow that would ever
+# release escrow on content the owner ingested for private reading). It is:
+#   * NOT in SERVABLE_CONTENT_CLASSES         → never served full text publicly
+#   * a member of NON_ATTRIBUTABLE_CONTENT_CLASSES (collective_graph/eligibility)
+#                                             → zero ad attribution, zero IP escrow
+#   * ABSENT from PUBLIC_GRAPH_CONTENT_CLASSES (ad_inventory/attribution)
+#                                             → monetization_eligible() is False
+#   * excluded from the public chunk-search gate (graph/search.py) on any
+#     non-privileged policy_tag                → does not surface on monetized reads
+#   * a member of NON_TRAINABLE_CONTENT_CLASSES → never enters an SFT/RL export
+#   * readable IN FULL only on the owner / operator_only path
+# This is the §9.0 (Hachette / Bartz) discipline applied to the ambient-ingest
+# reading path the books family already protects for the corpus path.
+PERSONAL_READING_CONTENT_CLASS: Final[str] = "personal_reading"
+
+# The document_type strings the third-party ingest connectors emit. A document
+# of one of these types lands personal_reading by default (the insert_document
+# deny-by-default guard, substrate/graph/ops.py) UNLESS the connector passes an
+# explicit positive content_class (e.g. a verified public_domain Project
+# Gutenberg text). "web_article" (acquisition/urls), "video_transcript"
+# (acquisition/youtube) and "social_thread" (acquisition/twitter) are verified
+# against the live connectors; "newsletter_post" is reserved for SPR-06 Substack.
+# These are the EXACT types the deny-by-default guard is scoped to — a genuine
+# operator upload (book / paper / user_owned) is NOT here and keeps its existing
+# behaviour (NULL content_class stays NULL; the schema default is untouched).
+THIRD_PARTY_DOCUMENT_TYPES: Final[frozenset[str]] = frozenset({
+    "web_article",
+    "video_transcript",
+    "social_thread",
+    "newsletter_post",
+})
+
+# The content classes the OWNER may read in full on their personal / operator
+# path: everything publicly servable PLUS personal_reading. Defined as a strict
+# superset of SERVABLE_CONTENT_CLASSES by exactly one element so the owner read
+# path never has to enumerate the servable set itself (and cannot drift from it).
+# This is the READ-side allowlist for the owner/privileged full-body serve — the
+# public serve path stays on SERVABLE_CONTENT_CLASSES (narrower), never this.
+PERSONAL_READABLE_CONTENT_CLASSES: Final[frozenset[str]] = (
+    SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
+)
+
+# personal_reading is owner-readable but NEVER publicly servable. This module-
+# level assertion makes a future edit that adds it to the servable allowlist
+# fail loudly AT IMPORT TIME — the §9.0 serve gate is too load-bearing to let it
+# drift silently into the servable set.
+assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES, (
+    "personal_reading must NOT be in SERVABLE_CONTENT_CLASSES — it is the "
+    "owner-readable / public-non-servable lane (Personal-Reading Lane SPR-01). "
+    "If you intend a work to be publicly servable, give it a positive rights "
+    "class (public_domain / source_declared_open / opt_in_licensed), not "
+    "personal_reading."
+)
+assert PERSONAL_READABLE_CONTENT_CLASSES == (
+    SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
+) and len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 1, (
+    "PERSONAL_READABLE_CONTENT_CLASSES must be SERVABLE_CONTENT_CLASSES plus "
+    "exactly personal_reading (a strict superset by one element)."
+)
+
 # source-declared open license (CC-BY / CC-BY-SA found in source metadata);
 # servable; NOT a §9.10 publisher opt-in and NOT public domain. Distinct from
 # opt_in_licensed (which means EXACTLY "a publisher claimed the work via the
@@ -535,6 +611,22 @@ SOURCE_DECLARED_OPEN_CONTENT_CLASS: Final[str] = "source_declared_open"
 # This is the deny-by-default landing zone for any book with unknown or
 # unestablished rights (including "aggregated from online").
 GATED_DEFAULT_CONTENT_CLASS: Final[str] = "restricted_pending_opt_in"
+
+# Content classes that NEVER enter a training / RL data export (Personal-Reading
+# Lane SPR-01 M4). There is no content_class-selecting SFT/RL export in the tree
+# TODAY — substrate/loop_3/ is a budget/loop + trajectory-harvest runner; it
+# never materializes document bodies by content_class — so this is a GUARD-RAIL
+# constant, NOT a filter currently applied to a live export. It is the ready-made
+# denylist the future export author imports instead of hand-rolling a literal
+# list: it excludes BOTH personal_reading (the owner's private third-party
+# reading — never trainable) AND restricted_pending_opt_in (gated
+# copyrighted-but-public content — body withheld, never trainable). Defined here
+# (after GATED_DEFAULT_CONTENT_CLASS resolves) via an explicit union so it can
+# never silently diverge from the gated-class name.
+NON_TRAINABLE_CONTENT_CLASSES: Final[frozenset[str]] = frozenset({
+    PERSONAL_READING_CONTENT_CLASS,
+    GATED_DEFAULT_CONTENT_CLASS,
+})
 
 # The content_class a book is moved to on takedown. It is the SAME gate
 # state as the gated default — a removal demand restricts the content
@@ -560,6 +652,12 @@ BOOK_SERVABILITY_STATUSES: Final[tuple[str, ...]] = (
     "source_declared_open",  # source-declared open license (CC-BY / CC-BY-SA); servable
     "gated_metadata_only",  # default: metadata/snippet only, full text withheld
     "taken_down",          # removed on demand; full text purged
+    # owner-reads-in-full / public-non-servable (Personal-Reading Lane SPR-01).
+    # NOT in the first-three serve group — the public surface renders this as
+    # "your reading" (owner-only), never a publicly servable status. Distinct
+    # from gated_metadata_only so the library can render it differently (the
+    # owner CAN read it in full; a gated book they cannot).
+    "personal_readable",
 )
 
 # The default servability for a freshly-ingested book with no established
