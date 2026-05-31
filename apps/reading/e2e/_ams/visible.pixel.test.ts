@@ -22,6 +22,9 @@ import {
   isSolidColor,
   contrastRatio,
   relativeLuminance,
+  frameMeanAbsDiff,
+  whiteBoxFraction,
+  regionMeanColor,
   SCENE_SOLID_VARIANCE_THRESHOLD,
   type Rgb,
 } from "./visible";
@@ -109,6 +112,55 @@ describe("isSolidColor — the calibration that makes assertSceneVisible honest"
     png.data[2] = 0;
     const img = decodePng(PNG.sync.write(png));
     expect(isSolidColor(img)).toBe(true);
+  });
+});
+
+describe("SPR-06 penguin pixel helpers — the M1/M2/M5 calibration", () => {
+  // frameMeanAbsDiff — the M1 walk-cycle + M5 stillness signal.
+  it("frameMeanAbsDiff is ~0 for two identical frames (a frozen rig / still mascot)", () => {
+    const a = decodePng(solidPng(40, 40, ICE));
+    const b = decodePng(solidPng(40, 40, ICE));
+    expect(frameMeanAbsDiff(a, b)).toBe(0);
+  });
+
+  it("frameMeanAbsDiff is large when feet pixels change (the rig stepped)", () => {
+    const still = decodePng(solidPng(40, 40, ICE));
+    // A frame where a band of pixels swung to a new colour (a lifted foot).
+    const moved = new PNG({ width: 40, height: 40 });
+    for (let i = 0; i < 40 * 40; i++) {
+      const o = i * 4;
+      const lifted = i % 40 > 28; // a foot-sized band differs
+      moved.data[o] = lifted ? 245 : ICE.r;
+      moved.data[o + 1] = lifted ? 223 : ICE.g;
+      moved.data[o + 2] = lifted ? 36 : ICE.b; // sun-foot colour
+      moved.data[o + 3] = 255;
+    }
+    const diff = frameMeanAbsDiff(still, decodePng(PNG.sync.write(moved)));
+    expect(diff).toBeGreaterThan(1.5); // clears the M1 threshold
+  });
+
+  // whiteBoxFraction — the M2 white-box gate.
+  it("whiteBoxFraction is ~1 on a solid white box (the v1 baked backdrop)", () => {
+    const white = decodePng(solidPng(60, 60, { r: 253, g: 254, b: 253 }));
+    expect(whiteBoxFraction(white)).toBeGreaterThan(0.95);
+  });
+
+  it("whiteBoxFraction is ~0 once the backdrop is transparent (surface bleeds through)", () => {
+    // After the alpha-cut, the corners read the surface (ice / space), NOT white.
+    expect(whiteBoxFraction(decodePng(solidPng(60, 60, ICE)))).toBeLessThan(0.05);
+    expect(whiteBoxFraction(decodePng(solidPng(60, 60, SPACE)))).toBe(0);
+  });
+
+  it("whiteBoxFraction does NOT count the saturated brand sun bill as white", () => {
+    // The bill is saturated yellow — high channels but a wide spread → not neutral.
+    const bill = decodePng(solidPng(40, 40, { r: 245, g: 223, b: 36 }));
+    expect(whiteBoxFraction(bill)).toBe(0);
+  });
+
+  it("regionMeanColor returns the average of the band", () => {
+    const m = regionMeanColor(decodePng(solidPng(20, 20, ICE)));
+    expect(Math.round(m.r)).toBe(ICE.r);
+    expect(Math.round(m.b)).toBe(ICE.b);
   });
 });
 

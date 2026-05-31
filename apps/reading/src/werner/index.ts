@@ -12,6 +12,8 @@
  *   emotes       — the emote vocabulary mapped onto existing animated marks
  *   choreography — the PRODUCT_ACTIVATE → waddle-to-control listener (SPR-10),
  *                  plus the opt-in `data-werner-target` click path (SPR-10 M4)
+ *   WernerRig    — the vector WALK-CYCLE rig (SPR-06 M1): feet + flippers that
+ *                  animate off the existing walk signal (no second motion source)
  */
 
 export {
@@ -58,3 +60,5 @@ export {
   type ChoreographyOptions,
   type TargetChoreographyOptions,
 } from "./choreography";
+
+export { default as WernerRig, type WernerRigProps } from "./WernerRig";

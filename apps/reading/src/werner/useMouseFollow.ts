@@ -52,8 +52,18 @@ export const SAMPLE_INTERVAL_MS = 120;
  * low factor (0..1) is what makes the pursuit read as "unbothered": each leg
  * closes only part of the remaining gap. Exposed for the caller to use; the
  * hook itself just hands over the raw lagged target.
+ *
+ * SPR-06 M3 tune: dropped 0.5 → 0.28. At 0.5 each ~2.6s stroll leg closed HALF
+ * the remaining gap, so on a fast cursor sweep Werner lurched in big, snappy
+ * hops that read as a reticle chasing the mouse — jittery, not deliberate. At
+ * 0.28 he closes just over a quarter of the gap per leg, so consecutive legs
+ * compound into a smooth, lazy trail that lands roughly where the cursor was a
+ * few seconds back and never darts. This is a feel tune ONLY: the public
+ * surface (this export, `read()`, the FollowReading shape) is unchanged, so
+ * SPR-07/08 — which consume `read().ease` and `read().target` — keep the exact
+ * same contract.
  */
-export const FOLLOW_EASE = 0.5;
+export const FOLLOW_EASE = 0.28;
 
 /**
  * After this long with no pointer movement Werner is considered "idle on the
