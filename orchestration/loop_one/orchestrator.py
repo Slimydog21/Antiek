@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -100,6 +101,8 @@ from skills.domain import (  # noqa: E402
 )
 
 from .coordinator import InvestigationCoordinator, broadcast_emit
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +611,124 @@ async def _run_phase_5(ctx: InvestigationContext) -> bool:
     return await _drive_phase(ctx, phase=5, work=work())
 
 
+def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
+    """Emit the Phase-6 quality signals for the synthesis on ``ctx`` —
+    NON-blocking, but the signal NEVER silently vanishes (Foundation v2
+    SPR-02 M1 + M4).
+
+    Two axes, both observability-only this sprint (nothing gates):
+
+    - ``rubric.scored`` — the SECONDARY, form-axis style rubric (voice,
+      conviction, citation *density*, constraint compliance). Kept, now
+      explicitly labeled secondary.
+    - ``groundedness.scored`` — the PRIMARY truth-axis signal: does each
+      claim ENTAIL from the chunk(s) it cites, over the EXISTING
+      claim→chunk provenance? Citation density is irrelevant here.
+
+    The old behaviour wrapped this in a bare swallow that dropped the
+    signal on any crash. That swallow is removed: each scorer is isolated
+    so one crashing does not starve the other, and a crash SURFACES — it
+    logs the error AND emits a ``groundedness.failed`` event naming the
+    stage. "Non-blocking" means the loop continues; it does NOT mean the
+    signal disappears."""
+    if ctx.synthesis is None:
+        return
+    synthesis_id = f"syn-{ctx.investigation_id}"
+
+    from middleware.outcomes import (
+        emit_groundedness_failed,
+        emit_groundedness_scored,
+        emit_rubric_scored,
+    )
+
+    # --- SECONDARY form-axis: style rubric ---------------------------------
+    try:
+        from substrate.synthesis_rubric import score_synthesis
+        rubric = score_synthesis(ctx.synthesis)
+        emit_rubric_scored(
+            investigation_id=ctx.investigation_id,
+            synthesis_id=synthesis_id,
+            rubric_id="synthesis-deterministic-v1",
+            final_score=rubric.composite,
+            deterministic_score=rubric.composite,
+            judged_score=None,
+            notes=rubric.notes or (
+                f"[SECONDARY form-axis] voice={rubric.voice_style:.2f} "
+                f"conviction={rubric.conviction:.2f} "
+                f"citation_density={rubric.citation_density:.2f} "
+                f"constraint={rubric.constraint_compliance:.2f}"
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — surface, do NOT swallow
+        # The signal must not vanish: log + emit a typed failure event,
+        # then continue (phase stays non-blocking).
+        _log.exception(
+            "phase-6 style rubric scorer crashed for %s", ctx.investigation_id
+        )
+        emit_groundedness_failed(
+            investigation_id=ctx.investigation_id,
+            synthesis_id=synthesis_id,
+            scorer_id="synthesis-deterministic-v1",
+            stage="rubric",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+    # --- PRIMARY truth-axis: groundedness (claim-entailment) ---------------
+    try:
+        from substrate.eval.groundedness import (
+            DEFAULT_SCORER_ID,
+            duckdb_chunk_text_resolver,
+            resolve_synthesis_claims,
+            score_synthesis_groundedness,
+        )
+        from substrate.graph import default_db_path
+
+        cited_ids: list[str] = []
+        for comp in getattr(ctx.synthesis, "thesis_components", None) or []:
+            cited_ids.extend(getattr(comp, "supporting_chunk_ids", None) or [])
+        # Resolve chunk text from the EXISTING chunks table (read-only),
+        # honoring ANTIEK_DUCKDB_PATH. If the DB is unavailable, the
+        # resolver yields no text and the claims score as ungrounded —
+        # honest, never a parallel store.
+        try:
+            resolver = duckdb_chunk_text_resolver(
+                default_db_path(), chunk_ids=cited_ids
+            )
+        except Exception:  # noqa: BLE001 — DB-absent path stays honest
+            resolver = lambda _cid: None  # noqa: E731
+        claim_chunks = resolve_synthesis_claims(ctx.synthesis, resolver)
+        result = score_synthesis_groundedness(claim_chunks)
+        emit_groundedness_scored(
+            investigation_id=ctx.investigation_id,
+            synthesis_id=synthesis_id,
+            scorer_id=DEFAULT_SCORER_ID,
+            backend=result.backend,
+            groundedness_score=result.score,
+            scored_claims=result.scored_claims,
+            total_claims=result.total_claims,
+            supported_threshold=result.supported_threshold,
+            per_claim=list(result.per_claim),
+            notes=(
+                "[PRIMARY truth-axis] per-claim entailment over existing "
+                "claim->chunk provenance; observability-only (validate-first, "
+                "see substrate/eval/groundedness/PROMOTE_TO_GATE.md)"
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — surface, do NOT swallow
+        _log.exception(
+            "phase-6 groundedness scorer crashed for %s", ctx.investigation_id
+        )
+        emit_groundedness_failed(
+            investigation_id=ctx.investigation_id,
+            synthesis_id=synthesis_id,
+            scorer_id="groundedness-lexical-v1",
+            stage="groundedness",
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+
 async def _run_phase_6(
     ctx: InvestigationContext,
     broadcaster: EventBroadcaster,
@@ -658,35 +779,14 @@ async def _run_phase_6(
         )
         if isinstance(delivered.payload, SynthesizeDeliveredPayload):
             ctx.synthesis = delivered.payload
-            # Inline rubric pass — §14.4 wire-up per G5 follow-up
-            # 2026-05-23. Closes the unwireable measurement gate
-            # by emitting rubric.scored for every synthesis. Pure-
-            # function, deterministic, ~1ms; never blocks the
-            # phase. See substrate/synthesis_rubric/ for the
-            # rationale.
-            try:
-                from substrate.synthesis_rubric import score_synthesis
-                from middleware.outcomes import emit_rubric_scored
-                rubric = score_synthesis(ctx.synthesis)
-                emit_rubric_scored(
-                    investigation_id=ctx.investigation_id,
-                    synthesis_id=f"syn-{ctx.investigation_id}",
-                    rubric_id="synthesis-deterministic-v1",
-                    final_score=rubric.composite,
-                    deterministic_score=rubric.composite,
-                    judged_score=None,
-                    notes=rubric.notes or (
-                        f"voice={rubric.voice_style:.2f} "
-                        f"conviction={rubric.conviction:.2f} "
-                        f"citation_density={rubric.citation_density:.2f} "
-                        f"constraint={rubric.constraint_compliance:.2f}"
-                    ),
-                )
-            except Exception:  # noqa: BLE001 — never block on rubric
-                # The rubric is observability; a failure must not
-                # break the orchestrator. Swallow + continue; the
-                # next G5 re-run will surface the missing event.
-                pass
+            # Inline quality scoring after Phase 6 — §14.4 form-axis
+            # rubric (G5 follow-up 2026-05-23) + Foundation v2 SPR-02
+            # truth-axis groundedness. Both NON-blocking observability
+            # signals; a crash SURFACES (logs + groundedness.failed
+            # event) instead of the old except-pass swallow that
+            # dropped the signal. See substrate/eval/groundedness/ and
+            # substrate/synthesis_rubric/.
+            _score_phase_6_synthesis(ctx)
     return await _drive_phase(ctx, phase=6, work=work())
 
 

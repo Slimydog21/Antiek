@@ -28,7 +28,12 @@ What's deferred:
   CLI is operator-facing and wires in alongside the DB writer.
 """
 
-from .events import emit_outcome_recorded, emit_rubric_scored
+from .events import (
+    emit_groundedness_failed,
+    emit_groundedness_scored,
+    emit_outcome_recorded,
+    emit_rubric_scored,
+)
 from .recorder import build_outcome_record
 from .types import (
     ACTUAL_DECISIONS,
@@ -57,4 +62,6 @@ __all__ = [
     "build_outcome_record",
     "emit_outcome_recorded",
     "emit_rubric_scored",
+    "emit_groundedness_scored",
+    "emit_groundedness_failed",
 ]

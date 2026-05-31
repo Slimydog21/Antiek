@@ -43,12 +43,11 @@ Schema changes are load-bearing API changes (architecture_notes.md §7).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
-
 
 # ---------------------------------------------------------------------------
 # ActionType — stable string vocabulary
@@ -446,6 +445,19 @@ class ActionType(str, Enum):
     #    investigation (documents.investigation_id). specs SPR-13.
     DOCUMENT_FILED_INTO_INVESTIGATION = "document.filed_into_investigation"
 
+    # ── Foundation v2 SPR-02 — groundedness eval (truth axis) + the
+    #    failure event that replaces the Phase-6 except-pass swallow.
+    #    groundedness.scored is the per-synthesis claim-entailment signal
+    #    emitted NON-blocking alongside rubric.scored (which stays as the
+    #    SECONDARY form-axis signal). groundedness.failed surfaces a scorer
+    #    crash on the live path so the signal can never silently vanish:
+    #    "non-blocking" means the loop continues, NOT that the signal
+    #    disappears. Validate-first — neither event gates a merge this
+    #    sprint; the promote-to-gate criterion lives in
+    #    substrate/eval/groundedness/PROMOTE_TO_GATE.md.
+    GROUNDEDNESS_SCORED = "groundedness.scored"
+    GROUNDEDNESS_FAILED = "groundedness.failed"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -609,7 +621,20 @@ class ActionType(str, Enum):
 #     0..1 investigation (documents.investigation_id, 1:N FK). The match score +
 #     question are recorded on the event so the filing decision is reconstructable
 #     (why this doc landed here). specs/antiek-living-roadmap/ SPR-13. 2026-05-28.
-EVENT_SCHEMA_VERSION: int = 23
+# v23: Foundation v2 SPR-02 — groundedness eval (truth axis). Two typed
+#     events: groundedness.scored carries the per-synthesis claim-entailment
+#     score (mean per-claim groundedness over the EXISTING claim→chunk
+#     provenance) + the per-claim verdicts, emitted NON-blocking on the
+#     live Phase-6 path alongside the (now explicitly SECONDARY, form-axis)
+#     rubric.scored; groundedness.failed surfaces a scorer crash so the
+#     signal can never silently vanish — it REPLACES the Phase-6
+#     except-pass swallow ("never block on rubric"), which dropped the
+#     signal on any crash. Non-blocking means the loop continues, not that
+#     the signal disappears. Validate-first: neither event is merge-blocking
+#     this sprint (the promote-to-gate criterion is written + dated in
+#     substrate/eval/groundedness/PROMOTE_TO_GATE.md, the flip happens
+#     later). specs/antiek-foundation-v2/ SPR-02. 2026-05-29.
+EVENT_SCHEMA_VERSION: int = 24
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -658,10 +683,8 @@ class DispatchCallPayload(_PayloadBase):
     verification_required: bool = False
     fallback_chain_index: int = Field(ge=0, default=0)
     prompt_hash: str
-    finish_reason: Optional[
-        Literal["stop", "length", "tool_use", "content_filter", "error"]
-    ] = None
-    context_pack_event_id: Optional[str] = None
+    finish_reason: Literal["stop", "length", "tool_use", "content_filter", "error"] | None = None
+    context_pack_event_id: str | None = None
 
 
 class ContextLayer(BaseModel):
@@ -718,7 +741,7 @@ class Claim(BaseModel):
     text: str  # the claim, in verbatim natural language
     confidence: ConfidenceLevel
     attribution_region_ids: list[str]  # source regions that ground this claim
-    node_id: Optional[str] = None  # set when promoted to a graph node
+    node_id: str | None = None  # set when promoted to a graph node
 
 
 class ContextPackAssembledPayload(_PayloadBase):
@@ -736,7 +759,7 @@ class ContextPackAssembledPayload(_PayloadBase):
     actual_tokens: int = Field(ge=0)
     layers: list[ContextLayer]
     budget_overrun: bool
-    truncation_strategy_applied: Optional[Literal["head", "tail", "smart"]] = None
+    truncation_strategy_applied: Literal["head", "tail", "smart"] | None = None
 
 
 # ── Wrestling — document surface ─────────────────────────────────────
@@ -747,18 +770,18 @@ class DocumentLoadedPayload(_PayloadBase):
     media_type: Literal["pdf", "pasted_text", "url_extracted", "markdown"]
     content_hash: str
     size_bytes: int = Field(ge=0)
-    title: Optional[str] = None
-    page_count: Optional[int] = Field(default=None, ge=0)  # None for pasted text
-    source_uri: Optional[str] = None  # file:// for local, https:// for fetched; None for pasted text
+    title: str | None = None
+    page_count: int | None = Field(default=None, ge=0)  # None for pasted text
+    source_uri: str | None = None  # file:// for local, https:// for fetched; None for pasted text
 
 
 class DocumentRegionSelectedPayload(_PayloadBase):
     action_type: Literal[ActionType.DOCUMENT_REGION_SELECTED] = ActionType.DOCUMENT_REGION_SELECTED
     region_id: str
-    page: Optional[int] = Field(default=None, ge=0)
+    page: int | None = Field(default=None, ge=0)
     char_start: int = Field(ge=0)
     char_end: int = Field(ge=0)
-    bbox: Optional[tuple[float, float, float, float]] = None
+    bbox: tuple[float, float, float, float] | None = None
     text_excerpt: str  # truncated by the surface; substrate doesn't truncate again
 
 
@@ -767,7 +790,7 @@ class DocumentRegionSelectedPayload(_PayloadBase):
 
 class DistillationRequestedPayload(_PayloadBase):
     action_type: Literal[ActionType.DISTILLATION_REQUESTED] = ActionType.DISTILLATION_REQUESTED
-    region_id: Optional[str] = None  # None = whole-document distillation
+    region_id: str | None = None  # None = whole-document distillation
     user_prompt: str
     target_token_count: int = Field(ge=0)
 
@@ -794,15 +817,15 @@ class ClaimChallengeRaisedPayload(_PayloadBase):
     isn't (yet) in the system — ``claim_text`` carries it verbatim."""
 
     action_type: Literal[ActionType.CLAIM_CHALLENGE_RAISED] = ActionType.CLAIM_CHALLENGE_RAISED
-    challenged_claim_id: Optional[str] = None
+    challenged_claim_id: str | None = None
     claim_text: str
-    anchor_region_id: Optional[str] = None
+    anchor_region_id: str | None = None
     user_question: str
 
 
 class ClaimGroundingCheckPassedPayload(_PayloadBase):
     action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_PASSED] = ActionType.CLAIM_GROUNDING_CHECK_PASSED
-    claim_id: Optional[str] = None  # None for externally-supplied claims
+    claim_id: str | None = None  # None for externally-supplied claims
     claim_text: str
     located_region_id: str
     confidence: float = Field(ge=0.0, le=1.0)
@@ -810,7 +833,7 @@ class ClaimGroundingCheckPassedPayload(_PayloadBase):
 
 class ClaimGroundingCheckFailedPayload(_PayloadBase):
     action_type: Literal[ActionType.CLAIM_GROUNDING_CHECK_FAILED] = ActionType.CLAIM_GROUNDING_CHECK_FAILED
-    claim_id: Optional[str] = None  # None for externally-supplied claims
+    claim_id: str | None = None  # None for externally-supplied claims
     claim_text: str
     reason: Literal["absent_from_source", "paraphrased_not_stated", "out_of_scope", "ambiguous"]
     searched_regions: list[str]
@@ -829,7 +852,7 @@ class NoteEmergedPayload(_PayloadBase):
     # to "unknown" so existing emitted events (none on disk yet, but
     # forward-compat regardless) deserialize cleanly.
     confidence: ConfidenceLevel = "unknown"
-    node_id: Optional[str] = None  # set when the note is also mirrored to the graph
+    node_id: str | None = None  # set when the note is also mirrored to the graph
 
 
 class NoteRefinedPayload(_PayloadBase):
@@ -854,7 +877,7 @@ class QuestionIdentifiedPayload(_PayloadBase):
     action_type: Literal[ActionType.QUESTION_IDENTIFIED] = ActionType.QUESTION_IDENTIFIED
     question_id: str
     question_text: str
-    anchor_region_id: Optional[str] = None
+    anchor_region_id: str | None = None
 
 
 class QuestionEscalatedToResearchPayload(_PayloadBase):
@@ -972,7 +995,7 @@ class TierAssignedPayload(_PayloadBase):
 
     action_type: Literal[ActionType.GRAPH_TIER_ASSIGNED] = ActionType.GRAPH_TIER_ASSIGNED
     document_id: str
-    document_type: Optional[str]  # the input that drove the rule
+    document_type: str | None  # the input that drove the rule
     assigned_tier: int = Field(ge=1, le=5)
     classification_method: TierClassificationMethod
     # Filled only when classification_method == "keyword_fallback".
@@ -1218,8 +1241,8 @@ class GraphEdgeInsertedPayload(_PayloadBase):
     source_node_id: str
     target_node_id: str
     relation: str
-    source_document_id: Optional[str] = None
-    chunk_id: Optional[str] = None
+    source_document_id: str | None = None
+    chunk_id: str | None = None
     source_tier: int = Field(ge=1, le=5)
     extraction_confidence: float = Field(ge=0.0, le=1.0)
     graph_scope: GraphScope
@@ -1267,7 +1290,7 @@ class ConstraintViolationFoundPayload(_PayloadBase):
     strictness: ConstraintStrictness
     constraint_kind: ConstraintKind
     iteration: int = Field(ge=0)
-    target_claim_id: Optional[str] = None
+    target_claim_id: str | None = None
     reason: str
 
 
@@ -1373,7 +1396,7 @@ class OutcomeRecordedPayload(_PayloadBase):
     thesis_outcomes: list[ThesisOutcome] = Field(default_factory=list)
     falsification_outcomes: list[FalsificationOutcome] = Field(default_factory=list)
     execution_risk_outcomes: list[ExecutionRiskOutcome] = Field(default_factory=list)
-    decision_alignment: Optional[DecisionAlignment] = None
+    decision_alignment: DecisionAlignment | None = None
     notes: str = ""
 
 
@@ -1391,11 +1414,79 @@ class RubricScoredPayload(_PayloadBase):
 
     action_type: Literal[ActionType.RUBRIC_SCORED] = ActionType.RUBRIC_SCORED
     rubric_id: str
-    target_claim_id: Optional[str] = None
-    deterministic_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    judged_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    target_claim_id: str | None = None
+    deterministic_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    judged_score: float | None = Field(default=None, ge=0.0, le=1.0)
     final_score: float = Field(ge=0.0, le=1.0)
     notes: str = ""
+
+
+# Foundation v2 SPR-02 — groundedness (claim-entailment, truth axis).
+
+
+class ClaimGroundednessVerdict(BaseModel):
+    """One per-claim entailment verdict. ``score`` is the claim's
+    groundedness in [0, 1]; ``supported`` is the binary verdict the
+    backend reached (score above its supported-threshold). ``cited_chunk_ids``
+    is the EXISTING claim→chunk provenance the verdict rests on — a claim
+    with no cited chunk cannot be grounded (``score`` floors at 0.0,
+    ``supported`` False), which is the truth-axis distinction from the
+    style rubric's citation_density (density counts citations but never
+    checks they SUPPORT the claim)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str
+    score: float = Field(ge=0.0, le=1.0)
+    supported: bool
+    cited_chunk_ids: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class GroundednessScoredPayload(_PayloadBase):
+    """Emitted NON-blocking on the live Phase-6 path (Foundation v2
+    SPR-02) alongside the SECONDARY form-axis ``rubric.scored``. The
+    truth-axis signal: for each load-bearing thesis claim, does the
+    EVIDENCE it cites ENTAIL the claim? ``groundedness_score`` is the
+    mean per-claim score over claims that carry chunk citations;
+    ``per_claim`` rides along for inspection. ``backend`` records which
+    entailment backend produced the verdicts (``lexical`` deterministic
+    default, or ``llm_judge``) so a reader knows whether the number is
+    reproducible. ``scored_claims`` / ``total_claims`` make the coverage
+    explicit (analogy-only claims with no chunk citation are excluded
+    from the mean but counted in ``total_claims``).
+
+    Observability-only this sprint — it gates nothing until M5's
+    promote-to-gate criterion is met in a later sprint."""
+
+    action_type: Literal[ActionType.GROUNDEDNESS_SCORED] = ActionType.GROUNDEDNESS_SCORED
+    scorer_id: str
+    backend: Literal["lexical", "llm_judge"]
+    groundedness_score: float = Field(ge=0.0, le=1.0)
+    scored_claims: int = Field(ge=0)
+    total_claims: int = Field(ge=0)
+    supported_threshold: float = Field(ge=0.0, le=1.0)
+    per_claim: list[ClaimGroundednessVerdict] = Field(default_factory=list)
+    notes: str = ""
+
+
+class GroundednessFailedPayload(_PayloadBase):
+    """Emitted when the groundedness (or style-rubric) scorer raises on
+    the live Phase-6 path. This is the event that REPLACES the Phase-6
+    ``except Exception: pass`` swallow (Foundation v2 SPR-02): a scorer
+    crash must SURFACE, never silently drop the quality signal. The phase
+    stays non-blocking — the orchestrator logs + emits this and proceeds —
+    so "non-blocking" never again means "the signal disappeared".
+
+    ``stage`` says which scorer crashed (``groundedness`` or ``rubric``);
+    ``error_type`` + ``error`` carry the exception class + message for
+    triage."""
+
+    action_type: Literal[ActionType.GROUNDEDNESS_FAILED] = ActionType.GROUNDEDNESS_FAILED
+    scorer_id: str
+    stage: Literal["groundedness", "rubric"]
+    error_type: str
+    error: str
 
 
 # ---------------------------------------------------------------------------
@@ -1553,9 +1644,9 @@ class KeywordMapping(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     keyword: str
-    matched_node_id: Optional[str] = None
-    matched_node_label: Optional[str] = None
-    matched_node_type: Optional[str] = None
+    matched_node_id: str | None = None
+    matched_node_label: str | None = None
+    matched_node_type: str | None = None
     similarity: float = Field(ge=0.0, le=1.0)
     low_confidence: bool = False
 
@@ -1569,8 +1660,8 @@ class SeedPair(BaseModel):
 
     source_node_id: str
     target_node_id: str
-    source_keyword: Optional[str] = None
-    target_keyword: Optional[str] = None
+    source_keyword: str | None = None
+    target_keyword: str | None = None
 
 
 class GraphPath(BaseModel):
@@ -1629,7 +1720,7 @@ class ConnectorDeliveredPayload(_PayloadBase):
     action_type: Literal[ActionType.CONNECTOR_DELIVERED] = ActionType.CONNECTOR_DELIVERED
     keyword_mappings: list[KeywordMapping] = Field(default_factory=list)
     selected_algorithm: TraversalAlgorithm
-    algorithm_rationale: Optional[str] = None
+    algorithm_rationale: str | None = None
     paths: list[GraphPath] = Field(default_factory=list)
     natural_language_relationships: list[NaturalLanguageRelationship] = Field(
         default_factory=list,
@@ -1674,8 +1765,8 @@ class ThesisComponent(BaseModel):
     confidence: ConfidenceLevel
     supporting_chunk_ids: list[str] = Field(default_factory=list)
     supporting_path_indices: list[int] = Field(default_factory=list)
-    confidence_basis: Optional[str] = None
-    effective_source_tier: Optional[int] = Field(default=None, ge=1, le=5)
+    confidence_basis: str | None = None
+    effective_source_tier: int | None = Field(default=None, ge=1, le=5)
     hedging_required: bool = False
 
 
@@ -1688,7 +1779,7 @@ class FalsificationCondition(BaseModel):
 
     condition: str
     specific_observable: str
-    timeframe: Optional[str] = None
+    timeframe: str | None = None
 
 
 class ExecutionRisk(BaseModel):
@@ -1700,7 +1791,7 @@ class ExecutionRisk(BaseModel):
 
     risk: str
     severity_if_manifested: ThesisRiskSeverity
-    leading_indicator: Optional[str] = None
+    leading_indicator: str | None = None
 
 
 class ViolationJustification(BaseModel):
@@ -1758,7 +1849,7 @@ class SynthesizeDeliveredPayload(_PayloadBase):
     execution_risks: list[ExecutionRisk] = Field(default_factory=list)
     constraint_compliance: ConstraintCompliance
     reasoning_paths_used: list[ReasoningPathUsed] = Field(default_factory=list)
-    conviction_level: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    conviction_level: float | None = Field(default=None, ge=0.0, le=1.0)
     # Loop-machinery surface lifted onto the Delivered payload so
     # downstream consumers (archive, cohort) don't have to read both
     # this event AND CONSTRAINT_LOOP_RESOLVED to know the synthesis
@@ -1790,8 +1881,8 @@ class AuditFindingPayload(_PayloadBase):
     severity: AuditSeverity
     description: str
     evidence: str
-    target_phase: Optional[int] = Field(default=None, ge=1, le=9)
-    target_path: Optional[str] = None
+    target_phase: int | None = Field(default=None, ge=1, le=9)
+    target_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -1825,14 +1916,14 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     )
     question: str
     context: str = ""
-    topic_slug: Optional[str] = None
+    topic_slug: str | None = None
     # Cap on parallel evidence_retrieve dispatches (one per sub-question
     # from the Decomposer). The orchestrator clamps to this max; the
     # actual count is min(decomposition_length, max_sub_questions).
     max_sub_questions: int = Field(default=8, ge=1, le=20)
     # Sprint 11: parent investigation lineage for chase-spawned children.
-    parent_investigation_id: Optional[str] = None
-    spawn_context: Optional[str] = None  # highlighted text from parent's synthesis
+    parent_investigation_id: str | None = None
+    spawn_context: str | None = None  # highlighted text from parent's synthesis
     # Sprint 12: continuous chase mode. When chase_mode != "off", the
     # orchestrator re-enters phase 1 with the strongest open question
     # from current evidentiary_gaps as a new spawned sub-investigation
@@ -1865,7 +1956,7 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # "the operator explicitly chose this lane." DEFAULT_RESEARCH_TIER's
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
-    research_tier: Optional[Literal["fast", "deep"]] = None
+    research_tier: Literal["fast", "deep"] | None = None
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):
@@ -1908,7 +1999,7 @@ class InvestigationSpawnedFromPayload(_PayloadBase):
         ActionType.INVESTIGATION_SPAWNED_FROM
     )
     parent_investigation_id: str
-    parent_event_id: Optional[str] = None
+    parent_event_id: str | None = None
     spawn_context: str = ""
 
 
@@ -1956,8 +2047,8 @@ class ClaimAssertedByOperatorPayload(_PayloadBase):
     deliverable_id: str
     section_id: str
     claim_text: str
-    original_text: Optional[str] = None
-    node_id: Optional[str] = None
+    original_text: str | None = None
+    node_id: str | None = None
     source_tier: int = Field(default=5, ge=1, le=5)
     operator_id: str = "__operator__"
     cited_chunk_ids: list[str] = Field(default_factory=list)
@@ -1975,7 +2066,7 @@ class InvestigationCompletedPayload(_PayloadBase):
     implicit_recommendation: SynthesisRecommendation
     constraint_loop_status: ConstraintLoopStatus
     constraint_loop_iterations: int = Field(default=1, ge=1)
-    master_md_path: Optional[str] = None
+    master_md_path: str | None = None
     domains_patched: list[str] = Field(default_factory=list)
     total_phases_verified: int = Field(default=0, ge=0, le=9)
 
@@ -1991,7 +2082,7 @@ class InvestigationFailedPayload(_PayloadBase):
     )
     phase: int = Field(ge=1, le=9)
     reason: str
-    last_completed_phase: Optional[int] = Field(default=None, ge=1, le=9)
+    last_completed_phase: int | None = Field(default=None, ge=1, le=9)
 
 
 # ---------------------------------------------------------------------------
@@ -2027,11 +2118,11 @@ class MetricValue(BaseModel):
     # | None. The role-side parser narrows + validates by ``value_type``;
     # the typed payload keeps ``Any`` so the trajectory round-trips
     # losslessly.
-    value: Optional[Any] = None
+    value: Any | None = None
     # ``unit`` MUST be either a non-empty string OR null/absent. The
     # upstream prompt forbids the empty-string sentinel — parser-side
     # check raises before we get here.
-    unit: Optional[str] = None
+    unit: str | None = None
 
 
 class Parameter(BaseModel):
@@ -2043,7 +2134,7 @@ class Parameter(BaseModel):
 
     semantic_anchor: str
     metric_value: MetricValue
-    qualitative_descriptor: Optional[str] = None
+    qualitative_descriptor: str | None = None
     evidence_status: EvidenceStatus
     source_chunk_ids: list[str] = Field(default_factory=list)
     constraint_strictness: ConstraintStrictness
@@ -2152,7 +2243,7 @@ class SupportingClaim(BaseModel):
     evidence_type: EvidenceType
     chunk_ids: list[str] = Field(default_factory=list)
     edge_ids: list[str] = Field(default_factory=list)
-    source_tier_min: Optional[int] = Field(default=None, ge=1, le=5)
+    source_tier_min: int | None = Field(default=None, ge=1, le=5)
     confidence: EvidenceConfidence
     confidence_basis: str
 
@@ -2164,7 +2255,7 @@ class EvidentiaryGap(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     gap_description: str
-    additional_retrieval_suggested: Optional[str] = None
+    additional_retrieval_suggested: str | None = None
 
 
 class EvidenceRetrieveRequestedPayload(_PayloadBase):
@@ -2228,7 +2319,7 @@ class MasterMdWrittenPayload(_PayloadBase):
     path: str
     synthesis_id: str
     byte_count: int = Field(ge=0)
-    topic_slug: Optional[str] = None
+    topic_slug: str | None = None
     param_version: str
 
 
@@ -2242,7 +2333,7 @@ class MasterMdSkippedPayload(_PayloadBase):
     path: str
     synthesis_id: str
     byte_count: int = Field(ge=0)
-    topic_slug: Optional[str] = None
+    topic_slug: str | None = None
     reason: str = "idempotent_match"
 
 
@@ -2291,8 +2382,8 @@ class PhaseEnterPayload(_PayloadBase):
 
     action_type: Literal[ActionType.PHASE_ENTER] = ActionType.PHASE_ENTER
     entered_at: str
-    note: Optional[str] = None
-    metadata_json: Optional[str] = None
+    note: str | None = None
+    metadata_json: str | None = None
 
 
 class PhaseExitPayload(_PayloadBase):
@@ -2302,7 +2393,7 @@ class PhaseExitPayload(_PayloadBase):
 
     action_type: Literal[ActionType.PHASE_EXIT] = ActionType.PHASE_EXIT
     exited_at: str
-    outputs_hash: Optional[str] = None
+    outputs_hash: str | None = None
 
 
 class PhaseVerifyPayload(_PayloadBase):
@@ -2339,7 +2430,7 @@ class RLMBridgeDecidedPayload(_PayloadBase):
     above_threshold: bool
     ratified: bool
     escalated: bool
-    session_id: Optional[str] = None
+    session_id: str | None = None
     reason: Literal[
         "below_threshold",
         "deferred_pending_ratification",
@@ -2386,7 +2477,7 @@ class CrossGraphCitationRecordedPayload(_PayloadBase):
     referencing_investigation_id: str
     referenced_user_id: str
     referenced_note_id: str
-    federated_substrate_id: Optional[str] = None
+    federated_substrate_id: str | None = None
 
 
 class RevShareDecidedPayload(_PayloadBase):
@@ -2403,7 +2494,7 @@ class RevShareDecidedPayload(_PayloadBase):
     kind: Literal["creator", "publisher", "platform"]
     recipient_ref: str
     amount_usd_cents: int = Field(ge=0)
-    document_id_ref: Optional[str] = None
+    document_id_ref: str | None = None
     requires_escrow: bool = False
     capped_to_daily_limit: bool = False
 
@@ -2531,9 +2622,9 @@ class VisualFrameIdentifiedPayload(_PayloadBase):
     document_id: str
     frame_source: Literal["still", "video"]
     page_or_frame_id: str
-    frame_timestamp_ms: Optional[int] = None
-    frame_width_px: Optional[int] = None
-    frame_height_px: Optional[int] = None
+    frame_timestamp_ms: int | None = None
+    frame_width_px: int | None = None
+    frame_height_px: int | None = None
 
 
 class VisualClaimsExtractedPayload(_PayloadBase):
@@ -2665,16 +2756,16 @@ class DiscoveryProposedPayload(_PayloadBase):
     # discovery, this is the originating URL.
     query: str
     url: str
-    title: Optional[str] = None
+    title: str | None = None
     # ISO-8601 if the provider returned it; None otherwise. Not parsed
     # to datetime — providers diverge on format and we'd rather log
     # what was received than silently normalize.
-    published_date: Optional[str] = None
-    author: Optional[str] = None
+    published_date: str | None = None
+    author: str | None = None
     # Provider-supplied score. Opaque per spec §14.3 — recorded but
     # NOT used for ingestion gating. The operator decides what to
     # promote; the score is just one signal.
-    relevance_score: Optional[float] = None
+    relevance_score: float | None = None
     # Heuristic suggestion from acquisition/search/exa/adapter.py
     # (research domain → 2, news allowlist → 3, default → 4). The
     # operator can override at ingestion time; this is a suggestion,
@@ -2683,17 +2774,17 @@ class DiscoveryProposedPayload(_PayloadBase):
     # Truncated preview of the provider's text snippet (≤300 chars).
     # NOT the substrate's grounding evidence — that requires ingestion
     # via acquisition/urls/adapter.ingest_url.
-    text_snippet_preview: Optional[str] = Field(default=None, max_length=300)
+    text_snippet_preview: str | None = Field(default=None, max_length=300)
     # Provider's own request id, for audit cross-reference.
     # **Deprecated as a top-level field per spec §14.7** — kept for
     # backward compat with v6-v8 events; new emitters should write
     # this under ``provider_specific["response_id"]`` instead. Read
     # paths consult both (top-level shadows the dict if both present).
-    provider_response_id: Optional[str] = None
+    provider_response_id: str | None = None
     # Per-call cost estimate in USD. Captured per spec §6.7 so
     # weekly_report.py can aggregate discovery-layer spend separately
     # from dispatch spend.
-    cost_usd_estimate: Optional[float] = Field(default=None, ge=0.0)
+    cost_usd_estimate: float | None = Field(default=None, ge=0.0)
     # Provider-specific overflow bag per spec §14.7. Each provider
     # writes its provider-shaped fields here (Exa's `autopromptString`,
     # SerpAPI's `position`, Tavily's `score_components`, etc.). The
@@ -2723,12 +2814,12 @@ class DiscoverySelectedPayload(_PayloadBase):
 
     action_type: Literal[ActionType.DISCOVERY_SELECTED] = ActionType.DISCOVERY_SELECTED
     discovery_id: str
-    document_id: Optional[str] = None
+    document_id: str | None = None
     decision: DiscoveryDecision
     # Free-text detail when decision != "ingested". Required only by
     # convention; the schema allows None so an "ingested" event
     # doesn't carry dead weight.
-    rejection_reason: Optional[str] = None
+    rejection_reason: str | None = None
 
 
 class FetchFallbackEscalatedPayload(_PayloadBase):
@@ -2778,11 +2869,11 @@ class ExaLookupResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     url: str
-    title: Optional[str] = None
-    published_date: Optional[str] = None
-    text_snippet: Optional[str] = Field(default=None, max_length=2000)
-    relevance_score: Optional[float] = None
-    provider_response_id: Optional[str] = None
+    title: str | None = None
+    published_date: str | None = None
+    text_snippet: str | None = Field(default=None, max_length=2000)
+    relevance_score: float | None = None
+    provider_response_id: str | None = None
 
 
 class VerifierLookupPayload(_PayloadBase):
@@ -2793,7 +2884,7 @@ class VerifierLookupPayload(_PayloadBase):
     action_type: Literal[ActionType.VERIFIER_LOOKUP] = ActionType.VERIFIER_LOOKUP
     tool: Literal["exa.search_contents"] = "exa.search_contents"
     query: str
-    claim_text: Optional[str] = None
+    claim_text: str | None = None
     k_requested: int = Field(ge=1, le=20)
     results: list[ExaLookupResult] = Field(default_factory=list)
     cost_usd_estimate: float = Field(ge=0.0)
@@ -2937,7 +3028,7 @@ class OutlineBlockPlacedPayload(_PayloadBase):
         "user_authored", "synthesized",
     ]
     provenance_kind: Literal["graph_node", "user_authored", "synthesized", "brainstorm"]
-    node_id: Optional[str] = None
+    node_id: str | None = None
     block_index: int
 
 
@@ -2996,7 +3087,7 @@ class BookTakenDownPayload(_PayloadBase):
 
     action_type: Literal[ActionType.BOOK_TAKEN_DOWN] = ActionType.BOOK_TAKEN_DOWN
     reason: str
-    previous_content_class: Optional[str] = None
+    previous_content_class: str | None = None
     purged_full_text: bool = False
 
 
@@ -3028,19 +3119,19 @@ class EditCapturedPayload(_PayloadBase):
     action_type: Literal[ActionType.EDIT_CAPTURED] = ActionType.EDIT_CAPTURED
     deliverable_id: str
     section_id: str
-    outline_block_id: Optional[str] = None
+    outline_block_id: str | None = None
     granularity: Literal["block", "paragraph", "sentence"]
     edit_kind: Literal["insert", "delete", "replace", "reorder"]
     # Stable intra-section locator (SPR-04 produces these).
-    paragraph_index: Optional[int] = None
-    sentence_index: Optional[int] = None
-    before_text: Optional[str] = None
-    after_text: Optional[str] = None
+    paragraph_index: int | None = None
+    sentence_index: int | None = None
+    before_text: str | None = None
+    after_text: str | None = None
     # Whether this edit was subsequently reverted (undo). Captured for
     # completeness; excluded from training signal.
     reverted: bool = False
     # Opaque editing-session id so multi-session trajectories stitch.
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
 
 # ── Write workflow — draft provenance persistence (Write SPR-09) ─────
@@ -3083,7 +3174,7 @@ class SectionDraftGeneratedPayload(_PayloadBase):
     # How many paragraphs were flagged unsupported (surfaced, never asserted).
     unsupported_paragraph_count: int = 0
     # The §5.5 voice gate score the prose passed at.
-    gate_score: Optional[float] = None
+    gate_score: float | None = None
 
 
 # ── Cross-workflow seams (antiek-unified SPR-03) ─────────────────────
@@ -3139,7 +3230,7 @@ class SeamReadToResearchPayload(_SeamPayloadBase):
     document_id: str
     # Result pointer set by the receiving side — the launched session. NOT a
     # successor-handoff field; it names what this seam launched.
-    launched_investigation_id: Optional[str] = None
+    launched_investigation_id: str | None = None
 
 
 class SeamReadToWritePayload(_SeamPayloadBase):
@@ -3162,8 +3253,8 @@ class SeamWriteToReadPayload(_SeamPayloadBase):
     from_workflow: Literal["write"] = "write"
     to_workflow: Literal["read"] = "read"
     entity_kind: Literal["outline_block"] = "outline_block"
-    source_document_id: Optional[str] = None
-    source_region_id: Optional[str] = None
+    source_document_id: str | None = None
+    source_region_id: str | None = None
 
 
 class SeamSpeakToWritePayload(_SeamPayloadBase):
@@ -3199,7 +3290,7 @@ class SeamWriteToSpeakPayload(_SeamPayloadBase):
     from_workflow: Literal["write"] = "write"
     to_workflow: Literal["speak"] = "speak"
     entity_kind: Literal["question_node"] = "question_node"
-    outline_section_id: Optional[str] = None
+    outline_section_id: str | None = None
 
 
 # ── Voice infrastructure — shared voice-in capture (SPR-14) ──────────
@@ -3236,12 +3327,12 @@ class VoiceCapturedPayload(_PayloadBase):
     source_kind: Literal["user"] = "user"
     transcript: str  # may be "" for a silent capture — never a hallucination
     transcript_status: Literal["ok", "empty"] = "ok"
-    language: Optional[str] = None
+    language: str | None = None
     duration_seconds: float = Field(ge=0.0, default=0.0)
     # Reference to the persisted audio blob (e.g. an object key / URL). The
     # blob is NOT inlined here; this is the pointer the typed-event funnel
     # carries so there is no client-side side store.
-    audio_ref: Optional[str] = None
+    audio_ref: str | None = None
 
 
 class MarginaliaNotedPayload(_PayloadBase):
@@ -3281,7 +3372,7 @@ class MarginaliaNotedPayload(_PayloadBase):
     # The chunk the selection lands in, when the host resolves one (a synthesis
     # selection over a cited claim resolves a chunk; a free-prose selection may
     # not). Null is honest "no chunk resolved", never invented.
-    chunk_id: Optional[str] = None
+    chunk_id: str | None = None
 
 
 # ── Block-canvas position persistence — DRW "organism" view (SPR-03) ──
@@ -3327,10 +3418,10 @@ class BlockPositionPayload(_PayloadBase):
     y: float
     # M4 theme grouping — the region this block was dropped into (None =
     # ungrouped). Persisted on the SAME event so grouping needs no side store.
-    region_id: Optional[str] = None
+    region_id: str | None = None
     # Human-facing region name, when the operator named the region. Opaque
     # otherwise; never required.
-    region_label: Optional[str] = None
+    region_label: str | None = None
 
 
 # ── Source read → SiteSee "read" tint (SPR-07 M4) ──────────────────────
@@ -3372,7 +3463,7 @@ class SourceReadPayload(_PayloadBase):
     # The chunk the read was attributed to — the representative chunk SiteSee
     # anchors its "read" tint to (PR-4 semantic anchor). The document id rides
     # the Event envelope. Null is honest "no chunk resolved", never invented.
-    chunk_id: Optional[str] = None
+    chunk_id: str | None = None
     # The dwell EVIDENCE that justified the "read" verdict (the decision doc's
     # threshold). Recorded so the verdict is reconstructable from the event
     # alone — never the body, only the measurement.
@@ -3397,7 +3488,7 @@ class MetaReadingCitation(_PayloadBase):
 
     chunk_id: str
     document_id: str
-    page_index: Optional[int] = None
+    page_index: int | None = None
     page_resolved: bool = False
 
 
@@ -3493,115 +3584,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    Union[
-        DispatchCallPayload,
-        ContextPackAssembledPayload,
-        DocumentLoadedPayload,
-        DocumentRegionSelectedPayload,
-        DistillationRequestedPayload,
-        DistillationDeliveredPayload,
-        ClaimChallengeRaisedPayload,
-        ClaimGroundingCheckPassedPayload,
-        ClaimGroundingCheckFailedPayload,
-        NoteEmergedPayload,
-        NoteRefinedPayload,
-        NoteCompressedDocWrittenPayload,
-        QuestionIdentifiedPayload,
-        QuestionEscalatedToResearchPayload,
-        QuestionResolvedByDocPayload,
-        CrossDocQuestionAnsweredPayload,
-        UserAcceptDistillationPayload,
-        UserRejectDistillationPayload,
-        UserEditDistillationPayload,
-        ArtifactGeneratedPayload,
-        ArtifactInteractedPayload,
-        TierAssignedPayload,
-        TierOverriddenPayload,
-        TierRewriteBulkPayload,
-        StalenessFlaggedPayload,
-        StalenessResolvePayload,
-        SynthesisArchivedPayload,
-        SubstrateManifestWrittenPayload,
-        SupersessionApplyPayload,
-        SupersessionDismissPayload,
-        SupersessionCoexistPayload,
-        GraphNodeInsertedPayload,
-        GraphEdgeInsertedPayload,
-        ConstraintViolationFoundPayload,
-        ConstraintRevisionTriggeredPayload,
-        ConstraintLoopResolvedPayload,
-        OutcomeRecordedPayload,
-        RubricScoredPayload,
-        PhaseEnterPayload,
-        PhaseExitPayload,
-        PhaseVerifyPayload,
-        DecomposeQuestionRequestedPayload,
-        DecomposeQuestionDeliveredPayload,
-        DecomposerParaphraseFlaggedPayload,
-        DecomposerRegeneratedPayload,
-        MasterMdWrittenPayload,
-        MasterMdSkippedPayload,
-        AutoPatchAppliedPayload,
-        AutoPatchSkippedPayload,
-        EvidenceRetrieveRequestedPayload,
-        EvidenceRetrieveDeliveredPayload,
-        ParameterExtractRequestedPayload,
-        ParameterExtractDeliveredPayload,
-        ConnectorRequestedPayload,
-        ConnectorDeliveredPayload,
-        SynthesizeRequestedPayload,
-        SynthesizeDeliveredPayload,
-        AuditFindingPayload,
-        InvestigationStartRequestedPayload,
-        InvestigationCompletedPayload,
-        InvestigationFailedPayload,
-        InvestigationSpawnedFromPayload,
-        InvestigationChaseHaltedPayload,
-        ClaimAssertedByOperatorPayload,
-        PageAttributionComputedPayload,
-        RLMBridgeDecidedPayload,
-        QualityGateEvaluatedPayload,
-        CrossGraphCitationRecordedPayload,
-        RevShareDecidedPayload,
-        PreferenceObservationRecordedPayload,
-        SkillRulePromotedPayload,
-        DiscoveryProposedPayload,
-        DiscoverySelectedPayload,
-        FetchFallbackEscalatedPayload,
-        VerifierLookupPayload,
-        FederationPartnerRegisteredPayload,
-        FederationPartnerTrustedPayload,
-        FederationPartnerRevokedPayload,
-        FederationOutboundCitationEmittedPayload,
-        FederationInboundCitationAcceptedPayload,
-        FederationInboundCitationRefusedPayload,
-        VisualFrameIdentifiedPayload,
-        VisualClaimsExtractedPayload,
-        VisualRoleFailedPayload,
-        AIActionAppliedPayload,
-        AIActionUndonePayload,
-        DPRoutedPayload,
-        OutlineBlockPlacedPayload,
-        OutlineBlockMovedPayload,
-        OutlineBlockRemovedPayload,
-        BookServabilityChangedPayload,
-        BookTakenDownPayload,
-        EditCapturedPayload,
-        SectionDraftGeneratedPayload,
-        SeamResearchToReadPayload,
-        SeamReadToResearchPayload,
-        SeamReadToWritePayload,
-        SeamWriteToReadPayload,
-        SeamSpeakToWritePayload,
-        SeamSpeakToReadPayload,
-        SeamWriteToSpeakPayload,
-        VoiceCapturedPayload,
-        MarginaliaNotedPayload,
-        BlockPositionPayload,
-        SourceReadPayload,
-        ReadMetaReadingGeneratedPayload,
-        DocumentFiledIntoInvestigationPayload,
-    ],
+    DispatchCallPayload | ContextPackAssembledPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3647,6 +3630,10 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.CONSTRAINT_LOOP_RESOLVED.value,
     ActionType.OUTCOME_RECORDED.value,
     ActionType.RUBRIC_SCORED.value,
+    # Foundation v2 SPR-02 — groundedness eval (truth axis) + the failure
+    # event that replaces the Phase-6 except-pass swallow.
+    ActionType.GROUNDEDNESS_SCORED.value,
+    ActionType.GROUNDEDNESS_FAILED.value,
     ActionType.PHASE_ENTER.value,
     ActionType.PHASE_EXIT.value,
     ActionType.PHASE_VERIFY.value,
@@ -3777,20 +3764,20 @@ class Event(BaseModel):
 
     event_id: str
     investigation_id: str
-    synthesis_id: Optional[str] = None
-    phase: Optional[int] = Field(default=None, ge=1, le=9)
-    role: Optional[str] = None
+    synthesis_id: str | None = None
+    phase: int | None = Field(default=None, ge=1, le=9)
+    role: str | None = None
     action_type: ActionType
     payload: TypedPayload
-    parent_event_id: Optional[str] = None
+    parent_event_id: str | None = None
     policy_id: str = DEFAULT_POLICY_ID
     param_version: str
     schema_version: int = EVENT_SCHEMA_VERSION
     emitted_at: datetime
-    document_id: Optional[str] = None
+    document_id: str | None = None
 
     @model_validator(mode="after")
-    def _check_action_type_matches_payload(self) -> "Event":
+    def _check_action_type_matches_payload(self) -> Event:
         # Compare against the string value rather than the enum member so
         # the check works whether action_type was passed as the enum or as
         # the underlying string (use_enum_values=True converts to str on
@@ -3806,7 +3793,7 @@ class Event(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _check_wrestling_requires_document_id(self) -> "Event":
+    def _check_wrestling_requires_document_id(self) -> Event:
         at = self.action_type.value if isinstance(self.action_type, ActionType) else str(self.action_type)
         if at in WRESTLING_ACTION_TYPES and not self.document_id:
             raise ValueError(
@@ -3821,7 +3808,7 @@ class Event(BaseModel):
         # Naive datetimes are treated as UTC (matches the legacy behavior).
         if v.tzinfo is None:
             return v.isoformat() + "Z"
-        return v.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        return v.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------

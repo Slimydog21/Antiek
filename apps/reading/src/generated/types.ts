@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 23;
+export const EVENT_SCHEMA_VERSION = 24;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -138,6 +138,8 @@ export const ActionType = {
   SOURCE_READ: "source.read",
   READ_META_READING_GENERATED: "read.meta_reading.generated",
   DOCUMENT_FILED_INTO_INVESTIGATION: "document.filed_into_investigation",
+  GROUNDEDNESS_SCORED: "groundedness.scored",
+  GROUNDEDNESS_FAILED: "groundedness.failed",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -532,6 +534,24 @@ export interface MetaReadingCitation {
   document_id: string;
   page_index?: number | null;
   page_resolved?: boolean;
+}
+
+/**
+ * One per-claim entailment verdict. ``score`` is the claim's
+ * groundedness in [0, 1]; ``supported`` is the binary verdict the
+ * backend reached (score above its supported-threshold). ``cited_chunk_ids``
+ * is the EXISTING claim→chunk provenance the verdict rests on — a claim
+ * with no cited chunk cannot be grounded (``score`` floors at 0.0,
+ * ``supported`` False), which is the truth-axis distinction from the
+ * style rubric's citation_density (density counts citations but never
+ * checks they SUPPORT the claim).
+ */
+export interface ClaimGroundednessVerdict {
+  claim: string;
+  score: number;
+  supported: boolean;
+  cited_chunk_ids?: string[];
+  rationale?: string;
 }
 
 /**
@@ -1010,6 +1030,54 @@ export interface RubricScoredPayload {
   judged_score?: number | null;
   final_score: number;
   notes?: string;
+}
+
+/**
+ * Emitted NON-blocking on the live Phase-6 path (Foundation v2
+ * SPR-02) alongside the SECONDARY form-axis ``rubric.scored``. The
+ * truth-axis signal: for each load-bearing thesis claim, does the
+ * EVIDENCE it cites ENTAIL the claim? ``groundedness_score`` is the
+ * mean per-claim score over claims that carry chunk citations;
+ * ``per_claim`` rides along for inspection. ``backend`` records which
+ * entailment backend produced the verdicts (``lexical`` deterministic
+ * default, or ``llm_judge``) so a reader knows whether the number is
+ * reproducible. ``scored_claims`` / ``total_claims`` make the coverage
+ * explicit (analogy-only claims with no chunk citation are excluded
+ * from the mean but counted in ``total_claims``).
+ * 
+ * Observability-only this sprint — it gates nothing until M5's
+ * promote-to-gate criterion is met in a later sprint.
+ */
+export interface GroundednessScoredPayload {
+  action_type: "groundedness.scored";
+  scorer_id: string;
+  backend: "lexical" | "llm_judge";
+  groundedness_score: number;
+  scored_claims: number;
+  total_claims: number;
+  supported_threshold: number;
+  per_claim?: ClaimGroundednessVerdict[];
+  notes?: string;
+}
+
+/**
+ * Emitted when the groundedness (or style-rubric) scorer raises on
+ * the live Phase-6 path. This is the event that REPLACES the Phase-6
+ * ``except Exception: pass`` swallow (Foundation v2 SPR-02): a scorer
+ * crash must SURFACE, never silently drop the quality signal. The phase
+ * stays non-blocking — the orchestrator logs + emits this and proceeds —
+ * so "non-blocking" never again means "the signal disappeared".
+ * 
+ * ``stage`` says which scorer crashed (``groundedness`` or ``rubric``);
+ * ``error_type`` + ``error`` carry the exception class + message for
+ * triage.
+ */
+export interface GroundednessFailedPayload {
+  action_type: "groundedness.failed";
+  scorer_id: string;
+  stage: "groundedness" | "rubric";
+  error_type: string;
+  error: string;
 }
 
 /**
@@ -2416,6 +2484,8 @@ export type TypedPayload =
   | ConstraintLoopResolvedPayload
   | OutcomeRecordedPayload
   | RubricScoredPayload
+  | GroundednessScoredPayload
+  | GroundednessFailedPayload
   | PhaseEnterPayload
   | PhaseExitPayload
   | PhaseVerifyPayload
@@ -2563,6 +2633,8 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "graph.tier.assigned",
   "graph.tier.overridden",
   "graph.tier.rewrite_bulk",
+  "groundedness.failed",
+  "groundedness.scored",
   "investigation.chase_halted",
   "investigation.completed",
   "investigation.failed",
