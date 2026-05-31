@@ -512,6 +512,130 @@ def test_archive_propaganda_copyright_asserting_item_skips(temp_substrate):
 # ---------------------------------------------------------------------------
 
 
+def test_curated_basis_applies_without_importing_the_cli():
+    """SPR-04 sharpen (finding #3): the precise curated license_basis must be
+    applied by the CONNECTOR alone — it must NOT depend on having imported
+    ``tools.ingest_public_domain`` first.
+
+    The earlier shape populated ``CURATED_PD_BASIS_OVERRIDES`` via an import-time
+    side effect in the CLI module, so any caller that had not imported the CLI
+    silently got the GENERIC per-source basis. This test runs a FRESH
+    interpreter that imports ONLY ``acquisition.books.public_domain`` (never the
+    CLI), resolves a Gutenberg candidate through a fake client, and asserts the
+    curated 'US PD pre-1929' wording is present. If the coupling regressed, the
+    subprocess would see the generic basis and exit non-zero — so this test
+    BITES on exactly that defect.
+    """
+    import subprocess
+    import textwrap
+
+    script = textwrap.dedent(
+        f"""
+        import sys
+        sys.path.insert(0, {_REPO!r})
+        # Import ONLY the connector — NOT tools.ingest_public_domain.
+        import acquisition.books.public_domain as pd
+        assert "tools.ingest_public_domain" not in sys.modules, (
+            "this test must prove the basis without the CLI imported"
+        )
+        # The curated override map must already be populated at the connector's
+        # own import time (co-located), not awaiting a CLI side effect.
+        assert "gutenberg:61364" in pd.CURATED_PD_BASIS_OVERRIDES, (
+            "curated basis not co-located in the connector module"
+        )
+
+        class FakeClient:
+            def get_json(self, url, params=None):
+                return {{
+                    "results": [{{
+                        "id": {GUTENBERG_ID},
+                        "title": "Crystallizing Public Opinion",
+                        "authors": [{{"name": "Bernays, Edward L."}}],
+                        "subjects": ["Public relations"],
+                        "copyright": False,
+                        "formats": {{"text/plain; charset=utf-8": {_GUT_TXT_URL!r}}},
+                    }}],
+                    "next": None,
+                }}
+            def get_bytes(self, url):
+                raise AssertionError("discovery does not fetch bytes")
+
+        (work,) = pd.gutenberg_candidates(FakeClient(), ids=[{GUTENBERG_ID}], limit=1)
+        assert work.pd_basis is not None
+        assert "US PD pre-1929" in work.pd_basis, work.pd_basis
+        assert "Project Gutenberg #61364" in work.pd_basis, work.pd_basis
+        # The generic-only basis would read like this — must NOT be what we got.
+        assert "copyright=false flag (gutendex book id" not in work.pd_basis
+        print("OK")
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, (
+        f"connector-only curated basis failed:\nSTDOUT:{proc.stdout}\n"
+        f"STDERR:{proc.stderr}"
+    )
+    assert "OK" in proc.stdout
+
+
+def test_every_curated_archive_id_has_a_registered_basis():
+    """SPR-04 sharpen: every id in ``CURATED_ARCHIVE_IDENTIFIERS`` must have a
+    precise basis registered in the connector's override map, so a future edit
+    that adds an archive id without a basis fails loudly (the CLI import guard)
+    rather than silently stamping the generic per-source basis."""
+    from acquisition.books.public_domain import CURATED_PD_BASIS_OVERRIDES
+
+    for arc_id in cli.CURATED_ARCHIVE_IDENTIFIERS:
+        key = f"archive:{arc_id}"
+        assert key in CURATED_PD_BASIS_OVERRIDES, (
+            f"curated archive id {arc_id!r} has no precise license_basis"
+        )
+        assert "public domain" in CURATED_PD_BASIS_OVERRIDES[key].lower()
+
+
+def test_dead_archive_identifier_drops_safely_deny_by_default():
+    """SPR-04 sharpen (finding #1): if the named archive identifier is DEAD
+    (live metadata response is empty {}), ``archive_candidate`` returns None and
+    the item is dropped — NO infringing data can land. This models the real
+    failure mode the unverified id carries: a silent ABSENCE of Propaganda,
+    never an unsafe ingest."""
+    # An empty metadata document is exactly what archive.org returns for a
+    # non-existent identifier (verified: GET /metadata/<dead-id> -> {}).
+    client = FakeSourceClient(json_by_url={_ARCHIVE_META_URL: {}})
+    assert archive_candidate(client, ARCHIVE_ID) is None
+
+
+def test_run_corpus_ingest_does_not_pull_archive_identifiers():
+    """SPR-04 sharpen (finding #2): the canonical SPR-08 orchestrator
+    ``tools/run_corpus_ingest.py`` reads CURATED_GUTENBERG_IDS but has NO
+    archive discovery surface — it must NOT reference CURATED_ARCHIVE_IDENTIFIERS
+    or archive_candidate. Propaganda (an archive id) lands ONLY via the
+    ``ingest_public_domain --curated`` CLI; this documents that wiring boundary
+    in an executable assertion so the docs note + code agree."""
+    src = open(
+        os.path.join(_REPO, "tools", "run_corpus_ingest.py"), encoding="utf-8"
+    ).read()
+    assert "CURATED_GUTENBERG_IDS" in src, (
+        "orchestrator should land the curated Gutenberg titles"
+    )
+    assert "CURATED_ARCHIVE_IDENTIFIERS" not in src, (
+        "orchestrator must NOT silently iterate archive identifiers; if this "
+        "changes, update docs/decisions/bernays_public_domain.md § 'How each "
+        "title is ingested'"
+    )
+    # The docs note must carry the wiring boundary so the operator runs the
+    # right command in the SPR-08 window.
+    note = open(
+        os.path.join(_REPO, "docs", "decisions", "bernays_public_domain.md"),
+        encoding="utf-8",
+    ).read()
+    assert "How each title is ingested" in note
+    assert "run_corpus_ingest" in note
+
+
 def test_curated_discover_resolves_both_bernays_titles():
     """A curated run resolves the Gutenberg curated ids (incl. #61364) PLUS the
     curated archive identifiers (Propaganda), each PD-gated by the source."""

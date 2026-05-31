@@ -126,8 +126,44 @@ class PublicDomainWork:
 # basis is ``public_domain: <this string>``).
 #
 # Keys: ``"gutenberg:<book_id>"`` / ``"archive:<identifier>"``.
-# ---------------------------------------------------------------------------
-CURATED_PD_BASIS_OVERRIDES: dict[str, str] = {}
+#
+# CO-LOCATION (taste / defensibility — SPR-04 sharpen): this map is defined
+# WITH ``_apply_curated_basis`` (the code that reads it), populated at THIS
+# module's import time — NOT by an import-time side effect from a different
+# module. The earlier shape had ``tools.ingest_public_domain`` mutate this map
+# at its own import time, so any caller of ``archive_candidate`` /
+# ``gutenberg_candidates`` that had not first imported the CLI silently stamped
+# the GENERIC per-source basis instead of the curated term reasoning. The
+# rights DECISION (servable / not) was never at risk — the generic basis still
+# passes ``_check_servable_basis`` and the b2 gated-leak cross-check — but the
+# precise legal wording would be dropped on an import-order-dependent path.
+# Defining the load-bearing legal-claim strings next to their applier removes
+# that fragility: the curated basis is present for EVERY caller, structurally,
+# not incidentally. The CLI imports this populated map (read-only) so the
+# curated id lists + their bases still read together for review.
+CURATED_PD_BASIS_OVERRIDES: dict[str, str] = {
+    # Crystallizing Public Opinion (1923): published pre-1929, so it is US
+    # public domain by term expiry regardless of renewal. Gutenberg #61364.
+    # The legal claim this encodes is documented in
+    # docs/decisions/bernays_public_domain.md.
+    "gutenberg:61364": (
+        "US PD pre-1929 (public domain); Project Gutenberg #61364 "
+        "(Crystallizing Public Opinion, 1923, Edward Bernays)"
+    ),
+    # Propaganda (1928): entered the US public domain on 2024-01-01 under the
+    # 95-year term (1928 + 95 = 2023; works enter PD on Jan 1 of the following
+    # year). Internet Archive Public-Domain-Mark item, 1928 first edition.
+    # NOTE (SPR-04 sharpen): the archive identifier this basis keys on
+    # (``propaganda_201804``) was UNVERIFIED at build time — the offline gates
+    # prove the wording + PDM-gating behaviour against a canned record, not
+    # that the live item exists. The live PDM rights field MUST be confirmed
+    # before the SPR-08 prod ingest. See ``CURATED_ARCHIVE_IDENTIFIERS`` in
+    # tools/ingest_public_domain.py and docs/decisions/bernays_public_domain.md.
+    "archive:propaganda_201804": (
+        "US PD: 95-yr term; entered PD 2024-01-01 (public domain); "
+        "Internet Archive PDM (1928 first ed.) (Propaganda, Edward Bernays)"
+    ),
+}
 
 
 def _curated_override_key(source: str, source_id: str) -> str:

@@ -54,9 +54,47 @@ basis; it never manufactures a public-domain claim from memory.
   PDM assertion (`acquisition.books.public_domain._archive_pd_basis`): an
   ambiguous or copyright-asserting item is denied, not served.
 - **Provenance URL:** <https://archive.org/details/propaganda_201804>
+  — **⚠ identifier UNVERIFIED at build time.** This archive identifier was
+  **not confirmed to resolve to a live item with a PDM rights field** when the
+  sprint shipped. The offline tests prove the *wording* + the PDM-gating
+  *behaviour* against a canned `FakeSourceClient` record — **not** that the live
+  item exists. **Confirm the live PDM rights field (or substitute the correct
+  IA identifier / a Wikisource copy of the 1928 first edition) before the SPR-08
+  prod ingest.** If the named id is dead, `archive_candidate()` returns `None`
+  on the empty metadata response and the work is safely dropped: the failure
+  mode is the **silent absence of *Propaganda***, never an unsafe ingest of a
+  copyrighted item. (`tools/ingest_public_domain.py` `CURATED_ARCHIVE_IDENTIFIERS`
+  carries the same caveat at the catalog entry.)
 - **Source assertion gate:** archive.org is resolved **per-identifier**, never by
   free-text rights search. If the named item's rights field does not yield a PDM
   / "no known copyright restrictions" basis, the item is skipped.
+
+---
+
+## How each title is ingested (which command lands which title)
+
+The two titles land via **different discovery surfaces**, so the operator running
+the SPR-08 corpus-ingest window must run the right command(s):
+
+| Title | Source | Curated list | `tools.ingest_public_domain --curated` | `tools/run_corpus_ingest.py` |
+|---|---|---|---|---|
+| *Crystallizing Public Opinion* | Gutenberg #61364 | `CURATED_GUTENBERG_IDS` | ✅ lands it | ✅ lands it (reads `CURATED_GUTENBERG_IDS`) |
+| *Propaganda* | archive.org PDM item | `CURATED_ARCHIVE_IDENTIFIERS` | ✅ lands it (`discover()` iterates the archive ids) | ❌ **does NOT** land it |
+
+The canonical SPR-08 orchestrator `tools/run_corpus_ingest.py` only reads
+`CURATED_GUTENBERG_IDS` and calls `gutenberg_candidates` — it has **no
+archive.org discovery surface**, so it never iterates `CURATED_ARCHIVE_IDENTIFIERS`
+and never lands an archive identifier. To land *Propaganda* the operator must run
+
+```
+python -m tools.ingest_public_domain --curated --db-path <LOCAL/TEMP db>
+```
+
+which is the only path whose `discover()` resolves the archive identifiers
+(each still PDM-gated by `archive_candidate`). Running ONLY the
+`run_corpus_ingest` orchestrator would silently land *Crystallizing* but not
+*Propaganda*. (This is a wiring boundary, not a rights gap: both paths route
+the rights decision through the same `classify()` chokepoint.)
 
 ---
 

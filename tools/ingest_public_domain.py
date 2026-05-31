@@ -100,59 +100,79 @@ CURATED_GUTENBERG_IDS: tuple[int, ...] = (
 # is resolved per-identifier (NEVER free-text rights search) via
 # ``acquisition.books.public_domain.archive_candidate``; the item is ingested
 # ONLY if its rights/licenseurl field yields a PDM / "no known copyright"
-# basis. Each entry's curated term-reasoning basis is registered in
-# ``CURATED_ARCHIVE_PD_BASIS`` below and applied ONLY after that positive
-# source assertion (never manufacturing PD). Used for PD works Gutenberg lacks
-# a clean item for — e.g. Bernays's *Propaganda* (1928), which entered the US
-# public domain on 2024-01-01 under the 95-year term.
+# basis. Each entry's curated term-reasoning basis lives in
+# ``acquisition.books.public_domain.CURATED_PD_BASIS_OVERRIDES`` and is applied
+# by the connector ONLY after that positive source assertion (never
+# manufacturing PD). Used for PD works Gutenberg lacks a clean item for —
+# e.g. Bernays's *Propaganda* (1928), which entered the US public domain on
+# 2024-01-01 under the 95-year term.
+#
+# WIRING NOTE (diligence — SPR-04 sharpen): these archive identifiers are
+# ingested ONLY via this CLI's ``--curated`` ``discover()`` path
+# (``python -m tools.ingest_public_domain --curated``). The canonical SPR-08
+# orchestrator ``tools/run_corpus_ingest.py`` reads ``CURATED_GUTENBERG_IDS``
+# but does NOT iterate ``CURATED_ARCHIVE_IDENTIFIERS`` (it has no archive
+# discovery surface — see its ``_public_domain_candidates``). So a curated
+# Gutenberg id (e.g. #61364 / Crystallizing) flows through BOTH paths, but an
+# archive identifier (e.g. Propaganda) flows ONLY through this CLI. The
+# operator running the SPR-08 corpus-ingest window must run THIS ``--curated``
+# CLI to land the archive titles. Documented in
+# docs/decisions/bernays_public_domain.md (§ "How each title is ingested").
 CURATED_ARCHIVE_IDENTIFIERS: tuple[str, ...] = (
     # Edward Bernays — Propaganda (1928 first edition); US PD 2024-01-01 under
-    # the 95-yr term. The Internet Archive item carries the 1928 first-edition
-    # text under a CC Public-Domain-Mark / "no known copyright restrictions"
-    # rights field; archive_candidate() gates on that PDM assertion.
+    # the 95-yr term. The Internet Archive item is EXPECTED to carry the 1928
+    # first-edition text under a CC Public-Domain-Mark / "no known copyright
+    # restrictions" rights field; archive_candidate() gates on that PDM
+    # assertion (a non-PD or copyright-asserting item resolves to None and is
+    # dropped — deny-by-default, proven offline).
+    #
+    # ⚠ IDENTIFIER UNVERIFIED AT BUILD TIME (SPR-04 sharpen): this id was NOT
+    # confirmed to resolve to a live archive.org item with a PDM rights field
+    # at build time. The offline gates prove the WORDING + PDM-gating
+    # behaviour against a canned FakeSourceClient record, not the live item's
+    # existence. Before the SPR-08 prod ingest, CONFIRM the live PDM rights
+    # field (or substitute the correct IA identifier / a Wikisource copy, both
+    # named in the spec). If the id is dead, archive_candidate() returns None
+    # on the empty metadata response and the item is safely dropped — the
+    # failure mode is a SILENT ABSENCE of Propaganda, never an unsafe ingest.
     "propaganda_201804",
 )
 
 
 # Curated, precise per-work license_basis strings (Personal-Reading-Lane
-# SPR-04). These restate the EXACT copyright-term reasoning a reviewer (or
-# counsel, re-reading in 2040 — rigor #5) needs next to the source's own
-# public-domain assertion. They are applied by
-# ``acquisition.books.public_domain._apply_curated_basis`` ONLY when the source
+# SPR-04) live WITH the code that applies them, at
+# ``acquisition.books.public_domain.CURATED_PD_BASIS_OVERRIDES``. They restate
+# the EXACT copyright-term reasoning a reviewer (or counsel, re-reading in 2040
+# — rigor #5) needs next to the source's own public-domain assertion, and the
+# connector applies them (via ``_apply_curated_basis``) ONLY when the source
 # has ALREADY positively asserted PD (Gutenberg copyright=false / archive PDM):
 # the curated string refines the WORDING of an already-positive basis, it never
-# manufactures a public-domain claim from memory. Each string carries the term
-# reasoning + the source assertion (so the gutendex id / archive identifier
-# stays in the audit trail) + the literal token "public domain" so the stamped
-# ``book_assets.license_basis`` is self-explaining. The legal claim each string
+# manufactures a public-domain claim from memory. The legal claim each string
 # encodes is documented in docs/decisions/bernays_public_domain.md.
-_CURATED_PD_BASIS: dict[str, str] = {
-    # Crystallizing Public Opinion (1923): published pre-1929, so it is US
-    # public domain by term expiry regardless of renewal. Gutenberg #61364.
-    "gutenberg:61364": (
-        "US PD pre-1929 (public domain); Project Gutenberg #61364 "
-        "(Crystallizing Public Opinion, 1923, Edward Bernays)"
-    ),
-    # Propaganda (1928): entered the US public domain on 2024-01-01 under the
-    # 95-year term (1928 + 95 = 2023; works enter PD on Jan 1 of the following
-    # year). Internet Archive Public-Domain-Mark item, 1928 first edition.
-    "archive:propaganda_201804": (
-        "US PD: 95-yr term; entered PD 2024-01-01 (public domain); "
-        "Internet Archive PDM (1928 first ed.) (Propaganda, Edward Bernays)"
-    ),
-}
-
-# Register the curated bases into the connector's override map at import time
-# (the connector applies them at candidate-construction). Registering here —
-# next to the curated id lists — keeps the curated spine (ids + their precise
-# bases) in ONE place for review, while the connector owns the deny-by-default
-# application rule.
+#
+# CO-LOCATION (SPR-04 sharpen): the basis map is now defined in the connector
+# module (populated at THAT module's import time), NOT mutated here as an
+# import-time side effect. The earlier shape made the precise basis depend on
+# this CLI having been imported first — any other caller of archive_candidate /
+# gutenberg_candidates would silently get the generic per-source basis. Pulling
+# the load-bearing legal strings next to their applier makes the curated wording
+# present for EVERY caller, structurally. We import the populated map here
+# (read-only) so the curated ids + their bases still read together for review.
 from acquisition.books.public_domain import (  # noqa: E402
     CURATED_PD_BASIS_OVERRIDES,
     archive_candidate,
 )
 
-CURATED_PD_BASIS_OVERRIDES.update(_CURATED_PD_BASIS)
+# The curated archive identifiers MUST each have a precise basis registered in
+# the connector's override map; if a future edit adds an id here without a basis
+# there, fail loudly at import rather than silently stamp the generic basis.
+for _arc_id in CURATED_ARCHIVE_IDENTIFIERS:
+    if f"archive:{_arc_id}" not in CURATED_PD_BASIS_OVERRIDES:
+        raise RuntimeError(
+            f"curated archive identifier {_arc_id!r} has no precise "
+            f"license_basis in acquisition.books.public_domain."
+            f"CURATED_PD_BASIS_OVERRIDES — add one before ingesting it"
+        )
 
 
 @dataclass(frozen=True)
