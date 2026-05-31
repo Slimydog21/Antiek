@@ -358,6 +358,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "discovery_summary",
     "book_assets",
     "outline_blocks",
+    "monitors",
 )
 
 
@@ -1061,6 +1062,38 @@ CREATE INDEX IF NOT EXISTS idx_arxiv_audit_document
 """
 
 
+# SPR-09 (Personal-Reading Lane "monitoring mode") — monitors. A saved feed
+# bound to a prior deep-research investigation. Stores the thread's derived
+# query terms + an embedding centroid (the mean of the thread's chunk
+# embeddings) + a last_seen_at checkpoint. The resumable refresh
+# (orchestration/monitoring/monitor.py) surfaces the personal_reading
+# documents ingested since the checkpoint, ranked against the centroid. The
+# monitor owns NO body and NO rights state — it only points at documents
+# that already carry content_class='personal_reading'; the read-side gate
+# (search.py / personal_space.py) still governs what a reader may see, so a
+# monitor can never widen the lane. centroid is NULLABLE: an honest NULL
+# when the thread had zero embedded chunks (refresh degrades to
+# chronological ranking, never a fabricated zero-vector). Box-bounded
+# (§16): refresh is operator-invoked / reuses the continuous single-
+# iteration pattern; this table adds no daemon. Idempotent CREATE IF NOT
+# EXISTS; FK-references nothing (investigation_id is a soft ref — the
+# substrate has no investigations table by design, see V1 note).
+ANTIEK_GRAPH_SCHEMA_V13_MONITORS_SQL = """
+CREATE TABLE IF NOT EXISTS monitors (
+    monitor_id        TEXT PRIMARY KEY,
+    investigation_id  TEXT NOT NULL,
+    title             TEXT,
+    query_terms       TEXT,          -- JSON array of salient terms
+    centroid          FLOAT[],       -- nullable; mean of thread chunk embeddings
+    centroid_dim      INTEGER,
+    last_seen_at      TIMESTAMP NOT NULL,
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_monitors_investigation
+    ON monitors(investigation_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1123,6 +1156,11 @@ def init_database(con: LockedConnection) -> None:
     # refs/counts; namespaced string kinds, no typed-payload/codegen bump). Pure
     # idempotent CREATE IF NOT EXISTS; FK-references nothing.
     con.execute(ANTIEK_GRAPH_SCHEMA_V12_ARXIV_AUDIT_SQL)
+    # SPR-09 (Personal-Reading Lane) — monitors (saved feed bound to an
+    # investigation; carries the centroid + last_seen_at checkpoint that the
+    # box-bounded resumable refresh advances). Pure idempotent CREATE IF NOT
+    # EXISTS; FK-references nothing.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V13_MONITORS_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:
