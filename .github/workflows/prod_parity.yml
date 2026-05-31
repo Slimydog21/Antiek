@@ -1,0 +1,73 @@
+name: prod-parity (informational)
+
+# SPR-07 · antiek-foundation-v2 — scheduled prod-parity probe.
+#
+# Probes the LIVE api.antiek.ai and asserts the SHA it reports
+# (build_sha) equals the tip of origin/main, and that the provider
+# registry is non-empty. Earlier this month a stale-SPA drift shipped
+# and went undetected because nothing compared the deployed SHA against
+# main. This job surfaces that drift.
+#
+# ── WHY THIS IS INFORMATIONAL AND NOT A REQUIRED PR GATE ──────────────
+# This check structurally CANNOT be a PR-blocking gate. It needs the
+# LIVE prod URL, which is only meaningful AFTER a deploy completes — a
+# pull request has no deployed SHA to compare against (the code hasn't
+# been deployed). It would also gate PRs on the health of an external
+# endpoint they don't change. So it is `continue-on-error: true` and is
+# NOT a required check; it never blocks a merge.
+#
+# The BLOCKING surface for parity lives where the SHA is known and the
+# URL is live: the post-deploy task in
+# infrastructure/ansible/playbooks/deploy.yml, which fails the play on a
+# non-zero exit. This split (block post-deploy, inform on a schedule) is
+# the standing informational-gate discipline:
+# docs/decisions/ci-informational-gates.md.
+#
+# This job RUNS the real check and surfaces a ::warning:: on drift so a
+# regression is visible — it just does not fail the gate on a live
+# endpoint that can be down for reasons unrelated to code.
+
+on:
+  schedule:
+    # Daily at 07:13 UTC. Off the hour to dodge GitHub's scheduler
+    # contention at :00. A stale deploy that survives an operator's
+    # eyeball gets caught within a day.
+    - cron: "13 7 * * *"
+  workflow_dispatch:  # let the operator probe prod on demand from the Actions tab
+
+concurrency:
+  group: prod-parity
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: probe prod /health vs origin/main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Informational: this depends on a live external endpoint, so it must
+    # never block. It surfaces drift as a job failure visible in the
+    # Actions tab + the warning below, but it is not a required check.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need history so `git rev-parse origin/main` resolves the real
+          # remote tip (the default-branch SHA we expect prod to be on).
+          fetch-depth: 0
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Probe prod parity (informational)
+        # Defaults --expected-sha to `git rev-parse origin/main`. Wrapped
+        # so a parity failure or an unreachable endpoint surfaces as a
+        # ::warning:: rather than a hard red — the post-deploy task is the
+        # authoritative blocking surface. The job itself is also
+        # continue-on-error, so even a non-zero here cannot block.
+        run: |
+          python tools/prod_parity/check.py --url https://api.antiek.ai \
+            || echo "::warning title=prod-parity drift (informational)::api.antiek.ai/health did not match origin/main or the provider registry was empty (or the endpoint was unreachable). The BLOCKING parity surface is the post-deploy task in deploy.yml; this probe is informational per docs/decisions/ci-informational-gates.md."

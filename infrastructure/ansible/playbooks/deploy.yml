@@ -66,6 +66,15 @@
         msg: "now at {{ git_pull.after | default('(unchanged)') }}"
       tags: [code]
 
+    # SPR-07: expose the just-pulled SHA to the antiek.service template so
+    # ANTIEK_BUILD_SHA is stamped into the service env and /health reports
+    # the true deployed SHA (the prod-parity check asserts against it).
+    - name: set antiek_build_sha fact from the just-pulled SHA
+      ansible.builtin.set_fact:
+        antiek_build_sha: "{{ git_pull.after }}"
+      when: git_pull.after is defined
+      tags: [code, systemd]
+
     # ── 2. Refresh dependencies ──────────────────────────────────────────
     # `pip install -e` is fast when nothing changed (just re-reads
     # pyproject.toml and the existing egg-info), so running it
@@ -395,6 +404,69 @@
         success_msg: |
           Deploy verified: substrate is live with providers
           {{ health.json.registered_providers }}.
+      tags: [verify]
+
+    # ── 6b. Prod-parity assertion (SPR-07) — BLOCKING ───────────────────
+    # The cheap catch the pipeline lacked: assert the SHA the LIVE service
+    # reports equals the SHA that is checked out on the box, and that the
+    # provider registry is non-empty. A stale-SPA drift shipped earlier
+    # this month and went undetected because nothing compared the deployed
+    # SHA against main. This is the BLOCKING surface (vs the informational
+    # scheduled probe in .github/workflows/prod_parity.yml): at THIS moment
+    # the deployed SHA is known and the URL is live, so a mismatch should
+    # fail the play.
+    #
+    # WHAT WE COMPARE AGAINST (`antiek_expected_sha`), and WHY it is NOT a
+    # raw `git_pull.after`:
+    #   * On a full code deploy `git_pull.after` is the just-pulled SHA and
+    #     is authoritative — use it directly.
+    #   * On a verify-only / skip-code run (e.g. `--tags verify`, a
+    #     systemd-only or frontend-only deploy) the `git pull` task (tagged
+    #     [code]) never runs, so `git_pull.after` is UNDEFINED. The earlier
+    #     shape of this task guarded on `when: git_pull.after is defined`,
+    #     which turned the BLOCKING gate into a SILENT NO-OP on exactly
+    #     those runs — the parity assertion would skip itself precisely
+    #     when an operator re-runs verify to confirm prod is in parity.
+    #     That is the one shape where a stale deploy is most likely. So we
+    #     do NOT skip: we fall back to the SHA actually checked out on the
+    #     box (`git rev-parse HEAD` in {{ antiek_install_dir }}), which IS
+    #     what the running service was built from.
+    # We deliberately do NOT default to `origin/main`: the deploy may
+    # target a non-main ref and the control node may be on a different
+    # checkout — the box's own HEAD is the authoritative "what is deployed
+    # here". The deploy exports ANTIEK_BUILD_SHA into the service env (see
+    # infrastructure/ansible/templates/antiek.service.j2) so /health reports
+    # it; without that the assertion correctly reds.
+    - name: read the SHA actually checked out on the box (verify-only fallback)
+      ansible.builtin.command:
+        cmd: git rev-parse HEAD
+        chdir: "{{ antiek_install_dir }}"
+      become_user: "{{ antiek_user }}"
+      register: deployed_head
+      changed_when: false
+      when: git_pull.after is not defined
+      tags: [verify]
+
+    - name: resolve antiek_expected_sha (just-pulled SHA, else box HEAD)
+      ansible.builtin.set_fact:
+        antiek_expected_sha: "{{ git_pull.after | default(deployed_head.stdout | trim) }}"
+      tags: [verify]
+
+    # Run from the control node (delegate_to: localhost) so we exercise the
+    # full public Caddy → uvicorn path, exactly like the /health task above.
+    # tools/prod_parity/check.py exits non-zero on a parity failure;
+    # `ansible.builtin.command` fails the play on that. This task has NO
+    # `when:` guard on purpose — the blocking gate must fire on every deploy
+    # shape, never silently skip itself.
+    - name: prod-parity assert — deployed SHA == box HEAD + providers live
+      ansible.builtin.command:
+        cmd: >-
+          python {{ playbook_dir }}/../../../tools/prod_parity/check.py
+          --url https://{{ api_domain }}
+          --expected-sha {{ antiek_expected_sha }}
+      delegate_to: localhost
+      become: false
+      changed_when: false
       tags: [verify]
 
     # ── Frontend smoke check ────────────────────────────────────────────
