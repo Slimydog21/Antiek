@@ -38,7 +38,9 @@ from processing.embedding.embed import (  # noqa: E402
 )
 from substrate.books.model import upsert_book_asset  # noqa: E402
 from substrate.constants import (  # noqa: E402
+    PERSONAL_READABLE_CONTENT_CLASSES,
     PERSONAL_READING_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
     SOURCE_DECLARED_OPEN_CONTENT_CLASS,
 )
 from substrate.event_log import emit_typed  # noqa: E402
@@ -69,6 +71,23 @@ CC_BY_OPERATOR_LICENSE_BASIS = (
     "CC-BY (operator-confirmed per-video; the default Standard YouTube "
     "License is NOT CC-BY)"
 )
+
+
+class YouTubeContentClassRejected(ValueError):
+    """Raised when an explicit ``content_class=`` passed to ``ingest_youtube``
+    is not a recognized readable rights class, or is a SERVABLE class supplied
+    without a positive ``license_basis``.
+
+    The explicit-``content_class`` parameter lets a future caller (SPR-09
+    monitoring / SPR-10 reclassify) reuse this adapter with a deliberately
+    chosen class, but it must NOT become a quiet deny-by-default escape that
+    promotes a transcript to a publicly servable class without recording the
+    basis the §9.0 serve gate and ``corpus_audit._check_third_party_servable``
+    require. Unknown strings and basis-less servable classes are rejected here,
+    at the call site, instead of slipping past the AST literal-scanner as a
+    Name and only being caught later at audit time.
+    """
+
 
 DEFAULT_YOUTUBE_SOURCE_TIER = 4
 _NODE_LABEL_MAX = 160
@@ -205,6 +224,7 @@ def ingest_youtube(
     min_word_count: int = MIN_INGEST_WORD_COUNT,
     video: Optional[YouTubeVideo] = None,
     content_class: Optional[str] = None,
+    license_basis: Optional[str] = None,
     operator_confirmed_cc_by: bool = False,
 ) -> IngestYouTubeResult:
     """Fetch + ingest a YouTube video. Pass ``video=`` to reuse an
