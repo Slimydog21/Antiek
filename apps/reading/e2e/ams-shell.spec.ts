@@ -73,19 +73,20 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
   });
 
   // ── Anchor 2 ──────────────────────────────────────────────────────────────
-  // SPR-04 flips this green.
-  // WindowsLayer returns null until a window is summoned, and a product click
-  // navigates full-page. After landing + a product activation there is NO
-  // floating window by default. SPR-04 makes a product click open a sub-action
-  // window by default; assertWindowOpen then finds the [role=dialog] frame.
-  test.fixme("anchor[window]: a floating window is the default interaction", async ({ page }) => {
+  // SPR-04 FLIPS THIS GREEN (un-fixme'd).
+  // v1 complaint #2: "windows were manual, not the default." WindowsLayer
+  // returned null until something summoned a window, and the default product
+  // click navigated full-page, so the operator never saw a window. SPR-04
+  // inverts the policy: a within-contract PRODUCT activation opens a sub-action
+  // window over the scene BY DEFAULT (no ⊞ needed). Here we perform that real
+  // default activation — open the launcher (More), click the Research product —
+  // and assert the floating [role=dialog] window frame is on screen.
+  test("anchor[window]: a floating window is the default interaction", async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
-    // A product activation that SHOULD (post-SPR-04) open a window by default.
-    // Today nothing opens — the anchor is the absence.
-    const research = page.getByRole("link", { name: /research/i }).first();
-    if (await research.count()) {
-      await research.click().catch(() => {});
-    }
+    // Open the launcher (the single non-workflow rail affordance), then activate
+    // the Research product — the within-contract default that now opens a window.
+    await page.getByRole("button", { name: "More" }).first().click();
+    await page.getByRole("button", { name: /open research workflow in a window/i }).first().click();
     await assertWindowOpen(page);
   });
 

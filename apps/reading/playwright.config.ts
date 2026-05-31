@@ -56,19 +56,22 @@ export default defineConfig({
     {
       // UNCHANGED behaviour — the existing Storybook specs. `testIgnore` keeps
       // every real-app spec off the Storybook base. SPR-03 BROADENED the ignore
-      // (additively) to also exclude the new glass real-app specs, which load
-      // the real SPA via loginAndGotoApp and must not run against Storybook.
+      // (additively) to also exclude the new glass real-app specs; SPR-04
+      // broadens it again for windows-default.spec.ts. All of these load the
+      // real SPA via loginAndGotoApp and must not run against Storybook.
       name: "chromium",
-      testIgnore: /(ams-shell|glass-surface|glass-reduced-motion)\.spec\.ts/,
+      testIgnore: /(ams-shell|glass-surface|glass-reduced-motion|windows-default)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       // SPR-01 created this real-app experience gate (ams-shell.spec.ts). SPR-03
-      // BROADENED its testMatch (additively, ams-shell still runs) to also pick
-      // up the new real-app glass specs, which load the real authed SPA via
-      // loginAndGotoApp and pixel/contrast-assert the visible outcome on `/`.
+      // BROADENED its testMatch (additively, ams-shell still runs) for the glass
+      // specs; SPR-04 broadens it again for windows-default.spec.ts. All load
+      // the real authed SPA via loginAndGotoApp and pixel/DOM-assert the visible
+      // outcome on `/` (the windows-default gate proves windows float over the
+      // scene by default — the SPR-04 keystone).
       name: "ams-real",
-      testMatch: /(ams-shell|glass-surface|glass-reduced-motion)\.spec\.ts/,
+      testMatch: /(ams-shell|glass-surface|glass-reduced-motion|windows-default)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: AMS_APP_BASE },
     },
   ],
