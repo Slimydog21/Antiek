@@ -251,6 +251,16 @@ def promote_insight(
                 "promoted_kind": "insight",
                 "confidence": confidence,
                 "canonical_text": canonical_text(text),
+                # AFF SPR-04: stamp the deposit's investigation_id into node
+                # metadata. The ``nodes`` table has no investigation_id column
+                # (it rides the GRAPH_NODE_INSERTED event envelope), but a
+                # marginalia insight has no ``supported_by`` edge to recover it
+                # from — so without this mirror ``knowledge_unit_of`` would
+                # project investigation_id='' for the marginalia path and SPR-07
+                # dedup keyed on investigation scope would mis-bucket it. This
+                # rides the existing metadata JSON payload — no event schema
+                # change (EVENT_SCHEMA_VERSION stays 24).
+                "investigation_id": investigation_id,
             }
         )
         # §9 provenance discriminator. Stamped only when the caller asserts
@@ -323,11 +333,31 @@ def promote_question(
 
     def _do(c: LockedConnection) -> str:
         node_meta: Dict[str, Any] = dict(metadata or {})
-        node_meta.update({"promoted_kind": "question", "canonical_text": canonical_text(text)})
+        node_meta.update(
+            {
+                "promoted_kind": "question",
+                "canonical_text": canonical_text(text),
+                # AFF SPR-04: stamp investigation_id into node metadata. A
+                # question node grounds via asks_about/resolved_by (never
+                # supported_by), so ``knowledge_unit_of`` cannot recover the
+                # investigation from a supported_by edge — this mirror is the
+                # single source the projection reads for the question path.
+                # Rides the existing metadata JSON — no event schema bump.
+                "investigation_id": investigation_id,
+            }
+        )
         if anchor_region_id:
             node_meta["anchor_region_id"] = anchor_region_id
         if source_document_id:
             node_meta.setdefault("source_document_id", source_document_id)
+        # AFF SPR-04: mirror chunk_id onto the question node too (the insight
+        # path already does at the marginalia branch). A question grounds via
+        # asks_about/resolved_by, never supported_by, so ``knowledge_unit_of``
+        # recovers its claim→chunk→doc grounding from metadata, not an edge —
+        # without the chunk_id mirror a grounded question would be wrongly
+        # rejected as ungrounded.
+        if chunk_id:
+            node_meta.setdefault("chunk_id", chunk_id)
         emb = (embedding_provider or _default_provider()).encode(text)
         insert_node(
             c,
@@ -535,6 +565,136 @@ def promote_from_marginalia_event(
         },
         embedding_provider=embedding_provider,
         con=con,
+    )
+
+
+# ---------------------------------------------------------------------------
+# AFF SPR-04 — assemble a deposited node into a KnowledgeUnitContract.
+#
+# The deposit path is UNCHANGED: promote_insight/promote_question still write
+# node + provenance edges atomically through the single writer
+# (``_with_connection`` → ``connect_write``), §16-preserving. This helper does
+# NOT write — it READS what a deposit already produced (the content-addressed
+# node_id, the supported_by edge's source_document_id/chunk_id, the chunk_id
+# mirrored into node metadata at L267-270) and projects it onto the
+# KnowledgeUnitContract shape so a consumer (or the conformance test) can prove
+# a deposit carries every required field. The §9.0 servability tag is SOURCED
+# from the existing classifier (``substrate.books.servability``) — we read its
+# answer, never re-derive deny-by-default. groundedness_score is left None
+# (SPR-08 fills it).
+# ---------------------------------------------------------------------------
+
+
+def servability_tag_for(content_class: Optional[str], *, taken_down: bool = False):
+    """Read the §9.0 classifier's answer for a unit grounded on a source of
+    this ``content_class`` and return a ``ServabilityTag``. This does NOT
+    re-derive deny-by-default — it asks ``substrate.books.servability`` (the
+    single source of the §9.0 mapping) and records the verdict. A None/unknown
+    class resolves to a gated (non-servable) tag, exactly as the classifier
+    decides. ``content_class`` is normalized to the contract's ``ContentClass``
+    Literal only when it is one of the allowlisted full-text classes; otherwise
+    it is recorded as None (unknown ⇒ non-servable)."""
+    from substrate.books.servability import is_servable_full_text, servability_of
+    from substrate.contracts.servable import FULL_TEXT_SERVABLE
+    from substrate.contracts.nodes import ServabilityTag
+
+    status = servability_of(content_class, taken_down=taken_down)
+    serves = is_servable_full_text(status)
+    # Type the recorded class against the contract Literal: only surface a
+    # content_class the contract recognizes AND that is servable; anything
+    # else (None, unknown, gated, taken_down) records None ⇒ non-servable.
+    tag_class = status.value if (serves and status.value in FULL_TEXT_SERVABLE) else None
+    return ServabilityTag(content_class=tag_class, serves_full_text=serves)
+
+
+def knowledge_unit_of(
+    con: LockedConnection,
+    node_id: str,
+    *,
+    content_class: Optional[str] = None,
+    taken_down: bool = False,
+):
+    """Project a deposited insight/question node (already written by
+    ``promote_insight``/``promote_question``) onto a ``KnowledgeUnitContract``.
+
+    Reads the node row + its ``supported_by`` provenance edge from the SAME
+    write-locked connection the deposit used (no new writer, no new query
+    pattern beyond the reads ``_node_type_of`` already does). The provenance
+    link is taken from the edge's ``source_document_id`` / ``chunk_id``, with a
+    fallback to the node ``metadata`` mirror (L267-270) for the marginalia path
+    that grounds on metadata.chunk_id without a claim-node target. Returns a
+    validated ``KnowledgeUnitContract``; raises if the node carries no
+    grounding (a unit with no chunk is not depositable as a knowledge unit).
+
+    The §9.0 servability tag is the classifier's answer for ``content_class``
+    (read, not re-derived). ``groundedness_score`` is left None (SPR-08)."""
+    import json
+
+    from substrate.contracts.nodes import KnowledgeUnitContract, ProvenanceLink
+
+    # ``nodes`` has no ``investigation_id`` column — per this module's docstring
+    # the investigation rides the GRAPH_NODE_INSERTED event envelope and the
+    # provenance edge, not the node row. So we read the node's identity/text
+    # from the row and source investigation_id + grounding from the edge.
+    row = con.execute(
+        "SELECT node_type, canonical_label, metadata "
+        "FROM nodes WHERE node_id = ? LIMIT 1",
+        [node_id],
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no node {node_id!r} to assemble into a knowledge unit")
+    node_type, text, meta_raw = row
+    meta: Dict[str, Any] = {}
+    if meta_raw:
+        try:
+            meta = json.loads(meta_raw)
+        except (TypeError, ValueError):
+            meta = {}
+
+    # Prefer the supported_by edge's grounding + investigation_id; fall back to
+    # the node metadata mirror (the marginalia path records chunk_id/
+    # source_document_id there) for the no-claim-node-target case.
+    edge = con.execute(
+        "SELECT source_document_id, chunk_id, investigation_id FROM edges "
+        "WHERE source_node_id = ? AND relation = 'supported_by' "
+        "AND chunk_id IS NOT NULL LIMIT 1",
+        [node_id],
+    ).fetchone()
+    source_document_id = (edge[0] if edge else None) or meta.get("source_document_id")
+    chunk_id = (edge[1] if edge else None) or meta.get("chunk_id")
+    # investigation_id: prefer the supported_by edge (insight grounded on a
+    # claim), fall back to the node metadata mirror that promote_insight/
+    # promote_question now stamp at deposit (the marginalia + question paths
+    # have no supported_by edge to recover it from). Empty/absent is a genuine
+    # gap, not a tolerated default — fail LOUD here (AFF SPR-04 BLOCKER 2) so
+    # SPR-07 never silently dedups a real deposit under a '' investigation.
+    investigation_id = (edge[2] if edge else None) or meta.get("investigation_id")
+    if not source_document_id or not chunk_id:
+        raise ValueError(
+            f"node {node_id!r} carries no claim→chunk→doc grounding "
+            f"(source_document_id={source_document_id!r} chunk_id={chunk_id!r}); "
+            "not assemblable as a knowledge unit"
+        )
+    if not investigation_id:
+        raise ValueError(
+            f"node {node_id!r} carries no investigation_id (neither on its "
+            "supported_by edge nor in node metadata); a knowledge unit must "
+            "be scoped to its deposit investigation (SPR-07 dedup keys on it). "
+            "Ensure promote_insight/promote_question stamped investigation_id."
+        )
+
+    return KnowledgeUnitContract(
+        node_id=node_id,
+        node_type=node_type,
+        text=text,
+        investigation_id=investigation_id,  # guaranteed non-empty above
+        confidence=meta.get("confidence", "unknown"),
+        retrieval_key=node_id,
+        provenance=ProvenanceLink(
+            source_document_id=source_document_id, chunk_id=chunk_id
+        ),
+        servability=servability_tag_for(content_class, taken_down=taken_down),
+        groundedness_score=None,
     )
 
 

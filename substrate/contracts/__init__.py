@@ -56,7 +56,13 @@ from .interviewer import (
     EconomicsCellContract,
     InterviewerResultContract,
 )
-from .nodes import InsightNodeContract, QuestionNodeContract
+from .nodes import (
+    InsightNodeContract,
+    KnowledgeUnitContract,
+    ProvenanceLink,
+    QuestionNodeContract,
+    ServabilityTag,
+)
 from .note_taker import NoteTakerOutputContract
 from .outline_block import OutlineBlockContract
 from .reading_surface import ReaderSurfaceContract
@@ -91,6 +97,14 @@ __all__ = [
     # node contracts
     "InsightNodeContract",
     "QuestionNodeContract",
+    # AFF SPR-04 — knowledge-unit deposit contract (extension of the node
+    # contracts above). Python-only for now: NOT added to CODEGEN_CONTRACTS /
+    # CONTRACT_MODELS because the first TS consumer is SPR-06 (retrieval);
+    # emitting it now would bump CONTRACT_SCHEMA_VERSION + contracts.ts for a
+    # consumer that does not yet exist. See spr-04 decision doc.
+    "KnowledgeUnitContract",
+    "ProvenanceLink",
+    "ServabilityTag",
     "NoteTakerOutputContract",
     "ContextPackContract",
     "AssembledLayerContract",

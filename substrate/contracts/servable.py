@@ -34,17 +34,62 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-# The deny-by-default reading order: the first three serve full text, the last
-# two do not. Mirrors ``constants.BOOK_SERVABILITY_STATUSES``.
+from substrate.books.servability import (
+    _SERVABLE_STATUSES as _CLASSIFIER_SERVABLE_STATUSES,
+)
+
+# The deny-by-default reading order: the servable classes serve full text, the
+# gated/taken-down ones do not. Mirrors ``constants.BOOK_SERVABILITY_STATUSES``
+# and ``substrate.books.servability.ServabilityStatus`` (the §9.0 classifier's
+# status vocabulary — this Literal is the same vocabulary, not content_class).
+# ``source_declared_open`` (CC-BY / CC-BY-SA) is servable but is deliberately
+# NOT a §9.10 publisher opt-in — it was opened at the source, not claimed.
 ContentClass = Literal[
     "public_domain",
     "platform_authored",
     "publisher_opted_in",
+    "source_declared_open",
     "gated_metadata_only",
     "taken_down",
 ]
+# The full-text-servable allowlist. DERIVED from the §9.0 classifier's servable
+# status set (``substrate.books.servability._SERVABLE_STATUSES``) so the two
+# can never silently diverge — see the drift-guard assertion below. The
+# classifier (``books/servability.py``) is the single owner of *which* statuses
+# serve full text; this contract MIRRORS that decision, it does not re-make it.
 FULL_TEXT_SERVABLE: frozenset[str] = frozenset(
-    {"public_domain", "platform_authored", "publisher_opted_in"}
+    s.value for s in _CLASSIFIER_SERVABLE_STATUSES
+)
+
+# ---------------------------------------------------------------------------
+# Drift-guard — the contract allowlist and the §9.0 classifier share one owner.
+# ---------------------------------------------------------------------------
+#
+# This is the EXACT defect SPR-04 came back on: a second owner (this contract)
+# carried its own servable allowlist that silently drifted from the §9.0
+# classifier's set, crashing on ``source_declared_open``. Deriving
+# FULL_TEXT_SERVABLE from the classifier's set (above) makes the contract a
+# mirror, not a fork. These two assertions make the mirror enforced at import
+# time: (1) every servable status the classifier recognises is a member of the
+# ContentClass Literal (so a value the classifier serves can always be recorded
+# on a ServabilityTag), and (2) the derived allowlist equals the classifier's
+# set exactly (a redundant identity now, kept as a tripwire so a future hand-
+# edit that breaks the derivation reds loudly rather than silently).
+_CONTENT_CLASS_MEMBERS: frozenset[str] = frozenset(ContentClass.__args__)  # type: ignore[attr-defined]
+assert FULL_TEXT_SERVABLE <= _CONTENT_CLASS_MEMBERS, (
+    "FULL_TEXT_SERVABLE contains a status the ContentClass Literal cannot "
+    f"represent: {FULL_TEXT_SERVABLE - _CONTENT_CLASS_MEMBERS!r}. A servable "
+    "class the §9.0 classifier recognises MUST be recordable on a "
+    "ServabilityTag — add it to the ContentClass Literal."
+)
+assert FULL_TEXT_SERVABLE == frozenset(
+    s.value for s in _CLASSIFIER_SERVABLE_STATUSES
+), (
+    "servable allowlist drifted from the §9.0 classifier: "
+    f"contract={set(FULL_TEXT_SERVABLE)!r} "
+    f"classifier={set(s.value for s in _CLASSIFIER_SERVABLE_STATUSES)!r}. "
+    "FULL_TEXT_SERVABLE MUST equal substrate.books.servability._SERVABLE_STATUSES "
+    "— the classifier is the single owner; this contract mirrors it."
 )
 
 # Sub-discriminator for platform_authored only (seam #4).
