@@ -64,7 +64,6 @@ def main(argv: list[str] | None = None) -> int:
         refresh_monitor,
         resolve_db_path,
     )
-    from substrate.graph.search import SentenceTransformerEmbedding
 
     db_path = resolve_db_path(None)
 
@@ -81,18 +80,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.refresh:
-        # The refresh ranks against the STORED centroid, so the model is only
-        # needed for interface symmetry; load lazily and tolerate its absence
-        # (chronological fallback still works without a live model).
-        try:
-            model = SentenceTransformerEmbedding()
-        except Exception:  # pragma: no cover — model optional for refresh
-            model = None  # type: ignore[assignment]
+        # The refresh ranks against the STORED centroid (computed at
+        # create_monitor time), so NO embedding model is loaded here — the
+        # CLI never re-encodes a query. This keeps --refresh fast and free
+        # of the SentenceTransformer import on the hot path.
         top_k = args.top_k if args.top_k is not None else DEFAULT_TOP_K
         con = connect_read(db_path)
         try:
             result = refresh_monitor(
-                con, args.refresh, model=model, top_k=top_k, path=db_path
+                con, args.refresh, top_k=top_k, path=db_path
             )
         finally:
             con.close()

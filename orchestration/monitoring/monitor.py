@@ -489,7 +489,7 @@ def refresh_monitor(
     con: Any = None,
     monitor_id: str = "",
     *,
-    model: EmbeddingModel,
+    model: Optional[EmbeddingModel] = None,
     top_k: int = DEFAULT_TOP_K,
     path: Optional[str] = None,
     events_dir: Optional[str] = None,
@@ -502,14 +502,20 @@ def refresh_monitor(
     consumed, and returns the new items exactly once. A second call with
     no intervening ingest returns ``new_items == []``.
 
-    ``model`` is accepted for interface symmetry with ``create_monitor``
-    and the search API; ranking uses the stored centroid (the thread's
-    own embeddings), so a query is never re-encoded here.
+    ``model`` is OPTIONAL and intentionally unused for ranking: a refresh
+    ranks against the STORED centroid (the thread's own embeddings persisted
+    at create time), so a query is never re-encoded here. The parameter is
+    kept only so a caller that already holds a model may pass it for
+    interface symmetry with ``create_monitor`` / the search API — but the
+    CLI and most callers should leave it ``None`` and avoid loading an
+    embedding model purely to pass it through. (Only ``create_monitor``
+    genuinely needs a live model, to compute the centroid.)
 
     Emits an auditable ``monitor.refresh`` event via the legacy
     ``log_event`` path — counts + the new checkpoint only. Document bodies
     NEVER enter the event-log payload (they stay on the owner path).
     """
+    del model  # explicitly unused: ranking is centroid-based, never re-encoded
     with _read(con, path) as rcon:
         monitor = get_monitor(rcon, monitor_id)
         if monitor is None:
@@ -603,7 +609,7 @@ def putter_feed(
     con: Any = None,
     monitor_id: str = "",
     *,
-    model: EmbeddingModel,
+    model: Optional[EmbeddingModel] = None,
     with_body: bool = True,
     policy_tag: str = OWNER_POLICY_TAG,
     top_k: int = DEFAULT_TOP_K,
@@ -615,6 +621,11 @@ def putter_feed(
     (when a centroid exists) else chronologically. There is intentionally
     NO free-text ``query`` parameter: this is grazing, not querying.
 
+    ``model`` is OPTIONAL and unused for ranking (same reason as
+    ``refresh_monitor``: the feed ranks against the stored centroid, never
+    re-encodes). Leave it ``None`` unless you already hold a model and want
+    interface symmetry.
+
     The full ``body`` is included only on the owner path. If ``policy_tag``
     is not one of the privileged owner tags
     (``substrate.graph.search.PRIVILEGED_POLICY_TAGS``) the body is
@@ -625,6 +636,7 @@ def putter_feed(
     asserted non-attributable; a non-personal-lane row can never appear in
     the output (it is filtered at the query AND re-checked here).
     """
+    del model  # explicitly unused: ranking is centroid-based, never re-encoded
     owner_path = policy_tag in PRIVILEGED_POLICY_TAGS
 
     with _read(con, path) as rcon:

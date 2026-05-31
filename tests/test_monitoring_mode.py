@@ -199,6 +199,51 @@ def test_refresh_no_duplicates(temp_db):
     assert second.new_items == []
 
 
+def test_refresh_and_putter_need_no_model(temp_db):
+    """The refresh/feed ranking is centroid-based, so neither call requires a
+    live embedding model. ``model`` is optional (default None) on both, and a
+    refresh with a real stored centroid still returns the fresh item ranked by
+    cosine-vs-centroid WITHOUT re-encoding anything.
+
+    This bites exactly on the finding-#2 contract: were ``model`` a required
+    keyword-only arg (the pre-sharpen signature) these no-model calls would
+    raise ``TypeError: missing keyword-only argument 'model'`` before any
+    ranking happened, and the centroid path below would never be reached.
+    """
+    import inspect as _inspect
+
+    # The signatures advertise model as OPTIONAL (has a default), not required.
+    for fn in (mon.refresh_monitor, mon.putter_feed):
+        p = _inspect.signature(fn).parameters["model"]
+        assert p.default is None, f"{fn.__name__}.model must default to None"
+
+    model = _StubEmbedding()
+    # Create the monitor WITH a model so a real centroid is stored...
+    seed = _seed_doc(temp_db, content_class="personal_reading", acquired_at=_ts(0),
+                     text="centroid carrier text", title="Carrier")
+    m = mon.create_monitor(
+        None, investigation_id="inv-nomodel", model=model,
+        document_ids=[seed], title="Thread", path=temp_db,
+    )
+    assert m.centroid is not None  # the cosine ranking path is exercised below
+
+    fresh = _seed_doc(temp_db, content_class="personal_reading",
+                      acquired_at=_future(), text="centroid carrier fresh item",
+                      title="Fresh")
+
+    # ...then refresh and putter with NO model argument at all.
+    result = mon.refresh_monitor(None, m.monitor_id, path=temp_db)
+    assert fresh in {it.document_id for it in result.new_items}
+    # The cosine-vs-centroid branch ran (similarity populated), proving the
+    # stored centroid — not a re-encoded query — drove the ranking.
+    assert any(it.similarity is not None for it in result.new_items)
+
+    feed = mon.putter_feed(None, m.monitor_id, policy_tag="operator_only",
+                           path=temp_db)
+    assert all(it.content_class == "personal_reading" for it in feed)
+    assert all(it.body for it in feed)  # owner path still carries the body
+
+
 def test_refresh_only_personal_lane(temp_db):
     """Lane isolation: a user_owned and a restricted_pending_opt_in doc in
     the same window are never returned; only the personal_reading item is."""
