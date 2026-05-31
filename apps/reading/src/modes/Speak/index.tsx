@@ -19,6 +19,7 @@ import {
   type EconomicsView,
   type ProjectDetail,
 } from "../../lib/speakApi";
+import GlassSurface from "../../shell/GlassSurface";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Invites from "./Invites";
 import SpeakSettings from "./SpeakSettings";
@@ -226,7 +227,12 @@ export default function Speak() {
   const arrived = voices.filter((v) => v.state === "shared" || v.state === "recording");
 
   return (
-    <div className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+    // Landing-glass (SPR-03 M2): the Speak project page is a LANDING surface —
+    // its full-bleed root renders through GlassSurface so the <Scene/> (z-0)
+    // shows through, with the scrim guaranteeing the body text stays ≥4.5:1.
+    // Was an opaque bg-ice-0 dark:bg-charcoal-2 wall over the scene. The inner
+    // cards keep their own chrome; only the occluding outer sheet is glassed.
+    <GlassSurface className="h-full overflow-y-auto">
       <div className="mx-auto max-w-2xl px-6 py-8">
         <Link
           to="/speak"
@@ -477,6 +483,6 @@ export default function Speak() {
           </>
         )}
       </div>
-    </div>
+    </GlassSurface>
   );
 }

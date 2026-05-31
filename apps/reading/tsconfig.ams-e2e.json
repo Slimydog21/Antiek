@@ -17,5 +17,11 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true
   },
-  "include": ["e2e/_ams/**/*.ts", "e2e/_ams/**/*.d.ts", "e2e/ams-shell.spec.ts"]
+  "include": [
+    "e2e/_ams/**/*.ts",
+    "e2e/_ams/**/*.d.ts",
+    "e2e/ams-shell.spec.ts",
+    "e2e/glass-surface.spec.ts",
+    "e2e/glass-reduced-motion.spec.ts"
+  ]
 }

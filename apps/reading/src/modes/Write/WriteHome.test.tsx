@@ -56,6 +56,24 @@ beforeEach(() => {
     investigation_root_id: "inv-spawned", status: "draft",
     created_at: null, updated_at: null, section_count: 0,
   });
+  // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
+  // M3 solid open-piece), which reads prefers-reduced-motion via
+  // window.matchMedia. jsdom lacks it; stub the default (motion allowed → the
+  // glass variant renders). Weakens nothing.
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
 });
 afterEach(cleanup);
 
@@ -72,6 +90,20 @@ function mountAt(path: string) {
 }
 
 describe("WriteHome — the re-homed door", () => {
+  it("the no-piece Write home is LANDING-GLASS (SPR-03 M2 occlusion contract)", async () => {
+    // Audit §3 item 5: the Write home (no piece) is a landing surface, rendered
+    // through GlassSurface variant="glass" so the scene shows through the margins.
+    // (The open-piece branch is dense-legible-keep-opaque = variant="solid"; that
+    // contract is proven in GlassSurface.test.tsx + the audit §3 row + the source.)
+    // A refactor swapping the home to an opaque body / solid would re-occlude the
+    // mountain on /write; this enforces the variant per-route (rigor #5).
+    const { container } = mountAt("/write");
+    await screen.findByPlaceholderText(/what are you writing/i);
+    const surface = container.querySelector("[data-glass-surface]");
+    expect(surface, "the Write home must render through GlassSurface").toBeTruthy();
+    expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+  });
+
   it("opens on a real start-a-piece surface, not the 'select a deliverable' dead-end", async () => {
     mountAt("/write");
     // The action-first door (U-04): name the piece (SPR-09 M1 then prompts the

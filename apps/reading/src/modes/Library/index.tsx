@@ -6,6 +6,7 @@ import { curateBooks, listBooks } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
+import GlassSurface from "../../shell/GlassSurface";
 import BookCard from "./BookCard";
 import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
@@ -171,12 +172,15 @@ export default function Library() {
     return `${books.length} titles`;
   }, [loading, status, books.length]);
 
-  return (
-    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
-      <main
-        className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
-      >
-        <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
+  // The Library shelf body. Two surfaces:
+  //  - inWindow (SPR-09 contract): a WorkspaceWindow already owns the glass, so
+  //    the body stays bg-transparent and is NOT re-glassed — preserved verbatim.
+  //  - the full-page landing (the Read door): a LANDING surface (SPR-03 M2) —
+  //    its body renders through GlassSurface so the <Scene/> (z-0) shows through
+  //    instead of the old opaque bg-ice-0 dark:bg-charcoal-2 wall; the scrim
+  //    keeps the shelf header + body text legible (WCAG-AA owned by the glass).
+  const shelfBody = (
+    <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1>
@@ -330,8 +334,21 @@ export default function Library() {
               ))}
             </section>
           )}
-        </div>
-      </main>
+    </div>
+  );
+
+  return (
+    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
+      {inWindow ? (
+        // SPR-09 contract preserved: the host WorkspaceWindow owns the glass;
+        // the body stays bg-transparent and is NOT re-glassed.
+        <main className="flex-1 overflow-y-auto bg-transparent">{shelfBody}</main>
+      ) : (
+        // Full-page Read door landing → glass over the living scene.
+        <GlassSurface as="main" className="flex-1 overflow-y-auto">
+          {shelfBody}
+        </GlassSurface>
+      )}
     </div>
   );
 }

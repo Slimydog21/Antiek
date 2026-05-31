@@ -9,6 +9,7 @@ import {
   type DeliverableKind,
   type DeliverableSummary,
 } from "../../lib/api";
+import GlassSurface from "../../shell/GlassSurface";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
 import ConnectResearch from "./ConnectResearch";
@@ -146,7 +147,12 @@ export default function WriteHome() {
   // ── Home (no piece selected): start one, pick one, or brainstorm. ──
   if (!deliverableId) {
     return (
-      <div className="mx-auto h-full max-w-3xl overflow-y-auto px-6 py-8">
+      // Landing-glass (SPR-03 M2): the Write home is a LANDING surface. The
+      // root renders through GlassSurface so the <Scene/> (z-0) shows through;
+      // the scrim keeps the heading + the start-a-piece card legible. The card
+      // below is glassed too (was an opaque bg-ice-0 dark:bg-charcoal-2 sheet)
+      // so the scene reads behind it instead of an ice wall.
+      <GlassSurface className="mx-auto h-full max-w-3xl overflow-y-auto px-6 py-8">
         <header className="mb-6">
           <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
             Write a piece
@@ -157,7 +163,7 @@ export default function WriteHome() {
           </p>
         </header>
 
-        <div className="mb-6 space-y-3 rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-2">
+        <GlassSurface className="mb-6 space-y-3 rounded-md p-3">
           <input
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
@@ -194,7 +200,7 @@ export default function WriteHome() {
           >
             or brainstorm from an idea
           </button>
-        </div>
+        </GlassSurface>
 
         {onRamp === "idea" && (
           <div className="mb-6 rounded-md border border-rule dark:border-charcoal-1">
@@ -229,13 +235,18 @@ export default function WriteHome() {
             </ul>
           </section>
         )}
-      </div>
+      </GlassSurface>
     );
   }
 
   // ── A piece is open: the outline + repository loop. ──
+  // Dense-legible-keep-opaque (SPR-03 M3 / rigor #1): the open piece is the
+  // dense Write IDE (outline + block repository + canvas). It stays OPAQUE via
+  // GlassSurface variant="solid" — same hue at alpha 1, no scene behind to
+  // erode contrast. Transparency here would risk the body text M3 protects;
+  // the honest choice is solid, exactly like the /inv/:id research IDE.
   return (
-    <div className="flex h-full min-h-0 bg-ice-1 dark:bg-charcoal-2">
+    <GlassSurface variant="solid" className="flex h-full min-h-0">
       <main className="flex min-w-0 flex-1 flex-col px-6 py-5">
         <header className="mb-4 flex items-baseline justify-between gap-3">
           <div className="min-w-0">
@@ -323,6 +334,6 @@ export default function WriteHome() {
       <aside className="hidden w-80 shrink-0 flex-col border-l border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex">
         <BlockRepository onAdd={(hit) => addHandler.current(hit)} />
       </aside>
-    </div>
+    </GlassSurface>
   );
 }
