@@ -6,6 +6,7 @@ import {
   getCustomHotkeys,
   SHORTCUT_EVENTS,
 } from "./shortcuts";
+import { writeCustomHotkeys } from "./persistence";
 import {
   PRODUCT_ACTIVATE_EVENT,
   emitProductActivate,
@@ -36,7 +37,7 @@ function press(
   return event;
 }
 
-describe("shortcuts handler — SPR-08", () => {
+describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
   let navigate: ReturnType<typeof vi.fn>;
   let uninstall: () => void;
 
@@ -52,28 +53,54 @@ describe("shortcuts handler — SPR-08", () => {
     setCustomHotkeys([]);
   });
 
-  // ── chord timing ─────────────────────────────────────────────────────
-  it("resolves a g-chord when the 2nd key arrives within the window", () => {
-    vi.useFakeTimers();
-    press("g");
-    vi.advanceTimersByTime(200); // within 800ms
-    press("e"); // g e → Read
+  // ── product ⌘+key navigates (one modifier, one keypress) ──────────────
+  it("⌘E navigates to Read (/library)", () => {
+    press("e", { metaKey: true });
     expect(navigate).toHaveBeenCalledWith("/library");
   });
 
-  it("expires the chord after the 800ms window", () => {
-    vi.useFakeTimers();
+  it("⌘J navigates to Research (/)", () => {
+    press("j", { metaKey: true });
+    expect(navigate).toHaveBeenCalledWith("/");
+  });
+
+  it("⌘Y navigates to Write, ⌘U to Speak, ⌘O to Home", () => {
+    press("y", { metaKey: true });
+    expect(navigate).toHaveBeenCalledWith("/write");
+    press("u", { metaKey: true });
+    expect(navigate).toHaveBeenCalledWith("/speak");
+    press("o", { metaKey: true });
+    expect(navigate).toHaveBeenCalledWith("/home");
+  });
+
+  it("Ctrl+E works too (mod === Cmd-on-mac / Ctrl-elsewhere)", () => {
+    press("e", { ctrlKey: true });
+    expect(navigate).toHaveBeenCalledWith("/library");
+  });
+
+  // ── the chord is DEAD — pressing g then a letter does NOTHING ──────────
+  it("the old g-chord does nothing (g then e → no nav)", () => {
     press("g");
-    vi.advanceTimersByTime(801); // past the window → pending cleared
     press("e");
-    // After expiry "e" alone is not a binding → no nav.
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  // ── isTextEditing guard ──────────────────────────────────────────────
-  it("does NOT fire while typing in an input", () => {
-    press("g", { fromInput: true });
-    press("e", { fromInput: true });
+  it("a bare 'g' alone does nothing (no pending-chord state exists)", () => {
+    press("g");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("the old g i / g w / g n chords are all dead", () => {
+    for (const k of ["i", "w", "n", "r"]) {
+      press("g");
+      press(k);
+    }
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  // ── isTextEditing guard (editor/PDF surfaces keep their keys) ──────────
+  it("does NOT fire a product combo while typing in an input", () => {
+    press("e", { metaKey: true, fromInput: true });
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -85,7 +112,7 @@ describe("shortcuts handler — SPR-08", () => {
     window.removeEventListener(SHORTCUT_EVENTS.HELP_TOGGLE, spy);
   });
 
-  // ── shared activation event (SPR-10 contract): hotkey === click ───────
+  // ── click≡hotkey parity: hotkey === click (same activation event) ──────
   it("firing a product hotkey emits the SAME event a click emits", () => {
     const fromHotkey: ProductActivateDetail[] = [];
     const fromClick: ProductActivateDetail[] = [];
@@ -95,31 +122,46 @@ describe("shortcuts handler — SPR-08", () => {
     };
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, listener);
 
-    // Hotkey path: g e → Read
-    press("g");
-    press("e");
-
-    // Click path: a button handler would call emitProductActivate directly.
+    // Hotkey path: ⌘E → Read
+    press("e", { metaKey: true });
+    // Click path: a button handler calls emitProductActivate directly.
     emitProductActivate({ productId: "read", route: "/library", source: "click" });
 
     window.removeEventListener(PRODUCT_ACTIVATE_EVENT, listener);
 
     expect(fromHotkey).toHaveLength(1);
     expect(fromClick).toHaveLength(1);
-    // Same productId + route — only `source` differs (which SPR-10 may use
-    // to choreograph, but the EVENT + target are identical).
     expect(fromHotkey[0].productId).toBe(fromClick[0].productId);
     expect(fromHotkey[0].route).toBe(fromClick[0].route);
   });
 
-  it("g r fires Research product activation AND navigates home", () => {
+  it("⌘J fires Research product activation AND navigates home", () => {
     const spy = vi.fn();
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, spy);
-    press("g");
-    press("r");
+    press("j", { metaKey: true });
     expect(navigate).toHaveBeenCalledWith("/");
     expect(spy).toHaveBeenCalledTimes(1);
     window.removeEventListener(PRODUCT_ACTIVATE_EVENT, spy);
+  });
+
+  it("⌘I (More) emits a routeless activation and does NOT navigate", () => {
+    // ⌘I, not ⌘M: ⌘M shadows macOS minimize-window (reserved), so More is ⌘I.
+    const fired: ProductActivateDetail[] = [];
+    const listener = (e: Event) =>
+      fired.push((e as CustomEvent<ProductActivateDetail>).detail);
+    window.addEventListener(PRODUCT_ACTIVATE_EVENT, listener);
+    press("i", { metaKey: true });
+    window.removeEventListener(PRODUCT_ACTIVATE_EVENT, listener);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(fired).toHaveLength(1);
+    expect(fired[0].productId).toBe("more");
+    expect(fired[0].route).toBeUndefined();
+  });
+
+  // ── sub-action ⌘+key ──────────────────────────────────────────────────
+  it("⌘G goes to the Research home (sub-action)", () => {
+    press("g", { metaKey: true });
+    expect(navigate).toHaveBeenCalledWith("/");
   });
 
   // ── ? toggles the HUD ────────────────────────────────────────────────
@@ -131,14 +173,21 @@ describe("shortcuts handler — SPR-08", () => {
     window.removeEventListener(SHORTCUT_EVENTS.HELP_TOGGLE, spy);
   });
 
-  // ── custom binding fires + emits activation ──────────────────────────
-  it("a single-key custom binding navigates to its entity and emits activate", () => {
+  // ── custom binding fires + emits activation (modifier combo) ──────────
+  it("a custom ⌥+key binding fires only with the modifier held, and emits activate", () => {
     setCustomHotkeys([
-      { id: "x", spec: "j", route: "/inv/abc", entityId: "abc" },
+      { id: "x", spec: "alt+j", route: "/inv/abc", entityId: "abc" },
     ]);
     const spy = vi.fn();
     window.addEventListener(PRODUCT_ACTIVATE_EVENT, spy);
+
+    // A bare "j" (no modifier) must NOT fire — a custom binding always carries
+    // a modifier, and a bare key is never resolved.
     press("j");
+    expect(navigate).not.toHaveBeenCalled();
+
+    // ⌥J fires → navigates + emits activate with the entity id.
+    press("j", { altKey: true });
     expect(navigate).toHaveBeenCalledWith("/inv/abc");
     expect(spy).toHaveBeenCalledTimes(1);
     const detail = spy.mock.calls[0][0].detail as ProductActivateDetail;
@@ -147,24 +196,34 @@ describe("shortcuts handler — SPR-08", () => {
     window.removeEventListener(PRODUCT_ACTIVATE_EVENT, spy);
   });
 
-  it("a g-chord custom binding fires after setCustomHotkeys", () => {
+  it("a custom ⌘+key (mod) binding fires after setCustomHotkeys", () => {
+    // Use a free ⌘+punctuation combo (⌘.) — every free single ⌘+letter is now
+    // owned by a product/sub-action/built-in, so a custom mod-combo must reach
+    // for a free punctuation key (or ⌘⇧+letter). ⌘. is not reserved and not in
+    // any fixed table, so a custom binding can own it.
     setCustomHotkeys([
-      { id: "y", spec: "g 1", route: "/read/doc9", entityId: "doc9" },
+      { id: "y", spec: "mod+.", route: "/read/doc9", entityId: "doc9" },
     ]);
-    press("g");
-    press("1");
+    const spy = vi.fn();
+    window.addEventListener(PRODUCT_ACTIVATE_EVENT, spy);
+    press(".", { metaKey: true });
     expect(navigate).toHaveBeenCalledWith("/read/doc9");
+    expect(spy).toHaveBeenCalledTimes(1);
+    const detail = spy.mock.calls[0][0].detail as ProductActivateDetail;
+    expect(detail.entityId).toBe("doc9");
+    expect(detail.source).toBe("hotkey");
+    window.removeEventListener(PRODUCT_ACTIVATE_EVENT, spy);
   });
 
   it("setCustomHotkeys normalises the stored spec", () => {
     setCustomHotkeys([
-      { id: "z", spec: "G 2", route: "/x", entityId: "e" },
+      { id: "z", spec: "Mod+.", route: "/x", entityId: "e" },
     ]);
-    expect(getCustomHotkeys()[0].spec).toBe("g 2");
+    expect(getCustomHotkeys()[0].spec).toBe("mod+.");
   });
 
   // ── existing built-ins still work (no regression) ────────────────────
-  it("still toggles the palette on mod+k", () => {
+  it("still toggles the palette on ⌘K", () => {
     const spy = vi.fn();
     window.addEventListener(SHORTCUT_EVENTS.PALETTE_TOGGLE, spy);
     press("k", { metaKey: true });
@@ -172,9 +231,56 @@ describe("shortcuts handler — SPR-08", () => {
     window.removeEventListener(SHORTCUT_EVENTS.PALETTE_TOGGLE, spy);
   });
 
-  it("still navigates g i to /my-research (built-in untouched)", () => {
-    press("g");
-    press("i");
-    expect(navigate).toHaveBeenCalledWith("/my-research");
+  it("⌘K does NOT also resolve a product combo (built-in branch wins + returns)", () => {
+    setCustomHotkeys([{ id: "k1", spec: "mod+k", route: "/should-not", entityId: "x" }]);
+    // Even a (stale/impossible) custom mod+k can't win: the built-in branch
+    // handles ⌘K and returns before resolveExtended is reached.
+    press("k", { metaKey: true });
+    expect(navigate).not.toHaveBeenCalledWith("/should-not");
+  });
+});
+
+describe("shortcuts boot-hydration — M2 reload-persistence (the live handler reads the blob on mount)", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+    setCustomHotkeys([]);
+    vi.useRealTimers();
+  });
+
+  it("a persisted custom binding fires after a fresh install WITHOUT any AssignHotkey surface mounted", () => {
+    // Simulate a prior session: a custom ⌥J → /inv/persisted is in localStorage.
+    setCustomHotkeys([]); // live map empty (as on a cold boot)
+    writeCustomHotkeys({
+      schemaVersion: 1,
+      bindings: [
+        {
+          id: "p1",
+          spec: "alt+j",
+          route: "/inv/persisted",
+          entityId: "persisted",
+          entityKind: "investigation",
+          label: "Persisted research",
+        },
+      ],
+    });
+
+    // Fresh install (a page reload) — the handler hydrates from the blob.
+    const navigate = vi.fn();
+    const uninstall = installShortcuts(navigate as never);
+
+    // The live map now holds the persisted binding (no consumer mounted).
+    expect(getCustomHotkeys().some((b) => b.spec === "alt+j")).toBe(true);
+
+    // Pressing it navigates — identical to clicking the entity.
+    const evt = new KeyboardEvent("keydown", {
+      key: "j",
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(evt);
+    expect(navigate).toHaveBeenCalledWith("/inv/persisted");
+
+    uninstall();
   });
 });

@@ -8,32 +8,42 @@
  *
  * Convention: macOS Cmd vs Linux/Windows Ctrl — `mod` matches either.
  *
+ * SPR-08 — UNIFORM ⌘+key. The old vim g-chords are GONE: every product,
+ * sub-action and built-in destination is a single ⌘+key combo (one modifier,
+ * one keypress, no sequence and no timing window). The leader-key sequence
+ * machinery (the pending-key state, its clear fn, and its window constant)
+ * has been removed entirely — see the no-chord grep guard in the spec.
+ *
  *   ⌘K       toggle command palette          → window.dispatchEvent("antiek:palette:toggle")
  *   ⌘B       toggle ProjectTree panel        → workspace open/close
  *   ⌘/       toggle AISidecar panel          → workspace open/close
  *   ⌘⇧P      same as ⌘K (Linear muscle memory)
  *   ⌘W       close focused floating panel    → workspace.close(focusedPanelId)
  *   ⌘[ / ⌘]  cycle focused panel             → workspace.focus(prev/next)
- *   G then I    /my-research                 (chord, 800ms window)
- *   G then W    /wrestle
- *   G then N    /notebooks
+ *   ?        toggle the keyboard HUD
+ *   ⌘J       Research (/)         ⌘E Read (/library)   ⌘Y Write (/write)
+ *   ⌘U       Speak (/speak)       ⌘O Home (/home)      ⌘I More (launcher)
+ *   ⌘G       Research home        ⌘; Read · library
  *
- * Chords use a single in-module pending-key state; if the second key
- * doesn't arrive within `CHORD_WINDOW_MS` the pending state resets.
+ *   (⌘M would shadow macOS minimize-window and ⌘H macOS hide-app — both are
+ *    in RESERVED_COMBOS, so More takes the free safe letter ⌘I instead.)
+ *
+ * The product/sub-action combos live in the binding tables in
+ * `components/hotkeys/bindings.ts`; `resolveExtended` fires them so a click
+ * and a hotkey emit the IDENTICAL `antiek:product:activate` event.
  */
 
 import { useEffect } from "react";
 import type { NavigateFunction } from "react-router-dom";
 
 import { useWorkspace } from "./WorkspaceStore";
+import { readCustomHotkeys } from "./persistence";
 import {
   PRODUCT_BINDINGS,
   SUBACTION_BINDINGS,
   emitProductActivate,
   normalizeBinding,
 } from "../components/hotkeys/bindings";
-
-const CHORD_WINDOW_MS = 800;
 
 /** Event names emitted/consumed via window.dispatchEvent. Components
  *  that own their own toggle state listen for these instead of being
@@ -50,23 +60,20 @@ export const SHORTCUT_EVENTS = {
 // ─────────────────────────────────────────────────────────────────────
 //
 // The injection point the sprint asked for: a runtime map of custom
-// bindings, checked AFTER the isTextEditing guard and BEFORE / alongside
-// the built-in handling, WITHOUT touching the built-in branches. The
-// custom-hotkeys hook (`useCustomHotkeys`) pushes the current map here via
-// `setCustomHotkeys`; the handler reads it. Precedence (documented in
-// bindings.ts `detectConflict`): custom bindings can NEVER shadow a
-// built-in — the assign affordance refuses such an assignment — so even if
-// a stale custom binding somehow matched a built-in spec, the built-in
-// branch wins because the handler checks built-ins for combos and resolves
-// the custom map only for chord follow-ups / single keys that are NOT
-// already a built-in. We additionally guard at lookup time (see
-// `resolveExtended`).
+// bindings, checked AFTER the isTextEditing guard and inside the same
+// mod-combo branch as the product/sub-action lookup, WITHOUT touching the
+// built-in branches. The custom-hotkeys hook (`useCustomHotkeys`) pushes the
+// current map here via `setCustomHotkeys`; the handler reads it. Precedence
+// (documented in bindings.ts `detectConflict`): a custom binding can NEVER
+// shadow a built-in/product/sub-action — the assign affordance refuses such
+// an assignment — and `resolveExtended` checks product/sub-action FIRST, so
+// even a stale custom binding can never win over a built-in/product combo.
 
 /** One resolved custom binding the handler can fire. */
 export interface CustomHotkeyBinding {
   /** Stable id (the binding's own id). */
   id: string;
-  /** Canonical binding spec, e.g. "g 1" or "j". */
+  /** Canonical ⌘+key combo spec, e.g. "mod+j". */
   spec: string;
   /** Route to navigate to when fired. */
   route: string;
@@ -91,21 +98,73 @@ export function getCustomHotkeys(): CustomHotkeyBinding[] {
   return customBindings;
 }
 
+/**
+ * Hydrate the live custom-binding map from the persisted blob.
+ *
+ * WHY THIS LIVES IN `installShortcuts` (the reload-persistence proof):
+ * `useCustomHotkeys` pushes the map via `setCustomHotkeys` while a consumer
+ * (an <AssignHotkey> surface) is mounted — but on a FRESH page load no such
+ * consumer is mounted yet, so `customBindings` would start empty and a
+ * persisted custom press would silently do nothing until the operator
+ * happened to open an assign surface. That breaks M2's "press it after a
+ * reload → still navigates". So the always-mounted shortcut handler reads
+ * the persisted blob on install and seeds the live map. Once a consumer
+ * mounts it takes over (idempotent — same data). Reading bindings the user
+ * personally set is data, not instruction, so this respects the
+ * data/instruction boundary the daemon work flagged.
+ */
+function hydrateCustomFromStorage(): void {
+  const persisted = readCustomHotkeys().bindings;
+  setCustomHotkeys(
+    persisted.map((b) => ({
+      id: b.id,
+      spec: b.spec,
+      route: b.route,
+      entityId: b.entityId,
+    })),
+  );
+}
+
 function isTextEditing(t: EventTarget | null): boolean {
   if (!(t instanceof HTMLElement)) return false;
   const tag = t.tagName.toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
   if (t.isContentEditable) return true;
-  // SPR-08 sharpen — the hotkey-capture box is a role="textbox" <div> that is
-  // actively reading raw keypresses (including "?" and "g"). Treat it as text
-  // editing so the global HUD/chord handlers bail while it is open; otherwise
-  // "?" pops the HUD over the capture modal and "?"/"g" can never be bound.
+  // SPR-08 — the hotkey-capture box is a role="textbox" <div> that is
+  // actively reading raw keypresses (including "?"). Treat it as text editing
+  // so the global HUD handler bails while it is open; otherwise "?" pops the
+  // HUD over the capture modal and can never be bound.
   if (t.closest("[data-hotkey-capture]")) return true;
   return false;
 }
 
 function isMod(e: KeyboardEvent): boolean {
   return e.metaKey || e.ctrlKey;
+}
+
+/** Does the event carry ANY modifier (mod / alt / shift)? Used to gate the
+ *  combo-resolution branch: a custom binding may legitimately be `alt+j`, so
+ *  the resolver runs for any modifier, not only Cmd/Ctrl. */
+function hasAnyModifier(e: KeyboardEvent): boolean {
+  return e.metaKey || e.ctrlKey || e.altKey || e.shiftKey;
+}
+
+/** Build the canonical combo spec for a keydown event, e.g. ⌘E → "mod+e",
+ *  ⌘⇧P → "mod+shift+p", ⌥J → "alt+j". `mod` collapses Cmd/Ctrl. Single-char
+ *  keys are lower-cased; named keys (`/`, `[`) pass through. Returns null
+ *  when the keydown is a lone modifier (no real key yet) or carries no
+ *  modifier at all (a bare key is never a combo we resolve). */
+function comboSpecFor(e: KeyboardEvent): string | null {
+  const key = e.key.toLowerCase();
+  // Ignore a lone modifier keydown (e.g. ⌘ down with no real key yet).
+  if (["meta", "control", "shift", "alt"].includes(key)) return null;
+  const parts: string[] = [];
+  if (isMod(e)) parts.push("mod");
+  if (e.altKey) parts.push("alt");
+  if (e.shiftKey) parts.push("shift");
+  if (parts.length === 0) return null; // bare key — not a combo
+  parts.push(key);
+  return normalizeBinding(parts.join("+"));
 }
 
 /** Toggle the ProjectTree panel docked-left. */
@@ -171,32 +230,38 @@ function cycleFocus(direction: 1 | -1) {
 /**
  * Install the keyboard shortcut handler. Returns the unsubscribe fn.
  *
- * `navigate` is required for chord-based route nav (G+I etc.); pass
+ * `navigate` is required for the product/sub-action/custom combo nav; pass
  * `useNavigate()`'s return value from inside AppShell.
  */
 export function installShortcuts(navigate: NavigateFunction): () => void {
-  let pendingChord: { key: string; timer: ReturnType<typeof setTimeout> } | null = null;
-
-  function clearChord() {
-    if (pendingChord) {
-      clearTimeout(pendingChord.timer);
-      pendingChord = null;
-    }
+  // Seed the live custom-binding map from the persisted blob on every mount,
+  // so a custom hotkey the operator set in a previous session fires after a
+  // reload WITHOUT waiting for an <AssignHotkey> surface to mount (M2).
+  hydrateCustomFromStorage();
+  // A custom binding assigned in another tab lands in localStorage; re-hydrate
+  // on the cross-tab `storage` signal so this tab's handler sees it too.
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === null || e.key.endsWith("custom-hotkeys")) hydrateCustomFromStorage();
+  };
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", onStorage);
   }
 
-  /** Resolve a fully-typed chord/combo spec against the product table +
-   *  the custom map. Returns true if it fired. Built-ins are handled by
-   *  their own branches above/below; this only fires NEW (product/sub-
-   *  action/custom) bindings, so it can never override a built-in. */
+  /** Resolve a fully-formed ⌘+key combo spec against the product +
+   *  sub-action tables + the custom map. Returns true if it fired. The
+   *  built-in combos are handled by their own branches in `handler`; this
+   *  only fires NEW (product/sub-action/custom) bindings, and it checks
+   *  product/sub-action BEFORE custom so a custom binding can never override
+   *  one (defence-in-depth on top of detectConflict's assign-time block). */
   function resolveExtended(spec: string): boolean {
     const norm = normalizeBinding(spec);
     // Product activation — navigate AND emit the shared activation event
-    // (the SPR-10 contract: identical to a click).
+    // (the click≡hotkey contract: identical to a click).
     const prod = PRODUCT_BINDINGS.find((b) => normalizeBinding(b.spec) === norm);
     if (prod) {
       // A product with a route navigates; a routeless product (More opens the
       // launcher, no nav) only emits. Either way it fires the shared activate
-      // event so a click and a hotkey are indistinguishable (SPR-10 contract).
+      // event so a click and a hotkey are indistinguishable.
       if (prod.route) navigate(prod.route);
       emitProductActivate({
         productId: prod.productId!,
@@ -242,50 +307,6 @@ export function installShortcuts(navigate: NavigateFunction): () => void {
       return;
     }
 
-    // Chord follow-up: if a chord is pending, the second key resolves
-    // immediately + we don't check the other handlers.
-    if (pendingChord) {
-      const k = e.key.toLowerCase();
-      const first = pendingChord.key;
-      clearChord();
-      if (first === "g") {
-        if (k === "i") {
-          e.preventDefault();
-          // SPR-05: the one multi-research monitor (was /investigations).
-          navigate("/my-research");
-          return;
-        }
-        if (k === "w") {
-          e.preventDefault();
-          navigate("/wrestle");
-          return;
-        }
-        if (k === "n") {
-          e.preventDefault();
-          navigate("/notebooks");
-          return;
-        }
-        if (k === "r") {
-          e.preventDefault();
-          // Built-in "go home" — ALSO fires Research product activation so a
-          // hotkey is interchangeable with clicking the Research product.
-          navigate("/");
-          emitProductActivate({
-            productId: "research",
-            route: "/",
-            source: "hotkey",
-          });
-          return;
-        }
-        // SPR-08: product / sub-action / custom chords on the `g` prefix.
-        if (resolveExtended(`g ${k}`)) {
-          e.preventDefault();
-          return;
-        }
-      }
-      // chord didn't resolve; fall through to normal handling
-    }
-
     if (isMod(e)) {
       // ⌘K — command palette toggle (also ⌘⇧P for Linear muscle memory)
       if (e.key === "k" || (e.shiftKey && (e.key === "P" || e.key === "p"))) {
@@ -329,20 +350,15 @@ export function installShortcuts(navigate: NavigateFunction): () => void {
       }
     }
 
-    // Single-letter chord starters (only if no modifier).
-    if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-      const k = e.key.toLowerCase();
-      if (k === "g") {
-        const timer = setTimeout(clearChord, CHORD_WINDOW_MS);
-        pendingChord = { key: "g", timer };
-        return;
-      }
-      // SPR-08: single-key CUSTOM bindings (e.g. the user assigned plain
-      // "j" to an investigation). Resolved only against the custom map —
-      // never built-ins or chord starters — so it can't shadow `g` or any
-      // built-in. `resolveExtended` checks product/sub-action first, but
-      // those are all `g`-chords, so a single key only ever hits custom.
-      if (k.length === 1 && resolveExtended(k)) {
+    // Product / sub-action / custom modifier combos (the uniform ⌘+key
+    // scheme; a custom binding may also be ⌥+key, so this runs for ANY
+    // modifier). The built-in combos above already returned, so this only
+    // ever resolves a product/sub-action/custom binding — never a built-in,
+    // and resolveExtended checks product/sub-action BEFORE custom so a custom
+    // binding can never shadow one.
+    if (hasAnyModifier(e)) {
+      const spec = comboSpecFor(e);
+      if (spec && resolveExtended(spec)) {
         e.preventDefault();
         return;
       }
@@ -352,7 +368,9 @@ export function installShortcuts(navigate: NavigateFunction): () => void {
   window.addEventListener("keydown", handler);
   return () => {
     window.removeEventListener("keydown", handler);
-    clearChord();
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", onStorage);
+    }
   };
 }
 

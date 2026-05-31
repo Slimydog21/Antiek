@@ -37,13 +37,25 @@ describe("KeyChip — SPR-08", () => {
     unmount();
   });
 
-  it("renders a chord as two key glyphs joined by 'then'", () => {
+  it("renders a single ⌘ combo as ONE glyph group with NO 'then' (the SPR-08 live shape)", () => {
+    const { container, unmount } = render(
+      <KeyChip binding="mod+e" label="Read" />,
+    );
+    expect(container.textContent).not.toContain("then");
+    expect(container.querySelector(".antiek-keychip__then")).toBeNull();
+    expect(container.querySelector(".antiek-keychip__seq")).toBeNull();
+    // One kbd glyph element holding the composed glyph string (⌘E / CtrlE).
+    const kbds = container.querySelectorAll(".antiek-keychip__key");
+    expect(kbds.length).toBe(1);
+    expect(kbds[0].textContent).toContain("E");
+    unmount();
+  });
+
+  it("still renders a legacy/corrupt chord legibly (component behaviour unchanged; no live spec hits this)", () => {
     const { container, unmount } = render(
       <KeyChip binding="g r" label="Go to Research" />,
     );
     expect(container.textContent).toContain("then");
-    // Scoped component class (SPR-08 sharpen — was the global .lemon-kbd,
-    // which diverged from LemonInput's real kbd; now component-scoped).
     const kbds = container.querySelectorAll(".antiek-keychip__key");
     expect(kbds.length).toBe(2);
     unmount();

@@ -60,7 +60,7 @@ export default defineConfig({
       // broadens it again for windows-default.spec.ts. All of these load the
       // real SPA via loginAndGotoApp and must not run against Storybook.
       name: "chromium",
-      testIgnore: /(ams-shell|glass-surface|glass-reduced-motion|windows-default)\.spec\.ts/,
+      testIgnore: /(ams-shell|glass-surface|glass-reduced-motion|windows-default|hotkeys-command-scheme)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
@@ -71,7 +71,7 @@ export default defineConfig({
       // outcome on `/` (the windows-default gate proves windows float over the
       // scene by default — the SPR-04 keystone).
       name: "ams-real",
-      testMatch: /(ams-shell|glass-surface|glass-reduced-motion|windows-default)\.spec\.ts/,
+      testMatch: /(ams-shell|glass-surface|glass-reduced-motion|windows-default|hotkeys-command-scheme)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: AMS_APP_BASE },
     },
   ],
