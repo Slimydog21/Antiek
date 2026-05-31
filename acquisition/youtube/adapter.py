@@ -231,8 +231,41 @@ def ingest_youtube(
     # the insert_document call site — corpus_audit's AST scanner flags
     # content_class string literals to keep classify() the one chokepoint).
     if content_class is not None:
+        # An explicit content_class= is a deliberate caller override (e.g.
+        # SPR-09/SPR-10 reuse). It is NOT a free-for-all: validate it here so
+        # this parameter cannot become a silent escape from the personal lane.
+        # (i) It must be a recognized readable rights class — an arbitrary or
+        #     misspelled string would otherwise slip past corpus_audit's AST
+        #     literal-scanner (which only forbids LITERALS, not this Name) and
+        #     land an unknown class on the row.
+        # (ii) If it is a SERVABLE class it MUST carry an explicit
+        #      license_basis — otherwise a caller could promote a third-party
+        #      transcript to a publicly servable class with NO recorded basis,
+        #      the exact §9.0 leak corpus_audit._check_third_party_servable
+        #      backstops. The sanctioned promotion path remains
+        #      operator_confirmed_cc_by, which records the basis automatically.
+        if content_class not in PERSONAL_READABLE_CONTENT_CLASSES:
+            raise YouTubeContentClassRejected(
+                f"explicit content_class={content_class!r} is not a "
+                f"recognized readable rights class "
+                f"({sorted(PERSONAL_READABLE_CONTENT_CLASSES)}). The default "
+                f"(personal_reading) or operator_confirmed_cc_by is the "
+                f"sanctioned path; do not pass an arbitrary class string."
+            )
+        if content_class in SERVABLE_CONTENT_CLASSES and not (
+            license_basis and license_basis.strip()
+        ):
+            raise YouTubeContentClassRejected(
+                f"explicit servable content_class={content_class!r} requires "
+                f"an explicit, non-empty license_basis= (a servable class "
+                f"with no positive basis is the §9.0 leak corpus_audit "
+                f"forbids). Pass license_basis=, or use "
+                f"operator_confirmed_cc_by=True for the CC-BY hatch."
+            )
         resolved_content_class = content_class
-        resolved_license_basis: Optional[str] = None
+        resolved_license_basis: Optional[str] = (
+            license_basis if content_class in SERVABLE_CONTENT_CLASSES else None
+        )
     elif operator_confirmed_cc_by:
         resolved_content_class = SOURCE_DECLARED_OPEN_CONTENT_CLASS
         resolved_license_basis = CC_BY_OPERATOR_LICENSE_BASIS
