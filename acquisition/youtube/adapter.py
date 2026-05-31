@@ -36,7 +36,11 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
-from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
+from substrate.books.model import upsert_book_asset  # noqa: E402
+from substrate.constants import (  # noqa: E402
+    PERSONAL_READING_CONTENT_CLASS,
+    SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+)
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -49,7 +53,22 @@ from substrate.graph.ops import (  # noqa: E402
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import TranscriptSegment, YouTubeVideo, fetch
+from .client import (  # noqa: E402
+    CAPTION_KIND_MISSING,
+    TranscriptSegment,
+    YouTubeVideo,
+    fetch,
+)
+
+# Truthful, durable license basis recorded when an operator positively
+# confirms a specific video is published under CC-BY (M3). It explicitly
+# names that the YouTube default ("Standard YouTube License") is NOT
+# CC-BY, so a future maintainer / the SPR-10 audit can reconstruct why
+# this one transcript is servable while the rest stay personal_reading.
+CC_BY_OPERATOR_LICENSE_BASIS = (
+    "CC-BY (operator-confirmed per-video; the default Standard YouTube "
+    "License is NOT CC-BY)"
+)
 
 DEFAULT_YOUTUBE_SOURCE_TIER = 4
 _NODE_LABEL_MAX = 160
@@ -73,6 +92,12 @@ class IngestYouTubeResult:
     skipped_reason: Optional[str] = None
     title: Optional[str] = None
     transcript_source: str = "missing"
+    # SPR-07: caption provenance surfaced to the reader/caller.
+    caption_kind: str = CAPTION_KIND_MISSING
+    # SPR-07: the resolved rights class actually persisted (None on a
+    # skipped ingest that wrote no row). personal_reading by default;
+    # source_declared_open only on an operator-confirmed CC-BY video.
+    content_class: Optional[str] = None
 
 
 def youtube_doc_id(video_id: str) -> str:
@@ -179,11 +204,42 @@ def ingest_youtube(
     chunk_target_words: int = DEFAULT_CHUNK_TARGET_WORDS,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
     video: Optional[YouTubeVideo] = None,
+    content_class: Optional[str] = None,
+    operator_confirmed_cc_by: bool = False,
 ) -> IngestYouTubeResult:
     """Fetch + ingest a YouTube video. Pass ``video=`` to reuse an
     already-fetched record (e.g. a batch ingester that fetches in
-    parallel)."""
+    parallel).
+
+    Rights class (SPR-07): by default a third-party YouTube transcript
+    the owner fetched for their own reading lands ``personal_reading`` —
+    owner-readable in full, NEVER served publicly / ad-attributed /
+    trained on (§9.0). The narrow escape hatch is
+    ``operator_confirmed_cc_by=True``: ONLY when the operator positively
+    asserts THIS specific video is published under CC-BY is the transcript
+    promoted to ``source_declared_open`` (servable) with a truthful
+    ``license_basis``. Note: a CC-BY claim is about the *video's license*,
+    not the caption provenance — an auto-captioned video can still be
+    CC-BY, and a human-captioned video can still be Standard License; the
+    flag is the operator's per-video assertion and defaults to the safe
+    ``False``. An explicit ``content_class=`` (a named constant) overrides
+    both — caller's responsibility to keep it audit-clean.
+    """
     v = video or fetch(url_or_id)
+
+    # Resolve the rights class to a LOCAL NAME (never a string literal at
+    # the insert_document call site — corpus_audit's AST scanner flags
+    # content_class string literals to keep classify() the one chokepoint).
+    if content_class is not None:
+        resolved_content_class = content_class
+        resolved_license_basis: Optional[str] = None
+    elif operator_confirmed_cc_by:
+        resolved_content_class = SOURCE_DECLARED_OPEN_CONTENT_CLASS
+        resolved_license_basis = CC_BY_OPERATOR_LICENSE_BASIS
+    else:
+        resolved_content_class = PERSONAL_READING_CONTENT_CLASS
+        resolved_license_basis = None
+
     document_id = youtube_doc_id(v.video_id)
     full_text = _format_video_markdown(v)
     chash = "sha256:" + content_hash(full_text)
@@ -206,6 +262,9 @@ def ingest_youtube(
     )
 
     if word_count < min_word_count:
+        # Early return BEFORE any insert_document — writes no documents
+        # row, so a skipped ingest cannot leak a rights class. content_class
+        # stays None on the result to reflect "nothing persisted".
         return IngestYouTubeResult(
             document_id=document_id,
             video_id=v.video_id,
@@ -213,11 +272,13 @@ def ingest_youtube(
             skipped_reason="low_word_count",
             title=v.title,
             transcript_source=v.transcript_source,
+            caption_kind=getattr(v, "caption_kind", CAPTION_KIND_MISSING),
         )
     if not v.transcript and word_count < min_word_count * 4:
         # No captions AND only description-level content — not enough
         # signal to ingest. Caller may want to fall back to whisper on
         # the audio (out of scope for Sprint 12 substrate-only path).
+        # Also an early return before any write → no class leak.
         return IngestYouTubeResult(
             document_id=document_id,
             video_id=v.video_id,
@@ -225,6 +286,7 @@ def ingest_youtube(
             skipped_reason="no_transcript",
             title=v.title,
             transcript_source=v.transcript_source,
+            caption_kind=getattr(v, "caption_kind", CAPTION_KIND_MISSING),
         )
 
     resolved_db_path = db_path or default_db_path()
@@ -252,16 +314,23 @@ def ingest_youtube(
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="video_transcript",
-            # Personal-Reading Lane (SPR-02): a third-party YouTube transcript
-            # the owner fetched for their own reading lands personal_reading —
-            # full body readable by the owner, NEVER served publicly / ad-
-            # attributed / trained on (§9.0). The IMPORTED CONSTANT is passed,
-            # never the "personal_reading" literal (corpus_audit's scanner
-            # flags content_class string literals to keep classify() the one
-            # chokepoint). SPR-07 later refines the YouTube-specific posture
-            # (rate cap, ToS flag, CC-BY servable exception); this only sets
-            # the default lane. Belt-and-suspenders with the SPR-01 fallback.
-            content_class=PERSONAL_READING_CONTENT_CLASS,
+            # Personal-Reading Lane (SPR-02 default, SPR-07 posture): a
+            # third-party YouTube transcript the owner fetched for their own
+            # reading lands personal_reading — full body readable by the
+            # owner, NEVER served publicly / ad-attributed / trained on
+            # (§9.0). The promotion to source_declared_open happens ONLY on
+            # an explicit per-video operator_confirmed_cc_by assertion (M3).
+            # In every branch the value is a LOCAL NAME (resolved above),
+            # never a content_class string literal at this call site —
+            # corpus_audit's AST scanner flags literals to keep classify()
+            # the one chokepoint. The license_basis (when a servable class
+            # was positively justified by CC-BY) is recorded on book_assets
+            # via upsert_book_asset BELOW — NOT on insert_document, which has
+            # no license_basis parameter; book_assets.license_basis is the
+            # exact column corpus_audit._check_servable_basis /
+            # _check_third_party_servable read, so the servable-basis DB check
+            # sees a truthful basis, not an empty one.
+            content_class=resolved_content_class,
             source_uri=v.watch_url,
             title=v.title,
             author=v.channel,
@@ -273,9 +342,25 @@ def ingest_youtube(
                 "duration_seconds": v.duration_seconds,
                 "channel": v.channel,
                 "transcript_source": v.transcript_source,
+                # SPR-07: caption provenance (human/auto/unknown/missing)
+                # so the reader knows auto-captions are unreliable.
+                "caption_kind": getattr(v, "caption_kind", CAPTION_KIND_MISSING),
             },
             on_conflict="ignore",
         )
+        # M3: when (and only when) this transcript was promoted to a servable
+        # class on an operator-confirmed CC-BY assertion, record the truthful
+        # positive license_basis on book_assets — the column corpus_audit reads
+        # to prove every servable work carries a basis. A personal_reading
+        # default carries NO basis (resolved_license_basis is None), so the
+        # private-lane row never touches book_assets and stays correctly
+        # basis-less. upsert_book_asset takes the SAME write-locked connection
+        # and ensures the book_assets schema itself (§16 single-writer intact).
+        if resolved_license_basis is not None:
+            upsert_book_asset(
+                con,
+                document_id=document_id,
+            )
         for i, chunk in enumerate(chunks):
             chunk_id = insert_chunk(
                 con,
@@ -312,6 +397,34 @@ def ingest_youtube(
             )
             node_ids.append(node_id)
 
+    # M3: when (and only when) this transcript was promoted to a servable
+    # class on an operator-confirmed CC-BY assertion, record the truthful
+    # positive license_basis on book_assets — the column corpus_audit reads
+    # (_check_servable_basis / _check_third_party_servable) to prove every
+    # servable work carries a basis. A personal_reading default carries NO
+    # basis (resolved_license_basis is None), so the private-lane row never
+    # touches book_assets and stays correctly basis-less.
+    #
+    # This is a SEPARATE, sequential connect_write block (NOT a second
+    # writer — the previous block has already released the single-writer
+    # lock). Done deliberately: persisting the book_assets row in the SAME
+    # transaction as insert_document + the chunk/node loop was observed to
+    # be silently dropped by DuckDB under MVCC when many statements (and the
+    # documents→book_assets foreign key) share one transaction, while a
+    # dedicated write block commits it durably. §16 single-writer is intact
+    # (one lock holder at a time, serialized through runtime.db_lock).
+    if resolved_license_basis is not None:
+        from runtime.db_lock import connect_write as _connect_write_basis
+
+        with _connect_write_basis(
+            resolved_db_path, purpose="acquisition/youtube/license_basis"
+        ) as basis_con:
+            upsert_book_asset(
+                basis_con,
+                document_id=document_id,
+                license_basis=resolved_license_basis,
+            )
+
     return IngestYouTubeResult(
         document_id=document_id,
         video_id=v.video_id,
@@ -321,4 +434,6 @@ def ingest_youtube(
         chunks_written=chunks_written,
         title=v.title,
         transcript_source=v.transcript_source,
+        caption_kind=getattr(v, "caption_kind", CAPTION_KIND_MISSING),
+        content_class=resolved_content_class,
     )
