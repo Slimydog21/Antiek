@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-29T18:12:00.264138+00:00",
+  "generated_at": "2026-05-31T00:16:42.551877+00:00",
   "lint": "declared_bar_ruff",
   "schema_version": 1,
   "violations": [
@@ -98,6 +98,90 @@
       "kind": "ruff:UP045",
       "line": 356,
       "path": "acquisition/arxiv/adapter.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 32,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 74,
+      "kind": "ruff:UP017",
+      "line": 73,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP017",
+      "line": 79,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP045",
+      "line": 82,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 32,
+      "kind": "ruff:UP017",
+      "line": 95,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP017",
+      "line": 96,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 173,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 174,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 213,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 214,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP015",
+      "line": 220,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP037",
+      "line": 227,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP037",
+      "line": 228,
+      "path": "acquisition/arxiv/bulk.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 228,
+      "path": "acquisition/arxiv/bulk.py"
     },
     {
       "col": 1,
@@ -274,6 +358,12 @@
       "path": "acquisition/arxiv/throttle.py"
     },
     {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 7,
+      "path": "acquisition/books/__init__.py"
+    },
+    {
       "col": 8,
       "kind": "ruff:F401",
       "line": 19,
@@ -418,6 +508,234 @@
       "path": "acquisition/books/adapter.py"
     },
     {
+      "col": 37,
+      "kind": "ruff:UP045",
+      "line": 53,
+      "path": "acquisition/books/hathitrust.py"
+    },
+    {
+      "col": 61,
+      "kind": "ruff:UP045",
+      "line": 53,
+      "path": "acquisition/books/hathitrust.py"
+    },
+    {
+      "col": 76,
+      "kind": "ruff:UP045",
+      "line": 53,
+      "path": "acquisition/books/hathitrust.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 66,
+      "path": "acquisition/books/hathitrust.py"
+    },
+    {
+      "col": 60,
+      "kind": "ruff:UP045",
+      "line": 75,
+      "path": "acquisition/books/hathitrust.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 118,
+      "path": "acquisition/books/hathitrust.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 99,
+      "path": "acquisition/books/internet_archive.py"
+    },
+    {
+      "col": 57,
+      "kind": "ruff:UP045",
+      "line": 99,
+      "path": "acquisition/books/internet_archive.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:UP045",
+      "line": 144,
+      "path": "acquisition/books/internet_archive.py"
+    },
+    {
+      "col": 6,
+      "kind": "ruff:UP045",
+      "line": 154,
+      "path": "acquisition/books/internet_archive.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 194,
+      "path": "acquisition/books/internet_archive.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 222,
+      "path": "acquisition/books/internet_archive.py"
+    },
+    {
+      "col": 43,
+      "kind": "ruff:UP045",
+      "line": 87,
+      "path": "acquisition/books/library_of_congress.py"
+    },
+    {
+      "col": 58,
+      "kind": "ruff:UP045",
+      "line": 87,
+      "path": "acquisition/books/library_of_congress.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP045",
+      "line": 113,
+      "path": "acquisition/books/library_of_congress.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 126,
+      "path": "acquisition/books/library_of_congress.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 45,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 100,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 101,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP037",
+      "line": 101,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 124,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 127,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 46,
+      "kind": "ruff:UP045",
+      "line": 130,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP045",
+      "line": 134,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 136,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 197,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 201,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 202,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 203,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 204,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP045",
+      "line": 205,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 212,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 250,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 251,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 253,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 254,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 256,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 286,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
       "col": 1,
       "kind": "ruff:UP035",
       "line": 57,
@@ -426,151 +744,163 @@
     {
       "col": 13,
       "kind": "ruff:UP045",
-      "line": 95,
+      "line": 98,
       "path": "acquisition/books/public_domain.py"
     },
     {
       "col": 15,
       "kind": "ruff:UP045",
-      "line": 99,
+      "line": 102,
       "path": "acquisition/books/public_domain.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 128,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 45,
-      "kind": "ruff:UP045",
-      "line": 146,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 45,
-      "kind": "ruff:UP045",
-      "line": 153,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 154,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 38,
-      "kind": "ruff:UP045",
-      "line": 191,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 38,
-      "kind": "ruff:UP045",
-      "line": 197,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 204,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 40,
-      "kind": "ruff:UP045",
-      "line": 246,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:SIM910",
-      "line": 255,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 267,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:UP045",
-      "line": 268,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 10,
-      "kind": "ruff:UP045",
-      "line": 269,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 10,
-      "kind": "ruff:UP045",
-      "line": 288,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 289,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 36,
-      "kind": "ruff:UP045",
-      "line": 304,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 55,
-      "kind": "ruff:UP045",
-      "line": 383,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 65,
-      "kind": "ruff:UP045",
-      "line": 409,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 65,
-      "kind": "ruff:UP045",
-      "line": 417,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 38,
-      "kind": "ruff:UP045",
-      "line": 505,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 567,
-      "path": "acquisition/books/public_domain.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 568,
+      "line": 131,
       "path": "acquisition/books/public_domain.py"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 571,
+      "line": 132,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP037",
+      "line": 132,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 162,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 169,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 170,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 215,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 221,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 228,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 270,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:SIM910",
+      "line": 279,
       "path": "acquisition/books/public_domain.py"
     },
     {
       "col": 14,
       "kind": "ruff:UP045",
-      "line": 601,
+      "line": 291,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 292,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 293,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 312,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 313,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP045",
+      "line": 328,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 55,
+      "kind": "ruff:UP045",
+      "line": 407,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 65,
+      "kind": "ruff:UP045",
+      "line": 433,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 65,
+      "kind": "ruff:UP045",
+      "line": 441,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 529,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 591,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 592,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 595,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 625,
       "path": "acquisition/books/public_domain.py"
     },
     {
@@ -670,141 +1000,171 @@
       "path": "acquisition/books/reader.py"
     },
     {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 14,
+      "path": "acquisition/books/registry.py"
+    },
+    {
+      "col": 51,
+      "kind": "ruff:UP045",
+      "line": 39,
+      "path": "acquisition/books/standard_ebooks.py"
+    },
+    {
+      "col": 49,
+      "kind": "ruff:UP045",
+      "line": 54,
+      "path": "acquisition/books/standard_ebooks.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:UP045",
+      "line": 66,
+      "path": "acquisition/books/standard_ebooks.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:UP045",
+      "line": 77,
+      "path": "acquisition/books/standard_ebooks.py"
+    },
+    {
+      "col": 55,
+      "kind": "ruff:UP045",
+      "line": 57,
+      "path": "acquisition/books/wikisource.py"
+    },
+    {
+      "col": 70,
+      "kind": "ruff:UP045",
+      "line": 57,
+      "path": "acquisition/books/wikisource.py"
+    },
+    {
+      "col": 6,
+      "kind": "ruff:UP045",
+      "line": 165,
+      "path": "acquisition/books/wikisource.py"
+    },
+    {
       "col": 7,
       "kind": "ruff:UP042",
-      "line": 52,
+      "line": 66,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 259,
+      "line": 273,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
-      "line": 260,
+      "line": 274,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 16,
       "kind": "ruff:UP045",
-      "line": 261,
+      "line": 275,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 31,
       "kind": "ruff:UP045",
-      "line": 262,
+      "line": 276,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 324,
+      "line": 338,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 334,
+      "line": 348,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
-      "line": 335,
+      "line": 349,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 16,
       "kind": "ruff:UP045",
-      "line": 336,
+      "line": 350,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 31,
       "kind": "ruff:UP045",
-      "line": 337,
-      "path": "acquisition/corpus_quality.py"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 451,
+      "line": 351,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 10,
       "kind": "ruff:UP045",
-      "line": 484,
+      "line": 498,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 15,
       "kind": "ruff:UP045",
-      "line": 485,
+      "line": 499,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 16,
       "kind": "ruff:UP045",
-      "line": 486,
+      "line": 500,
+      "path": "acquisition/corpus_quality.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 501,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 487,
+      "line": 502,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
-      "line": 488,
+      "line": 503,
       "path": "acquisition/corpus_quality.py"
     },
     {
-      "col": 28,
+      "col": 11,
       "kind": "ruff:UP045",
-      "line": 495,
+      "line": 504,
       "path": "acquisition/corpus_quality.py"
     },
     {
-      "col": 31,
+      "col": 51,
       "kind": "ruff:UP045",
-      "line": 507,
-      "path": "acquisition/corpus_quality.py"
-    },
-    {
-      "col": 54,
-      "kind": "ruff:UP045",
-      "line": 507,
-      "path": "acquisition/corpus_quality.py"
-    },
-    {
-      "col": 72,
-      "kind": "ruff:UP045",
-      "line": 507,
-      "path": "acquisition/corpus_quality.py"
-    },
-    {
-      "col": 58,
-      "kind": "ruff:UP045",
-      "line": 517,
+      "line": 524,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 6,
       "kind": "ruff:UP045",
-      "line": 589,
+      "line": 586,
       "path": "acquisition/corpus_quality.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 648,
+      "line": 665,
       "path": "acquisition/corpus_quality.py"
     },
     {
@@ -916,15 +1276,39 @@
       "path": "acquisition/interview/adapter.py"
     },
     {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 63,
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 24,
       "path": "acquisition/licenses_core.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 186,
+      "line": 64,
+      "path": "acquisition/licenses_core.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 247,
+      "path": "acquisition/licenses_core.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 382,
+      "path": "acquisition/licenses_core.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 455,
+      "path": "acquisition/licenses_core.py"
+    },
+    {
+      "col": 41,
+      "kind": "ruff:UP045",
+      "line": 527,
       "path": "acquisition/licenses_core.py"
     },
     {
@@ -1122,7 +1506,7 @@
     {
       "col": 37,
       "kind": "ruff:UP045",
-      "line": 136,
+      "line": 87,
       "path": "acquisition/openaccess/licenses.py"
     },
     {
@@ -1250,6 +1634,24 @@
       "kind": "ruff:UP006",
       "line": 173,
       "path": "acquisition/openaccess/openalex.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 101,
+      "path": "acquisition/openaccess/pdf_detect.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 102,
+      "path": "acquisition/openaccess/pdf_detect.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 147,
+      "path": "acquisition/openaccess/pdf_detect.py"
     },
     {
       "col": 1,
@@ -1380,19 +1782,31 @@
     {
       "col": 1,
       "kind": "ruff:UP035",
-      "line": 17,
+      "line": 22,
+      "path": "acquisition/openaccess/throttle.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 73,
+      "path": "acquisition/openaccess/throttle.py"
+    },
+    {
+      "col": 55,
+      "kind": "ruff:UP045",
+      "line": 88,
       "path": "acquisition/openaccess/throttle.py"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
-      "line": 71,
+      "line": 99,
       "path": "acquisition/openaccess/throttle.py"
     },
     {
       "col": 51,
       "kind": "ruff:UP045",
-      "line": 44,
+      "line": 48,
       "path": "acquisition/openaccess/unpaywall.py"
     },
     {
@@ -1454,6 +1868,432 @@
       "kind": "ruff:UP045",
       "line": 133,
       "path": "acquisition/openaccess/unpaywall.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 86,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 90,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 92,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 94,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 146,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP015",
+      "line": 150,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 55,
+      "kind": "ruff:UP045",
+      "line": 159,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 330,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 390,
+      "path": "acquisition/opt_in/intake.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 27,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP045",
+      "line": 49,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 65,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 66,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 67,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 68,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 69,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 70,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 86,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 102,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 103,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 104,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP045",
+      "line": 107,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 115,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 133,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 6,
+      "kind": "ruff:UP045",
+      "line": 134,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 147,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 148,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 35,
+      "kind": "ruff:UP017",
+      "line": 164,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP015",
+      "line": 323,
+      "path": "acquisition/opt_in/manifest.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 24,
+      "path": "acquisition/papers/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 32,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 66,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 67,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 68,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 69,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 71,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 75,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP045",
+      "line": 79,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 55,
+      "kind": "ruff:UP045",
+      "line": 158,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 208,
+      "path": "acquisition/papers/_pipeline.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 29,
+      "path": "acquisition/papers/arxiv_bulk.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 77,
+      "path": "acquisition/papers/arxiv_bulk.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 78,
+      "path": "acquisition/papers/arxiv_bulk.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 90,
+      "path": "acquisition/papers/arxiv_bulk.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 91,
+      "path": "acquisition/papers/arxiv_bulk.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 49,
+      "path": "acquisition/papers/biorxiv.py"
+    },
+    {
+      "col": 60,
+      "kind": "ruff:UP045",
+      "line": 49,
+      "path": "acquisition/papers/biorxiv.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP045",
+      "line": 117,
+      "path": "acquisition/papers/biorxiv.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 134,
+      "path": "acquisition/papers/biorxiv.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 135,
+      "path": "acquisition/papers/biorxiv.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 43,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 56,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM108",
+      "line": 70,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 49,
+      "kind": "ruff:UP045",
+      "line": 123,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 72,
+      "kind": "ruff:UP045",
+      "line": 123,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 141,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 142,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 143,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP045",
+      "line": 99,
+      "path": "acquisition/papers/plos.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 114,
+      "path": "acquisition/papers/plos.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 115,
+      "path": "acquisition/papers/plos.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:UP045",
+      "line": 47,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 59,
+      "kind": "ruff:UP045",
+      "line": 47,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 83,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 84,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 85,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:UP045",
+      "line": 130,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:UP045",
+      "line": 130,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 149,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 150,
+      "path": "acquisition/papers/semantic_scholar.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 151,
+      "path": "acquisition/papers/semantic_scholar.py"
     },
     {
       "col": 1,
@@ -2426,6 +3266,216 @@
       "kind": "ruff:B905",
       "line": 322,
       "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 45,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 95,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 98,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 99,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 140,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 141,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP037",
+      "line": 141,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 165,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 172,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 173,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 223,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 224,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 227,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 235,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 48,
+      "kind": "ruff:UP045",
+      "line": 366,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 57,
+      "kind": "ruff:UP045",
+      "line": 37,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 51,
+      "kind": "ruff:UP045",
+      "line": 58,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 82,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 98,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP045",
+      "line": 101,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 112,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 138,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 81,
+      "path": "acquisition/textbooks/libretexts.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP045",
+      "line": 108,
+      "path": "acquisition/textbooks/libretexts.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 138,
+      "path": "acquisition/textbooks/libretexts.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 40,
+      "path": "acquisition/textbooks/mit_ocw.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP045",
+      "line": 55,
+      "path": "acquisition/textbooks/mit_ocw.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP045",
+      "line": 64,
+      "path": "acquisition/textbooks/mit_ocw.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 99,
+      "path": "acquisition/textbooks/mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 23,
+      "path": "acquisition/textbooks/openstax.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:F401",
+      "line": 23,
+      "path": "acquisition/textbooks/openstax.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:UP045",
+      "line": 36,
+      "path": "acquisition/textbooks/openstax.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 52,
+      "path": "acquisition/textbooks/openstax.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP045",
+      "line": 77,
+      "path": "acquisition/textbooks/openstax.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP045",
+      "line": 86,
+      "path": "acquisition/textbooks/openstax.py"
     },
     {
       "col": 1,
@@ -3756,95 +4806,53 @@
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 107,
+      "line": 152,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 109,
+      "line": 154,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 30,
       "kind": "ruff:UP045",
-      "line": 110,
+      "line": 155,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 20,
       "kind": "ruff:UP045",
-      "line": 111,
+      "line": 156,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 20,
       "kind": "ruff:UP045",
-      "line": 132,
+      "line": 177,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
-      "line": 161,
+      "line": 206,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 164,
+      "line": 209,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 178,
+      "line": 223,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
-      "kind": "ruff:UP045",
-      "line": 179,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 183,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 192,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 194,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 195,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 30,
-      "kind": "ruff:UP045",
-      "line": 197,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 11,
-      "kind": "ruff:UP045",
-      "line": 222,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 18,
       "kind": "ruff:UP045",
       "line": 224,
       "path": "interfaces/research/api/app.py"
@@ -3852,679 +4860,715 @@
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 238,
+      "line": 228,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 31,
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 237,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
       "kind": "ruff:UP045",
       "line": 239,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 21,
+      "col": 19,
       "kind": "ruff:UP045",
-      "line": 241,
+      "line": 240,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 20,
+      "col": 30,
       "kind": "ruff:UP045",
       "line": 242,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 12,
+      "col": 11,
       "kind": "ruff:UP045",
-      "line": 243,
+      "line": 267,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 276,
+      "line": 269,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 17,
+      "col": 18,
       "kind": "ruff:UP045",
-      "line": 277,
+      "line": 283,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 23,
+      "col": 31,
       "kind": "ruff:UP045",
-      "line": 278,
+      "line": 284,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 28,
+      "col": 21,
       "kind": "ruff:UP045",
-      "line": 279,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 303,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 33,
-      "kind": "ruff:UP045",
-      "line": 304,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 305,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 306,
+      "line": 286,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 20,
       "kind": "ruff:UP045",
-      "line": 313,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 28,
-      "kind": "ruff:UP045",
-      "line": 325,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 28,
-      "kind": "ruff:UP045",
-      "line": 332,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 334,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 335,
+      "line": 287,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 347,
+      "line": 288,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 24,
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 321,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 322,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 323,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:UP045",
+      "line": 324,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 20,
       "kind": "ruff:UP045",
       "line": 348,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 24,
+      "col": 33,
       "kind": "ruff:UP045",
-      "line": 361,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:UP045",
-      "line": 363,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 364,
+      "line": 349,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 365,
+      "line": 350,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 351,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 358,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 28,
       "kind": "ruff:UP045",
-      "line": 378,
+      "line": 370,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:UP045",
+      "line": 377,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 379,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 380,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 389,
+      "line": 392,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 15,
+      "col": 24,
       "kind": "ruff:UP045",
-      "line": 391,
+      "line": 393,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 31,
+      "col": 24,
       "kind": "ruff:UP045",
-      "line": 397,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 399,
+      "line": 406,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 400,
+      "line": 408,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 16,
+      "col": 17,
       "kind": "ruff:UP045",
-      "line": 413,
+      "line": 409,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 15,
+      "col": 23,
       "kind": "ruff:UP045",
-      "line": 414,
+      "line": 410,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 15,
+      "col": 28,
       "kind": "ruff:UP045",
-      "line": 415,
+      "line": 423,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 31,
-      "kind": "ruff:UP045",
-      "line": 432,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
+      "col": 12,
       "kind": "ruff:UP045",
       "line": 434,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 12,
+      "col": 15,
       "kind": "ruff:UP045",
-      "line": 435,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 445,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 446,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 460,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 473,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 482,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 483,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 529,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 36,
-      "kind": "ruff:UP045",
-      "line": 546,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 563,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 564,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 566,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 572,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 573,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 575,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 578,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 583,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 584,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 590,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 591,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 595,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 596,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 597,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:UP045",
-      "line": 604,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 611,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 612,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:UP045",
-      "line": 631,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 640,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 6,
-      "kind": "ruff:UP045",
-      "line": 641,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 56,
-      "kind": "ruff:UP045",
-      "line": 670,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 65,
-      "kind": "ruff:UP037",
-      "line": 670,
+      "line": 436,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 31,
       "kind": "ruff:UP045",
-      "line": 705,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 68,
-      "kind": "ruff:B023",
-      "line": 706,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 36,
-      "kind": "ruff:UP045",
-      "line": 727,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 26,
-      "kind": "ruff:UP045",
-      "line": 756,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 762,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 763,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:UP045",
-      "line": 770,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 812,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:UP045",
-      "line": 813,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 826,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 827,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 832,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:UP045",
-      "line": 843,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 885,
+      "line": 442,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 886,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:UP045",
-      "line": 897,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 913,
+      "line": 444,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 914,
+      "line": 445,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 458,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 459,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 460,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP045",
+      "line": 477,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 479,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 480,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 934,
+      "line": 490,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 491,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 505,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 518,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 527,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 528,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
-      "line": 935,
+      "line": 574,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP045",
+      "line": 591,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 24,
       "kind": "ruff:UP045",
-      "line": 937,
+      "line": 608,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 609,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 611,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:UP045",
+      "line": 617,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 618,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 620,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 623,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 628,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 629,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 635,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 636,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 640,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 641,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 642,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:UP045",
+      "line": 649,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:UP045",
+      "line": 656,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 657,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP045",
+      "line": 676,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 25,
-      "kind": "ruff:F821",
-      "line": 938,
+      "kind": "ruff:UP045",
+      "line": 685,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 49,
-      "kind": "ruff:B008",
-      "line": 1508,
+      "col": 6,
+      "kind": "ruff:UP045",
+      "line": 686,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 56,
+      "kind": "ruff:UP045",
+      "line": 715,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 65,
+      "kind": "ruff:UP037",
+      "line": 715,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP045",
+      "line": 750,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 68,
+      "kind": "ruff:B023",
+      "line": 751,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP045",
+      "line": 772,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 26,
       "kind": "ruff:UP045",
-      "line": 1591,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:I001",
-      "line": 1627,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 1667,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 1722,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 1723,
+      "line": 801,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 1724,
+      "line": 807,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 808,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 815,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 857,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 858,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 871,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 872,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 877,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 888,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 930,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 931,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP045",
+      "line": 942,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP045",
+      "line": 958,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 959,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 979,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 980,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 24,
       "kind": "ruff:UP045",
-      "line": 1753,
+      "line": 982,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 13,
+      "col": 25,
+      "kind": "ruff:F821",
+      "line": 983,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 49,
+      "kind": "ruff:B008",
+      "line": 1568,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 26,
       "kind": "ruff:UP045",
-      "line": 1798,
+      "line": 1651,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 1827,
+      "line": 1687,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 1727,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 1782,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP045",
+      "line": 1783,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 1871,
+      "line": 1784,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:UP045",
+      "line": 1813,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 1858,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:I001",
+      "line": 1887,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 1931,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 25,
       "kind": "ruff:UP045",
-      "line": 1872,
+      "line": 1932,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
-      "line": 1873,
+      "line": 1933,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 28,
       "kind": "ruff:UP045",
-      "line": 1876,
+      "line": 1936,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:SIM102",
-      "line": 1890,
+      "line": 1950,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 21,
       "kind": "ruff:SIM105",
-      "line": 1937,
+      "line": 1997,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 2017,
+      "line": 2077,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:I001",
-      "line": 2112,
+      "line": 2172,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 13,
       "kind": "ruff:RET505",
-      "line": 2137,
+      "line": 2197,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 2291,
+      "line": 2351,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 28,
       "kind": "ruff:UP045",
-      "line": 2535,
+      "line": 2595,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 25,
       "kind": "ruff:UP045",
-      "line": 2558,
+      "line": 2618,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 2607,
+      "line": 2667,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 13,
       "kind": "ruff:E731",
-      "line": 2661,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:E731",
-      "line": 2703,
+      "line": 2721,
       "path": "interfaces/research/api/app.py"
     },
     {
@@ -4534,123 +5578,123 @@
       "path": "interfaces/research/api/app.py"
     },
     {
+      "col": 13,
+      "kind": "ruff:E731",
+      "line": 2823,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
       "col": 17,
       "kind": "ruff:SIM105",
-      "line": 2804,
+      "line": 2864,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 2845,
+      "line": 2905,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 31,
       "kind": "ruff:UP017",
-      "line": 2855,
+      "line": 2915,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 49,
       "kind": "ruff:UP017",
-      "line": 2865,
+      "line": 2925,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 33,
       "kind": "ruff:UP015",
-      "line": 2874,
+      "line": 2934,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 60,
       "kind": "ruff:UP017",
-      "line": 2892,
+      "line": 2952,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 2934,
+      "line": 2994,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 13,
       "kind": "ruff:B904",
-      "line": 2983,
+      "line": 3043,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3014,
+      "line": 3074,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 24,
       "kind": "ruff:F401",
-      "line": 3016,
+      "line": 3076,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3047,
+      "line": 3107,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3165,
+      "line": 3225,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
-      "line": 3184,
+      "line": 3244,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:B904",
-      "line": 3228,
+      "line": 3288,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
-      "line": 3321,
+      "line": 3381,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 24,
       "kind": "ruff:UP041",
-      "line": 3329,
+      "line": 3389,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 29,
       "kind": "ruff:UP045",
-      "line": 3356,
+      "line": 3416,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
-      "line": 3357,
+      "line": 3417,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 26,
       "kind": "ruff:UP045",
-      "line": 3359,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:I001",
-      "line": 3372,
+      "line": 3419,
       "path": "interfaces/research/api/app.py"
     },
     {
@@ -4660,501 +5704,507 @@
       "path": "interfaces/research/api/app.py"
     },
     {
+      "col": 9,
+      "kind": "ruff:I001",
+      "line": 3492,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 3445,
+      "line": 3505,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
-      "line": 3446,
+      "line": 3506,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
-      "line": 3497,
+      "line": 3557,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 30,
       "kind": "ruff:UP045",
-      "line": 3537,
+      "line": 3597,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 31,
       "kind": "ruff:UP045",
-      "line": 3540,
+      "line": 3600,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 3541,
+      "line": 3601,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 3542,
+      "line": 3602,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 39,
       "kind": "ruff:B008",
-      "line": 3566,
+      "line": 3626,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3572,
+      "line": 3632,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
-      "line": 3591,
+      "line": 3651,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3593,
+      "line": 3653,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3607,
+      "line": 3667,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3625,
+      "line": 3685,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 36,
       "kind": "ruff:UP045",
-      "line": 3638,
+      "line": 3698,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3646,
+      "line": 3706,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3665,
+      "line": 3725,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 3687,
+      "line": 3747,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
-      "line": 3694,
+      "line": 3754,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 22,
       "kind": "ruff:UP045",
-      "line": 3695,
+      "line": 3755,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 38,
       "kind": "ruff:B008",
-      "line": 3733,
+      "line": 3793,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3735,
+      "line": 3795,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 37,
       "kind": "ruff:UP045",
-      "line": 3758,
+      "line": 3818,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 32,
       "kind": "ruff:UP045",
-      "line": 3759,
+      "line": 3819,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3762,
+      "line": 3822,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3781,
+      "line": 3841,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 43,
       "kind": "ruff:B008",
-      "line": 3799,
+      "line": 3859,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 3801,
+      "line": 3861,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 43,
       "kind": "ruff:B008",
-      "line": 3828,
+      "line": 3888,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 45,
       "kind": "ruff:B008",
-      "line": 3894,
+      "line": 3954,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 42,
       "kind": "ruff:B008",
-      "line": 3933,
+      "line": 3993,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:I001",
-      "line": 4042,
+      "line": 4102,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 40,
       "kind": "ruff:UP017",
-      "line": 4072,
+      "line": 4132,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 45,
       "kind": "ruff:B008",
-      "line": 4123,
+      "line": 4183,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:I001",
-      "line": 4141,
+      "line": 4201,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 40,
       "kind": "ruff:UP017",
-      "line": 4169,
+      "line": 4229,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 4248,
+      "line": 4308,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 34,
       "kind": "ruff:B008",
-      "line": 4259,
+      "line": 4319,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 42,
       "kind": "ruff:B008",
-      "line": 4307,
+      "line": 4367,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 37,
       "kind": "ruff:B008",
-      "line": 4362,
+      "line": 4422,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 13,
       "kind": "ruff:I001",
-      "line": 4408,
+      "line": 4468,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 25,
       "kind": "ruff:SIM105",
-      "line": 4423,
+      "line": 4483,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 25,
       "kind": "ruff:SIM105",
-      "line": 4433,
+      "line": 4493,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 25,
       "kind": "ruff:SIM105",
-      "line": 4443,
+      "line": 4503,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 37,
       "kind": "ruff:UP045",
-      "line": 4449,
+      "line": 4509,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 36,
       "kind": "ruff:UP017",
-      "line": 4474,
+      "line": 4534,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
-      "line": 4506,
+      "line": 4566,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 33,
       "kind": "ruff:UP045",
-      "line": 4568,
+      "line": 4628,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 42,
       "kind": "ruff:B008",
-      "line": 4576,
+      "line": 4636,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 13,
       "kind": "ruff:I001",
-      "line": 4600,
+      "line": 4660,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 36,
       "kind": "ruff:UP017",
-      "line": 4622,
+      "line": 4682,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 38,
       "kind": "ruff:B008",
-      "line": 4650,
+      "line": 4710,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 20,
       "kind": "ruff:UP045",
-      "line": 4729,
+      "line": 4789,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 44,
       "kind": "ruff:B008",
-      "line": 4821,
+      "line": 4881,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 13,
       "kind": "ruff:B904",
-      "line": 4837,
+      "line": 4897,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 29,
       "kind": "ruff:UP045",
-      "line": 4865,
+      "line": 4925,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 31,
       "kind": "ruff:UP045",
-      "line": 4866,
+      "line": 4926,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 15,
       "kind": "ruff:UP045",
-      "line": 4869,
+      "line": 4929,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 4870,
+      "line": 4930,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 4880,
+      "line": 4940,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 31,
       "kind": "ruff:UP045",
-      "line": 4881,
+      "line": 4941,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 46,
       "kind": "ruff:B008",
-      "line": 4966,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:I001",
-      "line": 4971,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 34,
-      "kind": "ruff:UP045",
       "line": 5026,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 5048,
+      "line": 5031,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 13,
-      "kind": "ruff:B904",
-      "line": 5055,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:B904",
-      "line": 5064,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:B904",
-      "line": 5070,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 17,
+      "col": 34,
       "kind": "ruff:UP045",
-      "line": 5103,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 51,
-      "kind": "ruff:UP037",
-      "line": 5110,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 36,
-      "kind": "ruff:B008",
-      "line": 5133,
+      "line": 5086,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 5138,
+      "line": 5108,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 5314,
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 5115,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 5315,
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 5124,
       "path": "interfaces/research/api/app.py"
     },
     {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 5316,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 27,
-      "kind": "ruff:UP045",
-      "line": 5318,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 5319,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 5320,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 5330,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 27,
-      "kind": "ruff:UP045",
-      "line": 5331,
-      "path": "interfaces/research/api/app.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 5386,
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 5130,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 5433,
+      "line": 5163,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 51,
+      "kind": "ruff:UP037",
+      "line": 5170,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:B008",
+      "line": 5193,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:I001",
+      "line": 5198,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 5374,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 5434,
+      "line": 5375,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:UP045",
+      "line": 5376,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:UP045",
+      "line": 5378,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:UP045",
+      "line": 5379,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 5380,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 5390,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:UP045",
+      "line": 5391,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 5446,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 5493,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 5494,
       "path": "interfaces/research/api/app.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
-      "line": 5435,
+      "line": 5495,
       "path": "interfaces/research/api/app.py"
     },
     {
@@ -5996,6 +7046,66 @@
       "kind": "ruff:UP045",
       "line": 400,
       "path": "interfaces/research/api/grounding.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 195,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 223,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 32,
+      "kind": "ruff:UP045",
+      "line": 337,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 371,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:UP045",
+      "line": 415,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 440,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 499,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 568,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 39,
+      "kind": "ruff:UP045",
+      "line": 571,
+      "path": "interfaces/research/api/krea_routes.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 576,
+      "path": "interfaces/research/api/krea_routes.py"
     },
     {
       "col": 1,
@@ -7800,43 +8910,73 @@
     {
       "col": 22,
       "kind": "ruff:UP045",
-      "line": 52,
+      "line": 58,
       "path": "middleware/outcomes/events.py"
     },
     {
       "col": 6,
       "kind": "ruff:UP045",
-      "line": 53,
+      "line": 59,
       "path": "middleware/outcomes/events.py"
     },
     {
       "col": 26,
       "kind": "ruff:UP045",
-      "line": 120,
+      "line": 126,
       "path": "middleware/outcomes/events.py"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
-      "line": 121,
+      "line": 127,
       "path": "middleware/outcomes/events.py"
     },
     {
       "col": 22,
       "kind": "ruff:UP045",
-      "line": 122,
+      "line": 128,
       "path": "middleware/outcomes/events.py"
     },
     {
       "col": 22,
       "kind": "ruff:UP045",
-      "line": 124,
+      "line": 130,
       "path": "middleware/outcomes/events.py"
     },
     {
       "col": 6,
       "kind": "ruff:UP045",
-      "line": 125,
+      "line": 131,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 164,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 166,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 6,
+      "kind": "ruff:UP045",
+      "line": 167,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 205,
+      "path": "middleware/outcomes/events.py"
+    },
+    {
+      "col": 6,
+      "kind": "ruff:UP045",
+      "line": 206,
       "path": "middleware/outcomes/events.py"
     },
     {
@@ -8736,181 +9876,175 @@
     {
       "col": 1,
       "kind": "ruff:I001",
-      "line": 70,
+      "line": 71,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
-      "line": 102,
+      "line": 103,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 9,
       "kind": "ruff:F541",
-      "line": 153,
+      "line": 156,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 18,
       "kind": "ruff:B905",
-      "line": 174,
+      "line": 177,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 187,
+      "line": 190,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 273,
+      "line": 276,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 20,
-      "kind": "ruff:UP045",
-      "line": 275,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 277,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 23,
       "kind": "ruff:UP045",
       "line": 278,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 279,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 21,
+      "col": 17,
       "kind": "ruff:UP045",
       "line": 280,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
-      "col": 19,
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 281,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 282,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 21,
       "kind": "ruff:UP045",
       "line": 283,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 286,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
       "col": 30,
       "kind": "ruff:UP045",
-      "line": 291,
+      "line": 294,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 12,
       "kind": "ruff:UP041",
-      "line": 335,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:I001",
-      "line": 668,
+      "line": 338,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
-      "line": 781,
+      "line": 881,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
-      "line": 842,
+      "line": 942,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 952,
+      "line": 1052,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 14,
       "kind": "ruff:UP045",
-      "line": 976,
+      "line": 1076,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 983,
+      "line": 1083,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
-      "line": 987,
+      "line": 1087,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 58,
       "kind": "ruff:UP045",
-      "line": 997,
+      "line": 1097,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
-      "line": 1009,
+      "line": 1109,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 24,
       "kind": "ruff:B009",
-      "line": 1011,
+      "line": 1111,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 1038,
+      "line": 1138,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 9,
       "kind": "ruff:I001",
-      "line": 1044,
+      "line": 1144,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 26,
       "kind": "ruff:UP045",
-      "line": 1046,
+      "line": 1146,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 36,
       "kind": "ruff:UP017",
-      "line": 1056,
+      "line": 1156,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 20,
       "kind": "ruff:UP045",
-      "line": 1066,
+      "line": 1166,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 1128,
+      "line": 1228,
       "path": "orchestration/loop_one/orchestrator.py"
     },
     {
@@ -11456,6 +12590,24 @@
       "kind": "ruff:UP045",
       "line": 147,
       "path": "runtime/research_runner/protocol.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 69,
+      "path": "runtime/staging_db.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:UP045",
+      "line": 69,
+      "path": "runtime/staging_db.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP045",
+      "line": 93,
+      "path": "runtime/staging_db.py"
     },
     {
       "col": 1,
@@ -14866,6 +16018,114 @@
       "path": "substrate/coordination/roadmap.py"
     },
     {
+      "col": 44,
+      "kind": "ruff:F401",
+      "line": 99,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F401",
+      "line": 115,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 340,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 410,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 411,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 412,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 413,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 414,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:UP045",
+      "line": 453,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 53,
+      "kind": "ruff:UP045",
+      "line": 510,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP031",
+      "line": 540,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM114",
+      "line": 629,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 651,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 706,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 810,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 811,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP045",
+      "line": 858,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 897,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
       "col": 1,
       "kind": "ruff:I001",
       "line": 37,
@@ -15244,6 +16504,192 @@
       "path": "substrate/cross_graph_writer/queue.py"
     },
     {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 92,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 125,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 167,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 168,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 169,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 170,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 171,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 172,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP045",
+      "line": 173,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 174,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:UP045",
+      "line": 195,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 195,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP045",
+      "line": 226,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:UP045",
+      "line": 226,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP045",
+      "line": 270,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:UP045",
+      "line": 270,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:UP045",
+      "line": 290,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 54,
+      "kind": "ruff:UP045",
+      "line": 290,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP045",
+      "line": 331,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:UP045",
+      "line": 331,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP045",
+      "line": 349,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 53,
+      "kind": "ruff:UP045",
+      "line": 349,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 71,
+      "kind": "ruff:UP045",
+      "line": 349,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP012",
+      "line": 356,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 61,
+      "kind": "ruff:UP045",
+      "line": 360,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP045",
+      "line": 473,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 474,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP045",
+      "line": 523,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 549,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 41,
+      "kind": "ruff:UP045",
+      "line": 549,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 568,
+      "path": "substrate/dedup.py"
+    },
+    {
       "col": 1,
       "kind": "ruff:I001",
       "line": 18,
@@ -15336,13 +16782,13 @@
     {
       "col": 20,
       "kind": "ruff:UP045",
-      "line": 98,
+      "line": 115,
       "path": "substrate/dispatch/base.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 100,
+      "line": 117,
       "path": "substrate/dispatch/base.py"
     },
     {
@@ -15402,13 +16848,13 @@
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 79,
+      "line": 96,
       "path": "substrate/dispatch/providers/anthropic.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 83,
+      "line": 100,
       "path": "substrate/dispatch/providers/anthropic.py"
     },
     {
@@ -15690,91 +17136,91 @@
     {
       "col": 46,
       "kind": "ruff:UP045",
-      "line": 246,
+      "line": 275,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 64,
       "kind": "ruff:UP045",
-      "line": 246,
+      "line": 275,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 22,
       "kind": "ruff:UP045",
-      "line": 263,
+      "line": 292,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 20,
       "kind": "ruff:UP045",
-      "line": 274,
+      "line": 303,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 28,
       "kind": "ruff:UP045",
-      "line": 275,
+      "line": 304,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 6,
       "kind": "ruff:UP045",
-      "line": 276,
+      "line": 305,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 306,
+      "line": 335,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 28,
       "kind": "ruff:UP045",
-      "line": 308,
+      "line": 337,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 22,
       "kind": "ruff:UP045",
-      "line": 309,
+      "line": 338,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
-      "line": 310,
+      "line": 339,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
-      "line": 311,
+      "line": 340,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 24,
       "kind": "ruff:UP045",
-      "line": 312,
+      "line": 341,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
-      "line": 313,
+      "line": 342,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 394,
+      "line": 423,
       "path": "substrate/dispatch/router.py"
     },
     {
       "col": 14,
       "kind": "ruff:UP045",
-      "line": 396,
+      "line": 425,
       "path": "substrate/dispatch/router.py"
     },
     {
@@ -17747,6 +19193,102 @@
     },
     {
       "col": 1,
+      "kind": "ruff:UP035",
+      "line": 79,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 108,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:UP045",
+      "line": 201,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 233,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 241,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP045",
+      "line": 259,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:UP045",
+      "line": 317,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 50,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 87,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:UP037",
+      "line": 92,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:UP037",
+      "line": 117,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 148,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 193,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 212,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 213,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:UP045",
+      "line": 248,
+      "path": "substrate/ingest_checkpoint.py"
+    },
+    {
+      "col": 1,
       "kind": "ruff:I001",
       "line": 16,
       "path": "substrate/ip_holders/__init__.py"
@@ -17822,6 +19364,12 @@
       "kind": "ruff:UP045",
       "line": 200,
       "path": "substrate/ip_holders/__init__.py"
+    },
+    {
+      "col": 6,
+      "kind": "ruff:UP045",
+      "line": 35,
+      "path": "substrate/ip_holders/gated_accrual.py"
     },
     {
       "col": 13,
@@ -18696,7 +20244,13 @@
     {
       "col": 32,
       "kind": "ruff:B008",
-      "line": 64,
+      "line": 67,
+      "path": "substrate/quality_gate/checks.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 168,
       "path": "substrate/quality_gate/checks.py"
     },
     {
@@ -18726,13 +20280,19 @@
     {
       "col": 24,
       "kind": "ruff:UP045",
-      "line": 102,
+      "line": 112,
       "path": "substrate/quality_gate/gate.py"
     },
     {
       "col": 24,
       "kind": "ruff:UP045",
-      "line": 103,
+      "line": 113,
+      "path": "substrate/quality_gate/gate.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP045",
+      "line": 114,
       "path": "substrate/quality_gate/gate.py"
     },
     {
@@ -19260,655 +20820,31 @@
     {
       "col": 1,
       "kind": "ruff:I001",
-      "line": 12,
-      "path": "substrate/schemas/__init__.py"
+      "line": 33,
+      "path": "substrate/rights_audit.py"
     },
     {
       "col": 1,
-      "kind": "ruff:I001",
-      "line": 44,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 7,
-      "kind": "ruff:UP042",
-      "line": 58,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 661,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 28,
-      "kind": "ruff:UP045",
-      "line": 664,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 721,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 34,
-      "kind": "ruff:UP045",
-      "line": 739,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:UP045",
-      "line": 750,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 751,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 752,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 11,
-      "kind": "ruff:UP045",
-      "line": 758,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 11,
-      "kind": "ruff:UP045",
-      "line": 761,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 770,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 26,
-      "kind": "ruff:UP045",
-      "line": 797,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 799,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 805,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 813,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 832,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 857,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 975,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 1221,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 1222,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 1270,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 1376,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 1394,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 26,
-      "kind": "ruff:UP045",
-      "line": 1395,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 1396,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 1556,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 1557,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 1558,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 1572,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 1573,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 26,
-      "kind": "ruff:UP045",
-      "line": 1632,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 1677,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 28,
-      "kind": "ruff:UP045",
-      "line": 1678,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 1691,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 1703,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 1761,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 1793,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 1794,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 1828,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 30,
-      "kind": "ruff:UP045",
-      "line": 1834,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 1835,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 1868,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 1911,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 1959,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 1960,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 1978,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 27,
-      "kind": "ruff:UP045",
-      "line": 1994,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:UP045",
-      "line": 2030,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 11,
-      "kind": "ruff:UP045",
-      "line": 2034,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:UP045",
-      "line": 2046,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 2155,
-      "path": "substrate/schemas/events.py"
+      "kind": "ruff:UP035",
+      "line": 36,
+      "path": "substrate/rights_audit.py"
     },
     {
       "col": 37,
       "kind": "ruff:UP045",
-      "line": 2167,
-      "path": "substrate/schemas/events.py"
+      "line": 74,
+      "path": "substrate/rights_audit.py"
     },
     {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 2231,
-      "path": "substrate/schemas/events.py"
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 12,
+      "path": "substrate/schemas/__init__.py"
     },
     {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 2245,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 11,
-      "kind": "ruff:UP045",
-      "line": 2294,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 20,
-      "kind": "ruff:UP045",
-      "line": 2295,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 2305,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 2342,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:UP045",
-      "line": 2389,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 2406,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 2534,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 2535,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 2536,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:UP045",
-      "line": 2668,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 2672,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:UP045",
-      "line": 2673,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 2677,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 27,
-      "kind": "ruff:UP045",
-      "line": 2686,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 27,
-      "kind": "ruff:UP045",
-      "line": 2692,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 2696,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 2726,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 2731,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:UP045",
-      "line": 2781,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 2782,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 2783,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 2784,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 27,
-      "kind": "ruff:UP045",
-      "line": 2785,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 2796,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 14,
-      "kind": "ruff:UP045",
-      "line": 2940,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:UP045",
-      "line": 2999,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 3031,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 3035,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 21,
-      "kind": "ruff:UP045",
-      "line": 3036,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 3037,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 3038,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 3043,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 3086,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 32,
-      "kind": "ruff:UP045",
-      "line": 3142,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 3165,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 23,
-      "kind": "ruff:UP045",
-      "line": 3166,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:UP045",
-      "line": 3202,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 3239,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 3244,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 3284,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:UP045",
-      "line": 3330,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 3333,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 15,
-      "kind": "ruff:UP045",
-      "line": 3375,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:UP045",
-      "line": 3400,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:UP007",
-      "line": 3496,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 19,
-      "kind": "ruff:UP045",
-      "line": 3780,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 12,
-      "kind": "ruff:UP045",
-      "line": 3781,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 11,
-      "kind": "ruff:UP045",
-      "line": 3782,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 3785,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:UP045",
-      "line": 3790,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 53,
-      "kind": "ruff:UP037",
-      "line": 3793,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 56,
-      "kind": "ruff:UP037",
-      "line": 3809,
-      "path": "substrate/schemas/events.py"
-    },
-    {
-      "col": 29,
-      "kind": "ruff:UP017",
-      "line": 3824,
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 57,
       "path": "substrate/schemas/events.py"
     },
     {
@@ -20048,6 +20984,54 @@
       "kind": "ruff:UP045",
       "line": 283,
       "path": "substrate/seams/thread.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 49,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:UP037",
+      "line": 128,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:UP037",
+      "line": 148,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 178,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP045",
+      "line": 180,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 261,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 277,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 352,
+      "path": "substrate/source_throttle.py"
     },
     {
       "col": 1,
@@ -21497,6 +22481,72 @@
     },
     {
       "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/_textbook_fixtures.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 69,
+      "path": "tests/_textbook_fixtures.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/books/conftest.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 41,
+      "path": "tests/books/conftest.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:UP045",
+      "line": 47,
+      "path": "tests/books/conftest.py"
+    },
+    {
+      "col": 46,
+      "kind": "ruff:UP045",
+      "line": 53,
+      "path": "tests/books/conftest.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 14,
+      "path": "tests/books/test_pd_dedup_cross_source.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 39,
+      "path": "tests/books/test_pd_dedup_cross_source.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:F401",
+      "line": 11,
+      "path": "tests/books/test_standard_ebooks.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 115,
+      "path": "tests/books/test_standard_ebooks.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:B011",
+      "line": 130,
+      "path": "tests/books/test_standard_ebooks.py"
+    },
+    {
+      "col": 1,
       "kind": "ruff:I001",
       "line": 52,
       "path": "tests/e2e/test_flywheel.py"
@@ -22476,6 +23526,12 @@
     {
       "col": 1,
       "kind": "ruff:I001",
+      "line": 36,
+      "path": "tests/test_arxiv_bulk.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
       "line": 29,
       "path": "tests/test_arxiv_ingest.py"
     },
@@ -23093,6 +24149,42 @@
     },
     {
       "col": 1,
+      "kind": "ruff:E402",
+      "line": 33,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 33,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 34,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 44,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 45,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP031",
+      "line": 428,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
       "kind": "ruff:I001",
       "line": 27,
       "path": "tests/test_corpus_ingest_resilience.py"
@@ -23300,30 +24392,6 @@
       "kind": "ruff:UP017",
       "line": 179,
       "path": "tests/test_deletion_worker.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:F401",
-      "line": 31,
-      "path": "tests/test_dispatch.py"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 40,
-      "path": "tests/test_dispatch.py"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F401",
-      "line": 43,
-      "path": "tests/test_dispatch.py"
-    },
-    {
-      "col": 31,
-      "kind": "ruff:F401",
-      "line": 54,
-      "path": "tests/test_dispatch.py"
     },
     {
       "col": 1,
@@ -23794,6 +24862,36 @@
       "path": "tests/test_grounding.py"
     },
     {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 28,
+      "path": "tests/test_ingest_budget.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 27,
+      "path": "tests/test_ingest_checkpoint.py"
+    },
+    {
+      "col": 58,
+      "kind": "ruff:F401",
+      "line": 30,
+      "path": "tests/test_ingest_checkpoint.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 249,
+      "path": "tests/test_ingest_checkpoint.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 31,
+      "path": "tests/test_ingest_observability.py"
+    },
+    {
       "col": 5,
       "kind": "ruff:I001",
       "line": 226,
@@ -23876,6 +24974,18 @@
       "kind": "ruff:SIM300",
       "line": 53,
       "path": "tests/test_ip_holders.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 24,
+      "path": "tests/test_krea_routes.py"
+    },
+    {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 26,
+      "path": "tests/test_krea_routes.py"
     },
     {
       "col": 1,
@@ -24032,6 +25142,24 @@
       "kind": "ruff:F841",
       "line": 137,
       "path": "tests/test_max_context_pack.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 41,
+      "path": "tests/test_merge_staging.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 57,
+      "path": "tests/test_merge_staging.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP015",
+      "line": 494,
+      "path": "tests/test_merge_staging.py"
     },
     {
       "col": 1,
@@ -24232,6 +25360,24 @@
       "path": "tests/test_ops_provider_ratio.py"
     },
     {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 223,
+      "path": "tests/test_opt_in_intake.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 270,
+      "path": "tests/test_opt_in_intake.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 398,
+      "path": "tests/test_opt_in_intake.py"
+    },
+    {
       "col": 26,
       "kind": "ruff:SIM115",
       "line": 321,
@@ -24398,6 +25544,30 @@
       "kind": "ruff:I001",
       "line": 8,
       "path": "tests/test_ownership.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 18,
+      "path": "tests/test_papers_arxiv_bulk.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:SIM115",
+      "line": 148,
+      "path": "tests/test_papers_arxiv_bulk.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP015",
+      "line": 148,
+      "path": "tests/test_papers_arxiv_bulk.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 19,
+      "path": "tests/test_papers_dedup_collapse.py"
     },
     {
       "col": 1,
@@ -24816,6 +25986,12 @@
     {
       "col": 1,
       "kind": "ruff:I001",
+      "line": 17,
+      "path": "tests/test_rights_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
       "line": 8,
       "path": "tests/test_rlm_bridge.py"
     },
@@ -25122,8 +26298,14 @@
     {
       "col": 16,
       "kind": "ruff:B011",
-      "line": 192,
+      "line": 204,
       "path": "tests/test_seam_single_escrow_writer.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 19,
+      "path": "tests/test_servability_drift_guard.py"
     },
     {
       "col": 20,
@@ -25190,6 +26372,12 @@
       "kind": "ruff:F841",
       "line": 680,
       "path": "tests/test_skills_verification.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:B905",
+      "line": 193,
+      "path": "tests/test_source_throttle.py"
     },
     {
       "col": 1,
@@ -25738,6 +26926,192 @@
       "path": "tests/test_telemetry_preferences.py"
     },
     {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 17,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 25,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 26,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:F811",
+      "line": 95,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 56,
+      "kind": "ruff:F811",
+      "line": 116,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 25,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:F811",
+      "line": 90,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:F811",
+      "line": 149,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 18,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 25,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 26,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:F811",
+      "line": 84,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 15,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 21,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 25,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 56,
+      "kind": "ruff:F811",
+      "line": 91,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:F811",
+      "line": 125,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
       "col": 5,
       "kind": "ruff:F401",
       "line": 13,
@@ -26242,42 +27616,6 @@
       "path": "tools/codegen/emit_contracts.py"
     },
     {
-      "col": 8,
-      "kind": "ruff:F401",
-      "line": 55,
-      "path": "tools/codegen/emit_types.py"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:I001",
-      "line": 70,
-      "path": "tools/codegen/emit_types.py"
-    },
-    {
-      "col": 57,
-      "kind": "ruff:UP007",
-      "line": 326,
-      "path": "tools/codegen/emit_types.py"
-    },
-    {
-      "col": 16,
-      "kind": "ruff:RET504",
-      "line": 457,
-      "path": "tools/codegen/emit_types.py"
-    },
-    {
-      "col": 5,
-      "kind": "ruff:F841",
-      "line": 526,
-      "path": "tools/codegen/emit_types.py"
-    },
-    {
-      "col": 24,
-      "kind": "ruff:UP045",
-      "line": 575,
-      "path": "tools/codegen/emit_types.py"
-    },
-    {
       "col": 17,
       "kind": "ruff:UP045",
       "line": 64,
@@ -26746,6 +28084,18 @@
       "path": "tools/marketplace/programmatic_gate.py"
     },
     {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 61,
+      "path": "tools/merge_staging.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 378,
+      "path": "tools/merge_staging.py"
+    },
+    {
       "col": 25,
       "kind": "ruff:UP017",
       "line": 56,
@@ -26820,115 +28170,271 @@
     {
       "col": 31,
       "kind": "ruff:UP045",
-      "line": 114,
+      "line": 136,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 35,
       "kind": "ruff:UP045",
-      "line": 209,
+      "line": 308,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:UP045",
+      "line": 358,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 15,
       "kind": "ruff:UP045",
-      "line": 251,
+      "line": 437,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 40,
       "kind": "ruff:UP045",
-      "line": 251,
+      "line": 437,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 10,
       "kind": "ruff:UP045",
-      "line": 252,
+      "line": 438,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:UP045",
+      "line": 439,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 45,
       "kind": "ruff:UP045",
-      "line": 344,
+      "line": 554,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
-      "line": 354,
+      "line": 641,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 45,
       "kind": "ruff:UP045",
-      "line": 354,
+      "line": 641,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 10,
       "kind": "ruff:UP045",
-      "line": 355,
+      "line": 642,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
-      "line": 369,
+      "line": 663,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 28,
       "kind": "ruff:UP045",
-      "line": 455,
+      "line": 776,
       "path": "tools/run_corpus_ingest.py"
     },
     {
-      "col": 51,
+      "col": 56,
       "kind": "ruff:UP045",
-      "line": 455,
+      "line": 777,
       "path": "tools/run_corpus_ingest.py"
     },
     {
-      "col": 11,
+      "col": 28,
       "kind": "ruff:UP045",
-      "line": 456,
+      "line": 871,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:UP045",
+      "line": 872,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
-      "line": 487,
+      "line": 956,
       "path": "tools/run_corpus_ingest.py"
     },
     {
-      "col": 22,
-      "kind": "ruff:UP045",
-      "line": 603,
+      "col": 44,
+      "kind": "ruff:UP015",
+      "line": 988,
       "path": "tools/run_corpus_ingest.py"
     },
     {
-      "col": 40,
+      "col": 28,
       "kind": "ruff:UP045",
-      "line": 603,
+      "line": 1040,
       "path": "tools/run_corpus_ingest.py"
     },
     {
-      "col": 22,
+      "col": 51,
       "kind": "ruff:UP045",
-      "line": 609,
+      "line": 1040,
       "path": "tools/run_corpus_ingest.py"
     },
     {
-      "col": 40,
+      "col": 11,
       "kind": "ruff:UP045",
-      "line": 609,
+      "line": 1041,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 1085,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP045",
+      "line": 1139,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 1140,
       "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 16,
       "kind": "ruff:UP045",
-      "line": 656,
+      "line": 1141,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 1154,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 1478,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 1478,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 1484,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 1484,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 1716,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 1778,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 59,
+      "kind": "ruff:UP045",
+      "line": 1795,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 1861,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 1862,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP045",
+      "line": 1890,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F841",
+      "line": 1917,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP045",
+      "line": 1985,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 2054,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 2159,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 2160,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 2161,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:UP045",
+      "line": 2179,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 2245,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 47,
+      "kind": "ruff:UP017",
+      "line": 2327,
       "path": "tools/run_corpus_ingest.py"
     },
     {
