@@ -218,6 +218,15 @@ jobs:
         run: |
           python -m pytest tests/test_invariant_registry_meta.py -q -p no:cacheprovider -p no:xdist
 
+      - name: Source-onboarding corpus-value gate
+        # Reframe finding #2: the WIRED stop-rule replacing the spec's PROSE
+        # "measure before build". Blocks onboarding any source AFTER arXiv whose
+        # per-source corpus-value census (reports/source_census.json) falls below the
+        # bar (metadata-completeness / link-back-resolvability / dedup-overlap). It is
+        # a no-op (exit 0) until the P3b producer writes a census, and enforces the
+        # moment one lands. Models tools/lint/serve_guard_check.py (exit-code contract).
+        run: |
+          python tools/lint/source_gate.py
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
         # substrate/schemas/ without regenerating
