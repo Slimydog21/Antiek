@@ -91,7 +91,68 @@ CURATED_GUTENBERG_IDS: tuple[int, ...] = (
     98,     # Dickens — A Tale of Two Cities
     2542,   # Ibsen — A Doll's House
     1080,   # Swift — A Modest Proposal
+    # Public-relations / media history (Personal-Reading-Lane SPR-04)
+    61364,  # Edward Bernays — Crystallizing Public Opinion (1923, US PD pre-1929)
 )
+
+
+# Curated archive.org identifiers (Personal-Reading-Lane SPR-04). archive.org
+# is resolved per-identifier (NEVER free-text rights search) via
+# ``acquisition.books.public_domain.archive_candidate``; the item is ingested
+# ONLY if its rights/licenseurl field yields a PDM / "no known copyright"
+# basis. Each entry's curated term-reasoning basis is registered in
+# ``CURATED_ARCHIVE_PD_BASIS`` below and applied ONLY after that positive
+# source assertion (never manufacturing PD). Used for PD works Gutenberg lacks
+# a clean item for — e.g. Bernays's *Propaganda* (1928), which entered the US
+# public domain on 2024-01-01 under the 95-year term.
+CURATED_ARCHIVE_IDENTIFIERS: tuple[str, ...] = (
+    # Edward Bernays — Propaganda (1928 first edition); US PD 2024-01-01 under
+    # the 95-yr term. The Internet Archive item carries the 1928 first-edition
+    # text under a CC Public-Domain-Mark / "no known copyright restrictions"
+    # rights field; archive_candidate() gates on that PDM assertion.
+    "propaganda_201804",
+)
+
+
+# Curated, precise per-work license_basis strings (Personal-Reading-Lane
+# SPR-04). These restate the EXACT copyright-term reasoning a reviewer (or
+# counsel, re-reading in 2040 — rigor #5) needs next to the source's own
+# public-domain assertion. They are applied by
+# ``acquisition.books.public_domain._apply_curated_basis`` ONLY when the source
+# has ALREADY positively asserted PD (Gutenberg copyright=false / archive PDM):
+# the curated string refines the WORDING of an already-positive basis, it never
+# manufactures a public-domain claim from memory. Each string carries the term
+# reasoning + the source assertion (so the gutendex id / archive identifier
+# stays in the audit trail) + the literal token "public domain" so the stamped
+# ``book_assets.license_basis`` is self-explaining. The legal claim each string
+# encodes is documented in docs/decisions/bernays_public_domain.md.
+_CURATED_PD_BASIS: dict[str, str] = {
+    # Crystallizing Public Opinion (1923): published pre-1929, so it is US
+    # public domain by term expiry regardless of renewal. Gutenberg #61364.
+    "gutenberg:61364": (
+        "US PD pre-1929 (public domain); Project Gutenberg #61364 "
+        "(Crystallizing Public Opinion, 1923, Edward Bernays)"
+    ),
+    # Propaganda (1928): entered the US public domain on 2024-01-01 under the
+    # 95-year term (1928 + 95 = 2023; works enter PD on Jan 1 of the following
+    # year). Internet Archive Public-Domain-Mark item, 1928 first edition.
+    "archive:propaganda_201804": (
+        "US PD: 95-yr term; entered PD 2024-01-01 (public domain); "
+        "Internet Archive PDM (1928 first ed.) (Propaganda, Edward Bernays)"
+    ),
+}
+
+# Register the curated bases into the connector's override map at import time
+# (the connector applies them at candidate-construction). Registering here —
+# next to the curated id lists — keeps the curated spine (ids + their precise
+# bases) in ONE place for review, while the connector owns the deny-by-default
+# application rule.
+from acquisition.books.public_domain import (  # noqa: E402
+    CURATED_PD_BASIS_OVERRIDES,
+    archive_candidate,
+)
+
+CURATED_PD_BASIS_OVERRIDES.update(_CURATED_PD_BASIS)
 
 
 @dataclass(frozen=True)
@@ -117,18 +178,39 @@ def discover(
     ids: Optional[Sequence[int]],
     curated: bool,
     limit: int,
+    archive_client: Optional[SourceClient] = None,
 ) -> list[PublicDomainWork]:
-    """Resolve the selectors to a candidate list. Gutenberg is the only
-    discovery surface here; archive.org is reachable per-identifier via
-    ``acquisition.books.public_domain.archive_candidate`` but is not part of
-    the subject/curated discovery flow (its rights metadata is uploader free
-    text — see the module steelman)."""
+    """Resolve the selectors to a candidate list.
+
+    Gutenberg is the discovery surface for ``--subject`` / ``--search`` /
+    ``--ids``. archive.org is NOT free-text searched for rights (its metadata
+    is uploader free text — see the module steelman); it is reached ONLY
+    per-identifier via ``acquisition.books.public_domain.archive_candidate``,
+    and ONLY for the curated spine's named identifiers
+    (``CURATED_ARCHIVE_IDENTIFIERS``). A curated run therefore returns the
+    Gutenberg curated ids PLUS the explicitly-named archive items (each still
+    PDM-gated by ``archive_candidate``; a non-PD item resolves to None and is
+    dropped). ``archive_client`` lets a caller (or a test) inject a separate
+    client for the archive metadata source; it defaults to ``client``."""
     if curated:
         ids = list(CURATED_GUTENBERG_IDS)
         limit = max(limit, len(ids))
-    return gutenberg_candidates(
+    works = gutenberg_candidates(
         client, subject=subject, search=search, ids=ids, limit=limit
     )
+    if curated:
+        arc_client = archive_client or client
+        for identifier in CURATED_ARCHIVE_IDENTIFIERS:
+            try:
+                candidate = archive_candidate(arc_client, identifier)
+            except SourceError as exc:
+                logger.warning(
+                    "curated archive item %s skipped: %s", identifier, exc
+                )
+                continue
+            if candidate is not None:
+                works.append(candidate)
+    return works
 
 
 def run_batch(
