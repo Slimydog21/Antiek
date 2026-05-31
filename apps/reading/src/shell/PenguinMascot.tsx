@@ -1,10 +1,22 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../brand/Werner";
 import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import {
+  createWernerStage,
+  EmoteView,
+  FOLLOW_EASE,
+  installChoreography,
+  installTargetChoreography,
+  useMouseFollow,
+  type EmoteKind,
+  type StageHost,
+  type WernerStageController,
+} from "../werner";
+import "../werner/waddle.css";
 
 /**
  * PenguinMascot (SPR-12 M3) — the project home, made playful.
@@ -59,6 +71,26 @@ import { useWorkspace } from "../workspace/WorkspaceStore";
  *
  * Mounted at AppShell level so it floats over the whole app, not inside
  * any one route.
+ *
+ * ─── SPR-05 / SPR-10 EXTENSION (steering + emote layer, additive) ───────
+ * The ratified model above is UNCHANGED. This component additionally hosts
+ * the Werner steering engine (src/werner/), which RIDES the same machinery
+ * — one penguin, one `pos` ref, one chained-timeout roam, one reduced-motion
+ * guard:
+ *   - the roam's hop target is now BIASED toward the ~5s-lagged cursor
+ *     (useMouseFollow) instead of a pure random hop; when the pointer is idle
+ *     it keeps the original bounded wander. Same loop, same clamp, same
+ *     class-swap, same reduced-motion early-return.
+ *   - a WernerStage controller (src/werner/WernerStage.ts) exposes the
+ *     imperative seam (moveTo / waddleToEl / emote / follow / idle / freeze)
+ *     by driving THIS component's roam + position through a StageHost adapter
+ *     — it never owns a second position.
+ *   - the SPR-10 choreography listener (PRODUCT_ACTIVATE → waddle-to-control
+ *     → hit emote → idle) is mounted here ONCE and torn down on unmount.
+ *   - under prefers-reduced-motion the stage is frozen: no follow, no
+ *     directed waddle (a small in-place acknowledgment emote instead) — the
+ *     same still floor the roam already honours.
+ * ───────────────────────────────────────────────────────────────────────
  */
 
 /** The one project-tree panel id the rest of the shell already uses. */
@@ -103,6 +135,30 @@ export function PenguinMascot() {
   // Lets non-effect handlers (pointer-up) restart the roam after a drag
   // paused it, without re-running the whole effect. null under reduced motion.
   const roamRearm = useRef<((delay?: number) => void) | null>(null);
+
+  // ── SPR-05/10 steering layer (additive). ──
+  // The ~5s-lagged cursor pursuit. Disabled (frozen) under reduced motion so
+  // there is zero involuntary follow. Read by the roam at the top of each leg.
+  const follow = useMouseFollow({ disabled: reduceMotion });
+  // The active emote mark, rendered over the Werner mark. Only changes when an
+  // emote starts/ends (not per roam leg), so it doesn't thrash the roam.
+  const [emote, setEmote] = useState<EmoteKind | null>(null);
+  // Directed-walk pause flag for the roam: while the stage is walking Werner to
+  // a button, the ambient roam stands down so the two don't fight the position.
+  const roamPaused = useRef(false);
+  // Whether the ambient roam should bias toward the cursor. Toggled via the
+  // stage's follow(); on by default (the operator's "track the mouse" ask).
+  const following = useRef(!reduceMotion);
+  // The imperative controller (the SPR-10 seam). Created once; its StageHost
+  // reuses THIS component's position + roam rather than forking a second one.
+  const stageRef = useRef<WernerStageController | null>(null);
+  // The roam effect's stroll primitives, handed to the StageHost so a directed
+  // walkTo reuses the EXACT same position write + gait swap as the ambient
+  // roam (one position source). null while reduced-motion (roam effect off).
+  const strollRef = useRef<
+    ((x: number, y: number, durationMs: number) => void) | null
+  >(null);
+  const restGaitRef = useRef<(() => void) | null>(null);
 
   const openTree = useWorkspace((s) => s.open);
   const setMode = useWorkspace((s) => s.setMode);
@@ -157,20 +213,76 @@ export function PenguinMascot() {
       roamTimer.current = window.setTimeout(stepOnce, delay);
     };
 
-    const stepOnce = () => {
+    // Walk Werner to (x,y) over `durationMs`, gait on, position eased. The
+    // SINGLE place a stroll happens — both the ambient roam (stepOnce) and the
+    // stage's directed walkTo route through here, so there is exactly one
+    // position write + one bob-class swap, never a forked second walker. The
+    // target is clamped on-screen here so neither caller can strand him.
+    const strollTo = (x: number, y: number, durationMs: number) => {
       const el = buttonRef.current;
       const bob = bobRef.current;
-      // Don't wander mid-drag — the pointer owns the position then.
-      if (!el || dragStart.current) {
-        roamTimer.current = window.setTimeout(stepOnce, REST_MIN_MS);
-        return;
-      }
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      // A short hop, not a teleport: pick a target within ~22% of the
-      // viewport of the current spot so he ambles rather than darts.
-      const reach = Math.max(120, Math.min(vw, vh) * 0.22);
+      if (!el) return;
       const target = clampRectToViewport(
+        { x, y, width: MASCOT_SIZE, height: MASCOT_SIZE },
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      pos.current = { x: target.x, y: target.y };
+      el.style.transition = `left ${durationMs}ms ease-in-out, top ${durationMs}ms ease-in-out`;
+      if (bob) {
+        // The at-rest `penguin-mascot-wander` and the walking `werner-waddle`
+        // both set `animation` on this one node — stacking them means the
+        // later rule wins and the walk bob is silently suppressed. Swap them
+        // so the feet actually bob while strolling; restore wander at rest.
+        bob.classList.remove("penguin-mascot-wander");
+        bob.classList.add("werner-waddle");
+        // The directed gait (a fuller waddle than the ambient drift) rides
+        // alongside the body bob so a waddle-to-button reads as deliberate
+        // walking. Cleared at end-of-leg with the rest.
+        bob.classList.add("werner-step");
+      }
+      applyPos();
+    };
+
+    // Drop the walk gait + transition and restore the at-rest wander. Shared
+    // end-of-leg cleanup so the walk/wander invariant holds for both callers.
+    const restGait = () => {
+      if (bobRef.current) {
+        bobRef.current.classList.remove("werner-waddle");
+        bobRef.current.classList.remove("werner-step");
+        bobRef.current.classList.add("penguin-mascot-wander");
+      }
+      if (buttonRef.current) buttonRef.current.style.transition = "";
+    };
+    // Expose the stroll primitives to the stage's StageHost (defined once,
+    // below) without re-creating the controller per roam re-render.
+    strollRef.current = strollTo;
+    restGaitRef.current = restGait;
+
+    // Pick the next ambient hop target. Biased toward the ~5s-lagged cursor
+    // (a lazy eased pursuit — close PART of the gap toward where the mouse was
+    // ~5s ago) when following + the pointer is moving; otherwise the original
+    // bounded random wander (a short hop, not a teleport). Either way clamped.
+    const nextHopTarget = (vw: number, vh: number) => {
+      const reach = Math.max(120, Math.min(vw, vh) * 0.22);
+      const reading = follow.read();
+      if (following.current && reading.target && !reading.pointerIdle) {
+        // Eased pursuit: move a fraction of the way toward the lagged point so
+        // he trails lazily rather than snapping onto it.
+        const dx = reading.target.x - pos.current.x;
+        const dy = reading.target.y - pos.current.y;
+        const ease = reading.ease ?? FOLLOW_EASE;
+        return clampRectToViewport(
+          {
+            x: pos.current.x + dx * ease,
+            y: pos.current.y + dy * ease,
+            width: MASCOT_SIZE,
+            height: MASCOT_SIZE,
+          },
+          { width: vw, height: vh },
+        );
+      }
+      // Idle pointer (or follow off): the original bounded wander.
+      return clampRectToViewport(
         {
           x: pos.current.x + (Math.random() * 2 - 1) * reach,
           y: pos.current.y + (Math.random() * 2 - 1) * reach,
@@ -179,30 +291,27 @@ export function PenguinMascot() {
         },
         { width: vw, height: vh },
       );
-      pos.current = { x: target.x, y: target.y };
-      // Walk: ease the position over STROLL_MS + bob the feet while moving.
-      el.style.transition = `left ${STROLL_MS}ms ease-in-out, top ${STROLL_MS}ms ease-in-out`;
-      if (bob) {
-        // The at-rest `penguin-mascot-wander` and the walking `werner-waddle`
-        // both set `animation` on this one node — stacking them means the
-        // later rule wins and the walk bob is silently suppressed. Swap them
-        // so the feet actually bob while strolling; restore wander at rest.
-        bob.classList.remove("penguin-mascot-wander");
-        bob.classList.add("werner-waddle");
+    };
+
+    const stepOnce = () => {
+      const el = buttonRef.current;
+      // Don't wander mid-drag (the pointer owns position) or while the stage is
+      // driving a directed walk (it owns position then) — just re-check soon.
+      if (!el || dragStart.current || roamPaused.current) {
+        roamTimer.current = window.setTimeout(stepOnce, REST_MIN_MS);
+        return;
       }
-      applyPos();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const target = nextHopTarget(vw, vh);
+      // Walk: ease the position over STROLL_MS + bob the feet while moving.
+      strollTo(target.x, target.y, STROLL_MS);
       // End-of-leg: stop the bob, drop the transition (so a drag stays
       // instant), and re-arm after a randomised rest. The timer chain IS the
       // loop — no continuous work between these wake-ups.
       roamTimer.current = window.setTimeout(() => {
-        if (bobRef.current) {
-          // Back to rest: drop the walk bob, restore the idle wander. (This
-          // effect only runs when reduceMotion is false, so re-adding the
-          // wander class here is always motion-safe.)
-          bobRef.current.classList.remove("werner-waddle");
-          bobRef.current.classList.add("penguin-mascot-wander");
-        }
-        if (buttonRef.current) buttonRef.current.style.transition = "";
+        // Don't fight a drag/directed-walk that began mid-leg.
+        if (!dragStart.current && !roamPaused.current) restGait();
         const rest = REST_MIN_MS + Math.random() * (REST_MAX_MS - REST_MIN_MS);
         roamTimer.current = window.setTimeout(stepOnce, rest);
       }, STROLL_MS);
@@ -216,10 +325,72 @@ export function PenguinMascot() {
         roamTimer.current = null;
       }
       roamRearm.current = null;
+      strollRef.current = null;
+      restGaitRef.current = null;
       if (buttonRef.current) buttonRef.current.style.transition = "";
-      if (bobRef.current) bobRef.current.classList.remove("werner-waddle");
+      if (bobRef.current) {
+        bobRef.current.classList.remove("werner-waddle");
+        bobRef.current.classList.remove("werner-step");
+      }
     };
-  }, [reduceMotion, applyPos]);
+  }, [reduceMotion, applyPos, follow]);
+
+  // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
+  // Created ONCE (empty deps). Its StageHost reuses this component's stroll /
+  // position / roam-pause / follow machinery via the refs above — no second
+  // position, no second roam. The choreography listener (PRODUCT_ACTIVATE →
+  // waddle-to-control → hit → idle) is mounted here once and torn down on
+  // unmount. Reduced-motion freeze/unfreeze is a SEPARATE effect (below) so a
+  // preference flip doesn't tear down + re-create the controller.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const host: StageHost = {
+      walkTo: (x, y, durationMs) => {
+        // Reuse the roam's stroll primitive if it's live (motion allowed);
+        // otherwise (reduced motion) the stage is frozen and never calls this.
+        strollRef.current?.(x, y, durationMs);
+      },
+      getPos: () => ({ x: pos.current.x, y: pos.current.y }),
+      setEmote: (kind) => setEmote(kind),
+      setFollowing: (on) => {
+        following.current = on;
+      },
+      setRoamPaused: (paused) => {
+        roamPaused.current = paused;
+        // When a directed walk ends, hand the gait back to rest so we don't
+        // leave the walk classes on (the dead-frame failure mode).
+        if (!paused) restGaitRef.current?.();
+      },
+    };
+    const stage = createWernerStage(host);
+    stageRef.current = stage;
+    // Two activation paths feed the one stage: product activations (click OR
+    // hotkey, via the shared event) and any opt-in `data-werner-target` button.
+    const teardownChoreo = installChoreography(stage);
+    const teardownTarget = installTargetChoreography(stage);
+    return () => {
+      teardownChoreo();
+      teardownTarget();
+      stage.dispose();
+      stageRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Reduced-motion / pointer-follow wiring for the stage. Freeze on reduced
+  // motion (no follow, no directed waddle — the still floor); otherwise enable
+  // ambient cursor-follow. Re-runs only when the preference flips.
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (reduceMotion) {
+      stage.freeze();
+      setEmote(null);
+    } else {
+      stage.unfreeze();
+      stage.follow(true);
+    }
+  }, [reduceMotion]);
 
   // ── Single-click: float the project tab. ──
   // Open the one project-tree panel in floating mode; if it already exists,
@@ -386,9 +557,43 @@ export function PenguinMascot() {
       <span
         ref={bobRef}
         className={reduceMotion ? "" : "penguin-mascot-wander"}
-        style={{ display: "block", width: MASCOT_SIZE, height: MASCOT_SIZE }}
+        style={{
+          display: "block",
+          width: MASCOT_SIZE,
+          height: MASCOT_SIZE,
+          position: "relative",
+        }}
       >
-        <Werner mood="idle" size={MASCOT_SIZE} label="Project" />
+        {/* The base Werner mark. When an emote is playing it is hidden behind
+            the emote overlay so we don't render two penguins stacked. */}
+        <span style={{ visibility: emote ? "hidden" : "visible" }}>
+          <Werner mood="idle" size={MASCOT_SIZE} label="Project" />
+        </span>
+        {/* The active emote (SPR-05) — an existing animated Werner mark mapped
+            to the emote kind, overlaid on the mascot. Keyed by kind so a
+            one-shot mark (fish / hit) remounts (restarts) per fire. The
+            `werner-hit-bump` rides on the wrapper for SPR-10's Tom-&-Jerry
+            button bump (still under reduced motion via waddle.css). EmoteView
+            renders a STILL pose when reduceMotion, so the overlay is a quiet
+            acknowledgment with no involuntary motion. */}
+        {emote ? (
+          <span
+            key={emote}
+            aria-hidden="true"
+            className={
+              !reduceMotion && emote === "hit" ? "werner-hit-bump" : undefined
+            }
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "block",
+              width: MASCOT_SIZE,
+              height: MASCOT_SIZE,
+            }}
+          >
+            <EmoteView kind={emote} size={MASCOT_SIZE} reduced={reduceMotion} />
+          </span>
+        ) : null}
       </span>
     </button>
   );

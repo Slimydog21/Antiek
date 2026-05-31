@@ -1,0 +1,38 @@
+/* scene.css — the SPR-04 living-mountainscape motion home.
+ *
+ * The scene's keyframes live HERE, in one consolidated motion home, rather
+ * than inline in each layer component — so the motion anti-noise guard
+ * (src/design/motion/motion.guard.test.ts) sanctions a single file instead of
+ * every layer .tsx. This mirrors the Werner mascot's src/werner/waddle.css
+ * pattern. Imported once by Scene.tsx.
+ *
+ * Reduced motion is enforced in TWO places that agree: structurally in JS
+ * (useSceneClock never schedules rAF when frozen, so the canvas layers stop),
+ * and here via the media query below (which also stops the CSS-driven penguin
+ * journey + bob — including the inner bob element, which the wrapper's
+ * `motion-reduce:` Tailwind variant alone would not reach). Colours are token
+ * vars only; this file declares motion, not palette, so it adds no hex. */
+
+@keyframes akb-krea-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 0.82; }
+}
+
+@keyframes akb-penguin-journey {
+  0%   { transform: translateX(-8vw) scale(1); }
+  88%  { transform: translateX(82vw) scale(0.55); opacity: 1; }
+  100% { transform: translateX(96vw) scale(0.4); opacity: 0; }
+}
+
+@keyframes akb-penguin-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-1.5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="krea-art-layer"] *,
+  [data-testid="penguin-journey"] * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

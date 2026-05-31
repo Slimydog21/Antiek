@@ -1,0 +1,62 @@
+/* KeyChip — SPR-08.
+ *
+ * The individual key glyph (`.antiek-keychip__key`) matches LemonInput's
+ * inline kbd idiom (LemonInput.tsx ~L48): a 2px-ink-bordered, rounded, mono
+ * chip with a small offset shadow. We deliberately SCOPE this to our own
+ * component class instead of restyling the shared global `.lemon-kbd` —
+ * redefining a global selector here diverged from LemonInput's real kbd
+ * geometry and risked leaking onto every kbd in the app. Painted from the
+ * Antiek design tokens (src/design/tokens.css) so it stays correct in
+ * day/night without a hardcoded fallback. This file also lays out the
+ * wrapper + the chord separator. */
+
+.antiek-keychip__key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--card);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  box-shadow: 1px 1px 0 0 var(--ink);
+}
+
+.antiek-keychip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.antiek-keychip__seq {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.antiek-keychip__then {
+  font-size: 10px;
+  text-transform: lowercase;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* md variant: slightly larger keys for the HUD listing. */
+.antiek-keychip--md .antiek-keychip__key {
+  min-width: 22px;
+  height: 22px;
+  font-size: 12px;
+}
+
+/* The .lemon-kbd has no transition by default; this hook lets a future
+ * hover-lift be suppressed under reduced-motion without changing markup. */
+.antiek-keychip--no-motion .antiek-keychip__key {
+  transition: none !important;
+}

@@ -226,3 +226,100 @@ export function buildShareableUrl(snapshot: PersistedSnapshot): string {
     window.location.hash
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Custom hotkeys — SPR-08 (ADDITIVE: a SEPARATE global-scoped, versioned
+// blob, deliberately NOT folded into the layout PersistedSnapshot)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Rationale for a separate blob (not a new field on PersistedSnapshot):
+// custom hotkeys are global + route-agnostic + low-churn, whereas the
+// layout snapshot is per-scope + high-churn (every panel move debounces a
+// write). Coupling them would (a) rewrite the hotkey map on every layout
+// tweak and (b) scatter the same hotkey map across the global/route/inv
+// scope keys. One global key, its own schemaVersion, owned by the hotkey
+// system. Stored at `antiek.workspace.custom-hotkeys`.
+
+const CUSTOM_HOTKEYS_KEY = LS_PREFIX + "custom-hotkeys";
+
+/** One persisted custom binding: a hotkey bound to ONE specific entity. */
+export interface PersistedCustomHotkey {
+  /** Stable id for this binding (uuid-ish). */
+  id: string;
+  /** Canonical binding spec, e.g. "g 1" or "j". */
+  spec: string;
+  /**
+   * Route TEMPLATE the entity lives on, with the param already substituted,
+   * e.g. "/inv/abc123" or "/read/doc-9". Stored fully-resolved so a press
+   * navigates deterministically without re-deriving the template.
+   */
+  route: string;
+  /** The bound entity id (investigationId / documentId / deliverableId / projectId). */
+  entityId: string;
+  /** Entity kind, for the HUD/affordance label. */
+  entityKind: "investigation" | "document" | "deliverable" | "project" | "mode";
+  /** Operator-readable label for the HUD (e.g. the investigation title). */
+  label: string;
+}
+
+/** The versioned envelope written to localStorage. */
+export interface PersistedCustomHotkeys {
+  schemaVersion: 1;
+  bindings: PersistedCustomHotkey[];
+}
+
+const EMPTY_CUSTOM_HOTKEYS: PersistedCustomHotkeys = {
+  schemaVersion: 1,
+  bindings: [],
+};
+
+/** Read the custom-hotkeys blob. Returns an empty (v1) envelope on miss,
+ *  parse error, or schema-version mismatch (forward-compat: ignore + log). */
+export function readCustomHotkeys(): PersistedCustomHotkeys {
+  if (typeof window === "undefined") return { ...EMPTY_CUSTOM_HOTKEYS };
+  try {
+    const raw = window.localStorage.getItem(CUSTOM_HOTKEYS_KEY);
+    if (!raw) return { ...EMPTY_CUSTOM_HOTKEYS };
+    const parsed = JSON.parse(raw) as PersistedCustomHotkeys;
+    if (typeof parsed !== "object" || parsed === null) {
+      return { ...EMPTY_CUSTOM_HOTKEYS };
+    }
+    if (parsed.schemaVersion !== 1) {
+      if (typeof console !== "undefined") {
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[antiek/persistence] ignoring custom-hotkeys with mismatched schemaVersion:",
+          parsed.schemaVersion,
+        );
+      }
+      return { ...EMPTY_CUSTOM_HOTKEYS };
+    }
+    if (!Array.isArray(parsed.bindings)) return { ...EMPTY_CUSTOM_HOTKEYS };
+    return parsed;
+  } catch {
+    return { ...EMPTY_CUSTOM_HOTKEYS };
+  }
+}
+
+/** Write the custom-hotkeys blob. Silent on quota errors. */
+export function writeCustomHotkeys(blob: PersistedCustomHotkeys): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      CUSTOM_HOTKEYS_KEY,
+      JSON.stringify({ schemaVersion: 1, bindings: blob.bindings }),
+    );
+  } catch {
+    // Quota exceeded / storage disabled — silent; in-memory state stands.
+  }
+}
+
+/** Delete the custom-hotkeys blob (reset-to-defaults). */
+export function clearCustomHotkeys(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(CUSTOM_HOTKEYS_KEY);
+  } catch {
+    // ignore
+  }
+}

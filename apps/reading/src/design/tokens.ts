@@ -26,6 +26,92 @@ export const sun = {
 } as const;
 
 /**
+ * The default chrome border — neutral "light" (AMS-SPR-01).
+ *
+ * Was `sun.base` (#F5DF24). The operator called the everywhere-yellow
+ * border "a bit too much of a bold yellow" and asked to "replace that
+ * yellowness with light." `rule` is that replacement: a calm, low-chroma
+ * blue-grey line — neutral, not yellow, and far less assertive than the
+ * lemon. Yellow is NOT gone from the brand: it survives as `sun` (Werner
+ * bill/feet) and as `barAccent` (the bottom bar). This token only retires
+ * yellow from the *default* border role.
+ *
+ * VALUE CHOICE — the honest contrast/calm tradeoff (rigor #1). The sprint's
+ * milestone-1 acceptance requires the new border ≥3:1 against its adjacent
+ * surfaces (WCAG 1.4.11 non-text contrast). A truly *pale* line (e.g.
+ * #C2CEDA, glacial-1) measures only ~1.6:1 on a white card — it would look
+ * "light" but FAIL the floor and effectively vanish, which is worse than the
+ * status quo. So `rule` is the LIGHTEST blue-grey that still clears 3:1 on
+ * the primary card surfaces, not the palest grey imaginable. Measured (see
+ * handoff contrast table for the full grid):
+ *   day   #788596 on ice-0 #FFFFFF → 3.75:1 ✓   on ice-1 #FBFCFD → 3.65:1 ✓
+ *                  on ice-2 (page) #F4F7FA → 3.49:1 ✓ ; ice-4 divider 2.94 (n/a:
+ *                  a border is drawn against card/page faces, not the divider band)
+ *   night #606C7E on card #1B202A → 3.07:1 ✓   on space-2 (page) #0D1019 → 3.57:1 ✓
+ * It reads calm and neutral next to the old lemon while remaining a definite,
+ * accessible line. Where a component wants a high-contrast emphasis edge it
+ * should use `ink`/`bright` or `barAccent`, never lean on the default rule.
+ */
+export const rule = {
+  day: "#788596", // calm blue-grey, lightest neutral clearing 3:1 on white cards
+  night: "#606C7E", // calm slate, lightest neutral clearing 3:1 on the night card
+} as const;
+
+/**
+ * The preserved bottom-bar yellow accent (AMS-SPR-01, consumed by SPR-06).
+ *
+ * The operator kept yellow "in style for the bottom tab." This names that
+ * intent so the NavRail/bottom bar can paint with a *semantic* accent token
+ * rather than reaching for raw `sun`. It resolves to the sun family in both
+ * modes (day = the lemon itself; night = the warmer glow so it reads on the
+ * dark sky). Decoupling this from the default border is the deliberate
+ * compromise: the brand yellow concentrates on the one surface that should
+ * carry it, instead of diffusing across every chrome edge.
+ */
+export const barAccent = {
+  day: sun.base, // #F5DF24 — the brand lemon
+  night: sun.glow.night, // #FFEC5F — warmer glow, legible on the night sky
+} as const;
+
+/**
+ * Glass / transparency surfaces (AMS-SPR-01, consumed by SPR-03/04/09).
+ *
+ * The mountainscape scene (SPR-04) sits behind the working surfaces; these
+ * tokens are the semi-transparent panels + windows that let it show through.
+ *
+ *   bg          — the translucent panel fill (alpha tuned per mode).
+ *   border      — the translucent hairline edge of a glass panel.
+ *   blur        — the backdrop-filter blur radius.
+ *   bgSolid     — OPAQUE fallback for prefers-reduced-motion / no-scene /
+ *                 low-power: identical hue to `bg` at alpha 1 so a panel
+ *                 degrades to a flat card without a layout/colour jump.
+ *
+ * LEGIBILITY CONTRACT (text contrast floor): body text over glass must meet
+ * WCAG AA 4.5:1. Glass alone does NOT guarantee that — a busy scene behind
+ * can drop effective contrast. The consumer (SPR-03/04/09) MUST place text
+ * on a scrim: either (a) raise panel alpha toward `bgSolid`, or (b) add a
+ * solid text-backing band. The token layer documents the floor; the scene
+ * layer enforces it. Day glass is a near-white frost; night glass a deep
+ * slate frost — both chosen so that AT THE STATED ALPHA, body `text`
+ * (#0F1419 day / #EEF1F6 night) over the *solid* fallback already clears
+ * 4.5:1, leaving the scrim only to recover what scene-bleed costs.
+ */
+export const glass = {
+  day: {
+    bg: "rgba(251,252,253,0.72)", // card-soft (#FBFCFD) @ 0.72 — frost over scene
+    bgSolid: "#FBFCFD", // opaque fallback == card-soft, no colour jump
+    border: "rgba(15,20,25,0.12)", // ink (#0F1419) @ 0.12 — translucent hairline
+    blur: "12px", // backdrop-filter blur radius
+  },
+  night: {
+    bg: "rgba(27,32,42,0.66)", // charcoal-2 (#1B202A) @ 0.66 — frost over night sky
+    bgSolid: "#1B202A", // opaque fallback == charcoal-2 card
+    border: "rgba(238,241,246,0.14)", // bright (#EEF1F6) @ 0.14 — translucent hairline
+    blur: "12px",
+  },
+} as const;
+
+/**
  * 10-step surface ramps. Ordered light → dark for day,
  * void → starlight for night. Background, fill, and divider
  * tones all index into these.
@@ -69,7 +155,7 @@ export type SurfaceAliases = {
   muted: string;
   textMuted: string;
   text: string;
-  border: string; // ← always sun
+  border: string; // ← was always sun; re-pointed to neutral `rule` per AMS-SPR-01
 };
 
 export function aliasFor(m: Mode): SurfaceAliases {
@@ -84,7 +170,7 @@ export function aliasFor(m: Mode): SurfaceAliases {
       muted: r[6],
       textMuted: r[7],
       text: r[9],
-      border: sun.base,
+      border: rule.day, // was sun.base #F5DF24; toned to neutral light per AMS-SPR-01
     };
   }
   return {
@@ -96,7 +182,7 @@ export function aliasFor(m: Mode): SurfaceAliases {
     muted: r[7],
     textMuted: r[7],
     text: r[9],
-    border: sun.base,
+    border: rule.night, // was sun.base #F5DF24; toned to neutral light per AMS-SPR-01
   };
 }
 

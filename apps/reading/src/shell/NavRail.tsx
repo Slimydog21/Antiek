@@ -12,6 +12,11 @@ import {
 } from "./workflowTaxonomy";
 import { ProductsLauncher } from "./ProductsLauncher";
 import IglooMark from "../brand/werner/marks/IglooMark";
+import { KeyChip } from "../components/hotkeys/KeyChip";
+import {
+  bindingForProduct,
+  emitProductActivate,
+} from "../components/hotkeys/bindings";
 
 /**
  * NavRail (SPR-04) — the four-workflow content-first rail.
@@ -145,6 +150,8 @@ function RailButton({
   title,
   variant = "utility",
   orientation = "bottom",
+  productId,
+  binding,
 }: {
   icon: ReactNode;
   label: string;
@@ -153,6 +160,12 @@ function RailButton({
   title: string;
   variant?: "workflow" | "utility" | "more";
   orientation?: Orientation;
+  /** SPR-08 / SPR-10 geometry contract: stamps `data-product-id` so a
+   *  downstream listener (the penguin) can resolve the button's screen rect
+   *  via document.querySelector(`[data-product-id="…"]`). */
+  productId?: string;
+  /** SPR-08: the bound hotkey spec to show as an on-bar chip (e.g. "g r"). */
+  binding?: string;
 }) {
   const isWorkflow = variant === "workflow";
   const color = active
@@ -178,6 +191,7 @@ function RailButton({
       title={title}
       onClick={onClick}
       aria-current={active ? "page" : undefined}
+      data-product-id={productId}
       className={
         (orientation === "left" ? "mx-1.5 " : "mx-0.5 ") +
         "flex rounded relative " +
@@ -197,6 +211,18 @@ function RailButton({
         >
           {label}
         </span>
+      )}
+      {/* SPR-08 — the on-bar hotkey chip. A tiny, unobtrusive indicator under
+          the door label so the shortcut is "shown on-screen" (the operator's
+          headline ask). The chip is the announcer (it carries its own
+          aria-keyshortcuts); the button has none, so there's no double-
+          announce. */}
+      {binding && (
+        <KeyChip
+          binding={binding}
+          label={label}
+          className="mt-0.5 scale-90 opacity-80"
+        />
       )}
       <span className="sr-only">{label}</span>
     </button>
@@ -229,7 +255,12 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     window.dispatchEvent(new CustomEvent(SHORTCUT_EVENTS.PALETTE_TOGGLE));
 
   const selectWorkflow = (wf: Exclude<Workflow, "shared">) => {
-    navigate(WORKFLOWS[wf].defaultRoute);
+    const route = WORKFLOWS[wf].defaultRoute;
+    navigate(route);
+    // SPR-08/SPR-10 — a real click emits the SAME activation event the hotkey
+    // path emits (source differs only). This is the click≡hotkey parity the
+    // penguin (SPR-10) depends on. Navigation is AUGMENTED, not replaced.
+    emitProductActivate({ productId: wf, route, source: "click" });
     if (isMobile) setCollapsed(true);
   };
 
@@ -258,7 +289,12 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       type="button"
       title="Antiek · home"
       aria-label="Antiek home"
-      onClick={() => navigate("/home")}
+      data-product-id="home"
+      onClick={() => {
+        navigate("/home");
+        // SPR-08/SPR-10 click≡hotkey parity (matches `g h`).
+        emitProductActivate({ productId: "home", route: "/home", source: "click" });
+      }}
       className={
         "shrink-0 flex items-center justify-center bg-sun/95 hover:bg-sun " +
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink " +
@@ -302,6 +338,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
           onClick={() => selectWorkflow(wf)}
           variant="workflow"
           orientation={orientation}
+          productId={wf}
+          binding={bindingForProduct(wf)?.spec}
         />
       ))}
     </nav>
@@ -313,9 +351,16 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       label="More"
       title="More - all products, Operator, Trust, Settings"
       active={launcherOpen}
-      onClick={() => setLauncherOpen(true)}
+      onClick={() => {
+        setLauncherOpen(true);
+        // SPR-08/SPR-10 — More OPENS the launcher (no nav), so it emits a
+        // routeless activation, identical to the `g m` hotkey path.
+        emitProductActivate({ productId: "more", source: "click" });
+      }}
       variant="more"
       orientation={orientation}
+      productId="more"
+      binding={bindingForProduct("more")?.spec}
     />
   );
 

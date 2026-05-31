@@ -4,10 +4,13 @@ import { useNavigate } from "react-router-dom";
 import { AdBorderMount } from "./components/ad/AdBorderMount";
 import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
+import { Scene } from "./scene/Scene";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
+import { HotkeyHud } from "./components/hotkeys/HotkeyHud";
 import { PanelLayout } from "./workspace/PanelLayout";
+import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
 
@@ -84,7 +87,15 @@ export function AppShell({ children }: Props) {
     // docs/decisions/spr-06-edge-reservation-seam.md.
     <div
       data-akb-shell-frame
-      className="h-screen w-screen bg-ice-2 dark:bg-space-2 text-ink dark:text-bright overflow-hidden"
+      // SPR-04 — the frame background is now TRANSPARENT (was bg-ice-2 /
+      // dark:bg-space-2). The living mountainscape <Scene/> below paints the
+      // z-0 backdrop for the whole app, and the glass working surfaces float
+      // over it. The opaque ice/space surface is retained as the scene's OWN
+      // bottom-most layer (ProceduralSky's sky gradient uses the same token
+      // ramp), so there is no colour jump — the shell still reads ice by day,
+      // space by night, but now it can MOVE. text tokens stay on the frame so
+      // any chrome that doesn't set its own colour inherits readable ink.
+      className="h-screen w-screen bg-transparent text-ink dark:text-bright overflow-hidden"
       style={{
         paddingTop: "var(--akb-border-inset-top)",
         paddingRight: "var(--akb-border-inset-right)",
@@ -93,18 +104,35 @@ export function AppShell({ children }: Props) {
         boxSizing: "border-box",
       }}
     >
+      {/* SPR-04 — the living mountainscape. FIRST child so it sits at the very
+          back (z-0), painted behind the column. It is `absolute inset-0 z-0
+          pointer-events-none`, so it never captures input and the chrome /
+          glass surfaces in the column below render ON TOP of it. Procedural
+          clouds + wind + snow run always-on; Krea art refreshes the sky on
+          mood change; it freezes to one frame under reduced-motion and pauses
+          on a hidden tab. (It lives INSIDE the seam frame so the ad border's
+          reserved band, when SPR-07 lights it up, frames the scene too.) */}
+      <Scene />
+
       {/* Vertical column: topbar · full-width working region · bottom rail.
           The working region carries NO left gutter — it spans the full
-          width between the (zero-inset) left/right seam edges, symmetric. */}
-      <div className="h-full w-full flex flex-col">
+          width between the (zero-inset) left/right seam edges, symmetric.
+          `relative` so it stacks above the absolute z-0 scene. */}
+      <div className="relative h-full w-full flex flex-col">
         <Topbar />
-        <div className="flex-1 min-h-0 min-w-0">
+        <div className="relative flex-1 min-h-0 min-w-0">
           {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
               main slot: per-workflow action bar + in-scene tabs sit
               above the surface, while the Zustand panel workspace
               continues to dock left/right/bottom + float around it.
               The mode still mounts as a panel exactly as before. */}
           <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
+          {/* SPR-09 — transparent workspace windows float over the working
+              region + scene (this container is `relative` so the layer's
+              absolute inset-0 anchors here, between Topbar and the NavRail).
+              Renders nothing until a window opens. SPR-09's one-line wiring,
+              deferred to the AppShell owner so SPR-09 kept this file untouched. */}
+          <WindowsLayer />
         </div>
 
         {/* SPR-06 M2 — navigation moved from the LEFT rail to a horizontal
@@ -139,6 +167,12 @@ export function AppShell({ children }: Props) {
 
       {/* Toast viewport — single mount-point for the whole app */}
       <LemonToastViewport />
+
+      {/* SPR-08 — the keyboard cheat-sheet. Mounted ONCE here so a single
+          uncontrolled instance self-subscribes to the HELP_TOGGLE window event
+          (fired by `?` in shortcuts.ts, guarded so it never fires while
+          typing); ESC closes it via LemonModal's focus trap. */}
+      <HotkeyHud />
     </div>
   );
 }
