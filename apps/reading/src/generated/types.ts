@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 24;
+export const EVENT_SCHEMA_VERSION = 25;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -140,6 +140,7 @@ export const ActionType = {
   DOCUMENT_FILED_INTO_INVESTIGATION: "document.filed_into_investigation",
   GROUNDEDNESS_SCORED: "groundedness.scored",
   GROUNDEDNESS_FAILED: "groundedness.failed",
+  DOCUMENT_CONTENT_CLASS_DEFAULTED: "document.content_class_defaulted",
 } as const;
 export type ActionType = typeof ActionType[keyof typeof ActionType];
 
@@ -2118,6 +2119,29 @@ export interface BookTakenDownPayload {
 }
 
 /**
+ * A third-party ingest landed personal_reading by deny-by-default (Personal-
+ * Reading Lane SPR-01 M5). Emitted by ``substrate/graph/ops.py insert_document``
+ * when a third-party ``document_type`` (web_article / video_transcript /
+ * social_thread / newsletter_post) was inserted with ``content_class=None``: the
+ * guard writes ``content_class='personal_reading'`` instead of NULL — closing
+ * the §9.0 leak where a NULL content_class passed the public chunk-search gate
+ * and reached the monetized read path.
+ * 
+ * Carries the ingest classification trail — ``document_type`` (which set
+ * triggered the default) and the ``applied_content_class`` (always
+ * 'personal_reading' today; recorded explicitly so a future positive-basis
+ * default reads truthfully) — so the deny-by-default decision is
+ * reconstructable by a lawyer, not just a maintainer. The ``document_id`` of the
+ * classified row rides the Event envelope (``emit_typed(..., document_id=...)``).
+ * NEVER carries ``raw_text`` (§9.0: events carry no body).
+ */
+export interface DocumentContentClassDefaultedPayload {
+  action_type: "document.content_class_defaulted";
+  document_type: string;
+  applied_content_class: string;
+}
+
+/**
  * research → read. A researched insight surfaces in the reading corpus
  * (DRW SPR-01 node + Read corpus surface).
  */
@@ -2542,6 +2566,7 @@ export type TypedPayload =
   | SectionDraftGeneratedPayload
   | BookServabilityChangedPayload
   | BookTakenDownPayload
+  | DocumentContentClassDefaultedPayload
   | SeamResearchToReadPayload
   | SeamReadToResearchPayload
   | SeamReadToWritePayload
@@ -2609,6 +2634,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "dispatch.call",
   "distillation.delivered",
   "distillation.requested",
+  "document.content_class_defaulted",
   "document.filed_into_investigation",
   "document.loaded",
   "document.region_selected",

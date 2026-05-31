@@ -458,6 +458,17 @@ class ActionType(str, Enum):
     GROUNDEDNESS_SCORED = "groundedness.scored"
     GROUNDEDNESS_FAILED = "groundedness.failed"
 
+    # ── Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
+    #    Emitted when insert_document defaults a third-party document_type
+    #    (web_article / video_transcript / social_thread / newsletter_post) with
+    #    a NULL content_class to personal_reading — the owner-readable /
+    #    public-non-servable / non-attributable / non-trainable lane. Records
+    #    document_id + document_type + the applied content_class so the
+    #    deny-by-default decision is reconstructable (a third-party body never
+    #    landed NULL-that-serves on the public gate). NEVER carries raw_text
+    #    (§9.0: events carry no body).
+    DOCUMENT_CONTENT_CLASS_DEFAULTED = "document.content_class_defaulted"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -634,7 +645,20 @@ class ActionType(str, Enum):
 #     this sprint (the promote-to-gate criterion is written + dated in
 #     substrate/eval/groundedness/PROMOTE_TO_GATE.md, the flip happens
 #     later). specs/antiek-foundation-v2/ SPR-02. 2026-05-29.
-EVENT_SCHEMA_VERSION: int = 24
+# v25: Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
+#     One typed event (document.content_class_defaulted) records that
+#     insert_document defaulted a third-party document_type (web_article /
+#     video_transcript / social_thread / newsletter_post) with a NULL
+#     content_class to personal_reading — the fourth rights state
+#     (owner-readable, public-non-servable, non-attributable, non-trainable).
+#     The event closes the §9.0 leak where a NULL content_class passed the
+#     public chunk-search gate and was reachable on the monetized read path:
+#     fresh third-party ingests now land personal_reading at the write side and
+#     are excluded from the public serve / search / attribution / training paths
+#     at the read side. The payload carries document_id + document_type + the
+#     applied content_class ONLY — NEVER raw_text (§9.0: events carry no body).
+#     specs/antiek-personal-lane/ SPR-01. 2026-05-31.
+EVENT_SCHEMA_VERSION: int = 25
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -3091,6 +3115,30 @@ class BookTakenDownPayload(_PayloadBase):
     purged_full_text: bool = False
 
 
+class DocumentContentClassDefaultedPayload(_PayloadBase):
+    """A third-party ingest landed personal_reading by deny-by-default (Personal-
+    Reading Lane SPR-01 M5). Emitted by ``substrate/graph/ops.py insert_document``
+    when a third-party ``document_type`` (web_article / video_transcript /
+    social_thread / newsletter_post) was inserted with ``content_class=None``: the
+    guard writes ``content_class='personal_reading'`` instead of NULL — closing
+    the §9.0 leak where a NULL content_class passed the public chunk-search gate
+    and reached the monetized read path.
+
+    Carries the ingest classification trail — ``document_type`` (which set
+    triggered the default) and the ``applied_content_class`` (always
+    'personal_reading' today; recorded explicitly so a future positive-basis
+    default reads truthfully) — so the deny-by-default decision is
+    reconstructable by a lawyer, not just a maintainer. The ``document_id`` of the
+    classified row rides the Event envelope (``emit_typed(..., document_id=...)``).
+    NEVER carries ``raw_text`` (§9.0: events carry no body)."""
+
+    action_type: Literal[ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED] = (
+        ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED
+    )
+    document_type: str
+    applied_content_class: str
+
+
 # ── Write workflow — edit capture (Write SPR-02) ────────────────────
 
 
@@ -3584,7 +3632,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | ContextPackAssembledPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | ContextPackAssembledPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3697,6 +3745,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.EDIT_CAPTURED.value,
     # Write workflow SPR-09 — draft provenance persistence (X-ray).
     ActionType.SECTION_DRAFT_GENERATED.value,
+    # Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
+    ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED.value,
     # antiek-unified SPR-03 — cross-workflow seam handoffs.
     ActionType.SEAM_RESEARCH_TO_READ.value,
     ActionType.SEAM_READ_TO_RESEARCH.value,
@@ -3999,6 +4049,8 @@ __all__ = [
     # Read workflow SPR-01 — servable-corpus legal gate (v14 schema bump)
     "BookServabilityChangedPayload",
     "BookTakenDownPayload",
+    # Personal-Reading Lane SPR-01 — deny-by-default ingest classification (v25)
+    "DocumentContentClassDefaultedPayload",
     # Write workflow SPR-02 — edit capture (v15 schema bump)
     "EditCapturedPayload",
     # Write workflow SPR-09 — draft provenance persistence (v23 schema bump)

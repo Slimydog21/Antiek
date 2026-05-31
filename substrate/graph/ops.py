@@ -35,6 +35,10 @@ from datetime import datetime
 from typing import Any, Optional, Sequence
 
 try:
+    from ...constants import (
+        PERSONAL_READING_CONTENT_CLASS,
+        THIRD_PARTY_DOCUMENT_TYPES,
+    )
     from ...event_log import emit_typed
     from ...runtime.db_lock import LockedConnection
     from ...schemas import (
@@ -43,9 +47,14 @@ try:
         GraphScope,
         NodeType,
     )
+    from ...schemas.events import DocumentContentClassDefaultedPayload
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.constants import (  # type: ignore[no-redef]
+        PERSONAL_READING_CONTENT_CLASS,
+        THIRD_PARTY_DOCUMENT_TYPES,
+    )
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.schemas import (  # type: ignore[no-redef]
@@ -53,6 +62,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
         GraphNodeInsertedPayload,
         GraphScope,
         NodeType,
+    )
+    from substrate.schemas.events import (  # type: ignore[no-redef]
+        DocumentContentClassDefaultedPayload,
     )
 
 
@@ -129,6 +141,7 @@ def insert_document(
     content_class: Optional[str] = None,
     ip_holder_id: Optional[str] = None,
     on_conflict: OnConflict = "error",
+    events_dir: Optional[str] = None,
 ) -> str:
     """Insert one document row. Returns the document_id.
 
@@ -147,6 +160,31 @@ def insert_document(
     metadata-only. The Read ingest path (``substrate/books/ingest.py``)
     always sets both — never relying on the NULL fallthrough.
 
+    DENY-BY-DEFAULT GUARD (Personal-Reading Lane SPR-01 M5). For the
+    third-party ingest connectors (urls / youtube / twitter / Substack), a NULL
+    content_class is NOT acceptable: a NULL row passes the public chunk-search
+    gate (search.py treats NULL as legacy/grandfathered) and would be reachable
+    on the monetized read path — the §9.0 (Hachette / Bartz) leak. So when
+    ``document_type in THIRD_PARTY_DOCUMENT_TYPES`` AND ``content_class is None``,
+    this function writes ``content_class='personal_reading'`` (the
+    owner-readable / public-non-servable lane) instead of NULL, and emits a
+    ``document.content_class_defaulted`` typed event recording the defaulting.
+    Two scoping rules keep this tight and reversible:
+      * EXPLICIT BEATS DEFAULT — if the caller passes any ``content_class``
+        (including a positive servable basis from a future connector, e.g. a
+        verified public_domain Project Gutenberg text), the guard does NOT
+        override it.
+      * GENUINE UPLOADS ARE UNTOUCHED — a non-third-party ``document_type``
+        (book / paper / a real user_owned upload) with ``content_class=None``
+        still writes NULL exactly as before; the schema default is NOT flipped
+        (flipping it would mislabel real operator content as non-servable). The
+        guard is scoped to the four third-party types only.
+    The event fires ONLY on a genuine insert — the ``on_conflict='ignore'``
+    early-return below short-circuits before the guard, so re-inserting an
+    existing row never re-emits the defaulting event. The event carries
+    document_id + document_type + the applied content_class, NEVER raw_text
+    (§9.0: events carry no body).
+
     ``on_conflict``:
       - ``"error"`` (default): a duplicate ``document_id`` raises.
       - ``"ignore"``: silently skip if a row with that ``document_id``
@@ -158,6 +196,16 @@ def insert_document(
         raise ValueError(f"source_tier must be 1..5, got {source_tier}")
     if on_conflict == "ignore" and _exists(con, "documents", "document_id", document_id):
         return document_id
+
+    # Deny-by-default: a third-party document_type with no explicit content_class
+    # lands personal_reading (never NULL-that-serves). Explicit always beats
+    # default; non-third-party types are untouched (NULL stays NULL).
+    defaulted_to_personal_reading = (
+        content_class is None and document_type in THIRD_PARTY_DOCUMENT_TYPES
+    )
+    if defaulted_to_personal_reading:
+        content_class = PERSONAL_READING_CONTENT_CLASS
+
     con.execute(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
@@ -170,6 +218,23 @@ def insert_document(
             _maybe_json(metadata), content_class, ip_holder_id,
         ],
     )
+
+    # Typed event AFTER the row commits (and only on a real insert) — records the
+    # deny-by-default classification so it is reconstructable. The Event envelope
+    # requires a non-null investigation_id; use the document's investigation_id
+    # when present, else a stable ingest-scoped id so the event is still
+    # discoverable on the log. NEVER carries raw_text (§9.0).
+    if defaulted_to_personal_reading:
+        emit_typed(
+            investigation_id or f"ingest-{document_id}",
+            DocumentContentClassDefaultedPayload(
+                document_type=document_type,
+                applied_content_class=PERSONAL_READING_CONTENT_CLASS,
+            ),
+            role="connector",
+            document_id=document_id,
+            events_dir=events_dir,
+        )
     return document_id
 
 
