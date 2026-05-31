@@ -1,0 +1,20 @@
+[invariant]
+id = "provenance-chain-no-copy"
+status = "guarded"
+statement = """
+Provenance chain — no-copy seams. When an entity crosses a workflow seam
+(Read→Write, Research→Read, Speak→Write) it moves by REFERENCE: the same node
+id survives the hop; a fork/copy is the bug. COST IF VIOLATED: the
+substrate-as-source-of-truth chain (CLAUDE.md invariant #3 — every claim cites
+chunks, every chunk cites documents) breaks. A copied entity gets a second id,
+so attribution / ip_holder provenance silently splits and "four products are
+one graph" stops being true.
+"""
+guard = "tests/test_seam_no_copy.py::test_read_to_write_copy_fails_the_guard"
+guard_kind = "pytest"
+assertion = "A seam preserves the node id across the hop; a deliberately-copied (forked) id FAILS the guard — the no-copy contract has teeth."
+sunset = ""
+
+[non_vacuity]
+method = "negative_control"
+detail = "test_read_to_write_copy_fails_the_guard feeds a forked id and asserts the guard rejects it, while test_read_to_write_preserves_node_id proves the positive control. A guard that ignored the id would pass on the copy and redden here."

@@ -1,0 +1,17 @@
+[invariant]
+id = "section-9-0-servability-polarity"
+status = "unguarded"
+owner = "SPR-03"
+statement = """
+§9.0 servability polarity. Payouts gate strictly on retrieval-time gating in
+production + publisher opt-in; servability must DENY by default and serve full
+text only after the publish gate passes (the polarity must not invert). COST IF
+VIOLATED: the Sprint-18 legal gate (CLAUDE.md invariant #4; G2/G3 open). An
+inverted polarity would serve un-opted-in publisher text and route money on it,
+the exact §9.0 risk the legal gate blocks. Registered @unguarded HONESTLY: this
+session has no real production-path guard for the polarity — SPR-03 (this spec's
+§9.0 servability sprint) supplies it. An honest gap the registry surfaces beats
+a fake-complete registry (rigor #1).
+"""
+assertion = "OWNED BY SPR-03: a guard proving production servability denies by default and serves full text only after the publish gate passes, with no money routed on un-opted-in text."
+sunset = ""

@@ -1,0 +1,20 @@
+[invariant]
+id = "single-writer-remote-exec"
+status = "guarded"
+statement = """
+Single graph writer through the funnel. The ONLY file in runtime/remote_exec/
+permitted to use connect_write (the graph writer) is funnel.py; remote research
+fan-out appends only to its own per-investigation event log and never writes the
+graph directly. COST IF VIOLATED: the §16 research-fanout exemption (CLAUDE.md)
+holds ONLY because the serialized host funnel through runtime/db_lock stays the
+sole graph writer. A second writer in a remote runner would reintroduce the
+multi-writer DuckDB corruption the single-writer invariant forbids.
+"""
+guard = "tests/test_remote_exec_isolation.py::test_connect_write_only_in_funnel"
+guard_kind = "pytest"
+assertion = "A mechanical scan proves connect_write is used in exactly one runtime/remote_exec/ file (funnel.py) and that funnel.py really binds the writer (not absent)."
+sunset = ""
+
+[non_vacuity]
+method = "negative_control"
+detail = "The guard asserts BOTH directions: no offender file uses connect_write AND funnel.py does import it — a stubbed guard that scanned nothing would fail the 'writer is real, not absent' half. Composed in tests/test_integration_invariants.py::test_invariant_1_single_writer_isolation."
