@@ -216,6 +216,7 @@ def ingest_url(
     http_client: Optional[object] = None,
     fetched: Optional[FetchedHtml] = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
+    on_conflict: str = "ignore",
     # Wedge 2 (Browserbase escalation) — opt-in per call (default off).
     fallback_to_browserbase: bool = False,
     browserbase_wait_for: Optional[str] = None,
@@ -225,6 +226,17 @@ def ingest_url(
     ``fetched`` lets callers reuse an already-fetched body (e.g. a
     crawler that batches requests) — when set, no HTTP is performed
     and ``http_client`` is ignored.
+
+    ``on_conflict`` (default ``"ignore"``): on the default path a re-ingest of
+    an unchanged ``document_id`` is a graph no-op (``insert_document`` early-
+    returns; the PG driver also short-circuits before calling here when the
+    content hash is unchanged). A caller that has already detected a *changed*
+    body (its hash differs from the stored ``documents.content_hash``) passes
+    ``"replace"``: the adapter deletes the prior ``documents`` row + its chunks
+    first, then re-inserts the edited body under the SAME ``document_id`` — never
+    forking a second doc and never silently keeping the stale body while
+    reporting a re-ingest. (``insert_document`` itself only knows
+    ``"error"``/``"ignore"``; ``"replace"`` is the adapter's delete-then-insert.)
 
     ``fallback_to_browserbase`` opts in to Wedge 2 escalation when
     the httpx primary fetch returns low_word_count. Per spec §7.4
@@ -316,6 +328,32 @@ def ingest_url(
     from runtime.db_lock import connect_write
 
     with connect_write(resolved_db_path, purpose="acquisition/urls") as con:
+        # On a CHANGED re-ingest (``on_conflict="replace"``), drop the prior
+        # document row + its chunks FIRST so the re-insert below is a genuine
+        # fresh write of the edited body under the SAME deterministic id (no
+        # fork) — and so a shrinking edit leaves no orphan tail chunks. We then
+        # call insert_document with ``"ignore"`` (the row is gone, so it inserts
+        # cleanly and the SPR-01 deny-by-default guard still fires). Scoped to
+        # the replace path; the default ignore/no-op path is untouched.
+        # ``insert_document`` itself only knows "error"/"ignore"; replace is the
+        # adapter's responsibility (delete-then-insert) so we never pass an
+        # unsupported value down.
+        insert_on_conflict = on_conflict
+        if on_conflict == "replace":
+            # A CHANGED re-ingest must overwrite the body under the SAME id
+            # without forking. We do NOT delete the documents row (other tables
+            # FK-reference it, so a DELETE trips a foreign-key constraint);
+            # instead we UPDATE raw_text in place, then refresh the chunks.
+            # Chunks are deleted first (deterministic content-addressed ids mean
+            # a shrinking edit would otherwise orphan tail rows) and re-inserted
+            # below. insert_document is then told "ignore" (the row already
+            # exists) so it does not raise; the UPDATE is what persists the edit.
+            con.execute(
+                "UPDATE documents SET raw_text = ? WHERE document_id = ?",
+                [text, document_id],
+            )
+            con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+            insert_on_conflict = "ignore"
         insert_document(
             con,
             document_id=document_id,
@@ -345,7 +383,7 @@ def ingest_url(
                 "status_code": page.status_code,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             },
-            on_conflict="ignore",
+            on_conflict=insert_on_conflict,
         )
         # Spec §14.2 — record the requested_url→document_id alias so
         # future fetches that resolve to a different final_url for
@@ -375,6 +413,12 @@ def ingest_url(
                 [alias, document_id, now_ts, now_ts],
             )
         for i, chunk in enumerate(chunks):
+            # ``insert_chunk`` has deterministic ids (``<doc>::c<index>``) and a
+            # plain INSERT. It needs no ``on_conflict`` here: on the default
+            # path the driver only reaches this block for a brand-new doc (an
+            # unchanged re-run short-circuits in the PG driver before calling
+            # ingest_url), and on the replace path the prior chunks were just
+            # DELETEd above — so every insert in this loop is a fresh row.
             chunk_id = insert_chunk(
                 con,
                 document_id=document_id,
