@@ -16,6 +16,7 @@ import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
   bindingForProduct,
   emitProductActivate,
+  BUILTIN_BINDINGS,
 } from "../components/hotkeys/bindings";
 
 /**
@@ -164,7 +165,9 @@ function RailButton({
    *  downstream listener (the penguin) can resolve the button's screen rect
    *  via document.querySelector(`[data-product-id="…"]`). */
   productId?: string;
-  /** SPR-08: the bound hotkey spec to show as an on-bar chip (e.g. "g r"). */
+  /** SPR-08: the bound hotkey spec to show as an on-bar chip — a single ⌘+key
+   *  combo from the shared map (e.g. "mod+e" for Read). Post-SPR-08 there are
+   *  NO vim g-chords; the prop is always fed a real `mod+` spec. */
   binding?: string;
 }) {
   const isWorkflow = variant === "workflow";
@@ -173,11 +176,14 @@ function RailButton({
     : isWorkflow
     ? "text-ice-2/80 hover:text-ice-1 hover:bg-white/10"
     : "text-ice-2/50 hover:text-ice-2/70 hover:bg-white/5";
-  // Workflow buttons keep the icon-above-label stack in both orientations
-  // (the four doors stay dominant + legible); utilities/More stay icon-only.
-  const layout = isWorkflow
-    ? "min-h-12 py-1 flex-col items-center justify-center"
-    : "h-10 items-center justify-center";
+  // SPR-07 M2 — EVERY bar button now stacks a VISIBLE text caption under its
+  // glyph (the v1 complaint was icon-only utilities + a caption-less igloo).
+  // Workflows already had this dominant stack; Search/More now share the same
+  // icon-above-label layout so the whole bar reads as named buttons, not a row
+  // of mystery glyphs. The visible caption is aria-hidden (the `.sr-only` span
+  // remains the single accessible name, so there is no double-announce and the
+  // four-door label guards that read `.sr-only` are untouched).
+  const layout = "min-h-12 py-1 flex-col items-center justify-center";
   // The active marker is a slab on the edge nearest the working region: the
   // INNER edge of the rail. Left rail → its right edge; bottom rail → its
   // top edge. Same "this door is live" read, reflected for the new axis.
@@ -204,14 +210,15 @@ function RailButton({
       <span className="leading-none" aria-hidden="true">
         {icon}
       </span>
-      {isWorkflow && (
-        <span
-          className="text-[10px] leading-[11px] mt-0.5 font-medium tracking-tight text-center w-full"
-          aria-hidden="true"
-        >
-          {label}
-        </span>
-      )}
+      {/* SPR-07 M2 — the visible caption, now on EVERY bar button (was
+          workflow-only). aria-hidden so the `.sr-only` span stays the single
+          announced name. */}
+      <span
+        className="text-[10px] leading-[11px] mt-0.5 font-medium tracking-tight text-center w-full"
+        aria-hidden="true"
+      >
+        {label}
+      </span>
       {/* SPR-08 — the on-bar hotkey chip. A tiny, unobtrusive indicator under
           the door label so the shortcut is "shown on-screen" (the operator's
           headline ask). The chip is the announcer (it carries its own
@@ -284,6 +291,17 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   // Same /home route + accessible <button> (aria-label + visible focus ring);
   // the mark is the only thing that changed (penguin → igloo). In the bottom
   // rail its divider is on the trailing (right) edge instead of the bottom.
+  //
+  // SPR-07 M1 + M3 — the igloo was the LAST caption-less bar control (the v1
+  // complaint "the home igloo has no label"). It now stacks a VISIBLE "Home"
+  // text caption + the SPR-08 ⌘ hotkey chip (⌘O = bindingForProduct("home"),
+  // read from the shared map — never a hand-typed combo, never the stale "g h"
+  // chord) under the mark, matching every other bar button. The button keeps
+  // its `aria-label="Antiek home"` as the single accessible name; the caption
+  // is aria-hidden and the chip is DECORATIVE (aria-hidden) so the igloo
+  // button announces exactly once and no role="img" leaks onto the mark
+  // (the SPR-06 "no accessible name on the decorative mark" guard stays true).
+  const homeBinding = bindingForProduct("home")?.spec;
   const homeButton = (
     <button
       type="button"
@@ -292,16 +310,30 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       data-product-id="home"
       onClick={() => {
         navigate("/home");
-        // SPR-08/SPR-10 click≡hotkey parity (matches `g h`).
+        // SPR-08/SPR-10 click≡hotkey parity (the ⌘O home binding).
         emitProductActivate({ productId: "home", route: "/home", source: "click" });
       }}
       className={
-        "shrink-0 flex items-center justify-center bg-sun/95 hover:bg-sun " +
+        "shrink-0 flex flex-col items-center justify-center gap-0.5 bg-sun/95 hover:bg-sun text-ink " +
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink " +
-        (isBottom ? "w-14 h-full border-r-edge border-sun" : "h-12 border-b-edge border-sun")
+        (isBottom ? "w-16 h-full border-r-edge border-sun" : "h-16 w-full border-b-edge border-sun")
       }
     >
-      <IglooMark size={28} />
+      <IglooMark size={24} />
+      <span
+        className="text-[10px] leading-[11px] font-medium tracking-tight"
+        aria-hidden="true"
+      >
+        Home
+      </span>
+      {homeBinding && (
+        <KeyChip
+          binding={homeBinding}
+          label="Home"
+          decorative
+          className="scale-90 opacity-80"
+        />
+      )}
     </button>
   );
 
@@ -313,6 +345,11 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       onClick={openSearch}
       variant="utility"
       orientation={orientation}
+      // SPR-07 M3 — Search opens the command palette, whose canonical binding
+      // is the SPR-08 built-in `palette` (⌘K / mod+k). We read it from the
+      // shared built-in table by id rather than re-typing "mod+k", so the chip
+      // can never drift from shortcuts.ts.
+      binding={BUILTIN_BINDINGS.find((b) => b.id === "palette")?.spec}
     />
   );
 

@@ -93,12 +93,13 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
   });
 
   // ── Anchor 3 ──────────────────────────────────────────────────────────────
-  // SPR-07 flips this green.
-  // The igloo home button has aria-label="Antiek home" and an <IglooMark/> but
-  // NO visible "Home" caption (every product button DOES carry a visible
-  // label). assertLabeled requires a VISIBLE text node, so it fails today.
-  // SPR-07 adds the "Home" caption.
-  test.fixme('anchor[igloo]: the home igloo shows a visible "Home" caption', async ({ page }) => {
+  // SPR-07 FLIPS THIS GREEN (un-fixme'd).
+  // The igloo home button had aria-label="Antiek home" and an <IglooMark/> but
+  // NO visible "Home" caption (every product button DID carry a visible label).
+  // assertLabeled requires a VISIBLE text node, so it failed on origin/main.
+  // SPR-07 M1 adds a real on-screen "Home" caption (a text node, not just the
+  // aria-label) under the igloo mark, so assertLabeled now passes.
+  test('anchor[igloo]: the home igloo shows a visible "Home" caption', async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
     await assertLabeled(page, IGLOO_SELECTOR, "Home");
   });
