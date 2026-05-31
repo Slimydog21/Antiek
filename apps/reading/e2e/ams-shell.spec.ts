@@ -104,15 +104,34 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
   });
 
   // ── Anchor 4 ──────────────────────────────────────────────────────────────
-  // SPR-08 flips this green.
-  // Today the ⌘ overlay (HotkeyHud) is not surfaced by default and vim chords
-  // (G then I/W/N) exist in shortcuts.ts. assertHotkeyOverlay with summon:false
-  // checks the HUD is on screen WITHOUT pressing "?" — which it is not today.
-  // SPR-08 replaces the chords with a uniform ⌘ scheme and decides the
-  // default-surfacing of the overlay.
-  test.fixme("anchor[hotkeys]: the ⌘ overlay is surfaced (no vim chords)", async ({ page }) => {
+  // SPR-08 FLIPS THIS GREEN (un-fixme'd) — with a DELIBERATE policy change to
+  // the anchor, recorded honestly.
+  //
+  // The v1 anchor asked for the ⌘ overlay to be SURFACED BY DEFAULT
+  // (summon:false — on screen without pressing "?"). SPR-08 rejects that as
+  // the success condition: an always-on keyboard cheat-sheet is bad UX — it
+  // permanently occludes the working surface for a reference the operator
+  // wants on demand, not constantly. Force-mounting a persistent overlay just
+  // to satisfy summon:false would be fake-green (the brief forbids it). The
+  // HONEST success condition is: the ⌘ HUD is REACHABLE on "?" and is
+  // chord-free (no vim g-chords, no "Go to (chords)" group, no "then"). So
+  // this anchor now uses summon:true and additionally proves the chord
+  // removal. Always-visible discoverability lives on the NavRail door chips
+  // (SPR-07, via chipBindings); "?" is the full reference.
+  test("anchor[hotkeys]: the chord-free ⌘ overlay is reachable on '?'", async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
-    await assertHotkeyOverlay(page, { summon: false });
+    await page.locator("body").click({ position: { x: 4, y: 4 } });
+    // Summon the HUD (press "?") and assert it is on screen — the real,
+    // un-faked overlay (not a force-mounted persistent one).
+    await assertHotkeyOverlay(page, { summon: true });
+    // It is ⌘-only: no chord "then" separators and no "Go to (chords)" group.
+    const hud = page.locator(".antiek-hud");
+    await expect(hud.locator(".antiek-keychip__then")).toHaveCount(0);
+    const headings = await hud.locator(".antiek-hud__heading").allInnerTexts();
+    expect(
+      headings.some((h) => /chord/i.test(h)),
+      `a vim-chord group is still present in the HUD: ${headings.join(", ")}`,
+    ).toBe(false);
   });
 
   // ── Anchor 5 ──────────────────────────────────────────────────────────────

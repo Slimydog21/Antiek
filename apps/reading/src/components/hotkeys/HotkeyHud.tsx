@@ -24,17 +24,28 @@ export interface HotkeyHudProps {
 }
 
 /**
- * HotkeyHud — the "?"-toggled keyboard cheat-sheet (milestones 3 + 6).
+ * HotkeyHud — the "?"-toggled keyboard cheat-sheet (SPR-08 M3).
  *
- * Lists EVERY active binding grouped by section (Global, Panels, Products,
- * Sub-actions, Go-to chords, and the user's Custom per-entity bindings),
- * rendered with KeyChips. Built on LemonModal so it inherits the focus-trap,
- * ESC-to-close, scroll-lock, and restore-focus behaviour — and is screen-
- * reader navigable (role=dialog + the list is a real <dl>/<ul> structure).
+ * Lists EVERY active binding grouped by section (Global, Products,
+ * Sub-actions, Panels, and the user's Custom per-entity bindings), each
+ * rendered with a KeyChip. After SPR-08 every binding is a single ⌘+key
+ * combo — there is NO "Go to (chords)" group and no chip shows a "then"
+ * separator (HotkeyHud.test.tsx asserts both). Built on LemonModal so it
+ * inherits the focus-trap, ESC-to-close, scroll-lock, and restore-focus
+ * behaviour — and is screen-reader navigable (role=dialog + a real <ul>).
  *
  * Toggling: listens for the HELP_TOGGLE window event that `shortcuts.ts`
  * fires on "?" (guarded so it never fires while typing). Drop ONE instance
- * high in the tree; on-bar placement is not required for discoverability.
+ * high in the tree.
+ *
+ * DEFAULT-SURFACING POLICY (SPR-08 decision, recorded honestly): the HUD is
+ * SUMMONED ("?"), not surfaced persistently. A keyboard cheat-sheet that is
+ * always on screen is bad UX — it occludes the working surface for a
+ * reference the operator wants on demand, not constantly. So the ams-shell
+ * anchor[hotkeys] is proven by pressing "?" and asserting the chord-free ⌘
+ * HUD is reachable, NOT by force-mounting a persistent overlay. The chips on
+ * the NavRail doors (SPR-07, via chipBindings) carry the always-visible
+ * discoverability; "?" is the full reference.
  */
 export function HotkeyHud({ open: controlledOpen, onClose }: HotkeyHudProps) {
   const isControlled = controlledOpen !== undefined;
@@ -116,12 +127,13 @@ export function HotkeyHud({ open: controlledOpen, onClose }: HotkeyHudProps) {
 
 /** Group binding rows by their `group`, preserving a stable section order. */
 function groupRows(rows: BindingRow[]): Array<[string, BindingRow[]]> {
+  // SPR-08: the "Go to (chords)" group is GONE — there are no chord bindings
+  // left. Every group below holds only single ⌘+key combos.
   const order = [
     "Global",
     "Products",
     "Sub-actions",
     "Panels",
-    "Go to (chords)",
     "Your custom hotkeys",
   ];
   const map = new Map<string, BindingRow[]>();

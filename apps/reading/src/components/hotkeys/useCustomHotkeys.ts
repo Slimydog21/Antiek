@@ -12,6 +12,8 @@ import {
   detectConflict,
   isBlockingConflict,
   normalizeBinding,
+  requiresModifierReason,
+  SAFE_ASSIGNABLE,
 } from "./bindings";
 
 /**
@@ -170,6 +172,35 @@ export function useCustomHotkeys(): UseCustomHotkeys {
   const assign = useCallback(
     (input: CustomHotkeyInput, force = false): AssignResult => {
       const spec = normalizeBinding(input.spec);
+      // Shape gate (defence-in-depth with the capture affordance): a custom
+      // binding must carry a modifier and must not be a chord. We reject a
+      // bare key / chord here too so the persisted blob can never hold an
+      // unfireable binding even if a caller bypasses the capture dialog.
+      const shapeReason = requiresModifierReason(spec);
+      if (shapeReason) {
+        return {
+          ok: false,
+          conflict: { kind: "reserved", withId: "", message: shapeReason },
+        };
+      }
+      // SAFE_ASSIGNABLE shape gate — the scheme is ⌘+key ONLY. An ⌥-only
+      // (Option) combo passes the modifier check above (it carries a
+      // modifier) but is OFF-SPEC: SPR-08's command scheme is a single
+      // ⌘+<key>, with no ⌥-prefixed namespace. `isWithinRange` is the live
+      // shape gate for that policy (it requires `mod` to be present), so we
+      // reject anything outside the safe ⌘ range here, alongside detectConflict
+      // (ownership/reserved). Both must pass for an assign to succeed.
+      if (!SAFE_ASSIGNABLE.isWithinRange(spec)) {
+        return {
+          ok: false,
+          conflict: {
+            kind: "reserved",
+            withId: "",
+            message:
+              "Use ⌘ + a key (Option-only combos aren't assignable) — for example ⌘J.",
+          },
+        };
+      }
       // If this entity already has a binding, re-binding it is allowed
       // (we pass its id as `selfId` so it doesn't conflict with itself).
       const existing = bindings.find((b) => b.entityId === input.entityId);

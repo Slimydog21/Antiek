@@ -10,6 +10,7 @@ import {
   normalizeBinding,
   formatBinding,
   requiresModifierReason,
+  SAFE_ASSIGNABLE,
 } from "./bindings";
 
 import "./AssignHotkey.css";
@@ -106,10 +107,10 @@ function CaptureDialog({ label, onClose, onSave, checkConflict }: CaptureDialogP
   const [captured, setCaptured] = useState<string | null>(null);
   const captureRef = useRef<HTMLDivElement>(null);
 
-  // Capture a single key (no modifier required) or a single combo. We do NOT
-  // capture chords here (those are reserved for built-ins/products); a custom
-  // binding is a single key or a mod-combo, which keeps the conflict surface
-  // small and avoids stealing the `g` chord prefix.
+  // Capture ONE combo: a modifier (⌘/⌥/⇧) + a single key. We never capture a
+  // sequence/chord — SPR-08 removed chords entirely, and `requiresModifierReason`
+  // rejects both a bare key and a chord — so a custom binding is always a single
+  // modifier-combo, matching the uniform ⌘+key scheme the products use.
   const onCaptureKey = useCallback((e: React.KeyboardEvent) => {
     // Let Tab/Escape behave normally for the focus trap + close (they must
     // keep bubbling to LemonModal's handlers).
@@ -142,7 +143,19 @@ function CaptureDialog({ label, onClose, onSave, checkConflict }: CaptureDialogP
   // SPR-08 sharpen — a bare single key is a footgun (it would hijack that key
   // app-wide whenever a non-text control is focused). Require a modifier/chord.
   const modifierReason = captured ? requiresModifierReason(captured) : null;
-  const blocking = isBlockingConflict(conflict) || modifierReason != null;
+  // ⌘+key ONLY (defence-in-depth, mirrors useCustomHotkeys.assign's
+  // SAFE_ASSIGNABLE gate): an ⌥-only (Option) combo carries a modifier, so it
+  // clears requiresModifierReason, but the SPR-08 scheme is a single ⌘+<key>
+  // with no Option namespace. Reject it here with a readable message so the
+  // dialog never offers Save for an off-spec capture. The message is only
+  // shown for a captured combo that has a modifier but isn't in the safe ⌘
+  // range (so the bare-key case keeps its own clearer modifierReason text).
+  const rangeReason =
+    captured && !modifierReason && !SAFE_ASSIGNABLE.isWithinRange(captured)
+      ? "Use ⌘ + a key (Option-only combos aren't assignable) — for example ⌘J."
+      : null;
+  const shapeReason = modifierReason ?? rangeReason;
+  const blocking = isBlockingConflict(conflict) || shapeReason != null;
   const overridable = conflict != null && !isBlockingConflict(conflict);
 
   return (
@@ -199,15 +212,15 @@ function CaptureDialog({ label, onClose, onSave, checkConflict }: CaptureDialogP
           {conflict.message}
         </p>
       )}
-      {!conflict && modifierReason && (
+      {!conflict && shapeReason && (
         <p
           className="antiek-assign-hotkey__conflict antiek-assign-hotkey__conflict--blocked"
           role="alert"
         >
-          {modifierReason}
+          {shapeReason}
         </p>
       )}
-      {captured && !conflict && !modifierReason && (
+      {captured && !conflict && !shapeReason && (
         <p className="antiek-assign-hotkey__ok" role="status">
           {formatBinding(captured)} is available.
         </p>

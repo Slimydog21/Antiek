@@ -48,7 +48,7 @@ beforeAll(() => {
 afterEach(cleanup);
 
 describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
-  it("renders a KeyChip with the right key text on the Research door (chips shown on-screen)", () => {
+  it("renders a single ⌘+key chip on the Research door (no chord, no 'then')", () => {
     render(
       <MemoryRouter>
         <NavRail />
@@ -58,17 +58,24 @@ describe("NavRail SPR-08 — on-bar chips + click≡hotkey parity", () => {
       '[data-product-id="research"]',
     ) as HTMLElement;
     expect(button).toBeTruthy();
-    // bindingForProduct("research") === "g r" → the chip announces "G then R".
+    // SPR-08: bindingForProduct("research") === "mod+j" (the uniform ⌘+key
+    // scheme; the old "g r" chord is gone). The chip announces the spoken
+    // combo and renders ONE glyph group (no chord "then" separator).
+    expect(bindingForProduct("research")!.spec).toBe("mod+j");
     const expectedAria = ariaBinding(bindingForProduct("research")!.spec);
-    expect(expectedAria).toBe("G then R");
+    expect(expectedAria).toMatch(/^(Meta|Control)\+J$/);
     const chip = button.querySelector('[role="img"]') as HTMLElement;
     expect(chip, "the Research door must render an on-bar hotkey chip").toBeTruthy();
     expect(chip.getAttribute("aria-keyshortcuts")).toBe(expectedAria);
-    // The visible glyphs are the two chord keys.
+    // The chip is a single combo glyph (⌘J / CtrlJ) — NOT two chord keys,
+    // and no "then" separator is rendered.
+    expect(button.querySelector(".antiek-keychip__then")).toBeNull();
+    expect(button.querySelector(".antiek-keychip__seq")).toBeNull();
     const glyphs = Array.from(
       button.querySelectorAll(".antiek-keychip__key"),
     ).map((k) => k.textContent);
-    expect(glyphs).toEqual(["G", "R"]);
+    expect(glyphs).toHaveLength(1);
+    expect(glyphs[0]).toContain("J");
   });
 
   it("stamps data-product-id on all four product doors (SPR-10 geometry contract)", () => {
