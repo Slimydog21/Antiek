@@ -124,6 +124,25 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # hash instead of the body, removing read (1) from this surface; the
         # quality read (2) inherently needs the body and stays an internal read.
         "acquisition/urls/paulgraham.py",
+        # The personal-lane monitoring/puttering surface (SPR-09) reads raw_text
+        # in _select_new_personal_items (SELECT ... d.raw_text ... WHERE
+        # content_class='personal_reading') to populate FeedItem.body for the
+        # OWNER's ambient feed. This is the personal_reading OWNER-PATH read, not
+        # a public serve: the body leaves storage ONLY when putter_feed's
+        # policy_tag is in search.PRIVILEGED_POLICY_TAGS (operator_only /
+        # private_research) — `body = it.body if (with_body and owner_path) else
+        # None` (monitor.py putter_feed) — exactly mirroring the search.py gate
+        # the serve-guard enforces; on the public / attribution-eligible path the
+        # body is None (test_putter_feed_withholds_body_on_public_path), and
+        # refresh_monitor never puts a body in the event-log payload. The static
+        # AST scanner cannot see that RUNTIME policy_tag gate, so the file is
+        # allowlisted here. NOTE (vs the paulgraham entry above): this reader DOES
+        # return the body — but only on the owner path, which is the documented
+        # "personal_reading is readable in full ONLY on the owner path" invariant.
+        # The SPR-10 corpus audit independently asserts no personal_reading row is
+        # publicly servable/attributable, so a regression that widened this path
+        # would be caught there too.
+        "orchestration/monitoring/monitor.py",
     }
 )
 
