@@ -24,12 +24,21 @@ register call is the hole.
 MIGRATION-PENDING ALLOWLIST: seven adapters currently insert without
 registering through the chokepoint. Six of them (interview, podcasts, twitter,
 urls, voice, youtube) need a per-source ``content_class`` decision that is a
-master-spec §9.0 legal-gate call (see ``.caffenagent/REFRAME-P1-diligence.md``);
-arxiv hand-stamps ``content_class`` on ``insert_document`` directly rather than
-through the chokepoint. Each is listed explicitly below and drops off this list
-the moment it migrates (adds a ``register_source_document`` call). When the list
-is empty the migration is complete — and a NEW adapter that inserts without
-registering fails CI here from day one (the allowlist is closed, not a wildcard).
+master-spec §9.0 legal-gate call (rationale in the reframe spec workspace, not
+this repo); arxiv hand-stamps ``content_class`` on ``insert_document`` directly
+rather than through the chokepoint. Each is listed explicitly below and drops off
+this list the moment it migrates (adds a ``register_source_document`` call). When
+the list is empty the migration is complete — and a NEW adapter that inserts
+without registering fails CI here from day one (the allowlist is closed, not a
+wildcard).
+
+KNOWN LIMITATION (matching the honesty convention in ``serve_guard_check.py``):
+this is a PRESENCE check, not a REACHABILITY check — a ``register_source_document(``
+/ ``register_book(`` call ANYWHERE in an adapter file (even dead or unrelated code)
+satisfies it, even if the live insert path never registers. Static reachability is
+out of scope; the check defends the realistic case (an adapter that simply never
+calls a register function), and a deliberately-evasive dead call is easy to spot in
+review.
 
 Exit 0 = clean; exit 1 = an adapter inserts without registering and is not on the
 (shrinking) migration-pending allowlist.

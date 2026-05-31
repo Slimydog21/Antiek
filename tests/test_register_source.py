@@ -86,23 +86,32 @@ def test_explicit_content_class_validated(con):
         )
 
 
-def test_user_content_never_mints_escrow(con):
-    """A user_content source creates NO escrow account even when a
-    rights_holder_name is supplied — the operator's own captures have no
-    external rights holder to ever pay (defense-in-depth)."""
+def test_user_content_rejects_any_rights_holder(con):
+    """user_content is escrow-excluded BY CONSTRUCTION: passing a rights holder —
+    name OR explicit id — is a category error and RAISES. (The b25b275 verifier-
+    critic found the old silent-skip let an explicit ip_holder_id write straight
+    through; the exclusion is now structural.) A user_content doc with NEITHER
+    registers fine, gated, with no escrow account minted."""
     _insert(con, "doc-3")
-    register_source_document(
-        con,
-        document_id="doc-3",
-        source_kind=SourceKind.USER_CONTENT,
-        rights_holder_name="Some Person",
+    with pytest.raises(ValueError, match="escrow-excluded"):
+        register_source_document(
+            con, document_id="doc-3", source_kind=SourceKind.USER_CONTENT,
+            rights_holder_name="Some Person", run_self_check=False,
+        )
+    with pytest.raises(ValueError, match="escrow-excluded"):
+        register_source_document(
+            con, document_id="doc-3", source_kind=SourceKind.USER_CONTENT,
+            ip_holder_id="ipholder-x", run_self_check=False,
+        )
+    cls = register_source_document(
+        con, document_id="doc-3", source_kind=SourceKind.USER_CONTENT,
         run_self_check=False,
     )
+    assert cls == GATED_DEFAULT_CONTENT_CLASS
     assert list_all(con) == []
-    row = con.execute(
+    assert con.execute(
         "SELECT ip_holder_id FROM documents WHERE document_id='doc-3'"
-    ).fetchone()
-    assert row[0] is None
+    ).fetchone()[0] is None
 
 
 def test_licensed_source_threads_ip_holder(con):
@@ -179,3 +188,31 @@ def test_idempotent_reregister_preserves_ip_holder(con):
     ).fetchone()
     assert row[0] == first
     assert row[1] == "restricted_pending_opt_in"
+
+
+def test_self_check_raises_on_t3_license_drift(con):
+    """The self-check's ENFORCING branch (the one that protects rights): stamping a
+    SERVABLE content_class on a doc whose arXiv <license> resolves to T3 is rights
+    drift — register_source_document(run_self_check=True) must RAISE at write time
+    (generalizing acquisition/arxiv/store.py), not silently persist a mis-stamp the
+    serve gate would later reject. RED-THEN-GREEN: with run_self_check=False the
+    same mis-stamp persists with NO raise — proving the self-check is load-bearing."""
+    from substrate.rights import T3BodyServeError
+
+    t3_license = "http://arxiv.org/licenses/nonexclusive-distrib/1.0/"
+    insert_document(
+        con,
+        document_id="doc-drift",
+        source_tier=3,
+        document_type="academic_paper",
+        raw_text="THE FULL PAPER BODY THAT MUST NOT LEAK FOR A T3 PAPER. " * 30,
+        metadata={"license_uri": t3_license},
+    )
+    with pytest.raises(T3BodyServeError):
+        register_source_document(
+            con,
+            document_id="doc-drift",
+            source_kind=SourceKind.ACADEMIC_PREPRINT,
+            content_class="source_declared_open",  # servable stamp — but license is T3
+            run_self_check=True,
+        )
