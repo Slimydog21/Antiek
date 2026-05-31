@@ -35,6 +35,7 @@ import pytest
 
 from substrate.invariants import (
     GUARD_KIND_PYTEST,
+    GUARD_KIND_SCRIPT,
     REPO_ROOT,
     STATUS_GUARDED,
     STATUS_UNGUARDED,
@@ -184,11 +185,16 @@ def test_guarded_guard_file_exists(inv: Invariant) -> None:
 def test_guarded_guard_is_collected_and_passes(inv: Invariant) -> None:
     """The guard node is COLLECTED, NOT SKIPPED, NOT XFAIL-MARKED, and PASSES —
     the mechanical proof that the guard is a live, non-vacuous test rather than a
-    skipped / xfailed / xpassed / missing / stubbed-to-skip placeholder. (We only
-    run pytest-kind guards here; script-kind guards are exercised by their own CI
-    step.)"""
+    skipped / xfailed / xpassed / missing / stubbed-to-skip placeholder. (A
+    pytest-kind guard's own ``guard`` node IS the bite; a script-kind guard is an
+    exit-code gate with no collectible node, so its non-vacuity is RUN instead via
+    its declared ``non_vacuity.bite_test`` in
+    ``test_script_kind_guard_bite_test_is_live`` below — NOT skipped-as-unverified.)"""
     if inv.guard_kind != GUARD_KIND_PYTEST:
-        pytest.skip(f"{inv.id}: script-kind guard, exercised by its CI step")
+        pytest.skip(
+            f"{inv.id}: script-kind guard — its non-vacuity is RUN via its "
+            f"bite_test in test_script_kind_guard_bite_test_is_live"
+        )
     outcome = _run_guard_node(inv.guard)
     assert not outcome.was_xfail, (
         f"{inv.id}: guard {inv.guard} is @pytest.mark.xfail — an xfail marker "
@@ -200,6 +206,61 @@ def test_guarded_guard_is_collected_and_passes(inv: Invariant) -> None:
         f"skipped, xfailed, xpassed, or errored) — a registered guard must be a "
         f"live, green, non-vacuous test"
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Script-kind guards: VERIFY (do not prose-trust) their non-vacuity by RUNNING
+# the declared bite_test, with the SAME rigor a pytest-kind guard's node gets.
+# Before this, "status = guarded" meant LESS for a script-kind invariant — the
+# meta-check only checked a [non_vacuity] block was DECLARED, never RAN its proof,
+# so a future script-kind guard could name a non-existent / xfail / vacuous test
+# and fake-pass. That is the §14.4 disease one guard_kind over; this closes it.
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+_SCRIPT_GUARDED = [
+    inv
+    for inv in load_registry()
+    if inv.status == STATUS_GUARDED and inv.guard_kind == GUARD_KIND_SCRIPT
+]
+
+
+def _check_script_bite(inv: Invariant) -> None:
+    """Run a script-kind guard's declared bite_test and demand it is a live,
+    non-vacuous negative control: present, COLLECTED, NOT xfail/xpass-marked, and
+    PASSES. Factored so the broken-fixture proof runs the SAME logic this
+    parametrized test runs (no parallel check that could drift)."""
+    assert inv.guard_kind == GUARD_KIND_SCRIPT
+    assert inv.non_vacuity is not None, f"{inv.id}: missing non_vacuity proof"
+    bite = inv.non_vacuity.bite_test
+    assert bite, (
+        f"{inv.id}: script-kind guard must declare a non_vacuity.bite_test — its "
+        f"exit-code gate is never RUN by the meta-check, so a prose-only proof "
+        f"could name a non-existent / xfail / vacuous test and fake-pass"
+    )
+    assert (REPO_ROOT / bite.split("::", 1)[0]).exists(), (
+        f"{inv.id}: bite_test file {bite.split('::', 1)[0]} does not exist"
+    )
+    outcome = _run_guard_node(bite)
+    assert not outcome.was_xfail, (
+        f"{inv.id}: bite_test {bite} is @pytest.mark.xfail — an xfail marker "
+        f"declares it is NOT a real negative control of the invariant yet"
+    )
+    assert outcome.passed, (
+        f"{inv.id}: bite_test {bite} did not PASS at call time (missing, skipped, "
+        f"xfailed, xpassed, or errored) — a script-kind guard's non-vacuity must "
+        f"be a live, green, collected negative control, not prose"
+    )
+
+
+@pytest.mark.parametrize("inv", _SCRIPT_GUARDED, ids=lambda inv: inv.id)
+def test_script_kind_guard_bite_test_is_live(inv: Invariant) -> None:
+    """For every script-kind GUARDED invariant, its non_vacuity.bite_test is a
+    present, COLLECTED, NOT-xfail/xpass-marked, PASSING pytest node — the same
+    mechanical teeth a pytest-kind guard's own node gets. This RUNS the proof
+    rather than trusting the prose ``detail``, closing the hole where a
+    script-kind 'guarded' meant only 'a non_vacuity block is declared'."""
+    _check_script_bite(inv)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -505,6 +566,118 @@ def test_meta_check_rejects_malformed_toml(tmp_path: Path) -> None:
     )
     with pytest.raises(RegistryError, match="must match filename stem"):
         load_registry(tmp_path)
+
+
+def test_meta_check_rejects_script_guard_without_bite_test(tmp_path: Path) -> None:
+    """Failure mode 4 (the SPR-09 hole) — a GUARDED script-kind invariant that
+    declares a [non_vacuity] block but NO structured bite_test FAILS TO LOAD. A
+    script-kind guard's exit-code gate is never RUN by the meta-check, so a
+    prose-only proof could name a non-existent / xfail / vacuous test and the old
+    meta-check would still pass it ('guarded' meant LESS for script-kind). The
+    loader rejects it loudly (RegistryError) so the disease cannot reappear one
+    guard_kind over."""
+    _write_decl(
+        tmp_path,
+        "broken-script-no-bite",
+        """
+        [invariant]
+        id = "broken-script-no-bite"
+        status = "guarded"
+        guard = "tools/lint/owner_boundary_check.py"
+        guard_kind = "script"
+        statement = "A script-kind guard with a prose-only non_vacuity and no structured bite_test — never RUN, so prose could lie."
+        assertion = "an exit-code gate whose teeth are only described in prose"
+        [non_vacuity]
+        method = "negative_control"
+        detail = "claims a test proves teeth but names no runnable node"
+        """,
+    )
+    with pytest.raises(RegistryError, match="bite_test"):
+        load_registry(tmp_path)
+
+
+def test_meta_check_rejects_script_guard_with_dead_bite_test(tmp_path: Path) -> None:
+    """Failure mode 4b — a GUARDED script-kind invariant whose bite_test names a
+    node that does NOT EXIST (the same shape a stub / xfail / vacuous node takes
+    once RUN) is rejected at verification time. The declaration LOADS (it has a
+    structured bite_test, so the loader's required-field gate is satisfied), but
+    _check_script_bite RUNS the named node and rejects it because it is not a
+    live, green, collected negative control — exactly the rigor pytest-kind
+    guards get, now applied to script-kind. This is what makes the new bite_test
+    contract have teeth rather than being a second prose field."""
+    _write_decl(
+        tmp_path,
+        "broken-script-dead-bite",
+        """
+        [invariant]
+        id = "broken-script-dead-bite"
+        status = "guarded"
+        guard = "tools/lint/owner_boundary_check.py"
+        guard_kind = "script"
+        statement = "A script-kind guard whose bite_test names a node that does not exist — the proof is never actually a live negative control."
+        assertion = "an exit-code gate whose declared bite_test cannot be collected"
+        [non_vacuity]
+        method = "negative_control"
+        bite_test = "tests/test_DOES_NOT_EXIST.py::test_nope"
+        detail = "names a bite_test that cannot be collected — never proves teeth"
+        """,
+    )
+    (inv,) = load_registry(tmp_path)
+    # Sanity: a dead bite node is not collected/green, so the run is not a pass.
+    assert not _run_guard_node(inv.non_vacuity.bite_test).passed, (
+        "sanity: a non-existent bite_test node cannot pass — the meta-check must "
+        "reject the declaration on RUNNING it, not on trusting the prose detail"
+    )
+    with pytest.raises(AssertionError, match="bite_test"):
+        _check_script_bite(inv)
+
+
+def test_meta_check_rejects_script_guard_with_xfail_bite_test(tmp_path: Path) -> None:
+    """Failure mode 4c — a GUARDED script-kind invariant whose bite_test points at
+    an @pytest.mark.xfail node (an xpass that incidentally goes green this run) is
+    rejected. An xfail marker is the maintainer's 'not a real negative control
+    yet' signal; it must NOT fake-pass the script-kind contract just because it
+    happened to pass. This inherits the wasxfail carve-out _run_guard_node already
+    proves for pytest-kind guards — the SAME machinery, now load-bearing for
+    script-kind too."""
+    xpass_bite = REPO_ROOT / "tests" / "_meta_tmp_script_xpass_bite.py"
+    xpass_bite.write_text(
+        "import pytest\n\n"
+        '@pytest.mark.xfail(reason="placeholder: not a real negative control yet")\n'
+        "def test_xpass_bite():\n"
+        "    assert True  # incidentally passes -> reported xpassed\n",
+        encoding="utf-8",
+    )
+    try:
+        _write_decl(
+            tmp_path,
+            "broken-script-xfail-bite",
+            """
+            [invariant]
+            id = "broken-script-xfail-bite"
+            status = "guarded"
+            guard = "tools/lint/owner_boundary_check.py"
+            guard_kind = "script"
+            statement = "A script-kind guard whose bite_test is xfail-marked — green this run, but xfail means it is not a live negative control of the invariant."
+            assertion = "an exit-code gate whose bite_test is an xfail placeholder"
+            [non_vacuity]
+            method = "negative_control"
+            bite_test = "tests/_meta_tmp_script_xpass_bite.py::test_xpass_bite"
+            detail = "names an xfail-marked bite_test — not a live negative control"
+            """,
+        )
+        (inv,) = load_registry(tmp_path)
+        outcome = _run_guard_node(inv.non_vacuity.bite_test)
+        # The teeth: the call report is PASSED yet wasxfail is set — without the
+        # carve-out the script-kind contract would treat it as a live bite.
+        assert outcome.was_xfail and not outcome.passed, (
+            "sanity: an xpass bite node carries wasxfail on a passed call report; "
+            "the carve-out must suppress the pass so the meta-check rejects it"
+        )
+        with pytest.raises(AssertionError, match="xfail"):
+            _check_script_bite(inv)
+    finally:
+        xpass_bite.unlink(missing_ok=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
