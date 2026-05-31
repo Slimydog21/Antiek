@@ -160,6 +160,31 @@ jobs:
         run: |
           python tools/lint/contact_guard_check.py
 
+      - name: Merge-age gate (anti-stranding)
+        # SPR-01 (Antiek Flywheel Foundation). Reds when the PR's base is more
+        # than N=25 commits behind origin/main — the stale-base stranding that
+        # killed the prior foundation (forked at 69bcfef, lapped ~+38 commits,
+        # never merged). N=25 first reds at +26, inside a single sprint's normal
+        # lifetime. Lives in the pytest job because that job checks out with
+        # fetch-depth: 0, satisfying merge-age's full-history need. The step
+        # self-gates its own exit code — no `|| echo` swallow — so the step's
+        # pass/fail is EXACTLY the gate's exit code (a swallowed code would
+        # re-create the silent-pass hole this gate closes). N is one named
+        # constant (MAX_BEHIND); see docs/decisions/anti-stranding-gate.md.
+        run: |
+          python tools/lint/merge_age_gate.py
+
+      - name: Reachability gate (anti-purgatory)
+        # SPR-01 (Antiek Flywheel Foundation). Reds on a NEW zero-importer module
+        # or a route with no inbound link — the "shipped into purgatory" failure
+        # mode (promotes the statically-detectable core of reading_physics_check's
+        # advisory PR-7 to enforcing; the product-judgment half stays advisory).
+        # Grandfathers pre-existing cases via the shrink-only baseline at
+        # tools/lints/baselines/reachability.json. Self-gates its own exit code —
+        # no `|| echo` swallow. See docs/decisions/anti-stranding-gate.md.
+        run: |
+          python tools/lint/reachability_gate.py
+
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
         # substrate/schemas/ without regenerating
