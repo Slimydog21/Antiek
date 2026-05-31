@@ -649,6 +649,53 @@ def test_lawful_servable_book_passes_check_f(db_path):
     assert result.ok
 
 
+def test_third_party_servable_empty_string_basis_fails_check_f(db_path):
+    """SHARPEN (sprint #3.iii): the EMPTY/whitespace-basis branch must bite too.
+
+    ``test_third_party_servable_without_basis_fails_check_f`` covers only the
+    LEFT-JOIN-miss path (no ``book_assets`` row at all -> ``license_basis IS
+    NULL``). But the check's ``WHERE`` has a SECOND no-basis arm —
+    ``TRIM(b.license_basis) = ''`` — for a row that DOES have a ``book_assets``
+    record whose basis is blank/whitespace (an empty extraction, a placeholder
+    a future writer left). Without this test, a refactor that dropped the
+    ``TRIM(...) = ''`` clause and kept only ``IS NULL`` would leave every other
+    (f) test green while silently re-opening the leak for a present-but-blank
+    basis. This is the seeded proof that the check bites on exactly that one
+    defect: a third-party ``video_transcript`` on a servable class with a
+    PRESENT-but-whitespace ``license_basis`` MUST fail (f) and name the
+    offender. It mirrors ``_check_servable_basis``'s identical empty-basis
+    treatment, so the third-party arm cannot silently desync from the book
+    arm's blank-basis handling."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-yt-blankbasis",
+            content_class="user_owned",  # servable ...
+            raw_text=_BODY_A + " a transcript with a blank placeholder basis qqq",
+            source_uri="https://www.youtube.com/watch?v=blank0001",
+            title="A Transcript With A Blank Basis",
+            document_type="video_transcript",  # third-party type ...
+        )
+        # ... WITH a book_assets row present but the basis whitespace-only:
+        # this is the TRIM(...) = '' arm, NOT the IS NULL (LEFT-JOIN-miss) arm.
+        _insert_book_asset(
+            con, document_id="doc-yt-blankbasis", license_basis="   "
+        )
+    result = run_audit(db_path, include_binding=False)
+    f = result.check(CHECK_THIRD_PARTY_SERVABLE)
+    assert not f.ok, (
+        "a servable third-party row with a PRESENT-but-blank license_basis must "
+        "fail (f) via the TRIM(...) = '' arm, not only the IS NULL arm"
+    )
+    assert f.count == 1
+    assert any("doc-yt-blankbasis" in o for o in f.offending)
+    assert not result.ok
+    # And (a) agrees for the same reason — a servable row with a blank basis is a
+    # servable-without-basis offender under both invariants (belt-and-suspenders).
+    assert not result.check(CHECK_SERVABLE_BASIS).ok
+
+
 # ---------------------------------------------------------------------------
 # M4a — the bypass-scanner now covers the web family (urls/youtube/twitter/
 # substack). A planted content_class="..." literal under one of the new dirs
