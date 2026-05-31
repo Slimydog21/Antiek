@@ -301,9 +301,11 @@ def test_truncation_full_post_not_flagged_body_verbatim(temp_db):
     pub = substack.fetch_feed(
         "https://test.substack.com/feed", client=fetch_client
     )
-    expected_md = pub.posts[0].body_markdown
-    assert pub.posts[0].truncated is False
-    assert pub.posts[0].truncation_reason == "none"
+    post = pub.posts[0]  # "Full Post One", guid sub-guid-0001
+    expected_md = post.body_markdown
+    expected_doc_id = substack.substack_doc_id(post.guid)
+    assert post.truncated is False
+    assert post.truncation_reason == "none"
 
     client = _mock_client(FULL_FEED)
     substack.ingest_publication_feed(
@@ -313,13 +315,17 @@ def test_truncation_full_post_not_flagged_body_verbatim(temp_db):
         embedder=_StubEmbedder(),
         client=client,
     )
-    rows = _read_documents(temp_db)
-    first = rows[0]
-    raw_text = first[3]
-    meta = json.loads(first[4])
+    # Look up the SPECIFIC document by its deterministic doc id — _read_documents
+    # orders by document_id (a sha256-derived id), which is NOT the feed order,
+    # so we must select the row we captured expected_md from rather than rows[0].
+    rows = {r[0]: r for r in _read_documents(temp_db)}
+    assert expected_doc_id in rows
+    (_id, _dtype, _cclass, raw_text, meta_json) = rows[expected_doc_id]
+    meta = json.loads(meta_json)
     assert meta["truncated"] is False
     assert meta["truncation_reason"] == "none"
-    # Full body stored verbatim: equality against the rendered fixture.
+    # Full body stored verbatim: the stored raw_text is EXACTLY the markdown the
+    # connector rendered from the feed body (no padding, no fabrication).
     assert raw_text == expected_md
 
 
