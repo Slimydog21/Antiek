@@ -36,6 +36,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -251,6 +252,16 @@ def ingest_youtube(
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="video_transcript",
+            # Personal-Reading Lane (SPR-02): a third-party YouTube transcript
+            # the owner fetched for their own reading lands personal_reading —
+            # full body readable by the owner, NEVER served publicly / ad-
+            # attributed / trained on (§9.0). The IMPORTED CONSTANT is passed,
+            # never the "personal_reading" literal (corpus_audit's scanner
+            # flags content_class string literals to keep classify() the one
+            # chokepoint). SPR-07 later refines the YouTube-specific posture
+            # (rate cap, ToS flag, CC-BY servable exception); this only sets
+            # the default lane. Belt-and-suspenders with the SPR-01 fallback.
+            content_class=PERSONAL_READING_CONTENT_CLASS,
             source_uri=v.watch_url,
             title=v.title,
             author=v.channel,

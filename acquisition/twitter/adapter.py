@@ -37,6 +37,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -227,6 +228,17 @@ def ingest_twitter_thread(
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="social_thread",
+            # Personal-Reading Lane (SPR-02): a third-party X/Twitter thread
+            # the owner captured for their own reading lands personal_reading —
+            # full body readable by the owner, NEVER served publicly / ad-
+            # attributed / trained on (§9.0). The IMPORTED CONSTANT is passed,
+            # never the "personal_reading" literal (corpus_audit's scanner
+            # flags content_class string literals to keep classify() the one
+            # chokepoint). This is the SOLE insert_document site for the
+            # social_thread document_type: ingest_thread_payload routes through
+            # ingest_twitter_thread, so both entry points inherit this lane.
+            # Belt-and-suspenders with the SPR-01 deny-by-default fallback.
+            content_class=PERSONAL_READING_CONTENT_CLASS,
             source_uri=thread.thread_url,
             title=title,
             author=thread.author_handle,
