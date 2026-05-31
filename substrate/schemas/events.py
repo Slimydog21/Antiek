@@ -174,6 +174,10 @@ class ActionType(str, Enum):
     # ── Dispatch + context pack ──
     DISPATCH_CALL = "dispatch.call"
     CONTEXT_PACK_ASSEMBLED = "context_pack.assembled"
+    # AFF SPR-06 — the flywheel's reuse half. Emitted once per investigation
+    # start, recording which prior knowledge units were retrieved + injected
+    # into the context pack (and which were dropped, and why).
+    KNOWLEDGE_REUSED = "knowledge.reused"
 
     # ── Middleware: source_tier ──
     # GRAPH_TIER_ASSIGNED — rule-based assignment at ingestion (one per document).
@@ -634,7 +638,23 @@ class ActionType(str, Enum):
 #     this sprint (the promote-to-gate criterion is written + dated in
 #     substrate/eval/groundedness/PROMOTE_TO_GATE.md, the flip happens
 #     later). specs/antiek-foundation-v2/ SPR-02. 2026-05-29.
-EVENT_SCHEMA_VERSION: int = 24
+# v25: AFF SPR-06 — the flywheel's reuse half. ONE typed event,
+#     knowledge.reused, emitted exactly once per investigation start: it
+#     records which prior knowledge units were retrieved (ranked by similarity
+#     to the new investigation's question), which were INJECTED into the role's
+#     context pack, their real cosine scores, the per-unit decision reason
+#     (injected / dropped-not-servable / dropped-over-budget /
+#     dropped-low-relevance), the originating investigation ids, and the
+#     CONTEXT_PACK_ASSEMBLED event id it carries (so the reuse decision is
+#     queryable from the pack provenance). reused_unit_ids + scores describe the
+#     INJECTED set (equal-length, pack order); decisions +
+#     source_investigation_ids cover EVERY retrieved unit's fate. An empty
+#     reused_unit_ids is a first-class outcome (novel question / all-non-servable
+#     / all-over-budget) — reuse-of-nothing is recorded, never skipped. SPR-06
+#     filters on §9.0 servability + token budget ONLY; the groundedness/trust
+#     gate is SPR-08, dedup is SPR-07, the compounding benchmark is SPR-09.
+#     specs/antiek-flywheel-foundation/ SPR-06. 2026-05-31.
+EVENT_SCHEMA_VERSION: int = 25
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -695,7 +715,7 @@ class ContextLayer(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[
-        "session", "long_term_skill", "graph_evidence", "style_guide",
+        "session", "long_term_skill", "reuse", "graph_evidence", "style_guide",
         "phase_metadata", "param_version_stamp",
     ]
     source: str
@@ -760,6 +780,38 @@ class ContextPackAssembledPayload(_PayloadBase):
     layers: list[ContextLayer]
     budget_overrun: bool
     truncation_strategy_applied: Literal["head", "tail", "smart"] | None = None
+
+
+class KnowledgeReusedPayload(_PayloadBase):
+    """AFF SPR-06 — emitted once per investigation start by
+    ``substrate/context_pack/knowledge_reuse.py`` after the reuse layer is
+    assembled into the pack. The queryable provenance of the flywheel's reuse
+    decision: which prior knowledge units were injected, their REAL cosine
+    scores, why each retrieved unit was injected or dropped, where each came
+    from, and the ``CONTEXT_PACK_ASSEMBLED`` event this reuse rides on.
+
+    Field contract:
+
+    * ``reused_unit_ids`` / ``scores`` describe the INJECTED set only and are
+      EQUAL-LENGTH, in pack (similarity-desc, id-tiebreak) order. ``scores`` are
+      the real cosine similarities, never a floor (honesty, rigor #1).
+    * ``decisions`` / ``source_investigation_ids`` describe EVERY retrieved unit
+      (injected + dropped), equal-length to each other. A ``decision`` is one of
+      ``injected`` | ``dropped-not-servable`` | ``dropped-over-budget`` |
+      ``dropped-low-relevance`` — the honest, distinct reason for the unit's fate.
+    * ``context_pack_event_id`` is the assembled pack's event id, so a reuse
+      decision is joinable to exactly what the model saw.
+
+    An empty ``reused_unit_ids`` is valid and expected for a novel question or
+    an all-non-servable / all-over-budget retrieval — the event is STILL emitted
+    (reuse-of-nothing is recorded, not skipped)."""
+
+    action_type: Literal[ActionType.KNOWLEDGE_REUSED] = ActionType.KNOWLEDGE_REUSED
+    reused_unit_ids: list[str]
+    scores: list[float]
+    decisions: list[str]
+    source_investigation_ids: list[str]
+    context_pack_event_id: str
 
 
 # ── Wrestling — document surface ─────────────────────────────────────
@@ -3584,7 +3636,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | ContextPackAssembledPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3594,6 +3646,8 @@ TypedPayload = Annotated[
 TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.DISPATCH_CALL.value,
     ActionType.CONTEXT_PACK_ASSEMBLED.value,
+    # AFF SPR-06 — flywheel reuse half.
+    ActionType.KNOWLEDGE_REUSED.value,
     ActionType.DOCUMENT_LOADED.value,
     ActionType.DOCUMENT_REGION_SELECTED.value,
     ActionType.DISTILLATION_REQUESTED.value,
@@ -3831,6 +3885,8 @@ __all__ = [
     # Dispatch + context pack
     "DispatchCallPayload",
     "ContextPackAssembledPayload",
+    # AFF SPR-06 — flywheel reuse half
+    "KnowledgeReusedPayload",
     # Wrestling
     "DocumentLoadedPayload",
     "DocumentRegionSelectedPayload",

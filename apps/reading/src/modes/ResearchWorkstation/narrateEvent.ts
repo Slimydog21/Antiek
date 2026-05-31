@@ -183,6 +183,7 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.ROLE_CALL_FAILED]: null, // the human-facing recovery is ROLE_SELF_REPAIR_ATTEMPTED / VALIDATION_FAILED
   [ActionType.AUDIT_FINDING_EMITTED]: null,
   [ActionType.PAGE_ATTRIBUTION_COMPUTED]: null,
+  [ActionType.KNOWLEDGE_REUSED]: null, // SPR-06 emits it to the event log (for the SPR-09 benchmark); the reader-facing "reused N prior insights" surface is SPR-10's job, not a feed line here
   [ActionType.PARAMETER_EXTRACT_REQUESTED]: null, // folded into the synthesize beat
   [ActionType.PARAMETER_EXTRACT_DELIVERED]: null,
   [ActionType.CROSS_DOMAIN_KEYWORDS_RESOLVED]: null,

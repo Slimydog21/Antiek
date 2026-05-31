@@ -25,12 +25,18 @@ Layer kinds (matching ``substrate.schemas.events.ContextLayer.kind``):
   injected only for qualitative investigations. Priority equals
   ``long_term_skill`` (background conditioning, truncatable).
 - ``long_term_skill`` — accumulated knowledge from compounding skills.
+- ``reuse`` — prior INVESTIGATIONS' knowledge units retrieved + injected at
+  investigation start (AFF SPR-06, the flywheel's reuse half). Distinct kind
+  from ``graph_evidence`` so an audit can tell prior-investigation reuse apart
+  from THIS investigation's own retrieved evidence; same evidence-level
+  priority (60, background but truncatable), rendered just before
+  ``graph_evidence``.
 - ``graph_evidence`` — retrieved facts from the knowledge graph.
 - ``session`` — current investigation state, the role-specific task.
   Highest non-mandatory priority — preserved before evidence and skills.
 
 Rendering order in the final prompt:
-``param_version_stamp → phase_metadata → style_guide → long_term_skill → graph_evidence → session``
+``param_version_stamp → phase_metadata → style_guide → long_term_skill → reuse → graph_evidence → session``
 
 The user's action-relevant content (``session``) goes last so it is
 closest to the model's response — standard LLM prompt-tail attention.
@@ -67,7 +73,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 
 LayerKind = Literal[
-    "session", "long_term_skill", "graph_evidence", "style_guide",
+    "session", "long_term_skill", "reuse", "graph_evidence", "style_guide",
     "phase_metadata", "param_version_stamp",
 ]
 
@@ -80,6 +86,7 @@ DEFAULT_KIND_PRIORITY: dict[str, int] = {
     "param_version_stamp": 100,  # tiny, always
     "phase_metadata":       95,  # small, always
     "session":              80,  # current task — almost always keep
+    "reuse":                60,  # prior-investigation reuse (AFF SPR-06) — evidence-level
     "graph_evidence":       60,  # retrieved facts — important but truncatable
     "long_term_skill":      40,  # background — easiest to truncate
     "style_guide":          40,  # sector voice conditioning — same as skill
@@ -95,6 +102,7 @@ CANONICAL_RENDER_ORDER: tuple[str, ...] = (
     "phase_metadata",
     "style_guide",
     "long_term_skill",
+    "reuse",
     "graph_evidence",
     "session",
 )
