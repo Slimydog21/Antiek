@@ -104,7 +104,7 @@ export interface OutlineBlockContract {
  */
 export interface ServableEntryContract {
   document_id: string;
-  content_class: "public_domain" | "platform_authored" | "publisher_opted_in" | "gated_metadata_only" | "taken_down";
+  content_class: "public_domain" | "platform_authored" | "publisher_opted_in" | "source_declared_open" | "gated_metadata_only" | "taken_down";
   ip_holder_id?: string | null;
   taken_down?: boolean;
   provenance_class?: "operator_authored" | "speak_derived" | null;
