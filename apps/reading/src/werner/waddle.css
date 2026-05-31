@@ -48,14 +48,108 @@
   transform-origin: 50% 100%;
 }
 
+/* ── Walk-cycle rig (SPR-06 M1) — the FEET + FLIPPERS actually move ──────
+ * The v1 mascot SLID: the whole penguin eased across the viewport while the
+ * art stayed a single static frame, so it read as a dragged sticker, not a
+ * walking bird. The rig (WernerRig.tsx) overlays two vector feet + two flipper
+ * marks on the Werner art and animates THEM, so a stroll reads as real
+ * footwork. The gait is driven ENTIRELY by the EXISTING walk signal: the
+ * mascot's roam already toggles `werner-waddle` onto the bob span for the
+ * duration of every stroll leg (ambient AND directed) and `werner-step` for a
+ * directed waddle-to-button. These rules are DESCENDANT-SELECTED off those two
+ * classes, so the feet animate exactly when Werner is mid-stroll and rest
+ * otherwise — NO second timer, no rAF, no second motion source. One walk
+ * signal, consumed declaratively.
+ *
+ * Period 300ms == the brand werner-waddle body-bob (animations.css), so feet,
+ * body bob, and the directed werner-step stay in phase (alternating steps read
+ * as a two-beat waddle, not a jitter). Tokenised easing (--ease-standard); the
+ * 300ms period matches the brand pose cadence (U-05 signature-beat family),
+ * declared once here rather than re-improvised. */
+
+/* Left foot lifts on the first half-beat, right foot on the second — the
+ * two-beat alternation that reads as stepping. translateY only (GPU-cheap). */
+@keyframes werner-rig-foot-l {
+  0%   { transform: translateY(0) rotate(0deg); }
+  25%  { transform: translateY(-3px) rotate(-6deg); }
+  50%  { transform: translateY(0) rotate(0deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes werner-rig-foot-r {
+  0%   { transform: translateY(0) rotate(0deg); }
+  50%  { transform: translateY(0) rotate(0deg); }
+  75%  { transform: translateY(-3px) rotate(6deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+/* Flippers swing opposite the same-side foot — the counter-rotation a walking
+ * bird makes. Subtler than the feet so the silhouette stays Werner. */
+@keyframes werner-rig-flipper-l {
+  0%   { transform: rotate(8deg); }
+  50%  { transform: rotate(-10deg); }
+  100% { transform: rotate(8deg); }
+}
+@keyframes werner-rig-flipper-r {
+  0%   { transform: rotate(-8deg); }
+  50%  { transform: rotate(10deg); }
+  100% { transform: rotate(-8deg); }
+}
+
+/* At REST the limbs hold their neutral frame (no animation). They only move
+ * while the bob span carries the walk signal the roam toggles. */
+.werner-rig-foot-l,
+.werner-rig-foot-r,
+.werner-rig-flipper-l,
+.werner-rig-flipper-r {
+  transform-origin: 50% 0%;
+}
+.werner-rig-flipper-l,
+.werner-rig-flipper-r {
+  transform-origin: 50% 0%;
+}
+
+/* WALKING: any ancestor carrying the roam's `werner-waddle` (ambient stroll)
+ * OR `werner-step` (directed waddle) runs the foot + flipper cycle. The
+ * descendant combinator is the seam — the rig owns NO state, it reads the
+ * class the existing roam already sets. */
+.werner-waddle .werner-rig-foot-l,
+.werner-step .werner-rig-foot-l {
+  animation: werner-rig-foot-l 300ms var(--ease-standard) infinite;
+}
+.werner-waddle .werner-rig-foot-r,
+.werner-step .werner-rig-foot-r {
+  animation: werner-rig-foot-r 300ms var(--ease-standard) infinite;
+}
+.werner-waddle .werner-rig-flipper-l,
+.werner-step .werner-rig-flipper-l {
+  animation: werner-rig-flipper-l 300ms var(--ease-standard) infinite;
+}
+.werner-waddle .werner-rig-flipper-r,
+.werner-step .werner-rig-flipper-r {
+  animation: werner-rig-flipper-r 300ms var(--ease-standard) infinite;
+}
+
 /* ── Reduced-motion guard ───────────────────────────────────────────────
  * Mirrors brand/werner/animated/animations.css: no involuntary motion. The
- * directed gait and the bump both collapse to a still frame. (Reduced motion
- * is also enforced in JS — the mascot freezes the stage and never starts a
- * directed walk — so this is the second, declarative line of defence.) */
+ * directed gait, the bump, AND the walk-cycle rig limbs all collapse to a
+ * still frame. (Reduced motion is also enforced in JS — the mascot freezes the
+ * stage and never starts a directed walk, and the roam effect early-returns so
+ * the walk classes are never added — so this is the second, declarative line
+ * of defence.) */
 @media (prefers-reduced-motion: reduce) {
   .werner-step,
-  .werner-hit-bump {
+  .werner-hit-bump,
+  .werner-rig-foot-l,
+  .werner-rig-foot-r,
+  .werner-rig-flipper-l,
+  .werner-rig-flipper-r,
+  .werner-waddle .werner-rig-foot-l,
+  .werner-waddle .werner-rig-foot-r,
+  .werner-waddle .werner-rig-flipper-l,
+  .werner-waddle .werner-rig-flipper-r,
+  .werner-step .werner-rig-foot-l,
+  .werner-step .werner-rig-foot-r,
+  .werner-step .werner-rig-flipper-l,
+  .werner-step .werner-rig-flipper-r {
     animation: none !important;
     transform: none !important;
   }

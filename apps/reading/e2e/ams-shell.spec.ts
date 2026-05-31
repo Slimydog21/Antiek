@@ -35,6 +35,8 @@ import {
   assertWindowOpen,
   assertLabeled,
   assertHotkeyOverlay,
+  decodePng,
+  whiteBoxFraction,
 } from "./_ams/visible";
 
 /** The default authed route the operator lands on (App.tsx: "/" → ResearchWorkstation). */
@@ -114,21 +116,48 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
   });
 
   // ── Anchor 5 ──────────────────────────────────────────────────────────────
-  // SPR-06 flips this green.
-  // The penguin emote marks (werner/emotes.tsx) carry a white background even
-  // though the wrapper is bg-transparent. We sample the pixels immediately
-  // around the mascot and assert the corners are NOT an opaque white box. Today
-  // they are → fails. SPR-06 re-rigs the emotes transparent.
-  test.fixme("anchor[penguin]: the penguin emote has no white background", async ({ page }) => {
+  // SPR-06 FLIPS THIS GREEN (un-fixme'd).
+  // v1 complaint #5: the penguin emote poses (loaded via brand/Werner.tsx,
+  // rendered by werner/emotes.tsx) BAKED a near-white (#FBFCFD-class) backdrop
+  // into the *_v1_corrected.png raster — so an emote painted a white BOX behind
+  // the penguin even though the wrapper is bg-transparent. SPR-06's fix is the
+  // alpha-cut (cut_pose_bg.py → *_v1_transparent.png, flood-filled topologically
+  // so the white BELLY stays opaque) + repointing Werner.tsx at the transparent
+  // variants. Here we sample the mascot's whole region and assert the opaque-
+  // near-white fraction is small (the surround now bleeds the surface through,
+  // not a white box). Pre-fix this fraction was large (a solid white box).
+  test("anchor[penguin]: the penguin emote has no white background", async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
     const mascot = page.locator('[data-testid="penguin-mascot"], [data-penguin-mascot]').first();
     await expect(
       mascot,
       "penguin mascot not found (SPR-06 owns its rigging + transparent emotes)",
     ).toBeVisible({ timeout: 5_000 });
+    // Drive an emote so the OVERLAY pose (the surface that carried the white box)
+    // is the thing on screen, then sample the mascot region for an opaque white box.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent("antiek:product:activate", {
+          detail: { productId: "research", source: "click" },
+        }),
+      );
+    });
+    await page.waitForTimeout(300);
     const box = await mascot.boundingBox();
     expect(box, "no mascot bounding box to sample").not.toBeNull();
-    // SPR-06 implements the actual white-corner pixel sample; the anchor here
-    // proves the mascot is locatable + visible as the red-light precondition.
+    const shot = await page.screenshot({
+      clip: {
+        x: Math.round(box!.x),
+        y: Math.round(box!.y),
+        width: Math.round(box!.width),
+        height: Math.round(box!.height),
+      },
+    });
+    const frac = whiteBoxFraction(decodePng(shot));
+    expect(
+      frac,
+      `${(frac * 100).toFixed(1)}% of the mascot region is opaque near-white — the emote ` +
+        `pose still carries a baked white backdrop (the v1 anchor[penguin] white box)`,
+    ).toBeLessThan(0.25);
   });
 });

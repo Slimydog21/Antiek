@@ -147,6 +147,106 @@ export function isSolidColor(
   return v < varianceThreshold && c <= distinctFloor;
 }
 
+/**
+ * Mean RGB across a region — the average colour of a sampled band. Used by the
+ * penguin white-box gate (SPR-06 M2): the corners AROUND the mascot, after the
+ * transparent-PNG fix, must read as the STORY BACKGROUND (ice / space) bleeding
+ * through, NOT an opaque near-white box. A regression that re-bakes a white
+ * backdrop into a pose pulls this mean toward (255,253,253)-class white.
+ */
+export function regionMeanColor(img: DecodedImage, region?: PixelRegion): Rgb {
+  const { width, height, data } = img;
+  const rx = Math.max(0, Math.floor(region?.x ?? 0));
+  const ry = Math.max(0, Math.floor(region?.y ?? 0));
+  const rw = Math.min(width - rx, Math.floor(region?.width ?? width));
+  const rh = Math.min(height - ry, Math.floor(region?.height ?? height));
+  if (rw <= 0 || rh <= 0) return { r: 0, g: 0, b: 0 };
+  let n = 0;
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  for (let y = ry; y < ry + rh; y++) {
+    for (let x = rx; x < rx + rw; x++) {
+      const i = (y * width + x) * 4;
+      sumR += data[i];
+      sumG += data[i + 1];
+      sumB += data[i + 2];
+      n++;
+    }
+  }
+  return n === 0
+    ? { r: 0, g: 0, b: 0 }
+    : { r: sumR / n, g: sumG / n, b: sumB / n };
+}
+
+/**
+ * Fraction of pixels in a region that are an OPAQUE near-white box — the exact
+ * (255,253,253 / #FBFCFD)-class backdrop the v1 emote poses baked in. A pixel
+ * counts as white-box if all channels are >= `floor` AND neutral (small channel
+ * spread), so the brand sun-yellow bill (saturated) is NOT counted. The callers
+ * (penguin.spec.ts M2 + ams-shell.spec.ts anchor[penguin]) pass the WHOLE mascot
+ * square as the region: most of it is penguin + the now-transparent surround
+ * (which composites to the story bg), so after the SPR-06 M2 alpha-cut + rewire
+ * this fraction is well under 0.25 on BOTH themes (measured 0.00% — the box is
+ * gone, not merely small), while a re-baked white BOX would push it toward ~1.
+ * A small interior belly-white sliver (the `thinking` pose, ~13%) is fine; the
+ * gate asserts the fraction stays comfortably below a quarter of the region.
+ */
+export function whiteBoxFraction(
+  img: DecodedImage,
+  region?: PixelRegion,
+  floor = 245,
+  neutralSpread = 8,
+): number {
+  const { width, height, data } = img;
+  const rx = Math.max(0, Math.floor(region?.x ?? 0));
+  const ry = Math.max(0, Math.floor(region?.y ?? 0));
+  const rw = Math.min(width - rx, Math.floor(region?.width ?? width));
+  const rh = Math.min(height - ry, Math.floor(region?.height ?? height));
+  if (rw <= 0 || rh <= 0) return 0;
+  let white = 0;
+  let n = 0;
+  for (let y = ry; y < ry + rh; y++) {
+    for (let x = rx; x < rx + rw; x++) {
+      const i = (y * width + x) * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const neutral = Math.max(r, g, b) - Math.min(r, g, b) <= neutralSpread;
+      if (neutral && r >= floor && g >= floor && b >= floor) white++;
+      n++;
+    }
+  }
+  return n === 0 ? 0 : white / n;
+}
+
+/**
+ * Per-pixel mean absolute difference between two SAME-SIZE decoded frames,
+ * averaged over R,G,B and all pixels (0..255). The M1 walk-cycle gate
+ * (penguin.spec.ts) screenshots the mascot FEET region at two mid-stroll
+ * moments and asserts this diff clears a threshold — proving the feet pixels
+ * actually changed (the limbs stepped) rather than the whole sprite sliding as
+ * one static frame. Two byte-identical frames → 0 (a frozen rig → RED).
+ */
+export function frameMeanAbsDiff(a: DecodedImage, b: DecodedImage): number {
+  const w = Math.min(a.width, b.width);
+  const h = Math.min(a.height, b.height);
+  if (w <= 0 || h <= 0) return 0;
+  let sum = 0;
+  let n = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const ia = (y * a.width + x) * 4;
+      const ib = (y * b.width + x) * 4;
+      sum += Math.abs(a.data[ia] - b.data[ib]);
+      sum += Math.abs(a.data[ia + 1] - b.data[ib + 1]);
+      sum += Math.abs(a.data[ia + 2] - b.data[ib + 2]);
+      n += 3;
+    }
+  }
+  return n === 0 ? 0 : sum / n;
+}
+
 /** Relative luminance per WCAG 2.x. */
 export function relativeLuminance({ r, g, b }: Rgb): number {
   const ch = (c: number) => {
