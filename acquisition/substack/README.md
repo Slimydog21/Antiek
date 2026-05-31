@@ -47,25 +47,36 @@ re-maps any `document_type` in `constants.THIRD_PARTY_DOCUMENT_TYPES`
 (which includes `newsletter_post`) to `personal_reading` when no class is
 supplied.
 
-- **Why A wins:** it matches the actual shipped SPR-02 sibling convention —
-  `acquisition/urls/adapter.py` (lines 134-135) and `acquisition/podcasts`
-  both omit `content_class` and rely on the guard. The policy then lives in
-  **one** place; a future maintainer of this connector cannot pass the wrong
-  class because this connector passes none. A leaked-servable post is the
-  §9.0 catastrophe (Hachette / Bartz territory), so a single policy location
-  is the most defensible defense.
+- **Why A wins:** it keeps the rights policy in **one** place — the
+  `insert_document` guard — so a future maintainer of this connector cannot
+  pass the wrong class, because this connector passes none. (Honest note on the
+  siblings: `acquisition/podcasts` omits `content_class` too, but its
+  `podcast_episode` type is NOT in `THIRD_PARTY_DOCUMENT_TYPES`, so it never
+  exercises the guard; `acquisition/urls/adapter.py` chose option B and passes
+  the imported `PERSONAL_READING_CONTENT_CLASS` constant explicitly — both
+  shapes are accepted by the corpus-audit bypass scanner, which flags only
+  string *literals*, never an omission or an `ast.Name`.) For a brand-new
+  connector, option A is the smaller surface: zero content_class code here means
+  zero chance of a literal regression, and the guard's deny-by-default is the
+  belt that catches it regardless. A leaked-servable post is the §9.0
+  catastrophe (Hachette / Bartz territory), so a single policy location is the
+  most defensible defense.
 - **Steelman of B (explicit-pass), and who absorbs the cost if A is wrong:**
-  `content_class="personal_reading"` at the call site is self-documenting and
-  the corpus audit explicitly whitelists it (`WEB_FAMILY_ALLOWED_CLASSES`).
-  If option A were silently wrong — e.g. someone removed `newsletter_post`
-  from `THIRD_PARTY_DOCUMENT_TYPES` — every Substack post would inherit the
-  servable `user_owned` default and leak publicly. That risk is mitigated two
-  ways: (1) a test in `tests/test_acquisition_substack.py` asserts ingest
-  yields `personal_reading`, and (2) SPR-10's audit capstone asserts zero
-  `newsletter_post` on a servable class. **What would reverse the choice:** if
-  the guard's third-party set ever stops being the single source of truth, or
-  if a connector needs a *non-default* class with a positive basis, switch to
-  explicit-pass (the audit already permits it).
+  `content_class=PERSONAL_READING_CONTENT_CLASS` at the call site is
+  self-documenting and is exactly what `acquisition/urls` does; the corpus
+  audit permits it (the bypass scanner flags only string literals, and an
+  imported constant is an `ast.Name`). If option A were silently wrong — e.g.
+  someone removed `newsletter_post` from `THIRD_PARTY_DOCUMENT_TYPES` — every
+  Substack post would inherit the servable schema default and leak publicly.
+  That risk is mitigated two ways: (1) a test in
+  `tests/test_acquisition_substack.py` asserts ingest yields `personal_reading`
+  AND that `newsletter_post ∈ THIRD_PARTY_DOCUMENT_TYPES`, and (2) SPR-10's
+  standing audit (`_check_third_party_servable`) asserts zero `newsletter_post`
+  on a servable class without a basis. **What would reverse the choice:** if the
+  guard's third-party set ever stops being the single source of truth, or if a
+  connector needs a *non-default* positive class with a real license_basis (a
+  verified public-domain post), switch to explicit-pass — the audit already
+  permits the imported-constant form.
 
 ## Truncation (paywall) detection — flag, never fabricate
 
@@ -119,11 +130,25 @@ the offending entry.
 
 ## Constants (defensibility — every magic number has a source)
 
-- `DEFAULT_SUBSTACK_SOURCE_TIER = 4` (`substrate/constants.py`) — general-web
-  tier, same as `acquisition/urls`' default; a subscribed newsletter is
-  general-web-trust, not a curated corpus source. Overridable per
+- `DEFAULT_SUBSTACK_SOURCE_TIER = 4` (`adapter.py`, a module constant — the
+  sibling convention; `acquisition/urls` and `acquisition/podcasts` each define
+  their own `DEFAULT_*_SOURCE_TIER` in their adapter, NOT in `constants.py`) —
+  general-web tier, same value as `acquisition/urls`' default; a subscribed
+  newsletter is general-web trust, not a curated corpus source. Overridable per
   `ingest_publication_feed(..., source_tier=...)` and per manifest entry.
 - `MIN_FULL_BODY_CHARS = 280` (`client.py`) — conservative short-body floor;
   see "Truncation" above.
 - `TRUNCATION_MARKERS` (`client.py`) — transcribed from observed Substack
   paywalled-feed footers.
+
+## HTML→markdown: why we wrap the fragment
+
+`acquisition/urls/extract.html_to_markdown` is a readability **main-content**
+extractor: it expects a full HTML *document* and returns the article body,
+discarding chrome. An RSS `content:encoded` value is a body **fragment** (bare
+`<p>…` markup), which the extractor drops as non-article (verified: a bare
+fragment renders to a 0-length body). So `client._render_body_markdown` wraps
+the fragment in a minimal `<!DOCTYPE html><html><body><article>…</article>`
+document and feeds **that** to the same shared extractor. This reuses the
+project extractor (no hand-rolled parser, rigor #4); we only give it the
+document structure it needs. The `<article>` element is the readability anchor.

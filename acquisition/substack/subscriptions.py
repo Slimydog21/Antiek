@@ -1,10 +1,10 @@
 """Operator-curated Substack subscription manifest — loader + driver.
 
-Substack publications are an operator-curated LIST, not a crawl (out of
-scope: any feed-discovery spider). The repo ships only
-``subscriptions.example.json``; the real operator manifest is gitignored
-(``acquisition/substack/subscriptions.json`` / ``subscriptions.local.json``)
-or operator-supplied. This mirrors how ``acquisition/opt_in`` ships an
+Substack publications are an operator-curated LIST, not a crawl (out of scope:
+any feed-discovery spider). The repo ships only ``subscriptions.example.json``;
+the real operator manifest is gitignored
+(``acquisition/substack/subscriptions.json`` / ``subscriptions.local.json``) or
+operator-supplied. This mirrors how ``acquisition/opt_in`` ships an
 ``example_manifest.json`` and never live data.
 
 Manifest schema (a list of entries under ``"publications"``):
@@ -20,8 +20,8 @@ Manifest schema (a list of entries under ``"publications"``):
 
 Each entry MUST resolve to a feed URL via ``resolve_feed_url``: an explicit
 ``feed_url`` wins; else ``base_url`` gets ``/feed`` appended. Custom-domain
-publications (not ``*.substack.com``) that still expose ``/feed`` are
-supported — resolution is purely structural, no host allowlist.
+publications (not ``*.substack.com``) that still expose ``/feed`` are supported
+— resolution is purely structural, no host allowlist.
 """
 from __future__ import annotations
 
@@ -29,9 +29,8 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
-from substrate import constants
-
 from .adapter import (
+    DEFAULT_SUBSTACK_SOURCE_TIER,
     PublicationIngestSummary,
     ingest_publication_feed,
 )
@@ -43,7 +42,7 @@ class Subscription:
 
     name: str
     feed_url: str
-    source_tier: int = constants.DEFAULT_SUBSTACK_SOURCE_TIER
+    source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER
 
 
 class SubscriptionManifestError(ValueError):
@@ -55,8 +54,8 @@ def resolve_feed_url(entry: dict) -> str:
 
     - explicit ``feed_url`` → returned as-is;
     - else ``base_url`` → ``base_url.rstrip('/') + '/feed'`` (works for
-      ``*.substack.com`` AND custom domains; a base already ending in
-      ``/feed`` is left intact);
+      ``*.substack.com`` AND custom domains; a base already ending in ``/feed``
+      is left intact);
     - else raise ``SubscriptionManifestError``.
     """
     feed_url = entry.get("feed_url")
@@ -91,7 +90,7 @@ def _parse_entry(entry, index: int) -> Subscription:
         raise SubscriptionManifestError(
             f"publications[{index}] ({name!r}) has no resolvable feed: {exc}"
         ) from exc
-    source_tier = entry.get("source_tier", constants.DEFAULT_SUBSTACK_SOURCE_TIER)
+    source_tier = entry.get("source_tier", DEFAULT_SUBSTACK_SOURCE_TIER)
     if not isinstance(source_tier, int):
         raise SubscriptionManifestError(
             f"publications[{index}] ({name!r}) source_tier must be an int, "
@@ -103,8 +102,8 @@ def _parse_entry(entry, index: int) -> Subscription:
 def load_subscriptions(path: str) -> list[Subscription]:
     """Parse and validate a subscriptions manifest.
 
-    Raises ``SubscriptionManifestError`` (a ``ValueError`` subclass) — never
-    a bare ``KeyError`` — on a malformed entry, naming the offending entry by
+    Raises ``SubscriptionManifestError`` (a ``ValueError`` subclass) — never a
+    bare ``KeyError`` — on a malformed entry, naming the offending entry by
     index and name. Returns the resolved ``Subscription`` list.
     """
     with open(path, "r", encoding="utf-8") as fh:
@@ -127,6 +126,7 @@ def ingest_subscriptions(
     investigation_id: str,
     db_path: Optional[str] = None,
     max_posts: Optional[int] = None,
+    embedder=None,
     client=None,
 ) -> list[PublicationIngestSummary]:
     """Driver: load the manifest and ingest every publication's feed.
@@ -138,8 +138,8 @@ def ingest_subscriptions(
     appearing in two feeds in one run is written exactly once.
 
     NOTE: a single ``client`` is reused across all feeds only in tests where a
-    ``MockTransport`` handler routes by request URL; in production each feed
-    uses a fresh default client (pass ``client=None``).
+    ``MockTransport`` handler routes by request URL; in production each feed uses
+    a fresh default client (pass ``client=None``).
     """
     subscriptions = load_subscriptions(path)
     summaries: list[PublicationIngestSummary] = []
@@ -151,6 +151,7 @@ def ingest_subscriptions(
                 db_path=db_path,
                 max_posts=max_posts,
                 source_tier=sub.source_tier,
+                embedder=embedder,
                 client=client,
             )
         )

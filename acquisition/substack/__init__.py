@@ -1,12 +1,12 @@
 """Substack RSS acquisition connector.
 
 A thin connector that fetches a subscribed Substack publication's RSS feed
-(``<publication>/feed``), parses posts, and ingests them into the substrate
-as ``documents`` + ``chunks`` + graph ``nodes``. Modeled byte-for-byte on
-``acquisition/podcasts``.
+(``<publication>/feed``), parses posts, and ingests them into the substrate as
+``documents`` + ``chunks`` + graph ``nodes``. Modeled on ``acquisition/podcasts``
+(and reusing ``acquisition/urls``' HTML→markdown extractor).
 
-Lane: ``newsletter_post`` is a third-party ``document_type``; every post
-lands ``content_class=personal_reading`` via the deny-by-default guard at
+Lane: ``newsletter_post`` is a third-party ``document_type``; every post lands
+``content_class=personal_reading`` via the deny-by-default guard at
 ``insert_document`` (option A — guard-reliant). It is NEVER servable,
 attributed, or trained. See README for the full lane rationale.
 
@@ -24,6 +24,7 @@ Public surface (mirrors ``acquisition/podcasts/__init__.py``):
 from __future__ import annotations
 
 from .adapter import (
+    DEFAULT_SUBSTACK_SOURCE_TIER,
     IngestResult,
     PublicationIngestSummary,
     ingest_post,
@@ -56,6 +57,7 @@ __all__ = [
     "detect_truncation",
     "TRUNCATION_MARKERS",
     "MIN_FULL_BODY_CHARS",
+    "DEFAULT_SUBSTACK_SOURCE_TIER",
     "ingest_post",
     "ingest_publication_feed",
     "ingest_subscriptions",

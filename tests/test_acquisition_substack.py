@@ -1,8 +1,9 @@
-"""Tests for the Substack RSS acquisition connector.
+"""Tests for the Substack RSS acquisition connector (SPR-06).
 
-No live network: feeds are inline XML fixtures served via
-``httpx.MockTransport``. The DB is a temp DuckDB created per test. Mirrors
-``tests/test_acquisition_podcasts.py``.
+No live network: feeds are inline RSS fixtures served via
+``httpx.MockTransport``. The DB is a temp DuckDB initialized per test via
+``ensure_initialized``. Embeddings use an injected stub (mirrors
+``tests/test_acquisition_podcasts.py``).
 
 Coverage maps to the SPR-06 milestones + verification gates:
 - M1/M2: fixtured feed → personal_reading + dedup on GUID
@@ -14,16 +15,22 @@ Coverage maps to the SPR-06 milestones + verification gates:
 from __future__ import annotations
 
 import json
+import os
+import sys
+from typing import List
 
 import duckdb
 import httpx
 import pytest
 
-from acquisition import substack
-from runtime import db_lock
-from substrate import constants
-from substrate.collective_graph import eligibility
-from substrate.graph import schema as graph_schema
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
+
+from acquisition import substack  # noqa: E402
+from substrate import constants  # noqa: E402
+from substrate.collective_graph import eligibility  # noqa: E402
+from substrate.graph import ensure_initialized  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -86,8 +93,8 @@ TRUNCATED_FEED = f"""<?xml version="1.0" encoding="UTF-8"?>
 </rss>
 """
 
-# Custom-domain feed (not *.substack.com) that still exposes /feed, body only
-# in <description>/summary (no content:encoded).
+# Custom-domain feed (not *.substack.com) that still exposes /feed; body only in
+# <description>/summary (no content:encoded).
 CUSTOM_DOMAIN_FEED = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
@@ -117,41 +124,52 @@ NO_GUID_FEED = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+class _StubEmbedder:
+    def encode(self, text: str) -> List[float]:
+        h = abs(hash(text)) % 64
+        v = [0.0] * 16
+        v[h % 16] = 1.0
+        return v
+
+
 def _mock_client(fixture: str) -> httpx.Client:
     """Single-fixture mock transport (mirrors podcast test)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=fixture.encode("utf-8"))
-    transport = httpx.MockTransport(handler)
-    return httpx.Client(transport=transport)
+
+    return httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
 
 
-def _routing_client(routes: dict[str, str]) -> httpx.Client:
+def _routing_client(routes: dict) -> httpx.Client:
     """Multi-feed mock transport: route by request URL → fixture."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
         for needle, fixture in routes.items():
             if needle in url:
                 return httpx.Response(200, content=fixture.encode("utf-8"))
         return httpx.Response(404, content=b"<rss></rss>")
-    transport = httpx.MockTransport(handler)
-    return httpx.Client(transport=transport)
+
+    return httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
 
 
 @pytest.fixture
 def temp_db(tmp_path):
     db_path = str(tmp_path / "test.duckdb")
-    with db_lock.connect_write(db_path, purpose="test-setup") as conn:
-        graph_schema.ensure_schema(conn)
+    ensure_initialized(db_path)
     return db_path
 
 
 def _read_documents(db_path):
     con = duckdb.connect(db_path, read_only=True)
-    rows = con.execute(
-        "SELECT document_id, document_type, content_class, raw_text, metadata "
-        "FROM documents ORDER BY document_id"
-    ).fetchall()
-    con.close()
+    try:
+        rows = con.execute(
+            "SELECT document_id, document_type, content_class, raw_text, metadata "
+            "FROM documents ORDER BY document_id"
+        ).fetchall()
+    finally:
+        con.close()
     return rows
 
 
@@ -174,7 +192,6 @@ def test_fetch_feed_parses_posts():
     assert pub.posts[0].guid == "sub-guid-0001"
     assert pub.posts[0].author == "Jane Author"
     assert pub.posts[0].published_at is not None
-    # Full body rendered to markdown via the shared extractor.
     assert "complete, fully-bodied essay" in pub.posts[0].body_markdown
 
 
@@ -205,6 +222,7 @@ def test_ingest_and_dedup_lands_personal_reading(temp_db):
         "https://test.substack.com/feed",
         investigation_id="inv-1",
         db_path=temp_db,
+        embedder=_StubEmbedder(),
         client=client,
     )
     assert summary.ingested == 2
@@ -223,6 +241,7 @@ def test_ingest_and_dedup_lands_personal_reading(temp_db):
         "https://test.substack.com/feed",
         investigation_id="inv-1",
         db_path=temp_db,
+        embedder=_StubEmbedder(),
         client=client2,
     )
     assert summary2.skipped == 2
@@ -236,9 +255,7 @@ def test_ingest_and_dedup_lands_personal_reading(temp_db):
 
 def test_lane_invariants_hold():
     assert "personal_reading" not in constants.SERVABLE_CONTENT_CLASSES
-    assert (
-        "personal_reading" in eligibility.NON_ATTRIBUTABLE_CONTENT_CLASSES
-    )
+    assert "personal_reading" in eligibility.NON_ATTRIBUTABLE_CONTENT_CLASSES
 
 
 def test_newsletter_post_is_third_party_type():
@@ -256,6 +273,7 @@ def test_truncation_marker_flagged_and_body_not_fabricated(temp_db):
         "https://paid.substack.com/feed",
         investigation_id="inv-paid",
         db_path=temp_db,
+        embedder=_StubEmbedder(),
         client=client,
     )
     assert summary.ingested == 1
@@ -278,7 +296,6 @@ def test_truncation_marker_flagged_and_body_not_fabricated(temp_db):
 
 
 def test_truncation_full_post_not_flagged_body_verbatim(temp_db):
-    client = _mock_client(FULL_FEED)
     # Capture the expected markdown the same way the connector renders it.
     fetch_client = _mock_client(FULL_FEED)
     pub = substack.fetch_feed(
@@ -288,10 +305,12 @@ def test_truncation_full_post_not_flagged_body_verbatim(temp_db):
     assert pub.posts[0].truncated is False
     assert pub.posts[0].truncation_reason == "none"
 
+    client = _mock_client(FULL_FEED)
     substack.ingest_publication_feed(
         "https://test.substack.com/feed",
         investigation_id="inv-full",
         db_path=temp_db,
+        embedder=_StubEmbedder(),
         client=client,
     )
     rows = _read_documents(temp_db)
@@ -300,8 +319,7 @@ def test_truncation_full_post_not_flagged_body_verbatim(temp_db):
     meta = json.loads(first[4])
     assert meta["truncated"] is False
     assert meta["truncation_reason"] == "none"
-    # Full body stored verbatim: length-equality against the rendered fixture.
-    assert len(raw_text) == len(expected_md)
+    # Full body stored verbatim: equality against the rendered fixture.
     assert raw_text == expected_md
 
 
@@ -420,7 +438,6 @@ def test_load_subscriptions_missing_name_raises(tmp_path):
 
 
 def test_example_manifest_loads_cleanly():
-    import os
     here = os.path.dirname(substack.__file__)
     path = os.path.join(here, "subscriptions.example.json")
     subs = substack.load_subscriptions(path)
@@ -454,6 +471,7 @@ def test_ingest_subscriptions_two_feeds(tmp_path, temp_db):
         str(mpath),
         investigation_id="inv-multi",
         db_path=temp_db,
+        embedder=_StubEmbedder(),
         client=client,
     )
     assert len(summaries) == 2
@@ -483,10 +501,11 @@ def test_cross_feed_duplicate_guid_written_once(tmp_path, temp_db):
         str(mpath),
         investigation_id="inv-dup",
         db_path=temp_db,
+        embedder=_StubEmbedder(),
         client=client,
     )
     rows = _read_documents(temp_db)
     ids = [r[0] for r in rows]
-    # shared-guid maps to one doc id; total distinct docs = 2 (a) + 1 new (b).
+    # shared-guid maps to one doc id, written exactly once.
     shared_id = substack.substack_doc_id("shared-guid")
     assert ids.count(shared_id) == 1

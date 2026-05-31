@@ -1,20 +1,21 @@
 """Substack RSS feed client — fetch and parse subscribed-publication posts.
 
-Cloned byte-for-byte in structure from ``acquisition/podcasts/client.py``:
-a thin client that downloads + parses an RSS feed into typed dataclasses,
-with an injectable ``httpx.Client`` so tests can supply a ``MockTransport``
-without hitting the network.
+Cloned in structure from ``acquisition/podcasts/client.py`` (and reusing the
+HTML→markdown extractor ``acquisition/urls`` uses): a thin client that
+downloads + parses an RSS feed into typed dataclasses, with an injectable
+``httpx.Client`` so tests can supply a ``MockTransport`` without hitting the
+network.
 
-Feed parsing uses ``feedparser`` (the ``[rss]`` optional extra). The import
-is guarded so the package can be imported without the extra installed; the
-error only fires when you actually try to fetch a feed — same guard +
-``pip install -e '.[rss]'`` hint as ``podcasts/client.py``.
+Feed parsing uses ``feedparser`` (the ``[rss]`` optional extra). The import is
+guarded so the package can be imported without the extra installed; the error
+only fires when you actually try to fetch a feed — same guard +
+``pip install -e '.[rss]'`` hint as ``podcasts/client.py:209-213``.
 
 A subscribed Substack publication exposes its feed at ``<publication>/feed``.
 Each ``<item>`` usually carries the full post HTML in ``content:encoded``
-(feedparser surfaces this as ``entry.content[0].value``); paid/paywalled
-posts arrive TRUNCATED — see ``detect_truncation`` for the full-vs-truncated
-heuristic. We store ONLY what the feed returned; we never fabricate a body.
+(feedparser surfaces this as ``entry.content[0].value``); paid/paywalled posts
+arrive TRUNCATED — see ``detect_truncation``. We store ONLY what the feed
+returned; we never fabricate a body.
 """
 from __future__ import annotations
 
@@ -25,14 +26,12 @@ from typing import Optional
 
 import httpx
 
-from substrate.text import html_to_markdown
+# Reuse the SHARED HTML→markdown extractor that acquisition/urls uses (rigor #4:
+# do not hand-roll a parser). It takes raw bytes/str and returns a MarkdownDoc.
+from acquisition.urls.extract import html_to_markdown
 
-
-# Reuse the exact import-guard message shape from podcasts/client.py:22-25.
-_FEEDPARSER_HINT = (
-    "feedparser is required for substack ingestion. "
-    "Install it with: pip install -e '.[rss]'"
-)
+DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.substack)"
+DEFAULT_TIMEOUT_S = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +56,7 @@ TRUNCATION_MARKERS: tuple[str, ...] = (
 )
 
 # Below this stripped-text length we treat a body as suspiciously short — a
-# weak secondary signal, only fires when the entry ALSO advertised more
+# weak SECONDARY signal that fires only when the entry ALSO advertised more
 # content (a ``summary`` longer than the rendered body). Justified: a genuine
 # full Substack essay is typically thousands of characters; an entry whose
 # rendered body is under ~280 chars yet whose summary is longer is almost
@@ -77,7 +76,7 @@ class Post:
 
     ``body_html`` holds exactly what the feed returned (full or truncated);
     ``body_markdown`` is the chunker-friendly rendering via the shared
-    ``html_to_markdown`` extractor that ``acquisition/urls`` uses.
+    ``acquisition.urls.extract.html_to_markdown`` extractor.
     """
 
     guid: str
@@ -103,9 +102,12 @@ class Publication:
 
 def _require_feedparser():
     try:
-        import feedparser  # noqa: WPS433 (runtime import is intentional)
+        import feedparser  # type: ignore[import-not-found]
     except ImportError as exc:  # pragma: no cover - import guard
-        raise ImportError(_FEEDPARSER_HINT) from exc
+        raise ImportError(
+            "acquisition.substack requires feedparser. Run "
+            "`pip install -e '.[rss]'`."
+        ) from exc
     return feedparser
 
 
@@ -124,26 +126,36 @@ def substack_doc_id(guid: str) -> str:
 def _parse_published(entry) -> Optional[datetime]:
     """Extract a UTC datetime from a feed entry, if present.
 
-    Mirrors ``podcasts/client.py:_parse_published``.
+    Mirrors ``podcasts/client.py:_parse_published`` (feedparser converts
+    ``pubDate`` into a ``published_parsed`` struct_time; we convert to UTC).
     """
     for attr in ("published_parsed", "updated_parsed"):
-        struct = getattr(entry, attr, None) or (
-            entry.get(attr) if hasattr(entry, "get") else None
+        struct = (
+            entry.get(attr) if hasattr(entry, "get") else getattr(entry, attr, None)
         )
         if struct:
             try:
-                return datetime(*struct[:6], tzinfo=timezone.utc)
-            except (TypeError, ValueError):
+                import time as _time
+
+                epoch = _time.mktime(struct)  # type: ignore[arg-type]
+                return datetime.fromtimestamp(epoch, tz=timezone.utc)
+            except (TypeError, ValueError, OverflowError):
                 continue
     return None
+
+
+def _entry_get(entry, key: str, default=""):
+    if hasattr(entry, "get"):
+        return entry.get(key, default)
+    return getattr(entry, key, default)
 
 
 def _entry_guid(entry) -> str:
     """GUID identity: entry id/guid, falling back to link. Empty if none."""
     return (
-        entry.get("id")
-        or entry.get("guid")
-        or entry.get("link")
+        _entry_get(entry, "id", "")
+        or _entry_get(entry, "guid", "")
+        or _entry_get(entry, "link", "")
         or ""
     )
 
@@ -154,18 +166,47 @@ def _entry_body_html(entry) -> str:
     feedparser surfaces ``content:encoded`` as ``entry.content[0].value``.
     We never look beyond the feed for a missing body.
     """
-    content = entry.get("content") or []
+    content = _entry_get(entry, "content", None) or []
     if content:
         first = content[0]
-        val = first.get("value") if hasattr(first, "get") else None
+        val = (
+            first.get("value")
+            if hasattr(first, "get")
+            else getattr(first, "value", None)
+        )
         if val:
             return val
-    return entry.get("summary", "") or ""
+    return _entry_get(entry, "summary", "") or ""
 
 
-def _stripped_len(markdown: str) -> int:
-    """Length of the body with surrounding whitespace stripped."""
-    return len(markdown.strip())
+def _render_body_markdown(
+    body_html: str, *, title: str, base_url: Optional[str]
+) -> str:
+    """Render an RSS body FRAGMENT to chunker-friendly markdown.
+
+    The shared ``acquisition.urls.extract.html_to_markdown`` is a readability
+    MAIN-CONTENT extractor: it expects a full HTML *document* and returns the
+    article body, discarding chrome. An RSS ``content:encoded`` value is a body
+    FRAGMENT (bare ``<p>…`` markup), which the extractor would drop as
+    non-article (verified: a bare fragment renders to a 0-length body). So we
+    wrap the fragment in a minimal ``<html><body><article>`` document and feed
+    THAT to the same extractor (rigor #4: reuse the project extractor, do NOT
+    hand-roll a parser; we only give it the structure it expects). The
+    ``<article>`` element is the readability anchor; the feed entry title is kept
+    by the caller regardless of what the extractor parses.
+    """
+    if not body_html.strip():
+        return ""
+    safe_title = (title or "").replace("<", " ").replace(">", " ")
+    document = (
+        "<!DOCTYPE html><html><head><title>"
+        + safe_title
+        + "</title></head><body><article>"
+        + body_html
+        + "</article></body></html>"
+    )
+    md_doc = html_to_markdown(document.encode("utf-8"), base_url=base_url)
+    return md_doc.markdown
 
 
 def detect_truncation(
@@ -186,7 +227,7 @@ def detect_truncation(
     for marker in TRUNCATION_MARKERS:
         if marker in haystack:
             return True, TRUNCATION_REASON_MARKER
-    body_len = _stripped_len(body_markdown)
+    body_len = len(body_markdown.strip())
     if body_len < MIN_FULL_BODY_CHARS:
         # Only fire the short-body signal when the entry advertised more.
         summary_len = len((summary_html or "").strip())
@@ -203,31 +244,39 @@ def fetch_feed(
 ) -> Publication:
     """Download and parse a Substack RSS feed into a ``Publication``.
 
-    A caller may inject an ``httpx.Client`` (e.g. backed by a
-    ``MockTransport``) for testing; otherwise a default client is used.
-    Identical download/parse shape to ``podcasts.fetch_feed``.
+    A caller may inject an ``httpx.Client`` (e.g. backed by a ``MockTransport``)
+    for testing; otherwise a default short-lived client is used. Identical
+    download/parse shape to ``podcasts.fetch_feed``.
     """
     feedparser = _require_feedparser()
-    owns_client = client is None
-    if client is None:
-        client = httpx.Client(timeout=30.0, follow_redirects=True)
-    try:
-        resp = client.get(feed_url)
-        resp.raise_for_status()
-        raw = resp.content
-    finally:
-        if owns_client:
-            client.close()
+    headers = {"User-Agent": DEFAULT_USER_AGENT}
+    if client is not None:
+        r = client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+    else:
+        with httpx.Client(follow_redirects=True) as c:
+            r = c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+    r.raise_for_status()
+    raw = r.content
 
     parsed = feedparser.parse(raw)
-    pub_title = ""
-    pub_description = ""
-    if getattr(parsed, "feed", None):
-        pub_title = parsed.feed.get("title", "") or ""
-        pub_description = parsed.feed.get("description", "") or ""
+    channel = (
+        parsed.get("feed", {})
+        if hasattr(parsed, "get")
+        else getattr(parsed, "feed", {})
+    )
+    pub_title = (
+        channel.get("title", "")
+        if hasattr(channel, "get")
+        else getattr(channel, "title", "")
+    ) or ""
+    pub_description = (
+        channel.get("description", "")
+        if hasattr(channel, "get")
+        else getattr(channel, "description", "")
+    ) or ""
 
     posts: list[Post] = []
-    entries = parsed.entries or []
+    entries = (parsed.entries if hasattr(parsed, "entries") else []) or []
     if max_posts is not None:
         entries = entries[:max_posts]
     for entry in entries:
@@ -236,19 +285,17 @@ def fetch_feed(
             # Rigor #3 edge case: no GUID and no link — skip, never mint a
             # random id. (Caller-visible: the post simply does not ingest.)
             continue
-        title = entry.get("title", "") or ""
+        title = _entry_get(entry, "title", "") or ""
         body_html = _entry_body_html(entry)
+        link = _entry_get(entry, "link", None) or None
         # Render to chunker-friendly markdown via the SHARED extractor that
-        # acquisition/urls uses (substrate.text.html_to_markdown) — do not
-        # hand-roll a parser. We discard the extracted <title> here (we use
-        # the feed entry title) and keep only the markdown body.
-        _extracted_title, body_markdown = html_to_markdown(body_html)
-        summary_html = entry.get("summary", "") or ""
+        # acquisition/urls uses (wrapped so the readability extractor sees a
+        # document, not a bare fragment — see _render_body_markdown).
+        body_markdown = _render_body_markdown(body_html, title=title, base_url=link)
+        summary_html = _entry_get(entry, "summary", "") or ""
         truncated, reason = detect_truncation(
             body_markdown=body_markdown, summary_html=summary_html
         )
-        author = entry.get("author", "") or ""
-        post_url = entry.get("link")
         posts.append(
             Post(
                 guid=guid,
@@ -256,8 +303,8 @@ def fetch_feed(
                 body_html=body_html,
                 body_markdown=body_markdown,
                 published_at=_parse_published(entry),
-                post_url=post_url,
-                author=author,
+                post_url=link,
+                author=_entry_get(entry, "author", "") or "",
                 truncated=truncated,
                 truncation_reason=reason,
             )
