@@ -56,8 +56,14 @@ def test_magic_link_round_trip(monkeypatch):
 def test_magic_link_rejects_tampered_token(monkeypatch):
     monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
     tok = mint_magic_link_token(_OPERATOR)
-    # Flip the last char of the signature segment
-    tampered = tok[:-1] + ("A" if tok[-1] != "A" else "B")
+    # Tamper a char at the START of the signature segment. Flipping the LAST
+    # b64url char can be a no-op — base64 boundary bits alias to the same decoded
+    # bytes — which made this test intermittently DID-NOT-RAISE in CI. The first
+    # signature char encodes the leading 6 bits of byte 0, so a different char
+    # always changes the MAC: a guaranteed-rejected tamper.
+    payload_b64, sig_b64 = tok.split(".", 1)
+    flipped_sig = ("A" if sig_b64[0] != "A" else "B") + sig_b64[1:]
+    tampered = f"{payload_b64}.{flipped_sig}"
     with pytest.raises(InvalidToken):
         verify_magic_link_token(tampered)
 
