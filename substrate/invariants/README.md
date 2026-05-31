@@ -41,6 +41,10 @@ sunset = "Sprint-20 §14.4 verdict"        # "" if permanent
 [non_vacuity]
 method = "fail_before_pass_after"         # | "negative_control" | "mutation"
 detail = "fail_before=7 pass_after=27 @7dc7ed5"
+# REQUIRED when guard_kind="script": the strongest negative-control node. The
+# meta-check RUNS this (collected, not skipped/xfail/xpass, passes) — a
+# script-kind guard's teeth are VERIFIED, not prose-trusted.
+bite_test = "tests/test_owner_boundary_lint.py::test_lint_catches_a_divergent_second_owner"
 ```
 
 For an **honest gap** (no real guard yet):
@@ -69,18 +73,31 @@ assertion = "..."
 | `invariant.owner` | unguarded only | The sprint that will supply the guard. |
 | `[non_vacuity].method` | guarded only | `fail_before_pass_after` \| `negative_control` \| `mutation`. |
 | `[non_vacuity].detail` | guarded only | Free-text proof description. |
+| `[non_vacuity].bite_test` | **`script` guards only (required)** | `tests/<file>.py::<node>` — the strongest negative-control node. The meta-check **RUNS** it (collected, not skipped/xfail/xpass, passes), so a script-kind guard's non-vacuity is **verified, not prose-trusted**. A `script` guard with no `bite_test` **fails to load** (`RegistryError`). |
 
 ## What the meta-check enforces
 
 `tests/test_invariant_registry_meta.py` is the anti-stub-hack gate. For every
 declaration it asserts:
 
-* **guarded** → the guard file exists, the node id is **collected** by pytest,
-  is **not** `@pytest.mark.xfail` (neither a genuinely-failing xfail nor an
-  incidentally-passing xpass counts as a live guard), runs **green** at call
+* **guarded (`pytest`)** → the guard file exists, the node id is **collected** by
+  pytest, is **not** `@pytest.mark.xfail` (neither a genuinely-failing xfail nor
+  an incidentally-passing xpass counts as a live guard), runs **green** at call
   time, and a `[non_vacuity]` proof is present and well-formed. A guard that is
   missing, skipped, xfailed, xpassed, or stubbed-to-always-pass **reddens** the
   meta-check (proven on deliberately-broken fixtures in the same test file).
+* **guarded (`script`)** → an exit-code gate has no collectible node, so its
+  non-vacuity is **VERIFIED by RUNNING its `[non_vacuity].bite_test`** — the
+  declared strongest negative-control node — with the **same rigor** a
+  `pytest`-kind guard's own node gets (collected, not skipped/xfail/xpass,
+  passes). This is **no longer prose-trusted**: before SPR-03 the registry only
+  checked a `[non_vacuity]` block was *declared* for a `script` guard, so a
+  future script guard could name a non-existent / xfail / vacuous test and
+  fake-pass — the §14.4 disease one `guard_kind` over. A `script` guard with no
+  `bite_test` **fails to load**; one whose `bite_test` is missing/xfail/dead
+  **reddens** the meta-check (all three proven on broken fixtures). The guard's
+  own exit code is exercised by its **CI step** (here, `One-owner-per-layer
+  boundary check`).
 * **unguarded** → an `owner` sprint is named and **no** guard / non-vacuity is
   claimed (an unguarded entry cannot fake completeness).
 
@@ -112,6 +129,7 @@ seam test — the canonical example of what the meta-check must catch.
 | single-writer per graph | **@unguarded** | owner SPR-04 | guard targets `substrate/graph_handle.py` — **absent on main** (stranded); declaring guarded would ImportError at collection. Flips to guarded when SPR-04 lands the GraphHandle seam |
 | providers pinned-primary fails-loud | **@unguarded** | owner operator (flag for ratification) | guard targets the strict-posture bootstrap (`require_pinned` / `ProviderRegistrationError` / `scripts/dev_bootstrap.py`) — **absent on main** (stranded); main's `register_default_providers` takes only `quiet`/`only`. Flips to guarded when the strict bootstrap re-lands |
 | §9.0 servability polarity | **@unguarded** | owner SPR-03 | no production-path guard yet — honest gap; SPR-03 (this spec's servability sprint) supplies it |
+| one-owner-per-layer (boundary) | guarded (`script`) | `tools/lint/owner_boundary_check.py` (bite_test `tests/test_owner_boundary_lint.py::test_lint_catches_a_divergent_second_owner`) | SPR-03 (Antiek Flywheel Foundation). AST one-owner lint: the §9.0 servability predicate is DEFINED in exactly one module (`substrate/books/servability.py`) across the five servability-consuming roots; a SECOND defined predicate (the pre-SPR-08 chunk-denylist polarity fork) is flagged `path:line` + exit 1. ENFORCING CI step `One-owner-per-layer boundary check`; bite_test RUN by the meta-check. A SEPARATE invariant from §9.0 servability-polarity above (this asserts *who may own* the predicate, never *what may be served*) |
 | §5 voice/style discipline | **@unguarded** | owner: operator (unassigned) | not mechanically guarded; may be human-judged — flag for operator |
 | First Light e2e | **@unguarded** | owner operator (flag for ratification) | guard `tests/test_first_light_e2e.py` not on main; no First-Light sprint in this spec — flagged for the operator to assign an owner |
 

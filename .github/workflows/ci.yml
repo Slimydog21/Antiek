@@ -123,6 +123,28 @@ jobs:
         run: |
           python tools/lint/boundary_check.py
 
+      - name: One-owner-per-layer boundary check
+        # SPR-03 (Antiek Flywheel Foundation). Sibling of the vendor-SDK
+        # boundary_check.py above: vendor-check = "don't import the wrong
+        # thing"; this owner-check = "don't reimplement the owned thing". An
+        # AST scan that a shared CONCERN (the §9.0 servability predicate) is
+        # DEFINED in exactly ONE module (substrate/books/servability.py) across
+        # the five servability-consuming roots (graph/attribution/books/write/
+        # speak); a SECOND module defining is_servable_full_text /
+        # is_chunk_servable / servability_of is the §9.0 polarity-mismatch
+        # owner-bypass this guard exists to prevent (the pre-SPR-08 chunk
+        # denylist that diverged from the book allowlist). ENFORCING — no
+        # `|| echo`/`|| true` swallow, so the step's pass/fail is EXACTLY the
+        # lint's exit code; the prior foundation wired its equivalent guard
+        # informational and so never caught the drift. Same path:line + exit-
+        # code contract as boundary_check.py; sub-second on the full tree.
+        # Registered as invariant `boundary` (substrate/invariants/boundary.toml,
+        # guard_kind=script). See
+        # docs/decisions/spr-09-boundary-lint-vs-import-linter.md (filename keeps
+        # the artifact's 48c3856 provenance stem; the work lands under SPR-03).
+        run: |
+          python tools/lint/owner_boundary_check.py
+
       - name: Serve-guard boundary check
         # SPR-02 (arxiv-ingest): forbid direct serve_full_text() calls
         # outside the allowlist (substrate/books/serve.py where it is

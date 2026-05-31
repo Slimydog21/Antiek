@@ -1,0 +1,32 @@
+[invariant]
+id = "boundary"
+status = "guarded"
+owner = "SPR-09"
+statement = """
+One-owner-per-layer (boundary-lint). A shared concern has EXACTLY ONE owning
+module; every other layer IMPORTS the owner rather than reimplementing it. The
+first real assertion targets the §9.0 servability owner SPR-08 established:
+substrate/books/servability.py is the SOLE module permitted to define a
+servability predicate (is_servable_full_text / is_chunk_servable /
+servability_of). A SECOND definition outside the owner is an owner-bypass.
+COST IF VIOLATED: this is the exact §9.0 polarity-mismatch the capstone audits
+found — the pre-SPR-08 chunk path kept its OWN is_chunk_servable-equivalent
+(a denylist) that diverged to the OPPOSITE (serve-by-default) polarity from the
+book allowlist over the same documents.content_class column, serving
+unknown-rights text and routing an ad-attribution money share on it (the
+Hachette/Bartz §9.0 risk the Sprint-18 legal gate blocks; CLAUDE.md invariant
+#4). One owner, one polarity, CI-enforced, is the fix this guards. Composed from
+antiek-harness-hardening sprint-04 (one-owner-per-layer); narrowed from
+import-linter layer-DIRECTION to single-OWNERSHIP because direction would not
+catch two same-layer predicates disagreeing — see
+docs/decisions/spr-09-boundary-lint-vs-import-linter.md.
+"""
+guard = "tools/lint/owner_boundary_check.py"
+guard_kind = "script"
+assertion = "An AST scan of the servability concern's search roots — EVERY substrate surface that consumes servability: substrate/graph (chunk/search), substrate/attribution (money), substrate/books (serve + owner), substrate/write (snippet-vs-full-text trace), substrate/speak (PLATFORM_AUTHORED publish) — finds exactly one module, substrate/books/servability.py, defining a top-level servability predicate; a second owner, a missing owner, or an owner that lost its predicate is flagged as path:line and exits 1. write/ and speak/ are serve-/money-adjacent and were added so the guard's reach is not narrower than the surface that actually decides servability. Passes on the current tree (one owner; write/ and speak/ import the owner) and is wired as the 'One-owner-per-layer boundary check' CI step."
+sunset = ""
+
+[non_vacuity]
+method = "negative_control"
+bite_test = "tests/test_owner_boundary_lint.py::test_lint_catches_a_divergent_second_owner"
+detail = "tests/test_owner_boundary_lint.py::test_lint_catches_a_divergent_second_owner injects a second module defining is_chunk_servable with the opposite (serve-by-default) polarity and proves the lint flags it as path:line; test_lint_is_green_once_the_bypass_imports_the_owner proves the SAME lint goes green when the bypass imports the owner instead (a real fail→pass control, not a lint that flags everything). test_lint_catches_a_missing_owner + test_lint_catches_owner_that_lost_its_predicate cover the vacuous-owner failure mode. CI step: .github/workflows/ci.yml → 'One-owner-per-layer boundary check' exercises exit 1 on violation."

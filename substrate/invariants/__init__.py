@@ -84,10 +84,21 @@ class NonVacuityProof:
       * ``mutation`` — a named mutation of the guarded code that the guard catches.
 
     detail: free text describing the proof (e.g. "fail_before=7 pass_after=27 @7dc7ed5").
+
+    bite_test: the ``tests/<file>.py::<node>`` pytest node that is the guard's
+      strongest negative control — the single test that fails when the invariant
+      is violated. REQUIRED for ``guard_kind="script"`` (an exit-code gate's
+      non-vacuity is otherwise only prose, never RUN, so a future script-kind
+      guard could name a test that does not exist / is xfail / is vacuous and the
+      meta-check would still pass it — the exact disease this registry cures, one
+      guard_kind over). The meta-check RUNS this node with the same rigor a
+      pytest-kind guard's own node gets (collected, not skipped/xfail/xpass,
+      passes). Empty for pytest-kind guards (their ``guard`` node IS the bite).
     """
 
     method: str
     detail: str
+    bite_test: str = ""
 
 
 @dataclass(frozen=True)
@@ -178,9 +189,30 @@ def _parse_one(src: Path) -> Invariant:
     non_vacuity: NonVacuityProof | None = None
     nv = data.get("non_vacuity")
     if isinstance(nv, dict):
+        bite_test = str(nv.get("bite_test", "")).strip()
         non_vacuity = NonVacuityProof(
             method=str(_require(nv, "method", src)).strip(),
             detail=str(_require(nv, "detail", src)).strip(),
+            bite_test=bite_test,
+        )
+
+    # A script-kind guard is an exit-code gate the meta-check never RUNS, so its
+    # non-vacuity is otherwise prose-only. Require a structured bite_test node so
+    # the meta-check can VERIFY the script-kind guard's teeth by running it — the
+    # same rigor a pytest-kind guard's node gets. A guarded script-kind invariant
+    # with no bite_test is the §14.4 fake-green disease one guard_kind over, so it
+    # must fail to load (a loud programming error, never a silent skip).
+    if (
+        status == STATUS_GUARDED
+        and guard_kind == GUARD_KIND_SCRIPT
+        and (non_vacuity is None or not non_vacuity.bite_test)
+    ):
+        raise RegistryError(
+            f"{src.name}: guard_kind={GUARD_KIND_SCRIPT!r} requires a structured "
+            f"[non_vacuity].bite_test (a tests/<file>.py::<node> negative-control "
+            f"node) — a script-kind guard's non-vacuity is otherwise only prose "
+            f"and is never RUN, which would let a future script-kind guard name a "
+            f"non-existent / xfail / vacuous test and still fake-pass the meta-check"
         )
 
     return Invariant(
