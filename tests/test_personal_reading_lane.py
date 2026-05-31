@@ -522,3 +522,105 @@ def test_servability_drift_assertion_still_holds():
     )
     assert proc.returncode == 0, proc.stderr
     assert "ok" in proc.stdout
+
+
+# ---------------------------------------------------------------------------
+# M2 defense-in-depth — the live attribution-compute surface
+# (substrate/attribution/compute.py, /attribution/synthesis/{id}) must drop a
+# personal_reading document a synthesis happened to cite, exactly as it already
+# drops restricted_pending_opt_in. This endpoint resolves WHATEVER chunks a
+# synthesis cited (a synthesis built on a privileged owner path could have
+# included personal_reading), so the gate that gives personal_reading zero ad
+# attribution must hold HERE too, not only on the upstream search gate. This
+# test BITES on the pre-sharpen RESTRICTED-only filter: against it, the
+# personal_reading doc would receive a non-zero share + title.
+# ---------------------------------------------------------------------------
+
+
+def _seed_synthesis_citing(db_path: str, chunk_specs: list[tuple[str, str, str]]):
+    """chunk_specs: list of (document_id, content_class, text). Seeds one
+    document + one chunk per spec and a synthesis whose single thesis_component
+    cites every chunk. Returns the synthesis_id."""
+    import json
+
+    con = connect_write(db_path, purpose="seed-syn")
+    try:
+        chunk_ids: list[str] = []
+        for document_id, content_class, text in chunk_specs:
+            insert_document(
+                con,
+                document_id=document_id,
+                source_tier=2,
+                document_type="paper",
+                title=f"Title {document_id}",
+                content_class=content_class,
+            )
+            cid = insert_chunk(
+                con,
+                document_id=document_id,
+                chunk_index=0,
+                text=text,
+                token_count=10,
+                embedding=StubEmbedding().encode(text),
+            )
+            chunk_ids.append(cid)
+        thesis = {
+            "thesis_components": [
+                {"claim": "C1", "confidence": "high", "supporting_chunk_ids": chunk_ids},
+            ],
+        }
+        con.execute(
+            "INSERT INTO syntheses (synthesis_id, investigation_id, target_question, "
+            "synthesis_timestamp, status, implicit_recommendation, thesis, thesis_token_count) "
+            "VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, 0)",
+            ["syn-pr", "inv-1", "Q?", "passed", "proceed", json.dumps(thesis)],
+        )
+    finally:
+        con.close()
+    return "syn-pr"
+
+
+def test_attribution_compute_drops_personal_reading_doc(env, monkeypatch):
+    from substrate.attribution.compute import compute_attribution_for_synthesis
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", env["db_path"])
+    _seed_synthesis_citing(
+        env["db_path"],
+        [
+            # DISTINCT text per chunk so insert_chunk derives distinct chunk_ids
+            # (it hashes the body) — identical text would collide both chunks
+            # onto one document and the test would no longer discriminate.
+            ("doc-public", "public_domain", "public servable retrieval text"),
+            ("doc-personal", "personal_reading", "owner-private third-party text"),
+        ],
+    )
+    r = compute_attribution_for_synthesis("syn-pr", db_path=env["db_path"])
+    for opt in (r.option_a, r.option_b, r.option_c):
+        # personal_reading must be gone — not down-weighted, not titled.
+        assert "doc-personal" not in opt.shares, opt.algorithm
+        assert "doc-personal" not in opt.document_titles, opt.algorithm
+        assert "Title doc-personal" not in opt.document_titles.values(), opt.algorithm
+        assert "doc-personal" not in opt.document_ip_holders, opt.algorithm
+    # The servable public document carries the FULL attribution — the
+    # personal_reading source is excluded entirely, not merely reduced.
+    assert r.option_b.shares == pytest.approx({"doc-public": 1.0})
+
+
+def test_attribution_compute_still_drops_restricted_doc(env, monkeypatch):
+    """Regression anchor — extending the filter to the excluded-union must NOT
+    regress the restricted_pending_opt_in exclusion the union also contains."""
+    from substrate.attribution.compute import compute_attribution_for_synthesis
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", env["db_path"])
+    _seed_synthesis_citing(
+        env["db_path"],
+        [
+            ("doc-public", "public_domain", "public servable retrieval text"),
+            ("doc-restricted", "restricted_pending_opt_in", "gated restricted body text"),
+        ],
+    )
+    r = compute_attribution_for_synthesis("syn-pr", db_path=env["db_path"])
+    for opt in (r.option_a, r.option_b, r.option_c):
+        assert "doc-restricted" not in opt.shares, opt.algorithm
+        assert "doc-restricted" not in opt.document_titles, opt.algorithm
+    assert r.option_b.shares == pytest.approx({"doc-public": 1.0})

@@ -158,25 +158,38 @@ def compute_attribution_for_synthesis(
         doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}
 
         # §9.0 retrieval-time gating, on the SURFACED (attribution) path.
-        # A restricted_pending_opt_in document must NOT surface into an
-        # attribution-triggering synthesis — neither its body, nor its
-        # title, nor a share. The same gate that withholds bytes at
-        # /chunks/{id} (app.py) holds here: this is an attribution-eligible
-        # surface, not a privileged (private_research / operator_only) path,
-        # so restricted content is excluded entirely. (SPR-10 M1; mirrors
-        # substrate/graph/search.py RESTRICTED_CONTENT_CLASSES.)
-        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
+        # Two content_classes must NOT surface into an attribution-triggering
+        # synthesis — neither body, nor title, nor a share:
+        #   - restricted_pending_opt_in (gated-but-public copyrighted work
+        #     withheld pending opt-in), and
+        #   - personal_reading (the owner's private third-party reading — the
+        #     Personal-Reading Lane, SPR-01).
+        # This endpoint resolves WHATEVER chunks a given synthesis cited, so a
+        # synthesis built on a privileged (private_research / operator_only)
+        # path could legitimately have included personal_reading chunks; when
+        # attribution is later computed here — an attribution-ELIGIBLE surface,
+        # not a privileged owner read — both classes must be dropped so they
+        # receive zero display share and zero title (personal_reading accrues
+        # zero ad attribution by construction, master-spec §9.0 / lane invariant).
+        # We filter on the SAME non-privileged exclusion union the public
+        # chunk-search gate uses (substrate/graph/search.py
+        # _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = RESTRICTED ∪ PERSONAL_ONLY)
+        # so the two surfaces can never drift apart. (SPR-01 M2 defense-in-depth;
+        # supersedes the RESTRICTED-only filter from SPR-10 M1.)
+        from substrate.graph.search import (
+            _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
+        )
 
-        restricted_docs = {
+        excluded_docs = {
             d for d, cc in doc_to_content_class.items()
-            if cc in RESTRICTED_CONTENT_CLASSES
+            if cc in _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES
         }
-        if restricted_docs:
+        if excluded_docs:
             chunk_to_doc = {
                 cid: d for cid, d in chunk_to_doc.items()
-                if d not in restricted_docs
+                if d not in excluded_docs
             }
-            for d in restricted_docs:
+            for d in excluded_docs:
                 doc_to_tier.pop(d, None)
                 doc_to_title.pop(d, None)
                 doc_to_ip_holder.pop(d, None)
