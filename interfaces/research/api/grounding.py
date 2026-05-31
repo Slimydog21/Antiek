@@ -45,6 +45,7 @@ from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized, search  # noqa: E402
+from substrate.graph.search import PRIVILEGED_CALLER_TOKEN  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     ClaimChallengeRaisedPayload,
@@ -104,9 +105,37 @@ def _search_chunks_for_claim(
     ensure_initialized(db_path)
     con = connect_read(db_path)
     try:
+        # policy_tag='private_research': the grounder validates a claim
+        # against the document the operator is actively wrestling — the
+        # operator's own personal-research path, never an ad-attribution /
+        # money surface. After the SPR-03 deny-by-default chunk gate, the
+        # default 'attribution_eligible' tag denies any document whose
+        # content_class is NULL/unknown (wrestling-loaded docs start NULL
+        # until the tier/class assigner refines them — see
+        # wrestling.make_document_loaded_handler), which would return zero
+        # chunks for every freshly-wrestled document and break grounding.
+        #
+        # HONEST DELTA (do not call this "restoring prior behavior"): the
+        # privileged private_research tag is in PRIVILEGED_POLICY_TAGS, so it
+        # skips the §9.0 chunk gate ENTIRELY — it WIDENS access relative to
+        # the old default 'attribution_eligible' tag, which under the prior
+        # denylist admitted NULL but explicitly EXCLUDED
+        # restricted_pending_opt_in. private_research therefore re-admits
+        # NULL AND ALSO admits restricted_pending_opt_in that the old default
+        # tag denied. This widening is bounded to the operator's single
+        # wrestled document (search is document_id-scoped to event.document_id
+        # here) on this operator-only, non-attribution path, so it re-opens
+        # the gate on NO attribution-eligible / money surface.
+        #
+        # The privileged tag is code-enforced: search() rejects it unless the
+        # caller passes search.PRIVILEGED_CALLER_TOKEN. This grounder is the
+        # operator-only entrypoint that imports the token; a money/ad caller
+        # cannot present it (§9.0 stage-safety guard, SPR-03).
         result = search(
             con, claim_text, model=embedder,
             top_k=top_k, document_id=document_id,
+            policy_tag="private_research",
+            privileged_caller=PRIVILEGED_CALLER_TOKEN,
         )
     finally:
         con.close()

@@ -1,6 +1,6 @@
 [invariant]
 id = "section-9-0-servability-polarity"
-status = "unguarded"
+status = "guarded"
 owner = "SPR-03"
 statement = """
 §9.0 servability polarity. Payouts gate strictly on retrieval-time gating in
@@ -8,10 +8,21 @@ production + publisher opt-in; servability must DENY by default and serve full
 text only after the publish gate passes (the polarity must not invert). COST IF
 VIOLATED: the Sprint-18 legal gate (CLAUDE.md invariant #4; G2/G3 open). An
 inverted polarity would serve un-opted-in publisher text and route money on it,
-the exact §9.0 risk the legal gate blocks. Registered @unguarded HONESTLY: this
-session has no real production-path guard for the polarity — SPR-03 (this spec's
-§9.0 servability sprint) supplies it. An honest gap the registry surfaces beats
-a fake-complete registry (rigor #1).
+the exact §9.0 risk the legal gate blocks. SPR-03 supplies the guard: ONE owned
+deny-by-default predicate (substrate/books/servability.py) gates BOTH the chunk-
+search path and the book full-text path over the same documents.content_class
+column, so NULL/unknown/restricted are DENIED on both — the prior fail-open
+denylist in search.py (NULL PASSED) is removed. NOTE: this @guarded flip lives
+ONLY on the staged SPR-03 §9.0 branch; on main the invariant stays @unguarded
+until the operator merges §9.0 behind the G2/G3 legal gate (the staged PR does
+not merge automatically).
 """
-assertion = "OWNED BY SPR-03: a guard proving production servability denies by default and serves full text only after the publish gate passes, with no money routed on un-opted-in text."
-sunset = ""
+guard = "tests/test_servability_polarity.py::test_live_null_and_unknown_denied_on_both_paths"
+guard_kind = "pytest"
+assertion = "Against a live DuckDB seeded one-doc-per-content_class, the chunk-search path (search) and the book full-text path (serve_full_text) BOTH DENY NULL and unknown content_class — proving the deny-by-default polarity holds end-to-end over the real SQL gate, not just an in-memory predicate."
+sunset = "Operator merges or rejects the staged §9.0 PR behind the G2/G3 legal gate; see docs/decisions/spr-03-reconcile-servability-and-boundary.md"
+
+[non_vacuity]
+method = "fail_before_pass_after"
+bite_test = "Restore the pre-SPR-03 fail-open denylist on the search.py §9.0 gate (`AND (d.content_class IS NULL OR d.content_class NOT IN (RESTRICTED_CONTENT_CLASSES))`) → the guard node REDS (the live chunk path serves doc-null + doc-unknown again, breaking the cross-path DENY assertion); `git checkout -- substrate/graph/search.py` → GREEN."
+detail = "fail_before (fail-open denylist restored): the live-SQL guard fails — doc-null / doc-unknown are returned by search() and the cross-path DENY assertion breaks. pass_after (deny-by-default allowlist): GREEN. The seed-and-catch is pasted in the SPR-03 handoff. The guard exercises the REAL search() SQL gate against a real DuckDB (not a synthetic predicate), so a stubbed/in-memory-only guard could not produce this bite."

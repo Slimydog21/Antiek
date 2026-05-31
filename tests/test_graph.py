@@ -292,10 +292,15 @@ def _seed_three_chunks(db_path: str, model: _StubEmbeddingModel) -> tuple[str, s
     Returns the chunk ids in seed order."""
     con = connect_write(db_path, purpose="seed")
     try:
-        # tier 1, query-relevant
+        # tier 1, query-relevant. content_class is set to a servable class:
+        # after the SPR-03 deny-by-default chunk gate, the default
+        # attribution-eligible search path only returns servable content, so
+        # these search-mechanics (ranking/tier/edges) tests must seed
+        # servable docs — a NULL content_class is now (correctly) gated out.
         insert_document(
             con, document_id="d1", source_tier=1, document_type="sec_filing_10k",
             title="PsiQuantum 10-K", source_uri="file:///d1.pdf",
+            content_class="public_domain",
         )
         c1 = insert_chunk(
             con, document_id="d1", chunk_index=0,
@@ -306,7 +311,7 @@ def _seed_three_chunks(db_path: str, model: _StubEmbeddingModel) -> tuple[str, s
         # tier 3, less query-relevant
         insert_document(
             con, document_id="d2", source_tier=3, document_type="white_paper",
-            title="Quantum overview",
+            title="Quantum overview", content_class="public_domain",
         )
         c2 = insert_chunk(
             con, document_id="d2", chunk_index=0,
@@ -317,7 +322,7 @@ def _seed_three_chunks(db_path: str, model: _StubEmbeddingModel) -> tuple[str, s
         # tier 5, off-topic
         insert_document(
             con, document_id="d3", source_tier=5, document_type="social_post",
-            title="Anonymous post",
+            title="Anonymous post", content_class="public_domain",
         )
         c3 = insert_chunk(
             con, document_id="d3", chunk_index=0,

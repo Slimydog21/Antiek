@@ -11,13 +11,18 @@ from G1, and a gate that can drift is a gate that fails open.
 
 Two deliberate asymmetries make this defensible:
 
-1. **Deny-by-default.** Full-text serving uses an ALLOWLIST
-   (``SERVABLE_CONTENT_CLASSES``). The chunk-search gate in search.py uses
-   a *denylist* — NULL content_class passes there as legacy/grandfathered.
-   Here, NULL / unknown / restricted resolves to ``gated_metadata_only``
-   and is never served full text. Serving a whole book is a far higher-
-   liability act than returning a ≤500-char research snippet, so the gate
-   is correspondingly stricter — over the same column, so nothing drifts.
+1. **Deny-by-default, ONE polarity.** Full-text serving uses an ALLOWLIST
+   (``SERVABLE_CONTENT_CLASSES``): NULL / unknown / restricted resolves to
+   ``gated_metadata_only`` and is never served full text. As of SPR-03 the
+   chunk-search gate in search.py routes its full-text servability decision
+   through the SAME owned predicate (``is_content_class_servable_full_text``
+   / the derived ``servable_full_text_content_classes`` allowlist) rather
+   than a second denylist polarity — so a NULL/unknown class is DENIED on
+   the chunk path too. (Before SPR-03 the chunk gate was a fail-open
+   denylist that let NULL/unknown PASS; that was the §9.0 bug this predicate
+   closes — see ``substrate/graph/search.py`` and
+   ``tests/test_servability_polarity.py``.) Both gates read the same column
+   and now reach the same verdict, so nothing drifts.
 
 2. **Takedown is an override, not a license mutation.** A taken-down
    public-domain book is still public-domain; ``taken_down`` takes
@@ -146,6 +151,48 @@ def is_servable_full_text(status: ServabilityStatus) -> bool:
     return status in _SERVABLE_STATUSES
 
 
+def is_content_class_servable_full_text(content_class: Optional[str]) -> bool:
+    """Owned, single-step full-text servability decision for a raw
+    ``content_class`` — ``is_servable_full_text(servability_of(content_class))``
+    composed into one predicate.
+
+    This is THE deny-by-default polarity, expressed once. NULL / unknown /
+    restricted collapse to ``GATED_METADATA_ONLY`` in :func:`servability_of`
+    and therefore return ``False`` here. Callers that gate retrieval over
+    the same ``documents.content_class`` column (the chunk-search path in
+    ``substrate/graph/search.py``) MUST route through this rather than
+    re-implementing the polarity, so the chunk path and the book full-text
+    path cannot diverge — the SPR-03 cross-path agreement that
+    ``tests/test_servability_polarity.py`` proves class-by-class.
+
+    Note: this ignores ``taken_down`` (a per-book override resolved on the
+    serve path from ``book_assets``); chunk-level retrieval keys only off
+    ``content_class``, and takedown additionally moves the document to the
+    gated content_class, so a taken-down book is denied here too."""
+    return is_servable_full_text(servability_of(content_class))
+
+
+def servable_full_text_content_classes() -> frozenset[str]:
+    """The set of ``content_class`` values that resolve to a full-text-
+    servable status — DERIVED from the owned predicate, not declared.
+
+    Built by running every known content_class through
+    :func:`is_content_class_servable_full_text`, so the membership of this
+    allowlist is decided by exactly one polarity (the deny-by-default
+    projection above). The SQL-layer chunk gate uses this as an
+    ``IN (...)`` allowlist; because it is derived from the predicate, a
+    NULL or unrecognised ``content_class`` is absent from it and is denied
+    — the same verdict the book full-text path reaches. The set equals
+    ``SERVABLE_CONTENT_CLASSES`` (guarded by the import-time assert below),
+    but is exposed as a derived function so search.py never re-declares the
+    denylist polarity it replaced."""
+    return frozenset(
+        cc
+        for cc in _CONTENT_CLASS_TO_STATUS
+        if is_content_class_servable_full_text(cc)
+    )
+
+
 # ---------------------------------------------------------------------------
 # Drift guard — the projection and the SQL allowlist share one source.
 # ---------------------------------------------------------------------------
@@ -169,4 +216,16 @@ assert _PROJECTED_SERVABLE == set(SERVABLE_CONTENT_CLASSES), (
 assert BOOK_DEFAULT_SERVABILITY == ServabilityStatus.GATED_METADATA_ONLY.value, (
     "BOOK_DEFAULT_SERVABILITY must be the gated_metadata_only status — "
     "deny-by-default is the entire point of this gate."
+)
+
+# The derived chunk-gate allowlist (built from the owned predicate, used by
+# substrate/graph/search.py) MUST equal SERVABLE_CONTENT_CLASSES. This is the
+# same source-of-truth guard as above, asserted through the derivation path so
+# a regression in is_content_class_servable_full_text() (the polarity the chunk
+# gate now reuses) cannot silently widen the search-path allowlist.
+assert servable_full_text_content_classes() == set(SERVABLE_CONTENT_CLASSES), (
+    "derived chunk-gate allowlist drifted from SERVABLE_CONTENT_CLASSES: "
+    f"derived={set(servable_full_text_content_classes())!r} "
+    f"allowlist={set(SERVABLE_CONTENT_CLASSES)!r}. The chunk-search gate "
+    "and the book full-text gate read the same column; they MUST agree."
 )

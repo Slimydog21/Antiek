@@ -41,6 +41,21 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import connect_read  # type: ignore[no-redef]
 
+# The deny-by-default servability polarity is owned by the book full-text
+# path (substrate/books/servability.py). The chunk/search gate below routes
+# its full-text servability decision through that single predicate rather
+# than re-implementing the polarity here — see search()'s §9.0 gate.
+try:
+    from ..books.servability import (
+        is_content_class_servable_full_text,
+        servable_full_text_content_classes,
+    )
+except ImportError:  # pragma: no cover — direct-script fallback
+    from substrate.books.servability import (  # type: ignore[no-redef]
+        is_content_class_servable_full_text,
+        servable_full_text_content_classes,
+    )
+
 
 # ---------------------------------------------------------------------------
 # EmbeddingModel — injectable for tests
@@ -112,25 +127,62 @@ def cosine_similarity_sql(
 # ---------------------------------------------------------------------------
 
 
-# Policy tags privileged to bypass the restricted-content gate.
-# Per master-spec §9.0 retrieval-time gating: restricted content (i.e.
-# content_class='restricted_pending_opt_in') is retrievable only on
-# private-research or operator-only paths where fair use is robust.
-# The default policy_tag for any ad-attributable surface is
-# 'attribution_eligible' — which explicitly does NOT bypass the gate.
+# Policy tags privileged to bypass the §9.0 chunk gate. Per master-spec
+# §9.0 retrieval-time gating: a privileged tag skips the deny-by-default
+# allowlist ENTIRELY (it serves NULL/unknown AND restricted), so it is the
+# operator-only personal-research path where fair use is robust. The default
+# policy_tag for any ad-attributable surface is 'attribution_eligible' —
+# which does NOT bypass the gate.
+#
+# STAGE-SAFETY (SPR-03): a privileged tag is a §9.0 WIDENING enforced, in PR
+# #29, only by call-site discipline. To make it code-enforced, search()
+# additionally requires callers requesting a privileged tag to present the
+# PRIVILEGED_CALLER_TOKEN sentinel below; a money/ad-path caller that lacks
+# the token cannot reach a privileged tag (it raises) — see
+# tests/test_servability_polarity.py::test_money_path_caller_cannot_bypass_gate.
 PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
     "private_research",
     "operator_only",
 })
 
-# Content classes that the substrate may withhold from retrieval
-# depending on policy_tag. Per master-spec §9.0 §9.10.
+# The unforgeable in-process sentinel an operator-only caller must pass to
+# search() to USE a privileged policy_tag. It is a module-private object, not
+# a string, so it cannot be reconstructed from config / user input / an event
+# payload — only code that imports this symbol (the operator-only grounder
+# path) can present it. A caller that requests a privileged tag without it
+# raises PrivilegedPolicyTagError; this is the code-enforced half of the §9.0
+# stage-safety guard (OPERATOR_INPUTS §3 item 5).
+PRIVILEGED_CALLER_TOKEN: object = object()
+
+
+class PrivilegedPolicyTagError(PermissionError):
+    """Raised when a caller requests a privileged policy_tag (one that
+    bypasses the §9.0 chunk gate) without presenting PRIVILEGED_CALLER_TOKEN.
+
+    The privileged bypass WIDENS §9.0 access (it serves NULL/unknown AND
+    restricted content), so it is restricted to the operator-only grounder
+    entrypoint. An attribution / ad / money-path caller cannot reach it: it
+    has no access to the token, and passing the privileged tag string alone
+    is rejected here rather than silently honoured."""
+
+
+# The named restricted-content vocabulary (master-spec §9.0 / §9.10).
 #
 # RESTRICTED_CONTENT_CLASSES is the GATED-BUT-PUBLIC class
 # (restricted_pending_opt_in): a copyrighted-but-public work whose body is
 # withheld pending a rights-holder opt-in, but which DOES accrue ad revenue to
 # escrow. It is the exact mirror of constants.GATED_DEFAULT_CONTENT_CLASS (the
 # write side names the same gate state) — do NOT add personal_reading here.
+#
+# SPR-03: this is NO LONGER the search-gate's polarity. The non-privileged
+# chunk gate is now a deny-by-default ALLOWLIST routed through the owned
+# servability predicate (see search()), so it denies NULL/unknown without
+# consulting this set. The constant is retained because it is the canonical
+# name of the restricted class — imported by substrate/attribution/compute.py
+# (the akb money-path, out of this sprint's scope) and asserted by
+# tests/test_retrieval_time_gate.py — and because the privileged-bypass
+# semantics still reason about "the restricted class". It is a vocabulary
+# anchor, not the enforcement polarity.
 RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
     "restricted_pending_opt_in",
 })
@@ -164,6 +216,21 @@ _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
 )
 
 
+def chunk_full_text_servable(content_class: Optional[str]) -> bool:
+    """The chunk/search §9.0 verdict for a ``content_class`` on a
+    non-privileged retrieval path: may this class's full text appear in
+    search results?
+
+    Exactly the predicate the SQL gate in :func:`search` enforces
+    (``content_class IN servable_full_text_content_classes()``), exposed as
+    a pure function so the cross-path polarity test can assert chunk-path
+    and book-path agreement class-by-class without spinning up a DuckDB.
+    It delegates to the owned predicate in
+    ``substrate/books/servability.py``; there is no second polarity here.
+    NULL and unrecognised classes are DENIED (deny-by-default)."""
+    return is_content_class_servable_full_text(content_class)
+
+
 def search(
     con: Any,
     query: str,
@@ -175,6 +242,7 @@ def search(
     document_ids: Optional[Sequence[str]] = None,
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
+    privileged_caller: object = None,
 ) -> dict:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -206,24 +274,56 @@ def search(
         with_edges: When True, attach the edges sourced from each
             returned chunk plus the nodes those edges connect.
         policy_tag: Retrieval-time gate per master-spec §9.0 + Personal-Reading
-            Lane SPR-01. When ``policy_tag`` is in PRIVILEGED_POLICY_TAGS
-            ({"private_research", "operator_only"}), BOTH restricted content
-            (content_class='restricted_pending_opt_in') AND owner-only content
-            (content_class='personal_reading') are included — this is the owner's
-            full-read path. For ALL other policy_tag values — including the
-            default 'attribution_eligible' (Sprint 18+ ad-attribution path) —
-            both are excluded. The Sprint 18 legal gate (master §15.9) is
-            non-negotiable: payouts on an ungated graph are explicitly forbidden
-            by §16.2; and personal_reading (the owner's private third-party
-            reading) must never reach a monetized / public read.
+            Lane SPR-01. For the default 'attribution_eligible' (Sprint 18+
+            ad-attribution path) — and any non-privileged tag — the §9.0 gate
+            is a deny-by-default ALLOWLIST routed through the owned servability
+            predicate: only a content_class that resolves to full-text-servable
+            is returned, so NULL / unknown / restricted_pending_opt_in AND the
+            owner-only personal_reading class are ALL excluded (personal_reading
+            is not a servable class, so the allowlist withholds it from the
+            public / attribution-eligible read exactly as the prior denylist
+            did — the owner's private third-party reading must never reach a
+            monetized / public read). When ``policy_tag`` is in
+            PRIVILEGED_POLICY_TAGS ({"private_research", "operator_only"}) the
+            gate is BYPASSED entirely (NULL/unknown, restricted AND
+            personal_reading are returned — the owner's full-read path) — but a
+            privileged tag additionally REQUIRES ``privileged_caller`` (see
+            below). The Sprint 18 legal gate (master §15.9) is non-negotiable:
+            payouts on an ungated graph are explicitly forbidden by §16.2.
+        privileged_caller: The PRIVILEGED_CALLER_TOKEN sentinel. REQUIRED when
+            ``policy_tag`` is a privileged tag; a privileged tag requested
+            without it raises ``PrivilegedPolicyTagError``. This is the
+            code-enforced §9.0 stage-safety guard: the privileged bypass
+            WIDENS access, so only the operator-only grounder entrypoint
+            (which imports + passes the token) may use it. A money / ad /
+            attribution caller has no access to the token and so CANNOT reach
+            a privileged tag, even by passing the tag string.
 
     Returns:
         ``{"query": ..., "top_k": ..., "results": [...], "node_matches": []}``
         — same shape as the Researchmaxx version so downstream
         consumers don't need adapter code.
+
+    Raises:
+        PrivilegedPolicyTagError: a privileged ``policy_tag`` was requested
+            without the ``privileged_caller`` token.
     """
     if top_k < 1:
         raise ValueError(f"top_k must be >= 1, got {top_k}")
+
+    # §9.0 stage-safety guard (SPR-03): a privileged policy_tag bypasses the
+    # gate, which WIDENS access — so it is code-restricted to callers holding
+    # the operator-only PRIVILEGED_CALLER_TOKEN. A money/ad-path caller that
+    # passes the tag string but not the token is rejected here, never silently
+    # granted the bypass.
+    if policy_tag in PRIVILEGED_POLICY_TAGS and privileged_caller is not PRIVILEGED_CALLER_TOKEN:
+        raise PrivilegedPolicyTagError(
+            f"policy_tag={policy_tag!r} bypasses the §9.0 chunk gate and may "
+            "be used ONLY by the operator-only grounder path, which must pass "
+            "search.PRIVILEGED_CALLER_TOKEN as privileged_caller. Refusing to "
+            "serve restricted / NULL-provenance content to an unprivileged "
+            "caller (§9.0 deny-by-default)."
+        )
 
     # Union the single-id scope into the set scope (a caller may pass
     # either or both). An EXPLICITLY-EMPTY set means "no documents in
@@ -274,26 +374,50 @@ def search(
     if source_tier_max is not None:
         sql += " AND d.source_tier <= ?"
         params.append(int(source_tier_max))
-    # Sprint 18 retrieval-time gate (master-spec §9.0) + Personal-Reading Lane
-    # SPR-01. On a NON-privileged policy_tag the gate excludes BOTH the
-    # gated-but-public class (restricted_pending_opt_in) AND the owner-only class
-    # (personal_reading) — the union _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES.
-    # personal_reading (the owner's private third-party reading) must never
-    # surface on the public / attribution-eligible read path; it remains
-    # retrievable on the privileged (private_research / operator_only) owner path
-    # below. NULL content_class is still treated as legacy/grandfathered and
-    # passes — that legacy carve-out is unchanged here; the write-side
-    # insert_document deny-by-default guard (substrate/graph/ops.py) is what now
-    # stops fresh third-party ingests from landing NULL, so the NULL-passes hole
-    # is closed at the source rather than by reclassifying legacy rows (that
-    # sweep is SPR-03).
+    # §9.0 retrieval-time gate — deny-by-default (SPR-03) + Personal-Reading
+    # Lane SPR-01.
+    #
+    # The non-privileged retrieval path serves a chunk's parent document
+    # only when its content_class resolves to FULL-TEXT-SERVABLE through
+    # the owned predicate in substrate/books/servability.py
+    # (is_content_class_servable_full_text == is_servable_full_text(
+    # servability_of(content_class))). NULL and any unrecognised
+    # content_class collapse to GATED_METADATA_ONLY there and are absent
+    # from the derived allowlist — so they are DENIED, the same verdict the
+    # book full-text path reaches over the same column. This replaced the
+    # earlier fail-open denylist (an OR-NULL-or-NOT-IN-restricted clause),
+    # under which a NULL/unknown class *passed*. §9.0 is deny-by-default
+    # for a legal reason: unknown provenance is legally indistinguishable
+    # from restricted (Hachette v. Internet Archive, 2d Cir. 2024; Bartz v.
+    # Anthropic), so it must deny.
+    #
+    # The owner-only personal_reading class (Personal-Reading Lane SPR-01)
+    # is likewise withheld here: it is not a servable content_class, so the
+    # allowlist excludes it from the public / attribution-eligible read
+    # exactly as the prior _NON_PRIVILEGED_EXCLUDED denylist did — the
+    # owner's private third-party reading remains retrievable only on the
+    # privileged (private_research / operator_only) owner path below. So the
+    # allowlist polarity SUBSUMES the personal_reading exclusion the denylist
+    # provided, while additionally closing the NULL/unknown hole.
+    #
+    # Legacy carve-out: NONE NEEDED. The previous OR-NULL clause
+    # grandfathered every legacy chunk whose content_class was never
+    # populated — exactly the blanket NULL/unknown fail-open §9.0 forbids,
+    # not a finite enumerable set, so it cannot be expressed as a named,
+    # auditable carve-out. The read-side allowlist here composes with the
+    # write-side insert_document deny-by-default guard (substrate/graph/
+    # ops.py) that stops fresh third-party ingests landing NULL — defense in
+    # depth, both layers deny NULL. The legitimate legacy concern is honoured
+    # the only defensible way: the Sprint 18 ip_holders backfill populates
+    # content_class for genuinely-servable legacy documents (public_domain
+    # / open / opt-in), after which they re-enter the allowlist on
+    # provenance, not on a NULL hole. Until a document carries an
+    # established servable class it stays gated.
     if policy_tag not in PRIVILEGED_POLICY_TAGS:
-        excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
-        placeholders = ",".join("?" for _ in excluded)
-        sql += (
-            f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
-        )
-        params.extend(excluded)
+        servable_classes = sorted(servable_full_text_content_classes())
+        placeholders = ",".join("?" for _ in servable_classes)
+        sql += f" AND d.content_class IN ({placeholders})"
+        params.extend(servable_classes)
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 

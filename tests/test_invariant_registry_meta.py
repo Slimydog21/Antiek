@@ -702,17 +702,27 @@ def test_wave_1_invariants_are_registered() -> None:
       * providers-pinned-primary-fails → require_pinned / ProviderRegistrationError
                                           / scripts/dev_bootstrap.py absent (owner operator)
 
-    The §9.0 and First-Light owners are re-pointed to THIS spec's reality: §9.0 →
-    SPR-03 (this spec's servability sprint); First Light → operator (no
-    First-Light sprint in this spec). §5 voice stays operator-owned. All are
-    present @unguarded with a named owner — NOT silently omitted (rigor #1)."""
+    First Light → operator (no First-Light sprint in this spec). §5 voice
+    stays operator-owned. All are present @unguarded with a named owner — NOT
+    silently omitted (rigor #1).
+
+    SPR-03 STAGED-BRANCH NOTE: §9.0 is owned by SPR-03 (this spec's
+    servability sprint). On main it stays @unguarded — but THIS branch is the
+    staged §9.0 PR, on which SPR-03 has composed the ONE owned deny-by-default
+    predicate and flipped section-9-0-servability-polarity to @guarded (guard:
+    tests/test_servability_polarity.py::test_live_null_and_unknown_denied_on_both_paths).
+    So on the staged branch §9.0 is in must_be_guarded; it returns to
+    @unguarded ONLY if the operator rejects the staged §9.0 PR behind the
+    G2/G3 legal gate. See docs/decisions/spr-03-reconcile-servability-and-boundary.md."""
     by_id = {inv.id: inv for inv in load_registry()}
 
-    # Guards whose nodes genuinely collect + pass against live main.
+    # Guards whose nodes genuinely collect + pass. The first three pass against
+    # live main; section-9-0 is guarded on THIS staged §9.0 branch (SPR-03).
     must_be_guarded = {
         "section-14-4-synthesis-pin",
         "provenance-chain-no-copy",
         "single-writer-remote-exec",
+        "section-9-0-servability-polarity",
     }
     for inv_id in must_be_guarded:
         assert inv_id in by_id, f"Wave-1 invariant {inv_id} not registered"
@@ -724,7 +734,6 @@ def test_wave_1_invariants_are_registered() -> None:
     must_be_unguarded_with_owner = {
         "single-writer-per-graph": "SPR-04",
         "providers-pinned-primary-fails-loud": "operator",
-        "section-9-0-servability-polarity": "SPR-03",
         "first-light-e2e": "operator",
         "section-5-voice-style": "operator",
     }

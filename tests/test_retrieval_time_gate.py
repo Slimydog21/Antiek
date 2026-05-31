@@ -17,7 +17,9 @@ import pytest
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.graph.search import (
+    PRIVILEGED_CALLER_TOKEN,
     PRIVILEGED_POLICY_TAGS,
+    PrivilegedPolicyTagError,
     RESTRICTED_CONTENT_CLASSES,
     search,
 )
@@ -97,9 +99,14 @@ def test_default_policy_excludes_restricted(db_with_chunks):
     assert "doc-restricted" not in doc_ids, (
         "default policy_tag exposed restricted content; legal gate broken"
     )
-    # Legacy null-content_class is grandfathered (passes the gate).
-    assert "doc-legacy" in doc_ids
-    # Public + licensed both pass.
+    # SPR-03 strictening: legacy NULL content_class is now DENIED on the
+    # chunk path (deny-by-default), matching the book full-text path. The
+    # old fail-open that grandfathered NULL was the hole SPR-03 closed —
+    # see substrate/graph/search.py §9.0 gate and tests/test_servability_polarity.py.
+    assert "doc-legacy" not in doc_ids, (
+        "NULL content_class must be denied on the chunk path (deny-by-default)"
+    )
+    # Public + licensed both pass (legitimately-servable classes unaffected).
     assert "doc-public" in doc_ids
     assert "doc-licensed" in doc_ids
 
@@ -126,6 +133,7 @@ def test_private_research_policy_includes_restricted(db_with_chunks):
     res = search(
         db_with_chunks, "quantum", model=embed, top_k=10,
         policy_tag="private_research",
+        privileged_caller=PRIVILEGED_CALLER_TOKEN,
     )
     doc_ids = {r["chunk_id"].replace("chunk-", "") for r in res["results"]}
     assert "doc-restricted" in doc_ids, (
@@ -140,9 +148,24 @@ def test_operator_only_policy_includes_restricted(db_with_chunks):
     res = search(
         db_with_chunks, "quantum", model=embed, top_k=10,
         policy_tag="operator_only",
+        privileged_caller=PRIVILEGED_CALLER_TOKEN,
     )
     doc_ids = {r["chunk_id"].replace("chunk-", "") for r in res["results"]}
     assert "doc-restricted" in doc_ids
+
+
+def test_privileged_tag_without_token_raises(db_with_chunks):
+    """SPR-03 stage-safety guard: a privileged policy_tag bypasses the §9.0
+    gate (it WIDENS access), so it is code-restricted to callers presenting
+    PRIVILEGED_CALLER_TOKEN. Requesting a privileged tag without the token
+    RAISES rather than silently serving NULL/restricted content. This is the
+    code-enforced half of OPERATOR_INPUTS §3 item 5 — call-site discipline is
+    no longer the only thing standing between a money/ad caller and the
+    bypass."""
+    embed = StubEmbedding()
+    for tag in ("private_research", "operator_only"):
+        with pytest.raises(PrivilegedPolicyTagError):
+            search(db_with_chunks, "quantum", model=embed, top_k=10, policy_tag=tag)
 
 
 def test_unknown_policy_tag_is_treated_as_non_privileged(db_with_chunks):
