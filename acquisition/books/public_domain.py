@@ -104,6 +104,101 @@ class PublicDomainWork:
 
 
 # ---------------------------------------------------------------------------
+# Curated per-work license_basis overrides (Personal-Reading-Lane SPR-04).
+#
+# A curated public-domain title sometimes carries a MORE PRECISE legal basis
+# than the generic per-source one (e.g. the exact copyright-term reasoning for
+# a borderline-recent title: "US PD pre-1929" / "95-yr term; entered PD
+# 2024-01-01"). This map lets the curated spine refine the basis WORDING for a
+# named work — WITHOUT forking the rights *decision*.
+#
+# THE INVARIANT (rigor #1): the override is applied ONLY when the source has
+# ALREADY positively asserted public domain (``pd_basis is not None`` — i.e.
+# Gutenberg's per-book ``copyright=false`` flag, or an archive.org PDM rights
+# field). A work the source does NOT assert PD for is still skipped with
+# ``pd_basis=None``; the curated string never MANUFACTURES a public-domain
+# claim from memory. It only states the *term reasoning* a reviewer reads next
+# to the source's own assertion. The override string keeps the per-source
+# assertion appended so the audit trail still names HOW the source asserted PD
+# (the gutendex id / the archive identifier), and the "public domain" + source
+# tokens survive into the stamped ``license_basis`` (it is fed verbatim as the
+# classify() ``source_declaration['public_domain']`` signal, so the stamped
+# basis is ``public_domain: <this string>``).
+#
+# Keys: ``"gutenberg:<book_id>"`` / ``"archive:<identifier>"``.
+#
+# CO-LOCATION (taste / defensibility — SPR-04 sharpen): this map is defined
+# WITH ``_apply_curated_basis`` (the code that reads it), populated at THIS
+# module's import time — NOT by an import-time side effect from a different
+# module. The earlier shape had ``tools.ingest_public_domain`` mutate this map
+# at its own import time, so any caller of ``archive_candidate`` /
+# ``gutenberg_candidates`` that had not first imported the CLI silently stamped
+# the GENERIC per-source basis instead of the curated term reasoning. The
+# rights DECISION (servable / not) was never at risk — the generic basis still
+# passes ``_check_servable_basis`` and the b2 gated-leak cross-check — but the
+# precise legal wording would be dropped on an import-order-dependent path.
+# Defining the load-bearing legal-claim strings next to their applier removes
+# that fragility: the curated basis is present for EVERY caller, structurally,
+# not incidentally. The CLI imports this populated map (read-only) so the
+# curated id lists + their bases still read together for review.
+CURATED_PD_BASIS_OVERRIDES: dict[str, str] = {
+    # Crystallizing Public Opinion (1923): published pre-1929, so it is US
+    # public domain by term expiry regardless of renewal. Gutenberg #61364.
+    # The legal claim this encodes is documented in
+    # docs/decisions/bernays_public_domain.md.
+    "gutenberg:61364": (
+        "US PD pre-1929 (public domain); Project Gutenberg #61364 "
+        "(Crystallizing Public Opinion, 1923, Edward Bernays)"
+    ),
+    # Propaganda (1928): entered the US public domain on 2024-01-01 under the
+    # 95-year term (1928 + 95 = 2023; works enter PD on Jan 1 of the following
+    # year). Internet Archive Public-Domain-Mark item, 1928 first edition.
+    # NOTE (SPR-04 sharpen): the archive identifier this basis keys on
+    # (``propaganda_201804``) was UNVERIFIED at build time — the offline gates
+    # prove the wording + PDM-gating behaviour against a canned record, not
+    # that the live item exists. The live PDM rights field MUST be confirmed
+    # before the SPR-08 prod ingest. See ``CURATED_ARCHIVE_IDENTIFIERS`` in
+    # tools/ingest_public_domain.py and docs/decisions/bernays_public_domain.md.
+    "archive:propaganda_201804": (
+        "US PD: 95-yr term; entered PD 2024-01-01 (public domain); "
+        "Internet Archive PDM (1928 first ed.) (Propaganda, Edward Bernays)"
+    ),
+}
+
+
+def _curated_override_key(source: str, source_id: str) -> str:
+    short = {"project_gutenberg": "gutenberg", "archive_org": "archive"}.get(source, source)
+    return f"{short}:{source_id}"
+
+
+def _apply_curated_basis(work: PublicDomainWork) -> PublicDomainWork:
+    """Refine ``work.pd_basis`` to a curated precise term-reasoning string IFF
+    the source already asserted public domain for this work.
+
+    Deny-by-default is preserved: a work whose source did NOT assert PD
+    (``pd_basis is None``) is returned UNCHANGED (still skip-bound). The
+    override only restates an ALREADY-positive basis with the curated legal
+    reasoning — it never upgrades a ``None`` basis to servable."""
+    if work.pd_basis is None:
+        return work  # source did not assert PD — never manufacture a basis
+    key = _curated_override_key(work.source, work.source_id)
+    curated = CURATED_PD_BASIS_OVERRIDES.get(key)
+    if curated is None:
+        return work
+    return PublicDomainWork(
+        source=work.source,
+        source_id=work.source_id,
+        title=work.title,
+        author=work.author,
+        source_uri=work.source_uri,
+        download_url=work.download_url,
+        download_format=work.download_format,
+        pd_basis=curated,
+        subjects=work.subjects,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Throttled HTTP client
 # ---------------------------------------------------------------------------
 
@@ -363,7 +458,7 @@ def _gutenberg_work(book: dict) -> Optional[PublicDomainWork]:
         return None
     download_url, download_format = selected
     book_id = book.get("id")
-    return PublicDomainWork(
+    work = PublicDomainWork(
         source="project_gutenberg",
         source_id=str(book_id),
         title=title,
@@ -374,6 +469,10 @@ def _gutenberg_work(book: dict) -> Optional[PublicDomainWork]:
         pd_basis=pd_basis,
         subjects=tuple(book.get("subjects") or ()),
     )
+    # Refine the basis to a curated precise term-reasoning string IFF the
+    # source already asserted PD (pd_basis is not None here by construction —
+    # _gutenberg_pd_basis returned non-None above). Never manufactures PD.
+    return _apply_curated_basis(work)
 
 
 # ---------------------------------------------------------------------------
@@ -479,7 +578,7 @@ def archive_candidate(client: SourceClient, identifier: str) -> Optional[PublicD
     creator = meta.get("creator")
     if isinstance(creator, list):
         creator = "; ".join(str(c) for c in creator)
-    return PublicDomainWork(
+    work = PublicDomainWork(
         source="archive_org",
         source_id=identifier,
         title=title,
@@ -490,6 +589,10 @@ def archive_candidate(client: SourceClient, identifier: str) -> Optional[PublicD
         pd_basis=pd_basis,
         subjects=tuple(),
     )
+    # Refine to a curated precise term-reasoning basis IFF the item's rights
+    # field already asserted PD (pd_basis is not None here — _archive_pd_basis
+    # returned non-None above). The override never manufactures PD.
+    return _apply_curated_basis(work)
 
 
 # ---------------------------------------------------------------------------
