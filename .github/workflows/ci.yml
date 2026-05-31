@@ -185,6 +185,17 @@ jobs:
         run: |
           python tools/lint/reachability_gate.py
 
+      - name: Invariant-registry meta-check
+        # SPR-02 (Antiek Flywheel Foundation) KEYSTONE. The registry under
+        # substrate/invariants/ enumerates the load-bearing invariants; this
+        # meta-check reds if any `guarded` declaration's guard is missing,
+        # skipped, xfailed, xpassed, stubbed, or vacuous (the §14.4 fake-green
+        # disease it exists to kill). Named here — not just swept into the
+        # blanket pytest run — so a keystone failure is unmissable. Hermetic
+        # in-process runner; no `|| echo` swallow. See substrate/invariants/ON-RAMP.md.
+        run: |
+          python -m pytest tests/test_invariant_registry_meta.py -q -p no:cacheprovider -p no:xdist
+
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
         # substrate/schemas/ without regenerating

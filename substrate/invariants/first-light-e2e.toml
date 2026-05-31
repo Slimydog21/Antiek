@@ -1,0 +1,19 @@
+[invariant]
+id = "first-light-e2e"
+status = "unguarded"
+owner = "operator (flag for ratification — no First-Light sprint in this spec)"
+statement = """
+First Light end-to-end. The first real-LLM run must produce a cited synthesis
+end-to-end (ingest → research → synthesis with claim→chunk→document provenance),
+with the live synthesizer being the pinned Opus. COST IF VIOLATED: without a
+reproducible e2e baseline, the foundation has no proof the assembled surface
+actually runs against real providers — the "dev-green, prod-can't-run" gap this
+spec exists to close. Registered @unguarded because no sprint in THIS spec
+(Antiek Flywheel Foundation) owns First Light: its guard
+tests/test_first_light_e2e.py does not exist on main, and it is an integration
+test (live LLM / network) gated on operator credentials. Flagged for operator
+ratification to assign an owner sprint. NOT silently omitted: an honest gap with
+a named owner.
+"""
+assertion = "OWNED BY OPERATOR (flag for ratification): tests/test_first_light_e2e.py would prove a reproducible cited-synthesis run with the live pinned-Opus synthesizer; flips to guarded once an owner sprint lands the integration guard."
+sunset = ""

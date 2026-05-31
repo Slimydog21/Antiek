@@ -1,0 +1,21 @@
+[invariant]
+id = "section-14-4-synthesis-pin"
+status = "guarded"
+statement = """
+§14.4 synthesis pin. While the §14.4 measurement window is open
+(2026-05-19 → Sprint-20), the human-read synthesis artifact MUST be produced by
+the pinned Opus synthesizer; NO recorded research tier (fast/deep/default) may
+displace it. COST IF VIOLATED: the exact defect this whole registry exists to
+catch — a research-tier override silently routed synthesis to DeepSeek/MiMo, so
+the Sprint-20 cost/quality verdict would measure the WRONG model's voice, and a
+fake-green seam test (asserted against a synthetic config, never loaded the real
+config.yaml) hid it for weeks. A money + provenance + measurement bug.
+"""
+guard = "tests/test_dispatch_synthesis_pin.py::test_default_deep_synthesizer_stays_pinned_to_opus_with_deepseek_live"
+guard_kind = "pytest"
+assertion = "Loads the REAL config.yaml and proves no research tier displaces the pinned Opus synthesizer while the §14.4 window is open."
+sunset = "Sprint-20 §14.4 verdict recorded (or window closes); see interfaces/research/api/synthesizer.py SUNSET note"
+
+[non_vacuity]
+method = "fail_before_pass_after"
+detail = "SPR-01 recorded fail_before=7 (displacement bug) → pass_after=27 @7dc7ed5; the guard loads the real config.yaml (not a synthetic one — the original fake-green failure mode)."

@@ -1,0 +1,25 @@
+[invariant]
+id = "providers-pinned-primary-fails-loud"
+status = "unguarded"
+owner = "operator (flag for ratification — strict-posture provider bootstrap not on main)"
+statement = """
+Provider registration + pinned-primary fails loud. Any dispatch tier marked
+`pinned: true` in config.yaml (notably the §14.4 synthesis primary, openrouter)
+MUST have its provider registered at boot, or boot fails LOUDLY with an
+actionable error. COST IF VIOLATED: a silently-empty provider registry meant
+`register_default_providers` returned no providers without keys — so the pinned
+synthesis primary could be absent and the system would fall back instead of
+refusing to run, the dev-green / prod-can't-run failure mode this foundation
+exists to kill. Registered @unguarded HONESTLY: the strict-posture bootstrap
+this guard exercises (`require_pinned`, `config_path`, `ProviderRegistrationError`,
+`_pinned_primary_providers`, scripts/dev_bootstrap.py) does NOT exist on main —
+it stranded on the prior foundation branch with its guard; main's
+`register_default_providers` takes only `quiet`/`only` and never raises a
+pinned-primary error, so the guard fails at COLLECTION (ImportError). Declaring
+it guarded would point at code that is absent — the exact fake-completeness this
+registry cures. No sprint in this spec owns the strict-posture bootstrap;
+flagged for the operator to assign the sprint that re-lands it and flips this to
+guarded.
+"""
+assertion = "OWNED BY OPERATOR (flag for ratification): a guard proving an absent pinned synthesis-primary raises ProviderRegistrationError at boot under require_pinned rather than degrading silently; flips to guarded once the strict-posture bootstrap (require_pinned / ProviderRegistrationError) lands on main."
+sunset = ""

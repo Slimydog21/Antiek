@@ -1,0 +1,20 @@
+[invariant]
+id = "single-writer-per-graph"
+status = "unguarded"
+owner = "SPR-04"
+statement = """
+Single-writer per graph. Each graph is addressed by a GraphHandle whose db_path
+keys its own DuckDB write lock; two distinct handles get two distinct DB files
+whose locks do not contend, and concurrent writes to the SAME handle serialize.
+COST IF VIOLATED: DuckDB is single-writer (CLAUDE.md invariant #1, §16). If two
+writers shared one file's lock incorrectly — or one handle's writes did not
+serialize — the substrate would corrupt or lose graph state. Registered
+@unguarded HONESTLY: the GraphHandle seam (substrate/graph_handle.py) does NOT
+exist on main — it stranded on the prior foundation branch with its guard, so
+the guard imports a module that is absent and fails at COLLECTION (ImportError),
+which would be a fake-green registration if declared guarded. SPR-04
+(knowledge-units) composes the graph substrate through the single-writer path
+and is the sprint positioned to land the seam + flip this to guarded.
+"""
+assertion = "OWNED BY SPR-04: a guard proving two distinct GraphHandles resolve to two DB files whose write locks do not contend while same-handle writes serialize; flips to guarded once the GraphHandle seam (substrate/graph_handle.py) lands on main."
+sunset = ""

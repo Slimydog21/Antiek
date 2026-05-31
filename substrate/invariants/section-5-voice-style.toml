@@ -1,0 +1,18 @@
+[invariant]
+id = "section-5-voice-style"
+status = "unguarded"
+owner = "operator (no sprint assigned — flag for ratification)"
+statement = """
+§5 voice / style discipline. Prose flows; no LLM-slop; no forced bullets; claim
+spans inline. Applies to generated PROSE and to UI (CLAUDE.md invariant #2,
+master-spec §5). COST IF VIOLATED: the product's defensible voice — the thing a
+reader trusts — erodes into generic model output, which is a quiet but
+strategic loss. Registered @unguarded HONESTLY: voice/style is a quality the
+codebase asserts but does not yet *mechanically* guard (tests/test_seam_voice_
+single_owner.py guards single-OWNERSHIP of the voice pipeline, NOT the style
+discipline itself). No sprint in this spec owns a §5-style guard; flag for the
+operator to decide whether/how a non-vacuous guard is even feasible (this may be
+an inherently human-judged invariant — see operator ratification items).
+"""
+assertion = "UNOWNED: whether §5 voice/style is mechanically guardable at all is an open operator question; until then it is an honest gap, NOT silently omitted."
+sunset = ""
