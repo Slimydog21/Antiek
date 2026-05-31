@@ -104,9 +104,24 @@ class XApiClient:
         # .reveal() is the single intentional egress of the plaintext, scoped to
         # this header line; the SecretStr goes out of scope at function return.
         req.add_header("Authorization", f"Bearer {bearer.reveal()}")
-        try:
+
+        # HOST-GLOBAL arXiv GOVERNANCE (compliance boundary): every raw external
+        # HTTP egress in the tree must route through the host-global arXiv
+        # governor so an arXiv host can never be hit un-spaced (the historical
+        # IP-ban hole), REGARDLESS of which module it lives in. The X API host
+        # (api.x.ai / api.twitter.com) is never arXiv, so ``govern_if_arxiv``
+        # calls ``_send`` directly with zero overhead — but the wrap is the
+        # sanctioned, scanner-visible pattern (tools/lint/rate_governor_check),
+        # not an allowlist exception, so a future base-URL change cannot silently
+        # re-open the hole.
+        from acquisition.arxiv.rate_governor import govern_if_arxiv
+
+        def _send() -> str:
             with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-                body = resp.read().decode("utf-8")
+                return resp.read().decode("utf-8")
+
+        try:
+            body = govern_if_arxiv(url, _send)
             return json.loads(body)
         except urllib.error.HTTPError as e:  # 401 / 429 / 4xx / 5xx
             # NEVER include the key or the full URL: only the numeric status.

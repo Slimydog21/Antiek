@@ -109,6 +109,21 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # (e.g. no servable doc with a NULL body); it never serves a body to a
         # client — an internal auditor, like the extractor/versioning above.
         "substrate/corpus_audit.py",
+        # The Paul Graham incremental ingest driver (SPR-05) opens the DB
+        # READ-ONLY and reads raw_text for two INTERNAL, non-serving purposes:
+        # (1) recompute the stored body's content-hash for change-detection on a
+        # re-run (this graph DB carries no content_hash column / events table, so
+        # the body itself is the only source of the hash), and (2) assess
+        # extraction quality (word count / markup-leakage) so a degraded essay is
+        # flagged rather than silently stored. The body is never returned to a
+        # caller or served — same internal-reader category as takedown /
+        # extractor / versioning / corpus_audit above. It CANNOT serve a body
+        # (no serve surface in the driver); serve_full_text_guarded remains the
+        # only body-emission path. FOLLOW-UP (SPR-10/connector): persisting the
+        # content-hash in documents.metadata would let change-detection read the
+        # hash instead of the body, removing read (1) from this surface; the
+        # quality read (2) inherently needs the body and stays an internal read.
+        "acquisition/urls/paulgraham.py",
     }
 )
 
