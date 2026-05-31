@@ -13,16 +13,78 @@
 
 export type Mode = "day" | "night";
 
-/** The single brand colour — invariant across modes. */
+/**
+ * The single brand colour — invariant across modes.
+ *
+ * AMS-SPR-09 RE-TONE. The operator asked to dial the bold lemon back to a
+ * softer, weathered "light" across the VAR-DRIVEN accent/highlight roles,
+ * while keeping the bottom-tab yellow loud. So:
+ *   - `base` (#F5DF24) is UNCHANGED — the brand constant, the bottom-tab value
+ *     (via `barAccent`), and the Werner bill/foot. Never softened.
+ *   - `deep`, `glow`, `highlight` are RE-TONED toward the new `sunLight`
+ *     family below: lower chroma, sun-bleached gold. Each carries its
+ *     derivation + the AA pair it must clear (see comments).
+ * Sibling invariant: every value here is byte-identical to tokens.css.
+ *
+ * REACH — honest scope of this re-tone (rigor #1, intellectual honesty). The
+ * re-tone is VAR-DEEP only. It softens the consumers that read the CSS custom
+ * properties: the 4 `::selection` highlighter veils (`src/index.css`,
+ * `--sun-hl-{day,night}`), the 1 `AssignHotkey.css` `var(--sun-deep)` color,
+ * and the night offset-shadows (`--shadow-z*` read `var(--sun-deep)`). It does
+ * NOT reach the 56 component consumers of the Tailwind utility classes
+ * (`text-sun-deep` / `bg-sun-glow` / `border-sun-deep`, across
+ * Research/Read/Write/Speak/Notebook — e.g. SceneChrome.tsx:200
+ * `hover:bg-sun-glow`, dozens of `text-sun-deep` mono status labels), because
+ * those resolve through `tailwind.config.js` (colors `sun-deep:#B89A00`,
+ * `sun-glow:#FCE85E`, boxShadow `*-night:#8A7300` at lines 18-19/89-92), which
+ * is config-layer-owned by another sprint and OUT OF SCOPE here. So the
+ * on-screen `text-sun-deep` accent still renders the OLD loud `#B89A00` until
+ * the Tailwind-owning sprint re-tones the var→tailwind mirror to match. The
+ * sibling note in tokens.css restates this. The Tailwind header already says
+ * "Source of truth: tokens.ts … Keep these in sync" — that mirror is now
+ * intentionally divergent for the sun-deep/glow keys, with no CI guard
+ * catching it; closing it is a follow-up for the Tailwind owner.
+ */
 export const sun = {
-  base: "#F5DF24", // sharp esoteric lemon, slightly green-leaning
-  deep: { day: "#B89A00", night: "#8A7300" }, // hover / depth / dark-shadow
-  glow: { day: "#FCE85E", night: "#FFEC5F" }, // highlight peaks
+  base: "#F5DF24", // sharp esoteric lemon, slightly green-leaning — UNCHANGED (brand/bar/Werner)
+  // was {day #B89A00, night #8A7300}; re-toned to weathered ochre. AA accent-
+  // edge (1.4.11 ≥3:1): day #9C8636 on #FFFFFF 3.57:1 / on page #F4F7FA 3.32:1;
+  // night #84722F on card #1B202A 3.44:1 / on page #0D1019 4.01:1. == sunLight.deep day.
+  deep: { day: "#9C8636", night: "#84722F" }, // hover / depth / dark-shadow (weathered)
+  // was {day #FCE85E, night #FFEC5F}; re-toned to a desaturated weathered glow
+  // (chroma ~0.38/0.40 vs base 0.82). The LOUD night bar value (#FFEC5F) is
+  // preserved separately as `barAccent.night` so the bar does NOT soften.
+  glow: { day: "#F1E08F", night: "#F2DE9A" }, // highlight peaks (weathered)
   highlight: {
-    faint: "rgba(245,223,36,0.18)", // model-suggested highlights
-    day: "rgba(245,223,36,0.45)", // operator highlighter, day
-    night: "rgba(252,232,94,0.30)", // operator highlighter, night
+    // re-toned to the weathered straw rgb (232,217,140 == sunLight.base
+    // #E8D98C). AA pair: prose --ink over [veil over surface] ≥4.5:1 →
+    // faint over #FFFFFF 17.40:1; day over #FFFFFF 15.83:1 / over #F4F7FA 15.17:1.
+    faint: "rgba(232,217,140,0.18)", // model-suggested highlights (weathered)
+    day: "rgba(232,217,140,0.45)", // operator highlighter, day (weathered)
+    // night rgb (242,222,154 == sun.glow.night #F2DE9A). AA pair: night --ink
+    // #EEF1F6 over [veil over surface] ≥4.5:1 → over card #1B202A 6.22:1 / over
+    // page #0D1019 7.38:1.
+    night: "rgba(242,222,154,0.30)", // operator highlighter, night (weathered)
   },
+} as const;
+
+/**
+ * The weathered "light" sun family (AMS-SPR-09). A LOWER-CHROMA, sun-bleached
+ * gold the chrome leans on without shouting — the new "light" the operator
+ * asked for, scoped to the YELLOW family (not a new palette). Chroma ~0.34–0.38
+ * vs the brand lemon's 0.82, so it reads calm/aged beside the loud `sun.base`
+ * (which the bar keeps). The re-toned `sun.deep`/`glow`/`highlight` are pulled
+ * toward this family. Sibling of tokens.css `--sun-light{,-soft,-deep}`.
+ *
+ *   base — the weathered straw the chrome leans on.
+ *   soft — the palest weathered wash (faint chrome veils).
+ *   deep — the muted-ochre weathered depth/edge. AA accent-edge (1.4.11 ≥3:1):
+ *          on #FFFFFF 3.57:1 ✓ ; on page #F4F7FA 3.32:1 ✓. == sun.deep.day.
+ */
+export const sunLight = {
+  base: "#E8D98C", // weathered straw; the calm light chrome leans on
+  soft: "#F0E6B8", // palest weathered wash (faint chrome veils)
+  deep: "#9C8636", // muted ochre weathered depth/edge; == sun.deep.day
 } as const;
 
 /**
@@ -62,15 +124,22 @@ export const rule = {
  *
  * The operator kept yellow "in style for the bottom tab." This names that
  * intent so the NavRail/bottom bar can paint with a *semantic* accent token
- * rather than reaching for raw `sun`. It resolves to the sun family in both
- * modes (day = the lemon itself; night = the warmer glow so it reads on the
- * dark sky). Decoupling this from the default border is the deliberate
- * compromise: the brand yellow concentrates on the one surface that should
- * carry it, instead of diffusing across every chrome edge.
+ * rather than reaching for raw `sun`. Day = the lemon itself; night = a warm
+ * glow legible on the dark sky. Decoupling this from the default border is the
+ * deliberate compromise: the brand yellow concentrates on the one surface that
+ * should carry it, instead of diffusing across every chrome edge.
+ *
+ * AMS-SPR-09 — STAYS LOUD. This is the bottom-tab value and MUST NOT soften
+ * with the chrome re-tone.
+ *   - day  = sun.base (#F5DF24), the brand lemon — UNCHANGED.
+ *   - night was `sun.glow.night`; SPR-09 softened `sun.glow.night` to #F2DE9A,
+ *     so the night bar would have softened too. It is now PINNED to the loud
+ *     #FFEC5F literal (the pre-SPR-09 glow value) — decoupled from the softened
+ *     glow. Mirrors tokens.css `--sun-bar-night` / night `--bar-accent`.
  */
 export const barAccent = {
-  day: sun.base, // #F5DF24 — the brand lemon
-  night: sun.glow.night, // #FFEC5F — warmer glow, legible on the night sky
+  day: sun.base, // #F5DF24 — the brand lemon (loud, unchanged)
+  night: "#FFEC5F", // loud warm night glow — PINNED, not the softened sun.glow.night
 } as const;
 
 /**
@@ -186,7 +255,10 @@ export function aliasFor(m: Mode): SurfaceAliases {
   };
 }
 
-/** Chunky offset shadows: ink-cast on day, sun-deep-glowing on night. */
+/** Chunky offset shadows: ink-cast on day, sun-deep-glowing on night.
+    AMS-SPR-09: night shadows glow with the re-toned weathered `sun.deep.night`
+    (#84722F, was #8A7300) — they read `var(--sun-deep)` in tokens.css, so this
+    sibling carries the SAME re-toned hex (byte-identical invariant). */
 export const shadow = {
   day: {
     z1: "3px 3px 0 0 #0F1419",
@@ -195,10 +267,10 @@ export const shadow = {
     lift: "12px 12px 0 0 #0F1419",
   },
   night: {
-    z1: "3px 3px 0 0 #8A7300",
-    z2: "5px 5px 0 0 #8A7300",
-    z3: "8px 8px 0 0 #8A7300",
-    lift: "12px 12px 0 0 #8A7300",
+    z1: "3px 3px 0 0 #84722F",
+    z2: "5px 5px 0 0 #84722F",
+    z3: "8px 8px 0 0 #84722F",
+    lift: "12px 12px 0 0 #84722F",
   },
 } as const;
 
