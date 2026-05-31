@@ -250,11 +250,28 @@ def fetch_feed(
     """
     feedparser = _require_feedparser()
     headers = {"User-Agent": DEFAULT_USER_AGENT}
+
+    # HOST-GLOBAL arXiv GOVERNANCE (compliance boundary): every raw external HTTP
+    # egress in the tree must route through the host-global arXiv governor so an
+    # arXiv host can never be hit un-spaced (the historical IP-ban hole),
+    # REGARDLESS of which module it lives in. A Substack feed host is never arXiv,
+    # so ``govern_if_arxiv`` calls ``_send`` directly with zero overhead — but the
+    # wrap is the sanctioned, scanner-visible pattern (tools/lint/
+    # rate_governor_check, mirroring acquisition/urls/client.py), not an allowlist
+    # exception, so a future feed_url change cannot silently re-open the hole.
+    from acquisition.arxiv.rate_governor import govern_if_arxiv
+
     if client is not None:
-        r = client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+        def _send() -> httpx.Response:
+            return client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+        r = govern_if_arxiv(feed_url, _send)
     else:
         with httpx.Client(follow_redirects=True) as c:
-            r = c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+            def _send() -> httpx.Response:
+                return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
+
+            r = govern_if_arxiv(feed_url, _send)
     r.raise_for_status()
     raw = r.content
 
