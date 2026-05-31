@@ -41,16 +41,30 @@ gate the owning sprint already shipped (rigor #4 — consume, do not redefine):
       SPR-09 box ceiling, read through ``substrate.ingest_budget.BudgetGovernor``
       (the same governor the continuous engine consults). The audit never
       re-derives the ceiling number.
+  (f) third-party-on-servable — no document whose ``document_type`` ∈
+      ``substrate.constants.THIRD_PARTY_DOCUMENT_TYPES`` (web_article /
+      video_transcript / social_thread / newsletter_post) sits on a class in
+      ``SERVABLE_CONTENT_CLASSES`` without a positive ``license_basis``
+      (Personal-Reading Lane SPR-02). Such a third-party work is the OWNER's
+      private reading and MUST land ``personal_reading``; this is the standing
+      DB backstop for the connector deny-by-default lane. The check mirrors
+      ``_check_servable_basis``'s join exactly, scoped to the third-party types,
+      with both allowlists imported (never re-listed). A servable third-party
+      row WITH a real basis (a PG public-domain text via the urls connector, a
+      CC-BY transcript) is the lawful SPR-05/SPR-07 exception, deliberately NOT
+      flagged.
 
 Plus THE BINDING (SPR-10's headline enforcement), a STATIC check independent of
 any DB: ``content_class`` is decided by exactly ONE function —
-``acquisition.licenses_core.classify()``. :func:`assert_no_content_class_bypass`
-AST-walks every connector under ``acquisition/{books,textbooks,papers,opt_in}/``
+``acquisition.licenses_core.classify()`` (the public-corpus family) or passed as
+an imported constant by the third-party reading connectors (never a string
+literal). :func:`assert_no_content_class_bypass` AST-walks every connector under
+``acquisition/{books,textbooks,papers,opt_in,urls,youtube,twitter,substack}/``
 and asserts ZERO of them assign ``content_class`` to a string LITERAL (the
-retired anti-pattern) rather than forwarding a classify()-derived value. This is
-the assertion that keeps the rights audit single-source: if two places could
-mint a content_class, "every servable work has a basis" is no longer a property
-of one chokepoint.
+retired anti-pattern) rather than forwarding a classify()-derived value or an
+imported lane constant. This is the assertion that keeps the rights audit
+single-source: if two places could mint a content_class, "every servable work
+has a basis" is no longer a property of one chokepoint.
 
 ----------------------------------------------------------------------------
 §16 BOX-BOUNDED + READ-ONLY (a hard constraint, not a nicety)
@@ -105,7 +119,11 @@ from typing import Any, Optional
 # contend for the single-writer lock while the live API serves).
 from runtime.db_lock import connect_read
 from substrate.books.serve import serve_full_text
-from substrate.constants import GATED_DEFAULT_CONTENT_CLASS, SERVABLE_CONTENT_CLASSES
+from substrate.constants import (
+    GATED_DEFAULT_CONTENT_CLASS,
+    SERVABLE_CONTENT_CLASSES,
+    THIRD_PARTY_DOCUMENT_TYPES,
+)
 from substrate.dedup import (
     Confidence,
     IdentityRecord,
@@ -124,6 +142,15 @@ CHECK_GATED_LEAK = "gated_body_leak"
 CHECK_DEDUP = "dedup_identity"
 CHECK_EXTRACTION = "extraction_quality"
 CHECK_BUDGET = "budget_ceiling"
+# Personal-Reading Lane (SPR-02): no third-party document_type (web_article /
+# video_transcript / social_thread / newsletter_post) sits on a SERVABLE
+# content_class without a positive license_basis. This is the standing DB
+# backstop for the connector deny-by-default lane — it catches a third-party
+# row that slipped onto a servable class by ANY route (a future connector that
+# passes a servable class with no basis, a merge that copied a servable class
+# onto a third-party row, a manual reclassify) regardless of whether the static
+# bypass-scan saw the write site.
+CHECK_THIRD_PARTY_SERVABLE = "third_party_servable"
 
 ALL_CHECK_NAMES = (
     CHECK_SERVABLE_BASIS,
@@ -131,6 +158,7 @@ ALL_CHECK_NAMES = (
     CHECK_DEDUP,
     CHECK_EXTRACTION,
     CHECK_BUDGET,
+    CHECK_THIRD_PARTY_SERVABLE,
 )
 
 # An HTML landing page mis-stored as a body starts with the doctype — the
@@ -249,6 +277,65 @@ def _check_servable_basis(con: Any) -> CheckResult:
             "all servable works carry a license_basis"
             if ok
             else f"{len(offenders)} servable work(s) with empty/missing license_basis"
+        ),
+    )
+
+
+def _check_third_party_servable(con: Any) -> CheckResult:
+    """(f) No third-party document_type sits on a servable class without a basis.
+
+    Personal-Reading Lane (SPR-02). The third-party reading connectors (urls /
+    youtube / twitter / Substack) emit a ``document_type`` in
+    ``THIRD_PARTY_DOCUMENT_TYPES``; such a work is the OWNER's private reading
+    and MUST land ``personal_reading`` (owner-readable, public-non-servable) —
+    NEVER a publicly servable class. This check is the standing DB backstop for
+    that lane: it flags any third-party document sitting on a class in
+    ``SERVABLE_CONTENT_CLASSES`` that carries no positive ``license_basis``.
+
+    It mirrors :func:`_check_servable_basis` exactly — the same
+    ``documents LEFT JOIN book_assets`` join, the same NULL/empty-basis-is-no-
+    basis treatment — but scoped to the third-party types. The two allowlists
+    are IMPORTED from ``substrate.constants`` (``THIRD_PARTY_DOCUMENT_TYPES`` and
+    ``SERVABLE_CONTENT_CLASSES``), never re-listed here, so adding a servable
+    class or a third-party document_type updates this check automatically and it
+    can never silently desync from the connector lane.
+
+    WHY THE BASIS CARVE-OUT (intellectual honesty, not a loophole). A third-party
+    document_type with a servable class AND a real ``license_basis`` is NOT an
+    offender — that is the lawful exception SPR-05/SPR-07 rely on (a Project-
+    Gutenberg public-domain text reached through the urls connector, a CC-BY
+    YouTube transcript). Those land a POSITIVE rights class with a basis on
+    purpose; flagging them would false-positive the lawful open-content path. A
+    NULL/empty basis on a servable third-party row is the §9.0 leak this check
+    exists to catch — exactly the case the deny-by-default lane prevents going
+    forward, asserted here against the ACCUMULATED corpus where a per-write gate
+    cannot see a row a future merge introduced."""
+    tp_placeholders = ", ".join("?" for _ in THIRD_PARTY_DOCUMENT_TYPES)
+    sv_placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
+    rows = con.execute(
+        f"""
+        SELECT d.document_id
+          FROM documents d
+          LEFT JOIN book_assets b ON d.document_id = b.document_id
+         WHERE d.document_type IN ({tp_placeholders})
+           AND d.content_class IN ({sv_placeholders})
+           AND (b.license_basis IS NULL OR TRIM(b.license_basis) = '')
+         ORDER BY d.document_id
+        """,
+        list(THIRD_PARTY_DOCUMENT_TYPES) + list(SERVABLE_CONTENT_CLASSES),
+    ).fetchall()
+    offenders = [r[0] for r in rows]
+    ok = not offenders
+    return CheckResult(
+        name=CHECK_THIRD_PARTY_SERVABLE,
+        ok=ok,
+        count=len(offenders),
+        offending=_bounded(offenders),
+        detail=(
+            "no third-party document sits on a servable class without a basis"
+            if ok
+            else f"{len(offenders)} third-party document(s) on a servable class "
+            "with empty/missing license_basis (should be personal_reading)"
         ),
     )
 
@@ -558,8 +645,26 @@ def _db_file_size(db_path: str) -> int:
 # ---------------------------------------------------------------------------
 
 # The connector packages whose content_class assignments must come ONLY from
-# classify(). These are the four directories the spec names.
-_BINDING_DIRS = ("books", "textbooks", "papers", "opt_in")
+# classify() (the public-corpus rights family) PLUS the third-party reading
+# connectors whose content_class must come from an imported constant, never a
+# string literal (Personal-Reading Lane SPR-02). The bypass-scanner flags only
+# NON-EMPTY string LITERALS, so the constant-based M1-M3 connector edits
+# (content_class=PERSONAL_READING_CONTENT_CLASS, an ast.Name) do NOT trip it —
+# but a FUTURE connector under one of these dirs that re-introduces
+# content_class="..." (a literal) WILL. "substack" is listed ahead of its SPR-06
+# connector landing: the scanner skips a dir that does not yet exist
+# (assert_no_content_class_bypass: ``if not sub_dir.is_dir(): continue``), so the
+# allowlist is ready the moment acquisition/substack/ appears.
+_BINDING_DIRS = (
+    "books",
+    "textbooks",
+    "papers",
+    "opt_in",
+    "urls",
+    "youtube",
+    "twitter",
+    "substack",
+)
 _BINDING_ROOT = "acquisition"
 
 
@@ -723,6 +828,7 @@ def run_audit(
             _check_dedup(con),
             _check_extraction(con),
             _check_budget(con, db_path, governor),
+            _check_third_party_servable(con),
         ]
     finally:
         con.close()

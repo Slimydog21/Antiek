@@ -250,3 +250,86 @@ def test_ingest_payload_strips_leading_at(temp_substrate):
     finally:
         con.close()
     assert author == "foo"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 4. Personal-Reading Lane (SPR-02) — a social_thread lands personal_reading
+#    on BOTH entry points (ingest_twitter_thread + ingest_thread_payload,
+#    which routes through the former — rigor #3.ii: every insert site covered).
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_ingest_thread_lands_personal_reading(temp_substrate):
+    """ingest_twitter_thread → content_class='personal_reading',
+    document_type='social_thread'. Read back off the temp DB."""
+    import duckdb
+
+    r = ingest_twitter_thread(
+        _two_tweet_thread(),
+        investigation_id="inv-x-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+    )
+    assert r.skipped_reason is None
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (content_class, document_type) = con.execute(
+            "SELECT content_class, document_type FROM documents WHERE document_id = ?",
+            [r.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert content_class == "personal_reading", (
+        "a third-party social_thread must land personal_reading, never a "
+        f"servable default; got {content_class!r}"
+    )
+    assert document_type == "social_thread"
+    from substrate.constants import PERSONAL_READING_CONTENT_CLASS, SERVABLE_CONTENT_CLASSES
+
+    assert content_class == PERSONAL_READING_CONTENT_CLASS
+    assert content_class not in SERVABLE_CONTENT_CLASSES
+
+
+def test_ingest_payload_lands_personal_reading(temp_substrate):
+    """ingest_thread_payload (the browser-extension entry point) inherits the
+    lane because it routes through ingest_twitter_thread — confirmed by reading
+    the row's content_class. This closes the 'second insert site' edge case
+    (rigor #3.ii) without a second insert_document call existing."""
+    import duckdb
+
+    payload = {
+        "thread_url": "https://x.com/foo/status/9999",
+        "root_tweet_id": "9999",
+        "author_handle": "foo",
+        "tweets": [
+            {
+                "tweet_id": "9999",
+                "text": "Substrate compounds nonlinearly per the prior thread.",
+                "author_handle": "foo",
+                "posted_at": "2026-05-18T14:30:00Z",
+            },
+            {
+                "tweet_id": "10000",
+                "text": "And here is the reply that elaborates the mechanism.",
+                "author_handle": "foo",
+                "posted_at": "2026-05-18T14:31:00Z",
+                "reply_to": "9999",
+            },
+        ],
+    }
+    r = ingest_thread_payload(
+        payload,
+        investigation_id="inv-x-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+    )
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (content_class, document_type) = con.execute(
+            "SELECT content_class, document_type FROM documents WHERE document_id = ?",
+            [r.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert content_class == "personal_reading"
+    assert document_type == "social_thread"

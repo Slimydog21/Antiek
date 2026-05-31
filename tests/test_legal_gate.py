@@ -321,3 +321,74 @@ def test_legal_gate_verdict_is_frozen():
     with pytest.raises(Exception):
         # FrozenInstanceError is a subclass of AttributeError; either is fine.
         v.allowed = False  # type: ignore[misc]
+
+
+# ── Personal-Reading Lane (SPR-02) — the go-live gate refuses a planted
+#    third-party-on-servable violation. ───────────────────────────────
+#
+# DELIBERATE ARCHITECTURE NOTE (M6, intellectual honesty): the substrate.legal_gate
+# module is a RETRIEVAL-TIME REGISTRY denylist (banned URLs / authors / titles /
+# corpus-ids / content-hash prefixes). It does NOT call substrate.corpus_audit.run_audit
+# and has no hardcoded check-name allowlist that could drop a new corpus check.
+# The CORPUS-LEVEL go-live gate for the new third_party_servable check is
+# run_audit (+ the corpus_audit CLI's non-zero exit), which the pre-merge / CI
+# path and the corpus-mass-ingest runbook consult. So the "gate refuses a planted
+# violation" assertion is asserted against run_audit here (the real consumer),
+# and the registry legal-gate is verified to remain ORTHOGONAL — it neither
+# filters nor swallows the new check, because it never inspects corpus checks at
+# all. (The per-check non-vacuity of CHECK_THIRD_PARTY_SERVABLE itself lives in
+# tests/test_corpus_audit.py; this is the gate-surface assertion M6 asks for.)
+
+
+def test_corpus_audit_gate_refuses_planted_third_party_servable(tmp_path):
+    """The corpus go-live gate (run_audit) refuses a corpus with a third-party
+    web_article planted on a servable class without a basis: result.ok is False
+    and the failing check name is 'third_party_servable'."""
+    from runtime.db_lock import connect_write
+    from substrate.corpus_audit import CHECK_THIRD_PARTY_SERVABLE, run_audit
+    from substrate.graph.schema import init_database_at_path
+
+    db_path = str(tmp_path / "graph.duckdb")
+    init_database_at_path(db_path)
+    with connect_write(db_path, purpose="test-seed") as con:
+        con.execute(
+            """
+            INSERT INTO documents
+                (document_id, source_uri, title, author, source_tier,
+                 document_type, raw_text, content_class)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "doc-gate-leak",
+                "https://example.com/leak.html",
+                "Leaked Essay",
+                "An Author",
+                4,
+                "web_article",
+                "A third-party essay body long enough to be real content. " * 6,
+                "user_owned",  # servable, no basis -> the §9.0 leak
+            ],
+        )
+    result = run_audit(db_path, include_binding=False)
+    assert result.ok is False, "the gate must refuse a planted third-party-servable leak"
+    failed = [c.name for c in result.failed_checks]
+    assert CHECK_THIRD_PARTY_SERVABLE in failed
+    assert CHECK_THIRD_PARTY_SERVABLE == "third_party_servable"
+
+
+def test_registry_legal_gate_is_orthogonal_to_corpus_checks():
+    """The registry legal-gate neither imports nor filters corpus_audit checks —
+    it is a retrieval-time URL/author denylist, a different layer. This pins the
+    M6 finding that there is no hardcoded check allowlist dropping the new check."""
+    import inspect
+
+    import substrate.legal_gate as lg
+    import substrate.legal_gate.gate as lg_gate
+
+    for mod in (lg, lg_gate):
+        src = inspect.getsource(mod)
+        assert "run_audit" not in src, (
+            f"{mod.__name__} unexpectedly calls run_audit — re-verify it does not "
+            "filter corpus checks to a hardcoded subset"
+        )
+        assert "corpus_audit" not in src

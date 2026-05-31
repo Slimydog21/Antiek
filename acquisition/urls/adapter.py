@@ -42,6 +42,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -320,6 +321,17 @@ def ingest_url(
             document_id=document_id,
             source_tier=int(source_tier),
             document_type="web_article",
+            # Personal-Reading Lane (SPR-02): a third-party web article the
+            # owner fetched for their own reading lands personal_reading —
+            # full body readable by the owner, NEVER served publicly / ad-
+            # attributed / trained on (§9.0 Hachette/Bartz discipline). The
+            # IMPORTED CONSTANT is passed, never the string literal
+            # "personal_reading": corpus_audit's bypass-scanner flags any
+            # content_class string literal to keep classify() the single
+            # content_class chokepoint (an ast.Name is safe, an ast.Constant
+            # str is the retired anti-pattern). This is belt-and-suspenders
+            # with the insert_document deny-by-default fallback (SPR-01).
+            content_class=PERSONAL_READING_CONTENT_CLASS,
             source_uri=page.final_url,
             title=md_doc.title,
             author=md_doc.author,

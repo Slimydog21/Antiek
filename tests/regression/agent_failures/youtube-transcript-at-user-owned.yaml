@@ -1,0 +1,67 @@
+id: youtube-transcript-at-user-owned
+observed_at: 2026-05-31
+source: project_antiek_personal_lane.md
+agent: claude
+phase: acquisition_youtube
+
+failure_type: servable_default_leak
+
+context_summary: |
+  The acquisition/youtube connector ingested a third-party video transcript (a
+  talk the operator fetched for their own reading) by calling
+  insert_document(document_type="video_transcript", on_conflict="ignore") with
+  NO content_class. The documents schema column supplied its default,
+  content_class='user_owned', a member of SERVABLE_CONTENT_CLASSES. The
+  copyrighted third-party transcript therefore landed on a publicly-SERVABLE
+  class — eligible for full-text public serving and per-second ad attribution.
+  This is the §9.0 (Hachette / Bartz) catastrophe applied to the ambient YouTube
+  reading path.
+
+input:
+  prompt: |
+    Pull the transcript for https://www.youtube.com/watch?v=aaaaaaaaaaa into my
+    reading list.
+  env:
+    ANTIEK_DUCKDB_PATH: "/tmp/graph.duckdb"
+
+expected_behavior: |
+  A third-party video_transcript must land content_class='personal_reading' —
+  the owner-readable / public-non-servable lane: full body readable ONLY on the
+  owner path, NEVER served to others, NEVER ad-attributed, NEVER in a
+  training/RL export. The public serve path must not render the body
+  (serve_full_text owner=False -> servable=False, full_text=None). Re-ingest via
+  on_conflict="ignore" must NOT silently flip the class away from
+  personal_reading.
+
+actual_failure: |
+  insert_document was called without content_class, so the schema default
+  'user_owned' applied. user_owned is in SERVABLE_CONTENT_CLASSES, so the
+  transcript became eligible for public full-text serving and ad attribution —
+  the personal-reading body leaked onto the monetized public path.
+
+harness_check_that_now_catches: |
+  Three layers now block this, asserted in tests/test_personal_lane_read_side.py
+  and tests/test_acquisition_youtube.py:
+  (1) WRITE side — acquisition/youtube/adapter.py now passes
+  content_class=PERSONAL_READING_CONTENT_CLASS (the imported constant, not a
+  literal) at its insert_document call, so a video_transcript lands
+  personal_reading explicitly (covered by
+  test_acquisition_youtube.py::test_ingest_video_transcript_lands_personal_reading,
+  and the on_conflict re-ingest stability by
+  test_ingest_video_transcript_lane_stable_on_reingest); belt-and-suspenders
+  with the SPR-01 insert_document deny-by-default fallback.
+  (2) READ side — tests/test_personal_lane_read_side.py proves a personal_reading
+  body never serves full text on the public serve path and the owner still reads
+  it in full.
+  (3) DB BACKSTOP — substrate/corpus_audit.py CHECK_THIRD_PARTY_SERVABLE refuses
+  any third-party document_type on a SERVABLE class without a license_basis on
+  the accumulated corpus.
+
+fix_commit: SPR-02
+
+notes: |
+  SPR-07 later refines the YouTube-specific posture (rate cap, ToS-risk flag,
+  CC-BY servable exception); SPR-02 only sets the default lane. Sibling fixture:
+  web-article-served-at-user-owned (same leak, web_article). A CC-BY transcript
+  that legitimately lands a servable class WITH a license_basis is the lawful
+  exception and is correctly NOT flagged by CHECK_THIRD_PARTY_SERVABLE.

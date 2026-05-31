@@ -277,3 +277,71 @@ def test_ingest_idempotent_on_rows(temp_substrate):
     finally:
         con.close()
     assert doc_count == 1
+
+
+# ── 6. Personal-Reading Lane (SPR-02) ──────────────────────────────
+
+
+def test_ingest_video_transcript_lands_personal_reading(temp_substrate):
+    """A third-party YouTube transcript fetched for the owner's reading lands
+    content_class='personal_reading', document_type='video_transcript'. Read
+    back off the temp DB (rigor #1 — proven, not assumed)."""
+    import duckdb
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+    )
+    assert res.skipped_reason is None
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (content_class, document_type) = con.execute(
+            "SELECT content_class, document_type FROM documents WHERE document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert content_class == "personal_reading", (
+        "a third-party video_transcript must land personal_reading, never a "
+        f"servable default; got {content_class!r}"
+    )
+    assert document_type == "video_transcript"
+    from substrate.constants import PERSONAL_READING_CONTENT_CLASS, SERVABLE_CONTENT_CLASSES
+
+    assert content_class == PERSONAL_READING_CONTENT_CLASS
+    assert content_class not in SERVABLE_CONTENT_CLASSES
+
+
+def test_ingest_video_transcript_lane_stable_on_reingest(temp_substrate):
+    """on_conflict='ignore' on re-ingest must not flip content_class away from
+    personal_reading."""
+    import duckdb
+
+    video = _fake_video(30)
+    r1 = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=video,
+    )
+    ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=video,
+    )
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        rows = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [r1.document_id],
+        ).fetchall()
+    finally:
+        con.close()
+    assert len(rows) == 1
+    assert rows[0][0] == "personal_reading"
