@@ -5,7 +5,12 @@ Requires the ``[youtube]`` extra:
 ``youtube-transcript-api``.
 """
 
-from .adapter import IngestYouTubeResult, ingest_youtube, youtube_doc_id
+from .adapter import (
+    IngestYouTubeResult,
+    YouTubeContentClassRejected,
+    ingest_youtube,
+    youtube_doc_id,
+)
 from .client import (
     CAPTION_KIND_AUTO,
     CAPTION_KIND_HUMAN,
@@ -29,6 +34,7 @@ __all__ = [
     "IngestYouTubeResult",
     "TranscriptSegment",
     "YOUTUBE_MAX_FETCHES_PER_RUN",
+    "YouTubeContentClassRejected",
     "YouTubeRateCapExceeded",
     "YouTubeVideo",
     "fetch",

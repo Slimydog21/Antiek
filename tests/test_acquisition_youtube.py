@@ -623,6 +623,126 @@ def test_cc_by_promotion_honored_even_with_auto_captions(temp_substrate):
     assert cc == SOURCE_DECLARED_OPEN_CONTENT_CLASS
 
 
+# ── 9b. SPR-07 M3 hardening: explicit content_class= is not an escape ──
+
+
+def test_explicit_servable_content_class_without_basis_is_rejected(temp_substrate):
+    """The explicit content_class= override (ranked above operator_confirmed_cc_by)
+    must NOT be a silent deny-by-default escape: passing a SERVABLE class with no
+    license_basis raises YouTubeContentClassRejected and writes NO row — closing
+    the gap where a servable class would slip past the AST literal-scanner as a
+    Name and only be caught later at audit time."""
+    import duckdb
+
+    from acquisition.youtube.adapter import YouTubeContentClassRejected
+    from substrate.constants import SOURCE_DECLARED_OPEN_CONTENT_CLASS
+
+    with pytest.raises(YouTubeContentClassRejected):
+        ingest_youtube(
+            "doesntmatter",
+            investigation_id="inv-yt-test",
+            db_path=temp_substrate["db_path"],
+            embedder=_StubEmbedder(),
+            video=_fake_video(30),
+            content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,  # servable, no basis
+        )
+    # The raise happens BEFORE any insert_document, so nothing leaked.
+    if not os.path.exists(temp_substrate["db_path"]):
+        doc_count = 0
+    else:
+        con = duckdb.connect(temp_substrate["db_path"])
+        try:
+            tables = {
+                r[0]
+                for r in con.execute(
+                    "SELECT table_name FROM information_schema.tables"
+                ).fetchall()
+            }
+            if "documents" not in tables:
+                doc_count = 0
+            else:
+                (doc_count,) = con.execute(
+                    "SELECT COUNT(*) FROM documents WHERE document_id = ?",
+                    ["doc-yt-aaaaaaaaaaa"],
+                ).fetchone()
+        finally:
+            con.close()
+    assert doc_count == 0
+
+
+def test_explicit_unknown_content_class_is_rejected(temp_substrate):
+    """An unrecognized content_class string is rejected (it would otherwise land
+    an unknown class on the row, slipping past the literal-scanner as a Name)."""
+    from acquisition.youtube.adapter import YouTubeContentClassRejected
+
+    with pytest.raises(YouTubeContentClassRejected):
+        ingest_youtube(
+            "doesntmatter",
+            investigation_id="inv-yt-test",
+            db_path=temp_substrate["db_path"],
+            embedder=_StubEmbedder(),
+            video=_fake_video(30),
+            content_class="totally_made_up_class",
+        )
+
+
+def test_explicit_servable_content_class_with_basis_is_accepted(temp_substrate):
+    """The override still WORKS for a legitimate caller: a servable class WITH an
+    explicit, non-empty license_basis is accepted and the basis lands on
+    book_assets (the column corpus_audit reads), so the row is audit-clean."""
+    import duckdb
+
+    from substrate.constants import (
+        SERVABLE_CONTENT_CLASSES,
+        SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+    )
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+        content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
+        license_basis="CC-BY (caller-supplied, verified out of band)",
+    )
+    assert res.content_class == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (cc, basis) = con.execute(
+            "SELECT d.content_class, b.license_basis "
+            "FROM documents d LEFT JOIN book_assets b "
+            "ON d.document_id = b.document_id "
+            "WHERE d.document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert cc == SOURCE_DECLARED_OPEN_CONTENT_CLASS
+    assert cc in SERVABLE_CONTENT_CLASSES
+    assert basis and "CC-BY" in basis  # positive basis recorded
+
+
+def test_explicit_personal_reading_content_class_needs_no_basis(temp_substrate):
+    """A non-servable explicit class (personal_reading) is accepted without a
+    basis — the basis requirement is scoped to SERVABLE classes only."""
+    from substrate.constants import (
+        PERSONAL_READING_CONTENT_CLASS,
+        SERVABLE_CONTENT_CLASSES,
+    )
+
+    res = ingest_youtube(
+        "doesntmatter",
+        investigation_id="inv-yt-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        video=_fake_video(30),
+        content_class=PERSONAL_READING_CONTENT_CLASS,
+    )
+    assert res.content_class == PERSONAL_READING_CONTENT_CLASS
+    assert res.content_class not in SERVABLE_CONTENT_CLASSES
+
+
 # ── 10. SPR-07 M4: caption provenance (human/auto/unknown) round-trip
 
 
