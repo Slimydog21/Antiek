@@ -1,0 +1,433 @@
+{
+  "spike": "retrieval-substrate-spike",
+  "generated_at": "2026-05-31T13:37:57.376539+00:00",
+  "embedder": {
+    "name": "hash-stub-dim16",
+    "dimension": 16,
+    "semantic": false,
+    "caveat": "dim-16 hash stub \u2014 NO semantic structure. Paraphrase/conceptual recall is NON-LOAD-BEARING (measures index mechanics + speed, not ranking quality). Run under all-MiniLM-L6-v2 to lift this."
+  },
+  "fixture": {
+    "path": "/Users/slimydog/specs/antiek-flywheel-foundation/.caffenagent/wt/SPR-05/benchmarks/fixtures/retrieval_queries.yaml",
+    "n_queries": 20,
+    "source": "OPERATOR_INPUTS.md \u00a71 (operator-supplied, corrected synthesis)"
+  },
+  "seed_row_counts": {
+    "chunks": 13,
+    "nodes": 3,
+    "edges": 0
+  },
+  "post_run_row_counts": {
+    "chunks": 13,
+    "nodes": 3,
+    "edges": 0
+  },
+  "single_writer_held": true,
+  "latency_repeats": 30,
+  "candidates": [
+    {
+      "substrate": "vss",
+      "status": "measured",
+      "vss_active": true,
+      "recall_at_5": {
+        "pooled": 0.3333,
+        "load_bearing": 0.2,
+        "non_load_bearing": 0.3939,
+        "per_domain": {
+          "batteries": 0.0,
+          "bridges": 1.0,
+          "nodes": 0.6667,
+          "quantum": 0.2593,
+          "radar": 0.0,
+          "vaccines": 0.0
+        }
+      },
+      "latency_ms": {
+        "p50": 1.5119,
+        "p95": 1.7404,
+        "n_samples": 480
+      },
+      "index_build_ms": 42.134,
+      "gate_9_0": {
+        "held": true,
+        "leak_query": null
+      },
+      "negative_controls": {
+        "rank_based_ok": false,
+        "violations": [
+          "Q13: control chunk(s) ['c-vax-1', 'c-photon-loss-1', 'c-decoh-1'] outrank lowest true positive of Q01 (sim>0.7047)",
+          "Q14: control chunk(s) ['c-bridge-1', 'c-lfp-2'] outrank lowest true positive of Q02 (sim>0.7717)"
+        ]
+      },
+      "per_query": [
+        {
+          "id": "Q01",
+          "domain": "quantum",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q02",
+          "domain": "radar",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q03",
+          "domain": "batteries",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q04",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q05",
+          "domain": "vaccines",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q06",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.6666666666666666,
+          "note": ""
+        },
+        {
+          "id": "Q07",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.5,
+          "note": ""
+        },
+        {
+          "id": "Q08",
+          "domain": "nodes",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 1.0,
+          "note": ""
+        },
+        {
+          "id": "Q09",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q10",
+          "domain": "nodes",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q11",
+          "domain": "nodes",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 1.0,
+          "note": ""
+        },
+        {
+          "id": "Q12",
+          "domain": "quantum",
+          "load_bearing": true,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q13",
+          "domain": "control",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": ""
+        },
+        {
+          "id": "Q14",
+          "domain": "control",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": ""
+        },
+        {
+          "id": "Q21",
+          "domain": "control",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": ""
+        },
+        {
+          "id": "Q16",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q17",
+          "domain": "bridges",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 1.0,
+          "note": ""
+        },
+        {
+          "id": "Q18",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.6666666666666666,
+          "note": ""
+        },
+        {
+          "id": "Q19",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.5,
+          "note": ""
+        },
+        {
+          "id": "Q20",
+          "domain": "gate",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": "gate held: ['c-restricted-1'] withheld"
+        }
+      ]
+    },
+    {
+      "substrate": "brute_force",
+      "status": "measured",
+      "vss_active": null,
+      "recall_at_5": {
+        "pooled": 0.3333,
+        "load_bearing": 0.2,
+        "non_load_bearing": 0.3939,
+        "per_domain": {
+          "batteries": 0.0,
+          "bridges": 1.0,
+          "nodes": 0.6667,
+          "quantum": 0.2593,
+          "radar": 0.0,
+          "vaccines": 0.0
+        }
+      },
+      "latency_ms": {
+        "p50": 1.789,
+        "p95": 2.1019,
+        "n_samples": 480
+      },
+      "index_build_ms": 8.606,
+      "gate_9_0": {
+        "held": true,
+        "leak_query": null
+      },
+      "negative_controls": {
+        "rank_based_ok": false,
+        "violations": [
+          "Q13: control chunk(s) ['c-vax-1', 'c-photon-loss-1', 'c-decoh-1'] outrank lowest true positive of Q01 (sim>0.7047)",
+          "Q14: control chunk(s) ['c-bridge-1', 'c-lfp-2'] outrank lowest true positive of Q02 (sim>0.7717)"
+        ]
+      },
+      "per_query": [
+        {
+          "id": "Q01",
+          "domain": "quantum",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q02",
+          "domain": "radar",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q03",
+          "domain": "batteries",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q04",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q05",
+          "domain": "vaccines",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q06",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.6666666666666666,
+          "note": ""
+        },
+        {
+          "id": "Q07",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.5,
+          "note": ""
+        },
+        {
+          "id": "Q08",
+          "domain": "nodes",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 1.0,
+          "note": ""
+        },
+        {
+          "id": "Q09",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q10",
+          "domain": "nodes",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q11",
+          "domain": "nodes",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 1.0,
+          "note": ""
+        },
+        {
+          "id": "Q12",
+          "domain": "quantum",
+          "load_bearing": true,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q13",
+          "domain": "control",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": ""
+        },
+        {
+          "id": "Q14",
+          "domain": "control",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": ""
+        },
+        {
+          "id": "Q21",
+          "domain": "control",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": ""
+        },
+        {
+          "id": "Q16",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.0,
+          "note": ""
+        },
+        {
+          "id": "Q17",
+          "domain": "bridges",
+          "load_bearing": true,
+          "label_provenance": "fixture",
+          "recall_at_5": 1.0,
+          "note": ""
+        },
+        {
+          "id": "Q18",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.6666666666666666,
+          "note": ""
+        },
+        {
+          "id": "Q19",
+          "domain": "quantum",
+          "load_bearing": false,
+          "label_provenance": "author-asserted",
+          "recall_at_5": 0.5,
+          "note": ""
+        },
+        {
+          "id": "Q20",
+          "domain": "gate",
+          "load_bearing": true,
+          "label_provenance": "structural",
+          "recall_at_5": null,
+          "note": "gate held: ['c-restricted-1'] withheld"
+        }
+      ]
+    },
+    {
+      "substrate": "turbopuffer",
+      "status": "skipped \u2014 no credentials",
+      "build_ms": 10.655
+    },
+    {
+      "substrate": "ducklake",
+      "status": "skipped \u2014 no credentials",
+      "build_ms": 9.328
+    }
+  ]
+}

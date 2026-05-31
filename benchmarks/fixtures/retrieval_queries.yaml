@@ -1,0 +1,231 @@
+# SPR-05 retrieval-substrate spike — labeled query set.
+#
+# SOURCE: OPERATOR_INPUTS.md §1 (the corrected synthesis: 3 grounded drafters +
+# 1 adversarial author-is-grader critic, fixes applied). This is the authoritative
+# query set for the run. Q15 was DROPPED by the critic (it would have seeded a
+# labeled hallucination to manufacture a precision trap — that is an entailment
+# problem, not a retrieval-recall problem). 19 queries remain (Q01-Q14, Q16-Q20).
+#
+# Provenance per query (§1 scoring protocol clause 2):
+#   fixture          = relevant set frozen from tree fixtures (cited_chunk_ids etc.),
+#                      tree-authored. LOAD-BEARING.
+#   author-asserted  = orchestrator judgment, needs operator confirm (§0.1).
+#                      DOWN-WEIGHTED in the substrate tie-break.
+#   structural       = gate/precedent-driven (negative controls, §9.0 gate).
+#
+# Per-query `target` selects which return field is scored:
+#   chunks = score relevant chunk_ids against results[].chunk_id
+#   nodes  = score relevant node labels against node_matches[] (the ILIKE node
+#            path search() already returns) — the whole-graph node-retrieval path.
+#
+# `domain` drives PER-DOMAIN recall (§1 clause 1) so the ~70%-quantum monoculture
+# cannot carry the verdict.
+#
+# CAVEAT (load-bearing, §1 clause 5 + the task's HONESTY note): under the dim-16
+# `_HashEmbedding` stub (the only embedder available in this environment — see the
+# decision record), paraphrase/conceptual queries carry NO semantic structure and
+# are NON-LOAD-BEARING. The `load_bearing: false` flag marks exactly those; the
+# harness reports them but the decision record does not treat their recall as
+# discriminating ranking quality. Run under the real all-MiniLM-L6-v2 embedder to
+# make them load-bearing.
+
+meta:
+  source: "OPERATOR_INPUTS.md §1 (operator-supplied, corrected synthesis)"
+  embedder_note: >
+    Recall numbers under the dim-16 _HashEmbedding stub measure INDEX MECHANICS
+    + SPEED, not semantic ranking quality. Paraphrase/conceptual queries are
+    flagged load_bearing:false until run under the real all-MiniLM-L6-v2 embedder.
+  default_top_k: 5
+
+queries:
+  - id: Q01
+    type: exact-fact
+    query: "QuEra neutral-atom single-qubit gate error rate at 100-qubit scale"
+    target: chunks
+    domain: quantum
+    relevant: [c-quera-1]
+    label_provenance: fixture
+    load_bearing: true
+
+  - id: Q02
+    type: exact-fact
+    query: "phased-array radar gain and sidelobe suppression dB"
+    target: chunks
+    domain: radar
+    relevant: [c-radar-1]
+    label_provenance: fixture
+    load_bearing: true
+
+  - id: Q03
+    type: multi-hop
+    query: "LiFePO4 capacity retained after cycling and conditions"
+    target: chunks
+    domain: batteries
+    relevant: [c-lfp-1, c-lfp-2]
+    label_provenance: fixture
+    load_bearing: true
+
+  - id: Q04
+    type: paraphrase
+    query: "neutral-atom gates accurate enough to be usable at hundred-qubit level?"
+    target: chunks
+    domain: quantum
+    relevant: [c-quera-1]
+    label_provenance: author-asserted
+    load_bearing: false   # paraphrase — non-load-bearing under the hash stub
+
+  - id: Q05
+    type: paraphrase
+    query: "late-stage trial how well did the shot prevent illness"
+    target: chunks
+    domain: vaccines
+    relevant: [c-vax-1]
+    label_provenance: author-asserted
+    load_bearing: false   # paraphrase — non-load-bearing under the hash stub
+
+  - id: Q06
+    type: conceptual
+    query: "mechanisms that destroy coherence in cryogenic superconducting hardware"
+    target: chunks
+    domain: quantum
+    relevant: [c-decoh-1, c-decoh-2, c-decoh-3]
+    label_provenance: author-asserted
+    load_bearing: false   # conceptual — non-load-bearing under the hash stub
+
+  - id: Q07
+    type: conceptual
+    query: "how optical losses limit photonic quantum computing"
+    target: chunks
+    domain: quantum
+    relevant: [c-photon-loss-1, c-photon-fidelity-1]
+    label_provenance: author-asserted
+    load_bearing: false   # conceptual — non-load-bearing under the hash stub
+
+  - id: Q08
+    type: node-retrieval
+    query: "error suppression"
+    target: nodes
+    domain: nodes
+    relevant: ["Error suppression improves with neutral-atom array scaling"]
+    label_provenance: author-asserted
+    load_bearing: false   # node-retrieval relevance is author-defined; tie-break down-weighted
+
+  - id: Q09
+    type: cross-doc
+    query: "how gate fidelity scales with qubit count"
+    target: chunks
+    domain: quantum
+    relevant: [c-photon-fidelity-1, c-quera-1]
+    label_provenance: author-asserted
+    load_bearing: false   # cross-doc conceptual — non-load-bearing under the hash stub
+
+  - id: Q10
+    type: node-path
+    query: "neutral-atom scaling"
+    target: nodes
+    domain: nodes
+    relevant: ["Conditional yes if neutral-atom error rates hold while scaling"]
+    label_provenance: author-asserted
+    load_bearing: false   # node path — author-defined
+
+  - id: Q11
+    type: node-path
+    query: "1000-qubit"
+    target: nodes
+    domain: nodes
+    relevant: ["Can neutral-atom platforms cross 1000-qubit scale by 2027?"]
+    label_provenance: author-asserted
+    load_bearing: false   # node path — author-defined
+
+  - id: Q12
+    type: exact-fact-filter
+    query: "high-trust primary sources on neutral-atom physics"
+    target: chunks
+    domain: quantum
+    source_tier_max: 2
+    relevant: [c-quera-1]
+    label_provenance: author-asserted
+    load_bearing: true    # the tier FILTER mechanic is load-bearing even under the stub
+
+  - id: Q13
+    type: negative-control
+    query: "weather forecast for tomorrow afternoon"
+    target: chunks
+    domain: control
+    relevant: []          # rank-based: no control chunk may outrank a paired true positive
+    paired_positive: Q01
+    label_provenance: structural
+    load_bearing: true    # rank-based negative control is load-bearing (mechanics)
+
+  - id: Q14
+    type: negative-control
+    query: "municipal water-treatment chlorination dosage"
+    target: chunks
+    domain: control
+    relevant: []
+    paired_positive: Q02
+    label_provenance: structural
+    load_bearing: true
+
+  # Q15 was DROPPED by the §1 critic (seeded-hallucination trap). To reach the
+  # spec's ≥20-query floor WITHOUT diluting the operator set with author-asserted
+  # relevance, Q21 adds a THIRD rank-based negative control in a disjoint
+  # out-of-corpus domain — strengthening, not weakening, §1 clause 3. Structural,
+  # load-bearing (mechanics). This is the only query not in the operator's §1
+  # table; flagged as such here and in the decision record.
+  - id: Q21
+    type: negative-control
+    query: "best espresso grind size for a moka pot"
+    target: chunks
+    domain: control
+    relevant: []
+    paired_positive: Q17
+    label_provenance: structural
+    load_bearing: true
+
+  - id: Q16
+    type: conceptual
+    query: "the error-correction threshold enabling fault tolerance"
+    target: chunks
+    domain: quantum
+    relevant: [c-qec-1]
+    label_provenance: author-asserted
+    load_bearing: false   # conceptual — non-load-bearing under the hash stub
+
+  - id: Q17
+    type: exact-fact
+    query: "cable-stayed bridge load rating per axle"
+    target: chunks
+    domain: bridges
+    relevant: [c-bridge-1]
+    label_provenance: fixture
+    load_bearing: true
+
+  - id: Q18
+    type: paraphrase
+    query: "why qubits lose their state when kept extremely cold"
+    target: chunks
+    domain: quantum
+    relevant: [c-decoh-1, c-decoh-2, c-decoh-3]
+    label_provenance: author-asserted
+    load_bearing: false   # paraphrase/conceptual — non-load-bearing under the hash stub
+
+  - id: Q19
+    type: multi-hop
+    query: "best demonstrated error rates vs loss-tolerant gates same modality?"
+    target: chunks
+    domain: quantum
+    relevant: [c-quera-1, c-photon-loss-1]
+    label_provenance: author-asserted
+    load_bearing: false   # multi-hop conceptual — non-load-bearing under the hash stub
+
+  - id: Q20
+    type: gate-control
+    query: "restricted big-five book chunk on quantum"
+    target: chunks
+    domain: gate
+    relevant: []          # under attribution_eligible the restricted chunk MUST NOT appear
+    must_not_return: [c-restricted-1]
+    policy_tag: attribution_eligible
+    label_provenance: structural
+    load_bearing: true    # §9.0 gate preservation is a correctness/legal FAIL independent of recall
