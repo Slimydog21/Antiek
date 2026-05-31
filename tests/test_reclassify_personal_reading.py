@@ -323,25 +323,37 @@ def test_post_sweep_audit_clean_and_zero_third_party_servable(seeded_db):
 def test_audit_ok_is_NOT_the_content_class_detector(seeded_db):
     """DEFENSIBILITY GUARD against over-reading ``run_audit().ok``.
 
-    ``run_audit`` does not (in this sprint) know about THIRD_PARTY_DOCUMENT_TYPES
-    or personal_reading — extending it to flag third-party doc_types on a servable
-    class directly is SPR-04's scope. So a future reader must NOT treat the audit
-    flipping True post-sweep as proof that the content_class leak is cured. This
-    test pins WHY the audit fails pre-sweep: it is the ORTHOGONAL
-    ``servable_without_basis`` check tripping on the seeded web/yt/tw rows (which
-    lack a book_assets license_basis), NOT a third-party-document-type detector.
-    The load-bearing gate for the content_class concern is the independent
-    COUNT==0 in the sibling test, asserted from the constants — keep them both."""
-    from substrate.corpus_audit import CHECK_SERVABLE_BASIS, run_audit
+    This test's canary fired as designed. SPR-02 (corpus_audit
+    third-party-servable backstop, commit 338c3b3) added a genuine
+    ``third_party_servable`` check that DOES key on THIRD_PARTY_DOCUMENT_TYPES,
+    so pre-sweep ``run_audit`` now fails for TWO orthogonal reasons: the
+    ``servable_without_basis`` check (the seeded web/yt/tw rows carry no
+    book_assets license_basis) AND SPR-02's ``third_party_servable`` check. The
+    expected failing set below is widened DELIBERATELY to record that change
+    (per this test's own instruction: "do not silently widen the set"); it is
+    NOT relaxed — it is still an exact-set assertion.
+
+    The enduring point is unchanged: a reader must NOT treat ``ok`` flipping
+    True post-sweep as proof the content_class leak is cured — ``.ok`` bundles
+    multiple orthogonal checks. The load-bearing gate for the content_class
+    concern remains the independent constants-derived COUNT==0 in the sibling
+    test (``test_post_sweep_audit_clean_and_zero_third_party_servable`` /
+    ``test_sweep_cures_content_class_independent_of_the_basis_check``), which
+    does not depend on run_audit's internal check set — keep them both."""
+    from substrate.corpus_audit import (
+        CHECK_SERVABLE_BASIS,
+        CHECK_THIRD_PARTY_SERVABLE,
+        run_audit,
+    )
 
     pre = run_audit(seeded_db)
     assert pre.ok is False
     failing = {c.name for c in pre.failed_checks}
-    # The ONLY failing check pre-sweep is the basis-absence check. If a future
-    # SPR-04 adds a genuine third-party-on-servable check to run_audit, this set
-    # will grow — and this assertion is the canary that the audit semantics
-    # changed (update the comment above, do not silently widen the set).
-    assert failing == {CHECK_SERVABLE_BASIS}, pre.to_dict()
+    # Pre-sweep the seeded third-party-on-servable rows trip BOTH the
+    # basis-absence check and SPR-02's third_party_servable backstop. This exact
+    # set is the canary: if the audit's semantics change again, update this set
+    # AND the docstring deliberately (do not silently widen).
+    assert failing == {CHECK_SERVABLE_BASIS, CHECK_THIRD_PARTY_SERVABLE}, pre.to_dict()
 
 
 def test_sweep_cures_content_class_independent_of_the_basis_check(seeded_db):
