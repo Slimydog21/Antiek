@@ -542,7 +542,9 @@ def test_register_rejects_unknown_content_class(db):
     _insert_book(db, "doc-bad")
     con = connect_write(db, purpose="register")
     try:
-        with pytest.raises(ValueError, match="unrecognised book content_class"):
+        # The rights core now delegates to substrate.rights.register, whose
+        # validation message is source-agnostic ("unrecognised content_class").
+        with pytest.raises(ValueError, match="unrecognised content_class"):
             bingest.register_book(con, document_id="doc-bad", content_class="totally_made_up")
     finally:
         con.close()

@@ -28,29 +28,29 @@ from __future__ import annotations
 from typing import Any
 
 from runtime.db_lock import LockedConnection
-from substrate import ip_holders
-from substrate.constants import GATED_DEFAULT_CONTENT_CLASS, SYSTEM_INVESTIGATION_ID
+from substrate.constants import SYSTEM_INVESTIGATION_ID
 from substrate.event_log import emit_typed
-from substrate.graph.ops import update_document_gate_columns
+
+# Re-export so acquisition/opt_in/intake.py's historical
+# ``from substrate.books.ingest import resolve_or_create_ip_holder`` keeps resolving;
+# the function's ONE home is now substrate.rights.register (the cross-source chokepoint).
+from substrate.rights.register import (
+    VALID_CONTENT_CLASSES,
+    SourceKind,
+    register_source_document,
+    resolve_or_create_ip_holder,  # noqa: F401
+)
 from substrate.schemas.events import BookServabilityChangedPayload
 
 from .model import BookAsset, TocItem, get_book_asset, upsert_book_asset
 from .servability import servability_of
 
-# The content_class vocabulary a book may legitimately carry. A book is
-# never ``user_owned``-only in the per-user sense here (single operator),
-# but platform-authored books (Write workflow) use user_owned /
-# user_public_contribution. Validated so a typo can't silently create an
-# unrecognised class that the projection would then gate by default —
-# we want the typo to fail loudly, not fail safe-but-silent.
-_VALID_BOOK_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "public_domain",
-    "opt_in_licensed",
-    "source_declared_open",  # source-declared open license (CC-BY / CC-BY-SA); servable
-    "user_owned",
-    "user_public_contribution",
-    "restricted_pending_opt_in",
-})
+# The content_class vocabulary a book may legitimately carry — now an ALIAS of the
+# canonical cross-source vocabulary in substrate.rights.register (ONE home, so the
+# book path and the registration chokepoint cannot drift). Kept under this name
+# because test_oa_licenses / test_licenses_classify / test_arxiv_licenses assert that
+# resolved classes are members of it.
+_VALID_BOOK_CONTENT_CLASSES: frozenset[str] = VALID_CONTENT_CLASSES
 
 
 def _require_locked(con: Any) -> None:
@@ -59,22 +59,6 @@ def _require_locked(con: Any) -> None:
             f"book registration requires a LockedConnection (got {type(con).__name__}). "
             "Use runtime.db_lock.connect_write(db_path)."
         )
-
-
-def resolve_or_create_ip_holder(con: LockedConnection, display_name: str) -> str:
-    """Find a pre-onboarded ``ip_holders`` account by display name, or
-    create one. Idempotent on display_name so re-ingesting the same
-    publisher's books doesn't fan out into duplicate escrow accounts.
-
-    The created account is ``pre_onboarded`` — no notification is sent
-    (that gates on G2 lawyer review + operator action per §9.10). Escrow
-    can accrue from v1; nothing routes until the publisher claims.
-    """
-    _require_locked(con)
-    for holder in ip_holders.list_all(con):
-        if holder.display_name == display_name:
-            return holder.ip_holder_id
-    return ip_holders.create_pre_onboarded(con, display_name=display_name)
 
 
 def register_book(
@@ -93,11 +77,15 @@ def register_book(
 ) -> BookAsset:
     """Register an already-inserted book document as a Read-workflow book.
 
+    Delegates its rights core (content_class resolve + deny-by-default validation,
+    ip_holder threading, gate-column write) to
+    ``substrate.rights.register.register_source_document`` — the one cross-source
+    chokepoint — then writes the book_asset row + audits any servability transition.
+
     ``content_class``:
-      - ``None`` → ``GATED_DEFAULT_CONTENT_CLASS`` (deny-by-default). This
-        is the branch for "aggregated from online, unknown rights".
-      - an explicit value → must be in ``_VALID_BOOK_CONTENT_CLASSES``
-        (a typo raises rather than silently gating).
+      - ``None`` → deny-by-default gated class.
+      - an explicit value → must be a known content class (a typo raises
+        ``unrecognised content_class`` rather than silently gating).
 
     ``ip_holder_id`` is used directly if given; otherwise, if
     ``rights_holder_name`` is given, a pre-onboarded account is
@@ -119,28 +107,21 @@ def register_book(
         )
     prev_content_class = doc[0]
 
-    resolved_class = content_class or GATED_DEFAULT_CONTENT_CLASS
-    if resolved_class not in _VALID_BOOK_CONTENT_CLASSES:
-        raise ValueError(
-            f"unrecognised book content_class {resolved_class!r}; "
-            f"expected one of {sorted(_VALID_BOOK_CONTENT_CLASSES)}"
-        )
-
-    resolved_ip = ip_holder_id
-    if resolved_ip is None and rights_holder_name:
-        resolved_ip = resolve_or_create_ip_holder(con, rights_holder_name)
-
-    # Set the gate columns on the document via the sanctioned primitive
-    # (raw UPDATE of these indexed columns fails on DuckDB 1.5.2 once
-    # chunks/book_assets reference the row). ip_holder_id is only
-    # overwritten when we resolved one — never nulled out by a re-register.
-    update_document_gate_columns(
+    # Delegate the rights core — content_class resolve + deny-by-default validation,
+    # ip_holder threading, and the gate-column write — to the ONE cross-source
+    # registration chokepoint, so the book path can never drift from every other
+    # source's rights handling. Books is a licensed-publisher source. run_self_check
+    # is False: register_book has never run the post-write serve-guard self-check
+    # (that is the arXiv-store precedent the chokepoint generalizes), so omitting it
+    # here is behaviour-preserving.
+    resolved_class = register_source_document(
         con,
-        document_id,
-        content_class=resolved_class,
-        set_content_class=True,
-        ip_holder_id=resolved_ip,
-        set_ip_holder_id=resolved_ip is not None,
+        document_id=document_id,
+        source_kind=SourceKind.LICENSED_PUBLISHER,
+        content_class=content_class,
+        ip_holder_id=ip_holder_id,
+        rights_holder_name=rights_holder_name,
+        run_self_check=False,
     )
 
     upsert_book_asset(
