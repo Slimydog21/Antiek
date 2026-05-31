@@ -180,6 +180,10 @@ def load_robots(
     """
     rp = urllib.robotparser.RobotFileParser()
     rp.set_url(PG_ROBOTS_URL)
+    # Marker the run reads to surface a VISIBLE warning when robots could not be
+    # fetched/parsed and we fell open (the weaker posture for a lane whose
+    # lawful-acquisition stance is load-bearing). None ⇒ robots was applied.
+    rp._antiek_robots_fail_open = None  # type: ignore[attr-defined]
     if robots_txt is not None:
         rp.parse(robots_txt.splitlines())
         return rp
@@ -189,10 +193,16 @@ def load_robots(
             return page.body.decode("utf-8", errors="replace")
     try:
         rp.parse(fetch_text(PG_ROBOTS_URL).splitlines())
-    except Exception:
-        # Fail open: an unreachable robots.txt means no stated rules. The
-        # subsequent can_fetch() returns True, which is the RFC default.
+    except Exception as exc:
+        # Fail open: an unreachable robots.txt means no stated rules; the
+        # subsequent can_fetch() returns True (the RFC default). But record WHY
+        # so the operator SEES that robots enforcement was disabled for this run
+        # rather than silently assuming the site allowed us.
         rp.parse([])
+        rp._antiek_robots_fail_open = (  # type: ignore[attr-defined]
+            f"robots.txt unreachable/unparseable ({type(exc).__name__}: {exc}); "
+            "failed OPEN (no rules enforced this run)"
+        )
     return rp
 
 
@@ -336,6 +346,9 @@ class RunSummary:
     qualities: List[EssayQuality] = field(default_factory=list)
     robots_disallowed_urls: List[str] = field(default_factory=list)
     errors: List[Tuple[str, str]] = field(default_factory=list)
+    # Visible operator warnings (e.g. robots.txt fail-open) — surfaced rather
+    # than silently degrading the lawful-acquisition posture.
+    warnings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -350,6 +363,7 @@ class RunSummary:
             "errored": self.errored,
             "robots_disallowed_urls": list(self.robots_disallowed_urls),
             "errors": [{"url": u, "error": e} for u, e in self.errors],
+            "warnings": list(self.warnings),
             "essays": [q.to_dict() for q in self.qualities],
         }
 
@@ -396,6 +410,7 @@ def run(
     # M1 injection seams (tests/offline):
     articles_html: Optional[bytes | str] = None,
     robots_txt: Optional[str] = None,
+    robots_fetch_text: Optional[Callable[[str], str]] = None,
     # Map URL -> FetchedHtml so the run never touches the live network in tests.
     fetched_by_url: Optional[Dict[str, FetchedHtml]] = None,
     http_client: Optional[object] = None,
@@ -418,11 +433,12 @@ def run(
         urls = urls[:limit]
     summary.discovered = len(urls)
 
-    rp = load_robots(robots_txt=robots_txt)
+    rp = load_robots(robots_txt=robots_txt, fetch_text=robots_fetch_text)
+    fail_open = getattr(rp, "_antiek_robots_fail_open", None)
+    if fail_open:
+        summary.warnings.append(fail_open)
     thr = throttle or PoliteThrottle()
     fetched_by_url = fetched_by_url or {}
-
-    import duckdb
 
     for url in urls:
         if not robots_allows(rp, url):
@@ -460,6 +476,13 @@ def run(
                     summary.qualities.append(q)
                     continue
                 changed = existing is not None and existing != new_hash
+                # A first ingest or an unchanged re-ingest is a graph no-op under
+                # the connector's deterministic ids (``ignore``). A genuinely
+                # CHANGED body must actually OVERWRITE the stored row + chunks
+                # under the same document_id (``replace``) — counting it as
+                # "changed_reingested" while the connector silently kept the
+                # stale body is the "round a non-update up to success" dishonesty
+                # rigor #1 forbids.
                 result = ingest_url(
                     url,
                     investigation_id=investigation_id,
@@ -467,6 +490,7 @@ def run(
                     embedder=embedder,
                     fetched=injected,
                     min_word_count=min_word_count,
+                    on_conflict="replace" if changed else "ignore",
                 )
                 summary.fetched += 1
                 if changed:
@@ -490,7 +514,7 @@ def run(
             continue
 
         # M4 — quality verdict from the markdown the connector extracted.
-        md_word_count, md_text = _extracted_md(url, injected, result)
+        md_word_count, md_text = _extracted_md(url, injected, result, db_path=db_path)
         q = assess_extraction_quality(
             url=url,
             document_id=result.document_id,
@@ -520,8 +544,8 @@ def run(
 
 def _content_hash_of(page: FetchedHtml) -> str:
     """The connector's content hash for a pre-fetched body (extract then hash),
-    so the driver's changed-detection matches the stored DocumentLoadedPayload
-    hash exactly."""
+    so the driver's changed-detection matches the stored ``documents.content_hash``
+    exactly (both are ``content_hash(html_to_markdown(body).markdown)``)."""
     from processing.chunking.chunker import content_hash
 
     md = html_to_markdown(page.body, base_url=page.final_url)
@@ -529,21 +553,61 @@ def _content_hash_of(page: FetchedHtml) -> str:
 
 
 def _extracted_md(
-    url: str, injected: Optional[FetchedHtml], result: IngestUrlResult
+    url: str,
+    injected: Optional[FetchedHtml],
+    result: IngestUrlResult,
+    *,
+    db_path: Optional[str] = None,
 ) -> Tuple[int, str]:
-    """Best-effort recovery of the extracted markdown + word count for the
-    quality verdict. For the injected (test) path we re-extract from the body
-    we have; for the live path we report the connector's title-less proxy
-    (word count unknown without re-fetch, so use 0 only when truly unavailable
-    — in practice the injected path is what tests exercise)."""
+    """Recover the extracted markdown + word count for the quality verdict.
+
+    Injected (test) path: re-extract from the body we hold.
+
+    LIVE operator path: the connector already extracted and stored the body, but
+    this driver does not hold it. We read the persisted ``documents.raw_text``
+    back (it IS the extracted markdown) and count its words, so the M4
+    markup-leakage + word-count heuristics inspect the ACTUAL extracted prose of
+    a hostile PG essay on the real run — not an empty-string placeholder that
+    could never flag (the M4 rigor centerpiece must fire in production, not only
+    under test). If the body cannot be read back (e.g. the connector skipped the
+    write for low word count), we fall back to an empty body; the
+    connector-skip + low-word-count flags still fire off ``skipped_reason``.
+    """
     if injected is not None:
         md = html_to_markdown(injected.body, base_url=injected.final_url)
         return md.word_count, md.markdown
-    # Live path: the connector already extracted; we don't hold the body. The
-    # skipped_reason tells us if it was low word count; absent the body we
-    # report a non-flagging placeholder (a real run logs the connector's own
-    # event). Tests always use the injected path.
-    return MIN_INGEST_WORD_COUNT, ""
+    # Live path.
+    stored = _stored_raw_text(url, db_path=db_path)
+    if stored:
+        return len(stored.split()), stored
+    return 0, ""
+
+
+def _stored_raw_text(url: str, *, db_path: Optional[str]) -> Optional[str]:
+    """Read back the persisted ``documents.raw_text`` (the extracted markdown)
+    for this URL's document so the live-path quality verdict inspects the real
+    extracted body. Returns None when the doc/DB is absent."""
+    import duckdb
+
+    from substrate.graph import default_db_path
+
+    resolved = db_path or default_db_path()
+    document_id = url_doc_id(url)
+    try:
+        con = duckdb.connect(resolved, read_only=True)
+    except Exception:
+        return None
+    try:
+        try:
+            row = con.execute(
+                "SELECT raw_text FROM documents WHERE document_id = ?",
+                [document_id],
+            ).fetchone()
+        except Exception:
+            return None
+        return row[0] if row and row[0] else None
+    finally:
+        con.close()
 
 
 def _quality_for_injected(
@@ -575,10 +639,15 @@ def _quality_for_injected(
 
 
 def _stored_content_hash(url: str, *, db_path: Optional[str]) -> Optional[str]:
-    """The content_hash recorded for this URL's document, if any. Reads the
-    document.loaded event's payload via the documents/metadata; falls back to
-    None when the doc or DB is absent (so a first run treats every essay as
-    new)."""
+    """The content_hash recorded for this URL's document, if any.
+
+    The connector writes the authoritative hash to ``documents.content_hash``
+    (``insert_document(..., content_hash="sha256:"+content_hash(text))``). The
+    graph DB this driver targets holds ``{documents, chunks, url_alias}`` — there
+    is NO ``events`` table — so the hash MUST be read off the ``documents`` row
+    keyed by the URL-stable ``document_id``. Returns None when the doc, column,
+    or DB is absent so a first run treats every essay as new.
+    """
     import duckdb
 
     from substrate.graph import default_db_path
@@ -590,28 +659,15 @@ def _stored_content_hash(url: str, *, db_path: Optional[str]) -> Optional[str]:
     except Exception:
         return None
     try:
-        # The DocumentLoadedPayload content_hash is the authoritative record.
-        # It is stored on the event; documents table may also carry it in
-        # metadata. We read the most recent document.loaded event for this doc.
         try:
-            rows = con.execute(
-                """
-                SELECT payload_json FROM events
-                 WHERE document_id = ? AND event_type = 'document.loaded'
-                 ORDER BY emitted_at DESC LIMIT 1
-                """,
+            row = con.execute(
+                "SELECT content_hash FROM documents WHERE document_id = ?",
                 [document_id],
-            ).fetchall()
+            ).fetchone()
         except Exception:
-            rows = []
-        if rows:
-            try:
-                payload = json.loads(rows[0][0]) if isinstance(rows[0][0], str) else rows[0][0]
-                ch = payload.get("content_hash") if isinstance(payload, dict) else None
-                if ch:
-                    return ch
-            except Exception:
-                pass
+            return None
+        if row and row[0]:
+            return row[0]
         return None
     finally:
         con.close()

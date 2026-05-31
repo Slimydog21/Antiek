@@ -216,6 +216,7 @@ def ingest_url(
     http_client: Optional[object] = None,
     fetched: Optional[FetchedHtml] = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
+    on_conflict: str = "ignore",
     # Wedge 2 (Browserbase escalation) — opt-in per call (default off).
     fallback_to_browserbase: bool = False,
     browserbase_wait_for: Optional[str] = None,
@@ -225,6 +226,15 @@ def ingest_url(
     ``fetched`` lets callers reuse an already-fetched body (e.g. a
     crawler that batches requests) — when set, no HTTP is performed
     and ``http_client`` is ignored.
+
+    ``on_conflict`` (default ``"ignore"``) is forwarded to
+    ``insert_document`` / ``insert_chunk`` / ``insert_node``. The default keeps
+    a re-ingest of an unchanged body a graph no-op (deterministic ids ⇒ the
+    existing rows are kept). A caller that has already detected a *changed*
+    body (its hash differs from the stored ``documents.content_hash``) passes
+    ``"replace"`` so the new body + chunks overwrite the prior rows under the
+    same ``document_id`` — never silently keeping the stale body while
+    reporting a re-ingest.
 
     ``fallback_to_browserbase`` opts in to Wedge 2 escalation when
     the httpx primary fetch returns low_word_count. Per spec §7.4
@@ -345,8 +355,16 @@ def ingest_url(
                 "status_code": page.status_code,
                 "fetched_at": datetime.now(timezone.utc).isoformat(),
             },
-            on_conflict="ignore",
+            on_conflict=on_conflict,
         )
+        # On a CHANGED re-ingest (``on_conflict="replace"``), drop the prior
+        # chunks for this document first so an edit that yields FEWER chunks
+        # does not leave stale tail rows behind (chunk ids are deterministic
+        # per index, so a same-or-larger edit would overwrite in place, but a
+        # shrinking edit would orphan the high-index chunks). Scoped to the
+        # replace path so the unchanged/ignore no-op is untouched.
+        if on_conflict == "replace":
+            con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
         # Spec §14.2 — record the requested_url→document_id alias so
         # future fetches that resolve to a different final_url for
         # the same logical content can find their canonical doc_id
@@ -383,6 +401,7 @@ def ingest_url(
                 section_path=chunk.section or None,
                 embedding=emb.encode(chunk.text),
                 token_count=chunk.token_count,
+                on_conflict=on_conflict,
             )
             chunk_ids.append(chunk_id)
             chunks_written += 1

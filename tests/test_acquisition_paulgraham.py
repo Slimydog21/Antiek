@@ -178,6 +178,57 @@ def test_throttle_spaces_without_real_sleep():
     assert pg.MIN_REQUEST_SPACING_S == 3.0
 
 
+def test_robots_fetch_failure_records_fail_open_warning():
+    """When robots.txt cannot be fetched/parsed we fail OPEN (RFC default) but
+    record WHY on the parser so the run surfaces a visible operator warning —
+    silently disabling robots is the weaker posture for a lane whose lawful-
+    acquisition stance is load-bearing."""
+
+    def _boom(_u: str) -> str:
+        raise OSError("connection refused")
+
+    rp = pg.load_robots(fetch_text=_boom)
+    marker = getattr(rp, "_antiek_robots_fail_open", None)
+    assert marker, "fail-open must be recorded when robots.txt cannot be fetched"
+    assert "failed OPEN" in marker
+    # Fail-open still means everything is allowed (RFC default).
+    assert pg.robots_allows(rp, "https://paulgraham.com/anything.html")
+
+
+def test_robots_applied_records_no_fail_open():
+    rp = pg.load_robots(robots_txt="User-agent: *\nDisallow: /x.html\n")
+    assert getattr(rp, "_antiek_robots_fail_open", "sentinel") is None
+
+
+def test_run_surfaces_robots_fail_open_warning(temp_substrate):
+    """A run whose robots load failed open carries the warning in its summary +
+    report so the operator is not misled into thinking the site allowed us."""
+
+    def _boom(_u: str) -> str:
+        raise OSError("connection refused")
+
+    report_path = os.path.join(temp_substrate["tmpdir"], "rep.json")
+    body = _read_fixture("greatwork.html")
+    url = "https://paulgraham.com/greatwork.html"
+    summary = pg.run(
+        investigation_id="inv-pg",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        articles_html=b'<a href="greatwork.html">GW</a>',
+        robots_fetch_text=_boom,
+        fetched_by_url={url: _fetched("greatwork", body)},
+        throttle=_no_sleep_throttle(),
+        report_path=report_path,
+        write_report=True,
+    )
+    assert any("failed OPEN" in w for w in summary.warnings)
+    with open(report_path, encoding="utf-8") as fh:
+        report = json.load(fh)
+    assert any("failed OPEN" in w for w in report["warnings"])
+    # The essay was still ingested (fail-open allows the fetch).
+    assert summary.ingested_clean == 1
+
+
 def test_run_robots_disallowed_essay_is_skipped_not_fetched(temp_substrate):
     body = _read_fixture("greatwork.html")
     summary = pg.run(
@@ -271,11 +322,11 @@ def test_owner_read_full_body_not_snippet(temp_substrate):
 def test_attribution_ineligible_for_ingested_essay(temp_substrate):
     """An ingested PG essay is non-attributable: is_attribution_eligible() is
     False and its class is absent from the public-graph ad surface."""
-    from collective_graph.eligibility import (
+    from substrate.collective_graph.eligibility import (
         CollectiveGraphDocument,
         is_attribution_eligible,
     )
-    from ad_inventory.attribution import (
+    from substrate.ad_inventory.attribution import (
         PUBLIC_GRAPH_CONTENT_CLASSES,
         monetization_eligible,
     )
@@ -297,8 +348,8 @@ def test_attribution_ineligible_for_ingested_essay(temp_substrate):
 
 
 def test_attribution_lane_membership_invariants():
-    from collective_graph.eligibility import NON_ATTRIBUTABLE_CONTENT_CLASSES
-    from ad_inventory.attribution import PUBLIC_GRAPH_CONTENT_CLASSES
+    from substrate.collective_graph.eligibility import NON_ATTRIBUTABLE_CONTENT_CLASSES
+    from substrate.ad_inventory.attribution import PUBLIC_GRAPH_CONTENT_CLASSES
 
     assert PERSONAL_READING_CONTENT_CLASS in NON_ATTRIBUTABLE_CONTENT_CLASSES
     assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES
@@ -335,6 +386,10 @@ def test_incremental_second_run_adds_zero_rows(temp_substrate):
     try:
         (d1,) = con.execute("SELECT COUNT(*) FROM documents").fetchone()
         (c1,) = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
+        (h1,) = con.execute(
+            "SELECT content_hash FROM documents WHERE document_id = ?",
+            [url_doc_id(url)],
+        ).fetchone()
     finally:
         con.close()
 
@@ -343,14 +398,21 @@ def test_incremental_second_run_adds_zero_rows(temp_substrate):
     try:
         (d2,) = con.execute("SELECT COUNT(*) FROM documents").fetchone()
         (c2,) = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
+        (h2,) = con.execute(
+            "SELECT content_hash FROM documents WHERE document_id = ?",
+            [url_doc_id(url)],
+        ).fetchone()
     finally:
         con.close()
 
     assert s1.ingested_clean == 1
     assert d2 == d1, "second run added documents"
     assert c2 == c1, "second run added chunks"
+    # The unchanged body is detected (its hash == the stored hash) and the
+    # second run is a graph no-op — not silently re-ingested.
     assert s2.skipped_unchanged == 1
     assert s2.ingested_clean == 0
+    assert h2 == h1, "unchanged second run mutated the stored content_hash"
 
 
 def test_incremental_changed_content_is_reingested_same_doc_id(temp_substrate):
@@ -379,7 +441,11 @@ def test_incremental_changed_content_is_reingested_same_doc_id(temp_substrate):
 
     assert s1.ingested_clean == 1
     assert s2.changed_reingested == 1
-    # Identity stays URL-stable — one document_id, not a fork.
+    # Identity stays URL-stable — one document_id, not a fork — AND the stored
+    # body must ACTUALLY be the edited one. A counter incremented while the
+    # connector silently kept the stale body (the on_conflict='ignore' bug this
+    # sprint fixed) is the "round a non-update up to success" dishonesty rigor
+    # #1 forbids; this assertion bites on exactly that defect.
     con = duckdb.connect(temp_substrate["db_path"], read_only=True)
     try:
         (n_docs,) = con.execute(
@@ -390,10 +456,17 @@ def test_incremental_changed_content_is_reingested_same_doc_id(temp_substrate):
         (n_url_docs,) = con.execute(
             "SELECT COUNT(*) FROM documents WHERE document_id LIKE 'doc-url-%'"
         ).fetchone()
+        (stored_body,) = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
+            [url_doc_id(url)],
+        ).fetchone()
     finally:
         con.close()
     assert n_docs == 1
     assert n_url_docs == 1
+    assert "A newly added closing thought" in stored_body, (
+        "changed_reingested counted but the edited body was NOT persisted"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -510,7 +583,42 @@ def test_no_content_class_bypass_with_pg_driver_present():
 
 
 def test_driver_source_has_no_content_class_literal():
-    # Belt-and-suspenders: the driver file itself never assigns content_class.
-    src = open(os.path.join(_REPO, "acquisition", "urls", "paulgraham.py"), encoding="utf-8").read()
-    assert "content_class=" not in src
-    assert "content_class =" not in src
+    """Belt-and-suspenders: the driver's EXECUTABLE code never passes/assigns
+    ``content_class`` (classification stays inside ingest_url's chokepoint).
+
+    The check AST-parses the file so it inspects code, not prose. A crude
+    full-text substring scan false-positives on the module docstring that
+    *names* ``content_class`` to explain why the driver never sets it — so the
+    guard mirrors ``corpus_audit``'s ast.Call / ast.Name discipline rather than
+    grepping the source. It bites on exactly one defect: a real
+    ``content_class=`` keyword on a call, or a ``content_class = ...``
+    assignment, anywhere in real code.
+    """
+    import ast
+
+    path = os.path.join(_REPO, "acquisition", "urls", "paulgraham.py")
+    with open(path, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read(), filename=path)
+
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            for kw in node.keywords:
+                if kw.arg == "content_class":
+                    offenders.append(f"call kwarg content_class @ line {node.lineno}")
+        if isinstance(node, ast.Assign):
+            for tgt in node.targets:
+                if isinstance(tgt, ast.Name) and tgt.id == "content_class":
+                    offenders.append(f"assign content_class @ line {node.lineno}")
+                if isinstance(tgt, ast.Attribute) and tgt.attr == "content_class":
+                    offenders.append(f"assign .content_class @ line {node.lineno}")
+        if isinstance(node, ast.AnnAssign):
+            tgt = node.target
+            if (
+                isinstance(tgt, ast.Name)
+                and tgt.id == "content_class"
+                and node.value is not None
+            ):
+                offenders.append(f"annassign content_class @ line {node.lineno}")
+
+    assert not offenders, f"driver assigns/passes content_class in code: {offenders}"
