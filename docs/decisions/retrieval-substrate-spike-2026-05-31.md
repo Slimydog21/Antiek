@@ -202,3 +202,13 @@ from this record's numbers + triggers without re-running the spike.
   real graph). The source file is never written. A production wiring (SPR-06+)
   would build the index once inside the single-writer's own transaction — out
   of scope for the spike, which only needs the measured query/build cost.
+- **The verdict (DuckDB-VSS) stands — it was measured where the extension is
+  available.** The `vss` extension is loaded via a hang-proof, LOAD-first probe
+  (`_vss_available` / `_vss_loadable_probe`): a pure-local `LOAD vss` first (no
+  download), and a NETWORK `INSTALL vss` only when the operator opts in with
+  `ANTIEK_VSS_ALLOW_INSTALL=1`. In an environment WITHOUT the extension loadable
+  (e.g. a network-restricted CI runner with the flag unset), the impl falls back
+  to the brute-force path — exactly today's `main` behaviour — which is safe and
+  correctness-preserving; the bench records `vss_active=false` and the
+  vss-active-only tests skip rather than fail or hang. **vss-active requires the
+  extension to be loadable in the running environment.**

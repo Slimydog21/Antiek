@@ -22,6 +22,11 @@ from pathlib import Path
 import pytest
 
 from benchmarks import retrieval_bench as rb
+from substrate.graph import retrieval_substrate as _rs
+
+# Hang-proof probe (LOAD-only, memoized, NO network install unless the operator
+# opts in via ANTIEK_VSS_ALLOW_INSTALL). False on a network-restricted CI runner.
+_VSS_LOADABLE = _rs._vss_loadable_probe()
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +159,16 @@ def test_run_benchmark_emits_artifact():
     # vendor adapters skipped, not crashed
     assert by["turbopuffer"]["status"] == "skipped — no credentials"
     assert by["ducklake"]["status"] == "skipped — no credentials"
-    # vss measured + active in this env, gate held, latency recorded
+    # vss measured, gate held, latency recorded — UNCONDITIONAL (the bench runs
+    # and the artifact is well-formed whether vss is active or falls back to
+    # brute force). vss_active is True only where the extension is loadable;
+    # on a network-restricted CI runner the bench records vss_active=False and
+    # falls back to brute force — that is the safe, expected behaviour.
     assert by["vss"]["status"] == "measured"
-    assert by["vss"]["vss_active"] is True
+    if _VSS_LOADABLE:
+        assert by["vss"]["vss_active"] is True
+    else:
+        assert by["vss"]["vss_active"] is False  # hang-proof fallback in no-network env
     assert by["vss"]["gate_9_0"]["held"] is True
     assert by["vss"]["latency_ms"]["p95"] >= 0.0
     assert by["vss"]["index_build_ms"] >= 0.0

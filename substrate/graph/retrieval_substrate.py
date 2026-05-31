@@ -166,16 +166,109 @@ class BruteForceSubstrate:
 # ---------------------------------------------------------------------------
 
 
-def _vss_available(con: Any) -> bool:
-    """INSTALL + LOAD the vss extension. Returns True iff it loaded.
+# Process-level memo for the vss-loadable probe. The probe runs AT MOST ONCE
+# per process (None = not yet probed), so neither the interface tests nor the
+# bench re-pay the cost per call. Reset only via _reset_vss_probe (tests).
+_VSS_PROBE_RESULT: Optional[bool] = None
+_VSS_PROBE_COUNT = 0  # observability: proves the probe runs once, not per-test.
 
-    Never raises — a missing extension is a fallback condition, not a crash."""
+# Explicit opt-in env flag for the NETWORK install of the vss extension. Unset
+# (the CI default) means the probe is LOAD-only and never makes a network call,
+# so a fresh/network-restricted runner cannot hang on `INSTALL vss`.
+_VSS_ALLOW_INSTALL_ENV = "ANTIEK_VSS_ALLOW_INSTALL"
+
+
+def _probe_vss_loadable(con: Any) -> bool:
+    """Hang-proof probe: can the vss extension be made active on ``con``?
+
+    Strategy (no unconditional network call):
+      1. ``LOAD vss`` FIRST — pure-local, no download. Succeeds whenever the
+         extension is already installed/bundled (e.g. local dev where DuckDB
+         has cached it). This is the only path CI ever takes.
+      2. ONLY if LOAD fails AND ``ANTIEK_VSS_ALLOW_INSTALL=1`` is set, attempt
+         the NETWORK ``INSTALL vss`` then re-``LOAD``. This is the explicit
+         opt-in for a fresh dev box; CI leaves the flag unset, so there is no
+         network fetch to hang on — vss is simply reported unavailable and the
+         caller falls back to brute force.
+
+    Never raises — a missing/unloadable extension is a fallback condition, not
+    a crash. Returns True iff vss is loaded and usable on ``con``."""
     try:
-        con.execute("INSTALL vss")
+        con.execute("LOAD vss")
+        return True
+    except Exception as load_exc:
+        allow_install = os.environ.get(_VSS_ALLOW_INSTALL_ENV, "").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
+        if not allow_install:
+            _log.warning(
+                "vss extension not loadable (LOAD failed: %s) and %s is unset; "
+                "falling back to brute force (no network install attempted)",
+                load_exc, _VSS_ALLOW_INSTALL_ENV,
+            )
+            return False
+        # Explicit opt-in: a network INSTALL is permitted on this box.
+        try:
+            con.execute("INSTALL vss")
+            con.execute("LOAD vss")
+            return True
+        except Exception as install_exc:  # pragma: no cover — env-dependent
+            _log.warning(
+                "vss extension unavailable after opt-in INSTALL, falling back "
+                "to brute force: %s", install_exc,
+            )
+            return False
+
+
+def _vss_loadable_probe() -> bool:
+    """Memoized, hang-proof boolean: is the vss extension loadable in this
+    process? Probes AT MOST ONCE (the result is cached at module level), on a
+    throwaway in-memory connection, via the LOAD-first/env-gated strategy. Safe
+    to call from a ``skipif`` marker — never hangs, never makes a network call
+    unless ``ANTIEK_VSS_ALLOW_INSTALL`` is explicitly set."""
+    global _VSS_PROBE_RESULT, _VSS_PROBE_COUNT
+    if _VSS_PROBE_RESULT is not None:
+        return _VSS_PROBE_RESULT
+    _VSS_PROBE_COUNT += 1
+    try:
+        import duckdb
+
+        probe_con = duckdb.connect(":memory:")
+        try:
+            _VSS_PROBE_RESULT = _probe_vss_loadable(probe_con)
+        finally:
+            probe_con.close()
+    except Exception as exc:  # pragma: no cover — duckdb import/connect failure
+        _log.warning("vss probe could not open a connection (%s); treating vss as unavailable", exc)
+        _VSS_PROBE_RESULT = False
+    return _VSS_PROBE_RESULT
+
+
+def _reset_vss_probe() -> None:
+    """Test hook: clear the memo so a test can force/observe a re-probe."""
+    global _VSS_PROBE_RESULT, _VSS_PROBE_COUNT
+    _VSS_PROBE_RESULT = None
+    _VSS_PROBE_COUNT = 0
+
+
+def _vss_available(con: Any) -> bool:
+    """Make the vss extension active on ``con`` iff it is loadable in this
+    process (memoized probe). Hang-proof: never attempts a network ``INSTALL``
+    unless ``ANTIEK_VSS_ALLOW_INSTALL`` is set, so a network-restricted CI
+    runner reports unavailable instantly instead of hanging on a download.
+
+    Returns True iff vss is loaded and usable on ``con``. Never raises — a
+    missing extension is a fallback condition, not a crash."""
+    if not _vss_loadable_probe():
+        return False
+    # The process-level probe already confirmed vss is loadable with no network
+    # cost; LOADing it onto this specific connection is the only per-connection
+    # step and is itself network-free here.
+    try:
         con.execute("LOAD vss")
         return True
     except Exception as exc:  # pragma: no cover — env-dependent
-        _log.warning("vss extension unavailable, falling back to brute force: %s", exc)
+        _log.warning("vss loadable in process but LOAD on connection failed: %s", exc)
         return False
 
 

@@ -27,7 +27,18 @@ from substrate.graph.retrieval_substrate import (
     RetrievalSubstrate,
     make_substrate,
 )
+from substrate.graph import retrieval_substrate as _rs
 from substrate.graph.search import search
+
+# Hang-proof probe (LOAD-only, memoized, NO network install unless the operator
+# opts in via ANTIEK_VSS_ALLOW_INSTALL). On a network-restricted CI runner this
+# returns False instantly, so vss-active-only tests SKIP rather than fail/hang.
+_VSS_LOADABLE = _rs._vss_loadable_probe()
+_requires_vss = pytest.mark.skipif(
+    not _VSS_LOADABLE,
+    reason="vss extension not loadable without a network install "
+           "(set ANTIEK_VSS_ALLOW_INSTALL=1 on a networked box to install it)",
+)
 
 
 @pytest.fixture
@@ -79,10 +90,15 @@ def test_query_returns_search_shape(seeded_db):
         sub.close()
 
 
+@_requires_vss
 def test_vss_matches_bruteforce_ordering_and_similarity(seeded_db):
     """The DuckDB-VSS impl must rank IDENTICALLY to the brute-force reference
     on the seeded graph — the HNSW index is exact-equivalent at this scale, so
-    a swap is correctness-preserving (M1 acceptance)."""
+    a swap is correctness-preserving (M1 acceptance).
+
+    Skipped when the vss extension is not loadable (e.g. network-restricted CI
+    with ANTIEK_VSS_ALLOW_INSTALL unset): the brute-force-parity tests below
+    keep the correctness coverage; the impl falls back to brute force there."""
     db, emb, _ = seeded_db
     vss = make_substrate("vss", db, model=emb)
     bf = make_substrate("brute_force", db, model=emb)
