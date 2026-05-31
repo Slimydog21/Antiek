@@ -176,10 +176,13 @@ CHECK_THIRD_PARTY_SERVABLE = "third_party_servable"
 #       same _check_third_party_servable body — registering a parallel literal
 #       would be the very anti-pattern THE BINDING forbids. (See run_audit.)
 #   (b) CHECK_PERSONAL_NONATTRIB — a personal_reading document must be
-#       non-attributable AND absent from the public graph: 0 rows where
-#       content_class='personal_reading' would pass is_attribution_eligible OR is
-#       a member of PUBLIC_GRAPH_CONTENT_CLASSES. Composes the SPR-01-finalized
-#       eligibility / attribution sets (imported, never re-listed).
+#       non-attributable, absent from the public graph, AND withheld on the public
+#       serve path: 0 rows where content_class='personal_reading' would pass
+#       is_attribution_eligible, OR is a member of PUBLIC_GRAPH_CONTENT_CLASSES, OR
+#       renders a full body to a non-owner via serve_full_text(owner=False).
+#       Composes the SPR-01-finalized eligibility / attribution sets AND the shared
+#       serve chokepoint (all imported, never re-listed) — the money side AND the
+#       read side of the lane in one standing check.
 #   (c) CHECK_PERSONAL_NOT_TRAINING — a personal_reading document_id must never
 #       appear in a training/RL export selection. There is NO training/RL export
 #       builder on origin/main today (verified: no jsonl/parquet/to_training path
@@ -396,12 +399,15 @@ def _check_third_party_servable(con: Any) -> CheckResult:
 
 def _check_personal_nonattributable(con: Any) -> CheckResult:
     """Personal-Reading Lane (SPR-10 M1.b): a ``personal_reading`` document is
-    NON-attributable AND absent from the public graph.
+    NON-attributable, absent from the public graph, AND withheld on the public
+    serve path.
 
     personal_reading is the OWNER's private third-party reading. It has no rights
-    basis to earn and no holder to ever pay, so it MUST accrue zero ad
-    attribution and zero IP escrow BY CONSTRUCTION. Two arms, both asserted at the
-    DB level against the SPR-01-finalized sets (imported, never re-listed here):
+    basis to earn and no holder to ever pay, and it is the owner's alone to read —
+    so it MUST accrue zero ad attribution + zero IP escrow AND never render its
+    body to a public (non-owner) caller, all BY CONSTRUCTION. Three arms, each
+    asserted against the REAL surface the lane has to hold on (never a trusted
+    column), using the SPR-01-finalized sets (imported, never re-listed here):
 
       * arm 1 — attribution: for every ``content_class='personal_reading'`` row,
         ``is_attribution_eligible`` (collective_graph/eligibility) must return
@@ -420,10 +426,27 @@ def _check_personal_nonattributable(con: Any) -> CheckResult:
         split. This arm bites if personal_reading were ever added to the
         public-graph set.
 
-    Both arms read the IMPORTED sets, so the audit can never silently desync from
-    the lane definition: change the set, change the check. The two arms are
-    belt-and-suspenders over the SAME invariant from the two surfaces (payout
-    predicate + public-graph membership) the lane has to hold on simultaneously."""
+      * arm 3 — public serve withhold (THE read-side lane invariant): for every
+        personal_reading row, the PUBLIC serve projection
+        (``serve_full_text(con, doc_id)`` with its ``owner=False`` default —
+        EXACTLY the call the public API makes) must return ``servable is False``
+        AND ``full_text is None`` (a bounded snippet is allowed; the full body is
+        the §9.0 catastrophe). This asserts against the REAL serve path the same
+        way :func:`_check_gated_leak` does — NOT a column comparison — so a
+        regression that renders a personal_reading body to a non-owner is caught
+        as a STANDING DB check, not only by the runbook's manual verification.
+        _check_gated_leak is structurally blind to this row: personal_reading is
+        neither the gated class (arm b1) nor a member of SERVABLE_CONTENT_CLASSES
+        (arm b2), so without this arm no standing check exercises the serve path
+        for personal_reading. The arm bites if a future edit added personal_reading
+        to the public full-body branch, or flipped the ``owner`` default, or a
+        merge mislabeled a gated body personal_reading on a serve path that leaks.
+
+    Every arm reads the IMPORTED sets / the SHARED serve chokepoint, so the audit
+    can never silently desync from the lane definition: change the set or the serve
+    path, change the check. The three arms are belt-and-suspenders over the SAME
+    lane invariant from the three surfaces (payout predicate + public-graph
+    membership + public serve projection) it has to hold on simultaneously."""
     rows = con.execute(
         "SELECT document_id FROM documents "
         "WHERE content_class = ? ORDER BY document_id",
@@ -445,6 +468,8 @@ def _check_personal_nonattributable(con: Any) -> CheckResult:
     # a desynced personal_reading row would read as eligible and be flagged.)
     offenders: list[str] = []
     for doc_id in personal_ids:
+        why: list[str] = []
+        # arm 1 — attribution-eligibility via the REAL payout predicate.
         probe = CollectiveGraphDocument(
             document_id=doc_id,
             note_id=doc_id,
@@ -452,13 +477,19 @@ def _check_personal_nonattributable(con: Any) -> CheckResult:
             content_class=PERSONAL_READING_CONTENT_CLASS,
             quality_gate_result=_pass_public_probe(),
         )
-        attributable = is_attribution_eligible(probe)
-        if attributable or in_public_graph:
-            why = []
-            if attributable:
-                why.append("is_attribution_eligible=True")
-            if in_public_graph:
-                why.append("in PUBLIC_GRAPH_CONTENT_CLASSES")
+        if is_attribution_eligible(probe):
+            why.append("is_attribution_eligible=True")
+        # arm 2 — public-graph membership of the lane class (per-row so the
+        # offending id is actionable; the set-only case is surfaced once below).
+        if in_public_graph:
+            why.append("in PUBLIC_GRAPH_CONTENT_CLASSES")
+        # arm 3 — the public serve projection must WITHHOLD the body. We call the
+        # SAME serve chokepoint the API uses, with its public (owner=False)
+        # default, against REAL data — a full body to a non-owner is the leak.
+        served = serve_full_text(con, doc_id)
+        if served.servable or served.full_text is not None:
+            why.append("public serve renders full body (owner=False)")
+        if why:
             offenders.append(f"{doc_id} ({'; '.join(why)})")
 
     # If the class itself is misconfigured into the public graph, that is a corpus-
@@ -476,11 +507,11 @@ def _check_personal_nonattributable(con: Any) -> CheckResult:
         count=len(offenders),
         offending=_bounded(offenders),
         detail=(
-            f"all {len(personal_ids)} personal_reading doc(s) are non-attributable "
-            "and absent from the public graph"
+            f"all {len(personal_ids)} personal_reading doc(s) are non-attributable, "
+            "absent from the public graph, and withheld on the public serve path"
             if ok
-            else f"{len(offenders)} personal_reading defect(s): attribution-eligible "
-            "or present in the public graph (must be neither)"
+            else f"{len(offenders)} personal_reading defect(s): attribution-eligible, "
+            "in the public graph, or rendered full-body to a non-owner (must be none)"
         ),
     )
 

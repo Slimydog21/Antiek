@@ -943,6 +943,89 @@ def test_personal_reading_attributable_fails_check_personal_nonattrib(db_path, m
     assert result.check(CHECK_EXTRACTION).ok
 
 
+def test_personal_reading_public_serve_leak_fails_check_personal_nonattrib(
+    db_path, monkeypatch
+):
+    """SHARPEN (arm 3 — the READ-SIDE lane invariant). PLANT the single defect: the
+    PUBLIC serve projection renders a personal_reading body to a NON-owner — the
+    §9.0 read-side catastrophe. The check must FAIL on the standing DB pass alone
+    (not only the runbook's manual step) and name the offending document_id.
+
+    This proves arm 3 is INDEPENDENTLY load-bearing: the set-based arms (1 + 2) are
+    still correct here — personal_reading is non-attributable and not in the public
+    graph — so a check that only replayed the two set predicates would stay GREEN
+    while the serve path leaks the full body. Only a check that exercises the REAL
+    serve chokepoint catches this, which is exactly what arm 3 adds.
+
+    We monkeypatch the serve chokepoint as the corpus_audit module binds it
+    (``corpus_audit.serve_full_text``) to simulate a future serve-path regression
+    (an edit that added personal_reading to the public full-body branch, or flipped
+    the owner default). The audit calls that bound name LIVE, so the regression
+    surfaces through the real call site arm 3 uses — not a stubbed column.
+
+    Isolation: the planted serve-path regression flips ONLY the personal-nonattrib
+    check; every other corpus check stays green (the leak is not a servable-basis,
+    dedup, extraction, or gated-leak failure — the gated-leak check is structurally
+    blind to personal_reading)."""
+    import substrate.corpus_audit as audit_mod
+    from substrate.books.serve import ServeResult
+
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-pr-serveleak",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " owner-private reading the public must never see kkk",
+            source_uri="https://paulgraham.com/essay.html",
+            title="A Personal Reading",
+            document_type="web_article",
+        )
+
+    # Sanity: with the REAL serve path, arm 3 passes — the public path withholds
+    # the personal_reading body (this is the clean baseline the defect is removed
+    # against, proving the check bites on the leak and not on the row's presence).
+    assert run_audit(db_path, include_binding=False).check(CHECK_PERSONAL_NONATTRIB).ok
+
+    real_serve = audit_mod.serve_full_text
+
+    def _leaky_serve(con, document_id, *, owner=False):
+        served = real_serve(con, document_id, owner=owner)
+        # The regression: the PUBLIC (owner=False) path now renders the full
+        # personal_reading body — the exact §9.0 read-side leak arm 3 guards.
+        if served.servability is not None and not owner:
+            row = con.execute(
+                "SELECT content_class, raw_text FROM documents WHERE document_id = ?",
+                [document_id],
+            ).fetchone()
+            if row and row[0] == "personal_reading":
+                return ServeResult(
+                    document_id=document_id,
+                    found=True,
+                    servability=served.servability,
+                    servable=True,
+                    full_text=row[1],
+                    snippet=None,
+                    title=served.title,
+                    author=served.author,
+                    reason="REGRESSION_personal_reading_public_full_body",
+                )
+        return served
+
+    monkeypatch.setattr(audit_mod, "serve_full_text", _leaky_serve)
+
+    result = run_audit(db_path, include_binding=False)
+    n = result.check(CHECK_PERSONAL_NONATTRIB)
+    assert not n.ok, "a public serve leak of a personal_reading body must fail arm 3"
+    assert n.count == 1
+    assert any("doc-pr-serveleak" in o for o in n.offending)
+    assert any("serve" in o for o in n.offending)
+    assert not result.ok
+    # Exactly ONE check failed — the personal-nonattrib one (arm 3). The serve-path
+    # regression does not falsely flip any other corpus check.
+    assert {c.name for c in result.failed_checks} == {CHECK_PERSONAL_NONATTRIB}
+
+
 # ---------------------------------------------------------------------------
 # SPR-10 M1.c — personal_reading never in a training/RL export (forward-guard).
 #   NON-VACUITY (rigor #1): the test materializes a fixture export TABLE
