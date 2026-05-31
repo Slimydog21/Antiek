@@ -8,12 +8,55 @@
    ============================================================ */
 
 :root {
+  /* --sun is the brand CONSTANT — the loud lemon. UNCHANGED (AMS-SPR-09): it
+     is the bottom-tab value (via --bar-accent) and the Werner bill/foot. The
+     SPR-09 re-tone softens only the var-driven accent/highlight roles below,
+     never this. */
   --sun:        #F5DF24;
-  --sun-deep:   #B89A00;
-  --sun-glow:   #FCE85E;
-  --sun-hl-faint: rgba(245,223,36,0.18);
-  --sun-hl-day:   rgba(245,223,36,0.45);
-  --sun-hl-night: rgba(252,232,94,0.30);
+
+  /* Weathered "light" sun family (AMS-SPR-09) — a LOWER-CHROMA, sun-bleached
+     gold the chrome leans on without shouting. Chroma (max-min)/255 is ~0.36
+     here vs the brand lemon's 0.82, so it reads calm/aged next to the loud
+     --sun (bar) it sits beside. The re-toned accent/highlight roles below are
+     pulled toward this family. Not a new palette — a yellow-family re-tone.
+
+     REACH (honest scope, mirrors tokens.ts): this re-tone is VAR-DEEP only. It
+     softens consumers that read these vars — the 4 ::selection highlighter
+     veils (src/index.css), AssignHotkey.css var(--sun-deep), and the night
+     offset-shadows (var(--sun-deep)). It does NOT reach the 56 component
+     consumers of the Tailwind utilities text-sun-deep / bg-sun-glow /
+     border-sun-deep, which resolve through tailwind.config.js (sun-deep
+     #B89A00 / sun-glow #FCE85E, OUT OF SCOPE for SPR-09). Those still render
+     the OLD loud hexes until the Tailwind owner re-tones the var->tailwind
+     mirror to match these values. */
+  --sun-light:      #E8D98C;  /* weathered straw; the calm light chrome leans on */
+  --sun-light-soft: #F0E6B8;  /* palest weathered wash (faint chrome veils) */
+  --sun-light-deep: #9C8636;  /* muted ochre weathered depth; ==--sun-deep day.
+                                 AA: accent-edge 1.4.11 ≥3:1 → on ice-0 #FFFFFF
+                                 3.57:1 ✓, on ice-2 page #F4F7FA 3.32:1 ✓ */
+
+  /* was #B89A00 (chroma 0.72); re-toned to the muted-ochre weathered light so
+     the day hover/depth edge reads aged, not loud. AA pair (accent-edge,
+     WCAG 1.4.11 ≥3:1): on ice-0 #FFFFFF 3.57:1 ✓; on ice-2 page #F4F7FA
+     3.32:1 ✓. == --sun-light-deep (one weathered ochre). */
+  --sun-deep:   #9C8636;
+  /* was #FCE85E (chroma 0.62); re-toned to a desaturated weathered glow peak
+     (chroma 0.38) so the day highlight peak calms toward --sun-light. AA pair
+     (the highlighter text it tints, ink #0F1419 over the consumed --sun-hl-*
+     surfaces ≥4.5:1) is carried by --sun-hl-day below, not this glow alone. */
+  --sun-glow:   #F1E08F;
+  /* Highlighter veils — re-toned to the weathered straw rgb (232,217,140 ==
+     --sun-light #E8D98C) so the operator's highlighter reads as a calm aged
+     wash, not a loud lemon block. AA pair: prose text --ink #0F1419 OVER
+     [veil composited over its surface] must clear WCAG AA 4.5:1.
+       faint(0.18) over ice-0 #FFFFFF → 17.40:1 ✓ ; over ice-2 #F4F7FA → 16.37:1 ✓
+       day(0.45)   over ice-0 #FFFFFF → 15.83:1 ✓ ; over ice-2 #F4F7FA → 15.17:1 ✓ */
+  --sun-hl-faint: rgba(232,217,140,0.18);
+  --sun-hl-day:   rgba(232,217,140,0.45);
+  /* night veil rgb (242,222,154 == night --sun-glow #F2DE9A). AA pair: night
+     prose text --ink #EEF1F6 over [veil over surface] ≥4.5:1 → over card
+     #1B202A 6.22:1 ✓ ; over page #0D1019 7.38:1 ✓ */
+  --sun-hl-night: rgba(242,222,154,0.30);
 
   /* day surface ramp */
   --ice-0:      #FFFFFF;
@@ -160,13 +203,31 @@
        AMS-SPR-01. Yellow stays the brand via --werner-* and --bar-accent. */
     --border:     var(--rule);
 
-    --sun-deep:   #8A7300;
-    --sun-glow:   #FFEC5F;
+    /* was #8A7300; re-toned (AMS-SPR-09) to a weathered ochre so the night
+       depth/shadow-glow reads aged, not loud. AA pair (accent-edge 1.4.11
+       ≥3:1, used as the night offset-shadow glow): on card #1B202A 3.44:1 ✓;
+       on page #0D1019 4.01:1 ✓. */
+    --sun-deep:   #84722F;
+    /* was #FFEC5F; re-toned (AMS-SPR-09) to a calmer weathered night glow
+       (chroma ~0.40) so the night highlight peak softens toward --sun-light.
+       The LOUD night bar value (#FFEC5F) is preserved separately as
+       --sun-bar-night below — the bar must NOT soften with the glow. AA for
+       the highlighter that consumes this rgb is carried by --sun-hl-night. */
+    --sun-glow:   #F2DE9A;
 
-    /* Preserved bottom-bar yellow accent, night (AMS-SPR-01; SPR-06). Uses
-       the warmer --sun-glow so the accent reads against the night sky.
-       Mirrors tokens.ts `barAccent.night` (#FFEC5F). */
-    --bar-accent: var(--sun-glow);
+    /* The LOUD night bar value, decoupled from the now-softened --sun-glow
+       (AMS-SPR-09). Was: --bar-accent pointed at --sun-glow (#FFEC5F). Since
+       SPR-09 softens --sun-glow, the bar would have softened too — violating
+       "keep the bottom tab LOUD". So the bar's loud warm glow lives here as
+       its own constant and --bar-accent points at it. UNCHANGED hex #FFEC5F.
+       Mirrors tokens.ts `barAccent.night`. */
+    --sun-bar-night: #FFEC5F;
+
+    /* Preserved bottom-bar yellow accent, night (AMS-SPR-01; SPR-06). Stays
+       LOUD: points at --sun-bar-night (#FFEC5F), the brand night glow — NOT
+       the softened --sun-glow. The bar stays bold; only the chrome accents
+       soften (AMS-SPR-09). Mirrors tokens.ts `barAccent.night` (#FFEC5F). */
+    --bar-accent: var(--sun-bar-night);
 
     /* Glass / transparency surfaces, night (AMS-SPR-01; SPR-03/04/09). Deep
        slate frost over the night sky. --glass-bg-solid is the opaque
