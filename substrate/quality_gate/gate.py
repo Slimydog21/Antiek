@@ -73,6 +73,8 @@ Check = Callable[[CandidateNote], CheckResult]
 # Policy: which combinations of pass/fail lead to which verdict.
 # - verification PASS + voice-style PASS + source-tier PASS → PASS_PUBLIC
 # - verification FAIL → REJECT (no evidence = not a note)
+# - extraction_quality FAIL → REJECT (OCR garbage / near-empty is not a
+#   document at all — a quality REJECT, never a reroute; SPR-03 M6)
 # - voice-style FAIL OR source-tier FAIL → REROUTE_PRIVATE
 #   (the user can still keep it in their private graph)
 
@@ -84,8 +86,16 @@ def _verdict_from_checks(
     verification = by_name.get("verification")
     voice_style = by_name.get("voice_style")
     source_tier = by_name.get("source_tier")
+    extraction = by_name.get("extraction_quality")
 
     if verification is None or verification.kind == CheckResultKind.FAIL:
+        return QualityGateVerdict.REJECT
+
+    # A failed extraction is garbage, not a note that could live privately —
+    # it is rejected outright (M6: failing items are rejected, not warned),
+    # NOT rerouted. It never alters content_class/servability; this is the
+    # ingest-eligibility verdict only.
+    if extraction is not None and extraction.kind == CheckResultKind.FAIL:
         return QualityGateVerdict.REJECT
 
     voice_pass = voice_style is None or voice_style.kind == CheckResultKind.PASS
@@ -101,16 +111,22 @@ def run_quality_gate(
     verification_check: Check,
     voice_style_check: Optional[Check] = None,
     source_tier_check: Optional[Check] = None,
+    extraction_quality_check: Optional[Check] = None,
 ) -> QualityGateResult:
-    """Compose the three checks. verification is REQUIRED; the other
-    two are optional — when omitted they're treated as PASS so
-    callers can ship a minimal gate first and tighten over time.
+    """Compose the checks. verification is REQUIRED; the others are
+    optional — when omitted they're treated as PASS so callers can ship a
+    minimal gate first and tighten over time. A failing
+    ``extraction_quality_check`` rejects the candidate (it is not a document),
+    so callers ingesting extracted bodies pass it to reject OCR garbage /
+    near-empty extracts before they reach the corpus.
     """
     checks: list[CheckResult] = [verification_check(note)]
     if voice_style_check is not None:
         checks.append(voice_style_check(note))
     if source_tier_check is not None:
         checks.append(source_tier_check(note))
+    if extraction_quality_check is not None:
+        checks.append(extraction_quality_check(note))
     verdict = _verdict_from_checks(tuple(checks))
     return QualityGateResult(
         note_id=note.note_id,

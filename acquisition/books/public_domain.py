@@ -54,9 +54,12 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import TYPE_CHECKING, Iterable, Optional, Sequence
 
 import requests
+
+if TYPE_CHECKING:
+    from substrate.source_throttle import SourceThrottle as SourceThrottleT
 
 logger = logging.getLogger("acquisition.books.public_domain")
 
@@ -126,6 +129,8 @@ class SourceClient:
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         session: Optional[requests.Session] = None,
+        persistent: Optional["SourceThrottleT"] = None,
+        source: str = "gutendex",
     ) -> None:
         self._min_interval_s = min_interval_s
         self._max_retries = max_retries
@@ -134,8 +139,19 @@ class SourceClient:
         self._session.headers.update({"User-Agent": _USER_AGENT})
         self._lock = threading.Lock()
         self._last_request_at = 0.0
+        # Optional SHARED cross-process ban sentinel (SPR-03). When set, every
+        # request consults before_request(source) — which raises SourceBanned
+        # while gutendex is banned and enforces the persisted min-interval
+        # across restarts — and a 429/503 arms the sentinel so a re-run does
+        # not re-hit the source the prod 503s came from. None keeps the
+        # pre-SPR-03 in-process-only behavior (the existing PD adapter tests).
+        self._persistent = persistent
+        self._source = source
 
     def _throttle(self) -> None:
+        if self._persistent is not None:
+            # Raises SourceBanned while banned; enforces persisted spacing.
+            self._persistent.before_request(self._source)
         with self._lock:
             elapsed = time.monotonic() - self._last_request_at
             wait = self._min_interval_s - elapsed
@@ -161,6 +177,14 @@ class SourceClient:
                 self._backoff(attempt, reason=str(exc))
                 continue
             if resp.status_code == 429 or resp.status_code >= 500:
+                # Arm the cross-process ban sentinel on the "stop hitting me"
+                # statuses (429 rate-limit / 503 overloaded) so a re-run honors
+                # the ban — the exact failure the prod 503 run had no defense
+                # against. Other 5xx are transient-only (retry-with-backoff).
+                if self._persistent is not None and resp.status_code in (429, 503):
+                    self._persistent.note_response(
+                        self._source, resp.status_code, dict(resp.headers)
+                    )
                 last_exc = SourceError(
                     f"{url} returned {resp.status_code}"
                 )
@@ -605,10 +629,19 @@ def ingest_work(
 
     Rights discipline (rigor #1): a work with no explicit public-domain
     basis (``pd_basis is None``) is NEVER ingested servable — it returns a
-    skip outcome. A work WITH a basis is ingested via
-    ``ingest_servable_book`` with ``content_class="public_domain"`` and the
-    basis as ``license_basis``, so the body renders publicly with an audit
-    trail.
+    skip outcome.
+
+    THE BINDING (SPR-02 / SPR-10): the ``content_class`` + ``license_basis``
+    stamped on the asset come from the ONE classification chokepoint —
+    ``acquisition.licenses_core.classify()`` — exactly as
+    ``pd_connector_base.classify_and_ingest`` does, never a hardcoded
+    ``"public_domain"`` literal. We turn ``work.pd_basis`` (the source's
+    positive public-domain signal) into a ``source_declaration['public_domain']``
+    and call classify(); for a curated-Gutenberg PD work classify() returns the
+    servable ``public_domain`` verdict, so the existing servable outcome is
+    preserved while the rights decision stays single-source. (If classify() ever
+    GATED a work this path currently serves, the gate's verdict wins — we never
+    silently override servability.)
 
     All download / extraction failures are caught and returned as a skip
     outcome so the batch continues (M3 AC). Writes go through
@@ -622,7 +655,30 @@ def ingest_work(
             skipped_reason="no_explicit_public_domain_basis",
         )
 
+    from acquisition.licenses_core import classify
+
     from .adapter import ingest_servable_book
+
+    # THE BINDING: route the rights decision through classify(). The source's
+    # per-work public-domain signal (work.pd_basis, set only when the source
+    # explicitly asserted PD) is the positive source_declaration['public_domain']
+    # classify() consumes; legitimate_source=True because Gutenberg/archive.org
+    # are open PD repositories (the legitimacy argument gates circumvented
+    # access, which these are not). The verdict's content_class + license_basis
+    # are forwarded into ingest_servable_book — no local literal.
+    decision = classify(
+        None,
+        {"public_domain": work.pd_basis},
+        legitimate_source=True,
+    )
+    if not decision.ingest:
+        # Never reached for a legitimate PD source, but honour the gate rather
+        # than assume — a non-servable, circumvented-access verdict is a skip.
+        return IngestOutcome(
+            work=work,
+            ingested=False,
+            skipped_reason=f"classify_skip: {decision.license_basis}",
+        )
 
     try:
         raw = client.get_bytes(work.download_url)
@@ -646,9 +702,10 @@ def ingest_work(
         result = ingest_servable_book(
             pdf_bytes,
             investigation_id=investigation_id,
-            content_class="public_domain",
+            # THE BINDING: the classify() verdict, not a hardcoded literal.
+            content_class=decision.content_class,
             rights_holder_name=None,  # public domain has no rights holder to onboard
-            license_basis=work.pd_basis,
+            license_basis=decision.license_basis,
             provenance=work.source_uri,
             source_uri=work.source_uri,
             db_path=db_path,

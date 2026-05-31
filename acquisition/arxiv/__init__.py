@@ -25,6 +25,12 @@ from .adapter import (
     ingest_paper,
     ingest_paper_with_rights,
 )
+from .bulk import (
+    bulk_candidates_from_path,
+    fetch_bulk_pdf,
+    iter_bulk_candidates,
+    record_to_paper,
+)
 from .client import ArxivPaper, fetch_by_id, search
 from .licenses import LicenseResolution, license_basis_string, resolve_license
 from .throttle import ArxivBanned, ArxivThrottle
@@ -37,10 +43,14 @@ __all__ = [
     "IngestResult",
     "LicenseResolution",
     "arxiv_doc_id",
+    "bulk_candidates_from_path",
     "fetch_by_id",
+    "fetch_bulk_pdf",
     "ingest_paper",
     "ingest_paper_with_rights",
+    "iter_bulk_candidates",
     "license_basis_string",
+    "record_to_paper",
     "resolve_license",
     "search",
 ]

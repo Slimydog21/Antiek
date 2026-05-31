@@ -26,31 +26,31 @@ from typing import Any, Optional
 import httpx
 
 from .licenses import LicenseResolution, resolve_oa_license
+from .pdf_detect import NotAPdf, assert_pdf, is_pdf
 from .throttle import POLITE_POOL_MAILTO, OAThrottle
 
 DEFAULT_BASE_URL = "https://api.unpaywall.org/v2"
 DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.openaccess)"
 DEFAULT_TIMEOUT_S = 15.0
 
-
-class NotAPdf(ValueError):
-    """The fetched bytes are not a PDF (e.g. an HTML landing page served
-    200-OK). A counted, recoverable failure mode: the caller should try the
-    next candidate URL rather than abort the item. Subclasses ValueError so
-    OAThrottle.run_with_retry re-raises it immediately (a landing page will
-    not become a PDF on retry) instead of burning the retry budget."""
+# ``NotAPdf`` now lives in ``acquisition.openaccess.pdf_detect`` (the one shared
+# layered detector). Re-exported here so existing call sites
+# (``from acquisition.openaccess.unpaywall import NotAPdf``) keep working.
+__all__ = [
+    "NotAPdf",
+    "OAFullText",
+    "download_pdf",
+    "parse_response",
+    "resolve_doi",
+]
 
 
 def _looks_like_pdf(content: bytes, content_type: Optional[str]) -> bool:
-    """True when the response is plausibly a PDF. Rejects an HTML/text body
-    by content-type, then confirms the ``%PDF-`` magic bytes (first 1KB,
-    leading whitespace tolerated)."""
-    if content_type:
-        ct = content_type.lower()
-        if "application/pdf" not in ct and ("text/html" in ct or "text/plain" in ct):
-            return False
-    head = content[:1024].lstrip()
-    return head.startswith(b"%PDF-")
+    """Header-only PDF predicate (content-type + ``%PDF-`` magic bytes), kept
+    as a thin wrapper over the shared ``pdf_detect`` so existing references
+    resolve. The download path uses ``assert_pdf`` (all three layers); this
+    cheap predicate skips the pypdf parse."""
+    return is_pdf(content, content_type=content_type, parse_check=False)
 
 
 @dataclass(frozen=True)
@@ -133,8 +133,10 @@ def download_pdf(
     throttle: Optional[OAThrottle] = None,
 ) -> bytes:
     """Download PDF bytes from a resolved OA URL. Transient errors retry via
-    the throttle; the caller is responsible for verifying the bytes are a PDF
-    (a landing page masquerading as a PDF is a counted failure mode)."""
+    the throttle. The bytes are verified through the shared layered detector
+    (``assert_pdf``: content-type, ``%PDF-`` magic bytes, pypdf parse) BEFORE
+    return — a landing page masquerading as a PDF raises ``NotAPdf``, a counted
+    per-item failure the caller falls through to the next candidate URL."""
 
     def _get() -> bytes:
         headers = {"User-Agent": DEFAULT_USER_AGENT}
@@ -145,12 +147,7 @@ def download_pdf(
                 r = c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
         r.raise_for_status()
         content = r.content
-        if not _looks_like_pdf(content, r.headers.get("content-type")):
-            raise NotAPdf(
-                f"{pdf_url} returned non-PDF bytes "
-                f"(content-type={r.headers.get('content-type')!r}, "
-                f"head={content[:8]!r}) — likely a landing page, not a PDF"
-            )
+        assert_pdf(content, content_type=r.headers.get("content-type"), url=pdf_url)
         return content
 
     return throttle.run_with_retry(_get) if throttle is not None else _get()
