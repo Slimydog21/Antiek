@@ -235,6 +235,18 @@ def test_ingest_and_dedup_lands_personal_reading(temp_db):
         # M2: lands personal_reading via the deny-by-default guard (option A).
         assert cclass == "personal_reading"
 
+    # Capture chunk count after first ingest, so the re-ingest assertion below
+    # compares a real BEFORE/AFTER rather than a value against itself.
+    def _chunk_count(db):
+        con = duckdb.connect(db, read_only=True)
+        try:
+            return con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
+        finally:
+            con.close()
+
+    chunks_after_first = _chunk_count(temp_db)
+    assert chunks_after_first > 0  # full bodies chunked
+
     # Re-ingest the SAME feed: zero new rows (on_conflict="ignore").
     client2 = _mock_client(FULL_FEED)
     summary2 = substack.ingest_publication_feed(
@@ -247,6 +259,82 @@ def test_ingest_and_dedup_lands_personal_reading(temp_db):
     assert summary2.skipped == 2
     assert summary2.ingested == 0
     assert len(_read_documents(temp_db)) == 2
+    # Chunk rows are unchanged across the re-ingest — a regression that
+    # re-entered the chunk loop on a dedup would grow this count.
+    assert _chunk_count(temp_db) == chunks_after_first
+
+
+def test_dedup_is_document_keyed_not_chunk_keyed(temp_db):
+    """The 'skipped' label must come from DOCUMENT presence, not chunk presence.
+
+    Regression guard for the SPR-06 sharpen that moved the dedup probe from the
+    chunks table to the documents table. We ingest a post, then DELETE its
+    chunks while leaving the documents row in place, and re-ingest. Because the
+    document row still exists, the re-ingest MUST report 'skipped' and MUST NOT
+    re-enter the chunk loop. The OLD chunk-presence probe would see zero chunks,
+    wrongly report 'ingested', and re-run the chunk loop — so this test bites on
+    exactly that defect. This is also the real shape of an empty-bodied post
+    (chunk_markdown('') -> [] leaves a document with zero chunks forever).
+    """
+    client = _mock_client(FULL_FEED)
+    pub = substack.fetch_feed("https://test.substack.com/feed", client=client)
+    post = pub.posts[0]
+    document_id = substack.substack_doc_id(post.guid)
+
+    first = substack.ingest_post(
+        post,
+        publication=pub,
+        investigation_id="inv-dockey",
+        db_path=temp_db,
+        embedder=_StubEmbedder(),
+    )
+    assert first.status == "ingested"
+
+    # Drop this document's chunks but keep the documents row, via the single
+    # write lock (no second writer — §16).
+    from runtime.db_lock import connect_write
+
+    with connect_write(temp_db, purpose="test/teardown") as con:
+        con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+    con2 = duckdb.connect(temp_db, read_only=True)
+    try:
+        assert (
+            con2.execute(
+                "SELECT COUNT(*) FROM chunks WHERE document_id = ?", [document_id]
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        con2.close()
+
+    # Re-ingest: the documents row still exists → must skip, must not re-chunk.
+    second = substack.ingest_post(
+        post,
+        publication=pub,
+        investigation_id="inv-dockey",
+        db_path=temp_db,
+        embedder=_StubEmbedder(),
+    )
+    assert second.status == "skipped"
+    assert second.chunks_written == 0
+    con3 = duckdb.connect(temp_db, read_only=True)
+    try:
+        # No chunks were re-created, and exactly one document row exists.
+        assert (
+            con3.execute(
+                "SELECT COUNT(*) FROM chunks WHERE document_id = ?", [document_id]
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            con3.execute(
+                "SELECT COUNT(*) FROM documents WHERE document_id = ?",
+                [document_id],
+            ).fetchone()[0]
+            == 1
+        )
+    finally:
+        con3.close()
 
 
 # --------------------------------------------------------------------------
@@ -291,6 +379,41 @@ def test_truncation_marker_flagged_and_body_not_fabricated(temp_db):
     # fabricated continuation, no placeholder lorem (rigor #1).
     assert "free teaser opening" in raw_text
     assert "this post is for paid subscribers" in raw_text.lower()
+    after = raw_text.lower().split("this post is for paid subscribers", 1)[1]
+    assert after.strip() == ""
+
+
+def test_truncated_post_makes_no_public_page_backfill_request(temp_db):
+    """A truncated paid post must be stored verbatim from the FEED — the
+    connector must never make a second request to backfill the paid remainder
+    from the public web page (rigor #1; the §9.0 acquisition-ToS line).
+
+    We count every HTTP request the connector issues. Exactly ONE request is
+    allowed (the feed GET); any second request — the kind a public-page
+    backfill would make — fails this test. We also re-assert that the stored
+    body ends at the marker, so 'no backfill request' is paired with 'no
+    fabricated body'.
+    """
+    requests_seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(str(request.url))
+        return httpx.Response(200, content=TRUNCATED_FEED.encode("utf-8"))
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
+    substack.ingest_publication_feed(
+        "https://paid.substack.com/feed",
+        investigation_id="inv-no-backfill",
+        db_path=temp_db,
+        embedder=_StubEmbedder(),
+        client=client,
+    )
+    # Exactly the feed fetch — no public-page backfill round-trip.
+    assert len(requests_seen) == 1
+    assert requests_seen[0].endswith("/feed")
+
+    rows = _read_documents(temp_db)
+    (_id, _dtype, _cclass, raw_text, _meta) = rows[0]
     after = raw_text.lower().split("this post is for paid subscribers", 1)[1]
     assert after.strip() == ""
 

@@ -5,7 +5,11 @@ Each post becomes a ``documents`` row (``document_type="newsletter_post"``)
 plus ``chunks`` and per-chunk graph ``nodes``. Idempotent: re-ingesting the
 same feed is a graph no-op via ``on_conflict="ignore"`` keyed on the
 deterministic doc id (the same ``_exists`` early-return ``acquisition/podcasts``
-and ``acquisition/urls`` rely on at ``insert_document``).
+and ``acquisition/urls`` rely on at ``insert_document``). The IngestResult
+"skipped" label is derived from a DOCUMENT-presence probe (the same
+``documents.document_id`` predicate ``insert_document`` dedups on), not from a
+downstream chunks probe — so an empty-bodied post (zero chunks) still dedups
+correctly on re-ingest.
 
 The write block mirrors ``acquisition/podcasts/adapter.py:185-245`` and
 ``acquisition/urls/adapter.py:445-570`` line-for-line: emit ``document.loaded``
@@ -52,6 +56,7 @@ from substrate.graph import (  # noqa: E402
     ensure_initialized,
 )
 from substrate.graph.ops import (  # noqa: E402
+    _exists,
     insert_chunk,
     insert_document,
     insert_node,
@@ -132,18 +137,19 @@ def ingest_post(
     emb = embedder or default_embedding_provider()
 
     with connect_write(resolved_db_path, purpose="acquisition/substack") as con:
-        # insert_document with on_conflict="ignore" short-circuits BEFORE writing
-        # when the row already exists (the _exists early-return). We detect a
-        # dedup by checking chunk presence for this doc: a fresh insert has zero
-        # chunks yet; a prior ingest left its chunks behind. This mirrors the
-        # urls adapter's "only a fresh row reaches the chunk loop" contract.
-        already_present = (
-            con.execute(
-                "SELECT 1 FROM chunks WHERE document_id = ? LIMIT 1",
-                [document_id],
-            ).fetchone()
-            is not None
-        )
+        # Dedup probe — keyed on the DOCUMENT, the same authority
+        # insert_document(on_conflict="ignore") keys on (its `_exists` check on
+        # documents.document_id at substrate/graph/ops.py). insert_document
+        # returns the document_id whether it inserted or short-circuited, so it
+        # gives us no inserted-vs-skipped signal to read; we therefore probe the
+        # documents table ourselves, BEFORE the insert, to decide the
+        # IngestResult status. Probing `documents` (not `chunks`) is the correct
+        # authority: a prior post with an empty/whitespace body produced a
+        # document row but ZERO chunks (chunk_markdown("") -> []), so a
+        # chunk-presence probe would wrongly re-process that row on every run.
+        # Document presence is exactly the predicate insert_document dedups on,
+        # so "only a fresh document reaches the chunk loop" holds for all bodies.
+        already_present = _exists(con, "documents", "document_id", document_id)
         insert_document(
             con,
             document_id=document_id,
