@@ -62,6 +62,38 @@ cache, and disabled-signal contract the frontend consumes is stable.
 
 This module touches NO DuckDB and NO db_lock — the single-writer invariant
 is untouched (the cache is a process-local dict).
+
+────────────────────────────────────────────────────────────────────────
+SPR-05 POSTURE — PERIODIC ART, NOT A STREAM (SPR-02 returned NO-GO).
+────────────────────────────────────────────────────────────────────────
+The v2 mountain shell ships a 60fps procedural floor with PERIODIC,
+mood-gated Krea stills crossfaded over it — NOT a near-real-time
+generative stream. The stream was ruled out in ``docs/ams-v2/stream-spike.md``
+(verdict: NO-GO): the doc-derived generative ceiling is ~0.25 gen fps
+(Flux ~4 s/image) against a ≥10 gen-fps "near-real-time" bar, and a
+poll-driven pseudo-stream at that rate is ~$0.60/min, exhausting the
+50-unit daily cap in ~3.3 minutes. So:
+
+  - NO streaming route is added here (no SSE / WebSocket / EventSource /
+    ``/krea/stream``). The ``/krea`` namespace stays exactly three routes:
+    ``POST /krea/generate``, ``GET /krea/jobs/{job_id}``, ``GET /krea/scene``.
+  - The now-default living scene rides the EXISTING periodic ``/krea/scene``
+    path (submit → poll-to-completion → cache → typed-503 fallback). The
+    anti-per-frame-billing guardrails below (``_gate`` order, ``_BudgetState``
+    daily cap + rate limit, ``_SceneCache`` warm-cache de-dupe, the typed
+    ``DisabledResponse``) are what bound spend for the living background.
+  - A streaming route is the NAMED FUTURE-GO task: it lands ONLY if a real
+    ``KREA_API_TOKEN`` benchmarks a sub-second model at <500 ms TTFF,
+    ≥10 gen fps, ≤~$0.10/min at the cap (the three rows §5 of the spike
+    records as "not measured (no key)"). It would attach at the upstream-
+    adapter seam (``_submit_generation`` / ``_poll_job`` below — the
+    "L411" seam stream-spike.md §1 names) and re-use this same
+    budget/cache/typed-503 contract — see ``stream-spike.md`` §4/§5.
+
+``tests/test_krea_routes.py`` (SPR-02) covers the per-route failure modes;
+``interfaces/research/api/test_krea_stream.py`` (SPR-05) locks the
+anti-per-frame-billing CEILING for the living-scene cadence and asserts
+NO streaming route was added.
 """
 
 from __future__ import annotations
