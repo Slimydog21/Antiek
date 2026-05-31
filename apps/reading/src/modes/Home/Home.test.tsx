@@ -10,12 +10,33 @@
  *    landing (SPR-11) — a template over research + writing + voices, not a
  *    separate place.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import Home from "./Home";
 import { WORKFLOWS, WORKFLOW_ORDER } from "../../shell/workflowTaxonomy";
+
+// Home now lands through GlassSurface (SPR-03 M2 landing-glass), which reads
+// prefers-reduced-motion via usePrefersReducedMotion → window.matchMedia.
+// jsdom lacks matchMedia; stub the default (motion allowed → the glass variant
+// renders). Mirrors the AppShell/GlassSurface suites' stub; weakens nothing.
+beforeEach(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+});
 
 afterEach(cleanup);
 
@@ -46,6 +67,20 @@ describe("Home (SPR-12 M1)", () => {
     // Four equal door cards.
     const cards = screen.getByTestId("home-workflow-cards");
     expect(cards.querySelectorAll("button").length).toBe(WORKFLOW_ORDER.length);
+  });
+
+  it("lands the front door as a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", () => {
+    // The occlusion audit (docs/ams-v2/spr-03-occlusion-audit.md §3, item 2)
+    // classifies Home landing-glass: the scene must show through. A refactor that
+    // swapped it back to an opaque body (or to variant="solid") would re-occlude
+    // the mountain on /home and this assertion catches it (rigor #5 — the variant
+    // contract is enforced per-route, not only on / by the scene gate). With
+    // motion allowed (the matchMedia stub above), the glass variant renders glass.
+    const { container } = mount();
+    const surface = container.querySelector("[data-glass-surface]");
+    expect(surface, "Home must render through GlassSurface").toBeTruthy();
+    expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+    expect(surface!.getAttribute("data-glass-surface")).toBe("glass");
   });
 
   it("one click reaches each of the four surfaces at its canonical door", () => {

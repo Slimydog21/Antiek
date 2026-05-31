@@ -49,23 +49,27 @@ test.describe("AMS-v2 regression anchors — the v1 failures, encoded as red lig
   // over a band behind the chrome and FAILS while it is one flat ice/space
   // colour (an opaque route body occluding the z-0 <Scene/>).
   //
-  // BASELINE NOTE (verified by SPR-01's linchpin run on origin/main @ ebfb36a,
-  // 2026-05-31): this anchor currently PASSES — SPR-04 already shipped the
-  // `bg-transparent` shell frame (AppShell.tsx), so the default route `/` is NOT
-  // fully occluded and the sampled band has real colour variance (~869, 65
-  // distinct colours). The v1 occlusion the post-mortem described was thus
-  // largely fixed upstream by SPR-04 before this spec ran. SPR-03 still owns
-  // TIGHTENING this to success-criterion #1 ("a non-trivial fraction of the
-  // viewport is the MOVING scene", not chrome+text) and proving glass over the
-  // remaining opaque landing panels. Kept `fixme` so SPR-03 explicitly claims +
-  // strengthens it; un-fixme'ing today would pass but on a weak assertion.
-  test.fixme("anchor[scene]: the mountain is visible behind the landing", async ({ page }) => {
+  // SPR-03 CLAIMED + un-fixme'd. The old placeholder region (x 0.15–0.85,
+  // y 0.18–0.46) overlapped the centred max-w-3xl content column and passed on
+  // HEADING-TEXT variance — the exact v1 false-green the SPR-01 sharpen forbids.
+  // SPR-03 replaces it with a CONTENT-FREE band in the GAP between the left
+  // ad-border rail (ends x≈0.075) and the centred content column (starts
+  // x≈0.20), below the SceneChrome action bar and above the bottom ad rail, so
+  // the only thing painted there is the glass band over the z-0 moving scene.
+  // (An earlier cut sampled x 0.02–0.16, which overlapped the OPAQUE AdBorder
+  // left rail + its creative text and so passed on chrome-text variance even
+  // with the scene hidden — fixed here + guarded by glass-surface.spec.ts's
+  // live negative control.) This is success-criterion #1 ("a non-trivial
+  // fraction of the viewport is the MOVING scene, not chrome+text"). The
+  // dedicated headline gate (glass-surface.spec.ts) additionally proves the
+  // landing text clears WCAG-AA over its glass scrim AND that the band is
+  // non-vacuous.
+  test("anchor[scene]: the mountain is visible behind the landing", async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
-    // `region` is REQUIRED (SPR-01 sharpen — no silent chrome-catching default).
-    // This placeholder samples an upper-middle band; SPR-03 MUST replace it with
-    // a region that is UNAMBIGUOUSLY scene (not chrome/text) when it claims this
-    // anchor — that is the success-criterion #1 tightening it owns.
-    await assertSceneVisible(page, { x: 0.15, y: 0.18, width: 0.7, height: 0.28 });
+    // CONTENT-FREE scene region: the gap (x 0.085–0.18) between the left ad rail
+    // (x≤0.075) and the content column (x≥0.20), between the action bar (y≈0.214)
+    // and the bottom rail (y≈0.95). px x∈[109,231], y∈[216,562] at 1280×720.
+    await assertSceneVisible(page, { x: 0.085, y: 0.3, width: 0.095, height: 0.48 });
   });
 
   // ── Anchor 2 ──────────────────────────────────────────────────────────────

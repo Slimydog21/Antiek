@@ -54,17 +54,21 @@ export default defineConfig({
   },
   projects: [
     {
-      // UNCHANGED behaviour — the existing 8 Storybook specs. The ONLY addition
-      // is `testIgnore` so the new real-app spec doesn't run against Storybook.
+      // UNCHANGED behaviour — the existing Storybook specs. `testIgnore` keeps
+      // every real-app spec off the Storybook base. SPR-03 BROADENED the ignore
+      // (additively) to also exclude the new glass real-app specs, which load
+      // the real SPA via loginAndGotoApp and must not run against Storybook.
       name: "chromium",
-      testIgnore: /ams-shell\.spec\.ts/,
+      testIgnore: /(ams-shell|glass-surface|glass-reduced-motion)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
-      // NEW (SPR-01) — the real-app experience gate. ONLY ams-shell.spec.ts,
-      // against the real SPA base (not Storybook).
+      // SPR-01 created this real-app experience gate (ams-shell.spec.ts). SPR-03
+      // BROADENED its testMatch (additively, ams-shell still runs) to also pick
+      // up the new real-app glass specs, which load the real authed SPA via
+      // loginAndGotoApp and pixel/contrast-assert the visible outcome on `/`.
       name: "ams-real",
-      testMatch: /ams-shell\.spec\.ts/,
+      testMatch: /(ams-shell|glass-surface|glass-reduced-motion)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: AMS_APP_BASE },
     },
   ],

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import GlassSurface from "../../shell/GlassSurface";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import Thinking from "../../shared/Thinking";
@@ -428,7 +429,25 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           : "h-full flex items-center justify-center px-6"
       }
     >
-      <div className={embedded ? "mx-auto w-full max-w-3xl" : "w-full max-w-xl"}>
+      {/* AMS2-SPR-03 (M2 for /): the idle home is a LANDING surface (occlusion
+          audit §3 item 1). The root scroll/centering container above stays
+          background-free so the z-0 <Scene/> shows through the MARGINS around
+          this centred column (that content-free margin is what the headline
+          gate samples). The column itself becomes a GlassSurface (glass
+          variant) so the bare heading + intro — which previously sat DIRECTLY
+          over the moving scene with no backing — ride on the primitive's scrim
+          and clear WCAG-AA 4.5:1 (rigor #1: never translucent where text
+          breaks). Under reduced-motion / no-scene the primitive degrades to its
+          identical opaque solid fallback (M4). Tokens are consumed via the
+          primitive's Tailwind classes only; nothing here redefines a colour.
+          The composer/pills/log keep their own bg-ice-0 cards inside. */}
+      <GlassSurface
+        variant="glass"
+        className={
+          (embedded ? "mx-auto w-full max-w-3xl" : "w-full max-w-xl") +
+          " rounded-hog-lg px-6 py-7"
+        }
+      >
         <h1 className="text-2xl font-serif text-ink dark:text-bright mb-2 text-center">
           What do you want to research?
         </h1>
@@ -667,7 +686,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <MyResearch embedded />
           </div>
         )}
-      </div>
+      </GlassSurface>
     </div>
   );
 }

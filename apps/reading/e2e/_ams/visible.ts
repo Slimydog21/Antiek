@@ -164,6 +164,60 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/** An RGB colour plus a straight-alpha channel (0…1). */
+export interface Rgba extends Rgb {
+  /** Straight alpha, 0 (transparent) … 1 (opaque). Default 1 when absent. */
+  a: number;
+}
+
+/**
+ * Parse a CSS `rgb()`/`rgba()` string into {r,g,b,a}. Unlike the old inline
+ * parser, this KEEPS the alpha channel — the bug the SPR-03 sharpen fixes was
+ * discarding it, which let a translucent glass fill (alpha 0.72) be scored as
+ * if it were opaque (alpha 1), so the over-scene legibility claim was vacuous.
+ */
+export function parseRgba(s: string): Rgba {
+  const m = s.match(/rgba?\(([^)]+)\)/);
+  const parts = (m?.[1] ?? "0,0,0").split(",").map((p) => parseFloat(p.trim()));
+  return { r: parts[0] ?? 0, g: parts[1] ?? 0, b: parts[2] ?? 0, a: parts[3] ?? 1 };
+}
+
+/** Alpha-composite straight-alpha `top` over OPAQUE `bottom` (source-over). */
+export function over(top: Rgba, bottom: Rgb): Rgb {
+  const a = top.a;
+  return {
+    r: a * top.r + (1 - a) * bottom.r,
+    g: a * top.g + (1 - a) * bottom.g,
+    b: a * top.b + (1 - a) * bottom.b,
+  };
+}
+
+/** Pure black / pure white — the worst-case scene extremes a moving
+ *  procedural mountainscape can put behind a translucent surface. */
+export const WORST_SCENE_DARK: Rgb = { r: 0, g: 0, b: 0 };
+export const WORST_SCENE_LIGHT: Rgb = { r: 255, g: 255, b: 255 };
+
+/**
+ * The text background a translucent surface presents OVER A SCENE, in the worst
+ * case the scene can produce. Composites (front-to-back):
+ *
+ *   surfaceFill(alpha)  over  [ scrim(alpha)  over  scene ]
+ *
+ * `scrim` is optional (a `variant="solid"` surface has none; bare glass without
+ * the GlassSurface scrim layer passes scrim=null). Returns the effective bg —
+ * the SAME `effectiveBg` math GlassSurface.test.tsx proves, but fed the REAL
+ * computed token values read from the live browser, so a token/scrim regression
+ * that breaks over-scene contrast actually reddens this gate.
+ */
+export function effectiveBgOverScene(
+  surfaceFill: Rgba,
+  scrim: Rgba | null,
+  scene: Rgb,
+): Rgb {
+  const scrimmedScene = scrim ? over(scrim, scene) : scene;
+  return over(surfaceFill, scrimmedScene);
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // PLAYWRIGHT ASSERTIONS (run against a real rendered Page)
 // ───────────────────────────────────────────────────────────────────────────
@@ -303,31 +357,101 @@ export async function assertHotkeyOverlay(page: Page, opts: AssertHotkeyOptions 
 
 /**
  * PROVES: the foreground text of `selector` meets a ~WCAG-AA contrast ratio
- * against its rendered background. Reads the computed colours from the live
- * DOM (so it reflects the real token values), parses them, and asserts the
- * ratio. Used by SPR-03/SPR-09 to guarantee the glass + lighter-yellow changes
- * keep text legible.
+ * against its rendered background — and, crucially, OVER THE MOVING SCENE when
+ * that background is translucent glass (rigor #3: the literal over-scene ask).
+ *
+ * THE SHARPEN (why this is not just `parse → contrastRatio`)
+ * ---------------------------------------------------------
+ * The first cut walked up for the first non-transparent backgroundColor (the
+ * GlassSurface fill, `rgba(251,252,253,0.72)`) and DISCARDED its 0.72 alpha,
+ * scoring the text as if the fill were opaque. That proved legibility over the
+ * glass HUE, not over the glass COMPOSITED OVER THE SCENE — exactly the gap the
+ * brief flags. So a token/scrim regression that broke real over-scene contrast
+ * would NOT redden this gate.
+ *
+ * Now: we read the fg, the resolved background AND its real alpha, plus the
+ * enclosing GlassSurface's scrim colour+opacity (`[data-glass-scrim]`). When the
+ * background is translucent (alpha < 1), the effective text background is
+ *
+ *     fill(alpha)  over  [ scrim(alpha)  over  scene ]
+ *
+ * and the SCENE is whatever the moving mountainscape paints — unbounded. We
+ * therefore composite over BOTH worst-case scene extremes (pure black AND pure
+ * white) and assert the WORSE of the two contrasts clears `min`. That is the
+ * genuine worst case a busy scene can produce, computed from the REAL live token
+ * values — the same `effectiveBg` math GlassSurface.test.tsx proves, but in the
+ * browser, so a future regression to `--glass-bg` alpha or SCRIM_MIN_OPACITY
+ * that erodes over-scene contrast reddens THIS gate, not only the unit math.
+ *
+ * An OPAQUE background (alpha ≥ 1: `variant="solid"`, the reduced-motion / no-
+ * scene fallback, or any solid card) needs no scene compositing — there is no
+ * scene bleed — so it is scored directly, identical to the old behaviour.
  */
 export async function assertContrast(page: Page, selector: string, min = 4.5): Promise<void> {
   const colors = await page.locator(selector).first().evaluate((el) => {
     const cs = getComputedStyle(el as Element);
-    // Walk up for a non-transparent background.
+    // Walk up for the first NON-FULLY-TRANSPARENT background, KEEPING its alpha.
+    // (A `rgba(…, 0)` / `transparent` ancestor paints nothing, so skip it; the
+    // first painted layer — translucent or opaque — is the text's background.)
     let bgEl: Element | null = el as Element;
     let bg = cs.backgroundColor;
-    while (bgEl && (bg === "rgba(0, 0, 0, 0)" || bg === "transparent")) {
+    const fullyTransparent = (c: string) =>
+      c === "rgba(0, 0, 0, 0)" || c === "transparent";
+    while (bgEl && fullyTransparent(bg)) {
       bgEl = bgEl.parentElement;
       bg = bgEl ? getComputedStyle(bgEl).backgroundColor : "rgb(255, 255, 255)";
     }
-    return { fg: cs.color, bg: bg || "rgb(255, 255, 255)" };
+    // The GlassSurface scrim that backs this text, if any: the presentational
+    // `[data-glass-scrim]` layer inside the enclosing translucent glass surface.
+    // Its EFFECTIVE alpha is (token rgba alpha) × (inline `opacity`), since the
+    // primitive sets style.opacity = SCRIM_MIN_OPACITY on a (typically opaque)
+    // `bg-glass-solid` span. We surface both so the node side can fold them.
+    const surface = (el as Element).closest('[data-glass-surface="glass"]');
+    const scrimEl = surface?.querySelector("[data-glass-scrim]") as HTMLElement | null;
+    let scrimBg: string | null = null;
+    let scrimOpacity = 1;
+    if (scrimEl) {
+      const scs = getComputedStyle(scrimEl);
+      scrimBg = scs.backgroundColor;
+      scrimOpacity = parseFloat(scs.opacity || "1");
+    }
+    return { fg: cs.color, bg: bg || "rgb(255, 255, 255)", scrimBg, scrimOpacity };
   });
-  const parse = (s: string): Rgb => {
-    const m = s.match(/rgba?\(([^)]+)\)/);
-    const parts = (m?.[1] ?? "0,0,0").split(",").map((p) => parseFloat(p.trim()));
-    return { r: parts[0] ?? 0, g: parts[1] ?? 0, b: parts[2] ?? 0 };
-  };
-  const ratio = contrastRatio(parse(colors.fg), parse(colors.bg));
+
+  const fg = parseRgba(colors.fg);
+  const bg = parseRgba(colors.bg);
+
+  // Opaque background → no scene bleed; score directly (old behaviour).
+  if (bg.a >= 1) {
+    const ratio = contrastRatio(fg, bg);
+    expect(
+      ratio,
+      `contrast ${ratio.toFixed(2)} below ${min} for "${selector}" ` +
+        `(fg=${colors.fg}, bg=${colors.bg} [opaque])`,
+    ).toBeGreaterThanOrEqual(min);
+    return;
+  }
+
+  // Translucent glass → the text rides over the scene. Fold the scrim's token
+  // alpha with its inline `opacity` into one straight-alpha layer, then take the
+  // WORST contrast across the two scene extremes (black + white). This is the
+  // real over-scene guarantee, computed from live token values.
+  let scrim: Rgba | null = null;
+  if (colors.scrimBg) {
+    const s = parseRgba(colors.scrimBg);
+    scrim = { r: s.r, g: s.g, b: s.b, a: s.a * colors.scrimOpacity };
+  }
+  const bgDark = effectiveBgOverScene(bg, scrim, WORST_SCENE_DARK);
+  const bgLight = effectiveBgOverScene(bg, scrim, WORST_SCENE_LIGHT);
+  const ratioDark = contrastRatio(fg, bgDark);
+  const ratioLight = contrastRatio(fg, bgLight);
+  const worst = Math.min(ratioDark, ratioLight);
+  const scene = ratioDark <= ratioLight ? "black" : "white";
   expect(
-    ratio,
-    `contrast ${ratio.toFixed(2)} below ${min} for "${selector}" (fg=${colors.fg}, bg=${colors.bg})`,
+    worst,
+    `worst-case over-scene contrast ${worst.toFixed(2)} below ${min} for "${selector}" ` +
+      `(fg=${colors.fg}, fill=${colors.bg}, scrim=${colors.scrimBg ?? "none"}@${colors.scrimOpacity}, ` +
+      `worst scene=${scene}; day-glass-over-black & night-glass-over-white are the bounds ` +
+      `GlassSurface.test.tsx proves clear ${min})`,
   ).toBeGreaterThanOrEqual(min);
 }

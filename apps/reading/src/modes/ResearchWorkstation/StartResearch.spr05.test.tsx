@@ -101,6 +101,27 @@ vi.mock("react-router-dom", async (orig) => {
 
 import StartResearch from "./StartResearch";
 
+// AMS2-SPR-03: the idle home wraps its content column in GlassSurface, which
+// reads prefers-reduced-motion via window.matchMedia — absent in jsdom. Stub it
+// (no reduced motion → glass path). Mirrors the AppShell + GlassSurface suites'
+// stub; an environment dependency of the rendered primitive, not a weakening.
+function installMatchMedia(reducedMotion = false) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: query.includes("prefers-reduced-motion") ? reducedMotion : false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 function inv(over: Partial<InvestigationSummary> & { investigation_id: string }): InvestigationSummary {
   return {
     question: "A past research",
@@ -114,6 +135,7 @@ function inv(over: Partial<InvestigationSummary> & { investigation_id: string })
 }
 
 beforeEach(() => {
+  installMatchMedia(false);
   startInvestigationMock.mockReset();
   ingestSourceMock.mockReset();
   ingestVoiceNoteMock.mockReset();
