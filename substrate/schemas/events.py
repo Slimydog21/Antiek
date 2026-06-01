@@ -178,6 +178,13 @@ class ActionType(str, Enum):
     # start, recording which prior knowledge units were retrieved + injected
     # into the context pack (and which were dropped, and why).
     KNOWLEDGE_REUSED = "knowledge.reused"
+    # AFF SPR-08 — the trust gate on reuse. Emitted ONCE per knowledge unit
+    # EXCLUDED from reuse by the groundedness/servability gate (an admitted
+    # unit emits no REUSE_GATED event). It records the unit's groundedness
+    # score, the threshold in force, and the reason(s) it was excluded
+    # (below-threshold and/or non-servable) so the loop can prove it does not
+    # re-seed ungrounded or non-servable units into the next synthesis.
+    REUSE_GATED = "reuse.gated"
 
     # ── Middleware: source_tier ──
     # GRAPH_TIER_ASSIGNED — rule-based assignment at ingestion (one per document).
@@ -654,7 +661,22 @@ class ActionType(str, Enum):
 #     filters on §9.0 servability + token budget ONLY; the groundedness/trust
 #     gate is SPR-08, dedup is SPR-07, the compounding benchmark is SPR-09.
 #     specs/antiek-flywheel-foundation/ SPR-06. 2026-05-31.
-EVENT_SCHEMA_VERSION: int = 25
+# v26: AFF SPR-08 — the trust gate on reuse. ONE new typed event, reuse.gated,
+#     emitted once per knowledge unit EXCLUDED from reuse by the groundedness +
+#     §9.0 servability gate (substrate/flywheel/reuse_gate.py). It records the
+#     unit's groundedness score (composed from the shipped #27 lexical
+#     entailment scorer — substrate/eval/groundedness), the scorer_id, the
+#     threshold in force (REUSE_GROUNDEDNESS_THRESHOLD, default anchored to the
+#     scorer's DEFAULT_SUPPORTED_THRESHOLD=0.5), and the reason(s) it was
+#     excluded — below-threshold and/or non-servable — BOTH when both apply.
+#     An ADMITTED unit emits NO reuse.gated event. This closes the flywheel
+#     amplification leak: SPR-06 reuses prior knowledge into NEW investigations,
+#     so an ungrounded/non-servable unit does not just sit in the graph, it
+#     seeds the next synthesis; the gate excludes it before any unit text
+#     reaches the pack. Composes the existing scorer + the §9.0 servability
+#     answer recorded on the unit at deposit (deny-by-default, read not
+#     re-derived). specs/antiek-flywheel-foundation/ SPR-08. 2026-06.
+EVENT_SCHEMA_VERSION: int = 26
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -812,6 +834,54 @@ class KnowledgeReusedPayload(_PayloadBase):
     decisions: list[str]
     source_investigation_ids: list[str]
     context_pack_event_id: str
+
+
+# The reasons a unit can be EXCLUDED from reuse by the SPR-08 trust gate. A
+# single excluded unit may carry BOTH (a non-servable unit that is also below
+# threshold). The two are INDEPENDENT conditions; the event lists every reason
+# that applied so a reader can tell a trust failure from a §9.0 refusal.
+ReuseGateReason = Literal["below-threshold", "non-servable"]
+
+
+class ReuseGatedPayload(_PayloadBase):
+    """AFF SPR-08 — emitted once per knowledge unit EXCLUDED from reuse by the
+    groundedness + §9.0 servability gate (``substrate/flywheel/reuse_gate.py``),
+    BEFORE any unit text reaches the context pack. An ADMITTED unit emits NO
+    reuse.gated event — absence of this event for a reused unit is the signal
+    that it cleared both conditions.
+
+    Why this exists (the honesty thesis): the flywheel reuses prior knowledge
+    into NEW investigations (SPR-06), so an ungrounded unit does not merely sit
+    in the graph — it seeds the next synthesis. Without this gate the loop
+    amplifies hallucination at the same rate it amplifies signal. The gate does
+    NOT make reuse "safe"; it excludes below-threshold + non-servable units and
+    logs every exclusion here.
+
+    Field contract:
+
+    * ``unit_id`` / ``source_investigation_id`` — the excluded unit and where it
+      came from.
+    * ``groundedness_score`` — the unit's score from the shipped #27 lexical
+      entailment scorer (``substrate/eval/groundedness``); ``None`` only when the
+      unit's slot was unset AND the gate could not resolve its cited chunk text
+      to re-score (an honest "unknown", which is itself below any threshold).
+    * ``scorer_id`` — which scorer produced the score (``groundedness-lexical-v1``),
+      so the number is attributable + reproducible.
+    * ``threshold`` — ``REUSE_GROUNDEDNESS_THRESHOLD`` in force at the decision
+      (carried on the event so an audit reads the exact bar, not today's value).
+    * ``reasons`` — every reason that applied: ``below-threshold`` and/or
+      ``non-servable``. BOTH when both apply; never empty for an excluded unit.
+    * ``context_pack_event_id`` — the assembled pack this exclusion is scoped to,
+      so the gate decision is joinable to exactly what the model did (not) see."""
+
+    action_type: Literal[ActionType.REUSE_GATED] = ActionType.REUSE_GATED
+    unit_id: str
+    source_investigation_id: str
+    groundedness_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    scorer_id: str
+    threshold: float = Field(ge=0.0, le=1.0)
+    reasons: list[ReuseGateReason]
+    context_pack_event_id: str = ""
 
 
 # ── Wrestling — document surface ─────────────────────────────────────
@@ -3636,7 +3706,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3648,6 +3718,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.CONTEXT_PACK_ASSEMBLED.value,
     # AFF SPR-06 — flywheel reuse half.
     ActionType.KNOWLEDGE_REUSED.value,
+    # AFF SPR-08 — trust gate on reuse (one event per excluded unit).
+    ActionType.REUSE_GATED.value,
     ActionType.DOCUMENT_LOADED.value,
     ActionType.DOCUMENT_REGION_SELECTED.value,
     ActionType.DISTILLATION_REQUESTED.value,
@@ -3887,6 +3959,9 @@ __all__ = [
     "ContextPackAssembledPayload",
     # AFF SPR-06 — flywheel reuse half
     "KnowledgeReusedPayload",
+    # AFF SPR-08 — trust gate on reuse
+    "ReuseGatedPayload",
+    "ReuseGateReason",
     # Wrestling
     "DocumentLoadedPayload",
     "DocumentRegionSelectedPayload",

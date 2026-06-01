@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 25;
+export const EVENT_SCHEMA_VERSION = 26;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -77,6 +77,7 @@ export const ActionType = {
   DISPATCH_CALL: "dispatch.call",
   CONTEXT_PACK_ASSEMBLED: "context_pack.assembled",
   KNOWLEDGE_REUSED: "knowledge.reused",
+  REUSE_GATED: "reuse.gated",
   GRAPH_TIER_ASSIGNED: "graph.tier.assigned",
   DOCUMENT_LOADED: "document.loaded",
   DOCUMENT_REGION_SELECTED: "document.region_selected",
@@ -627,6 +628,48 @@ export interface KnowledgeReusedPayload {
   decisions: string[];
   source_investigation_ids: string[];
   context_pack_event_id: string;
+}
+
+/**
+ * AFF SPR-08 — emitted once per knowledge unit EXCLUDED from reuse by the
+ * groundedness + §9.0 servability gate (``substrate/flywheel/reuse_gate.py``),
+ * BEFORE any unit text reaches the context pack. An ADMITTED unit emits NO
+ * reuse.gated event — absence of this event for a reused unit is the signal
+ * that it cleared both conditions.
+ * 
+ * Why this exists (the honesty thesis): the flywheel reuses prior knowledge
+ * into NEW investigations (SPR-06), so an ungrounded unit does not merely sit
+ * in the graph — it seeds the next synthesis. Without this gate the loop
+ * amplifies hallucination at the same rate it amplifies signal. The gate does
+ * NOT make reuse "safe"; it excludes below-threshold + non-servable units and
+ * logs every exclusion here.
+ * 
+ * Field contract:
+ * 
+ * * ``unit_id`` / ``source_investigation_id`` — the excluded unit and where it
+ *   came from.
+ * * ``groundedness_score`` — the unit's score from the shipped #27 lexical
+ *   entailment scorer (``substrate/eval/groundedness``); ``None`` only when the
+ *   unit's slot was unset AND the gate could not resolve its cited chunk text
+ *   to re-score (an honest "unknown", which is itself below any threshold).
+ * * ``scorer_id`` — which scorer produced the score (``groundedness-lexical-v1``),
+ *   so the number is attributable + reproducible.
+ * * ``threshold`` — ``REUSE_GROUNDEDNESS_THRESHOLD`` in force at the decision
+ *   (carried on the event so an audit reads the exact bar, not today's value).
+ * * ``reasons`` — every reason that applied: ``below-threshold`` and/or
+ *   ``non-servable``. BOTH when both apply; never empty for an excluded unit.
+ * * ``context_pack_event_id`` — the assembled pack this exclusion is scoped to,
+ *   so the gate decision is joinable to exactly what the model did (not) see.
+ */
+export interface ReuseGatedPayload {
+  action_type: "reuse.gated";
+  unit_id: string;
+  source_investigation_id: string;
+  groundedness_score?: number | null;
+  scorer_id: string;
+  threshold: number;
+  reasons: ("below-threshold" | "non-servable")[];
+  context_pack_event_id?: string;
 }
 
 export interface DocumentLoadedPayload {
@@ -2483,6 +2526,7 @@ export type TypedPayload =
   | DispatchCallPayload
   | ContextPackAssembledPayload
   | KnowledgeReusedPayload
+  | ReuseGatedPayload
   | DocumentLoadedPayload
   | DocumentRegionSelectedPayload
   | DistillationRequestedPayload
@@ -2696,6 +2740,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "question.identified",
   "question.resolved_by_doc",
   "read.meta_reading.generated",
+  "reuse.gated",
   "rev_share.decided",
   "rlm.bridge.decided",
   "rubric.scored",

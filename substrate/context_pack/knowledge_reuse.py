@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, List, Optional, Sequence
 
 try:
@@ -235,13 +235,25 @@ class UnitDecision:
 class ReuseCoverage:
     """How the retrieved set was partitioned. Mirrors SPR-04's NoteCoverage but
     records the §9.0 + budget + relevance partition explicitly so the honest
-    reason for every drop is queryable."""
+    reason for every drop is queryable.
 
-    retrieved: int            # candidates retrieved (post top-k cap)
-    injected: int             # passed §9.0 + relevance AND fit the budget
+    ``retrieved`` is the PRE-gate total — every unit the substrate returned. The
+    SPR-08 trust gate (groundedness + §9.0 servability) runs first and removes
+    ``dropped_by_trust_gate`` of them before the budget partition ever sees them;
+    the surviving ``retrieved - dropped_by_trust_gate`` candidates are then split
+    into ``injected`` + the budget/relevance drops below. So the full accounting
+    closes: ``retrieved == dropped_by_trust_gate + injected +
+    dropped_not_servable + dropped_over_budget + dropped_low_relevance``. The
+    per-reason breakdown of the gate drops (below-threshold vs non-servable) is
+    on the ``reuse.gated`` events; ``dropped_by_trust_gate`` is the single
+    headline "how much was filtered" count SPR-09 reads off coverage directly."""
+
+    retrieved: int            # PRE-gate total retrieved (post top-k cap)
+    injected: int             # cleared the gate AND §9.0 + relevance AND fit the budget
     dropped_not_servable: int
     dropped_over_budget: int
     dropped_low_relevance: int
+    dropped_by_trust_gate: int = 0   # SPR-08: removed by the groundedness/§9.0 gate before the partition
 
     @property
     def fully_covered(self) -> bool:
@@ -371,7 +383,14 @@ def retrieve_prior_units(
     out: List[RetrievedUnit] = []
     for node_id, content_class, similarity in rows:
         try:
-            unit = knowledge_unit_of(con, node_id, content_class=content_class)
+            # SPR-08: fill the groundedness slot at projection time (Decision B),
+            # scoring the unit against its cited chunk text over THIS same read
+            # connection. The trust gate (reuse_gate.filter_reusable) then reads
+            # the slot rather than re-scoring. The lexical backend is
+            # deterministic, so deposit-time and gate-time scores are identical.
+            unit = knowledge_unit_of(
+                con, node_id, content_class=content_class, score_groundedness=True
+            )
         except ValueError:
             # A node with no claim→chunk→doc grounding is not a depositable
             # knowledge unit (knowledge_unit_of raises). Skip it honestly rather
@@ -568,7 +587,11 @@ def build_reuse_layer(
 class PackWithReuse:
     """The assembled pack plus the reuse bookkeeping. ``reuse_event_id`` is the
     id of the emitted ``knowledge.reused`` event; ``injected`` is the units that
-    actually landed in the pack; ``decisions`` is every unit's honest fate."""
+    actually landed in the pack; ``decisions`` is every (trust-passing) unit's
+    §9.0/relevance/budget fate. ``gate_decisions`` is the SPR-08 trust partition:
+    one ``GateDecision`` per candidate unit (admitted-or-excluded + reason(s)),
+    so an audit can see exactly which units the groundedness/servability gate
+    removed before SPR-06's budget partition ever ran."""
 
     pack: ContextPack
     injected: List[RetrievedUnit]
@@ -576,6 +599,7 @@ class PackWithReuse:
     coverage: ReuseCoverage
     reuse_injected: bool
     reuse_event_id: Optional[str]
+    gate_decisions: Optional[List[Any]] = None  # list[GateDecision]; SPR-08 trust partition
 
 
 def assemble_context_pack_with_reuse(
@@ -592,6 +616,9 @@ def assemble_context_pack_with_reuse(
     relevance_floor: float = RELEVANCE_FLOOR,
     events_dir: Optional[str] = None,
     policy_id: Optional[str] = None,
+    apply_trust_gate: bool = True,
+    reuse_threshold: Optional[float] = None,
+    chunk_text_for: Optional[Any] = None,
 ) -> PackWithReuse:
     """Assemble a context pack with prior knowledge units injected as a single
     reuse layer, then emit ONE ``knowledge.reused`` event recording the decision.
@@ -601,6 +628,19 @@ def assemble_context_pack_with_reuse(
     ``assemble_context_pack`` with no reuse layer and no reuse event, so the
     on/off effect is directly testable.
 
+    SPR-08 trust gate: when ``apply_trust_gate`` (the default), the candidate
+    units pass through ``substrate.flywheel.reuse_gate.filter_reusable`` BEFORE
+    SPR-06's §9.0/relevance/budget partition. A unit is reusable only if its
+    groundedness score ≥ the threshold (``reuse_threshold`` or, by default,
+    ``REUSE_GROUNDEDNESS_THRESHOLD``) AND it serves full text. Excluded units are
+    removed before ANY of their text reaches the pack, and each emits exactly one
+    ``reuse.gated`` event (carrying the assembled pack id, so it is joinable to
+    what the model did NOT see). Because the gate already removed non-servable
+    units, partition_units' own §9.0 check becomes defense-in-depth that no
+    longer fires for them — one exclusion, one event, never a conflicting second
+    decision for the same unit. ``apply_trust_gate=False`` reproduces pre-SPR-08
+    behaviour for measurement (the gate's on/off effect is directly testable).
+
     The reuse layer is appended via the EXISTING ``assemble_context_pack`` path
     (the assembler core is reused unchanged — only the ``reuse`` LayerKind + its
     sort position were added). The pack's own ``CONTEXT_PACK_ASSEMBLED`` event is
@@ -609,28 +649,65 @@ def assemble_context_pack_with_reuse(
     decision is queryable from the pack provenance.
 
     Even when nothing is injected (novel question, all-non-servable, all
-    over-budget), the ``knowledge.reused`` event is STILL emitted with an empty
-    ``reused_unit_ids`` — reuse-of-nothing is recorded, not skipped (M5 negative
-    polarity)."""
+    over-budget, all below threshold), the ``knowledge.reused`` event is STILL
+    emitted with an empty ``reused_unit_ids`` — reuse-of-nothing is recorded,
+    not skipped (M5 negative polarity)."""
     counter = counter or DefaultTokenCounter()
     layer_list = list(layers)
 
+    candidate_units: Sequence[RetrievedUnit] = units
+    gate_decisions: List[Any] = []
+    threshold: Optional[float] = None
+
     injected: List[RetrievedUnit] = []
     decisions: List[UnitDecision] = []
+    reuse_injected = False
+
+    if include_reuse and apply_trust_gate:
+        # SPR-08 trust gate runs FIRST: drop below-threshold / non-servable units
+        # before the budget partition. Emission is deferred until the pack id is
+        # known so each reuse.gated event carries context_pack_event_id (mirrors
+        # how knowledge.reused is emitted after assembly).
+        from substrate.flywheel.reuse_gate import (
+            REUSE_GROUNDEDNESS_THRESHOLD,
+            filter_reusable,
+        )
+
+        threshold = (
+            reuse_threshold if reuse_threshold is not None else REUSE_GROUNDEDNESS_THRESHOLD
+        )
+        candidate_units, gate_decisions = filter_reusable(
+            units,
+            investigation_id=investigation_id,
+            threshold=threshold,
+            chunk_text_for=chunk_text_for,
+            emit=False,  # deferred — emitted post-assembly with the pack id
+        )
+
     coverage = ReuseCoverage(
-        retrieved=len(units), injected=0,
+        retrieved=len(candidate_units), injected=0,
         dropped_not_servable=0, dropped_over_budget=0, dropped_low_relevance=0,
     )
-    reuse_injected = False
 
     if include_reuse:
         budget = reuse_token_budget(role, target_tokens)
         reuse_layer, injected, decisions, coverage = build_reuse_layer(
-            units, token_budget=budget, counter=counter, relevance_floor=relevance_floor,
+            candidate_units, token_budget=budget, counter=counter, relevance_floor=relevance_floor,
         )
         if reuse_layer is not None:
             layer_list.append(reuse_layer)
             reuse_injected = True
+        # SPR-08: report the PRE-gate retrieved total + how many the trust gate
+        # removed before the partition, so ``retrieved`` keeps its meaning
+        # (everything the substrate returned) and SPR-09 reads the filtered
+        # count off coverage rather than joining the reuse.gated event stream.
+        # When the gate is off (apply_trust_gate=False) candidate_units IS units,
+        # so dropped_by_trust_gate is 0 and retrieved is unchanged.
+        coverage = replace(
+            coverage,
+            retrieved=len(units),
+            dropped_by_trust_gate=len(units) - len(candidate_units),
+        )
 
     pack = assemble_context_pack(
         role=role,
@@ -641,6 +718,23 @@ def assemble_context_pack_with_reuse(
         counter=counter,
         parent_event_id=parent_event_id,
     )
+
+    if include_reuse and apply_trust_gate and gate_decisions:
+        # Emit one reuse.gated event per EXCLUDED unit now that the pack id
+        # exists. Admitted units emit nothing (absence == cleared the gate).
+        from substrate.flywheel.reuse_gate import _emit_reuse_gated
+
+        for decision in gate_decisions:
+            if not decision.reusable:
+                _emit_reuse_gated(
+                    decision,
+                    investigation_id=investigation_id,
+                    threshold=threshold,
+                    context_pack_event_id=pack.event_id,
+                    role=role,
+                    events_dir=events_dir,
+                    policy_id=policy_id,
+                )
 
     reuse_event_id: Optional[str] = None
     if include_reuse:
@@ -661,6 +755,7 @@ def assemble_context_pack_with_reuse(
         coverage=coverage,
         reuse_injected=reuse_injected,
         reuse_event_id=reuse_event_id,
+        gate_decisions=gate_decisions,
     )
 
 

@@ -260,9 +260,15 @@ def test_m2_servability_deny_by_default_non_servable_absent(emb, tmp_path):
     assert nonservable_id not in injected_ids, "non-servable unit must NOT be injected"
     # absent from the rendered pack text
     assert nonservable_id not in result.pack.text
-    # recorded honestly as dropped-not-servable
-    drop = next(d for d in result.decisions if d.unit_id == nonservable_id)
-    assert drop.decision == kr.DECISION_NOT_SERVABLE
+    # AFF SPR-08: the trust gate now OWNS servability and removes the non-servable
+    # unit BEFORE SPR-06's budget partition, so it never appears in
+    # ``result.decisions`` (partition_units' §9.0 check is now defense-in-depth
+    # that no longer fires). The exclusion is recorded on the SPR-08 gate
+    # decision instead — one exclusion, one place. (The honest, queryable record
+    # of the drop is the reuse.gated event; see test_flywheel_reuse_gate.py.)
+    gate_drop = next(d for d in result.gate_decisions if d.unit.unit_id == nonservable_id)
+    assert not gate_drop.reusable
+    assert "non-servable" in gate_drop.reasons
 
 
 def test_m2_reuse_layer_kind_registered_in_assembler():
@@ -333,11 +339,20 @@ def test_m3_event_decisions_distinguish_drop_reasons(emb, tmp_path):
         sub.close()
     rows = trajectory("inv-reasons")
     payload = next(r for r in rows if r["action_type"] == "knowledge.reused")["payload"]
-    assert kr.DECISION_NOT_SERVABLE in payload["decisions"]
+    # AFF SPR-08: the non-servable unit is removed by the trust gate BEFORE the
+    # SPR-06 partition, so the knowledge.reused event now records only the units
+    # that cleared the gate. The servable+grounded one is injected; the gated
+    # one is recorded on a reuse.gated event, not here. The knowledge.reused
+    # decisions cover only the gate-passing candidates (one, here).
     assert kr.DECISION_INJECTED in payload["decisions"]
-    # decisions + source_investigation_ids cover EVERY retrieved unit
-    assert len(payload["decisions"]) == len(units)
-    assert len(payload["source_investigation_ids"]) == len(units)
+    assert kr.DECISION_NOT_SERVABLE not in payload["decisions"]
+    n_passed_gate = sum(1 for d in result.gate_decisions if d.reusable)
+    assert len(payload["decisions"]) == n_passed_gate
+    assert len(payload["source_investigation_ids"]) == n_passed_gate
+    # the non-servable unit's exclusion is recorded as a reuse.gated event
+    gated = [r for r in rows if r["action_type"] == "reuse.gated"]
+    assert len(gated) == 1
+    assert "non-servable" in gated[0]["payload"]["reasons"]
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +377,12 @@ def _fake_units(n: int, *, prefix: str = "unit", inv: str = "inv-prior", sim_sta
             confidence="high", retrieval_key=nid,
             provenance=ProvenanceLink(source_document_id="d1", chunk_id="c1"),
             servability=ServabilityTag(content_class="public_domain", serves_full_text=True),
+            # AFF SPR-08: these synthetic budget-test units carry a passing
+            # groundedness score so they clear the trust gate and reach the
+            # budget partition (which is what these tests exercise). The slot is
+            # filled at projection time on the real-DB path (score_groundedness);
+            # the fake path sets it directly to stay above REUSE_GROUNDEDNESS_THRESHOLD.
+            groundedness_score=0.9,
         )
         out.append(kr.RetrievedUnit(unit=unit, similarity=sim_start - i * 0.001))
     return out
