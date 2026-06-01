@@ -142,6 +142,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DispatchCallPayload,
     schema_module.ContextPackAssembledPayload,
     schema_module.KnowledgeReusedPayload,  # AFF SPR-06 — flywheel reuse half
+    schema_module.ReuseGatedPayload,  # AFF SPR-08 — trust gate on reuse
     schema_module.DocumentLoadedPayload,
     schema_module.DocumentRegionSelectedPayload,
     schema_module.DistillationRequestedPayload,
