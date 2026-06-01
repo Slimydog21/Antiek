@@ -1,8 +1,22 @@
-# Decision: raise CI `pytest` job `timeout-minutes` 15 → 25
+# Decision: raise CI `pytest` job `timeout-minutes` 15 → 25 → 40
 
-**Date:** 2026-05-30
+**Date:** 2026-05-30 (15→25), amended **2026-06-01** (25→40)
 **Context:** PR #31 (`ingest/integration` → `main`, the 10-sprint corpus-ingest
 architecture). CI's `pytest` job was reported **cancelled**, not failed.
+
+> **2026-06-01 amendment (SECOND bump, 25 → 40).** The flywheel-foundation run
+> (SPR-01..07) plus two parallel-session merges (PR #42 rights kill-gate, PR #44
+> caddy routes) grew the suite again. SPR-06 passed at ~23.5 min execution —
+> already inside ~1.5 min of the 25-min ceiling — and **SPR-07's** PR #45 `pytest`
+> job was **cancelled at 25 m 4 s** (`conclusion: cancelled`, no `FAILED` lines,
+> `tsc` job green): the suite tipped past 25 min. This is the same
+> cancelled-not-failed signature as the original, one ceiling higher. Raised to
+> **40 min** as a stopgap so the remaining sprints (SPR-08..11) can finish without
+> re-hitting the wall. **This is the second timeout bump; the treadmill is now the
+> headline finding — `xdist`/sharding has moved from "deferred" to the REQUIRED
+> real fix (see Reconsider-if).** Nothing about *what* is checked changed: the gate
+> still runs the full `pytest tests/ -q -m "not integration"` suite and still fails
+> on any real failure; the craft-signature latency baseline is untouched.
 
 ## What happened
 
@@ -53,6 +67,20 @@ is **untouched** — this is not a craft-baseline move.
 
 ## Reconsider-if
 
-Drop back toward 15 min once the suite is sharded or xdist-parallelized (the
-real throughput fix). Until then, 25 min gives ~6 min headroom over the
-estimated ~18–19 min full-branch run plus shared-runner variance.
+**This has now been bumped twice (15→25→40). A third bump is NOT the answer** —
+it would mask a real and continuing throughput problem behind ever-longer
+wall-clock. The required next action, before the suite grows much further, is the
+throughput fix that was deferred above:
+
+- **`pytest-xdist -n auto`** (the suite is large but the per-test DuckDB fixtures
+  are temp-file/temp-DB scoped, so `--dist loadscope` is plausibly parallel-safe;
+  this needs a focused validation pass against the known order-sensitive tests —
+  `test_arxiv_audit`, `test_coordination_no_fork`, the magic-link tamper test —
+  not a "make it green" drive-by), **or**
+- **sharding the job** across N runners.
+
+Either drops wall-clock back well under 15 min and lets this ceiling return toward
+15. **Owner: a dedicated CI-infra task, not a flywheel sprint** (it touches
+test-isolation across the whole suite — too risky to fold into an autonomous
+feature run). 40 min is the stopgap until then; reconsider the moment a run
+approaches ~35 min.
