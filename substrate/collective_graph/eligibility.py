@@ -38,10 +38,16 @@ class EligibilityFlags:
 
 # Content classes that NEVER get attribution rev-share (operator
 # uploads aren't user-as-IP-holder; restricted content can't even
-# be retrieved on ad surfaces).
+# be retrieved on ad surfaces; personal_reading is the owner's private
+# third-party reading — it has no rights basis to earn and no holder to
+# ever pay, so it accrues zero ad attribution and zero IP escrow BY
+# CONSTRUCTION, which is the §9.0 proof the Personal-Reading Lane SPR-01
+# leans on: a personal_reading doc reaching is_attribution_eligible()
+# returns False at the first branch below).
 NON_ATTRIBUTABLE_CONTENT_CLASSES = frozenset({
     "operator_uploaded",
     "restricted_pending_opt_in",
+    "personal_reading",
 })
 
 

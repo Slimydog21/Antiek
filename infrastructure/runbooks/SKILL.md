@@ -10,6 +10,8 @@ self-contained; jump straight to the one matching your task.
 | Rotate the OpenRouter (or any other) API key | `secret-rotation.md` |
 | Rebuild after the VM is gone or DuckDB is corrupted | `disaster-recovery.md` |
 | Diagnose a specific failure symptom | `debugging.md` |
+| Land a rights-correct, audit-gated batch of documents into prod | `corpus-mass-ingest.md` |
+| Verify + go-live the personal-reading lane (owner-reads / public-withholds / zero-attribution, audit-gated) | `personal-lane.md` |
 
 ## When in doubt
 

@@ -35,6 +35,15 @@ dependencies = [
   # imports being made explicit.
   "requests>=2.31",
   "reportlab>=4.0",
+  # SPR-08 BYOK credential store: runtime/byok/store.py uses
+  # libsodium SecretBox (XSalsa20-Poly1305) to encrypt the operator's own X
+  # API key at rest. Declared CORE (not optional) because runtime/byok/
+  # __init__.py imports store.py unconditionally, so any `import runtime.byok`
+  # pulls nacl — leaving it undeclared makes the whole BYOK path (and its
+  # gate tests) uncollectable on a clean venv. Dependency-light, in-process,
+  # no OS keyring daemon: see runtime/byok/store.py docstring for the
+  # mechanism rationale on this headless single-writer host.
+  "pynacl>=1.5",
 ]
 
 [project.optional-dependencies]

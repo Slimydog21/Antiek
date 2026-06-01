@@ -44,6 +44,21 @@ events.parquet
 *.local.yml
 secrets/
 
+# SPR-08 BYOK on-disk artifacts. The credential store (runtime/byok/store.py)
+# persists an encrypted blob + a separate 0600 master key; the pipeline config
+# (runtime/byok/pipelines.py) persists non-secret JSON. None of these are source
+# code. Explicitly ignore them so a debug/ingest run that drops them into the
+# (committed) runtime/byok/ package directory can never be swept into a commit by
+# `git add -A`. The generic secrets/ and .env rules do NOT match these paths.
+# (The default key path is also covered by a 0600 file outside-the-tree env
+# override — ANTIEK_BYOK_KEY_FILE / ANTIEK_BYOK_ARTIFACT — but these rules guard
+# the in-tree defaults.)
+runtime/byok/credentials.enc
+runtime/byok/*.enc
+runtime/byok/byok_master.key
+runtime/byok/*.key
+runtime/byok/pipelines.json
+
 # Notebook artifacts
 .ipynb_checkpoints/
 

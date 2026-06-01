@@ -67,6 +67,37 @@ is **untouched** — this is not a craft-baseline move.
 
 ## Reconsider-if
 
+Drop back toward 15 min once the suite is sharded or xdist-parallelized (the
+real throughput fix). Until then, 25 min gives ~6 min headroom over the
+estimated ~18–19 min full-branch run plus shared-runner variance.
+
+---
+
+## Update: → 35 then converged to 40 (2026-06-01, Personal-Reading Lane + SPR-07)
+
+**Context:** PR #43 (`personal-lane/pr` → `main`, the 10-sprint Personal-Reading
+Lane) hit the SAME symptom independently: the `pytest` job was **cancelled** (not
+failed) at the timeout — `##[error]The operation was canceled` at the *post-pytest*
+"Substrate/dispatch boundary check" step, **after** `5405 passed, 14 skipped, 0
+failed` (~22.5 min pytest step). Verified across **three** CI attempts on the same
+head SHA: tests always green, cancel always at the same post-test step.
+
+**Root cause (not this PR's correctness):** the lane adds ~225 tests (5180 →
+5405). The `pytest` step alone now runs ~22.5 min on the shared runner; with
+install (~2–3 min) and the post-pytest boundary/lint check steps, the **job**
+crossed the 25-min ceiling and GitHub cancelled it mid-cleanup.
+
+**Decision:** PR #43 first raised the ceiling 25 → 35. In parallel, SPR-07 (PR
+#45) hit the same wall and raised it 25 → **40**. These converged on merge:
+**the unified value is 40** (the higher, more recent number absorbs both the lane
+and the flywheel growth). Ceiling-only, identical to the 15→25 rationale: the
+gate still runs the full `pytest tests/ -q -m "not integration"` suite, still
+fails on any real test failure, no test skipped, no assertion weakened, the locked
+rubric-latency baseline untouched.
+
+**Reconsider-if (now BINDING — per SPR-07's note below, a fourth bump is not the
+answer):**
+
 **This has now been bumped twice (15→25→40). A third bump is NOT the answer** —
 it would mask a real and continuing throughput problem behind ever-longer
 wall-clock. The required next action, before the suite grows much further, is the

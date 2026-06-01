@@ -251,6 +251,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     # Read workflow SPR-01 — servable-corpus legal-gate audit trail.
     schema_module.BookServabilityChangedPayload,
     schema_module.BookTakenDownPayload,
+    # Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
+    schema_module.DocumentContentClassDefaultedPayload,
     # antiek-unified SPR-03 — the six flywheel seams + one provisional seam.
     schema_module.SeamResearchToReadPayload,
     schema_module.SeamReadToResearchPayload,

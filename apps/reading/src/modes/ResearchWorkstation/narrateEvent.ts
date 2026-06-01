@@ -185,6 +185,7 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.PAGE_ATTRIBUTION_COMPUTED]: null,
   [ActionType.KNOWLEDGE_REUSED]: null, // SPR-06 emits it to the event log (for the SPR-09 benchmark); the reader-facing "reused N prior insights" surface is SPR-10's job, not a feed line here
   [ActionType.REUSE_GATED]: null, // SPR-08 emits it per unit EXCLUDED from reuse (below-threshold / non-servable) for the audit trail + SPR-09 benchmark; not a reader-facing feed line
+  [ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED]: null, // Personal-Reading Lane SPR-01: a write-side rights-classification default (a third-party ingest landing personal_reading). Substrate bookkeeping the reader never watches — the §9.0 audit trail lives in the event log, not the thinking stream.
   [ActionType.PARAMETER_EXTRACT_REQUESTED]: null, // folded into the synthesize beat
   [ActionType.PARAMETER_EXTRACT_DELIVERED]: null,
   [ActionType.CROSS_DOMAIN_KEYWORDS_RESOLVED]: null,
