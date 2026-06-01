@@ -115,3 +115,25 @@ Either drops wall-clock back well under 15 min and lets this ceiling return towa
 test-isolation across the whole suite — too risky to fold into an autonomous
 feature run). 40 min is the stopgap until then; reconsider the moment a run
 approaches ~35 min.
+
+## 2026-06-01 — the SPR-09 keystone moved to its own job (the OOM, not the clock)
+
+A distinct failure from the timeout treadmill above, found while merging SPR-11
+onto the Personal-Reading-Lane base (~5400 tests): the **SPR-09 compounding-
+benchmark keystone** — which had ridden as a tail step of the `pytest` job —
+began failing in CI with a `null` step-conclusion, no `FAILED` line, ~26–29 min
+into the job (UNDER the 40-min timeout, so NOT a cancellation), at a *variable*
+point across runs — while the identical `pytest compounding/benchmark/tests/ -m
+"not slow"` passes **48/48, deterministic and tmp-isolated**, on a fresh machine.
+That signature is an **OOM-kill**, not the clock and not a test defect: the
+benchmark spins multiple DuckDB graphs + asyncio researchers, and after the full
+~5400-test suite the shared `ubuntu-latest` runner is already near its memory
+ceiling.
+
+**Fix (not another timeout bump):** extract the keystone into its **own CI job**
+(`keystone`) on a fresh runner with full memory. The gate is unchanged — the same
+tests run, still fail on a real defect, and a keystone failure still reds the PR;
+it simply no longer competes for memory with the full suite. Orthogonal to (and
+cheaper than) the xdist/sharding fix above, which remains the right move for the
+`pytest` job's own wall-clock. **Reconsider-if:** the suite is sharded so the
+keystone can re-home into a shard cheaply.

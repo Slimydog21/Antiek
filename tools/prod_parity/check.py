@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Prod-parity assertion — SPR-07 (antiek-foundation-v2).
+"""Prod-parity assertion — SPR-07 (antiek-foundation-v2),
+extended SPR-11 (antiek-flywheel-foundation).
 
-Fetch ``/health`` from a live Antiek API and assert two things:
+Fetch ``/health`` from a live Antiek API and assert three things:
 
   (a) the SHA the running process reports (``build_sha``) equals the
-      expected ref (default: ``git rev-parse origin/main``), and
-  (b) the live provider registry (``registered_providers``) is non-empty.
+      expected ref (default: ``git rev-parse origin/main``),
+  (b) the live provider registry (``registered_providers``) is non-empty,
+      and
+  (c) the research-DEPTH flywheel is ALIVE (``flywheel_ready`` is true) —
+      i.e. the retrieval substrate opens and >= 1 ``knowledge.reused``
+      event is observable on the box. This is the SPR-11 extension: a
+      deployed-but-dead flywheel ("it compounds in dev, not on prod") now
+      reds the deploy assert, not just a stale SHA or empty registry.
 
 This is the cheap parity catch the deploy pipeline lacked. Earlier this
 month a stale-SPA drift shipped to ``api.antiek.ai`` and went undetected
@@ -35,9 +42,11 @@ assertion comparing deployed-SHA to ``main`` is exactly the control the
 pipeline lacked. Trust is not a control.
 
 Exit codes:
-    0 — build_sha == expected_sha AND len(registered_providers) > 0.
-    1 — a parity failure (SHA mismatch and/or empty provider registry),
-        with a message naming which condition failed.
+    0 — build_sha == expected_sha AND len(registered_providers) > 0 AND
+        the flywheel is live (``flywheel_ready`` true).
+    1 — a parity failure (SHA mismatch and/or empty provider registry
+        and/or a dead flywheel), with a message naming which condition
+        failed.
     2 — could not complete the check (network/HTTP error reaching
         ``/health``, or could not compute the expected SHA).
 
@@ -103,11 +112,22 @@ def default_expected_sha() -> str:
 
 
 def assert_parity(health: dict, expected_sha: str) -> list[str]:
-    """The ~10 lines of real assertion logic. Returns a list of failure
-    messages — empty list means in-parity (the check passes)."""
+    """The real assertion logic. Returns a list of failure messages —
+    empty list means in-parity (the check passes).
+
+    Asserts THREE things (SPR-11 added the third):
+      (a) deployed ``build_sha`` == ``expected_sha``,
+      (b) ``registered_providers`` is non-empty, and
+      (c) the flywheel is live (``flywheel_ready`` true).
+    """
     failures: list[str] = []
     build_sha = health.get("build_sha", "")
     providers = health.get("registered_providers", [])
+    # ``flywheel_ready`` is the SPR-11 /health field. Absent (an older
+    # build that predates the field) reads as falsy here — which is the
+    # safe red: we cannot prove the flywheel is live, so we do not pass it.
+    flywheel_ready = health.get("flywheel_ready", False)
+    reuse_count = health.get("knowledge_reuse_count", 0)
     if build_sha != expected_sha:
         failures.append(
             f"SHA mismatch: deployed build_sha={build_sha!r} != "
@@ -118,6 +138,15 @@ def assert_parity(health: dict, expected_sha: str) -> list[str]:
             "empty provider registry: registered_providers is empty "
             "(credential-gated silent-empty mode — the secrets file is "
             "almost certainly unpopulated)"
+        )
+    if not flywheel_ready:
+        failures.append(
+            "dead flywheel: flywheel_ready is false/absent "
+            f"(knowledge_reuse_count={reuse_count!r}) — the retrieval "
+            "substrate did not open or zero knowledge.reused events are "
+            "observable. Compounding is NOT live on this box (it may "
+            "compound in dev but not on prod — the exact failure SPR-11 "
+            "guards)."
         )
     return failures
 
@@ -136,8 +165,10 @@ def run(url: str, expected_sha: str) -> int:
             print(f"prod-parity: FAIL — {msg}", file=sys.stderr)
         return 1
     print(
-        f"prod-parity: OK — build_sha {expected_sha} matches main and "
-        f"{len(health.get('registered_providers', []))} providers registered",
+        f"prod-parity: OK — build_sha {expected_sha} matches main, "
+        f"{len(health.get('registered_providers', []))} providers registered, "
+        f"and the flywheel is live "
+        f"(knowledge_reuse_count={health.get('knowledge_reuse_count', 0)})",
     )
     return 0
 

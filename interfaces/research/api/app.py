@@ -96,6 +96,21 @@ class HealthResponse(BaseModel):
     # checkout for local dev, then the literal "unknown". See
     # ``_resolve_build_sha`` below.
     build_sha: str = "unknown"
+    # SPR-11 (antiek-flywheel-foundation): is the research-DEPTH flywheel
+    # ALIVE on this process? True iff (a) the personal graph DB opens
+    # read-only AND (b) the event log reports >= 1 ``knowledge.reused``
+    # event — i.e. at least one investigation has retrieved + reused a
+    # prior knowledge unit, the observable signature of compounding. The
+    # prod-parity check (tools/prod_parity/check.py) reads this so a
+    # deployed-but-DEAD flywheel reds the deploy assert, not just a stale
+    # SHA or an empty provider registry. ``knowledge_reuse_count`` is the
+    # raw count behind the boolean (0 when the flywheel is not yet live).
+    # Resolved once at startup by ``_probe_flywheel`` (which NEVER raises —
+    # any failure resolves to False/0, mirroring ``_resolve_build_sha``'s
+    # swallow-to-"unknown"). Default False so /health is honest on a box
+    # that has never compounded.
+    flywheel_ready: bool = False
+    knowledge_reuse_count: int = 0
 
 
 def _resolve_build_sha() -> str:
@@ -134,6 +149,59 @@ def _resolve_build_sha() -> str:
         # "unknown" rather than failing the whole startup over a SHA.
         pass
     return "unknown"
+
+
+def _probe_flywheel() -> tuple[bool, int]:
+    """Probe whether the research-DEPTH flywheel is ALIVE on this process.
+
+    SPR-11 (antiek-flywheel-foundation). Returns ``(flywheel_ready,
+    knowledge_reuse_count)``. The flywheel is "ready" iff BOTH hold:
+
+    1. The personal graph DB opens read-only (``connect_read`` over
+       ``default_db_path()``) — the retrieval substrate is reachable.
+    2. The event log reports >= 1 ``knowledge.reused`` event — at least
+       one investigation has retrieved + reused a prior knowledge unit,
+       the observable signature of compounding (the ``knowledge.reused``
+       event in ``substrate/schemas/events.py``).
+
+    This is the CHEAP, READ-ONLY liveness signal the prod-parity check
+    reads (``flywheel_ready`` on /health): a deployed-but-dead flywheel
+    must red the deploy assert, not silently pass.
+
+    Like ``_resolve_build_sha``, this NEVER raises — a missing/locked DB,
+    an unreadable events dir, or any other failure resolves to
+    ``(False, 0)``. A read-only ``connect_read`` cannot create the file,
+    so a fresh box (no graph yet) yields ``(False, 0)`` rather than
+    crashing /health. Resolved once at startup (the count is a snapshot,
+    not a live counter) so the probe cost is paid at most once per boot.
+    """
+    try:
+        from runtime.db_lock import connect_read
+        from substrate.event_log import action_counts
+        from substrate.graph import default_db_path
+
+        # (1) Retrieval substrate reachable: the graph DB opens read-only.
+        # connect_read raises on a nonexistent path (read-only cannot
+        # create the file), so a box with no graph yet → not ready.
+        con = connect_read(default_db_path())
+        con.close()
+
+        # (2) >= 1 observable knowledge.reused event. action_counts with no
+        # investigation_id scans every trajectory in the default events
+        # dir; we sum the knowledge.reused row. An unreadable/empty dir
+        # returns [] → count 0 → not ready.
+        reused = 0
+        for row in action_counts(events_dir=None):
+            if row.get("action_type") == "knowledge.reused":
+                reused = int(row.get("count", 0) or 0)
+                break
+        return (reused >= 1, reused)
+    except Exception:
+        # Any failure (missing/locked DB, unreadable events dir, import
+        # error) → the flywheel is not provably live. Resolve to
+        # (False, 0) rather than failing the whole /health over a probe,
+        # mirroring _resolve_build_sha's swallow-to-"unknown".
+        return (False, 0)
 
 
 class InvestigationStartRequest(BaseModel):
@@ -1329,6 +1397,11 @@ def create_app(
     # tools/prod_parity/check.py and tools/prod_parity/README.md.
     app.state.build_sha = _resolve_build_sha()
 
+    # SPR-11: probe flywheel liveness once at startup (read-only, never
+    # raises). /health reports it so the prod-parity check can red a
+    # deployed-but-dead flywheel. Snapshot at boot, like build_sha.
+    app.state.flywheel_ready, app.state.knowledge_reuse_count = _probe_flywheel()
+
     if register_wrestling:
         # Imported lazily so tests that don't touch wrestling don't pay
         # the dispatch / context_pack import cost.
@@ -1427,6 +1500,8 @@ def create_app(
                 getattr(app.state, "registered_providers", set())
             ),
             build_sha=getattr(app.state, "build_sha", "unknown"),
+            flywheel_ready=getattr(app.state, "flywheel_ready", False),
+            knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
         )
 
     # ── POST typed event ────────────────────────────────────────
