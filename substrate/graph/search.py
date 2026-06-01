@@ -125,9 +125,43 @@ PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
 
 # Content classes that the substrate may withhold from retrieval
 # depending on policy_tag. Per master-spec §9.0 §9.10.
+#
+# RESTRICTED_CONTENT_CLASSES is the GATED-BUT-PUBLIC class
+# (restricted_pending_opt_in): a copyrighted-but-public work whose body is
+# withheld pending a rights-holder opt-in, but which DOES accrue ad revenue to
+# escrow. It is the exact mirror of constants.GATED_DEFAULT_CONTENT_CLASS (the
+# write side names the same gate state) — do NOT add personal_reading here.
 RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
     "restricted_pending_opt_in",
 })
+
+# Content classes that are OWNER-ONLY: the owner reads them in full on a
+# privileged path, but they NEVER surface on a non-privileged (public /
+# attribution-eligible) retrieval. personal_reading (the Personal-Reading Lane
+# SPR-01 fourth rights state) is the only member: it is the owner's private
+# third-party reading (a fetched essay / transcript / tweet) with no rights basis
+# to serve publicly and — unlike restricted_pending_opt_in — no escrow economics
+# at all (it never earns). It is kept as a SEPARATE set from
+# RESTRICTED_CONTENT_CLASSES on purpose: the two gate states have OPPOSITE
+# monetization semantics (restricted EARNS to escrow; personal_reading earns
+# nothing), and RESTRICTED_CONTENT_CLASSES carries the documented contract that
+# it equals the write-side GATED_DEFAULT_CONTENT_CLASS. Both sets are excluded on
+# the same non-privileged branch below, so personal_reading is filtered out of
+# the public chunk-search gate while remaining retrievable on the privileged
+# (private_research / operator_only) owner path. What would reverse this choice:
+# if personal_reading ever needed distinct policy_tag gating from
+# restricted_pending_opt_in (e.g. a tag privileged for one but not the other),
+# the separate set already supports it; folding them together would not.
+PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
+    "personal_reading",
+})
+
+# The full set of content classes withheld from a non-privileged retrieval —
+# the union of the gated-but-public class and the owner-only class. Both are
+# excluded on the public branch; only the PRIVILEGED_POLICY_TAGS bypass.
+_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
+    RESTRICTED_CONTENT_CLASSES | PERSONAL_ONLY_CONTENT_CLASSES
+)
 
 
 def search(
@@ -171,15 +205,17 @@ def search(
             honest empty, never the whole corpus).
         with_edges: When True, attach the edges sourced from each
             returned chunk plus the nodes those edges connect.
-        policy_tag: Retrieval-time gate per master-spec §9.0. When
-            ``policy_tag`` is in PRIVILEGED_POLICY_TAGS
-            ({"private_research", "operator_only"}), restricted
-            content (content_class='restricted_pending_opt_in') is
-            included. For ALL other policy_tag values — including the
-            default 'attribution_eligible' (Sprint 18+ ad-attribution
-            path) — restricted content is excluded. The Sprint 18
-            legal gate (master §15.9) is non-negotiable: payouts on
-            an ungated graph are explicitly forbidden by §16.2.
+        policy_tag: Retrieval-time gate per master-spec §9.0 + Personal-Reading
+            Lane SPR-01. When ``policy_tag`` is in PRIVILEGED_POLICY_TAGS
+            ({"private_research", "operator_only"}), BOTH restricted content
+            (content_class='restricted_pending_opt_in') AND owner-only content
+            (content_class='personal_reading') are included — this is the owner's
+            full-read path. For ALL other policy_tag values — including the
+            default 'attribution_eligible' (Sprint 18+ ad-attribution path) —
+            both are excluded. The Sprint 18 legal gate (master §15.9) is
+            non-negotiable: payouts on an ungated graph are explicitly forbidden
+            by §16.2; and personal_reading (the owner's private third-party
+            reading) must never reach a monetized / public read.
 
     Returns:
         ``{"query": ..., "top_k": ..., "results": [...], "node_matches": []}``
@@ -238,19 +274,26 @@ def search(
     if source_tier_max is not None:
         sql += " AND d.source_tier <= ?"
         params.append(int(source_tier_max))
-    # Sprint 18 retrieval-time gate (master-spec §9.0). The gate
-    # excludes restricted_pending_opt_in content from any retrieval
-    # path whose policy_tag is not privileged. NULL content_class is
-    # treated as legacy/grandfathered and passes — this is acceptable
-    # because the Sprint 16 telemetry ran on pre-gate data and the
-    # backfill to populate content_class for legacy documents lands
-    # alongside Sprint 18 ip_holders onboarding.
+    # Sprint 18 retrieval-time gate (master-spec §9.0) + Personal-Reading Lane
+    # SPR-01. On a NON-privileged policy_tag the gate excludes BOTH the
+    # gated-but-public class (restricted_pending_opt_in) AND the owner-only class
+    # (personal_reading) — the union _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES.
+    # personal_reading (the owner's private third-party reading) must never
+    # surface on the public / attribution-eligible read path; it remains
+    # retrievable on the privileged (private_research / operator_only) owner path
+    # below. NULL content_class is still treated as legacy/grandfathered and
+    # passes — that legacy carve-out is unchanged here; the write-side
+    # insert_document deny-by-default guard (substrate/graph/ops.py) is what now
+    # stops fresh third-party ingests from landing NULL, so the NULL-passes hole
+    # is closed at the source rather than by reclassifying legacy rows (that
+    # sweep is SPR-03).
     if policy_tag not in PRIVILEGED_POLICY_TAGS:
-        placeholders = ",".join("?" for _ in RESTRICTED_CONTENT_CLASSES)
+        excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
+        placeholders = ",".join("?" for _ in excluded)
         sql += (
             f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
         )
-        params.extend(RESTRICTED_CONTENT_CLASSES)
+        params.extend(excluded)
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 

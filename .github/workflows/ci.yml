@@ -32,7 +32,11 @@ jobs:
   pytest:
     name: pytest
     runs-on: ubuntu-latest
-    # 25 min (was 15). The 15-min ceiling was already under-provisioned: the
+    # 40 min (was 25, was 15) — SECOND bump. SPR-07 + parallel-session merges
+    # tipped the suite past even 25 min (cancelled-not-failed at the wall again).
+    # xdist/sharding (the reconsider-if below) is now the REQUIRED real fix; 40 is
+    # the stopgap so the flywheel run can finish. Original 25-min rationale (still
+    # valid): the 15-min ceiling was already under-provisioned: the
     # base `main` suite runs ~14.4 min on this shared ubuntu-latest runner
     # (~1.66x slower than dev hardware per the locked rubric-latency benchmark)
     # and a recent `main` run was itself cancelled at 15.2 min. The corpus-ingest
@@ -41,9 +45,16 @@ jobs:
     # the wall-clock ceiling; the gate still runs the FULL suite and still fails
     # on any real test failure (nothing about what is checked changes, and the
     # informational latency craft-signature baseline is untouched).
+    #
+    # Convergent data point (Personal-Reading Lane, 2026-06-01): the lane added
+    # ~225 tests (5180 -> 5405) and independently hit this same wall — the
+    # `pytest` step ran ~22.5 min and the JOB was CANCELLED (not failed) at the
+    # post-pytest "Substrate/dispatch boundary check" step across 3 CI attempts,
+    # each AFTER `5405 passed, 0 failed`. Both SPR-07 and this lane confirm the
+    # 25-min ceiling is exhausted; 40 (main's second bump) absorbs both.
     # Reconsider-if: the suite is sharded / xdist-parallelized, after which this
-    # can drop back toward 15. See docs/decisions/ci-pytest-timeout.md.
-    timeout-minutes: 25
+    # can drop back toward 15-20. See docs/decisions/ci-pytest-timeout.md.
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -123,6 +134,28 @@ jobs:
         run: |
           python tools/lint/boundary_check.py
 
+      - name: One-owner-per-layer boundary check
+        # SPR-03 (Antiek Flywheel Foundation). Sibling of the vendor-SDK
+        # boundary_check.py above: vendor-check = "don't import the wrong
+        # thing"; this owner-check = "don't reimplement the owned thing". An
+        # AST scan that a shared CONCERN (the §9.0 servability predicate) is
+        # DEFINED in exactly ONE module (substrate/books/servability.py) across
+        # the five servability-consuming roots (graph/attribution/books/write/
+        # speak); a SECOND module defining is_servable_full_text /
+        # is_chunk_servable / servability_of is the §9.0 polarity-mismatch
+        # owner-bypass this guard exists to prevent (the pre-SPR-08 chunk
+        # denylist that diverged from the book allowlist). ENFORCING — no
+        # `|| echo`/`|| true` swallow, so the step's pass/fail is EXACTLY the
+        # lint's exit code; the prior foundation wired its equivalent guard
+        # informational and so never caught the drift. Same path:line + exit-
+        # code contract as boundary_check.py; sub-second on the full tree.
+        # Registered as invariant `boundary` (substrate/invariants/boundary.toml,
+        # guard_kind=script). See
+        # docs/decisions/spr-09-boundary-lint-vs-import-linter.md (filename keeps
+        # the artifact's 48c3856 provenance stem; the work lands under SPR-03).
+        run: |
+          python tools/lint/owner_boundary_check.py
+
       - name: Serve-guard boundary check
         # SPR-02 (arxiv-ingest): forbid direct serve_full_text() calls
         # outside the allowlist (substrate/books/serve.py where it is
@@ -160,6 +193,72 @@ jobs:
         run: |
           python tools/lint/contact_guard_check.py
 
+      - name: Merge-age gate (anti-stranding)
+        # SPR-01 (Antiek Flywheel Foundation). Reds when the PR's base is more
+        # than N=25 commits behind origin/main — the stale-base stranding that
+        # killed the prior foundation (forked at 69bcfef, lapped ~+38 commits,
+        # never merged). N=25 first reds at +26, inside a single sprint's normal
+        # lifetime. Lives in the pytest job because that job checks out with
+        # fetch-depth: 0, satisfying merge-age's full-history need. The step
+        # self-gates its own exit code — no `|| echo` swallow — so the step's
+        # pass/fail is EXACTLY the gate's exit code (a swallowed code would
+        # re-create the silent-pass hole this gate closes). N is one named
+        # constant (MAX_BEHIND); see docs/decisions/anti-stranding-gate.md.
+        run: |
+          python tools/lint/merge_age_gate.py
+
+      - name: Reachability gate (anti-purgatory)
+        # SPR-01 (Antiek Flywheel Foundation). Reds on a NEW zero-importer module
+        # or a route with no inbound link — the "shipped into purgatory" failure
+        # mode (promotes the statically-detectable core of reading_physics_check's
+        # advisory PR-7 to enforcing; the product-judgment half stays advisory).
+        # Grandfathers pre-existing cases via the shrink-only baseline at
+        # tools/lints/baselines/reachability.json. Self-gates its own exit code —
+        # no `|| echo` swallow. See docs/decisions/anti-stranding-gate.md.
+        run: |
+          python tools/lint/reachability_gate.py
+
+      - name: Invariant-registry meta-check
+        # SPR-02 (Antiek Flywheel Foundation) KEYSTONE. The registry under
+        # substrate/invariants/ enumerates the load-bearing invariants; this
+        # meta-check reds if any `guarded` declaration's guard is missing,
+        # skipped, xfailed, xpassed, stubbed, or vacuous (the §14.4 fake-green
+        # disease it exists to kill). Named here — not just swept into the
+        # blanket pytest run — so a keystone failure is unmissable. Hermetic
+        # in-process runner; no `|| echo` swallow. See substrate/invariants/ON-RAMP.md.
+        run: |
+          python -m pytest tests/test_invariant_registry_meta.py -q -p no:cacheprovider -p no:xdist
+
+      - name: Compounding benchmark (SPR-09 keystone)
+        # SPR-09 (Antiek Flywheel Foundation) KEYSTONE. The blanket `pytest tests/`
+        # step above scopes to tests/, so the falsifiable compounding benchmark's
+        # tests (compounding/benchmark/tests/) are named here so a keystone failure
+        # is unmissable. `-m "not slow"` excludes the full n=20 multi-arm run
+        # (~3 min) — the fast suite drives the real demo loop end-to-end with small
+        # steps + synthetic-trajectory seed-and-catch tests in ~45s. The
+        # seed-and-catch tests (test_falsifiability) prove the scale reports a
+        # signed delta in either direction and that the irrelevant-seed control can
+        # flag a run invalid — a harness that could only ever return a positive
+        # delta would red here. See compounding/benchmark/README.md.
+        env:
+          DEEPSEEK_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          HERMES_API_KEY: ""
+          XAI_API_KEY: ""
+          OPENAI_API_KEY: ""
+        run: |
+          python -m pytest compounding/benchmark/tests/ -q -m "not slow" -p no:cacheprovider
+
+      - name: Source-onboarding corpus-value gate
+        # Reframe finding #2: the WIRED stop-rule replacing the spec's PROSE
+        # "measure before build". Blocks onboarding any source AFTER arXiv whose
+        # per-source corpus-value census (reports/source_census.json) falls below the
+        # bar (metadata-completeness / link-back-resolvability / dedup-overlap). It is
+        # a no-op (exit 0) until the P3b producer writes a census, and enforces the
+        # moment one lands. Models tools/lint/serve_guard_check.py (exit-code contract).
+        run: |
+          python tools/lint/source_gate.py
       - name: Codegen staleness check
         # Catches the case where someone edits a Pydantic schema in
         # substrate/schemas/ without regenerating

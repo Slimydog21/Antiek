@@ -337,3 +337,77 @@ def test_ingest_nodes_carry_final_url(temp_substrate):
     metas = [json.loads(r[0]) if isinstance(r[0], str) else r[0] for r in rows]
     assert all(m.get("source") == "url" for m in metas)
     assert all(m.get("final_url") == "https://example.com/post" for m in metas)
+
+
+# ---------------------------------------------------------------------------
+# E. Personal-Reading Lane (SPR-02) — a web_article lands content_class
+#    'personal_reading', NEVER a servable default. Queried off the temp DB
+#    (not assumed from the kwarg) per rigor #1.
+# ---------------------------------------------------------------------------
+
+
+def test_ingest_web_article_lands_personal_reading(temp_substrate):
+    """A third-party web article fetched for the owner's reading lands
+    content_class='personal_reading' (the owner-readable / public-non-servable
+    lane), document_type='web_article'. The row is read back from the temp DB
+    — this proves the lane LANDED, not that we expect it to."""
+    import duckdb
+
+    res = ingest_url(
+        "https://example.com/post",
+        investigation_id="inv-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=_good_fetched(),
+    )
+    assert res.skipped_reason is None
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (content_class, document_type) = con.execute(
+            "SELECT content_class, document_type FROM documents WHERE document_id = ?",
+            [res.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert content_class == "personal_reading", (
+        "a third-party web_article must land personal_reading, never a servable "
+        f"default; got {content_class!r}"
+    )
+    assert document_type == "web_article"
+    # The constant the adapter passed is exactly the lane value (not drifted).
+    from substrate.constants import PERSONAL_READING_CONTENT_CLASS, SERVABLE_CONTENT_CLASSES
+
+    assert content_class == PERSONAL_READING_CONTENT_CLASS
+    assert content_class not in SERVABLE_CONTENT_CLASSES
+
+
+def test_ingest_web_article_lane_stable_on_reingest(temp_substrate):
+    """on_conflict='ignore' on re-ingest must not flip content_class away from
+    personal_reading (rigor #3.v — the dedup path never silently reclassifies)."""
+    import duckdb
+
+    r1 = ingest_url(
+        "https://example.com/post",
+        investigation_id="inv-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=_good_fetched(),
+    )
+    r2 = ingest_url(
+        "https://example.com/post",
+        investigation_id="inv-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=_good_fetched(),
+    )
+    assert r1.document_id == r2.document_id
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        rows = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ?",
+            [r1.document_id],
+        ).fetchall()
+    finally:
+        con.close()
+    assert len(rows) == 1
+    assert rows[0][0] == "personal_reading"

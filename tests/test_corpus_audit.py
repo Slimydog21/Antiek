@@ -36,8 +36,13 @@ from substrate.corpus_audit import (
     CHECK_DEDUP,
     CHECK_EXTRACTION,
     CHECK_GATED_LEAK,
+    CHECK_PERSONAL_NONATTRIB,
+    CHECK_PERSONAL_NOT_TRAINING,
     CHECK_SERVABLE_BASIS,
+    CHECK_THIRD_PARTY_SERVABLE,
+    _check_personal_not_in_training_impl,
     assert_no_content_class_bypass,
+    main as corpus_audit_main,
     run_audit,
     summarize_corpus,
 )
@@ -547,6 +552,246 @@ def test_within_budget_passes_check_e(db_path):
 
 
 # ---------------------------------------------------------------------------
+# (f) third-party-on-servable — Personal-Reading Lane (SPR-02) DB backstop.
+#     A third-party document_type on a servable class without a basis FAILS (f);
+#     the same row at personal_reading, OR a lawful servable book WITH a basis,
+#     PASSES. This is the non-vacuity proof: the check BITES on the §9.0 leak and
+#     does NOT false-positive the lawful SPR-04/SPR-05/SPR-07 open-content path.
+# ---------------------------------------------------------------------------
+
+
+def test_third_party_servable_without_basis_fails_check_f(db_path):
+    """A web_article that slipped onto the servable 'user_owned' class with no
+    license_basis is the exact §9.0 leak the connector lane prevents. The check
+    must FAIL on it and name the offender's document_id."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        # PLANT: a third-party web_article on a SERVABLE class with NO basis.
+        # (This is what the OLD schema default 'user_owned' produced before the
+        # lane — a third-party essay eligible for public full-text serving.)
+        _insert_document(
+            con,
+            document_id="doc-web-leak",
+            content_class="user_owned",  # servable + no book_assets basis row
+            raw_text=_BODY_A + " a leaked third-party essay tail zzz",
+            source_uri="https://paulgraham.com/essay.html",
+            title="A Third-Party Essay",
+            document_type="web_article",
+        )
+        # No _insert_book_asset -> license_basis is NULL (the LEFT JOIN miss).
+
+    result = run_audit(db_path, include_binding=False)
+    f = result.check(CHECK_THIRD_PARTY_SERVABLE)
+    assert not f.ok, "a servable third-party web_article with no basis must fail (f)"
+    assert f.count == 1
+    assert any("doc-web-leak" in o for o in f.offending)
+    assert not result.ok
+    # The leak is isolated to (f): the body is real (so (d) clean), the content
+    # hash is unique (so (c) clean). Check (a) ALSO bites here — a servable row
+    # with no basis is a servable-without-basis offender too — which is correct:
+    # the lane leak is a strict subset of the servable-basis invariant, and BOTH
+    # arms refusing is the belt-and-suspenders design, not a double-count bug.
+    assert not result.check(CHECK_SERVABLE_BASIS).ok
+    assert result.check(CHECK_DEDUP).ok
+    assert result.check(CHECK_EXTRACTION).ok
+
+
+def test_third_party_on_personal_reading_passes_check_f(db_path):
+    """Removing the single defect — the SAME third-party row at the lane class
+    personal_reading — makes (f) pass. Proves (f) bit on the SERVABLE class, not
+    on the mere presence of a third-party document."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-web-ok",
+            content_class="personal_reading",  # the lane: NOT in SERVABLE set
+            raw_text=_BODY_A + " a lawfully-laned third-party essay tail zzz",
+            source_uri="https://paulgraham.com/essay.html",
+            title="A Third-Party Essay (laned)",
+            document_type="web_article",
+        )
+        # personal_reading needs no book_assets basis — it is never served.
+    result = run_audit(db_path, include_binding=False)
+    assert result.check(CHECK_THIRD_PARTY_SERVABLE).ok
+    assert result.ok
+
+
+def test_lawful_servable_book_passes_check_f(db_path):
+    """A SERVABLE book WITH a license_basis (the SPR-04 Bernays / public-domain
+    path) must NOT be flagged by (f): it is not a third-party document_type AND
+    it carries a basis. Proves (f) does not false-positive the lawful corpus —
+    the clean two-doc corpus already has exactly such a servable book, so a
+    bare clean corpus passing (f) is itself this assertion."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        # An additional servable third-party row WITH a real basis — the lawful
+        # SPR-05/SPR-07 exception (a PG public-domain text via the urls
+        # connector, a CC-BY transcript). This MUST pass (f) because the basis
+        # is present, even though its document_type is third-party.
+        _insert_document(
+            con,
+            document_id="doc-web-pd",
+            content_class="public_domain",  # servable, but ...
+            raw_text=_BODY_B + " a genuinely public-domain web text tail yyy",
+            source_uri="https://www.gutenberg.org/ebooks/55555",
+            title="A Public-Domain Essay via urls",
+            document_type="web_article",  # third-party type ...
+        )
+        _insert_book_asset(
+            con,
+            document_id="doc-web-pd",
+            # ... WITH a real positive basis -> NOT a (f) offender.
+            license_basis="public_domain: Project Gutenberg; US public domain",
+        )
+    result = run_audit(db_path, include_binding=False)
+    assert result.check(CHECK_THIRD_PARTY_SERVABLE).ok, (
+        "a servable third-party doc WITH a real basis is the lawful open-content "
+        "exception and must NOT be flagged"
+    )
+    assert result.ok
+
+
+def test_third_party_servable_empty_string_basis_fails_check_f(db_path):
+    """SHARPEN (sprint #3.iii): the EMPTY/whitespace-basis branch must bite too.
+
+    ``test_third_party_servable_without_basis_fails_check_f`` covers only the
+    LEFT-JOIN-miss path (no ``book_assets`` row at all -> ``license_basis IS
+    NULL``). But the check's ``WHERE`` has a SECOND no-basis arm —
+    ``TRIM(b.license_basis) = ''`` — for a row that DOES have a ``book_assets``
+    record whose basis is blank/whitespace (an empty extraction, a placeholder
+    a future writer left). Without this test, a refactor that dropped the
+    ``TRIM(...) = ''`` clause and kept only ``IS NULL`` would leave every other
+    (f) test green while silently re-opening the leak for a present-but-blank
+    basis. This is the seeded proof that the check bites on exactly that one
+    defect: a third-party ``video_transcript`` on a servable class with a
+    PRESENT-but-whitespace ``license_basis`` MUST fail (f) and name the
+    offender. It mirrors ``_check_servable_basis``'s identical empty-basis
+    treatment, so the third-party arm cannot silently desync from the book
+    arm's blank-basis handling."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-yt-blankbasis",
+            content_class="user_owned",  # servable ...
+            raw_text=_BODY_A + " a transcript with a blank placeholder basis qqq",
+            source_uri="https://www.youtube.com/watch?v=blank0001",
+            title="A Transcript With A Blank Basis",
+            document_type="video_transcript",  # third-party type ...
+        )
+        # ... WITH a book_assets row present but the basis whitespace-only:
+        # this is the TRIM(...) = '' arm, NOT the IS NULL (LEFT-JOIN-miss) arm.
+        _insert_book_asset(
+            con, document_id="doc-yt-blankbasis", license_basis="   "
+        )
+    result = run_audit(db_path, include_binding=False)
+    f = result.check(CHECK_THIRD_PARTY_SERVABLE)
+    assert not f.ok, (
+        "a servable third-party row with a PRESENT-but-blank license_basis must "
+        "fail (f) via the TRIM(...) = '' arm, not only the IS NULL arm"
+    )
+    assert f.count == 1
+    assert any("doc-yt-blankbasis" in o for o in f.offending)
+    assert not result.ok
+    # And (a) agrees for the same reason — a servable row with a blank basis is a
+    # servable-without-basis offender under both invariants (belt-and-suspenders).
+    assert not result.check(CHECK_SERVABLE_BASIS).ok
+
+
+# ---------------------------------------------------------------------------
+# M4a — the bypass-scanner now covers the web family (urls/youtube/twitter/
+# substack). A planted content_class="..." literal under one of the new dirs
+# must make the scan BITE; the constant-based M1-M3 edits must NOT.
+# ---------------------------------------------------------------------------
+
+
+def test_binding_detector_bites_on_literal_under_web_family():
+    """A planted ``content_class="user_owned"`` literal under acquisition/urls/
+    (a NEW _BINDING_DIR this sprint added) makes the scan return ok=False and
+    name the path:line — proving the extended coverage bites."""
+    tmp = tempfile.mkdtemp(prefix="antiek-binding-web-")
+    _write_fixture_connector(
+        tmp, "urls", "leaky_url_connector.py",
+        '''
+        """A future urls connector that re-introduces the literal anti-pattern."""
+        def ingest(con):
+            return insert_document(con, document_type="web_article",
+                                   content_class="user_owned")
+        ''',
+    )
+    r = assert_no_content_class_bypass(root=tmp)
+    assert not r.ok
+    assert any(
+        "leaky_url_connector.py" in o and "user_owned" in o for o in r.offending
+    )
+
+
+def test_binding_detector_clean_on_constant_web_connectors():
+    """The REAL integrated tree — whose urls/youtube/twitter adapters now pass
+    PERSONAL_READING_CONTENT_CLASS (an imported ast.Name, not a literal) — keeps
+    the binding scan green, AND the new dirs are actually walked (files_scanned
+    grew to include them)."""
+    r = assert_no_content_class_bypass()
+    assert r.ok, r.offending
+    # The web-family dirs are now in scope: the scan walks more files than the
+    # original four-dir set would (urls/youtube/twitter each contribute >=1 .py).
+    assert r.files_scanned > 0
+
+
+# ---------------------------------------------------------------------------
+# M6 — the new check rides run_audit's verdict + the CLI exit code, so CI and
+# the corpus-mass-ingest runbook hard-block a planted third-party-on-servable
+# violation. (substrate/legal_gate/ is a registry URL/author denylist — it does
+# NOT call run_audit, so there is no hardcoded check allowlist that could drop
+# this check; the run_audit + CLI surface IS the gate. Documented in handoff.)
+# ---------------------------------------------------------------------------
+
+
+def test_check_rides_run_audit_verdict(db_path):
+    """CHECK_THIRD_PARTY_SERVABLE is collected in run_audit(...).checks and folds
+    into the overall verdict — so the CI pytest path exercises it, not skips."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+    result = run_audit(db_path, include_binding=False)
+    names = [c.name for c in result.checks]
+    assert CHECK_THIRD_PARTY_SERVABLE in names
+    # On the clean corpus the check passes and does not drag the verdict down.
+    assert result.check(CHECK_THIRD_PARTY_SERVABLE).ok
+    assert result.ok
+
+
+def test_cli_exits_nonzero_on_planted_third_party_servable(db_path, capsys):
+    """The corpus_audit CLI (python -m substrate.corpus_audit --db-path <db>)
+    must exit NON-ZERO when a third-party doc sits on a servable class with no
+    basis — preserving the runbook/CI hard-block. include_binding defaults True
+    in the CLI; the binding is clean on the live tree, so the non-zero exit is
+    attributable to the planted (f) violation (asserted via the JSON output)."""
+    import json as _json
+
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-web-cli-leak",
+            content_class="user_owned",
+            raw_text=_BODY_A + " cli-planted leaked third-party essay tail qqq",
+            source_uri="https://example.com/leak.html",
+            title="CLI Leak Essay",
+            document_type="web_article",
+        )
+
+    rc = corpus_audit_main(["--db-path", db_path, "--json"])
+    assert rc == 1, "CLI must exit non-zero on a planted third-party-servable leak"
+    out = capsys.readouterr().out
+    payload = _json.loads(out)
+    by_name = {c["name"]: c for c in payload["checks"]}
+    assert CHECK_THIRD_PARTY_SERVABLE in by_name
+    assert by_name[CHECK_THIRD_PARTY_SERVABLE]["ok"] is False
+    assert any("doc-web-cli-leak" in o for o in by_name[CHECK_THIRD_PARTY_SERVABLE]["offending"])
+
+
+# ---------------------------------------------------------------------------
 # THE BINDING — the static detector bites on a planted literal + passes clean.
 # ---------------------------------------------------------------------------
 
@@ -617,6 +862,290 @@ def test_binding_folds_into_run_audit(db_path):
     result = run_audit(db_path, include_binding=True)
     assert result.check("content_class_binding").ok
     assert result.ok
+
+
+# ---------------------------------------------------------------------------
+# SPR-10 M1.b — personal_reading non-attributable + not-public-graph.
+#   A personal_reading row that the REAL is_attribution_eligible predicate would
+#   deem eligible (a desynced lane), OR membership of personal_reading in the
+#   public-graph set, FAILS the check. A correctly-laned personal_reading row
+#   PASSES. Composes the SPR-01 eligibility/attribution sets — no re-listing.
+# ---------------------------------------------------------------------------
+
+
+def test_personal_reading_nonattributable_passes_clean(db_path):
+    """A correctly-laned personal_reading document is non-attributable and absent
+    from the public graph — the check PASSES on it (the clean-corpus baseline for
+    the lane: this is the property the whole lane exists to hold)."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        # A lawfully-laned third-party reading: personal_reading, no basis needed
+        # (it is never served), document_type web_article.
+        _insert_document(
+            con,
+            document_id="doc-pr-clean",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " a personal-reading essay the owner fetched zzz",
+            source_uri="https://paulgraham.com/clean.html",
+            title="A Personal Reading",
+            document_type="web_article",
+        )
+    result = run_audit(db_path, include_binding=False)
+    n = result.check(CHECK_PERSONAL_NONATTRIB)
+    assert n.ok, n.detail
+    assert result.ok
+
+
+def test_personal_reading_attributable_fails_check_personal_nonattrib(db_path, monkeypatch):
+    """PLANT the single defect: the lane desyncs — personal_reading is dropped
+    from NON_ATTRIBUTABLE_CONTENT_CLASSES so the REAL is_attribution_eligible
+    predicate would now deem a personal_reading row attribution-eligible (the
+    §9.0 leak: the owner's private reading entering an ad-attribution split). The
+    check must FAIL and name the offending personal_reading document_id. Removing
+    the defect (the un-monkeypatched clean test above) makes it pass — proving the
+    check bites on the desync, not on the mere presence of a personal_reading row.
+
+    We monkeypatch the IMPORTED predicate's source set rather than hand-stamping a
+    column, because the defect this check exists to catch is exactly a lane-set
+    misconfiguration: a future edit that removed personal_reading from the
+    non-attributable set. The audit reads is_attribution_eligible LIVE, so the
+    desync surfaces through the real predicate."""
+    import substrate.collective_graph.eligibility as elig
+
+    # The desync: personal_reading no longer non-attributable. The predicate then
+    # falls through to the claim-gate + quality-gate branches; with the audit's
+    # PASS_PUBLIC probe + no claim-gate membership, it returns True — the leak.
+    patched = frozenset(elig.NON_ATTRIBUTABLE_CONTENT_CLASSES - {"personal_reading"})
+    monkeypatch.setattr(elig, "NON_ATTRIBUTABLE_CONTENT_CLASSES", patched)
+
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-pr-leak",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " a personal reading that a desync would expose qqq",
+            source_uri="https://paulgraham.com/leak.html",
+            title="A Personal Reading (desynced)",
+            document_type="web_article",
+        )
+    result = run_audit(db_path, include_binding=False)
+    n = result.check(CHECK_PERSONAL_NONATTRIB)
+    assert not n.ok, "a personal_reading row the predicate deems eligible must fail"
+    assert n.count == 1
+    assert any("doc-pr-leak" in o for o in n.offending)
+    assert not result.ok
+    # Isolated: the row carries a real body (so (d) clean), unique hash (so (c)
+    # clean), and is not on a servable class (so (a)/(f) clean).
+    assert result.check(CHECK_SERVABLE_BASIS).ok
+    assert result.check(CHECK_THIRD_PARTY_SERVABLE).ok
+    assert result.check(CHECK_DEDUP).ok
+    assert result.check(CHECK_EXTRACTION).ok
+
+
+def test_personal_reading_public_serve_leak_fails_check_personal_nonattrib(
+    db_path, monkeypatch
+):
+    """SHARPEN (arm 3 — the READ-SIDE lane invariant). PLANT the single defect: the
+    PUBLIC serve projection renders a personal_reading body to a NON-owner — the
+    §9.0 read-side catastrophe. The check must FAIL on the standing DB pass alone
+    (not only the runbook's manual step) and name the offending document_id.
+
+    This proves arm 3 is INDEPENDENTLY load-bearing: the set-based arms (1 + 2) are
+    still correct here — personal_reading is non-attributable and not in the public
+    graph — so a check that only replayed the two set predicates would stay GREEN
+    while the serve path leaks the full body. Only a check that exercises the REAL
+    serve chokepoint catches this, which is exactly what arm 3 adds.
+
+    We monkeypatch the serve chokepoint as the corpus_audit module binds it
+    (``corpus_audit.serve_full_text``) to simulate a future serve-path regression
+    (an edit that added personal_reading to the public full-body branch, or flipped
+    the owner default). The audit calls that bound name LIVE, so the regression
+    surfaces through the real call site arm 3 uses — not a stubbed column.
+
+    Isolation: the planted serve-path regression flips ONLY the personal-nonattrib
+    check; every other corpus check stays green (the leak is not a servable-basis,
+    dedup, extraction, or gated-leak failure — the gated-leak check is structurally
+    blind to personal_reading)."""
+    import substrate.corpus_audit as audit_mod
+    from substrate.books.serve import ServeResult
+
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-pr-serveleak",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " owner-private reading the public must never see kkk",
+            source_uri="https://paulgraham.com/essay.html",
+            title="A Personal Reading",
+            document_type="web_article",
+        )
+
+    # Sanity: with the REAL serve path, arm 3 passes — the public path withholds
+    # the personal_reading body (this is the clean baseline the defect is removed
+    # against, proving the check bites on the leak and not on the row's presence).
+    assert run_audit(db_path, include_binding=False).check(CHECK_PERSONAL_NONATTRIB).ok
+
+    real_serve = audit_mod.serve_full_text
+
+    def _leaky_serve(con, document_id, *, owner=False):
+        served = real_serve(con, document_id, owner=owner)
+        # The regression: the PUBLIC (owner=False) path now renders the full
+        # personal_reading body — the exact §9.0 read-side leak arm 3 guards.
+        if served.servability is not None and not owner:
+            row = con.execute(
+                "SELECT content_class, raw_text FROM documents WHERE document_id = ?",
+                [document_id],
+            ).fetchone()
+            if row and row[0] == "personal_reading":
+                return ServeResult(
+                    document_id=document_id,
+                    found=True,
+                    servability=served.servability,
+                    servable=True,
+                    full_text=row[1],
+                    snippet=None,
+                    title=served.title,
+                    author=served.author,
+                    reason="REGRESSION_personal_reading_public_full_body",
+                )
+        return served
+
+    monkeypatch.setattr(audit_mod, "serve_full_text", _leaky_serve)
+
+    result = run_audit(db_path, include_binding=False)
+    n = result.check(CHECK_PERSONAL_NONATTRIB)
+    assert not n.ok, "a public serve leak of a personal_reading body must fail arm 3"
+    assert n.count == 1
+    assert any("doc-pr-serveleak" in o for o in n.offending)
+    assert any("serve" in o for o in n.offending)
+    assert not result.ok
+    # Exactly ONE check failed — the personal-nonattrib one (arm 3). The serve-path
+    # regression does not falsely flip any other corpus check.
+    assert {c.name for c in result.failed_checks} == {CHECK_PERSONAL_NONATTRIB}
+
+
+# ---------------------------------------------------------------------------
+# SPR-10 M1.c — personal_reading never in a training/RL export (forward-guard).
+#   NON-VACUITY (rigor #1): the test materializes a fixture export TABLE
+#   populated from documents, points the check at it, plants ONE personal_reading
+#   row, asserts FAIL; removes that row, asserts PASS. Proves the check is
+#   falsifiable, not trivially always-green over a non-existent table.
+# ---------------------------------------------------------------------------
+
+
+def test_personal_not_training_forward_guard_passes_when_no_export(db_path):
+    """With the default (empty) TRAINING_EXPORT_TABLES — the origin/main reality
+    where no training/RL export builder exists — the check is honestly clean and
+    its detail SAYS it is a forward-guard (not a silent always-green)."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        _insert_document(
+            con,
+            document_id="doc-pr-c",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " personal reading present but no export exists yyy",
+            source_uri="https://example.com/pr.html",
+            title="Personal Reading",
+            document_type="web_article",
+        )
+    result = run_audit(db_path, include_binding=False)
+    c = result.check(CHECK_PERSONAL_NOT_TRAINING)
+    assert c.ok
+    # Honest about WHY it is clean — it guards a not-yet-existent export surface.
+    assert "forward-guard" in c.detail
+    assert result.ok
+
+
+def test_personal_not_training_bites_on_planted_export_row(db_path):
+    """NON-VACUITY proof. Materialize a fixture export table populated from
+    documents, plant ONE personal_reading row into it, point the check at that
+    table via the injectable impl seam, and assert it FAILS naming the offender.
+    Then DELETE that row and assert it PASSES — proving the check bites on a real
+    planted export row, not on a non-existent table."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        # A real personal_reading document in the corpus ...
+        _insert_document(
+            con,
+            document_id="doc-pr-export",
+            content_class="personal_reading",
+            raw_text=_BODY_A + " the owner's private reading that MUST NOT train www",
+            source_uri="https://paulgraham.com/private.html",
+            title="A Private Reading",
+            document_type="web_article",
+        )
+        # ... and a servable public-domain doc that legitimately MAY train.
+        _insert_document(
+            con,
+            document_id="doc-pd-export",
+            content_class="public_domain",
+            raw_text=_BODY_B + " a public-domain text that may legitimately train vvv",
+            source_uri="https://www.gutenberg.org/ebooks/4242",
+            title="A Trainable PD Text",
+        )
+        _insert_book_asset(
+            con, document_id="doc-pd-export",
+            license_basis="public_domain: Project Gutenberg; US public domain",
+        )
+        # The FIXTURE export table — a documents-derived training/RL selection. It
+        # naively selected ALL documents (the exact bug the check guards against):
+        # it carries the personal_reading row it must not.
+        con.execute(
+            """
+            CREATE TABLE training_export_fixture AS
+            SELECT document_id, raw_text FROM documents
+            """
+        )
+
+    # Point the check at the fixture export surface (the injectable impl seam —
+    # mirrors how a real builder would add its table name to TRAINING_EXPORT_TABLES).
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        biting = _check_personal_not_in_training_impl(con, ("training_export_fixture",))
+    finally:
+        con.close()
+    assert not biting.ok, "a personal_reading row in the export must FAIL the check"
+    assert biting.count == 1
+    assert any("doc-pr-export" in o for o in biting.offending)
+    # The servable PD row in the SAME export is NOT flagged — only personal_reading.
+    assert not any("doc-pd-export" in o for o in biting.offending)
+
+    # REMOVE the single defect — delete the personal_reading row from the export —
+    # and the check PASSES, proving it bit on that row, not on the table existing.
+    with connect_write(db_path, purpose="test-seed") as con:
+        con.execute(
+            "DELETE FROM training_export_fixture WHERE document_id = ?",
+            ["doc-pr-export"],
+        )
+    con = connect_read(db_path)
+    try:
+        clean = _check_personal_not_in_training_impl(con, ("training_export_fixture",))
+    finally:
+        con.close()
+    assert clean.ok, "with the personal_reading row removed the export is clean"
+
+
+def test_personal_not_training_unguardable_export_without_document_id(db_path):
+    """An export surface with NO document_id column is reported as un-guardable
+    (an honest FAIL), never silently passed — the check refuses to pretend it can
+    guard a table it cannot join back to documents. This is the intellectual-
+    honesty edge: a green check over an un-joinable export would be a lie."""
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_clean_corpus(con)
+        con.execute("CREATE TABLE bad_export AS SELECT raw_text FROM documents")
+    from runtime.db_lock import connect_read
+
+    con = connect_read(db_path)
+    try:
+        r = _check_personal_not_in_training_impl(con, ("bad_export",))
+    finally:
+        con.close()
+    assert not r.ok
+    assert any("un-guardable" in o for o in r.offending)
 
 
 # ---------------------------------------------------------------------------

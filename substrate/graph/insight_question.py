@@ -219,9 +219,22 @@ def promote_insight(
     metadata: Optional[Dict[str, Any]] = None,
     source_kind: Optional[str] = None,
     con: Optional[LockedConnection] = None,
+    dedup: bool = False,
+    dedup_rate: Any = None,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
+
+    AFF SPR-07: when ``dedup=True``, the candidate is run through
+    ``substrate.unit_dedup.find_near_duplicate`` against the already-deposited
+    insight units in its provenance scope BEFORE the row is inserted. On a match
+    the row insert is SKIPPED and a ``duplicate_of`` edge to the surviving unit
+    is recorded instead (carrying this candidate's provenance), and the returned
+    node id is the SURVIVOR's — so a near-duplicate compounds onto the existing
+    unit rather than bloating the graph with a new row. ``dedup`` is OFF by
+    default so existing callers are unchanged. ``dedup_rate`` is an optional
+    ``substrate.unit_dedup.DedupRate`` counter the path increments per attempt
+    (linked or not) for the M5 dedup-rate metric.
 
     ``supported_by`` is a sequence of *node ids* (claims/entities) the
     insight rests on; each becomes a ``supported_by`` edge carrying
@@ -251,6 +264,16 @@ def promote_insight(
                 "promoted_kind": "insight",
                 "confidence": confidence,
                 "canonical_text": canonical_text(text),
+                # AFF SPR-04: stamp the deposit's investigation_id into node
+                # metadata. The ``nodes`` table has no investigation_id column
+                # (it rides the GRAPH_NODE_INSERTED event envelope), but a
+                # marginalia insight has no ``supported_by`` edge to recover it
+                # from — so without this mirror ``knowledge_unit_of`` would
+                # project investigation_id='' for the marginalia path and SPR-07
+                # dedup keyed on investigation scope would mis-bucket it. This
+                # rides the existing metadata JSON payload — no event schema
+                # change (EVENT_SCHEMA_VERSION not bumped by this change; canonical value is in events.py).
+                "investigation_id": investigation_id,
             }
         )
         # §9 provenance discriminator. Stamped only when the caller asserts
@@ -268,7 +291,28 @@ def promote_insight(
             node_meta.setdefault("source_document_id", source_document_id)
         if chunk_id:
             node_meta.setdefault("chunk_id", chunk_id)
-        emb = (embedding_provider or _default_provider()).encode(text)
+        provider = embedding_provider or _default_provider()
+        # AFF SPR-07 — link a near-duplicate instead of inserting a new row.
+        if dedup:
+            match = _dedup_check(
+                c,
+                node_type="insight",
+                candidate_node_id=nid,
+                candidate_text=text,
+                investigation_id=investigation_id,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                source_tier=source_tier,
+                extraction_confidence=edge_conf,
+                provider=provider,
+                dedup_rate=dedup_rate,
+            )
+            if match is not None:
+                # Linked, not stored: skip the row insert + provenance edges and
+                # return the SURVIVOR's id. The survivor's row (and its §9.0
+                # servability) is untouched.
+                return match.existing_unit_id
+        emb = provider.encode(text)
         insert_node(
             c,
             canonical_label=text,
@@ -312,23 +356,68 @@ def promote_question(
     embedding_provider: Any = None,
     metadata: Optional[Dict[str, Any]] = None,
     con: Optional[LockedConnection] = None,
+    dedup: bool = False,
+    dedup_rate: Any = None,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
 
     ``asks_about`` are node ids the question concerns; ``resolved_by`` are
     insight node ids that answer it.
+
+    AFF SPR-07: ``dedup`` / ``dedup_rate`` behave exactly as in
+    :func:`promote_insight` — a near-duplicate question links to the surviving
+    question node (a ``duplicate_of`` self-edge) instead of inserting a row.
+    Questions dedup against questions only (never against insights).
     """
     nid = question_node_id(text)
 
     def _do(c: LockedConnection) -> str:
         node_meta: Dict[str, Any] = dict(metadata or {})
-        node_meta.update({"promoted_kind": "question", "canonical_text": canonical_text(text)})
+        node_meta.update(
+            {
+                "promoted_kind": "question",
+                "canonical_text": canonical_text(text),
+                # AFF SPR-04: stamp investigation_id into node metadata. A
+                # question node grounds via asks_about/resolved_by (never
+                # supported_by), so ``knowledge_unit_of`` cannot recover the
+                # investigation from a supported_by edge — this mirror is the
+                # single source the projection reads for the question path.
+                # Rides the existing metadata JSON — no event schema bump.
+                "investigation_id": investigation_id,
+            }
+        )
         if anchor_region_id:
             node_meta["anchor_region_id"] = anchor_region_id
         if source_document_id:
             node_meta.setdefault("source_document_id", source_document_id)
-        emb = (embedding_provider or _default_provider()).encode(text)
+        # AFF SPR-04: mirror chunk_id onto the question node too (the insight
+        # path already does at the marginalia branch). A question grounds via
+        # asks_about/resolved_by, never supported_by, so ``knowledge_unit_of``
+        # recovers its claim→chunk→doc grounding from metadata, not an edge —
+        # without the chunk_id mirror a grounded question would be wrongly
+        # rejected as ungrounded.
+        if chunk_id:
+            node_meta.setdefault("chunk_id", chunk_id)
+        provider = embedding_provider or _default_provider()
+        # AFF SPR-07 — link a near-duplicate question instead of inserting.
+        if dedup:
+            match = _dedup_check(
+                c,
+                node_type="question",
+                candidate_node_id=nid,
+                candidate_text=text,
+                investigation_id=investigation_id,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                source_tier=source_tier,
+                extraction_confidence=extraction_confidence,
+                provider=provider,
+                dedup_rate=dedup_rate,
+            )
+            if match is not None:
+                return match.existing_unit_id
+        emb = provider.encode(text)
         insert_node(
             c,
             canonical_label=text,
@@ -359,6 +448,220 @@ def promote_question(
         return nid
 
     return _with_connection(con, "promote_question", _do)
+
+
+# ---------------------------------------------------------------------------
+# AFF SPR-07 — cross-investigation dedup: link a near-duplicate, don't re-store.
+#
+# Before a deposit inserts a new insight/question row, the deposit path may run
+# the candidate through ``substrate.unit_dedup.find_near_duplicate`` against the
+# already-deposited units IN ITS OWN node_type. On a match it records a
+# ``duplicate_of`` edge to the surviving unit (carrying the candidate's primary
+# doc/chunk grounding to the survivor; merging its ADDITIONAL supported_by links
+# is a KNOWN GAP deferred to the always-on flip — see _link_duplicate) and SKIPS
+# the row insert, so the graph compounds rather than bloats.
+#
+# Single-writer + §16 preserved: this runs on the SAME write-locked connection
+# the deposit already holds (no new writer, no new query pattern beyond the
+# reads ``_node_type_of``/``knowledge_unit_of`` already do), and the detector
+# itself is pure (no DB). §9.0-safe: a ``duplicate_of`` link never touches the
+# survivor's row, so its servability is unchanged by construction (the deposit
+# tests assert this). The dedup is OPT-IN (``dedup=True``) so every existing
+# caller is byte-for-byte unchanged; SPR-07's tests + a future always-on trigger
+# turn it on.
+# ---------------------------------------------------------------------------
+
+
+def _dedup_check(
+    con: LockedConnection,
+    *,
+    node_type: str,
+    candidate_node_id: str,
+    candidate_text: str,
+    investigation_id: str,
+    source_document_id: Optional[str],
+    chunk_id: Optional[str],
+    source_tier: int,
+    extraction_confidence: float,
+    provider: Any,
+    dedup_rate: Any,
+):
+    """Run the candidate through the SPR-07 detector against scoped existing
+    units; on a match, record the ``duplicate_of`` edge + count it; return the
+    ``DuplicateMatch`` (or None). Increments ``dedup_rate`` once per attempt
+    (linked or not). This is the ONE place the deposit path calls
+    ``find_near_duplicate`` — once per candidate, before any insert."""
+    from substrate.unit_dedup import CandidateUnit, find_near_duplicate
+
+    existing = _scoped_existing_units(
+        con,
+        node_type=node_type,
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+    )
+    candidate = CandidateUnit(
+        text=candidate_text,
+        retrieval_key=candidate_node_id,
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+    )
+    match = find_near_duplicate(candidate, existing, embedding_provider=provider)
+    if match is not None:
+        _link_duplicate(
+            con,
+            survivor_id=match.existing_unit_id,
+            candidate_node_id=candidate_node_id,
+            candidate_text=candidate_text,
+            node_type=node_type,
+            investigation_id=investigation_id,
+            source_tier=source_tier,
+            extraction_confidence=extraction_confidence,
+            source_document_id=source_document_id,
+            chunk_id=chunk_id,
+            match=match,
+        )
+    if dedup_rate is not None:
+        dedup_rate.record(linked=match is not None)
+    return match
+
+
+def _scoped_existing_units(
+    con: LockedConnection,
+    *,
+    node_type: str,
+    investigation_id: str,
+    source_document_id: Optional[str],
+):
+    """Read the already-deposited units in the candidate's provenance SCOPE
+    (same investigation, or the same grounding document) and project them onto
+    ``substrate.unit_dedup.ExistingUnit``. The detector's scope guard also
+    re-checks scope per-pair, so an over-broad read here is safe — we narrow to
+    the candidate's investigation_id (mirrored into node metadata at deposit)
+    OR its source_document_id to keep the comparison set bounded.
+
+    Reads the node id + canonical_label + the metadata-mirrored investigation_id
+    and grounding doc (and the supported_by edge's source_document_id as a
+    fallback). The candidate's own node id is never in this set (it is not
+    inserted yet)."""
+    import json as _json
+
+    from substrate.unit_dedup import ExistingUnit
+
+    rows = con.execute(
+        "SELECT node_id, canonical_label, metadata FROM nodes "
+        "WHERE node_type = ?",
+        [node_type],
+    ).fetchall()
+    out = []
+    for nid, label, meta_raw in rows:
+        meta = {}
+        if meta_raw:
+            try:
+                meta = _json.loads(meta_raw)
+            except (TypeError, ValueError):
+                meta = {}
+        inv = meta.get("investigation_id") or ""
+        doc = meta.get("source_document_id")
+        if doc is None:
+            edge = con.execute(
+                "SELECT source_document_id FROM edges WHERE source_node_id = ? "
+                "AND relation = 'supported_by' AND source_document_id IS NOT NULL "
+                "LIMIT 1",
+                [nid],
+            ).fetchone()
+            doc = edge[0] if edge else None
+        # Only keep units that share the candidate's scope (the detector
+        # re-checks, but narrowing here bounds the embedding work).
+        in_scope = (investigation_id and inv == investigation_id) or (
+            source_document_id is not None and doc == source_document_id
+        )
+        if not in_scope:
+            continue
+        out.append(
+            ExistingUnit(
+                unit_id=nid,
+                text=label,
+                retrieval_key=nid,  # node_id IS the SPR-04 retrieval key
+                investigation_id=inv,
+                source_document_id=doc,
+            )
+        )
+    return out
+
+
+def _link_duplicate(
+    con: LockedConnection,
+    *,
+    survivor_id: str,
+    candidate_node_id: str,
+    candidate_text: str,
+    node_type: str,
+    investigation_id: str,
+    source_tier: int,
+    extraction_confidence: float,
+    source_document_id: Optional[str],
+    chunk_id: Optional[str],
+    match,
+) -> str:
+    """Record a ``duplicate_of`` edge candidate -> survivor and return the
+    edge id. The edge carries the candidate's PRIMARY grounding
+    (``source_document_id`` / ``chunk_id``) so the survivor keeps a citation to
+    the candidate's source, and stamps the dedup verdict (tier / cosine /
+    key_type) into edge metadata for audit.
+
+    KNOWN GAP (deferred to the always-on-flip sprint — see the §9.0/SPR-03-style
+    ratification this dedup awaits): only the PRIMARY doc/chunk grounding is
+    carried here; the candidate's ADDITIONAL ``supported_by`` claim-node edges
+    are NOT yet merged onto the survivor. Harmless while dedup is opt-in/off in
+    prod, but the flip MUST absorb the candidate's ``supported_by`` links first
+    or the survivor's evidentiary base will be under-counted.
+
+    CRITICAL: the candidate node was NOT inserted (that is the whole point —
+    link, don't re-store), so the ``duplicate_of`` edge's SOURCE is the
+    survivor's own node id too (a self-referential marker on the survivor that
+    records "another deposit resolved here"), NOT a dangling reference to a
+    never-written candidate node. We point source==target==survivor so both FK
+    columns reference a real row; the candidate's identity rides edge metadata.
+
+    Rides the existing GRAPH_EDGE_INSERTED ActionType (free-form relation) — no
+    new event type, no schema bump.
+
+    Edge id: derived from the SURVIVOR + relation + the CANDIDATE's node id, so
+    two DISTINCT candidates that resolve to the same survivor produce two
+    distinct ``duplicate_of`` edges (one per linked deposit — the dedup-rate
+    counts them), while a literal re-emission of the SAME candidate text (same
+    candidate_node_id) collapses idempotently via ``on_conflict='ignore'`` and
+    is NOT double-counted."""
+    from substrate.constants import DUPLICATE_OF_RELATION
+    from .ops import content_addressed_id
+
+    edge_id = content_addressed_id(
+        "edge",
+        f"{survivor_id}|{DUPLICATE_OF_RELATION}|{candidate_node_id}",
+    )
+    return insert_edge(
+        con,
+        source_node_id=survivor_id,
+        target_node_id=survivor_id,
+        relation=DUPLICATE_OF_RELATION,
+        source_tier=source_tier,
+        extraction_confidence=extraction_confidence,
+        graph_scope=_PROMOTION_GRAPH_SCOPE,
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+        chunk_id=chunk_id,
+        edge_id=edge_id,
+        metadata={
+            "duplicate_of": survivor_id,
+            "candidate_node_id": candidate_node_id,
+            "candidate_text": candidate_text,
+            "candidate_investigation_id": investigation_id,
+            "match_tier": match.tier,
+            "match_cosine": match.cosine,
+            "match_key_type": match.key_type,
+        },
+        on_conflict="ignore",
+    )
 
 
 def _record_dangling(con: LockedConnection, node_id: str, relation: str, targets: list) -> None:
@@ -536,6 +839,179 @@ def promote_from_marginalia_event(
         embedding_provider=embedding_provider,
         con=con,
     )
+
+
+# ---------------------------------------------------------------------------
+# AFF SPR-04 — assemble a deposited node into a KnowledgeUnitContract.
+#
+# The deposit path is UNCHANGED: promote_insight/promote_question still write
+# node + provenance edges atomically through the single writer
+# (``_with_connection`` → ``connect_write``), §16-preserving. This helper does
+# NOT write — it READS what a deposit already produced (the content-addressed
+# node_id, the supported_by edge's source_document_id/chunk_id, the chunk_id
+# mirrored into node metadata at L267-270) and projects it onto the
+# KnowledgeUnitContract shape so a consumer (or the conformance test) can prove
+# a deposit carries every required field. The §9.0 servability tag is SOURCED
+# from the existing classifier (``substrate.books.servability``) — we read its
+# answer, never re-derive deny-by-default. groundedness_score is left None
+# (SPR-08 fills it).
+# ---------------------------------------------------------------------------
+
+
+def servability_tag_for(content_class: Optional[str], *, taken_down: bool = False):
+    """Read the §9.0 classifier's answer for a unit grounded on a source of
+    this ``content_class`` and return a ``ServabilityTag``. This does NOT
+    re-derive deny-by-default — it asks ``substrate.books.servability`` (the
+    single source of the §9.0 mapping) and records the verdict. A None/unknown
+    class resolves to a gated (non-servable) tag, exactly as the classifier
+    decides. ``content_class`` is normalized to the contract's ``ContentClass``
+    Literal only when it is one of the allowlisted full-text classes; otherwise
+    it is recorded as None (unknown ⇒ non-servable)."""
+    from substrate.books.servability import is_servable_full_text, servability_of
+    from substrate.contracts.servable import FULL_TEXT_SERVABLE
+    from substrate.contracts.nodes import ServabilityTag
+
+    status = servability_of(content_class, taken_down=taken_down)
+    serves = is_servable_full_text(status)
+    # Type the recorded class against the contract Literal: only surface a
+    # content_class the contract recognizes AND that is servable; anything
+    # else (None, unknown, gated, taken_down) records None ⇒ non-servable.
+    tag_class = status.value if (serves and status.value in FULL_TEXT_SERVABLE) else None
+    return ServabilityTag(content_class=tag_class, serves_full_text=serves)
+
+
+def knowledge_unit_of(
+    con: LockedConnection,
+    node_id: str,
+    *,
+    content_class: Optional[str] = None,
+    taken_down: bool = False,
+    score_groundedness: bool = False,
+):
+    """Project a deposited insight/question node (already written by
+    ``promote_insight``/``promote_question``) onto a ``KnowledgeUnitContract``.
+
+    Reads the node row + its ``supported_by`` provenance edge from the SAME
+    write-locked connection the deposit used (no new writer, no new query
+    pattern beyond the reads ``_node_type_of`` already does). The provenance
+    link is taken from the edge's ``source_document_id`` / ``chunk_id``, with a
+    fallback to the node ``metadata`` mirror (L267-270) for the marginalia path
+    that grounds on metadata.chunk_id without a claim-node target. Returns a
+    validated ``KnowledgeUnitContract``; raises if the node carries no
+    grounding (a unit with no chunk is not depositable as a knowledge unit).
+
+    The §9.0 servability tag is the classifier's answer for ``content_class``
+    (read, not re-derived).
+
+    ``groundedness_score`` is left ``None`` by default — SPR-04 conformance
+    depends on an unflagged projection leaving the slot empty (it is a slot, not
+    a required signal). AFF SPR-08 fills it at projection time when
+    ``score_groundedness=True``: the unit's cited chunk text is resolved with a
+    SELECT on THIS SAME connection (no nested read connection, no new writer)
+    and the shipped #27 lexical scorer
+    (``substrate.eval.groundedness.score_claim``) scores the unit's text against
+    that evidence. The lexical backend is deterministic, so a deposit-time score
+    and a later re-score are identical — the gate (reuse_gate) may re-score
+    lazily if the slot is still None without diverging."""
+    import json
+
+    from substrate.contracts.nodes import KnowledgeUnitContract, ProvenanceLink
+
+    # ``nodes`` has no ``investigation_id`` column — per this module's docstring
+    # the investigation rides the GRAPH_NODE_INSERTED event envelope and the
+    # provenance edge, not the node row. So we read the node's identity/text
+    # from the row and source investigation_id + grounding from the edge.
+    row = con.execute(
+        "SELECT node_type, canonical_label, metadata "
+        "FROM nodes WHERE node_id = ? LIMIT 1",
+        [node_id],
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"no node {node_id!r} to assemble into a knowledge unit")
+    node_type, text, meta_raw = row
+    meta: Dict[str, Any] = {}
+    if meta_raw:
+        try:
+            meta = json.loads(meta_raw)
+        except (TypeError, ValueError):
+            meta = {}
+
+    # Prefer the supported_by edge's grounding + investigation_id; fall back to
+    # the node metadata mirror (the marginalia path records chunk_id/
+    # source_document_id there) for the no-claim-node-target case.
+    edge = con.execute(
+        "SELECT source_document_id, chunk_id, investigation_id FROM edges "
+        "WHERE source_node_id = ? AND relation = 'supported_by' "
+        "AND chunk_id IS NOT NULL LIMIT 1",
+        [node_id],
+    ).fetchone()
+    source_document_id = (edge[0] if edge else None) or meta.get("source_document_id")
+    chunk_id = (edge[1] if edge else None) or meta.get("chunk_id")
+    # investigation_id: prefer the supported_by edge (insight grounded on a
+    # claim), fall back to the node metadata mirror that promote_insight/
+    # promote_question now stamp at deposit (the marginalia + question paths
+    # have no supported_by edge to recover it from). Empty/absent is a genuine
+    # gap, not a tolerated default — fail LOUD here (AFF SPR-04 BLOCKER 2) so
+    # SPR-07 never silently dedups a real deposit under a '' investigation.
+    investigation_id = (edge[2] if edge else None) or meta.get("investigation_id")
+    if not source_document_id or not chunk_id:
+        raise ValueError(
+            f"node {node_id!r} carries no claim→chunk→doc grounding "
+            f"(source_document_id={source_document_id!r} chunk_id={chunk_id!r}); "
+            "not assemblable as a knowledge unit"
+        )
+    if not investigation_id:
+        raise ValueError(
+            f"node {node_id!r} carries no investigation_id (neither on its "
+            "supported_by edge nor in node metadata); a knowledge unit must "
+            "be scoped to its deposit investigation (SPR-07 dedup keys on it). "
+            "Ensure promote_insight/promote_question stamped investigation_id."
+        )
+
+    groundedness_score: Optional[float] = None
+    if score_groundedness:
+        groundedness_score = _score_unit_groundedness(con, text, chunk_id)
+
+    return KnowledgeUnitContract(
+        node_id=node_id,
+        node_type=node_type,
+        text=text,
+        investigation_id=investigation_id,  # guaranteed non-empty above
+        confidence=meta.get("confidence", "unknown"),
+        retrieval_key=node_id,
+        provenance=ProvenanceLink(
+            source_document_id=source_document_id, chunk_id=chunk_id
+        ),
+        servability=servability_tag_for(content_class, taken_down=taken_down),
+        groundedness_score=groundedness_score,
+    )
+
+
+def _score_unit_groundedness(
+    con: LockedConnection, unit_text: str, chunk_id: Optional[str]
+) -> float:
+    """Score one knowledge unit's text against the text of the chunk it is
+    grounded on, using the shipped #27 lexical entailment scorer.
+
+    A knowledge unit IS one claim, so this calls ``score_claim`` directly (not
+    the synthesis-level path). The cited chunk text is resolved with a SELECT on
+    the SAME connection the projection already holds — no nested read
+    connection, no second writer (§16). A unit whose chunk text cannot be
+    resolved is scored against EMPTY evidence, which the #27 scorer floors at
+    0.0 / not-supported — the no-evidence floor, preserved, not worked around."""
+    from substrate.eval.groundedness import score_claim
+
+    chunk_texts: list[str] = []
+    if chunk_id:
+        row = con.execute(
+            "SELECT text FROM chunks WHERE chunk_id = ? LIMIT 1", [chunk_id]
+        ).fetchone()
+        if row and row[0] is not None:
+            chunk_texts.append(str(row[0]))
+    verdict = score_claim(
+        unit_text, chunk_texts, cited_chunk_ids=[chunk_id] if chunk_id else []
+    )
+    return verdict.score
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
-import type { ParsedClaim, ParsedSynthesis, QualityScore, Recommendation } from "../../lib/synthesisParser";
+import type {
+  CompoundingStat,
+  ParsedClaim,
+  ParsedSynthesis,
+  QualityScore,
+  Recommendation,
+  ReusedInsight,
+} from "../../lib/synthesisParser";
 import {
   RESTRICTED_TITLE,
   SERVABLE_CLASS,
@@ -364,6 +371,17 @@ export default function MasterMdViewer({
 
         {/* Appendix — falsifications + risks + constraints, collapsed */}
         <Appendix synthesis={synthesis} />
+
+        {/* SPR-10 M3/M4/M5 — the reuse-provenance footnote, a sibling of the
+            Appendix in the SAME calm audit register (collapsed <details>, same
+            classes). Present-only: renders NOTHING when this run reused nothing
+            (empty reuseProvenance AND no compounding stat) — byte-identical to
+            today's render, the qualityScore === null discipline. Never a hero
+            banner, never a fabricated number. */}
+        <ReuseProvenance
+          insights={synthesis.reuseProvenance}
+          stat={synthesis.compoundingStat}
+        />
       </article>
 
       {/* ── Living-Roadmap SPR-02 (M2) — the minimap, a SECOND render pass of the
@@ -959,5 +977,126 @@ function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {
       </div>
     </details>
   );
+}
+
+// ── Reuse provenance (SPR-10 M3/M4/M5) ───────────────────────────────────────
+//
+// The flywheel's compounding made FELT — a quiet researcher's footnote, not a
+// growth dashboard (§5). When a completed investigation reused prior knowledge,
+// it surfaces (a) a one-line compounding stat and (b) the list of reused prior
+// insights, each linking to the prior investigation it came from.
+//
+// PRESENT-ONLY (the cardinal discipline, mirrors `qualityScore === null`): when
+// this run reused nothing — empty `insights` AND no `stat` — it renders NOTHING
+// (returns null), byte-identical to the pre-SPR-10 render. There is NO zeroed
+// "0 insights reused" placebo: the absent case is honest by saying nothing.
+//
+// HONESTY ON THE THREE NUMBERS (rigor #1): the stat renders only the fields it
+// actually HAS. `reused` is real (the count of reused units). `avoided` /
+// `fewerSources` require SPR-09's cold-baseline, which has NO per-investigation
+// source today (no `compounding.measured` event) — so they are null and their
+// clauses do not appear. The client NEVER computes a cold baseline (no
+// source-count subtraction here — see docs/decisions/spr-10-flywheel-surface.md).
+//
+// REACHABILITY (M6): a reused insight links to `/inv/:sourceInvestigationId` —
+// the EXISTING App.tsx route (line 107), no new route. The link is a plain
+// semantic <a> (mirrors ChunkModal's OpenInDocumentButton), so navigating it
+// honours §9.0: it opens the prior investigation's own synthesis surface, it
+// does NOT fetch or display a withheld source body.
+
+/** The plain-language compounding stat line, built ONLY from the fields the
+ *  measurement actually carried. Declarative + sourced wording ("reused N
+ *  insights …"), no promotional chrome. A clause appears only when its number
+ *  is present (non-null) — so a stat with only `reused` reads "reused 2
+ *  insights" with no fabricated avoided/fewer-than-cold tail. */
+function compoundingStatLine(stat: CompoundingStat): string {
+  const parts: string[] = [
+    `reused ${stat.reused} insight${stat.reused === 1 ? "" : "s"}`,
+  ];
+  if (stat.avoided !== null) {
+    parts.push(
+      `avoided ${stat.avoided} re-derivation${stat.avoided === 1 ? "" : "s"}`,
+    );
+  }
+  if (stat.fewerSources !== null) {
+    parts.push(
+      `${stat.fewerSources} fewer source${
+        stat.fewerSources === 1 ? "" : "s"
+      } than cold`,
+    );
+  }
+  return parts.join(" · ");
+}
+
+function ReuseProvenance({
+  insights,
+  stat,
+}: {
+  insights: ReusedInsight[];
+  stat: CompoundingStat | null;
+}) {
+  // A stat line shows ONLY when a per-run measurement carried a real number. A
+  // {reused:0} measurement with no avoided/fewer is NOT a "0 insights reused"
+  // placebo — it carries nothing worth a line. (compoundingStat is already gated
+  // on the measurement event in the parser; this also guards the zeroed case.)
+  const meaningfulStat =
+    stat && (stat.reused > 0 || stat.avoided !== null || stat.fewerSources !== null)
+      ? stat
+      : null;
+  // Present-only: nothing reused AND no meaningful stat ⇒ render nothing at all
+  // (byte-identical to today; the qualityScore === null discipline).
+  if (insights.length === 0 && !meaningfulStat) return null;
+
+  return (
+    <details
+      className="border-t border-rule dark:border-charcoal-1 pt-6 mt-8"
+      data-testid="reuse-provenance"
+    >
+      <summary className="text-sm font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight cursor-pointer hover:text-ink dark:text-bright transition-colors">
+        Reuse provenance — what this built on
+      </summary>
+      <div className="mt-4 space-y-4 text-sm">
+        {meaningfulStat && (
+          <p className="text-shadow-1 dark:text-moonlight font-mono text-xs">
+            {compoundingStatLine(meaningfulStat)}
+          </p>
+        )}
+        {insights.length > 0 && (
+          <section>
+            <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
+              Reused prior insights
+            </h3>
+            <ul className="list-disc list-inside space-y-2 text-ink dark:text-bright">
+              {insights.map((ins, i) => (
+                <li key={`${ins.unitId}-${i}`}>
+                  <ReusedInsightLink insight={ins} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    </details>
+  );
+}
+
+/** One reused prior insight, rendered as the real identifier we have (the unit
+ *  id — never a fabricated human title; the payload carries none). When the
+ *  source investigation is known, the whole entry is a link to that prior
+ *  investigation's EXISTING `/inv/:id` surface (M6 reachability); when it is
+ *  not, it is plain text (honest "unknown origin", no dead link). */
+function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
+  const label = `prior insight ${insight.unitId}`;
+  if (insight.sourceInvestigationId) {
+    return (
+      <a
+        href={`/inv/${encodeURIComponent(insight.sourceInvestigationId)}`}
+        className="text-ink-soft dark:text-starlight hover:text-ink dark:text-bright underline underline-offset-2 transition-colors"
+      >
+        {label}
+      </a>
+    );
+  }
+  return <span className="text-ink-soft dark:text-starlight">{label}</span>;
 }
 

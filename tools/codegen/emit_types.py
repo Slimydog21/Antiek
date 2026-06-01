@@ -141,6 +141,8 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
 PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DispatchCallPayload,
     schema_module.ContextPackAssembledPayload,
+    schema_module.KnowledgeReusedPayload,  # AFF SPR-06 — flywheel reuse half
+    schema_module.ReuseGatedPayload,  # AFF SPR-08 — trust gate on reuse
     schema_module.DocumentLoadedPayload,
     schema_module.DocumentRegionSelectedPayload,
     schema_module.DistillationRequestedPayload,
@@ -249,6 +251,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     # Read workflow SPR-01 — servable-corpus legal-gate audit trail.
     schema_module.BookServabilityChangedPayload,
     schema_module.BookTakenDownPayload,
+    # Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
+    schema_module.DocumentContentClassDefaultedPayload,
     # antiek-unified SPR-03 — the six flywheel seams + one provisional seam.
     schema_module.SeamResearchToReadPayload,
     schema_module.SeamReadToResearchPayload,

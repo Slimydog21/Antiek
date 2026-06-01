@@ -1,0 +1,25 @@
+{
+  "generated_at": "2026-05-31T08:21:36.796916+00:00",
+  "lint": "reachability_gate",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 0,
+      "kind": "route:no-inbound-link:/notebook/auto",
+      "line": 136,
+      "path": "apps/reading/src/App.tsx"
+    },
+    {
+      "col": 0,
+      "kind": "route:no-inbound-link:/coordination/cost-consent",
+      "line": 178,
+      "path": "apps/reading/src/App.tsx"
+    },
+    {
+      "col": 0,
+      "kind": "route:no-inbound-link:/_panel",
+      "line": 236,
+      "path": "apps/reading/src/App.tsx"
+    }
+  ]
+}

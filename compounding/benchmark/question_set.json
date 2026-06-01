@@ -1,0 +1,114 @@
+{
+  "version": "spr09.v1",
+  "seed": 20260531,
+  "frozen_sha": "sha256:a616d5b43209daf2e88be92482d0fe3e3b690787fc324ef6a50f6585e46bf0af",
+  "notes": "AFF SPR-09 frozen compounding-benchmark question set (OPERATOR_INPUTS \u00a72, 12 questions / 3 cells). seed = mint date 2026-05-31. frozen_sha is content-addressed over the questions (sha field excluded). OPERATOR ratifies this set + n + floor + tolerance before any scored (mock_run:false) run (decision 0.2).",
+  "questions": [
+    {
+      "question_id": "Q-HI-E1",
+      "overlap_class": "high_overlap",
+      "headline_pooled": true,
+      "text": "What single-qubit gate error rates have neutral-atom platforms demonstrated near 100-qubit scale, and do they support crossing 1000 qubits by ~2027?",
+      "seeded_unit_ids": [
+        "u-quera-error-rate",
+        "u-quera-1000q-question"
+      ]
+    },
+    {
+      "question_id": "Q-HI-E2",
+      "overlap_class": "high_overlap",
+      "headline_pooled": true,
+      "text": "How does gate fidelity scale with qubit count in photonic versus neutral-atom architectures?",
+      "seeded_unit_ids": [
+        "u-photonic-fidelity-scaling",
+        "u-quera-error-rate"
+      ]
+    },
+    {
+      "question_id": "Q-HI-E3",
+      "overlap_class": "high_overlap",
+      "headline_pooled": true,
+      "text": "What does the QEC threshold theorem imply for the logical-qubit threshold needed for fault tolerance?",
+      "seeded_unit_ids": [
+        "u-qec-threshold"
+      ]
+    },
+    {
+      "question_id": "Q-HI-S1",
+      "overlap_class": "high_overlap",
+      "headline_pooled": true,
+      "text": "Given current error rates and scaling trajectories, which qubit modality is best positioned for near-term fault tolerance?",
+      "seeded_unit_ids": [
+        "u-quera-error-rate",
+        "u-photonic-fidelity-scaling",
+        "u-qec-threshold"
+      ]
+    },
+    {
+      "question_id": "Q-HI-I1",
+      "overlap_class": "high_overlap",
+      "headline_pooled": false,
+      "text": "What is the deposit-to-retrieve-to-reuse path by which a prior insight becomes 'known context you do not need to re-derive'?",
+      "seeded_unit_ids": [
+        "u-mechanism-promote",
+        "u-mechanism-retrieve",
+        "u-mechanism-inject"
+      ]
+    },
+    {
+      "question_id": "Q-PA-01",
+      "overlap_class": "partial_overlap",
+      "headline_pooled": true,
+      "text": "What are the tradeoffs between bootstrap and t-interval confidence intervals for a small-n cost benchmark?",
+      "seeded_unit_ids": [
+        "u-adjacent-statistics"
+      ]
+    },
+    {
+      "question_id": "Q-PA-02",
+      "overlap_class": "partial_overlap",
+      "headline_pooled": true,
+      "text": "How do you reconstruct wall-clock duration from an append-only event log, and what are the failure modes?",
+      "seeded_unit_ids": [
+        "u-adjacent-eventlog"
+      ]
+    },
+    {
+      "question_id": "Q-PA-03",
+      "overlap_class": "partial_overlap",
+      "headline_pooled": true,
+      "text": "How do you distinguish real knowledge compounding from prompt-cache warming in a cost measurement?",
+      "seeded_unit_ids": [
+        "u-adjacent-caching"
+      ]
+    },
+    {
+      "question_id": "Q-ZC-01",
+      "overlap_class": "zero_overlap_control",
+      "headline_pooled": true,
+      "text": "What caused the Mariner 1 launch failure and how was it verified afterward?",
+      "seeded_unit_ids": []
+    },
+    {
+      "question_id": "Q-ZC-02",
+      "overlap_class": "zero_overlap_control",
+      "headline_pooled": true,
+      "text": "How does tardigrade anhydrobiosis differ from nematode cryptobiosis?",
+      "seeded_unit_ids": []
+    },
+    {
+      "question_id": "Q-ZC-03",
+      "overlap_class": "zero_overlap_control",
+      "headline_pooled": true,
+      "text": "How were disputes governed within a Hanseatic League Kontor?",
+      "seeded_unit_ids": []
+    },
+    {
+      "question_id": "Q-ZC-04",
+      "overlap_class": "zero_overlap_control",
+      "headline_pooled": true,
+      "text": "Why is Roman concrete durable in seawater?",
+      "seeded_unit_ids": []
+    }
+  ]
+}

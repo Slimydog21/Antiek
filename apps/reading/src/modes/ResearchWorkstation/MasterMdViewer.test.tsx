@@ -107,6 +107,8 @@ function synth(over: Partial<ParsedSynthesis> = {}): ParsedSynthesis {
     domainsPatched: [],
     chunkCitations: { c1: [1] },
     qualityScore: null,
+    reuseProvenance: [],
+    compoundingStat: null,
     ...over,
   };
 }
@@ -734,6 +736,130 @@ describe("MasterMdViewer — ResizeObserver recompute trigger (Living-Roadmap SP
           RealResizeObserver;
       }
     }
+  });
+});
+
+// ── SPR-10 M3/M4/M6 — the reuse-provenance footnote (present / empty / link) ──
+//
+// Present-only (the qualityScore === null discipline): with reuseProvenance
+// empty AND no compounding stat, the affordance node is ABSENT from the DOM (a
+// queryBy… returns null) — so the no-reuse render is byte-identical to today and
+// the SPR-02 byte-equivalence test above is unaffected. With data present, each
+// reused insight links to its prior investigation's EXISTING /inv/:id route (M6),
+// and the stat line renders only the numbers it actually has (M4).
+
+describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () => {
+  it("renders NOTHING when the run reused nothing (empty + no stat → no affordance node)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({ reuseProvenance: [], compoundingStat: null })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("The claim holds.")).toBeTruthy());
+    // Present-only: the whole affordance is absent — no node, no heading, no
+    // stat line. This is the byte-identical no-reuse render.
+    expect(screen.queryByTestId("reuse-provenance")).toBeNull();
+    expect(screen.queryByText(/Reuse provenance/i)).toBeNull();
+    expect(screen.queryByText(/reused .* insight/i)).toBeNull();
+  });
+
+  it("renders one link per reused insight, each to the prior investigation's /inv/ route (M3/M6)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          reuseProvenance: [
+            { unitId: "unit-aaa", sourceInvestigationId: "inv-src-1", score: 0.91 },
+            { unitId: "unit-bbb", sourceInvestigationId: "inv-src-2", score: 0.83 },
+          ],
+          // reuse present, no per-run measurement (the common case) → no stat line.
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    // Non-vacuity: the EXACT unit ids appear as link text, and each link's href
+    // resolves to the EXISTING /inv/:id route (no orphan; SPR-01 reachability).
+    const linkA = screen.getByText("prior insight unit-aaa");
+    const linkB = screen.getByText("prior insight unit-bbb");
+    expect(linkA.getAttribute("href")).toBe("/inv/inv-src-1");
+    expect(linkB.getAttribute("href")).toBe("/inv/inv-src-2");
+    for (const href of [
+      linkA.getAttribute("href"),
+      linkB.getAttribute("href"),
+    ]) {
+      expect(href).toMatch(/^\/inv\//);
+    }
+  });
+
+  it("renders a known-source insight WITHOUT a source as plain text (honest, no dead link)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          reuseProvenance: [
+            { unitId: "unit-orphan", sourceInvestigationId: null, score: null },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+    const node = screen.getByText("prior insight unit-orphan");
+    // No source ⇒ plain span, NOT an <a> (never a dead link to a missing route).
+    expect(node.tagName).not.toBe("A");
+    expect(node.getAttribute("href")).toBeNull();
+  });
+
+  it("renders the reuse LIST but NO stat line when there's reuse and no measurement (M4 gating)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          reuseProvenance: [
+            { unitId: "u1", sourceInvestigationId: "inv-a", score: 0.9 },
+            { unitId: "u2", sourceInvestigationId: "inv-b", score: 0.8 },
+          ],
+          // No per-run measurement event → no stat (M4: "null when no measurement").
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+    // The reuse list (M3) renders — the reused count is surfaced HERE …
+    expect(screen.getByText("prior insight u1")).toBeTruthy();
+    expect(screen.getByText("prior insight u2")).toBeTruthy();
+    // … but there is NO "reused N" stat line: a stat without a measurement would
+    // imply one happened (M4 honesty). The count is the list, never a fabricated stat.
+    // (`\d+` targets the stat "reused 2 insights", not the list heading
+    // "Reused prior insights" — which is M3's list, and SHOULD render.)
+    expect(screen.queryByText(/reused \d+ insight/i)).toBeNull();
+    expect(screen.queryByText(/re-derivation/)).toBeNull();
+    expect(screen.queryByText(/fewer source/)).toBeNull();
+  });
+
+  it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          reuseProvenance: [
+            { unitId: "u1", sourceInvestigationId: "inv-a", score: 0.9 },
+            { unitId: "u2", sourceInvestigationId: "inv-b", score: 0.8 },
+            { unitId: "u3", sourceInvestigationId: "inv-c", score: 0.7 },
+          ],
+          // The synthetic measurement shape (the substrate emits none today).
+          compoundingStat: { reused: 3, avoided: 2, fewerSources: 5 },
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+    // All three exact numbers render in one declarative, sourced line.
+    expect(
+      screen.getByText("reused 3 insights · avoided 2 re-derivations · 5 fewer sources than cold"),
+    ).toBeTruthy();
   });
 });
 

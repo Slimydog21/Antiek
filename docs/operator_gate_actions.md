@@ -20,8 +20,11 @@ checklist with minimum inputs and an explicit owner.
 | G7 six-month compounding demo | ⏳ calendar (~Nov 2026) | Multi-user pivot Sprint 22 |
 | G8 Loop 3 unlock criteria | ⏳ data-bound | RLM + SFT + hosted RL track |
 | G9 arXiv researcher-payout counsel/KYC | ❌ open (counsel) | arXiv SPR-07/08 (researcher identity + KYC/payout); branch `caffen/arxiv-ingest` |
+| G10 Stripe Press §9.10 publisher opt-in | ❌ open (operator BizDev) | The ONLY servable path for any in-copyright Stripe Press title; until granted, every Stripe Press title is gated/personal-read, never servable |
+| G11 X no-training constraint | ✅ enforced in code / ⏳ standing operator duty | Keeping ALL BYOK X content (`personal_reading`, `social_thread`) out of every training/RL export — X dev terms forbid training on X data |
+| G12 Bernays per-title copyright-renewal check | ❌ open (operator, per-title) | Making any 1927–1930 Bernays title servable — the in-copyright titles must NEVER be relabeled to a servable class without a per-title US renewal-records check |
 
-**3 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9).**
+**3 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9), plus 3 personal-reading-lane operator gate-actions (G10 Stripe Press, G11 X no-training, G12 Bernays renewal).**
 
 ## Highest-leverage next action
 
@@ -531,3 +534,120 @@ new interaction primitives, all behind the existing gates.
   Sprint 11→22 sequence vs the UI-redesign Sprint 0→12 sequence.
 - `docs/trust_center_public.md` — public-facing scaffold; awaits G2.
 - `infrastructure/runbooks/*.md` — deployment + activation flows.
+
+---
+
+## Personal-Reading Lane operator gate-actions (SPR-10, 2026-05-31)
+
+These three are **operator-only** — engineering cannot close them. They are the
+no-code asks that bound the personal-reading lane's lawful content. Each is
+recorded here so a future agent does not try to "fix" it in code (the lane code
+is already done; these are BizDev / legal / per-title facts only). The standing
+mechanical backstops for the lane live in `substrate/corpus_audit.py` (the
+`third_party_servable`, `personal_reading_nonattributable`, and
+`personal_reading_not_in_training` checks) and the go-live procedure is
+`infrastructure/runbooks/personal-lane.md` (audit-gated).
+
+---
+
+## G10 — Stripe Press §9.10 publisher opt-in
+
+**Status:** ❌ OPEN
+**Owner:** Operator (BizDev — phone/email Stripe Press / Stripe BizDev)
+**Blocks:** Serving ANY in-copyright Stripe Press title. Until a §9.10 publisher
+opt-in is granted, every Stripe Press title is **lane 2/3 only** (gated
+`restricted_pending_opt_in`, or `personal_reading` for an owner-fetched copy) —
+**never** a servable class.
+
+The §9.10 publisher opt-in flow (the same pre-onboarded-escrow + opt-in-only
+mechanism G2/G3 gate for the general publisher cohort) is the **sole servable
+path** for an in-copyright Stripe Press book. The operator phones/emails Stripe
+BizDev to request that opt-in; until it is granted and the publisher claims,
+the title's `content_class` must stay gated or `personal_reading`.
+
+**Read-only ≠ redistribution license.** "Free to read online" (e.g. *Poor
+Charlie's Almanack* on Stripe Press's own site) is a read-only courtesy by the
+publisher — it is **not** a grant of a redistribution license to Antiek. An
+owner who reads it lands it `personal_reading` (their private reading, never
+served to others); it does NOT become servable just because it is free to read
+on the publisher's site. Only the §9.10 opt-in makes a Stripe Press title
+servable.
+
+### What would close it
+A signed §9.10 publisher opt-in from Stripe Press + the publisher's claim
+(the same `pre_onboarded → invited → claimed` flow as G3). On claim, the
+specific opted-in titles may move from gated to `opt_in_licensed` (servable).
+Record the date + the titles in `docs/decisions/g10-stripe-press-opt-in.md`.
+
+---
+
+## G11 — X (Twitter) no-training constraint
+
+**Status:** ✅ enforced in code / ⏳ standing operator duty
+**Owner:** Operator / agent (keep it standing — never relax it)
+**Blocks:** Nothing today (no training/RL export exists); it is the **standing
+constraint** that any future training/RL export MUST honour.
+
+X's developer terms **forbid training on X data.** All BYOK X content the owner
+ingests through their own X API key lands `content_class='personal_reading'`,
+`document_type='social_thread'`, and MUST be excluded from **every** training /
+RL export. This is enforced two ways and they must both stay true:
+
+1. **In code (already done):** `personal_reading` is a member of
+   `NON_TRAINABLE_CONTENT_CLASSES` (`substrate/constants.py`), and the standing
+   audit check **`personal_reading_not_in_training`** (`substrate/corpus_audit.py`,
+   SPR-10 M1.c) is the mechanical backstop — it scans every declared training/RL
+   export surface (`TRAINING_EXPORT_TABLES`) and fails the corpus if any
+   `personal_reading` document_id appears. It is a **forward-guard** today
+   because no real training/RL export builder exists yet (verified
+   2026-05-31). **The human-readable counterpart of that check is this entry.**
+2. **Operator duty (standing):** the day a real training/RL export builder is
+   built, that sprint MUST register its source table/view name in
+   `substrate.corpus_audit.TRAINING_EXPORT_TABLES` (and only there) so the
+   `personal_reading_not_in_training` check guards the live export — and the
+   operator must confirm the audit still exits 0 before that export ships. Do
+   not build an export that selects all of `documents` naively; that is the
+   exact bug the check exists to catch.
+
+BYOK X keys are encrypted at rest, scoped to the owning user, and never logged /
+never in the event log (`runtime/byok/`); this entry is the no-training half of
+that BYOK discipline.
+
+---
+
+## G12 — Bernays per-title copyright-renewal follow-on
+
+**Status:** ❌ OPEN (per-title, only if the operator wants more Bernays titles servable)
+**Owner:** Operator (per-title US copyright-renewal-records check)
+**Blocks:** Making any additional (1927–1930) Bernays title servable.
+
+The Edward Bernays corpus splits cleanly into public-domain (servable) and
+in-copyright (never servable without a per-title check):
+
+**Servable today — public domain, exact bases:**
+- *Crystallizing Public Opinion* (1923) — US public domain; Project Gutenberg
+  #61364. `content_class='public_domain'` with that basis.
+- *Propaganda* (1928) — US public domain as of 2024-01-01 (95-year term elapsed).
+  `content_class='public_domain'` with that basis.
+
+**In-copyright — NEVER relabel to a servable class:**
+- *Public Relations* (1945) — renewal **RE0000069553** → © through ~2040.
+- *The Engineering of Consent* (1947/1955).
+- *Biography of an Idea* (1965).
+
+The rule: an in-copyright Bernays title may be `personal_reading` (an owner's
+private reading) or gated, but it must **NEVER** be relabeled to a servable
+class. If the operator wants any 1927–1930 Bernays title made servable (some may
+have lapsed into the public domain depending on renewal status), the **gate is a
+per-title US copyright-renewal-records check** (Stanford Copyright Renewal
+Database / Catalog of Copyright Entries) confirming the title was not renewed.
+Only a confirmed non-renewal moves a title to `public_domain` (servable); a
+title with a live renewal stays gated/personal-read.
+
+### What would close it (per title)
+A per-title renewal-records check result recorded in
+`docs/decisions/g12-bernays-renewal-<title-slug>.md`, with the renewal number
+(or confirmed absence) and the resulting `content_class`. Until then the
+in-copyright titles stay non-servable; the standing `corpus_audit`
+`servable_without_basis` check fails go-live on any servable title lacking a real
+basis.
