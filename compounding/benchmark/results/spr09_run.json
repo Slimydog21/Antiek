@@ -10,7 +10,7 @@
   "control_tolerance": 0.0,
   "material_floor": 0.0,
   "parameters_ratified": false,
-  "git_sha": "PENDING_COMMIT",
+  "git_sha": "e4fd64c",
   "captured_at": "2026-06-01T12:30:49.768447Z",
   "headline": {
     "label": "warm_vs_cold_high_overlap",
