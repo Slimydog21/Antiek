@@ -229,26 +229,10 @@ jobs:
         run: |
           python -m pytest tests/test_invariant_registry_meta.py -q -p no:cacheprovider -p no:xdist
 
-      - name: Compounding benchmark (SPR-09 keystone)
-        # SPR-09 (Antiek Flywheel Foundation) KEYSTONE. The blanket `pytest tests/`
-        # step above scopes to tests/, so the falsifiable compounding benchmark's
-        # tests (compounding/benchmark/tests/) are named here so a keystone failure
-        # is unmissable. `-m "not slow"` excludes the full n=20 multi-arm run
-        # (~3 min) — the fast suite drives the real demo loop end-to-end with small
-        # steps + synthetic-trajectory seed-and-catch tests in ~45s. The
-        # seed-and-catch tests (test_falsifiability) prove the scale reports a
-        # signed delta in either direction and that the irrelevant-seed control can
-        # flag a run invalid — a harness that could only ever return a positive
-        # delta would red here. See compounding/benchmark/README.md.
-        env:
-          DEEPSEEK_API_KEY: ""
-          OPENROUTER_API_KEY: ""
-          ANTHROPIC_API_KEY: ""
-          HERMES_API_KEY: ""
-          XAI_API_KEY: ""
-          OPENAI_API_KEY: ""
-        run: |
-          python -m pytest compounding/benchmark/tests/ -q -m "not slow" -p no:cacheprovider
+      # NOTE: the SPR-09 compounding-benchmark keystone moved to its OWN job
+      # (``keystone`` below) — SPR-11. Running it as a tail step of ``pytest``,
+      # after the full ~5400-test suite, OOM-killed it on the shared runner.
+      # It now gets a fresh runner; the gate is unchanged (see that job).
 
       - name: Source-onboarding corpus-value gate
         # Reframe finding #2: the WIRED stop-rule replacing the spec's PROSE
@@ -288,6 +272,53 @@ jobs:
         # See docs/decisions/unified-integration-health.md.
         run: |
           python tools/codegen/check_conformance.py
+
+  keystone:
+    name: keystone
+    runs-on: ubuntu-latest
+    # SPR-11 (Antiek Flywheel Foundation): the SPR-09 compounding-benchmark
+    # keystone runs in its OWN job, NOT as a tail step of `pytest`. Reason: the
+    # benchmark spins multiple DuckDB graphs + asyncio researchers, and running
+    # it AFTER the full ~5400-test suite on the same runner reliably OOM-killed
+    # the step (null step-conclusion, no FAILED line, ~26-29 min into the job —
+    # UNDER the 40-min timeout, so not a cancellation — while the identical run
+    # passes 48/48 on a fresh machine, deterministic + tmp-isolated). A dedicated
+    # fresh runner gives it full memory. This does NOT weaken the gate: the SAME
+    # tests run, still fail on a real defect, and a keystone failure still reds
+    # the PR — it just no longer competes for memory with the full suite.
+    # Reconsider-if: the suite is sharded/xdist'd so the keystone can re-home
+    # cheaply. See docs/decisions/ci-pytest-timeout.md.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+      - name: Install Antiek + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+      - name: Compounding benchmark (SPR-09 keystone)
+        # The falsifiable compounding benchmark (compounding/benchmark/tests/).
+        # `-m "not slow"` excludes the full n=20 multi-arm run. The seed-and-catch
+        # tests (test_falsifiability) prove the scale reports a signed delta in
+        # either direction and that the irrelevant-seed control can flag a run
+        # invalid — a harness that could only ever return a positive delta would
+        # red here. See compounding/benchmark/README.md.
+        env:
+          DEEPSEEK_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          HERMES_API_KEY: ""
+          XAI_API_KEY: ""
+          OPENAI_API_KEY: ""
+        run: |
+          python -m pytest compounding/benchmark/tests/ -q -m "not slow" -p no:cacheprovider
 
   tsc:
     name: tsc
