@@ -32,7 +32,11 @@ jobs:
   pytest:
     name: pytest
     runs-on: ubuntu-latest
-    # 25 min (was 15). The 15-min ceiling was already under-provisioned: the
+    # 40 min (was 25, was 15) — SECOND bump. SPR-07 + parallel-session merges
+    # tipped the suite past even 25 min (cancelled-not-failed at the wall again).
+    # xdist/sharding (the reconsider-if below) is now the REQUIRED real fix; 40 is
+    # the stopgap so the flywheel run can finish. Original 25-min rationale (still
+    # valid): the 15-min ceiling was already under-provisioned: the
     # base `main` suite runs ~14.4 min on this shared ubuntu-latest runner
     # (~1.66x slower than dev hardware per the locked rubric-latency benchmark)
     # and a recent `main` run was itself cancelled at 15.2 min. The corpus-ingest
@@ -43,7 +47,7 @@ jobs:
     # informational latency craft-signature baseline is untouched).
     # Reconsider-if: the suite is sharded / xdist-parallelized, after which this
     # can drop back toward 15. See docs/decisions/ci-pytest-timeout.md.
-    timeout-minutes: 25
+    timeout-minutes: 40
 
     steps:
       - name: Checkout

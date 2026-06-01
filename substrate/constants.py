@@ -254,6 +254,28 @@ INSIGHT_QUESTION_RELATIONS: Final[tuple[InsightQuestionRelation, ...]] = (
     ),
 )
 
+# ── AFF SPR-07 — the cross-investigation dedup self-edge relation ──
+# A candidate unit that near-duplicates an EXISTING unit links to the survivor
+# (a ``duplicate_of`` edge) instead of inserting a new row, so the graph
+# compounds rather than bloats. The candidate's source/provenance rides the
+# edge's ``source_document_id`` / ``chunk_id`` so citations + reuse-credit
+# accrue to the SURVIVING unit. The edge is IDENTITY-based, NOT trust-based
+# (SPR-08 owns trust) and never widens the survivor's §9.0 servability.
+#
+# This is a same-node_type SELF-edge (insight->insight, question->question),
+# DISTINCT from the closed provenance vocabulary above
+# (``INSIGHT_QUESTION_RELATIONS`` / ``validate_insight_question_edge``), which
+# is keyed by a single (relation -> source_type) and cannot carry one relation
+# with two source types. So ``duplicate_of`` is its own named constant the
+# deposit path references (never a hardcoded string — a typo is a NameError),
+# and the deposit path inserts the edge directly through the single writer with
+# explicit, type-correct source/target node ids. It rides the existing
+# ``GRAPH_EDGE_INSERTED`` ActionType (``edges.relation`` is free-form TEXT, the
+# ``GraphEdgeInsertedPayload.relation`` field is a free-form ``str``) — so there
+# is NO new ActionType, NO narrateEvent rule change, and NO
+# EVENT_SCHEMA_VERSION bump.
+DUPLICATE_OF_RELATION: Final[str] = "duplicate_of"
+
 # Fast membership + validation surface for the promotion functions.
 INSIGHT_QUESTION_RELATION_NAMES: Final[frozenset[str]] = frozenset(
     r.relation for r in INSIGHT_QUESTION_RELATIONS
