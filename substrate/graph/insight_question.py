@@ -886,6 +886,7 @@ def knowledge_unit_of(
     *,
     content_class: Optional[str] = None,
     taken_down: bool = False,
+    score_groundedness: bool = False,
 ):
     """Project a deposited insight/question node (already written by
     ``promote_insight``/``promote_question``) onto a ``KnowledgeUnitContract``.
@@ -900,7 +901,18 @@ def knowledge_unit_of(
     grounding (a unit with no chunk is not depositable as a knowledge unit).
 
     The §9.0 servability tag is the classifier's answer for ``content_class``
-    (read, not re-derived). ``groundedness_score`` is left None (SPR-08)."""
+    (read, not re-derived).
+
+    ``groundedness_score`` is left ``None`` by default — SPR-04 conformance
+    depends on an unflagged projection leaving the slot empty (it is a slot, not
+    a required signal). AFF SPR-08 fills it at projection time when
+    ``score_groundedness=True``: the unit's cited chunk text is resolved with a
+    SELECT on THIS SAME connection (no nested read connection, no new writer)
+    and the shipped #27 lexical scorer
+    (``substrate.eval.groundedness.score_claim``) scores the unit's text against
+    that evidence. The lexical backend is deterministic, so a deposit-time score
+    and a later re-score are identical — the gate (reuse_gate) may re-score
+    lazily if the slot is still None without diverging."""
     import json
 
     from substrate.contracts.nodes import KnowledgeUnitContract, ProvenanceLink
@@ -956,6 +968,10 @@ def knowledge_unit_of(
             "Ensure promote_insight/promote_question stamped investigation_id."
         )
 
+    groundedness_score: Optional[float] = None
+    if score_groundedness:
+        groundedness_score = _score_unit_groundedness(con, text, chunk_id)
+
     return KnowledgeUnitContract(
         node_id=node_id,
         node_type=node_type,
@@ -967,8 +983,35 @@ def knowledge_unit_of(
             source_document_id=source_document_id, chunk_id=chunk_id
         ),
         servability=servability_tag_for(content_class, taken_down=taken_down),
-        groundedness_score=None,
+        groundedness_score=groundedness_score,
     )
+
+
+def _score_unit_groundedness(
+    con: LockedConnection, unit_text: str, chunk_id: Optional[str]
+) -> float:
+    """Score one knowledge unit's text against the text of the chunk it is
+    grounded on, using the shipped #27 lexical entailment scorer.
+
+    A knowledge unit IS one claim, so this calls ``score_claim`` directly (not
+    the synthesis-level path). The cited chunk text is resolved with a SELECT on
+    the SAME connection the projection already holds — no nested read
+    connection, no second writer (§16). A unit whose chunk text cannot be
+    resolved is scored against EMPTY evidence, which the #27 scorer floors at
+    0.0 / not-supported — the no-evidence floor, preserved, not worked around."""
+    from substrate.eval.groundedness import score_claim
+
+    chunk_texts: list[str] = []
+    if chunk_id:
+        row = con.execute(
+            "SELECT text FROM chunks WHERE chunk_id = ? LIMIT 1", [chunk_id]
+        ).fetchone()
+        if row and row[0] is not None:
+            chunk_texts.append(str(row[0]))
+    verdict = score_claim(
+        unit_text, chunk_texts, cited_chunk_ids=[chunk_id] if chunk_id else []
+    )
+    return verdict.score
 
 
 # ---------------------------------------------------------------------------
