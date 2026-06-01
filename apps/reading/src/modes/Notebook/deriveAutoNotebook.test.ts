@@ -58,6 +58,8 @@ function synthesisWith(thesis: string): ParsedSynthesis {
     domainsPatched: [],
     chunkCitations: {},
     qualityScore: null,
+    reuseProvenance: [],
+    compoundingStat: null,
   };
 }
 
