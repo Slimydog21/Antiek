@@ -34,6 +34,7 @@ from .aggregate import DEFAULT_BOOTSTRAP_RESAMPLES, aggregate_comparison
 from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
 from .measure import CostToResolve
 from .pilot import propose_parameters, run_pilot
+from .profiles import BenchmarkProfile, load_profile
 from .question_set import QUESTION_SET_PATH, QuestionSet, load_question_set
 from .result_schema import ArmComparison, BenchmarkResult
 from .validity import HEADLINE_METRIC, decide
@@ -213,6 +214,39 @@ def run_benchmark(
     )
 
 
+def _refuse_prod_run(profile: BenchmarkProfile) -> int:
+    """SPR-11 — refuse to execute a prod-shaped LIVE run from this build
+    environment and print the exact operator-window command instead.
+
+    Honors the phase split + rigor #1: the prod RUN needs prod model-tier
+    credentials, the box, AND a reuse-consuming browse loop that does not
+    exist here. We do NOT fall back to the demo-loop mocks to manufacture a
+    green ``prod-<sha>.json`` — a non-reproducing (or not-yet-run) prod curve
+    is the honest finding, not a thing to fake. Returns exit 2
+    (could-not-complete), matching the existing ``--mock-run false`` refusal."""
+    sha = read_git_sha()
+    out_name = profile.out_filename(sha)
+    print(
+        f"REFUSED: --profile {profile.name!r} is a PROD-SHAPED real-dispatch run "
+        f"(mock_run={profile.mock_run}, dispatch_mode={profile.dispatch_mode!r}).\n"
+        "SPR-11 BUILDS the selector but DEFERS the live run to the operator window — "
+        "it needs (1) prod model-tier credentials, (2) the box (the live runtime), "
+        "and (3) a reuse-CONSUMING browse loop (the host-local demo loop is "
+        "reuse-blind). It will NOT fall back to mocks to fabricate a green curve.\n\n"
+        "Operator-window run (on the box, with prod creds + a reuse-consuming loop):\n"
+        f"    python -m compounding.benchmark.run --profile {profile.name} \\\n"
+        f"        --n {profile.n} --material-floor {profile.material_floor} "
+        f"--control-tolerance {profile.control_tolerance}\n"
+        f"  → writes compounding/benchmark/results/{out_name}\n"
+        f"    (the diff-able twin of the dev spr09_run.json; prod tiers: "
+        f"{profile.model_tiers}).\n\n"
+        "Then interpret per rigor #1: EITHER 'cost-to-resolve falls as the graph "
+        "grows, slope reproduces dev within tolerance' OR 'does NOT reproduce — "
+        "here is the curve + the gap'. A non-reproduction is a valid EXIT outcome."
+    )
+    return 2
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="AFF SPR-09 compounding benchmark (mock + pilot)")
     ap.add_argument("--question-set", default=QUESTION_SET_PATH)
@@ -228,9 +262,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--mock-run", default="true",
                     help="true (the only Phase-1 path) | false (live; needs provider creds + "
                          "operator-ratified n — refused here)")
+    ap.add_argument("--profile", default="dev",
+                    help="benchmark profile selector (SPR-11). 'dev' (default) = the "
+                         "autonomous mock run; 'prod' = the prod-shaped real-dispatch run "
+                         "(profiles/prod.toml). A prod profile's LIVE run is the operator "
+                         "window — run.py prints the exact command and REFUSES to execute "
+                         "it here (it never mocks around to fabricate a green).")
     args = ap.parse_args(argv)
 
     qs = load_question_set(args.question_set)
+
+    # SPR-11 — ADDITIVE profile selector. Loading a profile that uses real
+    # dispatch (prod) flips mock_run False; this build environment cannot
+    # execute it (no creds, no box, no reuse-consuming loop), so we REFUSE
+    # and print the exact operator-window command rather than mock around.
+    # The dev profile is the existing autonomous mock path, untouched.
+    try:
+        profile: BenchmarkProfile = load_profile(args.profile)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"REFUSED: could not load --profile {args.profile!r}: {exc}")
+        return 2
+    if profile.uses_real_dispatch:
+        return _refuse_prod_run(profile)
 
     if str(args.mock_run).lower() == "false":
         print(

@@ -28,8 +28,20 @@ _GOOD_SHA = "a" * 40
 _OTHER_SHA = "b" * 40
 
 
-def _fake_health(*, build_sha: str, providers: list[str]) -> dict:
-    """A stand-in /health body, shaped like the real HealthResponse."""
+def _fake_health(
+    *,
+    build_sha: str,
+    providers: list[str],
+    flywheel_ready: bool = True,
+    knowledge_reuse_count: int = 1,
+) -> dict:
+    """A stand-in /health body, shaped like the real HealthResponse.
+
+    ``flywheel_ready`` defaults to True (the in-parity case) so the
+    pre-SPR-11 tests that only vary SHA/providers stay meaningful: they
+    isolate the condition they name. The SPR-11 flywheel cases pass
+    ``flywheel_ready=False`` explicitly.
+    """
     return {
         "status": "ok",
         "param_version": "x",
@@ -37,6 +49,8 @@ def _fake_health(*, build_sha: str, providers: list[str]) -> dict:
         "subscriber_count": 0,
         "registered_providers": providers,
         "build_sha": build_sha,
+        "flywheel_ready": flywheel_ready,
+        "knowledge_reuse_count": knowledge_reuse_count,
     }
 
 
@@ -67,6 +81,88 @@ def test_assert_parity_empty_providers_reports_failure():
     )
     assert failures, "an empty provider registry must produce a failure message"
     assert any("provider registry" in f for f in failures)
+
+
+# ── SPR-11: the THIRD assertion — flywheel liveness ─────────────────────
+#
+# These prove the extension is non-vacuous at the assert_parity level: a
+# dead flywheel (flywheel_ready false, or the field absent) reds with a
+# flywheel-NAMED message, while an otherwise-in-parity body with a LIVE
+# flywheel is clean.
+
+
+def test_assert_parity_dead_flywheel_reports_failure():
+    # SHA matches + providers present, but the flywheel is DEAD.
+    failures = parity.assert_parity(
+        _fake_health(
+            build_sha=_GOOD_SHA,
+            providers=["openrouter"],
+            flywheel_ready=False,
+            knowledge_reuse_count=0,
+        ),
+        expected_sha=_GOOD_SHA,
+    )
+    assert failures, "a dead flywheel must produce a failure message"
+    assert any("flywheel" in f.lower() for f in failures), (
+        "the failure message must NAME the flywheel condition, not just SHA/providers"
+    )
+
+
+def test_assert_parity_absent_flywheel_field_reports_failure():
+    # An older build that predates the SPR-11 /health field: flywheel_ready
+    # is ABSENT. The safe red — we cannot prove the flywheel is live.
+    body = _fake_health(build_sha=_GOOD_SHA, providers=["openrouter"])
+    del body["flywheel_ready"]
+    del body["knowledge_reuse_count"]
+    failures = parity.assert_parity(body, expected_sha=_GOOD_SHA)
+    assert failures, "an absent flywheel_ready field must red (cannot prove liveness)"
+    assert any("flywheel" in f.lower() for f in failures)
+
+
+def test_assert_parity_live_flywheel_and_all_clean_is_clean():
+    # SHA match + providers present + flywheel LIVE → no failures.
+    failures = parity.assert_parity(
+        _fake_health(
+            build_sha=_GOOD_SHA,
+            providers=["openrouter", "deepseek"],
+            flywheel_ready=True,
+            knowledge_reuse_count=3,
+        ),
+        expected_sha=_GOOD_SHA,
+    )
+    assert failures == [], "in-parity input with a live flywheel must produce no failures"
+
+
+def test_run_dead_flywheel_exits_one(monkeypatch):
+    # The load-bearing exit-code case: a dead flywheel must exit 1, not
+    # log-and-pass. SHA + providers are fine; only the flywheel is dead.
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(
+            build_sha=_GOOD_SHA,
+            providers=["openrouter"],
+            flywheel_ready=False,
+            knowledge_reuse_count=0,
+        ),
+    )
+    rc = parity.run("http://fake.invalid", expected_sha=_GOOD_SHA)
+    assert rc == 1, "a dead flywheel must exit 1 (a parity failure), not 0"
+
+
+def test_run_live_flywheel_all_clean_exits_zero(monkeypatch):
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(
+            build_sha=_GOOD_SHA,
+            providers=["openrouter"],
+            flywheel_ready=True,
+            knowledge_reuse_count=2,
+        ),
+    )
+    rc = parity.run("http://fake.invalid", expected_sha=_GOOD_SHA)
+    assert rc == 0, "SHA match + providers + live flywheel must exit 0"
 
 
 # ── run() exit-code level: the load-bearing "it must red, not log" cases ─
@@ -227,11 +323,21 @@ def test_run_against_live_route_providers_present_greens(_app_client, monkeypatc
     # in-parity green we monkeypatch the route body's registry to be
     # non-empty (the credential-gated registry is operator-only; we never
     # touch real keys). SHA matches what the route reports.
+    #
+    # SPR-11: the live flywheel is likewise a runtime signal a fresh test
+    # box does not have (no graph DB, zero knowledge.reused events), so the
+    # real route reports flywheel_ready=false. We stamp it true here for
+    # the SAME reason we stamp providers — we are proving the in-parity
+    # GREEN path, and the flywheel-dead RED is proven by the dedicated
+    # seed-and-catch tests above (test_run_dead_flywheel_exits_one) and in
+    # test_check_seed_and_catch.py. We never fabricate a real prod curve.
     client = _app_client(_GOOD_SHA, register_providers=False)
 
     def _health_with_providers(url, **kw):
         body = client.get("/health").json()
         body["registered_providers"] = ["openrouter"]
+        body["flywheel_ready"] = True
+        body["knowledge_reuse_count"] = 1
         return body
 
     monkeypatch.setattr(parity, "fetch_health", _health_with_providers)

@@ -1,0 +1,46 @@
+# AFF SPR-11 — the PROD-SHAPED benchmark profile.
+#
+# Selecting `--profile prod` flips the SPR-09 harness from the reuse-blind
+# mock demo loop to a REAL prod-shaped run: live dispatch (a reuse-consuming
+# browse loop), prod model tiers, and the operator-ratified scored-run
+# parameters. This is the configuration that answers the EXIT's one
+# question — "does it compound on PROD, or only in dev?".
+#
+# IMPORTANT (the phase split SPR-11 honors): this profile is BUILT and unit-
+# tested, but the LIVE run it describes is DEFERRED to the operator window.
+# It needs three things this build environment does not have:
+#   1. prod model-tier credentials (the registry below is silent-empty here),
+#   2. the box (the live runtime), and
+#   3. a reuse-CONSUMING browse loop (the host-local demo loop is reuse-blind;
+#      the dev run is honest that delta ~= 0 because of this).
+# run.py REFUSES to execute a prod run and prints the exact operator command
+# instead. It never falls back to mocks to fabricate a green prod-<sha>.json
+# (rigor #1 — a non-reproducing curve is the finding, not a thing to hide).
+
+mock_run = false          # the load-bearing flip: NOT the demo-loop mock path
+dispatch_mode = "real"    # live dispatch + a reuse-consuming browse loop (no fixtures)
+
+# n / floor / tolerance are operator-ratified (decision §0.2) BEFORE any scored
+# run. These are placeholders carried so the operator-window command is exact;
+# parameters_ratified stays false until the operator ratifies the pilot-derived
+# values (see `python -m compounding.benchmark.run --pilot`).
+n = 20
+material_floor = 0.0
+control_tolerance = 0.0
+parameters_ratified = false
+
+# The diff-able twin of the dev artifact (spr09_run.json). The short sha is
+# substituted at write time so dev and prod curves are comparable by name.
+out_filename_template = "prod-{sha}.json"
+
+description = "Prod-shaped compounding run: real dispatch + prod tiers + reuse-consuming loop. LIVE run deferred to the operator window."
+
+# Prod model tiers the live run dispatches against. The tier->provider map is
+# the production research_tier registry (substrate/dispatch/research_tier.py);
+# named here so the artifact records which tiers were exercised. Values are the
+# tier names the live run resolves through the prod provider registry — the
+# actual credentials are operator-only and absent from this build env.
+[model_tiers]
+fast = "mimo-v2.5-pro"
+deep = "deepseek-v4-pro"
+synthesis = "deepseek-v4-pro"
