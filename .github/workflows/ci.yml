@@ -41,9 +41,18 @@ jobs:
     # the wall-clock ceiling; the gate still runs the FULL suite and still fails
     # on any real test failure (nothing about what is checked changes, and the
     # informational latency craft-signature baseline is untouched).
+    #
+    # 25 -> 35 (Personal-Reading Lane, 2026-06-01): the lane adds ~225 tests
+    # (5180 -> 5405), pushing the `pytest` step alone to ~22.5 min; with install
+    # + the post-pytest boundary-check steps the JOB exceeded 25 min and was
+    # CANCELLED (not failed) at the "Substrate/dispatch boundary check" step,
+    # AFTER `5405 passed, 0 failed`. Verified across 3 CI attempts: tests always
+    # green, cancel always at the same post-test boundary. Same sanctioned lever
+    # as the 15->25 bump, same discipline: ceiling only, full suite still runs +
+    # still fails on any real failure.
     # Reconsider-if: the suite is sharded / xdist-parallelized, after which this
     # can drop back toward 15. See docs/decisions/ci-pytest-timeout.md.
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     steps:
       - name: Checkout

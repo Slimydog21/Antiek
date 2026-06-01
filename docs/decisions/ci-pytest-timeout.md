@@ -56,3 +56,32 @@ is **untouched** — this is not a craft-baseline move.
 Drop back toward 15 min once the suite is sharded or xdist-parallelized (the
 real throughput fix). Until then, 25 min gives ~6 min headroom over the
 estimated ~18–19 min full-branch run plus shared-runner variance.
+
+---
+
+## Update: 25 → 35 (2026-06-01, Personal-Reading Lane)
+
+**Context:** PR #43 (`personal-lane/pr` → `main`, the 10-sprint Personal-Reading
+Lane). Same symptom recurred: the `pytest` job was **cancelled** (not failed) at
+the timeout — `##[error]The operation was canceled` at the *post-pytest*
+"Substrate/dispatch boundary check" step, **after** `5405 passed, 14 skipped, 0
+failed` (~22.5 min pytest step). Verified across **three** CI attempts on the
+same head SHA: tests always green, cancel always at the same post-test step.
+
+**Root cause (not this PR's correctness):** the lane adds ~225 tests (5180 →
+5405). The `pytest` step alone now runs ~22.5 min on the shared runner; with
+install (~2–3 min) and the post-pytest boundary/lint check steps, the **job**
+crossed the 25-min ceiling and GitHub cancelled it mid-cleanup. The 25-min
+ceiling set on 2026-05-30 had ~6 min headroom over an ~18–19 min run; the lane's
++225 tests consumed it.
+
+**Decision:** raise `timeout-minutes` 25 → 35. Ceiling-only, identical to the
+15→25 rationale: the gate still runs the full `pytest tests/ -q -m "not
+integration"` suite, still fails on any real test failure, no test skipped/no
+assertion weakened, the locked rubric-latency baseline untouched.
+
+**Reconsider-if (unchanged + sharper):** drop back toward 15–20 once the suite
+is sharded or `pytest-xdist`-parallelized (the real throughput fix — deferred
+here for the same DuckDB-single-writer / temp-DB-fixture parallel-safety reason).
+35 gives ~10 min headroom over the observed ~24–25 min full-job run plus
+shared-runner variance.
