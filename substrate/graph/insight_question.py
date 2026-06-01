@@ -219,9 +219,22 @@ def promote_insight(
     metadata: Optional[Dict[str, Any]] = None,
     source_kind: Optional[str] = None,
     con: Optional[LockedConnection] = None,
+    dedup: bool = False,
+    dedup_rate: Any = None,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
+
+    AFF SPR-07: when ``dedup=True``, the candidate is run through
+    ``substrate.unit_dedup.find_near_duplicate`` against the already-deposited
+    insight units in its provenance scope BEFORE the row is inserted. On a match
+    the row insert is SKIPPED and a ``duplicate_of`` edge to the surviving unit
+    is recorded instead (carrying this candidate's provenance), and the returned
+    node id is the SURVIVOR's — so a near-duplicate compounds onto the existing
+    unit rather than bloating the graph with a new row. ``dedup`` is OFF by
+    default so existing callers are unchanged. ``dedup_rate`` is an optional
+    ``substrate.unit_dedup.DedupRate`` counter the path increments per attempt
+    (linked or not) for the M5 dedup-rate metric.
 
     ``supported_by`` is a sequence of *node ids* (claims/entities) the
     insight rests on; each becomes a ``supported_by`` edge carrying
@@ -259,7 +272,7 @@ def promote_insight(
                 # project investigation_id='' for the marginalia path and SPR-07
                 # dedup keyed on investigation scope would mis-bucket it. This
                 # rides the existing metadata JSON payload — no event schema
-                # change (EVENT_SCHEMA_VERSION stays 24).
+                # change (EVENT_SCHEMA_VERSION not bumped by this change; canonical value is in events.py).
                 "investigation_id": investigation_id,
             }
         )
@@ -278,7 +291,28 @@ def promote_insight(
             node_meta.setdefault("source_document_id", source_document_id)
         if chunk_id:
             node_meta.setdefault("chunk_id", chunk_id)
-        emb = (embedding_provider or _default_provider()).encode(text)
+        provider = embedding_provider or _default_provider()
+        # AFF SPR-07 — link a near-duplicate instead of inserting a new row.
+        if dedup:
+            match = _dedup_check(
+                c,
+                node_type="insight",
+                candidate_node_id=nid,
+                candidate_text=text,
+                investigation_id=investigation_id,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                source_tier=source_tier,
+                extraction_confidence=edge_conf,
+                provider=provider,
+                dedup_rate=dedup_rate,
+            )
+            if match is not None:
+                # Linked, not stored: skip the row insert + provenance edges and
+                # return the SURVIVOR's id. The survivor's row (and its §9.0
+                # servability) is untouched.
+                return match.existing_unit_id
+        emb = provider.encode(text)
         insert_node(
             c,
             canonical_label=text,
@@ -322,12 +356,19 @@ def promote_question(
     embedding_provider: Any = None,
     metadata: Optional[Dict[str, Any]] = None,
     con: Optional[LockedConnection] = None,
+    dedup: bool = False,
+    dedup_rate: Any = None,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
 
     ``asks_about`` are node ids the question concerns; ``resolved_by`` are
     insight node ids that answer it.
+
+    AFF SPR-07: ``dedup`` / ``dedup_rate`` behave exactly as in
+    :func:`promote_insight` — a near-duplicate question links to the surviving
+    question node (a ``duplicate_of`` self-edge) instead of inserting a row.
+    Questions dedup against questions only (never against insights).
     """
     nid = question_node_id(text)
 
@@ -358,7 +399,25 @@ def promote_question(
         # rejected as ungrounded.
         if chunk_id:
             node_meta.setdefault("chunk_id", chunk_id)
-        emb = (embedding_provider or _default_provider()).encode(text)
+        provider = embedding_provider or _default_provider()
+        # AFF SPR-07 — link a near-duplicate question instead of inserting.
+        if dedup:
+            match = _dedup_check(
+                c,
+                node_type="question",
+                candidate_node_id=nid,
+                candidate_text=text,
+                investigation_id=investigation_id,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                source_tier=source_tier,
+                extraction_confidence=extraction_confidence,
+                provider=provider,
+                dedup_rate=dedup_rate,
+            )
+            if match is not None:
+                return match.existing_unit_id
+        emb = provider.encode(text)
         insert_node(
             c,
             canonical_label=text,
@@ -389,6 +448,220 @@ def promote_question(
         return nid
 
     return _with_connection(con, "promote_question", _do)
+
+
+# ---------------------------------------------------------------------------
+# AFF SPR-07 — cross-investigation dedup: link a near-duplicate, don't re-store.
+#
+# Before a deposit inserts a new insight/question row, the deposit path may run
+# the candidate through ``substrate.unit_dedup.find_near_duplicate`` against the
+# already-deposited units IN ITS OWN node_type. On a match it records a
+# ``duplicate_of`` edge to the surviving unit (carrying the candidate's primary
+# doc/chunk grounding to the survivor; merging its ADDITIONAL supported_by links
+# is a KNOWN GAP deferred to the always-on flip — see _link_duplicate) and SKIPS
+# the row insert, so the graph compounds rather than bloats.
+#
+# Single-writer + §16 preserved: this runs on the SAME write-locked connection
+# the deposit already holds (no new writer, no new query pattern beyond the
+# reads ``_node_type_of``/``knowledge_unit_of`` already do), and the detector
+# itself is pure (no DB). §9.0-safe: a ``duplicate_of`` link never touches the
+# survivor's row, so its servability is unchanged by construction (the deposit
+# tests assert this). The dedup is OPT-IN (``dedup=True``) so every existing
+# caller is byte-for-byte unchanged; SPR-07's tests + a future always-on trigger
+# turn it on.
+# ---------------------------------------------------------------------------
+
+
+def _dedup_check(
+    con: LockedConnection,
+    *,
+    node_type: str,
+    candidate_node_id: str,
+    candidate_text: str,
+    investigation_id: str,
+    source_document_id: Optional[str],
+    chunk_id: Optional[str],
+    source_tier: int,
+    extraction_confidence: float,
+    provider: Any,
+    dedup_rate: Any,
+):
+    """Run the candidate through the SPR-07 detector against scoped existing
+    units; on a match, record the ``duplicate_of`` edge + count it; return the
+    ``DuplicateMatch`` (or None). Increments ``dedup_rate`` once per attempt
+    (linked or not). This is the ONE place the deposit path calls
+    ``find_near_duplicate`` — once per candidate, before any insert."""
+    from substrate.unit_dedup import CandidateUnit, find_near_duplicate
+
+    existing = _scoped_existing_units(
+        con,
+        node_type=node_type,
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+    )
+    candidate = CandidateUnit(
+        text=candidate_text,
+        retrieval_key=candidate_node_id,
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+    )
+    match = find_near_duplicate(candidate, existing, embedding_provider=provider)
+    if match is not None:
+        _link_duplicate(
+            con,
+            survivor_id=match.existing_unit_id,
+            candidate_node_id=candidate_node_id,
+            candidate_text=candidate_text,
+            node_type=node_type,
+            investigation_id=investigation_id,
+            source_tier=source_tier,
+            extraction_confidence=extraction_confidence,
+            source_document_id=source_document_id,
+            chunk_id=chunk_id,
+            match=match,
+        )
+    if dedup_rate is not None:
+        dedup_rate.record(linked=match is not None)
+    return match
+
+
+def _scoped_existing_units(
+    con: LockedConnection,
+    *,
+    node_type: str,
+    investigation_id: str,
+    source_document_id: Optional[str],
+):
+    """Read the already-deposited units in the candidate's provenance SCOPE
+    (same investigation, or the same grounding document) and project them onto
+    ``substrate.unit_dedup.ExistingUnit``. The detector's scope guard also
+    re-checks scope per-pair, so an over-broad read here is safe — we narrow to
+    the candidate's investigation_id (mirrored into node metadata at deposit)
+    OR its source_document_id to keep the comparison set bounded.
+
+    Reads the node id + canonical_label + the metadata-mirrored investigation_id
+    and grounding doc (and the supported_by edge's source_document_id as a
+    fallback). The candidate's own node id is never in this set (it is not
+    inserted yet)."""
+    import json as _json
+
+    from substrate.unit_dedup import ExistingUnit
+
+    rows = con.execute(
+        "SELECT node_id, canonical_label, metadata FROM nodes "
+        "WHERE node_type = ?",
+        [node_type],
+    ).fetchall()
+    out = []
+    for nid, label, meta_raw in rows:
+        meta = {}
+        if meta_raw:
+            try:
+                meta = _json.loads(meta_raw)
+            except (TypeError, ValueError):
+                meta = {}
+        inv = meta.get("investigation_id") or ""
+        doc = meta.get("source_document_id")
+        if doc is None:
+            edge = con.execute(
+                "SELECT source_document_id FROM edges WHERE source_node_id = ? "
+                "AND relation = 'supported_by' AND source_document_id IS NOT NULL "
+                "LIMIT 1",
+                [nid],
+            ).fetchone()
+            doc = edge[0] if edge else None
+        # Only keep units that share the candidate's scope (the detector
+        # re-checks, but narrowing here bounds the embedding work).
+        in_scope = (investigation_id and inv == investigation_id) or (
+            source_document_id is not None and doc == source_document_id
+        )
+        if not in_scope:
+            continue
+        out.append(
+            ExistingUnit(
+                unit_id=nid,
+                text=label,
+                retrieval_key=nid,  # node_id IS the SPR-04 retrieval key
+                investigation_id=inv,
+                source_document_id=doc,
+            )
+        )
+    return out
+
+
+def _link_duplicate(
+    con: LockedConnection,
+    *,
+    survivor_id: str,
+    candidate_node_id: str,
+    candidate_text: str,
+    node_type: str,
+    investigation_id: str,
+    source_tier: int,
+    extraction_confidence: float,
+    source_document_id: Optional[str],
+    chunk_id: Optional[str],
+    match,
+) -> str:
+    """Record a ``duplicate_of`` edge candidate -> survivor and return the
+    edge id. The edge carries the candidate's PRIMARY grounding
+    (``source_document_id`` / ``chunk_id``) so the survivor keeps a citation to
+    the candidate's source, and stamps the dedup verdict (tier / cosine /
+    key_type) into edge metadata for audit.
+
+    KNOWN GAP (deferred to the always-on-flip sprint — see the §9.0/SPR-03-style
+    ratification this dedup awaits): only the PRIMARY doc/chunk grounding is
+    carried here; the candidate's ADDITIONAL ``supported_by`` claim-node edges
+    are NOT yet merged onto the survivor. Harmless while dedup is opt-in/off in
+    prod, but the flip MUST absorb the candidate's ``supported_by`` links first
+    or the survivor's evidentiary base will be under-counted.
+
+    CRITICAL: the candidate node was NOT inserted (that is the whole point —
+    link, don't re-store), so the ``duplicate_of`` edge's SOURCE is the
+    survivor's own node id too (a self-referential marker on the survivor that
+    records "another deposit resolved here"), NOT a dangling reference to a
+    never-written candidate node. We point source==target==survivor so both FK
+    columns reference a real row; the candidate's identity rides edge metadata.
+
+    Rides the existing GRAPH_EDGE_INSERTED ActionType (free-form relation) — no
+    new event type, no schema bump.
+
+    Edge id: derived from the SURVIVOR + relation + the CANDIDATE's node id, so
+    two DISTINCT candidates that resolve to the same survivor produce two
+    distinct ``duplicate_of`` edges (one per linked deposit — the dedup-rate
+    counts them), while a literal re-emission of the SAME candidate text (same
+    candidate_node_id) collapses idempotently via ``on_conflict='ignore'`` and
+    is NOT double-counted."""
+    from substrate.constants import DUPLICATE_OF_RELATION
+    from .ops import content_addressed_id
+
+    edge_id = content_addressed_id(
+        "edge",
+        f"{survivor_id}|{DUPLICATE_OF_RELATION}|{candidate_node_id}",
+    )
+    return insert_edge(
+        con,
+        source_node_id=survivor_id,
+        target_node_id=survivor_id,
+        relation=DUPLICATE_OF_RELATION,
+        source_tier=source_tier,
+        extraction_confidence=extraction_confidence,
+        graph_scope=_PROMOTION_GRAPH_SCOPE,
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+        chunk_id=chunk_id,
+        edge_id=edge_id,
+        metadata={
+            "duplicate_of": survivor_id,
+            "candidate_node_id": candidate_node_id,
+            "candidate_text": candidate_text,
+            "candidate_investigation_id": investigation_id,
+            "match_tier": match.tier,
+            "match_cosine": match.cosine,
+            "match_key_type": match.key_type,
+        },
+        on_conflict="ignore",
+    )
 
 
 def _record_dangling(con: LockedConnection, node_id: str, relation: str, targets: list) -> None:
