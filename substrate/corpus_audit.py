@@ -148,6 +148,11 @@ from substrate.ingest_budget import (
 CHECK_SERVABLE_BASIS = "servable_without_basis"
 CHECK_GATED_LEAK = "gated_body_leak"
 CHECK_DEDUP = "dedup_identity"
+# AFF SPR-07 — the UNIT-level dedup RATE (sibling to CHECK_DEDUP, which is the
+# document-level dedup IDENTITY check). This is a measure, not a gate: SPR-09's
+# benchmark reads it to see whether the graph is compounding (restatements link)
+# or bloating (every restatement inserts a row).
+CHECK_DEDUP_RATE = "unit_dedup_rate"
 CHECK_EXTRACTION = "extraction_quality"
 CHECK_BUDGET = "budget_ceiling"
 # Personal-Reading Lane (SPR-02): no third-party document_type (web_article /
@@ -199,6 +204,7 @@ ALL_CHECK_NAMES = (
     CHECK_SERVABLE_BASIS,
     CHECK_GATED_LEAK,
     CHECK_DEDUP,
+    CHECK_DEDUP_RATE,
     CHECK_EXTRACTION,
     CHECK_BUDGET,
     CHECK_THIRD_PARTY_SERVABLE,
@@ -851,6 +857,66 @@ def _document_identity_record(
     )
 
 
+def unit_dedup_rate(con: Any) -> tuple[int, int, float]:
+    """The AFF SPR-07 unit-level dedup RATE = linked / total-deposit-attempts,
+    read off the live graph. Returns ``(linked, attempts, rate)``.
+
+    A deposit attempt either INSERTS a new insight/question unit row OR LINKS to
+    an existing one with a ``duplicate_of`` edge (SPR-07: link, don't re-store).
+    So over the accumulated corpus:
+
+        linked   = count of ``duplicate_of`` edges (one per linked deposit)
+        attempts = (insight + question unit rows) + linked
+        rate     = linked / attempts   (0.0 when attempts == 0)
+
+    This composes the SAME ``duplicate_of`` relation the deposit path writes
+    (``substrate.constants.DUPLICATE_OF_RELATION``) and the SAME node rows the
+    rest of the audit reads — it mints no new counter table and no new service
+    (§16). The deposit-time ``substrate.unit_dedup.DedupRate`` counter and this
+    corpus-read agree by construction: both are linked/(linked+inserted).
+
+    Read-only: a plain SELECT on the connection ``run_audit`` already opened."""
+    from substrate.constants import DUPLICATE_OF_RELATION
+
+    (linked,) = con.execute(
+        "SELECT COUNT(*) FROM edges WHERE relation = ?",
+        [DUPLICATE_OF_RELATION],
+    ).fetchone()
+    (units,) = con.execute(
+        "SELECT COUNT(*) FROM nodes WHERE node_type IN ('insight', 'question')"
+    ).fetchone()
+    linked = int(linked)
+    attempts = int(units) + linked
+    rate = (linked / attempts) if attempts else 0.0
+    return linked, attempts, rate
+
+
+def _check_dedup_rate(con: Any) -> CheckResult:
+    """The unit-level dedup RATE as an audit measure (sibling to
+    :func:`_check_dedup`, which is the document-level dedup IDENTITY gate).
+
+    This is a MEASURE, not a pass/fail invariant — a low rate is not a defect
+    (a corpus of all-distinct findings legitimately dedups nothing), and a high
+    rate is not a defect either (heavy reuse is the flywheel working). So
+    ``ok=True`` always; the signal lives in ``detail`` (the rate) and ``count``
+    (units linked), which SPR-09's benchmark reads. The "reconsider if" lives on
+    ``substrate.unit_dedup.UNIT_DEDUP_COSINE_THRESHOLD``: a rate SPIKE
+    (over-merging) or COLLAPSE (under-merging) is the trigger to revisit the
+    threshold, not to fail this check."""
+    linked, attempts, rate = unit_dedup_rate(con)
+    return CheckResult(
+        name=CHECK_DEDUP_RATE,
+        ok=True,  # informational measure, never a gate
+        count=linked,
+        offending=(),
+        detail=(
+            f"unit dedup rate = {linked}/{attempts} = {rate:.3f} "
+            f"(linked-as-duplicate / total deposit attempts; higher = "
+            f"compounding, ~0 = bloating)"
+        ),
+    )
+
+
 def _check_extraction(con: Any) -> CheckResult:
     """(d) Extraction quality holds (the SPR-03 notion).
 
@@ -1105,7 +1171,7 @@ def run_audit(
     governor: Optional[BudgetGovernor] = None,
     include_binding: bool = True,
 ) -> AuditResult:
-    """Open ``db_path`` READ-ONLY and run all five corpus checks (+ the static
+    """Open ``db_path`` READ-ONLY and run all six corpus checks (+ the static
     BINDING assertion), returning a structured :class:`AuditResult`.
 
     This is the importable form SPR-01's merge step and a CI job both call. It
@@ -1120,6 +1186,7 @@ def run_audit(
             _check_servable_basis(con),
             _check_gated_leak(con),
             _check_dedup(con),
+            _check_dedup_rate(con),
             _check_extraction(con),
             _check_budget(con, db_path, governor),
             _check_third_party_servable(con),

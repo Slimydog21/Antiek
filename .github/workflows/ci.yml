@@ -32,7 +32,11 @@ jobs:
   pytest:
     name: pytest
     runs-on: ubuntu-latest
-    # 25 min (was 15). The 15-min ceiling was already under-provisioned: the
+    # 40 min (was 25, was 15) — SECOND bump. SPR-07 + parallel-session merges
+    # tipped the suite past even 25 min (cancelled-not-failed at the wall again).
+    # xdist/sharding (the reconsider-if below) is now the REQUIRED real fix; 40 is
+    # the stopgap so the flywheel run can finish. Original 25-min rationale (still
+    # valid): the 15-min ceiling was already under-provisioned: the
     # base `main` suite runs ~14.4 min on this shared ubuntu-latest runner
     # (~1.66x slower than dev hardware per the locked rubric-latency benchmark)
     # and a recent `main` run was itself cancelled at 15.2 min. The corpus-ingest
@@ -42,17 +46,15 @@ jobs:
     # on any real test failure (nothing about what is checked changes, and the
     # informational latency craft-signature baseline is untouched).
     #
-    # 25 -> 35 (Personal-Reading Lane, 2026-06-01): the lane adds ~225 tests
-    # (5180 -> 5405), pushing the `pytest` step alone to ~22.5 min; with install
-    # + the post-pytest boundary-check steps the JOB exceeded 25 min and was
-    # CANCELLED (not failed) at the "Substrate/dispatch boundary check" step,
-    # AFTER `5405 passed, 0 failed`. Verified across 3 CI attempts: tests always
-    # green, cancel always at the same post-test boundary. Same sanctioned lever
-    # as the 15->25 bump, same discipline: ceiling only, full suite still runs +
-    # still fails on any real failure.
+    # Convergent data point (Personal-Reading Lane, 2026-06-01): the lane added
+    # ~225 tests (5180 -> 5405) and independently hit this same wall — the
+    # `pytest` step ran ~22.5 min and the JOB was CANCELLED (not failed) at the
+    # post-pytest "Substrate/dispatch boundary check" step across 3 CI attempts,
+    # each AFTER `5405 passed, 0 failed`. Both SPR-07 and this lane confirm the
+    # 25-min ceiling is exhausted; 40 (main's second bump) absorbs both.
     # Reconsider-if: the suite is sharded / xdist-parallelized, after which this
-    # can drop back toward 15. See docs/decisions/ci-pytest-timeout.md.
-    timeout-minutes: 35
+    # can drop back toward 15-20. See docs/decisions/ci-pytest-timeout.md.
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
