@@ -96,14 +96,23 @@ def test_run_prod_profile_refuses_and_does_not_mock_around(capsys):
 
 def test_run_dev_profile_writes_mock_artifact(tmp_path):
     out = tmp_path / "dev_run.json"
-    rc = runmod.main(["--profile", "dev", "--out", str(out)])
+    # --n 2 (the bootstrap minimum): this test proves the SELECTOR routes
+    # --profile dev to the mock path and writes the artifact — it is NOT a
+    # full statistical run (SPR-09's test_run_mock covers the n=20 mock). A
+    # small n keeps the CI keystone job fast: the full default n=20 over 12
+    # questions x 3 arms ran ~150s on its own — far too heavy for a
+    # selector-routing assertion, and it blew the keystone job's timeout on CI.
+    rc = runmod.main(["--profile", "dev", "--out", str(out), "--n", "2"])
     assert rc == 0, "the dev (mock) profile still produces the recorded artifact"
     assert out.is_file(), "dev profile writes the mock artifact"
 
 
 def test_default_profile_is_dev(tmp_path):
     # No --profile flag → dev (the existing default behaviour, unchanged).
+    # --n 2: asserts the DEFAULT routes to the dev mock path AND runs to a
+    # written artifact — not the full statistical benchmark (kept fast for the
+    # CI keystone job; see the note in the sibling test above).
     out = tmp_path / "default_run.json"
-    rc = runmod.main(["--out", str(out)])
+    rc = runmod.main(["--out", str(out), "--n", "2"])
     assert rc == 0
     assert out.is_file()
