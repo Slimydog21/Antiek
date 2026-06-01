@@ -1,0 +1,315 @@
+{
+  "frozen_sha": "sha256:a616d5b43209daf2e88be92482d0fe3e3b690787fc324ef6a50f6585e46bf0af",
+  "seed": 20260531,
+  "n": 20,
+  "ci_method": "bias_corrected_bootstrap",
+  "bootstrap_resamples": 10000,
+  "mock_run": true,
+  "validity": "valid",
+  "headline_interpretation": "VALID; null \u2014 no material compounding shown (reported verbatim): headline token_cost_usd CI [0, 0] straddles 0 or |delta| 0 below floor 0 \u2014 no material compounding shown",
+  "control_tolerance": 0.0,
+  "material_floor": 0.0,
+  "parameters_ratified": false,
+  "git_sha": "e4fd64c",
+  "captured_at": "2026-06-01T12:30:49.768447Z",
+  "headline": {
+    "label": "warm_vs_cold_high_overlap",
+    "metrics": [
+      {
+        "metric": "token_cost_usd",
+        "delta": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "warm_mean": 0.0,
+        "cold_mean": 0.0,
+        "n": 80
+      },
+      {
+        "metric": "sources_fetched",
+        "delta": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "warm_mean": 0.0,
+        "cold_mean": 0.0,
+        "n": 80
+      },
+      {
+        "metric": "wall_ms",
+        "delta": 0.1169125,
+        "ci_low": 0.1106875,
+        "ci_high": 0.12363182009459836,
+        "warm_mean": 0.30985,
+        "cold_mean": 0.1929375,
+        "n": 80
+      },
+      {
+        "metric": "novel_insight_yield",
+        "delta": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "warm_mean": 0.0,
+        "cold_mean": 0.0,
+        "n": 80
+      },
+      {
+        "metric": "redundant_rederivations",
+        "delta": 0.0,
+        "ci_low": 0.0,
+        "ci_high": 0.0,
+        "warm_mean": 0.0,
+        "cold_mean": 0.0,
+        "n": 80
+      }
+    ]
+  },
+  "comparisons": [
+    {
+      "label": "warm_vs_cold_high_overlap",
+      "metrics": [
+        {
+          "metric": "token_cost_usd",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        },
+        {
+          "metric": "sources_fetched",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        },
+        {
+          "metric": "wall_ms",
+          "delta": 0.1169125,
+          "ci_low": 0.1106875,
+          "ci_high": 0.12363182009459836,
+          "warm_mean": 0.30985,
+          "cold_mean": 0.1929375,
+          "n": 80
+        },
+        {
+          "metric": "novel_insight_yield",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        },
+        {
+          "metric": "redundant_rederivations",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        }
+      ]
+    },
+    {
+      "label": "warm_vs_cold_internal_probe",
+      "metrics": [
+        {
+          "metric": "token_cost_usd",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 20
+        },
+        {
+          "metric": "sources_fetched",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 20
+        },
+        {
+          "metric": "wall_ms",
+          "delta": 0.11955,
+          "ci_low": 0.10715,
+          "ci_high": 0.1312,
+          "warm_mean": 0.3113,
+          "cold_mean": 0.19175,
+          "n": 20
+        },
+        {
+          "metric": "novel_insight_yield",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 20
+        },
+        {
+          "metric": "redundant_rederivations",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 20
+        }
+      ]
+    },
+    {
+      "label": "warm_vs_cold_partial",
+      "metrics": [
+        {
+          "metric": "token_cost_usd",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 60
+        },
+        {
+          "metric": "sources_fetched",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 60
+        },
+        {
+          "metric": "wall_ms",
+          "delta": 0.11091666666666665,
+          "ci_low": 0.10353465571779691,
+          "ci_high": 0.11785,
+          "warm_mean": 0.30045,
+          "cold_mean": 0.18953333333333333,
+          "n": 60
+        },
+        {
+          "metric": "novel_insight_yield",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 60
+        },
+        {
+          "metric": "redundant_rederivations",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 60
+        }
+      ]
+    },
+    {
+      "label": "irrelevant_vs_cold_control",
+      "metrics": [
+        {
+          "metric": "token_cost_usd",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        },
+        {
+          "metric": "sources_fetched",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        },
+        {
+          "metric": "wall_ms",
+          "delta": 0.1093125,
+          "ci_low": 0.10002545375740046,
+          "ci_high": 0.12032021293073458,
+          "warm_mean": 0.2930375,
+          "cold_mean": 0.183725,
+          "n": 80
+        },
+        {
+          "metric": "novel_insight_yield",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        },
+        {
+          "metric": "redundant_rederivations",
+          "delta": 0.0,
+          "ci_low": 0.0,
+          "ci_high": 0.0,
+          "warm_mean": 0.0,
+          "cold_mean": 0.0,
+          "n": 80
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric": "token_cost_usd",
+      "delta": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "warm_mean": 0.0,
+      "cold_mean": 0.0,
+      "n": 80
+    },
+    {
+      "metric": "sources_fetched",
+      "delta": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "warm_mean": 0.0,
+      "cold_mean": 0.0,
+      "n": 80
+    },
+    {
+      "metric": "wall_ms",
+      "delta": 0.1169125,
+      "ci_low": 0.1106875,
+      "ci_high": 0.12363182009459836,
+      "warm_mean": 0.30985,
+      "cold_mean": 0.1929375,
+      "n": 80
+    },
+    {
+      "metric": "novel_insight_yield",
+      "delta": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "warm_mean": 0.0,
+      "cold_mean": 0.0,
+      "n": 80
+    },
+    {
+      "metric": "redundant_rederivations",
+      "delta": 0.0,
+      "ci_low": 0.0,
+      "ci_high": 0.0,
+      "warm_mean": 0.0,
+      "cold_mean": 0.0,
+      "n": 80
+    }
+  ],
+  "notes": "MOCK run on the host-local demo loop (make_demo_loop), which is reuse-blind and makes no provider dispatch.call \u2014 so token_cost_usd is 0 for every arm and every delta is ~0. This is the keystone finding: the instrument measures compounding (proven by tests/test_falsifiability.py), but the demo loop does NOT consume reuse, so compounding is UNPROVEN on the real loop. A live mock_run=false run with a reuse-consuming browse loop + provider creds is the operator-window measurement. validity_reason: control token_cost_usd CI straddles 0 within tolerance (half-width 0 <= 0). headline_reason: headline token_cost_usd CI [0, 0] straddles 0 or |delta| 0 below floor 0 \u2014 no material compounding shown."
+}
