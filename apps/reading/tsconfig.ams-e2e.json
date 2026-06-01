@@ -1,0 +1,29 @@
+{
+  "//": "AMS-v2 SPR-01 — typecheck the NEW e2e harness TS (e2e/_ams + ams-shell.spec). The app's `tsc -b` (tsconfig.app.json) only includes `src`, and Playwright transpiles specs at runtime, so without this config the harness TS is never type-checked. `npm run e2e:ams:typecheck` runs it.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "e2e/_ams/**/*.ts",
+    "e2e/_ams/**/*.d.ts",
+    "e2e/ams-shell.spec.ts",
+    "e2e/glass-surface.spec.ts",
+    "e2e/glass-reduced-motion.spec.ts",
+    "e2e/windows-default.spec.ts",
+    "e2e/hotkeys-command-scheme.spec.ts"
+  ]
+}

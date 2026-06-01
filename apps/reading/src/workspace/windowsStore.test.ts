@@ -94,6 +94,30 @@ describe("windowsStore — focus + z-order", () => {
     expect(w()).toEqual(before);
     expect(w().focusedId).toBe(a);
   });
+
+  // AMS2-SPR-04: the full focus-restack lifecycle on the now-default flow —
+  // focus A then B then A leaves A topmost (highest z + last in order), and
+  // closing the focused window refocuses the next-topmost rather than orphaning.
+  it("focus A then B then A makes A topmost; closing the focused window refocuses next-topmost", () => {
+    const a = w().open("stats", {}, { id: "A" });
+    const b = w().open("library", {}, { id: "B" });
+
+    // focus A then B then A
+    w().focus(a);
+    w().focus(b);
+    w().focus(a);
+
+    // A is topmost: highest z, last in order, and the focused window.
+    expect(w().windows[a].z).toBeGreaterThan(w().windows[b].z);
+    expect(w().order[w().order.length - 1]).toBe(a);
+    expect(w().focusedId).toBe(a);
+
+    // Closing the focused window (A) refocuses the next-topmost (B), not null.
+    w().close(a);
+    expect(w().windows[a]).toBeUndefined();
+    expect(w().focusedId).toBe(b);
+    expect(w().order[w().order.length - 1]).toBe(b);
+  });
 });
 
 describe("windowsStore — rect + expand/restore", () => {
@@ -171,6 +195,34 @@ describe("windowsStore — bounded fan-out (cap)", () => {
     expect(w().windows.fresh).toBeDefined();
     expect(id).toBe("fresh");
     expect(w().order.length).toBe(MAX_WINDOWS);
+  });
+
+  // AMS2-SPR-04: windows are now the DEFAULT, so the cap must hold on the hot
+  // path. The MINIMAL over-cap case (MAX_WINDOWS + 1) is the load-bearing one:
+  // the count never exceeds 8 and the over-cap open() returns the focused-oldest
+  // id (a REAL id, never a phantom new window).
+  it("opening MAX_WINDOWS + 1 never exceeds the cap and the +1 open returns the focused-oldest id", () => {
+    const ids: string[] = [];
+    for (let i = 0; i < MAX_WINDOWS; i++) {
+      ids.push(w().open("stats", {}, { id: `s${i}` }));
+    }
+    const oldest = w().order[0];
+    expect(oldest).toBe(ids[0]);
+
+    // The (MAX_WINDOWS + 1)-th open — a fresh kind/id that WOULD be a new window.
+    const returned = w().open("library", {}, { id: "overflow" });
+
+    // No phantom: the over-cap window was never created.
+    expect(w().windows.overflow).toBeUndefined();
+    // Count is pinned at exactly the cap — never 9.
+    expect(w().order.length).toBe(MAX_WINDOWS);
+    expect(Object.keys(w().windows).length).toBe(MAX_WINDOWS);
+    // open() returns the focused-oldest id (a real, existing id) ...
+    expect(returned).toBe(oldest);
+    expect(w().windows[returned]).toBeDefined();
+    // ... and that oldest is now the focused + topmost window.
+    expect(w().focusedId).toBe(oldest);
+    expect(w().order[w().order.length - 1]).toBe(oldest);
   });
 });
 

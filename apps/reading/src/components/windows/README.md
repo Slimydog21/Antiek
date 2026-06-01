@@ -50,29 +50,78 @@ WindowsSnapshot = { windows, order /* bottom→top */, focusedId, zCounter }
 - **Focus restacks z + order.** Newest-focused is topmost; on close, focus
   falls back to the next-topmost (or null when none remain).
 - **Bounded fan-out.** `MAX_WINDOWS = 8` (hard cap). At the cap, `open()`
-  focuses the oldest window instead of exceeding the cap — surfaced honestly,
-  never silently dropped. 8 mirrors a realistic terminal fan-out and keeps 8
-  transparent frames + the animated scene inside the SPR-11 FPS budget.
+  focuses the oldest window instead of exceeding the cap and returns *its* id
+  (a real id, never a phantom) — surfaced honestly, never silently dropped. 8
+  mirrors a realistic terminal fan-out and keeps 8 transparent frames + the
+  animated scene inside the SPR-11 FPS budget. Now that a default click opens a
+  window (see the inversion below), this cap is the hot-path backstop: a rapid
+  run of default activations can never exceed 8. Kept at 8 deliberately — do
+  not change the value or the at-cap action shape without recording a reason
+  here and in `windowsStore.ts`.
 - **Z base.** `WINDOW_Z_BASE = 40` — a window always sits over the scene (z≈0)
   but under the in-page modal/toast stack (LemonModal z=100).
 
-## Windows-vs-navigate policy (M5)
+## Windows-vs-navigate policy — INVERTED in AMS2-SPR-04
 
-Full-page **navigation stays the default** (simpler, zero adaptation, matches a
-single focused task). A **window** is justified only for the operator's
-"alongside, not instead" / multiple-terminals case.
+> **The inversion (record it here; the next reader looks here and in
+> `openWindow.ts`).** In SPR-09 a window was the *additive* affordance and
+> full-page navigation was the default for everything — windows were manual,
+> buried behind a `⊞` button, so the operator never actually saw one (v1
+> complaint #2). AMS2-SPR-04 **inverts that for within-contract surfaces**: a
+> default click on a within-contract, reference-like page now opens a **window**
+> over the scene. Windows are the default *interaction*, not an extra.
 
-- **Open a window** when the operator explicitly wants a floating/secondary
-  view, or the surface is reference-like and benefits from coexisting with the
-  page that spawned it (Library shelf, Stats, a document, an outcome).
-- **Navigate full-page** for primary workflow switches (Research ↔ Read ↔
-  Write ↔ Speak via the NavRail), for surfaces that own their own
-  dock/floating panel system or assume the full viewport (the
-  ResearchWorkstation IDE, the PDF wrestler — **out-of-contract** for windows),
-  and for deep/operator context-switches from the launcher.
+The inversion is **scoped, not total** — the steelman of full-page navigation
+still wins where it wins (simpler, zero adaptation, one focused task), so it
+stays the default exactly there:
 
-`ProductsLauncher` keeps `navigate()` for its rows and gains an additive `⊞`
-"open in window" button only for window-eligible (contract-verified) modes.
+- **Window is the default** for **within-contract** surfaces — the pages that
+  satisfy the two-line window-adaptation contract (drop opaque bg + fill
+  container) and own no internal dock: `Stats`, `Library`, and the product
+  **sub-action** surfaces launched from `ProductsLauncher`. A default click on
+  these floats a window; no buried button required.
+- **Navigate full-page stays the default** for:
+  - **Primary workflow switches** (Research ↔ Read ↔ Write ↔ Speak via the
+    NavRail) — these are destinations, not companions.
+  - **Out-of-contract surfaces** that own their own dock/floating panel system
+    or assume the full viewport: the **ResearchWorkstation IDE** and the
+    **WrestleApp PDF wrestler**. Nesting a dock-owning page inside a window is
+    out-of-contract; they are **reported, not redesigned** — we never bolt on a
+    third adaptation to force them to float. (Owner boundary: SPR-05 owns the
+    scene/NavRail; these pages own their own viewport.)
+
+`ProductsLauncher` no longer hides windows behind `⊞`: a product/sub-action
+click opens a window by default for the contract-verified, window-eligible
+kinds. The eligible set is `WINDOW_PAGES` in `openWindow.ts` (the
+inversion's machine-readable boundary).
+
+> **The sub-action window is a launcher-into-a-page, not a persistent
+> companion.** Activating a product floats a `subaction` window listing that
+> workflow's destinations; clicking a destination ROW navigates full-page and
+> CLOSES the sub-action window (`SubActionList.tsx` `onRow`). So the FIRST
+> click floats a window and the SECOND click (the chosen destination) leaves
+> it — by design. The window is the menu, not the destination; the destination
+> page is what the operator settles into (and may itself be out-of-contract,
+> e.g. the ResearchWorkstation IDE). A reader expecting the destination itself
+> to keep floating alongside the menu is expecting the wrong thing.
+
+## Persistence — in-memory, session-scoped (deliberate)
+
+`windowsStore` has **no `persist` middleware**. Window state lives only in
+memory for the life of the tab:
+
+- A **reload starts with zero windows** (the store re-initializes to `EMPTY`).
+- This is a **choice, not an oversight.** Workspace windows are an ephemeral
+  arrangement of the operator's *current* task ("multiple terminals laid out
+  right now"), not a saved document. Persisting stale floating geometry +
+  payloads across reloads would resurrect windows pointing at since-changed
+  routes/assets — more surprising than helpful.
+- **Named future-persistence path** (if later desired): wrap `useWindows` with
+  zustand's `persist` middleware keyed on the restorable subset of each
+  descriptor — `{ kind, payload, rect, mode }` — and rehydrate by *replaying*
+  `open()` so `MAX_WINDOWS` and the monotonic z-restack invariants still hold
+  (do **not** rehydrate `z` / `order` / `zCounter` verbatim). This is a deferred
+  task, not a silent assumption.
 
 ## Window-adaptation contract (M4)
 

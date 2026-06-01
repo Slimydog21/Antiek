@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
+import GlassSurface from "../../shell/GlassSurface";
 import {
   WORKFLOWS,
   WORKFLOW_ORDER,
@@ -52,7 +53,12 @@ export function Home() {
   const navigate = useNavigate();
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-ice-2 dark:bg-space-2">
+    // Landing-glass (SPR-03 M2): the Home front door is a LANDING surface, so
+    // its full-bleed root renders through GlassSurface — the mountainscape
+    // <Scene/> (z-0) shows through the translucent fill, and the scrim keeps the
+    // brand statement legible (WCAG-AA owned by GlassSurface, not this body).
+    // Was an opaque bg-ice-2 dark:bg-space-2 wall that occluded the scene.
+    <GlassSurface className="h-full w-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-14">
         {/* Brand statement — what Antiek is, in its own voice. */}
         <header className="mb-10 flex flex-col items-center text-center">
@@ -139,7 +145,7 @@ export function Home() {
           </div>
         </section>
       </div>
-    </div>
+    </GlassSurface>
   );
 }
 

@@ -2,15 +2,15 @@
  * Hotkeys public surface — SPR-08.
  *
  * This barrel is the documented INTEGRATION SEAM for downstream sprints:
- *   - SPR-10 (penguin) imports the activation contract:
+ *   - SPR-06 (penguin) imports the activation contract:
  *       PRODUCT_ACTIVATE_EVENT, ProductActivateDetail, emitProductActivate.
  *     A click handler and the hotkey handler both call `emitProductActivate`,
  *     so the penguin reacts identically to click and hotkey.
- *   - SPR-11 (on-bar chip placement) imports `<KeyChip>` + the binding
- *     tables (PRODUCT_BINDINGS / BUILTIN_BINDINGS / bindingForProduct) to
- *     drop chips into NavRail's (future) keyChipSlot and the launcher's
- *     sub-action chip slot — WITHOUT this sprint editing those shipped
- *     components.
+ *   - SPR-07 (on-bar chip placement) imports `<KeyChip>` + `chipBindings()`
+ *     (+ bindingForProduct) to drop a ⌘+key chip next to each NavRail door
+ *     and the launcher's sub-action rows — WITHOUT this sprint editing those
+ *     shipped components. Every spec it receives is a single ⌘+key combo
+ *     (isChord false), so the chips render one glyph group, no "then".
  *   - Any entity surface imports `<AssignHotkey>` + `useCustomHotkeys`.
  *   - The shell mounts ONE `<HotkeyHud>` (the "?" cheat-sheet).
  */
@@ -32,16 +32,23 @@ export type {
 } from "./useCustomHotkeys";
 
 export {
-  // activation contract (SPR-10)
+  // activation contract (the penguin / SPR-06 click≡hotkey parity)
   PRODUCT_ACTIVATE_EVENT,
   emitProductActivate,
   makeProductActivateEvent,
-  // binding tables (SPR-11 chip placement)
+  // binding tables (SPR-07 chip placement)
   BUILTIN_BINDINGS,
   PRODUCT_BINDINGS,
   SUBACTION_BINDINGS,
   fixedBindings,
   bindingForProduct,
+  // ── THE MAP SPR-07 CONSUMES ──────────────────────────────────────────
+  // chipBindings() returns one { id, spec, label, ariaLabel, productId,
+  // actionId, route } per product + sub-action — every `spec` a single ⌘+key
+  // combo. SPR-07 iterates it and drops a <KeyChip binding={spec} …/> next to
+  // each NavRail door (the EXPOSE half of the SPR-07↔SPR-08 dependency).
+  // bindingForProduct(productId, actionId?) resolves one entry directly.
+  chipBindings,
   // helpers
   normalizeBinding,
   formatBinding,
@@ -50,13 +57,16 @@ export {
   detectConflict,
   isBlockingConflict,
   reservedReason,
+  requiresModifierReason,
   RESERVED_COMBOS,
+  SAFE_ASSIGNABLE,
 } from "./bindings";
 export type {
   ProductActivateDetail,
   ActivationSource,
   BindingRow,
   BindingSpec,
+  ChipBinding,
   Conflict,
   ConflictKind,
 } from "./bindings";

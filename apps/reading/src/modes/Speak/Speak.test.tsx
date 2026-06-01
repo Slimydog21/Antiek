@@ -53,6 +53,23 @@ beforeEach(() => {
   apiFetchMock.mockReset();
   // jsdom clipboard stub
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+  // Speak now lands through GlassSurface (SPR-03 M2 landing-glass), which reads
+  // prefers-reduced-motion via window.matchMedia. jsdom lacks it; stub the
+  // default (motion allowed → the glass variant renders). Weakens nothing.
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
 });
 afterEach(cleanup);
 
@@ -67,6 +84,18 @@ function mount() {
 }
 
 describe("Speak project page", () => {
+  it("lands as a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", async () => {
+    // Audit §3 item 3 classifies the Speak project page landing-glass: the scene
+    // shows through the margins. A refactor back to an opaque body / variant=solid
+    // would re-occlude the mountain; this enforces the variant per-route (rigor #5).
+    const { container } = mount();
+    await screen.findByText("Grandma Rosa");
+    const surface = container.querySelector("[data-glass-surface]");
+    expect(surface, "Speak must render through GlassSurface").toBeTruthy();
+    expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+    expect(surface!.getAttribute("data-glass-surface")).toBe("glass");
+  });
+
   it("offers a shareable invite link", async () => {
     mount();
     await screen.findByText("Grandma Rosa");

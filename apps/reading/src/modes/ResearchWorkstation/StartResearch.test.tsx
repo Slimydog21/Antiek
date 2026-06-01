@@ -70,6 +70,29 @@ vi.mock("./CascadeProposal", () => ({
 
 import StartResearch from "./StartResearch";
 
+// AMS2-SPR-03: the idle home now wraps its content column in GlassSurface
+// (landing-glass, M2 for `/`), and GlassSurface reads `prefers-reduced-motion`
+// via window.matchMedia — which jsdom lacks. Stub it (no reduced motion) so the
+// surface renders its glass path; mirrors the AppShell + GlassSurface suites'
+// stub. This is an environment dependency of the newly-rendered primitive, not
+// a weakening of any assertion below.
+function installMatchMedia(reducedMotion = false) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: query.includes("prefers-reduced-motion") ? reducedMotion : false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 function renderStart() {
   return render(
     <MemoryRouter>
@@ -79,6 +102,7 @@ function renderStart() {
 }
 
 beforeEach(() => {
+  installMatchMedia(false);
   startInvestigationMock.mockReset();
   navigateMock.mockReset();
   eventStreamState.current = { events: [], status: "closed", reconnects: 0 };
@@ -86,6 +110,18 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("StartResearch — the start-a-research entry (M1)", () => {
+  it("wraps the idle `/` home column in a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", () => {
+    // Audit §3 item 1: the idle `/` home is the landing-glass counterpart of the
+    // dense /inv/:id IDE. Its content column rides on GlassSurface variant="glass"
+    // so the bare heading clears AA over the scrim while the scene shows through
+    // the margins. A refactor swapping it to an opaque body / solid would re-
+    // occlude the mountain on `/`; this enforces the variant per-route (rigor #5).
+    const { container } = renderStart();
+    const surface = container.querySelector("[data-glass-surface]");
+    expect(surface, "the idle home column must render through GlassSurface").toBeTruthy();
+    expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+  });
+
   it("renders a real composer: input + Ask button + example pills", () => {
     renderStart();
     expect(screen.getByLabelText("Research question")).toBeTruthy();

@@ -6,6 +6,7 @@ import type { BookSummary } from "../../api/books";
 import type { InvestigationSummary } from "../../lib/api";
 import BookCard from "./BookCard";
 import Library from "./index";
+import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 // Hoisted mocks so the static `import Library` above binds to them.
 const { listBooksMock, curateBooksMock, listInvestigationsMock, navigateMock } = vi.hoisted(() => ({
@@ -61,6 +62,24 @@ beforeEach(() => {
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
+  // The full-page Library landing now renders through GlassSurface (SPR-03 M2
+  // landing-glass; the inWindow branch stays bg-transparent), which reads
+  // prefers-reduced-motion via window.matchMedia. jsdom lacks it; stub the
+  // default (motion allowed → the glass variant renders). Weakens nothing.
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    configurable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
 });
 afterEach(() => cleanup());
 
@@ -94,6 +113,41 @@ describe("Library", () => {
       </MemoryRouter>,
     );
   }
+
+  it("full-page Read door is LANDING-GLASS; the inWindow branch stays bg-transparent (SPR-03 + SPR-09 contracts)", async () => {
+    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    // Full-page (default useInWindow=false): the Read-door landing renders through
+    // GlassSurface so the scene shows through (audit §3 item 4). A refactor back
+    // to an opaque body / variant=solid would re-occlude the mountain (rigor #5).
+    const { container } = renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+    );
+    const surface = container.querySelector("[data-glass-surface]");
+    expect(surface, "the full-page Library must render through GlassSurface").toBeTruthy();
+    expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+
+    cleanup();
+    // inWindow: SPR-09 owns the window glass, so the body stays bg-transparent and
+    // is NOT re-glassed (no nested GlassSurface, no opaque wall) — the verbatim
+    // contract the audit preserves.
+    const inWin = render(
+      <MemoryRouter>
+        <WindowHostProvider value={true}>
+          <Library />
+        </WindowHostProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(inWin.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+    );
+    expect(
+      inWin.container.querySelector("[data-glass-surface]"),
+      "inWindow Library must NOT re-glass the body (SPR-09 host owns the glass)",
+    ).toBeNull();
+    const mainEl = inWin.container.querySelector("main");
+    expect(mainEl?.className).toContain("bg-transparent");
+  });
 
   it("loads the servable shelf and routes to the reader on open", async () => {
     listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });

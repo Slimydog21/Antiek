@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { parseSynthesis } from "../../lib/synthesisParser";
+import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import type { StarterPanel } from "../../workspace/PanelHost";
@@ -148,15 +149,41 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
     );
   }
 
+  // AMS2-SPR-03 (M3): the ACTIVE /inv/:id view is the DENSE research IDE —
+  // a long-session reading/working surface (live thinking stream, scored
+  // notes, distilled insights, cited prose). The occlusion audit
+  // (docs/ams-v2/spr-03-occlusion-audit.md §3) classifies it
+  // dense-legible-keep-opaque: this surface stays OPAQUE-IN-WINDOW so dense
+  // body text never rides over the moving scene (rigor #1 — a glass surface
+  // that fails AA is worse than an opaque one that reads; M3 forbids making
+  // the IDE transparent).
+  //
+  // Audit ground-truth correction: only the HEADER strips inside this view
+  // carried an opaque bg (ThinkingStream.tsx:239 bg-ice-1, the Notes header
+  // index.tsx:225, MasterMdViewer.tsx:272). The dense BODY areas
+  // (ThinkingStream body, DistillView, NotesPanel rows) are background-free,
+  // so without an opaque container they would render over the translucent
+  // SceneChrome glass band (SceneChrome.tsx:267) → over the scene. We back the
+  // whole dense centre in GlassSurface variant="solid" (bg-glass-solid, same
+  // hue, alpha 1, NO backdrop-filter, NO scrim) — the opaque-in-window
+  // fallback. The scene shows through the LANDING surfaces and the shell
+  // margins, NOT this dense IDE. This is the counterpart to the idle `/` home
+  // (StartResearch), which IS glassed — idle = landing-glass, active = dense-
+  // opaque, resolving the M3 tension.
   return (
-    <div ref={centerRef} className="h-full overflow-y-auto relative">
+    <GlassSurface
+      as="div"
+      variant="solid"
+      ref={centerRef}
+      className="h-full overflow-y-auto relative"
+    >
       <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
       <HighlightToolbar
         scopeRef={centerRef}
         onChaseThis={onChaseThis}
         investigationId={investigationId}
       />
-    </div>
+    </GlassSurface>
   );
 }
 

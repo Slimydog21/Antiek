@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import Werner from "../brand/Werner";
 import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
@@ -15,6 +14,7 @@ import {
   type EmoteKind,
   type StageHost,
   type WernerStageController,
+  WernerRig,
 } from "../werner";
 import "../werner/waddle.css";
 
@@ -564,10 +564,15 @@ export function PenguinMascot() {
           position: "relative",
         }}
       >
-        {/* The base Werner mark. When an emote is playing it is hidden behind
-            the emote overlay so we don't render two penguins stacked. */}
+        {/* The base Werner mark, now the WALK-CYCLE RIG (SPR-06 M1): the
+            transparent Werner art plus vector feet + flippers that animate off
+            the `werner-waddle` / `werner-step` walk signal this very bob span
+            carries while strolling — so his feet visibly STEP as he walks
+            rather than the whole sprite sliding. The rig owns no motion source;
+            it consumes the existing roam signal. When an emote is playing the
+            rig is hidden behind the emote overlay so we don't stack penguins. */}
         <span style={{ visibility: emote ? "hidden" : "visible" }}>
-          <Werner mood="idle" size={MASCOT_SIZE} label="Project" />
+          <WernerRig size={MASCOT_SIZE} label="Project" />
         </span>
         {/* The active emote (SPR-05) — an existing animated Werner mark mapped
             to the emote kind, overlaid on the mascot. Keyed by kind so a

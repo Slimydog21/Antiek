@@ -246,7 +246,7 @@ const CUSTOM_HOTKEYS_KEY = LS_PREFIX + "custom-hotkeys";
 export interface PersistedCustomHotkey {
   /** Stable id for this binding (uuid-ish). */
   id: string;
-  /** Canonical binding spec, e.g. "g 1" or "j". */
+  /** Canonical ⌘+key combo spec, e.g. "mod+j" or "alt+j" (never a chord). */
   spec: string;
   /**
    * Route TEMPLATE the entity lives on, with the param already substituted,

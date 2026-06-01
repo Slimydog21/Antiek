@@ -42,24 +42,40 @@ describe("AssignHotkey — SPR-08", () => {
   beforeEach(() => window.localStorage.clear());
   afterEach(() => window.localStorage.clear());
 
-  it("opens a capture dialog and saves a free modifier-combo, persisting it", () => {
+  it("opens a capture dialog and saves a free ⌘+key combo, persisting it", () => {
     const { unmount } = render(<AssignHotkey {...PROPS} />);
     fireEvent.click(buttonByText(/assign hotkey/i)!);
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog).toBeTruthy();
 
-    // Capture a free modifier-combo (a custom binding must carry a modifier —
-    // a bare single key would hijack the app-wide handler; see
-    // requiresModifierReason in bindings.ts).
+    // Capture a free ⌘+key combo. The SPR-08 scheme is ⌘+<key> only — the
+    // dialog gates on SAFE_ASSIGNABLE.isWithinRange (which requires `mod`),
+    // mirroring useCustomHotkeys.assign. ⌘. (Meta+period) is a free safe combo.
     const capture = dialog!.querySelector('[role="textbox"]') as HTMLElement;
     expect(capture).toBeTruthy();
-    fireEvent.keyDown(capture, { key: "j", altKey: true });
+    fireEvent.keyDown(capture, { key: ".", metaKey: true });
     expect(dialog!.textContent).toMatch(/is available/i);
 
     // Save.
     fireEvent.click(buttonByText(/save hotkey/i)!);
-    expect(readCustomHotkeys().bindings[0]?.spec).toBe("alt+j");
+    expect(readCustomHotkeys().bindings[0]?.spec).toBe("mod+.");
     expect(readCustomHotkeys().bindings[0]?.entityId).toBe("inv-9");
+    unmount();
+  });
+
+  it("rejects an Option-only (⌥) combo — the scheme is ⌘+key only (Save disabled)", () => {
+    const { unmount } = render(<AssignHotkey {...PROPS} />);
+    fireEvent.click(buttonByText(/assign hotkey/i)!);
+    const dialog = document.body.querySelector('[role="dialog"]')!;
+    const capture = dialog.querySelector('[role="textbox"]') as HTMLElement;
+    // ⌥J — carries a modifier, so it clears requiresModifierReason, but it is
+    // OFF-SPEC (no ⌥ namespace). The dialog must reject it with a readable
+    // ⌘-only message and disable Save.
+    fireEvent.keyDown(capture, { key: "j", altKey: true });
+    const alert = dialog.querySelector('[role="alert"]');
+    expect(alert?.textContent).toMatch(/⌘|option-only/i);
+    expect(buttonByText(/save hotkey/i)?.disabled).toBe(true);
+    expect(readCustomHotkeys().bindings).toHaveLength(0);
     unmount();
   });
 

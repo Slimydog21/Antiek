@@ -31,6 +31,32 @@ import { moodKey, sceneStateFromMood, type SceneMood } from "./mood";
  * Scene simply renders procedural-only (it ignores the placeholder data-URI as
  * a sky source and leans on ProceduralSky). We surface `isFallback` so the
  * Scene can make that choice seamlessly.
+ *
+ * ─── THE §4 FRAME-SOURCE SEAM (AMS-v2 SPR-05, M1 — HONEST NO-GO) ───────────
+ * SPR-02's feasibility spike (docs/ams-v2/stream-spike.md) returned a **NO-GO**
+ * on a near-real-time *generative* stream: the doc-derived ceiling is ~0.25 gen
+ * fps (Flux ~4s/image) against a ≥10 fps requirement, at ~$0.60/min that
+ * exhausts the 50-unit cap in ~3.3 min. So there is NO live stream, and SPR-05
+ * adds NO streaming endpoint (no SSE / WebSocket / EventSource on krea_routes.py
+ * — verified zero on origin/main). The shipped path is this one: a 60fps
+ * procedural floor (useSceneClock → Clouds/Snow canvases) with PERIODIC,
+ * mood-gated Krea art crossfaded over it.
+ *
+ * The §4 "frame-source seam" the spike specifies is therefore the EXISTING
+ * `SceneFetcher` type (`../krea/useKreaScene` L58:
+ *   `export type SceneFetcher = (scene: SceneState) => Promise<SceneResult>`).
+ * It is the single, typed swap point: `useSceneArt` injects a `fetchScene` into
+ * `useKreaScene`, which re-fetches ONLY when `sceneKeyOf(scene)` changes — never
+ * per frame, never on the clock. A FUTURE "GO" (a benchmarked sub-second turbo
+ * model, or an L411 server-side pump) would swap the concrete `SceneFetcher`
+ * here; every consumer (useSceneArt → KreaArtLayer → Scene) is untouched.
+ *
+ * DECISION (M1): we did NOT create a `useSceneStream.ts`. On a NO-GO it would
+ * be a hook wrapping a hook with no behavioural content, and naming it "stream"
+ * would misdescribe a non-stream — both worse engineering than naming the seam
+ * that already exists. `SceneFetcher` IS the §4 frame-source seam; it fully
+ * serves, so `useSceneStream.ts` is unnecessary. See the handoff for the
+ * fairness/rigor steelman behind this call.
  */
 
 export interface SceneArt {
@@ -76,25 +102,59 @@ export function useSceneArt(
   const curUrlRef = useRef<string | null>(null);
   const moodRef = useRef<string>(moodKey(mood));
 
-  // Live art = the hook's image_url only when NOT fallback. On fallback we use
-  // null so the Scene renders ProceduralSky rather than the 16×16 placeholder.
-  const liveUrl = !krea.isFallback && krea.art ? krea.art.image_url : null;
+  // Live art = the hook's image_url only when the fetch has RESOLVED to live
+  // art (status "ready"). On fallback we use null so the Scene renders
+  // ProceduralSky rather than the 16×16 placeholder.
+  //
+  // Why gate on status === "ready" and not just !isFallback (SPR-05 M2 fix): on
+  // a MOOD CHANGE, useKreaScene re-enters "loading" and seeds `art` with the new
+  // scene-state's deterministic PLACEHOLDER while it spreads the PREVIOUS
+  // resolve's `isFallback:false`. With a bare `!isFallback` guard that transient
+  // leaks the placeholder data-URI in as a "live" URL, so the crossfade would
+  // briefly promote the 16×16 gradient placeholder into prevImageUrl/imageUrl —
+  // a momentary flash of the placeholder BETWEEN two real arts (a hard-cut-ish
+  // blip, not the from-old-art-to-new-art crossfade the contract promises).
+  // "ready" is the only status whose `art.image_url` is a genuine live URL, so
+  // gating on it makes the crossfade fade old-live → new-live cleanly.
+  const liveUrl =
+    krea.status === "ready" && !krea.isFallback && krea.art
+      ? krea.art.image_url
+      : null;
+
+  const fallback = krea.isFallback;
 
   useEffect(() => {
     const mk = moodKey(mood);
     const moodChanged = mk !== moodRef.current;
-    const urlChanged = liveUrl !== curUrlRef.current;
-    if (urlChanged) {
-      // Promote current → prev for the crossfade (only when we have a real
-      // outgoing URL to fade from).
-      prevUrlRef.current = curUrlRef.current;
-      curUrlRef.current = liveUrl;
-      // Bump the fade key so the Scene re-triggers its opacity transition.
-      setFadeKey((k) => k + 1);
+
+    if (liveUrl != null) {
+      // A genuine NEW live URL resolved → crossfade old-live → new-live.
+      // Promote current → prev so KreaArtLayer fades the OUTGOING real art out
+      // (prev stays null on the very first art) and bump fadeKey to re-trigger
+      // the opacity transition. (liveUrl is only ever the "ready" URL — never
+      // the loading placeholder — so this never fades from the 16×16 gradient.)
+      if (liveUrl !== curUrlRef.current) {
+        prevUrlRef.current = curUrlRef.current;
+        curUrlRef.current = liveUrl;
+        setFadeKey((k) => k + 1);
+      }
+    } else if (fallback) {
+      // A genuine fallback (no key / over-budget / kill-switch / offline) → no
+      // live art at all; drop to procedural-only. Clear refs so imageUrl is
+      // null and the Scene flags data-scene-fallback.
+      if (curUrlRef.current !== null || prevUrlRef.current !== null) {
+        prevUrlRef.current = null;
+        curUrlRef.current = null;
+        setFadeKey((k) => k + 1);
+      }
     }
+    // else: status is "loading" mid-reload (liveUrl null, not yet fallback) —
+    // KEEP the last live art on screen so a mood change does not flash to the
+    // procedural floor before the new art arrives. No promote, no bump.
+
     if (moodChanged) moodRef.current = mk;
-    // Depend on the live URL + the mood key — NOT on any clock value.
-  }, [liveUrl, mood]);
+    // Depend on the live URL, the fallback flag, + the mood key — NOT any clock.
+  }, [liveUrl, fallback, mood]);
 
   return {
     imageUrl: curUrlRef.current,
