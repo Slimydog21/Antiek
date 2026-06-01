@@ -111,3 +111,169 @@ describe("parseSynthesis — inline-rubric quality score (M3)", () => {
     expect(synth!.qualityScore).toBeNull();
   });
 });
+
+// ── SPR-10 M2 — reuse provenance, READ from knowledge.reused (never invented) ──
+
+describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
+  function withReuse(extra: Event[]): ReturnType<typeof parseSynthesis> {
+    return parseSynthesis([
+      ev("investigation.start_requested", { question: "Why X?" }),
+      ev("synthesize.delivered", {
+        thesis_summary: "Because Y.",
+        implicit_recommendation: "proceed",
+        thesis_components: [],
+        falsification_conditions: [],
+        execution_risks: [],
+        constraint_compliance: { hard_constraints_satisfied: true },
+      }),
+      ...extra,
+    ]);
+  }
+
+  it("parses two reused units into a two-entry reuseProvenance with EXACT ids (non-vacuity)", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        action_type: "knowledge.reused",
+        reused_unit_ids: ["unit-aaa", "unit-bbb"],
+        scores: [0.91, 0.83],
+        // decisions describes EVERY retrieved unit (injected + dropped); the
+        // parser reads only the injected set via reused_unit_ids/scores/sources.
+        decisions: ["injected", "injected", "dropped-low-relevance"],
+        source_investigation_ids: ["inv-src-1", "inv-src-2"],
+        context_pack_event_id: "evt-pack-1",
+      }),
+    ]);
+    expect(synth!.reuseProvenance).toHaveLength(2);
+    // Non-vacuity: the EXACT ids/sources/scores, not just length 2.
+    expect(synth!.reuseProvenance[0]).toEqual({
+      unitId: "unit-aaa",
+      sourceInvestigationId: "inv-src-1",
+      score: 0.91,
+    });
+    expect(synth!.reuseProvenance[1]).toEqual({
+      unitId: "unit-bbb",
+      sourceInvestigationId: "inv-src-2",
+      score: 0.83,
+    });
+  });
+
+  it("unions reused units across MORE THAN ONE knowledge.reused event (encounter order)", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-1"],
+        scores: [0.9],
+        source_investigation_ids: ["inv-a"],
+        context_pack_event_id: "evt-1",
+      }),
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-2", "unit-3"],
+        scores: [0.8, 0.7],
+        source_investigation_ids: ["inv-b", "inv-c"],
+        context_pack_event_id: "evt-2",
+      }),
+    ]);
+    expect(synth!.reuseProvenance.map((r) => r.unitId)).toEqual([
+      "unit-1",
+      "unit-2",
+      "unit-3",
+    ]);
+  });
+
+  it("invents nothing for a shorter parallel array (missing source/score → null)", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-x", "unit-y"],
+        scores: [0.5], // only one score for two units
+        source_investigation_ids: [], // no sources recorded
+        context_pack_event_id: "evt-1",
+      }),
+    ]);
+    expect(synth!.reuseProvenance[0]).toEqual({
+      unitId: "unit-x",
+      sourceInvestigationId: null,
+      score: 0.5,
+    });
+    expect(synth!.reuseProvenance[1]).toEqual({
+      unitId: "unit-y",
+      sourceInvestigationId: null,
+      score: null,
+    });
+  });
+
+  it("yields an EMPTY reuseProvenance when no knowledge.reused event is present", () => {
+    const synth = withReuse([]);
+    expect(synth!.reuseProvenance).toEqual([]);
+  });
+
+  it("yields an EMPTY reuseProvenance for a reuse-of-nothing event (still emitted, no units)", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: [],
+        scores: [],
+        source_investigation_ids: [],
+        context_pack_event_id: "evt-1",
+      }),
+    ]);
+    expect(synth!.reuseProvenance).toEqual([]);
+  });
+});
+
+// ── SPR-10 M4 — the per-run compounding stat (real `reused`, honest nulls) ──
+
+describe("parseSynthesis — compounding stat (SPR-10 M4)", () => {
+  function withEvents(extra: Event[]): ReturnType<typeof parseSynthesis> {
+    return parseSynthesis([
+      ev("investigation.start_requested", { question: "Why X?" }),
+      ev("synthesize.delivered", {
+        thesis_summary: "Because Y.",
+        implicit_recommendation: "proceed",
+        thesis_components: [],
+        falsification_conditions: [],
+        execution_risks: [],
+        constraint_compliance: { hard_constraints_satisfied: true },
+      }),
+      ...extra,
+    ]);
+  }
+
+  it("compoundingStat is null when nothing was reused and no measurement exists", () => {
+    const synth = withEvents([]);
+    expect(synth).not.toBeNull();
+    expect(synth!.compoundingStat).toBeNull();
+  });
+
+  it("compoundingStat stays NULL with reuse but no measurement (M4: null when no measurement)", () => {
+    const synth = withEvents([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["u1", "u2"],
+        scores: [0.9, 0.8],
+        source_investigation_ids: ["inv-a", "inv-b"],
+        context_pack_event_id: "evt-1",
+      }),
+    ]);
+    // The stat is gated on a per-run MEASUREMENT event (none exists here). The
+    // reused count is surfaced by reuseProvenance (M3's list), never synthesized
+    // into a stat line — a stat without a measurement would imply one happened.
+    expect(synth!.reuseProvenance).toHaveLength(2);
+    expect(synth!.compoundingStat).toBeNull();
+  });
+
+  // Non-vacuity / seed-and-catch: a SYNTHETIC per-run measurement event (a shape
+  // the substrate does NOT emit today — there is no compounding.measured
+  // ActionType) drives the full three-number render path so it is provably
+  // non-vacuous. The real-data path stays null (the test above).
+  it("reads the three exact numbers from a synthetic compounding.measured event", () => {
+    const synth = withEvents([
+      ev("compounding.measured", {
+        reused: 3,
+        avoided: 2,
+        fewer_sources: 5,
+      }),
+    ]);
+    expect(synth!.compoundingStat).toEqual({
+      reused: 3,
+      avoided: 2,
+      fewerSources: 5,
+    });
+  });
+});
