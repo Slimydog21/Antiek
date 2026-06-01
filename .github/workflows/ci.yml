@@ -222,6 +222,27 @@ jobs:
         run: |
           python -m pytest tests/test_invariant_registry_meta.py -q -p no:cacheprovider -p no:xdist
 
+      - name: Compounding benchmark (SPR-09 keystone)
+        # SPR-09 (Antiek Flywheel Foundation) KEYSTONE. The blanket `pytest tests/`
+        # step above scopes to tests/, so the falsifiable compounding benchmark's
+        # tests (compounding/benchmark/tests/) are named here so a keystone failure
+        # is unmissable. `-m "not slow"` excludes the full n=20 multi-arm run
+        # (~3 min) — the fast suite drives the real demo loop end-to-end with small
+        # steps + synthetic-trajectory seed-and-catch tests in ~45s. The
+        # seed-and-catch tests (test_falsifiability) prove the scale reports a
+        # signed delta in either direction and that the irrelevant-seed control can
+        # flag a run invalid — a harness that could only ever return a positive
+        # delta would red here. See compounding/benchmark/README.md.
+        env:
+          DEEPSEEK_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          HERMES_API_KEY: ""
+          XAI_API_KEY: ""
+          OPENAI_API_KEY: ""
+        run: |
+          python -m pytest compounding/benchmark/tests/ -q -m "not slow" -p no:cacheprovider
+
       - name: Source-onboarding corpus-value gate
         # Reframe finding #2: the WIRED stop-rule replacing the spec's PROSE
         # "measure before build". Blocks onboarding any source AFTER arXiv whose
