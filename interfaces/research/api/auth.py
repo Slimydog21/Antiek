@@ -27,6 +27,7 @@ middleware's job is verify-on-every-request.
 from __future__ import annotations
 
 import os
+from typing import Any
 import re
 from collections.abc import Sequence
 from urllib.parse import urlencode, urljoin
@@ -180,14 +181,14 @@ def _redirect_login_error(*, error_code: str, next_path: str = "/") -> RedirectR
     return RedirectResponse(url=target, status_code=302)
 
 
-def _cookie_kwargs() -> dict[str, str | bool]:
+def _cookie_kwargs() -> dict[str, Any]:
     """HttpOnly + Secure + SameSite=Lax. ``Secure`` is unconditional
     on production; tests work because the test client doesn't
     enforce the flag. ``Domain`` is set in cross-origin deployments
     so the cookie is visible to both Pages (antiek.ai) and the API
     (api.antiek.ai)."""
     secure = os.environ.get("ANTIEK_COOKIE_INSECURE", "").strip() != "1"
-    kwargs: dict[str, str | bool] = dict(
+    kwargs: dict[str, Any] = dict(
         httponly=True,
         secure=secure,
         samesite="lax",
