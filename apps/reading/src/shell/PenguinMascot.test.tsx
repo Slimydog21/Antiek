@@ -20,6 +20,13 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
+/** Legacy SPR-06 roam tests assume pre-ice timings (800/300–800 stroll). */
+vi.mock("../werner/iceFishingFlags", () => ({
+  wernerIceFishingCursor: false,
+}));
+
+import { wernerIceFishingCursor } from "../werner/iceFishingFlags";
+import { wernerIceFishingCursor as iceFromBarrel } from "../werner";
 import { PenguinMascot, PROJECT_TREE_PANEL_ID } from "./PenguinMascot";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
@@ -235,6 +242,11 @@ describe("PenguinMascot (SPR-12 M3)", () => {
  *  - the roam never fights a drag (a drag in flight pauses it).
  */
 describe("PenguinMascot SPR-06 — autonomous roam", () => {
+  it("ice-fishing flag is off for legacy roam timing", () => {
+    expect(wernerIceFishingCursor).toBe(false);
+    expect(iceFromBarrel).toBe(false);
+  });
+
   it("strolls to a new on-screen spot by itself, bounded to the viewport", () => {
     const { container } = mount();
     const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
@@ -258,10 +270,10 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
     expect(movedLeft).toBeLessThanOrEqual(1200 - 80);
     expect(movedTop).toBeGreaterThanOrEqual(0);
     expect(movedTop).toBeLessThanOrEqual(800 - 80);
-    // Leg ends (2600ms stroll) → bob clears + transition drops (so a drag
-    // stays instant), and he rests before the next leg.
+    // End of this stroll leg only (800ms stroll + slack) — not a multi-leg
+    // elapse that would land mid-walk on a later hop.
     act(() => {
-      vi.advanceTimersByTime(2700);
+      vi.advanceTimersByTime(900);
     });
     expect(container.querySelector(".werner-waddle")).toBeNull();
     expect(el.style.transition).toBe("");
@@ -312,9 +324,8 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
     // Mid-stroll: walking class ON, idle wander OFF — one node can't run both.
     expect(container.querySelector(".werner-waddle")).toBeTruthy();
     expect(container.querySelector(".penguin-mascot-wander")).toBeNull();
-    // End of leg (2600ms stroll) → back to rest: wander restored, walk cleared.
     act(() => {
-      vi.advanceTimersByTime(2700);
+      vi.advanceTimersByTime(900);
     });
     expect(container.querySelector(".werner-waddle")).toBeNull();
     expect(container.querySelector(".penguin-mascot-wander")).toBeTruthy();
