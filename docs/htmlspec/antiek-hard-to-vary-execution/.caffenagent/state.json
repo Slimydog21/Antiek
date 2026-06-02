@@ -1,0 +1,18 @@
+{
+  "spec_dir": "docs/htmlspec/antiek-hard-to-vary-execution",
+  "target_branch": "main",
+  "completed": "2026-06-02",
+  "merge_tip": "829f715",
+  "sprints": {
+    "SPR-01": { "status": "done", "round": 2 },
+    "SPR-02": { "status": "done", "round": 1 },
+    "SPR-03": { "status": "done", "round": 1 },
+    "SPR-04": { "status": "done", "round": 1 },
+    "SPR-05": { "status": "done", "round": 1 },
+    "SPR-06": { "status": "done", "round": 1 },
+    "SPR-07": { "status": "done", "round": 1 },
+    "SPR-08": { "status": "done", "round": 1 },
+    "SPR-09": { "status": "done", "round": 1 },
+    "SPR-10": { "status": "done", "round": 1 }
+  }
+}
