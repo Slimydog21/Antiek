@@ -31,10 +31,9 @@ What's here:
 §9.0 gate (CRITICAL — composed, never re-implemented): every impl delegates
 the restricted-content gate to the *same* ``search()`` call (or, for VSS, the
 *same* ``retrieval_gate.non_privileged_chunk_sql_clause`` helper that
-``search()`` applies). On main the gate is still the fail-open DENYLIST
-(``content_class IS NULL OR NOT IN (...)``) — the §9.0 allowlist unification
-is staged separately (PR #38, unmerged). This seam composes *whatever is on
-main*; it does not assume the fix landed.
+``search()`` applies). On non-privileged paths the gate is a fail-closed DENYLIST
+(``content_class NOT IN (...)``; NULL excluded). This seam composes the
+canonical ``retrieval_gate`` helper; it does not re-implement gate SQL.
 
 §16 single-writer (CRITICAL): no substrate is a writer. Every impl reads
 through a read-only connection (``runtime.db_lock.connect_read``); the

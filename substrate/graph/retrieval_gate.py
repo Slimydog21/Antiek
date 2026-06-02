@@ -78,9 +78,10 @@ def non_privileged_chunk_sql_clause(
     """SQL fragment + bind params for the non-privileged chunk gate.
 
     On a non-privileged ``policy_tag``, returns a WHERE clause that excludes
-    every member of ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES`` while still
-    allowing NULL ``content_class`` (legacy/grandfathered rows). On a privileged
-    tag (``private_research`` / ``operator_only``), returns ``("", [])``.
+    every member of ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``. NULL
+    ``content_class`` fails closed (excluded — not in the denylist, so SQL
+    ``NOT IN`` does not match NULL). On a privileged tag
+    (``private_research`` / ``operator_only``), returns ``("", [])``.
 
     Args:
         table_alias: Alias of the ``documents`` row in the query (default ``d``).
@@ -90,8 +91,5 @@ def non_privileged_chunk_sql_clause(
         return "", []
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
     placeholders = ",".join("?" for _ in excluded)
-    sql = (
-        f" AND ({table_alias}.content_class IS NULL OR "
-        f"{table_alias}.content_class NOT IN ({placeholders}))"
-    )
+    sql = f" AND ({table_alias}.content_class NOT IN ({placeholders}))"
     return sql, excluded
