@@ -32,10 +32,9 @@ from collections.abc import Sequence
 from urllib.parse import urlencode, urljoin
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
-from .operator_allowlist import operator_allowlist_from_env
 from substrate.auth import (
     EmailDeliveryFailure,
     InvalidToken,
@@ -46,6 +45,8 @@ from substrate.auth import (
     mint_session_cookie,
     verify_magic_link_token,
 )
+
+from .operator_allowlist import operator_allowlist_from_env
 
 SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 

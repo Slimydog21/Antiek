@@ -1193,10 +1193,8 @@ def create_app(
 
     @app.middleware("http")
     async def _operator_auth_middleware(request, call_next):
-        from .operator_allowlist import operator_allowlist_from_env
-
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
+        operator_emails = frozenset(p.strip().lower() for p in os.environ.get(_OPERATOR_EMAIL_ENV, "").split(",") if p.strip())
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
