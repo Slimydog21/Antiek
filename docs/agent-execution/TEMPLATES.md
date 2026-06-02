@@ -123,7 +123,7 @@ Phase B — bounded scope before “platform OK” or sprint closure.
 
 ## Handoff Packet
 
-Matches `docs/htmlspec/antiek-hard-to-vary-execution/sprint-01-protocol-canon.html`. Fill every `###` heading. **`### Not proved` before `### Status`.**
+Superset of `docs/specs/ant-h2v/sprint-01-agent-protocol.html` handoff footer (adds `### Env Card`, `### Not proved`, `### Gate results` with log path). Fill every `###` heading below. **`### Not proved` before `### Status`.**
 
 ```markdown
 ## Sprint SPR-01 — Handoff

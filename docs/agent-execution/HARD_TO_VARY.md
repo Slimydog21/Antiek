@@ -150,7 +150,7 @@ An auditor marks **FAIL** if any row is true for the session under review.
 | F7 | **Informational CI as legal proof** — latency, Lost-Pixel, axe warn-only treated as blocking serve/rights/craft closure | `::warning::` survives; product claim does not | `docs/decisions/ci-informational-gates.md` |
 | F8 | **Ambiguous deferral IDs** — bare `D17` without `engineering_deferrals.md:L###` @ commit SHA | Reader cannot find the deferral cluster | `docs/engineering_deferrals.md` (D17 ≈ L475+, Personal-Reading live-ingest) |
 
-**Additional cascade-specific fails (cite in case study, not extra F-numbers):** “Provider down” when repro shows pre-network `TypeError`; sprint done with only `FakeDecomposer` for a `DispatchDecomposer` bug (`roles/cascade_planner/planner.py`).
+**Additional fails (cite in case study; audit as F-equivalent, not optional):** “Provider down” when repro shows pre-network `TypeError`; sprint done with only `FakeDecomposer` for a `DispatchDecomposer` bug (`roles/cascade_planner/planner.py`); **memory-without-test** — closure from training-data recall or “I read the file” without `inspect` signatures, repro exit codes, or a named pytest row in the Scope Map.
 
 ---
 
