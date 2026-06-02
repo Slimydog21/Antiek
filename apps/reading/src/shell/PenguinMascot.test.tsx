@@ -317,15 +317,14 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
   // regression returns.
   it("walk bob and idle wander are mutually exclusive (the walk animation isn't suppressed by the always-on wander)", () => {
     const { container } = mount();
-    // Settle (1800ms) → first leg begins.
+    // REST_MIN (300) → first leg; +400ms → mid-stroll (800ms leg).
     act(() => {
-      vi.advanceTimersByTime(1900);
+      vi.advanceTimersByTime(350);
     });
-    // Mid-stroll: walking class ON, idle wander OFF — one node can't run both.
     expect(container.querySelector(".werner-waddle")).toBeTruthy();
     expect(container.querySelector(".penguin-mascot-wander")).toBeNull();
     act(() => {
-      vi.advanceTimersByTime(900);
+      vi.advanceTimersByTime(850);
     });
     expect(container.querySelector(".werner-waddle")).toBeNull();
     expect(container.querySelector(".penguin-mascot-wander")).toBeTruthy();
@@ -336,7 +335,7 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
   it("a drag mid-stroll restores the idle wander (the walk/wander invariant holds across a drag)", () => {
     const { container } = mount();
     act(() => {
-      vi.advanceTimersByTime(1900);
+      vi.advanceTimersByTime(650);
     });
     // Mid-stroll: walking.
     expect(container.querySelector(".werner-waddle")).toBeTruthy();
