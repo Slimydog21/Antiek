@@ -26,7 +26,8 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | Adapters migrate to register; allowlist → empty | `acquisition.*.adapter` | per-adapter insert paths | adapter tests TBD | `tools/lint/register_check.py` | **SR-05** | **OPEN** |
 | NULL backfill on prod DB (box) | operator tooling | TBD migration | TBD | — | **SR-06** | **OPEN** |
 | PR #38 §9.0 servability staged until G2/G3 | legal / serve | staged branch | TBD | serve lint cluster | **SR-08** | **OPEN** |
-| P4 continuous sync + P5 chunk provenance | `acquisition` / codegen | TBD | TBD | schema staleness | **SR-09** | **OPEN** |
+| P5 chunk provenance (`personal_reading` non-citable) | `tools.codegen` | `tools/codegen/chunk_provenance.py` | `tests/test_conformance_gate.py` | `tools/codegen/check_conformance.py` | **SR-09** | **CLOSED** (P5) |
+| P4 continuous OAI sync under shared flock | `tools.arxiv_oai_sync` | `tools/arxiv_oai_sync.py` | TBD | operator/systemd | **SR-09** | **OPEN** (P4) |
 | P3b live `source_census.json` + D17 capstone | `tools.source_census` | `tools/source_census.py` | `tests/test_source_gate.py` (fixtures) | `source_gate.py` enforces when census present | **SR-10** | **OPEN** |
 
 ## PR #43 closed obligations (on main @ `2b59fed`)
