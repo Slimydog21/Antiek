@@ -95,6 +95,46 @@ ruff would have grown too). Instead:
   This is the *initial floor*, not a silenced regression. From here it is
   shrink-only like everything else.
 
+#### Ubuntu-runner reconciliation (2026-06-02 · the residual fired as designed)
+
+The floor above was minted on macOS arm64; the gate enforces on
+ubuntu-latest. The "one residual, stated honestly" below predicted that a
+platform-stub difference *could* flip a baselined key NEW on the runner,
+and named the fix in advance: *only if it is a genuine environment
+artifact, re-capture the baseline in the same PR.* On the integrating PR's
+own ubuntu runner this is exactly what happened, and was reconciled — **not
+by weakening either gate.** Two distinct, audited reconciliations:
+
+- **MYPY — +18 platform-stub keys (1665 → 1683).** The ubuntu runner
+  installs the full extras superset, so several third-party imports that
+  the macOS mint venv saw differently resolve there as
+  `import-untyped` / `no-any-return`, and pre-existing
+  `# type: ignore[import-not-found]` comments on now-installed packages
+  flip to `unused-ignore`. All 18 are at pre-existing
+  `# type: ignore[...]` / untyped-3rd-party-import sites
+  (`youtube_transcript_api`, `xhtml2pdf`, `ebooklib`,
+  `sentence_transformers`, `requests`) — the **same import-graph family**
+  as the `.[dev]`-only negative control below. They are **not**
+  autofix-introduced: the safe-autofix commit touches **zero**
+  `# type: ignore` lines (verified). The 18 were added from the runner's
+  own `enforce` output (the binding ground truth — guaranteed to cover the
+  runner's NEW set), so this is the README-sanctioned "genuine environment
+  artifact" re-capture, not a silenced regression. The constraints lock is
+  unchanged: the residual is a platform-stub difference, not transitive-pin
+  drift (which the lock already controls).
+- **§7.4 cap-bearing daemon files — excluded from the autofix (like the
+  money path).** `orchestration/continuous/{budget,daemon,scoring,research_topic}.py`
+  carry the §7.4 cost-runaway caps and are guarded byte-identical-to-`origin/main`
+  by `tests/test_suggestions_surface.py::test_section_7_4_caps_are_byte_unchanged_vs_origin_main`.
+  The tree-wide ruff autofix had cosmetically reformatted them; they were
+  **reverted to `origin/main` bytes** (mirroring the money-path exclusion)
+  so the safety guard holds, and their `origin/main` lint findings were
+  re-baselined to keep the gate honest: ruff **685 → 720** (the re-introduced
+  `I001`/`UP045`/`UP017`/… in those four files), and the two daemon
+  `type-arg` entries re-pinned from the autofix lines `48,51` to the
+  `origin/main` lines `49,52` (mypy net 0). No cap value was widened; no
+  gate was narrowed.
+
 Both baselines were minted on the **pinned toolchain** the CI job installs
 (`ruff==0.15.15`, `mypy==2.1.0`, CPython 3.14) with the venv tools first on
 `PATH` (a stray PATH `mypy` would mint the wrong set). `pyproject.toml`'s

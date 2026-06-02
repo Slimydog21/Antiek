@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-02T08:56:21.825177+00:00",
+  "generated_at": "2026-06-02T10:05:47.675277+00:00",
   "lint": "declared_bar_mypy",
   "schema_version": 1,
   "violations": [
@@ -419,6 +419,12 @@
     },
     {
       "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 48,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 0,
       "kind": "mypy:type-arg",
       "line": 125,
       "path": "acquisition/books/pd_connector_base.py"
@@ -437,8 +443,20 @@
     },
     {
       "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 129,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 0,
       "kind": "mypy:type-arg",
       "line": 131,
+      "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 132,
       "path": "acquisition/books/pd_connector_base.py"
     },
     {
@@ -446,6 +464,12 @@
       "kind": "mypy:type-arg",
       "line": 135,
       "path": "acquisition/books/pd_connector_base.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 60,
+      "path": "acquisition/books/public_domain.py"
     },
     {
       "col": 0,
@@ -457,6 +481,12 @@
       "col": 0,
       "kind": "mypy:no-any-return",
       "line": 260,
+      "path": "acquisition/books/public_domain.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 263,
       "path": "acquisition/books/public_domain.py"
     },
     {
@@ -1625,6 +1655,12 @@
     },
     {
       "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 48,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 0,
       "kind": "mypy:type-arg",
       "line": 166,
       "path": "acquisition/textbooks/_common.py"
@@ -1633,6 +1669,12 @@
       "col": 0,
       "kind": "mypy:no-any-return",
       "line": 168,
+      "path": "acquisition/textbooks/_common.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:no-any-return",
+      "line": 171,
       "path": "acquisition/textbooks/_common.py"
     },
     {
@@ -1981,6 +2023,24 @@
       "col": 0,
       "kind": "mypy:no-untyped-def",
       "line": 197,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 232,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 235,
+      "path": "acquisition/youtube/client.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:attr-defined",
+      "line": 279,
       "path": "acquisition/youtube/client.py"
     },
     {
@@ -2903,6 +2963,18 @@
     },
     {
       "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 2838,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 2838,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
       "kind": "mypy:no-untyped-call",
       "line": 2856,
       "path": "interfaces/research/api/app.py"
@@ -2929,6 +3001,18 @@
       "col": 0,
       "kind": "mypy:no-untyped-call",
       "line": 2874,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:import-not-found",
+      "line": 2898,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 2898,
       "path": "interfaces/research/api/app.py"
     },
     {
@@ -4650,13 +4734,13 @@
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 48,
+      "line": 49,
       "path": "orchestration/continuous/daemon.py"
     },
     {
       "col": 0,
       "kind": "mypy:type-arg",
-      "line": 51,
+      "line": 52,
       "path": "orchestration/continuous/daemon.py"
     },
     {
@@ -5132,6 +5216,12 @@
       "kind": "mypy:type-arg",
       "line": 97,
       "path": "orchestration/rlm/session.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 118,
+      "path": "processing/embedding/embed.py"
     },
     {
       "col": 0,
@@ -8363,8 +8453,20 @@
     },
     {
       "col": 0,
+      "kind": "mypy:import-untyped",
+      "line": 80,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
       "kind": "mypy:unused-ignore",
       "line": 80,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 83,
       "path": "substrate/graph/rlm_tools.py"
     },
     {
@@ -8557,6 +8659,12 @@
       "col": 0,
       "kind": "mypy:unused-ignore",
       "line": 43,
+      "path": "substrate/graph/search.py"
+    },
+    {
+      "col": 0,
+      "kind": "mypy:unused-ignore",
+      "line": 71,
       "path": "substrate/graph/search.py"
     },
     {

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-02T08:54:49.006751+00:00",
+  "generated_at": "2026-06-02T10:05:47.639038+00:00",
   "lint": "declared_bar_ruff",
   "schema_version": 1,
   "violations": [
@@ -754,10 +754,220 @@
       "path": "orchestration/cascade_session.py"
     },
     {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 22,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP045",
+      "line": 46,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP017",
+      "line": 47,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP017",
+      "line": 49,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
       "col": 5,
       "kind": "ruff:SIM108",
-      "line": 53,
+      "line": 55,
       "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP045",
+      "line": 63,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP045",
+      "line": 67,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP037",
+      "line": 135,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 39,
+      "kind": "ruff:UP045",
+      "line": 140,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 148,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 184,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 23,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:F401",
+      "line": 31,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 32,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP045",
+      "line": 49,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:UP045",
+      "line": 52,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 62,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP017",
+      "line": 113,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP017",
+      "line": 114,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 118,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:UP045",
+      "line": 120,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 187,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 281,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 282,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 284,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 22,
+      "path": "orchestration/continuous/research_topic.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:F401",
+      "line": 26,
+      "path": "orchestration/continuous/research_topic.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 22,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 28,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:UP045",
+      "line": 70,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 41,
+      "kind": "ruff:UP045",
+      "line": 94,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:UP045",
+      "line": 172,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP017",
+      "line": 174,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 48,
+      "kind": "ruff:UP017",
+      "line": 177,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP017",
+      "line": 179,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 198,
+      "path": "orchestration/continuous/scoring.py"
     },
     {
       "col": 1,
