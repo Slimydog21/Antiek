@@ -12,7 +12,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | Owner path includes `personal_reading` under privileged `policy_tag` | `substrate.graph.search` | `substrate/graph/search.py:209-219,291-297` | `tests/test_personal_reading_lane.py::test_search_gate_includes_personal_reading_on_operator_only` | — | PR #43 | **CLOSED** |
 | VSS / `retrieval_substrate` gate matches search (excludes owner-only + restricted) | `substrate.graph.retrieval_substrate` | `substrate/graph/retrieval_substrate.py` (via `retrieval_gate`) | `tests/test_retrieval_substrate_personal_reading.py` | `tools/lint/retrieval_gate_check.py` | **SR-02** | **CLOSED** |
 | `GET /chunks/{chunk_id}` withholds `personal_reading` body | `interfaces.research.api.app` | `interfaces/research/api/app.py:2207-2213` | `tests/test_get_chunk_personal_reading.py` | — | **SR-02** | **CLOSED** |
-| NULL `content_class` grandfather passes public retrieval (legacy carve-out) | `substrate.graph.retrieval_gate` | `substrate/graph/retrieval_gate.py:73-97` (carve-out removed) | `tests/test_null_content_class_gate.py::test_search_default_policy_excludes_null_content_class` | — | **SR-07** | **CLOSED** |
+| NULL `content_class` fail-closed on public retrieval (carve-out removed) | `substrate.graph.retrieval_gate` | `substrate/graph/retrieval_gate.py:73-97` | `tests/test_null_content_class_gate.py::test_search_default_policy_excludes_null_content_class` | — | **SR-07** | **CLOSED** |
 | NULL fail-closed after backfill (remove `IS NULL OR`) | `substrate.graph.retrieval_gate` | `substrate/graph/retrieval_gate.py:93-96` | `tests/test_null_content_class_gate.py` | `tools/lint/retrieval_gate_check.py` | **SR-07** | **CLOSED** |
 | Third-party `insert_document` deny-default → `personal_reading` | `substrate.graph.ops` | `substrate/graph/ops.py:199-231` | `tests/test_personal_reading_lane.py::test_insert_document_deny_default_third_party_lands_personal_reading` | — | PR #43 | **CLOSED** |
 | `serve_full_text_guarded` is sole serving-boundary caller | `substrate.books.serve_guard` | `substrate/books/serve_guard.py:149` | `tests/test_serve_guard.py` | `tools/lint/serve_guard_check.py` | PR #43 | **CLOSED** |
@@ -23,7 +23,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | `retrieval_gate_check` blocks second handwritten NOT IN | `tools.lint` | `tools/lint/retrieval_gate_check.py` | `tests/test_retrieval_gate_matrix.py` | CI step | **SR-03** | **CLOSED** |
 | `register_source_document` chokepoint + txn serve-guard | `substrate.rights.register` | `substrate/rights/register.py` | `tests/test_register_source.py` | `tools/lint/register_check.py` | **SR-04** | **CLOSED** (PR #58) |
 | `personal_reading` ∈ `VALID_CONTENT_CLASSES` before P1 merge | `substrate.rights.register` | `register.py:VALID_CONTENT_CLASSES` | `tests/test_register_source.py::test_personal_reading_content_class_accepted` | `register_check.py` | **SR-04** | **CLOSED** |
-| Adapters migrate to register; allowlist → empty | `acquisition.*.adapter` | per-adapter insert paths | adapter tests TBD | `tools/lint/register_check.py` | **SR-05** | **OPEN** |
+| Adapters migrate to register; allowlist → empty | `acquisition.*.adapter` | per-adapter insert paths | `tests/test_register_source.py` + acquisition tests | `tools/lint/register_check.py` | **SR-05** | **CLOSED** (PR #59) |
 | NULL backfill on prod DB (box) | operator tooling | TBD migration | TBD | — | **SR-06** | **OPEN** |
 | PR #38 §9.0 servability staged until G2/G3 | legal / serve | staged branch | TBD | serve lint cluster | **SR-08** | **OPEN** |
 | P4 continuous sync + P5 chunk provenance | `acquisition` / codegen | TBD | TBD | schema staleness | **SR-09** | **OPEN** |
@@ -47,7 +47,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | **SR-04** | `substrate/rights/register.py` (reconcile `caffen/reframe-p1`) | P1 chokepoint + `personal_reading` vocab |
 | **SR-05** | `acquisition/*/adapter.py` | `register_check` allowlist → ∅ |
 | **SR-06** | operator / box migration | NULL backfill before flip |
-| **SR-07** | `substrate/graph/search.py` | NULL fail-closed (`GATE-BACKFILL-DONE`) |
+| **SR-07** | `substrate/graph/retrieval_gate.py` | NULL fail-closed (`GATE-BACKFILL-DONE` before main merge) |
 | **SR-08** | PR #38 servability (counsel G2/G3) | Legal §9.0 servability merge |
 | **SR-09** | P4 daemon + P5 codegen | Corpus sync + chunk provenance |
 | **SR-10** | `tools/source_census.py` + `reports/source_census.json` | P3b live census; `source_gate` **CLOSED** |
