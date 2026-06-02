@@ -261,7 +261,7 @@ def test_adapters_open_connection_read_only(seeded_db):
     db, emb, _ = seeded_db
     sub = make_substrate("turbopuffer", db, model=emb)
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             sub._con.execute(
                 "INSERT INTO documents (document_id, title, source_tier, document_type) "
                 "VALUES ('x','x',3,'paper')"

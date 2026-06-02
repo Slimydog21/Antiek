@@ -72,8 +72,7 @@ from substrate.constants import (  # noqa: E402
 from substrate.graph.ops import insert_document  # noqa: E402
 from substrate.graph.schema import init_database  # noqa: E402
 from substrate.rights import RightsTier, body_servable, resolve_tier  # noqa: E402
-from tools.lint import retrieval_gate_check  # noqa: E402
-from tools.lint import serve_invariants_check  # noqa: E402
+from tools.lint import retrieval_gate_check, serve_invariants_check  # noqa: E402
 
 _T1_LICENSE = "http://creativecommons.org/licenses/by/4.0/"
 _T3_LICENSE = "http://arxiv.org/licenses/nonexclusive-distrib/1.0/"

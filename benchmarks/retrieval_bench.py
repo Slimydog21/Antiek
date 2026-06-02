@@ -378,10 +378,10 @@ def run_candidate(
 
     skipped_status = getattr(sub, "status", None)
     if skipped_status:
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):
             sub.close()
-        except Exception:
-            pass
         return {
             "substrate": kind,
             "status": skipped_status,
@@ -460,10 +460,10 @@ def run_candidate(
                       policy_tag=q.policy_tag)
             latencies_ms.append((time.perf_counter() - t0) * 1000.0)
 
-    try:
+    import contextlib
+
+    with contextlib.suppress(Exception):
         sub.close()
-    except Exception:
-        pass
 
     return _aggregate(
         kind, per_query, latencies_ms, build_ms,
