@@ -233,6 +233,12 @@ _SEED_CHUNKS = [
     ("doc-restricted", 2, "restricted_pending_opt_in", "c-restricted-1",
      "Restricted Big-Five book chunk discussing quantum computing milestones "
      "pending publisher opt-in."),
+    # Personal-Reading Lane — owner-only content (RG-02). Same topical hook as
+    # c-restricted-1; must be withheld on attribution_eligible, retrievable on
+    # operator_only / private_research.
+    ("doc-personal", 2, "personal_reading", "c-personal-1",
+     "Personal reading chunk discussing quantum computing milestones "
+     "from the owner's private third-party essay."),
 ]
 
 # Insight / question nodes for the node-retrieval queries (Q08/Q10/Q11). Their

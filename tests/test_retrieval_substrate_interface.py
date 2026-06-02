@@ -174,6 +174,37 @@ def test_gate_includes_restricted_under_private_research(seeded_db, kind):
         sub.close()
 
 
+@pytest.mark.parametrize("kind", ["vss", "brute_force"])
+def test_gate_excludes_personal_reading_under_attribution_eligible(seeded_db, kind):
+    """The seeded graph carries c-personal-1 (content_class=personal_reading).
+    It MUST NOT appear under the default attribution_eligible policy, for BOTH
+    impls — same non-privileged gate as search()."""
+    db, emb, _ = seeded_db
+    sub = make_substrate(kind, db, model=emb)
+    try:
+        res = sub.query("quantum computing milestones", top_k=20,
+                        policy_tag="attribution_eligible")
+        ids = {r["chunk_id"] for r in res["results"]}
+        assert "c-personal-1" not in ids, f"{kind} leaked personal_reading content"
+    finally:
+        sub.close()
+
+
+@pytest.mark.parametrize("kind", ["vss", "brute_force"])
+def test_gate_includes_personal_reading_under_operator_only(seeded_db, kind):
+    """Owner-only personal_reading IS retrievable under operator_only — for
+    BOTH impls."""
+    db, emb, _ = seeded_db
+    sub = make_substrate(kind, db, model=emb)
+    try:
+        res = sub.query("quantum computing milestones", top_k=20,
+                        policy_tag="operator_only")
+        ids = {r["chunk_id"] for r in res["results"]}
+        assert "c-personal-1" in ids, f"{kind} withheld personal_reading under operator_only"
+    finally:
+        sub.close()
+
+
 def test_unknown_policy_tag_fails_closed(seeded_db):
     """A typo'd policy_tag must default to safe-exclude (the gate fails
     closed) — same posture as search()."""
