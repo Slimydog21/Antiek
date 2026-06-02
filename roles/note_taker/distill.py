@@ -86,10 +86,11 @@ class DispatchDistiller:
 
     def _build_prompt(self, text: str, context: str, source_event_ids: Sequence[str]) -> str:
         ids = ", ".join(source_event_ids) if source_event_ids else "(none)"
+        context_block = f"Project context:\n{context}\n\n" if context else ""
         return (
             f"{self._system_prompt}\n\n"
             f"Source event ids you may attribute to: {ids}\n"
-            f"{('Project context:\n' + context) if context else ''}\n\n"
+            f"{context_block}"
             f"Distill the following into insights + questions:\n\n{text}"
         )
 

@@ -37,6 +37,7 @@ from substrate.auth import (
     verify_magic_link_token,
     verify_session_cookie,
 )
+from substrate.auth.magic_link import MAGIC_LINK_TTL_SECONDS
 
 _OPERATOR = "ftn208@nyu.edu"
 _OPERATOR_SECOND = "the@faisalnazer.com"
@@ -171,6 +172,36 @@ def test_auth_callback_rejects_bad_token(monkeypatch):
     assert r.status_code == 302
     assert "login" in r.headers["location"]
     assert "error=magic_link_invalid" in r.headers["location"]
+
+
+def test_auth_callback_expired_redirects_to_login(monkeypatch):
+    """Expired magic links redirect to Login with magic_link_expired, not JSON 400."""
+    client = _client(monkeypatch)
+    now = int(time.time())
+    expired_at = now - MAGIC_LINK_TTL_SECONDS - 60
+    monkeypatch.setattr("substrate.auth.magic_link.time.time", lambda: expired_at)
+    tok = mint_magic_link_token(_OPERATOR)
+    monkeypatch.setattr("substrate.auth.magic_link.time.time", lambda: now)
+    r = client.get(f"/auth/callback?token={tok}&next=/inv/abc", follow_redirects=False)
+    assert r.status_code == 302
+    loc = r.headers["location"]
+    assert "login" in loc
+    assert "error=magic_link_expired" in loc
+
+
+def test_auth_callback_error_redirect_blocks_open_redirect_next(monkeypatch):
+    """Error redirects sanitize ``next`` — external URLs cannot ride on bad tokens."""
+    client = _client(monkeypatch)
+    r = client.get(
+        "/auth/callback?token=garbage&next=https://evil.com",
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    loc = r.headers["location"]
+    assert "login" in loc
+    assert "error=magic_link_invalid" in loc
+    assert "evil.com" not in loc
+    assert "next=%2F" in loc or "next=/" in loc
 
 
 def test_auth_callback_rejects_non_allowlisted_email(monkeypatch):

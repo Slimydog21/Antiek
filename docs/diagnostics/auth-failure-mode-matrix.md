@@ -42,20 +42,16 @@
 
 2. **Frontend** — `requestMagicLink` only surfaces **"Failed to fetch"** (or another transport message) when `apiFetch` **throws** before a normal HTTP response is handled. A completed `fetch` with `r.ok === true` always returns `{ kind: "sent" }` and shows **"Check your email"**, not a transport error.
 
-```101:129:apps/reading/src/lib/auth.tsx
+```129:159:apps/reading/src/lib/auth.tsx
 export async function requestMagicLink(email: string, nextPath: string = "/"): Promise<AuthRequestResult> {
   try {
     const r = await apiFetch(authUrl("/auth/request"), { ... });
     if (r.ok) {
-      return { kind: "sent" };
+      return { kind: "sent", diagnostic_code: null, layer: null };
     }
     ...
-  } catch (err) {
-    return {
-      kind: "error",
-      code: "network_error",
-      message: err instanceof Error ? err.message : "Network error.",
-    };
+  } catch {
+    return authRequestError("transport_fetch_failed", AUTH_TRANSPORT_FETCH_MESSAGE, "A-TRANSPORT-FETCH");
   }
 }
 ```
@@ -70,14 +66,14 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
 
 | failure_id | layer | user_symptom | http_status | discriminant command | expected output | fix_owner sprint |
 |------------|-------|--------------|-------------|----------------------|-----------------|------------------|
-| `A-TRANSPORT-FETCH` | A | Login shows **Failed to fetch** (or `network_error`) after submit; no HTTP body parsed | *(none — fetch throws)* | `curl -sS -o /tmp/auth_req.json -w "%{http_code}\n" -X POST "${API:-https://api.antiek.ai}/auth/request" -H "Content-Type: application/json" -d '{"email":"probe@example.com"}' && cat /tmp/auth_req.json` | `200` and `{"sent":true}` while browser still fails → Layer A (VPN, extension, offline, wrong `VITE_API_BASE_URL`, DNS) | SPR-02 |
+| `A-TRANSPORT-FETCH` | A | Login shows **Cannot reach Antiek API** (or `transport_fetch_failed`) after submit; no HTTP body parsed | *(none — fetch throws)* | `curl -sS -o /tmp/auth_req.json -w "%{http_code}\n" -X POST "${API:-https://api.antiek.ai}/auth/request" -H "Content-Type: application/json" -d '{"email":"probe@example.com"}' && cat /tmp/auth_req.json` | `200` and `{"sent":true}` while browser still fails → Layer A (VPN, extension, offline, wrong `VITE_API_BASE_URL`, DNS) | SPR-02 |
 | `A-TRANSPORT-LOCAL-BACKEND` | A | Dev Login **Failed to fetch** / connection refused; Vite :5173 up | *(connection refused)* | `curl -sS -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/health` then `curl -sS -X POST http://127.0.0.1:5173/auth/request -H "Content-Type: application/json" -d '{"email":"dev@test"}'` | First command not `200`, or second fails while health is down → start FastAPI on :8000; confirm `vite.config.ts` proxies `/auth` → `localhost:8000` | SPR-02 |
 | `A-TRANSPORT-CORS` | A | Browser console: CORS preflight failed; Login **Failed to fetch** | *(preflight blocked)* | From devtools Network: `OPTIONS` to API origin with `Origin: https://antiek.ai` (or dev origin). Compare: `curl -sS -D- -o /dev/null -X OPTIONS "${API:-https://api.antiek.ai}/auth/request" -H "Origin: https://antiek.ai" -H "Access-Control-Request-Method: POST"` | Missing `access-control-allow-origin` or 4xx on OPTIONS while POST works from curl → fix API CORS / Pages build `VITE_API_BASE_URL` pairing | SPR-02 |
 | `B-POLICY-ALLOWLIST-SILENT` | B | **Check your email** but no message arrives (allowlisted expectation) | `200` | `curl -sS -X POST "${API:-https://api.antiek.ai}/auth/request" -H "Content-Type: application/json" -d '{"email":"NOT_IN_ALLOWLIST@example.com"}'` | `{"sent":true}` — **cannot** explain UI **Failed to fetch** (see impossibility lemma). Fix: add email to `ANTIEK_OPERATOR_EMAIL` on server; re-request | SPR-04, operator |
 | `B-POLICY-EMAIL-503` | B | Login error text from API; Resend/provider broken for allowlisted address | `503` | `curl -sS -w "\n%{http_code}\n" -X POST "${API:-https://api.antiek.ai}/auth/request" -H "Content-Type: application/json" -d '{"email":"ALLOWLISTED_EMAIL"}'` *(substitute real allowlisted operator email)* | Body contains `"code":"email_delivery_failed"` and HTTP `503` | Operator (Resend keys), SPR-04 |
-| `B-POLICY-CALLBACK-EXPIRED` | B | Magic link click shows JSON: link expired | `400` | `curl -sS "${API:-https://api.antiek.ai}/auth/callback?token=EXPIRED_TOKEN&next=/"` *(token older than 15m or test fixture)* | `{"error":{"code":"magic_link_expired",...}}` | SPR-03 |
-| `B-POLICY-CALLBACK-INVALID` | B | Magic link click shows JSON: link not valid | `400` | `curl -sS "${API:-https://api.antiek.ai}/auth/callback?token=not.valid.token&next=/"` | `{"error":{"code":"magic_link_invalid",...}}` | SPR-03 |
-| `B-POLICY-CALLBACK-NOT-AUTH` | B | Valid-looking link; JSON not authorized (allowlist changed after mint) | `403` | Mint link for email then remove email from `ANTIEK_OPERATOR_EMAIL` before callback; or use test `tests/test_magic_link_auth.py` callback cases | `{"error":{"code":"not_authorized",...}}` | SPR-03, SPR-06 |
+| `B-POLICY-CALLBACK-EXPIRED` | B | Magic link click lands on Login: link expired | `302` | `curl -sS -D- -o /dev/null "${API:-https://api.antiek.ai}/auth/callback?token=EXPIRED_TOKEN&next=/"` *(token older than 15m or test fixture)* | `Location: .../login?error=magic_link_expired&next=...` (absolute when `ANTIEK_FRONTEND_BASE_URL` / `ANTIEK_PUBLIC_BASE_URL` set) | SPR-03 |
+| `B-POLICY-CALLBACK-INVALID` | B | Magic link click lands on Login: link not valid | `302` | `curl -sS -D- -o /dev/null "${API:-https://api.antiek.ai}/auth/callback?token=not.valid.token&next=/"` | `Location: .../login?error=magic_link_invalid&next=...` | SPR-03 |
+| `B-POLICY-CALLBACK-NOT-AUTH` | B | Valid-looking link; Login not authorized (allowlist changed after mint) | `302` | Mint link for email then remove email from `ANTIEK_OPERATOR_EMAIL` before callback; or use test `tests/test_magic_link_auth.py` callback cases | `Location: .../login?error=not_authorized&next=...` | SPR-03, SPR-06 |
 | `OPS-INGEST-502` | OPS | **Unrelated to Login submit** — API unhealthy / 502 during corpus ingest window because `antiek.service` was stopped | `502` / connection errors on `/health` | `ssh hetzner 'systemctl is-active antiek.service; curl -sS -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/health'` | `inactive` or non-200 health during ingest → **do not** stop `antiek.service` for ingest body (`infrastructure/runbooks/corpus-mass-ingest.md` Preflight 4) | Operator |
 | `OPS-CF-403` | OPS | `curl` / probe gets **403**; browser Login may work | `403` | `curl -sS -o /dev/null -w "%{http_code}\n" -A "antiek-auth-probe/1.0" "${API:-https://api.antiek.ai}/health"` vs `curl -sS -o /dev/null -w "%{http_code}\n" -A "Mozilla/5.0" "${API:-https://api.antiek.ai}/health"` | Non-browser UA blocked at Cloudflare; browser path OK → adjust WAF / use browser-like UA in probes only | Operator |
 | `OPS-COOKIE-DOMAIN` | OPS | Callback appears to succeed but `/auth/me` is 401 on Pages origin | `401` on `/auth/me` | After callback: `curl -sS -b cookies.txt -c cookies.txt "${API:-https://api.antiek.ai}/auth/callback?token=VALID&next=/" -D - -o /dev/null` then `curl -sS -b cookies.txt "${API:-https://api.antiek.ai}/auth/me"` from app origin with `credentials: include` | `Set-Cookie` without `Domain=.antiek.ai` (or wrong domain) → set `ANTIEK_COOKIE_DOMAIN` per `infrastructure/runbooks/magic-link-auth.md` | SPR-03, operator |
@@ -90,7 +86,7 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
 
 | failure_id | Server / client signal |
 |------------|------------------------|
-| `A-TRANSPORT-FETCH` | Browser: `TypeError: Failed to fetch`; client `code: network_error` |
+| `A-TRANSPORT-FETCH` | Browser: `TypeError: Failed to fetch`; client `code: transport_fetch_failed` |
 | `A-TRANSPORT-LOCAL-BACKEND` | `ECONNREFUSED 127.0.0.1:8000`; Vite proxy error on `/auth/request` |
 | `A-TRANSPORT-CORS` | `Access to fetch ... blocked by CORS policy` |
 | `B-POLICY-ALLOWLIST-SILENT` | `POST /auth/request` 200, no outbound email log for address |
@@ -133,9 +129,9 @@ $ curl -sS -X POST "https://api.antiek.ai/auth/request" \
 **`A-TRANSPORT-FETCH`** — client path when `fetch` throws (no HTTP status):
 
 ```text
-// apps/reading/src/lib/auth.tsx L123-128 — err.message is often "Failed to fetch"
-catch (err) {
-  return { kind: "error", code: "network_error", message: err instanceof Error ? err.message : "Network error." };
+// apps/reading/src/lib/auth.tsx L157-158 — closed code transport_fetch_failed
+catch {
+  return authRequestError("transport_fetch_failed", AUTH_TRANSPORT_FETCH_MESSAGE, "A-TRANSPORT-FETCH");
 }
 ```
 

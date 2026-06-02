@@ -118,7 +118,12 @@ python tools/auth_probe.py --base-url http://127.0.0.1:8000 --origin http://loca
 ```
 
 Composes with `tools/prod_parity/check.py` on deploy (SHA + flywheel);
-this probe is auth-specific and does not replace prod parity.
+run auth stages after parity when `ANTIEK_API_BASE` is set or pass
+`--auth-probe`:
+
+```bash
+python tools/prod_parity/check.py --url https://api.antiek.ai --auth-probe
+```
 
 #### Manual curl (same stages, piecemeal)
 
