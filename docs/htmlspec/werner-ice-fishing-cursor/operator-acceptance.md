@@ -2,6 +2,7 @@
 
 **Spec:** `docs/htmlspec/werner-ice-fishing-cursor/index.html`  
 **Branch:** `caffen/SPR-13` (SPR-13–16 combined)  
+**PR:** https://github.com/Slimydog21/Antiek/pull/54  
 **Date:** 2026-06-02
 
 Sign each row after manual verification on a deployed or local `apps/reading` build with ice mode on (`VITE_WERNER_ICE_FISHING` unset or `1`).
@@ -21,7 +22,7 @@ Sign each row after manual verification on a deployed or local `apps/reading` bu
 ```bash
 cd apps/reading
 npx vitest run src/werner/ src/shell/PenguinMascot
-rg '~5s-lagged' docs/   # expect 0 matches
+rg '5s-lagged' ../../docs/ --glob '!**/operator-acceptance.md'   # expect 0 matches
 ```
 
-**Merge:** Operator approves PR `caffen/SPR-13` → `main`, then manual deploy per Antiek workflow.
+**Merge:** Approve PR #54 → `main`, then manual deploy per Antiek workflow.
