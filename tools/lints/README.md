@@ -76,7 +76,8 @@ ruff would have grown too). Instead:
 - **RUFF — shrunk, not grown (compliant).** ~87% of the raw ruff findings
   were `ruff check --fix`-able safely (behavior-preserving: import-sort
   `I001`, PEP585 `UP006`, `X | None` `UP045`, `datetime.UTC` alias
-  `UP017`, quoted-annotation `UP037`, redundant `open` mode `UP015`, …).
+  `UP017`, quoted-annotation `UP037`, redundant `open` mode `UP015`,
+  empty-placeholder f-string `F541`, redundant `.encode("utf-8")` `UP012`, …).
   Those were auto-fixed in a separate reviewable commit
   (*"modernize(lint): ruff safe autofixes …"*) across 784 source files,
   so the ruff baseline minted **smaller** — **4541/4792 (draft) → 685** —
@@ -104,13 +105,21 @@ emitted a phantom `invalid-syntax` on a valid 3.12+ backslash-in-f-string
 a scope narrowing: no `files=`/`exclude=` was added and the ruff `select` /
 mypy `strict` are unchanged (G5).
 
-### Reproduction provenance — what was actually run (2026-05-29)
+### Reproduction provenance — what was actually run
+
+> **Superseded-numbers note (2026-06-02):** the result table below reflects
+> the **live re-baseline** — the committed `685` ruff / `1665` mypy floor.
+> The original draft-era run (2026-05-29) observed `4541` / `1185`; the ruff
+> number dropped via the safe-autofix shrink and the mypy number rose via
+> the one-time initial floor (see "Initial-floor re-baseline" above). The
+> lock-sensitivity mechanics in this section are version-independent and
+> unchanged by the re-baseline.
 
 The "reproduces byte-for-byte" claim below is not an assertion; it was
-**verified locally in a CI-equivalent environment** before this sprint
-shipped — pinned `ruff==0.15.15` + `mypy==2.1.0` (the workflow pins),
-CPython 3.14 (the runner interpreter), and the **full extras superset the
-workflow installs** under the pinned lock:
+**verified in a CI-equivalent environment** — pinned `ruff==0.15.15` +
+`mypy==2.1.0` (the workflow pins), CPython 3.14 (the runner interpreter),
+and the **full extras superset the workflow installs** under the pinned
+lock:
 
 ```bash
 python3.14 -m venv .venv && . .venv/bin/activate
@@ -129,10 +138,11 @@ above** — both green.
 
 | Gate run against the unmodified committed tree (full superset + lock) | Result |
 |---|---|
-| `enforce ruff` | 4541 current == 4541 baseline · **0 NEW · 0 STALE · rc 0** |
-| `enforce mypy` | deduped current set == 1185 baseline set · **0 NEW · 0 STALE · rc 0** |
+| `enforce ruff` | 685 current == 685 baseline · **0 NEW · 0 STALE · rc 0** |
+| `enforce mypy` | deduped current set == 1665 baseline set · **0 NEW · 0 STALE · rc 0** |
 
-This is the **G2 "green on HEAD"** contract, observed — not simulated.
+This is the **G2 "green on HEAD"** contract, observed — not simulated
+(the live 2026-06-02 re-baseline floor).
 The 137 `import-*` baseline keys (116 `import-not-found` + 21
 `import-untyped`) and the 230 `unused-ignore` keys are the most
 environment-sensitive; with the full install above they reproduced
