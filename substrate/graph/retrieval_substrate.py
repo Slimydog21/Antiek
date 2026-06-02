@@ -58,21 +58,19 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.graph.retrieval_gate import (  # type: ignore[no-redef]
-        non_privileged_chunk_sql_clause,
-    )
-    from substrate.graph.search import (  # type: ignore[no-redef]
+    from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+    from substrate.graph.search import (
         EmbeddingModel,
         search,
         search_nodes_by_label,
     )
 
 try:
-    from ...runtime.db_lock import connect_read
+    from ...runtime.db_lock import connect_read  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read
 
 
 _log = logging.getLogger("antiek.retrieval_substrate")
@@ -108,7 +106,7 @@ class RetrievalSubstrate(Protocol):
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict: ...
+    ) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +141,7 @@ class BruteForceSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         return search(
             self._con,
             text,
@@ -377,7 +375,7 @@ class DuckDbVssSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         if not self.vss_active:
             # Fallback path — identical to the brute-force reference.
             return search(
@@ -393,7 +391,7 @@ class DuckDbVssSubstrate:
     def _vss_query(
         self, text: str, *, top_k: int, source_tier_max: int | None,
         document_ids: Sequence[str] | None, policy_tag: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
 
@@ -446,7 +444,7 @@ class DuckDbVssSubstrate:
         params.append(int(top_k))
 
         rows = self._con.execute(sql, params).fetchall()
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         for (
             chunk_id, section, ctext, tokens, doc_id, chunk_index,
             title, tier, dtype, sim,
@@ -495,7 +493,7 @@ def make_substrate(
     *,
     model: EmbeddingModel,
     **adapter_kwargs: Any,
-):
+) -> RetrievalSubstrate:
     """Construct a ``RetrievalSubstrate`` for ``kind``.
 
     ``kind`` ∈ {"vss" (default winner), "brute_force" (reference),

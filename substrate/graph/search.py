@@ -39,6 +39,7 @@ from substrate.graph import retrieval_gate as _retrieval_gate
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
 # Back-compat re-exports (tests / attribution import these from search).
+PRIVILEGED_POLICY_TAGS = _retrieval_gate.PRIVILEGED_POLICY_TAGS
 PERSONAL_ONLY_CONTENT_CLASSES = _retrieval_gate.PERSONAL_ONLY_CONTENT_CLASSES
 RESTRICTED_CONTENT_CLASSES = _retrieval_gate.RESTRICTED_CONTENT_CLASSES
 _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = (
