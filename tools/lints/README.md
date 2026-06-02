@@ -23,7 +23,8 @@ A strict contract that CI does not enforce is not a contract — it is a
 comment. `pyproject.toml` declares `[tool.mypy] strict = true` and
 `[tool.ruff.lint] select = E,F,I,B,UP,SIM,RET`, both with **no
 `files=` / `exclude=` narrowing**, so by the plain reading the declared
-scope is the entire repo (~559 source files). Enforcing that cold would
+scope is the entire repo (~1191 source files in the ruff scope as of the
+2026-06-02 re-baseline). Enforcing that cold would
 block every PR on the existing backlog — so instead we snapshot today's
 violations into a dated baseline and gate **forward**: only violations in
 code with no baseline entry red the build. The backlog then becomes a
@@ -34,7 +35,7 @@ strict on over 559 files on day one would have been pure flag-day pain
 for no regression caught. The baseline keeps that same caution — zero
 retroactive block — while still closing the declared-vs-enforced gap.)
 
-## The dated baselines (snapshot: origin/main @ 5413fdc, 2026-05-29)
+## The dated baselines (snapshot: foundation-v2 rebase base `f9c8b50` + 2026-06-02 initial-floor re-baseline)
 
 These two baselines are consumed by `tools/lints/declared_bar.py` and the
 `.github/workflows/enforce_declared_bar.yml` job. Each carries its own
@@ -42,18 +43,66 @@ These two baselines are consumed by `tools/lints/declared_bar.py` and the
 
 | Baseline file | Tool | Violations at snapshot |
 |---|---|---|
-| `baselines/declared_ruff.json` | `ruff check` (declared `[tool.ruff.lint]` scope, whole repo) | **4541** |
-| `baselines/declared_mypy.json` | `mypy --strict` (declared `[tool.mypy]` packages) | **1185** |
+| `baselines/declared_ruff.json` | `ruff check` (declared `[tool.ruff.lint]` scope, whole repo) | **685** |
+| `baselines/declared_mypy.json` | `mypy --strict` (declared `[tool.mypy]` packages) | **1665** |
 
-That `4541 + 1185` is the **honest size of the typing/lint debt** as of
-the snapshot. It is recorded here, in each baseline's `generated_at`
-field, and in the sprint handoff packet. It is not rounded down and the
-declared config was not loosened to make it look smaller.
+That `685 + 1665` is the **honest size of the typing/lint debt** as of
+the 2026-06-02 re-baseline. It is recorded here, in each baseline's
+`generated_at` field, and in the sprint handoff packet. It is not rounded
+down and the declared config was not loosened to make it look smaller —
+on the contrary, the ruff floor was *shrunk* by removing the debt (see
+the "Initial-floor re-baseline" section below for why the ruff number
+dropped from its draft 4541/4792 and the mypy number rose from 1185).
 
 (The substrate-specific baselines `baselines/no_raise.json`,
 `baselines/bypass.json`, `baselines/mypy_strict_substrate_core.json` are
 the older ARE-11 substrate-floor allow-lists consumed by
 `substrate_floor.yml`; the same shrink-only rule applies to them.)
+
+### Initial-floor re-baseline (2026-06-02 · foundation-merge event)
+
+**This is the single, explicit, named exception to the never-grow rule —
+the one-time establishment of the floor on the tree the gate actually
+goes live on. SHRINK-ONLY applies strictly before and after; this section
+documents the one grow and why it is legitimate.**
+
+The gate was drafted against `origin/main @ 5413fdc` (2026-05-29) and its
+baselines minted there. By the time it was rebased to go live it sat on a
+tree ~167 commits later (the foundation-v2 merge base `f9c8b50`): the
+draft baselines were stale, and the **honest** way to re-establish the
+floor was *not* to recapture both as-is (mypy would have silently grown,
+ruff would have grown too). Instead:
+
+- **RUFF — shrunk, not grown (compliant).** ~87% of the raw ruff findings
+  were `ruff check --fix`-able safely (behavior-preserving: import-sort
+  `I001`, PEP585 `UP006`, `X | None` `UP045`, `datetime.UTC` alias
+  `UP017`, quoted-annotation `UP037`, redundant `open` mode `UP015`, …).
+  Those were auto-fixed in a separate reviewable commit
+  (*"modernize(lint): ruff safe autofixes …"*) across 784 source files,
+  so the ruff baseline minted **smaller** — **4541/4792 (draft) → 685** —
+  a genuine debt removal, exactly the shrink direction the rule wants. The
+  autofix deliberately **did not touch the money path** (the
+  `payout`/`stripe_connect`/`compute.py` files were reverted out of the
+  autofix commit; their pre-existing ruff findings remain baselined rather
+  than rewritten).
+- **MYPY — grown ONCE (the legitimate exception).** `mypy --strict` debt
+  (`type-arg`, `no-untyped-def`, `no-any-return`, …) is **not** safely
+  auto-fixable in one PR, and this gate has **never been live on main** —
+  so there was no prior enforced floor to ratchet down from. The mypy
+  floor therefore grows once, **1185 → 1665 (+480)**, to cover the
+  foundation-merge type debt that accumulated over those ~167 commits.
+  This is the *initial floor*, not a silenced regression. From here it is
+  shrink-only like everything else.
+
+Both baselines were minted on the **pinned toolchain** the CI job installs
+(`ruff==0.15.15`, `mypy==2.1.0`, CPython 3.14) with the venv tools first on
+`PATH` (a stray PATH `mypy` would mint the wrong set). `pyproject.toml`'s
+`[tool.ruff] target-version` and `[tool.mypy] python_version` were aligned
+`py311 → py314` to match the CI runner + dev interpreter — at `py311` ruff
+emitted a phantom `invalid-syntax` on a valid 3.12+ backslash-in-f-string
+(`roles/note_taker/distill.py`). That is a tooling-target alignment, **not**
+a scope narrowing: no `files=`/`exclude=` was added and the ruff `select` /
+mypy `strict` are unchanged (G5).
 
 ### Reproduction provenance — what was actually run (2026-05-29)
 
@@ -142,9 +191,10 @@ ubuntu-latest/py3.14 runner — that run is the binding G2 evidence.**
 ## Known limitation — mypy and ruff do NOT cover the same scope
 
 These two gates do not enforce over an identical file set, and the
-`(~559 source files)` framing above is the *ruff* scope, not the mypy
-scope. This is a deliberate, documented asymmetry — not an accident — but
-it is a real enforcement hole, so it is stated plainly here:
+`(~1191 source files)` whole-repo framing above is the *ruff* scope, not
+the mypy scope (mypy covers the 10 declared wheel packages). This is a
+deliberate, documented asymmetry — not an accident — but it is a real
+enforcement hole, so it is stated plainly here:
 
 | Gate | What it covers | Top-level dirs |
 |---|---|---|
