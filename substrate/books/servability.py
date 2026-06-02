@@ -35,7 +35,6 @@ servable is precisely the enjoined Internet-Archive pattern. We refuse it.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
 
 from substrate.constants import (
     BOOK_DEFAULT_SERVABILITY,
@@ -98,7 +97,7 @@ _SERVABLE_STATUSES: frozenset[ServabilityStatus] = frozenset({
 
 
 def servability_of(
-    content_class: Optional[str],
+    content_class: str | None,
     *,
     taken_down: bool = False,
 ) -> ServabilityStatus:
@@ -158,7 +157,7 @@ def is_servable_full_text(status: ServabilityStatus) -> bool:
 _PROJECTED_SERVABLE = {
     cc for cc, st in _CONTENT_CLASS_TO_STATUS.items() if st in _SERVABLE_STATUSES
 }
-assert _PROJECTED_SERVABLE == set(SERVABLE_CONTENT_CLASSES), (
+assert set(SERVABLE_CONTENT_CLASSES) == _PROJECTED_SERVABLE, (
     "servability projection drifted from SERVABLE_CONTENT_CLASSES: "
     f"projection={_PROJECTED_SERVABLE!r} allowlist={set(SERVABLE_CONTENT_CLASSES)!r}. "
     "These two MUST stay equal or the data-layer gate and the UI predicate "
@@ -166,7 +165,7 @@ assert _PROJECTED_SERVABLE == set(SERVABLE_CONTENT_CLASSES), (
 )
 
 # The default status for unknown-provenance content is the gated one.
-assert BOOK_DEFAULT_SERVABILITY == ServabilityStatus.GATED_METADATA_ONLY.value, (
+assert ServabilityStatus.GATED_METADATA_ONLY.value == BOOK_DEFAULT_SERVABILITY, (
     "BOOK_DEFAULT_SERVABILITY must be the gated_metadata_only status — "
     "deny-by-default is the entire point of this gate."
 )

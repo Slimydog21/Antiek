@@ -35,7 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from . import RegistryBackedLegalGate, registry
 from .predicate import (
@@ -48,7 +48,7 @@ from .predicate import (
 )
 
 
-def _registry_summary() -> Dict[str, Any]:
+def _registry_summary() -> dict[str, Any]:
     return {
         "banned_domains": list(registry.BANNED_DOMAINS),
         "banned_corpus_ids": list(registry.BANNED_CORPUS_IDS),
@@ -58,11 +58,11 @@ def _registry_summary() -> Dict[str, Any]:
     }
 
 
-def _inconsistencies() -> List[str]:
+def _inconsistencies() -> list[str]:
     """Lightweight static lint of registry entries. Flags obvious
     mistakes (empty strings, banned domains with `http` prefix,
     hash prefixes that aren't lowercase-hex)."""
-    issues: List[str] = []
+    issues: list[str] = []
     for d in registry.BANNED_DOMAINS:
         if not d or not d.strip():
             issues.append("banned_domains contains an empty/whitespace entry")
@@ -88,16 +88,16 @@ def _inconsistencies() -> List[str]:
 
 def _probe(
     *,
-    url: Optional[str],
-    author: Optional[str],
-    title: Optional[str],
-    corpus_id: Optional[str],
-    content_hash: Optional[str],
-) -> Dict[str, Any]:
+    url: str | None,
+    author: str | None,
+    title: str | None,
+    corpus_id: str | None,
+    content_hash: str | None,
+) -> dict[str, Any]:
     """Run each non-empty probe input through the matching
     predicate AND through the composite `check_document` for the
     end-to-end view."""
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     if url:
         out["url"] = {"input": url, "reason": url_blocked_reason(url)}
     if author:
@@ -140,7 +140,7 @@ def _probe(
     return out
 
 
-def _render_summary(s: Dict[str, Any], *, out=None) -> None:
+def _render_summary(s: dict[str, Any], *, out=None) -> None:
     out = out or sys.stdout
     print("Legal-gate registry summary", file=out)
     print("=" * 32, file=out)
@@ -153,7 +153,7 @@ def _render_summary(s: Dict[str, Any], *, out=None) -> None:
                 print(f"  - {entry}", file=out)
 
 
-def _render_probe(p: Dict[str, Any], *, out=None) -> None:
+def _render_probe(p: dict[str, Any], *, out=None) -> None:
     out = out or sys.stdout
     print("\nProbe results", file=out)
     print("=" * 32, file=out)
@@ -205,7 +205,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     summary = _registry_summary()

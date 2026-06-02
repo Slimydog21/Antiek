@@ -3,12 +3,9 @@ red-team harness used to produce sprint23_red_team.md §2 evidence."""
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.anti_gaming.red_team import (
     AttackClass,
     AttackResult,
-    FalsePositiveResult,
     RedTeamReport,
     format_report_markdown,
     measure_false_positive_rate,
@@ -19,7 +16,6 @@ from substrate.anti_gaming.red_team import (
     simulate_attack_d_creator_cluster_collusion,
 )
 from substrate.anti_gaming.verdict import FraudVerdictKind
-
 
 # ── Attack A: botnet view inflation ───────────────────────────────
 

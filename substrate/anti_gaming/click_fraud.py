@@ -9,11 +9,10 @@ and (c) sub-threshold dwell time between page-load and click.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
 
 from .verdict import FraudSignal, FraudVerdict, verdict_from_signals
-
 
 DWELL_FAST_SECONDS = 1.5  # clicks faster than this are bot-suspicious
 UA_LOW_ENTROPY = 0.6
@@ -83,7 +82,7 @@ def score_click_event(
     dwell_seconds: float,
     window_ua_entropy: float,
     window_ip_entropy: float,
-    subject_ref: Optional[str] = None,
+    subject_ref: str | None = None,
 ) -> FraudVerdict:
     """Score a single click against the window's entropy."""
     signals: list[FraudSignal] = []

@@ -80,7 +80,6 @@ from substrate.context_pack import (  # noqa: E402
 )
 from substrate.context_pack.style_guide import STYLE_EXTRACTOR_FLAG  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

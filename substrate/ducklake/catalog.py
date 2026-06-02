@@ -11,27 +11,27 @@ import os
 import sqlite3
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, Protocol
+from datetime import UTC, datetime
+from typing import Protocol
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
 class CatalogEntry:
     user_id: str
     db_path: str
-    encryption_key_ref: Optional[str]
-    shard_id: Optional[str]
+    encryption_key_ref: str | None
+    shard_id: str | None
     last_size_bytes: int
     updated_at: str
 
 
 class CatalogBackend(Protocol):
     def upsert(self, entry: CatalogEntry) -> None: ...
-    def get(self, user_id: str) -> Optional[CatalogEntry]: ...
+    def get(self, user_id: str) -> CatalogEntry | None: ...
     def all(self) -> list[CatalogEntry]: ...
     def remove(self, user_id: str) -> bool: ...
 
@@ -49,7 +49,7 @@ class InMemoryCatalogBackend:
         with self._lock:
             self.entries[entry.user_id] = entry
 
-    def get(self, user_id: str) -> Optional[CatalogEntry]:
+    def get(self, user_id: str) -> CatalogEntry | None:
         with self._lock:
             return self.entries.get(user_id)
 
@@ -68,7 +68,7 @@ class SqliteCatalogBackend:
     Postgres by re-pointing the connection. Single-table schema."""
 
     db_path: str
-    _conn: Optional[sqlite3.Connection] = None
+    _conn: sqlite3.Connection | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -107,7 +107,7 @@ class SqliteCatalogBackend:
             ))
             self._conn.commit()
 
-    def get(self, user_id: str) -> Optional[CatalogEntry]:
+    def get(self, user_id: str) -> CatalogEntry | None:
         assert self._conn is not None
         with self._lock:
             row = self._conn.execute(
@@ -150,8 +150,8 @@ class DuckLakeCatalog:
         *,
         user_id: str,
         db_path: str,
-        encryption_key_ref: Optional[str] = None,
-        shard_id: Optional[str] = None,
+        encryption_key_ref: str | None = None,
+        shard_id: str | None = None,
         last_size_bytes: int = 0,
     ) -> CatalogEntry:
         entry = CatalogEntry(
@@ -165,7 +165,7 @@ class DuckLakeCatalog:
         self.backend.upsert(entry)
         return entry
 
-    def lookup(self, user_id: str) -> Optional[CatalogEntry]:
+    def lookup(self, user_id: str) -> CatalogEntry | None:
         return self.backend.get(user_id)
 
     def list_all(self) -> list[CatalogEntry]:

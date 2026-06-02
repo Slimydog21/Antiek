@@ -42,7 +42,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from substrate import ip_holders
 
@@ -146,8 +146,8 @@ class FrameAccrualLine:
 
     window_id: str
     asset_id: str
-    chunk_id: Optional[str]
-    ip_holder_id: Optional[str]
+    chunk_id: str | None
+    ip_holder_id: str | None
     summed_weight: float
     amount_cents: int
     n_seconds: int
@@ -187,7 +187,7 @@ class WindowAccrual:
 def aggregate_window(
     batch: WindowFrameBatch,
     *,
-    asset_to_ip_holder: Optional[dict[str, Optional[str]]] = None,
+    asset_to_ip_holder: dict[str, str | None] | None = None,
 ) -> WindowAccrual:
     """Reduce a window batch to per-asset accrual + a house tally, conserved to
     the cent — PURE (no DB). The accrual writer calls this, then persists.
@@ -237,7 +237,7 @@ def aggregate_window(
 
     asset_cents: dict[str, int] = {}
     asset_weight: dict[str, float] = {}
-    asset_chunk: dict[str, Optional[str]] = {}
+    asset_chunk: dict[str, str | None] = {}
     asset_nsec: dict[str, int] = {}
     house_cents = 0
     house_nsec = 0
@@ -303,7 +303,7 @@ def aggregate_window(
 
 def _batch_inputs(
     batch: WindowFrameBatch,
-    asset_to_ip_holder: dict[str, Optional[str]],
+    asset_to_ip_holder: dict[str, str | None],
 ) -> dict[str, Any]:
     """The exact inputs the aggregation consumed, in a canonical-JSON-round-
     trippable shape. Persisted on each row so :func:`replay` re-derives the
@@ -343,7 +343,7 @@ def accrue_window(
     con: Any,
     batch: WindowFrameBatch,
     *,
-    asset_to_ip_holder: Optional[dict[str, Optional[str]]] = None,
+    asset_to_ip_holder: dict[str, str | None] | None = None,
 ) -> WindowAccrual:
     """Persist one window batch's accrual + house tally append-only and route
     each per-asset amount into its ip_holder's escrow.

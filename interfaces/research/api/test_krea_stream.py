@@ -70,7 +70,6 @@ from starlette.routing import WebSocketRoute
 
 from interfaces.research.api.app import create_app
 
-
 # ── Fixtures / helpers (mirror tests/test_krea_routes.py conventions) ────
 
 

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 from .outline_block import OutlineBlock, get_block
 
@@ -47,22 +47,22 @@ class ProvenanceChain:
     outline_block_id: str
     status: ProvenanceStatus
     provenance_kind: str
-    node_id: Optional[str] = None
-    node_label: Optional[str] = None
-    node_type: Optional[str] = None
-    document_id: Optional[str] = None
-    document_title: Optional[str] = None
+    node_id: str | None = None
+    node_label: str | None = None
+    node_type: str | None = None
+    document_id: str | None = None
+    document_title: str | None = None
     chunk_ids: list[str] = field(default_factory=list)
     # Human-readable explanation for non-``resolved``-with-document cases
     # (dangling source, user origin, or a node with no source document).
-    detail: Optional[str] = None
+    detail: str | None = None
 
     @property
     def has_source_document(self) -> bool:
         return self.status == "resolved" and self.document_id is not None
 
 
-def _node_metadata_chunk_id(metadata_text: Optional[str]) -> Optional[str]:
+def _node_metadata_chunk_id(metadata_text: str | None) -> str | None:
     if not metadata_text:
         return None
     try:
@@ -75,7 +75,7 @@ def _node_metadata_chunk_id(metadata_text: Optional[str]) -> Optional[str]:
 
 def resolve_provenance(
     con: Any,
-    block: Union[OutlineBlock, str],
+    block: OutlineBlock | str,
 ) -> ProvenanceChain:
     """Resolve a block's provenance chain. ``block`` may be an
     ``OutlineBlock`` or an ``outline_block_id``. ``con`` is any duckdb
@@ -141,8 +141,8 @@ def resolve_provenance(
         if er[0] and er[0] not in chunk_ids:
             chunk_ids.append(er[0])
 
-    document_id: Optional[str] = None
-    document_title: Optional[str] = None
+    document_id: str | None = None
+    document_title: str | None = None
     if chunk_ids:
         doc_row = con.execute(
             "SELECT c.document_id, d.title FROM chunks c "

@@ -46,9 +46,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import List, Optional
-
+from datetime import UTC, datetime
 
 # ── Operator-only, low-volume rate cap (SPR-07) ──────────────────────
 # The transcript-scrape path breaches YouTube ToS (see module docstring),
@@ -105,7 +103,7 @@ _VIDEO_ID_RE = re.compile(
 )
 
 
-def parse_video_id(url_or_id: str) -> Optional[str]:
+def parse_video_id(url_or_id: str) -> str | None:
     """Normalize a YouTube watch URL / shorts URL / shortlink / bare id
     to the 11-character video_id. Returns None if unparseable."""
     s = url_or_id.strip()
@@ -158,9 +156,9 @@ class YouTubeVideo:
     title: str
     channel: str
     duration_seconds: int
-    upload_date: Optional[datetime]
+    upload_date: datetime | None
     description: str
-    transcript: List[TranscriptSegment] = field(default_factory=list)
+    transcript: list[TranscriptSegment] = field(default_factory=list)
     transcript_source: str = "unknown"  # "youtube" | "whisper" | "missing"
     watch_url: str = ""
     caption_kind: str = CAPTION_KIND_MISSING  # see CAPTION_KIND_* above
@@ -196,7 +194,7 @@ def _fetch_metadata(video_id: str) -> dict:
     return info or {}
 
 
-def _segments_from_raw(raw) -> List[TranscriptSegment]:
+def _segments_from_raw(raw) -> list[TranscriptSegment]:
     """Normalize youtube-transcript-api's list-of-dicts into our
     immutable ``TranscriptSegment`` records, dropping empty lines."""
     return [
@@ -210,7 +208,7 @@ def _segments_from_raw(raw) -> List[TranscriptSegment]:
     ]
 
 
-def _fetch_transcript(video_id: str) -> "tuple[List[TranscriptSegment], str]":
+def _fetch_transcript(video_id: str) -> tuple[list[TranscriptSegment], str]:
     """Pull captions via youtube-transcript-api. Returns
     ``(segments, caption_kind)``; ``([], "missing")`` when captions are
     absent.
@@ -304,18 +302,18 @@ def fetch(url_or_id: str, *, want_transcript: bool = True) -> YouTubeVideo:
     if not video_id:
         raise ValueError(f"unrecognized YouTube URL/id: {url_or_id!r}")
     meta = _fetch_metadata(video_id)
-    transcript: List[TranscriptSegment] = []
+    transcript: list[TranscriptSegment] = []
     transcript_source = "missing"
     caption_kind = CAPTION_KIND_MISSING
     if want_transcript:
         transcript, caption_kind = _fetch_transcript(video_id)
         transcript_source = "youtube" if transcript else "missing"
-    upload_date: Optional[datetime] = None
+    upload_date: datetime | None = None
     upload_raw = meta.get("upload_date")
     if upload_raw and len(upload_raw) == 8:
         try:
             upload_date = datetime.strptime(upload_raw, "%Y%m%d").replace(
-                tzinfo=timezone.utc,
+                tzinfo=UTC,
             )
         except ValueError:
             upload_date = None

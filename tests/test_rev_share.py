@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.rev_share import (
     MINIMUM_PAYOUT_USD_CENTS,
     NOTICE_MONTH,
@@ -18,7 +16,6 @@ from substrate.rev_share import (
     split_platform_vs_ip,
 )
 from substrate.rev_share.rollover import RolloverState
-
 
 # ── 30/70 + creator ratio ─────────────────────────────────────────
 

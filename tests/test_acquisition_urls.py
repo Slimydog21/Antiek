@@ -50,7 +50,6 @@ from acquisition.urls import (
 )
 from acquisition.urls.client import _detect_charset
 
-
 _HTML_ARTICLE = b"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -260,7 +259,6 @@ def test_ingest_writes_documents_chunks_nodes(temp_substrate):
 
 
 def test_ingest_low_word_count_skips_graph_writes(temp_substrate):
-    import duckdb
     from acquisition.urls.client import FetchedHtml
 
     stub = FetchedHtml(
@@ -316,8 +314,9 @@ def test_ingest_idempotent_on_rows(temp_substrate):
 
 
 def test_ingest_nodes_carry_final_url(temp_substrate):
-    import duckdb
     import json
+
+    import duckdb
 
     res = ingest_url(
         "https://example.com/post",

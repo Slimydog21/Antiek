@@ -27,7 +27,6 @@ from substrate.dedup import (
 
 from .conftest import FakeFetcher, StubEmbedder
 
-
 # ---------------------------------------------------------------------------
 # Layer 1 — the SPR-04 identity ladder collapses two sources to one work.
 # ---------------------------------------------------------------------------

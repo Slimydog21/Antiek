@@ -78,13 +78,13 @@ def db_with_chunks():
 def test_privileged_policy_tags_are_canonical():
     """Master-spec §9.0 names the two privileged tags. The substrate
     must not silently extend this set."""
-    assert PRIVILEGED_POLICY_TAGS == frozenset({"private_research", "operator_only"})
+    assert frozenset({"private_research", "operator_only"}) == PRIVILEGED_POLICY_TAGS
 
 
 def test_restricted_content_classes_canonical():
     """The set of content classes the substrate withholds from
     attribution-eligible retrieval. Drift here = silent gate hole."""
-    assert RESTRICTED_CONTENT_CLASSES == frozenset({"restricted_pending_opt_in"})
+    assert frozenset({"restricted_pending_opt_in"}) == RESTRICTED_CONTENT_CLASSES
 
 
 def test_default_policy_excludes_restricted(db_with_chunks):

@@ -20,7 +20,7 @@ the optimistic-concurrency check in ``actions.py`` already rejected.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 
 class InverseHandler(Protocol):

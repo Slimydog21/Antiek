@@ -36,7 +36,7 @@ trajectory visibility, but it doesn't gate the constraint loop.
 
 from __future__ import annotations
 
-from typing import Iterable, List
+from collections.abc import Iterable
 
 try:
     from ...schemas import ConstraintSpec
@@ -92,13 +92,13 @@ def _range_to_numeric_range(p: ParsedParameter) -> ConstraintSpec:
     )
 
 
-def _categorical_to_must_include_terms(p: ParsedParameter) -> List[ConstraintSpec]:
+def _categorical_to_must_include_terms(p: ParsedParameter) -> list[ConstraintSpec]:
     """Categorical → one ``must_include_term`` per allowed string.
     Single-string value becomes a one-element list; list-of-strings
     each gets its own constraint id (suffixed with the term)."""
     value = p.metric_value.value
     terms: list[str] = [value] if isinstance(value, str) else list(value)
-    out: List[ConstraintSpec] = []
+    out: list[ConstraintSpec] = []
     for term in terms:
         # constraint_id includes the term so the loop can show which
         # specific category violation happened. Term is the value, not
@@ -136,12 +136,12 @@ def _qualitative_to_must_attribute(p: ParsedParameter) -> ConstraintSpec:
 
 def parameters_to_constraints(
     parameters: Iterable[ParsedParameter],
-) -> List[ConstraintSpec]:
+) -> list[ConstraintSpec]:
     """Convert a list of parsed parameters into the ``ConstraintSpec``
     records the Day 3 constraint loop consumes. Pure function — no
     LLM call, no I/O. Silently drops parameters that cannot produce a
     constraint (e.g. unitless scalars)."""
-    out: List[ConstraintSpec] = []
+    out: list[ConstraintSpec] = []
     for p in parameters:
         vt = p.metric_value.value_type
         if vt == "scalar":

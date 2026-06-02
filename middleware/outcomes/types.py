@@ -15,8 +15,6 @@ rather than slipping through to a Pydantic failure later.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
-
 
 # Closed sets — must agree with the schemas-side Literal types.
 # Validated by named test in tests/test_middleware_outcomes.py.
@@ -123,5 +121,5 @@ class OutcomeRecord:
     thesis_outcomes: tuple[ThesisOutcomeInput, ...] = field(default_factory=tuple)
     falsification_outcomes: tuple[FalsificationOutcomeInput, ...] = field(default_factory=tuple)
     execution_risk_outcomes: tuple[ExecutionRiskOutcomeInput, ...] = field(default_factory=tuple)
-    decision_alignment: Optional[DecisionAlignmentInput] = None
-    notes: Optional[str] = None
+    decision_alignment: DecisionAlignmentInput | None = None
+    notes: str | None = None

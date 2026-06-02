@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from substrate.ad_inventory import (
     AdInventoryItem,
     AttributionAlgorithm,
-    BiddingPolicy,
     LeadGenAdInventory,
     PayoutRouter,
     compute_attribution_option_a,
@@ -24,7 +21,6 @@ from substrate.ad_inventory.payout import (
     PLATFORM_CUT,
     RevShareKind,
 )
-
 
 # ── Attribution algorithms ──────────────────────────────────────────
 
@@ -143,8 +139,8 @@ def test_select_returns_none_when_no_match():
 
 def test_creator_rev_share_constants_match_master_spec():
     """Master-spec §13.5 + §13.9 + §9.0.1: 70% creator + 30% platform."""
-    assert CREATOR_REV_SHARE == Decimal("0.70")
-    assert PLATFORM_CUT == Decimal("0.30")
+    assert Decimal("0.70") == CREATOR_REV_SHARE
+    assert Decimal("0.30") == PLATFORM_CUT
 
 
 def test_distribute_session_revenue_70_30_split():

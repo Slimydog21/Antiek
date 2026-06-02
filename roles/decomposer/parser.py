@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 try:
     from ...constants import (
@@ -45,7 +45,9 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 # Closed taxonomies — must equal the schema's SubQuestionCategory /
@@ -153,7 +155,7 @@ def _parse_keyword(obj: Any, idx: int) -> ParsedKeyword:
             f"{ctx}: synonyms length {len(syns_raw)} exceeds cap "
             f"{MAX_SYNONYMS_PER_KEYWORD}"
         )
-    syns: List[str] = []
+    syns: list[str] = []
     for j, s in enumerate(syns_raw):
         if not isinstance(s, str) or not s.strip():
             raise DecomposerValidationError(
@@ -166,7 +168,7 @@ def _parse_keyword(obj: Any, idx: int) -> ParsedKeyword:
 def parse_decomposer_response(
     text: str,
     *,
-    expected_investigation_id: Optional[str] = None,
+    expected_investigation_id: str | None = None,
 ) -> DecompositionResult:
     """Parse + validate a Decomposer's raw text response.
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 
@@ -35,17 +34,17 @@ def test_valid_block_types_match_master_spec():
     """Master-spec §4.2 Sprint 18-19 upgrade enumerates the block
     types. Drift between code and schema CHECK constraint is a silent
     invariant break — both must agree."""
-    assert VALID_BLOCK_TYPES == frozenset({
+    assert frozenset({
         "prose", "region_embed", "claim_card", "note",
         "question_card", "cross_doc_link", "chat_exchange",
         "master_md_section", "image", "latex",
-    })
+    }) == VALID_BLOCK_TYPES
 
 
 def test_valid_content_classes():
-    assert VALID_NOTEBOOK_CONTENT_CLASSES == frozenset({
+    assert frozenset({
         "user_owned", "user_public_contribution",
-    })
+    }) == VALID_NOTEBOOK_CONTENT_CLASSES
 
 
 def test_create_notebook_defaults(db):

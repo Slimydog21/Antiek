@@ -36,7 +36,6 @@ from substrate.legal_gate.predicate import (
     url_blocked_reason,
 )
 
-
 # ── predicate.host / url ──────────────────────────────────────────
 
 
@@ -163,8 +162,8 @@ def test_document_blocked_returns_first_match_in_order():
     """Order: domain → corpus → author → title → hash. A document
     matching multiple should report the domain match first."""
     # Need to inject via registry monkeypatch.
-    from substrate.legal_gate import registry
     import substrate.legal_gate.predicate as predicate_mod  # noqa: F401
+    from substrate.legal_gate import registry
 
     # Each banned tuple is a module-level constant; monkeypatch them
     # together via the registry module to test the composition.

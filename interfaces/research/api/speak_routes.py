@@ -31,9 +31,10 @@ economics.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
-from typing import Any, Iterator, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -44,19 +45,31 @@ from substrate.graph import default_db_path, ensure_initialized
 from substrate.speak import (
     biography,
     biography_composition,
-    consent as consent_mod,
-    contributor as contributor_mod,
     corroboration,
     economics_mode,
     gate_status,
     invitations,
     payout_verifier,
     physical_book,
-    project as project_mod,
-    publish as publish_mod,
-    subject_consent as subject_consent_mod,
-    takedown as takedown_mod,
     third_party,
+)
+from substrate.speak import (
+    consent as consent_mod,
+)
+from substrate.speak import (
+    contributor as contributor_mod,
+)
+from substrate.speak import (
+    project as project_mod,
+)
+from substrate.speak import (
+    publish as publish_mod,
+)
+from substrate.speak import (
+    subject_consent as subject_consent_mod,
+)
+from substrate.speak import (
+    takedown as takedown_mod,
 )
 from substrate.speak.async_interview import (
     AsrError,
@@ -64,6 +77,8 @@ from substrate.speak.async_interview import (
     next_followups,
     resume,
     submit_answer,
+)
+from substrate.speak.async_interview import (
     transcribe as transcribe_voice,
 )
 from substrate.speak.consent import ConsentScope, ScopedConsentRequired
@@ -132,16 +147,16 @@ def _decimal(value: str, field: str) -> Decimal:
 
 class CreateProjectRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=300)
-    subject_ref: Optional[str] = None
+    subject_ref: str | None = None
     subject_status: str = "unknown"
     publish_intent: str = "private_never_published"
-    topic_description: Optional[str] = None
+    topic_description: str | None = None
 
 
 class ProjectResponse(BaseModel):
     project_id: str
     title: str
-    subject_ref: Optional[str]
+    subject_ref: str | None
     subject_status: str
     publish_intent: str
     invitation_mode: str
@@ -158,7 +173,7 @@ class CreateBiographyRequest(BaseModel):
 
     investigation_id: str = Field(..., min_length=1)
     subject_name: str = Field(..., min_length=1, max_length=300)
-    title: Optional[str] = None
+    title: str | None = None
     subject_status: str = "unknown"
     publish_intent: str = "private_never_published"
 
@@ -170,12 +185,12 @@ class BiographyCompositionResponse(BaseModel):
     investigation_id: str
     deliverable_id: str
     project_id: str
-    composition_event_id: Optional[str]
+    composition_event_id: str | None
 
 
 class InviteRequest(BaseModel):
-    informant_email: Optional[str] = None
-    informant_handle: Optional[str] = None
+    informant_email: str | None = None
+    informant_handle: str | None = None
 
 
 class InviteResponse(BaseModel):
@@ -198,9 +213,9 @@ class AnswerRequest(BaseModel):
 
 class ClaimRequest(BaseModel):
     text: str = Field(..., min_length=1)
-    interview_id: Optional[str] = None
+    interview_id: str | None = None
     about_subject: bool = False
-    subject_ref: Optional[str] = None
+    subject_ref: str | None = None
     speaker_is_subject: bool = False
     confidence: float = 0.5
 
@@ -209,21 +224,21 @@ class SubjectConsentRequest(BaseModel):
     subject_ref: str
     subject_status: str
     consent_granted: bool
-    rationale: Optional[str] = None
+    rationale: str | None = None
 
 
 class ContributorRequest(BaseModel):
     interview_id: str
-    ip_holder_id: Optional[str] = None
-    display_name: Optional[str] = None
-    legal_contact_email: Optional[str] = None
+    ip_holder_id: str | None = None
+    display_name: str | None = None
+    legal_contact_email: str | None = None
 
 
 class TakedownRequestModel(BaseModel):
     target_kind: str
     target_id: str
-    requested_by: Optional[str] = None
-    reason: Optional[str] = None
+    requested_by: str | None = None
+    reason: str | None = None
 
 
 class DraftRequest(BaseModel):
@@ -231,16 +246,16 @@ class DraftRequest(BaseModel):
 
 
 class PublishRequest(BaseModel):
-    deliverable_id: Optional[str] = None
-    subject_ref: Optional[str] = None
+    deliverable_id: str | None = None
+    subject_ref: str | None = None
     ad_revenue_usd: str = "0"
-    quality_scores: Optional[dict[str, float]] = None
+    quality_scores: dict[str, float] | None = None
 
 
 class BookOrderRequest(BaseModel):
     book_format: str
     page_count: int = Field(..., ge=1)
-    publication_id: Optional[str] = None
+    publication_id: str | None = None
 
 
 class GradeInterviewRequest(BaseModel):
@@ -258,7 +273,7 @@ class ReleasePayoutRequest(BaseModel):
     budget_usd: str = "0"
     per_interview_cap_usd: str = "0"
     ad_revenue_usd: str = "0"
-    publication_id: Optional[str] = None
+    publication_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -709,7 +724,7 @@ class InviteAnswerRequest(BaseModel):
 # provider is configured. Tests set this to a stub so the voice→answer bridge
 # is exercisable hermetically, the same injection point the operator voice
 # path and ``async_interview.transcribe`` already use. Never a second pipeline.
-_INVITEE_TRANSCRIBER: Optional[Any] = None
+_INVITEE_TRANSCRIBER: Any | None = None
 
 
 def _require_token(con: Any, token: str) -> tuple[str, str]:
@@ -786,7 +801,7 @@ async def invitee_voice(
     request: Request,
     question_id: str = Query(..., min_length=1),
     duration_seconds: float = Query(default=0.0, ge=0.0),
-    language: Optional[str] = Query(default=None),
+    language: str | None = Query(default=None),
 ) -> dict:
     """Phone-first, voice-first invitee answer (Product Depth SPR-08 M3).
 

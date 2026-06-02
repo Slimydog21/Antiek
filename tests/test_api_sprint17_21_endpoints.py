@@ -10,8 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app

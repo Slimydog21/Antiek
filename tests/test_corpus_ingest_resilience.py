@@ -24,8 +24,6 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from tools import run_corpus_ingest as rci  # noqa: E402
-
 # Pre-import the per-source CLIs at COLLECTION time (before any test patches a
 # module attribute) so their module-top `from acquisition... import <name>`
 # bindings freeze to the ORIGINAL functions. Otherwise a test that patches e.g.
@@ -35,9 +33,11 @@ from tools import run_corpus_ingest as rci  # noqa: E402
 # permanently capture the patched function in the CLI's namespace and leak it
 # into later tests. monkeypatch only reverts the attribute it set, not a
 # downstream snapshot.
-from tools import ingest_arxiv  # noqa: E402,F401
-from tools import ingest_public_domain  # noqa: E402,F401
-
+from tools import (
+    ingest_arxiv,  # noqa: E402,F401
+    ingest_public_domain,  # noqa: E402,F401
+)
+from tools import run_corpus_ingest as rci  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # BLOCKER 1 — public-domain / gutendex discovery isolation + body cache

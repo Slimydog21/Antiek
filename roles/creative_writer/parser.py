@@ -13,7 +13,6 @@ Parser enforces:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
 
 from .._json_decode import extract_json_object
 
@@ -25,8 +24,8 @@ class CreativeWriterValidationError(ValueError):
 @dataclass(frozen=True)
 class CreativeWriterResult:
     prose_text: str
-    prose_provenance: Dict[int, List[str]]
-    uncited_blocks: List[str]
+    prose_provenance: dict[int, list[str]]
+    uncited_blocks: list[str]
 
 
 def parse_creative_writer_response(
@@ -46,7 +45,7 @@ def parse_creative_writer_response(
         raise CreativeWriterValidationError(
             "prose_provenance must be an object"
         )
-    provenance: Dict[int, List[str]] = {}
+    provenance: dict[int, list[str]] = {}
     for k, v in raw_prov.items():
         try:
             idx = int(k)

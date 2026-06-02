@@ -16,7 +16,14 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
-from substrate.speak import contributor, physical_book, project, publish, publish_gate, subject_consent
+from substrate.speak import (
+    contributor,
+    physical_book,
+    project,
+    publish,
+    publish_gate,
+    subject_consent,
+)
 from substrate.speak.publish_gate import PublishBlocked
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim

@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -161,7 +161,7 @@ def _harvester(tmp_path, clock, handler, *, name="harvest.json") -> OaiPmhHarves
     )
 
 
-_AT = datetime(2026, 5, 29, tzinfo=timezone.utc)
+_AT = datetime(2026, 5, 29, tzinfo=UTC)
 
 
 # A three-page corpus: 3 CC-BY (T1), 1 arxiv-default (T3), 1 absent (T3 + amb).

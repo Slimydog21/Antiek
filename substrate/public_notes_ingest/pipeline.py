@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import enum
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Callable, Optional
+from datetime import UTC, datetime
 
 from substrate.quality_gate import (
     CandidateNote,
@@ -20,7 +20,7 @@ from substrate.quality_gate import (
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class IngestEventKind(str, enum.Enum):
@@ -41,8 +41,8 @@ class IngestEvent:
     kind: IngestEventKind = IngestEventKind.GATED_REJECT
     note_id: str = ""
     user_id: str = ""
-    gate_id: Optional[str] = None
-    error: Optional[str] = None
+    gate_id: str | None = None
+    error: str | None = None
     at: str = field(default_factory=_now_iso)
 
 
@@ -54,7 +54,7 @@ class IngestOutcome:
     gate_result: QualityGateResult
     events: tuple[IngestEvent, ...]
     written_to_collective: bool
-    write_error: Optional[str] = None
+    write_error: str | None = None
 
 
 # Writer protocol: caller-injected; takes the accepted note + the
@@ -104,7 +104,7 @@ def run_ingest(
     gate_result = gate_runner(note)
     events: list[IngestEvent] = []
     written = False
-    write_error: Optional[str] = None
+    write_error: str | None = None
 
     if gate_result.verdict == QualityGateVerdict.PASS_PUBLIC:
         try:

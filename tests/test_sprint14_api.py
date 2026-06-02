@@ -6,7 +6,6 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from typing import List
 
 import pytest
 from fastapi.testclient import TestClient

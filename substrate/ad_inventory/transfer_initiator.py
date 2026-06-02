@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from tools.stripe_connect.providers import StripeProvider
 
@@ -55,8 +55,8 @@ class TransferOutcome:
 
     transfer_attempt_id: str
     decision_id: str
-    stripe_transfer_id: Optional[str]
-    recipient_account_id: Optional[str]
+    stripe_transfer_id: str | None
+    recipient_account_id: str | None
     amount_usd_cents: int
     status: str
     note: str
@@ -93,8 +93,8 @@ def _record(
     con: Any,
     *,
     decision_id: str,
-    stripe_transfer_id: Optional[str],
-    recipient_account_id: Optional[str],
+    stripe_transfer_id: str | None,
+    recipient_account_id: str | None,
     amount_usd_cents: int,
     status: str,
     note: str,
@@ -146,7 +146,7 @@ def _record(
         amount_usd_cents=amount_usd_cents,
         status=status,
         note=note,
-        initiated_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        initiated_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
 
 
@@ -155,8 +155,8 @@ def initiate_transfer(
     con: Any,
     provider: StripeProvider,
     decision: RevShareDecision,
-    account_id_for_recipient: Optional[str],
-    metadata: Optional[dict] = None,
+    account_id_for_recipient: str | None,
+    metadata: dict | None = None,
 ) -> TransferOutcome:
     """Drive one ``RevShareDecision`` through Stripe Connect with full
     audit. Returns a ``TransferOutcome`` describing what happened.

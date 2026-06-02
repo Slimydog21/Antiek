@@ -11,7 +11,6 @@ DDIA-execution SPR-10. Verifies:
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -24,12 +23,10 @@ if str(_REPO) not in sys.path:
 from substrate.dispatch.multi_cloud import (  # noqa: E402
     DEFAULT_REGISTRY,
     VendorClass,
-    VendorClassConfig,
     is_enabled,
     resolve,
     should_failover_to_secondary,
 )
-
 
 # ---------------------------------------------------------------------------
 # Default registry shape

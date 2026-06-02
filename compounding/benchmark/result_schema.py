@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -49,9 +49,9 @@ class ArmComparison:
     per-metric signed delta + CI."""
 
     label: str
-    metrics: List[MetricDelta]
+    metrics: list[MetricDelta]
 
-    def metric(self, name: str) -> Optional[MetricDelta]:
+    def metric(self, name: str) -> MetricDelta | None:
         for m in self.metrics:
             if m.metric == name:
                 return m
@@ -77,13 +77,13 @@ class BenchmarkResult:
     headline: ArmComparison
     # All comparisons, including the internal-probe (reported separately), the
     # partial dose-response cell, and the irrelevant-vs-cold validity control.
-    comparisons: List[ArmComparison]
+    comparisons: list[ArmComparison]
     control_tolerance: float
     material_floor: float
     notes: str = ""
     parameters_ratified: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "frozen_sha": self.frozen_sha,
             "seed": self.seed,
@@ -112,5 +112,5 @@ class BenchmarkResult:
             f.write("\n")
 
 
-def _comparison_to_dict(c: ArmComparison) -> Dict[str, Any]:
+def _comparison_to_dict(c: ArmComparison) -> dict[str, Any]:
     return {"label": c.label, "metrics": [asdict(m) for m in c.metrics]}

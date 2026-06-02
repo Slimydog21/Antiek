@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any
 
 import httpx
 import pytest
@@ -448,8 +447,8 @@ def test_seam_recorded_deep_tier_does_NOT_displace_synthesizer(
 
     (See tests/test_dispatch_synthesis_pin.py for the non-vacuous regression
     that loads the REAL config.yaml and asserts the Opus primary by name.)"""
-    from interfaces.research.api import synthesizer as synth_mod
     import substrate.dispatch.router as router
+    from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
         router.DispatchConfig, "from_yaml",
@@ -498,8 +497,8 @@ def test_seam_recorded_fast_tier_does_NOT_displace_synthesizer(
     (See tests/test_dispatch_synthesis_pin.py for the non-vacuous regression
     that loads the REAL config.yaml; the fast-stays-pinned assertion there is
     test_explicit_fast_also_stays_pinned_to_opus.)"""
-    from interfaces.research.api import synthesizer as synth_mod
     import substrate.dispatch.router as router
+    from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
         router.DispatchConfig, "from_yaml",
@@ -536,8 +535,8 @@ def test_explicit_deep_keeps_research_lane_but_not_synthesizer(
     is NOT displaced (the override returns (None, None) for "deep" because
     "deep" == the default tier, and §14.4 keeps synthesis on Opus during the
     window). The two roles are genuinely separate consumers of the tier."""
-    from interfaces.research.api import synthesizer as synth_mod
     import substrate.dispatch.router as router
+    from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
         router.DispatchConfig, "from_yaml",
@@ -577,8 +576,8 @@ def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
     explicit non-default tier). This is the assertion that proves the
     sharpen-round correction did not nuke the tier system — it scoped the
     pin off synthesis, not off the research lane."""
-    from interfaces.research.api import synthesizer as synth_mod
     import substrate.dispatch.router as router
+    from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
         router.DispatchConfig, "from_yaml",
@@ -613,8 +612,8 @@ def test_seam_recorded_tier_provider_unregistered_uses_config_primary(
     unchanged — a research-tier choice never re-routes a working config
     route onto an absent provider (and the schema's default 'deep' never
     silently re-routes every run onto an unregistered DeepSeek key)."""
-    from interfaces.research.api import synthesizer as synth_mod
     import substrate.dispatch.router as router
+    from interfaces.research.api import synthesizer as synth_mod
 
     monkeypatch.setattr(
         router.DispatchConfig, "from_yaml",

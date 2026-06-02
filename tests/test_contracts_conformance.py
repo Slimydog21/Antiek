@@ -528,7 +528,7 @@ def test_servable_allowlist_drift_guard_welds_contract_to_classifier():
 
     classifier_set = frozenset(s.value for s in _SERVABLE_STATUSES)
     # (1) Welded: the two allowlists are identical right now.
-    assert FULL_TEXT_SERVABLE == classifier_set
+    assert classifier_set == FULL_TEXT_SERVABLE
     # source_declared_open is the class that exposed the drift — it must be in
     # both, or BLOCKER 1 recurs.
     assert "source_declared_open" in FULL_TEXT_SERVABLE
@@ -536,6 +536,6 @@ def test_servable_allowlist_drift_guard_welds_contract_to_classifier():
     # (2) The guard bites: simulate the classifier gaining a servable status
     # the contract didn't mirror — the identity assertion (reproduced here) reds.
     drifted_classifier = classifier_set | {"newly_servable_class"}
-    assert FULL_TEXT_SERVABLE != drifted_classifier, (
+    assert drifted_classifier != FULL_TEXT_SERVABLE, (
         "if this ever holds, the drift-guard has gone vacuous"
     )

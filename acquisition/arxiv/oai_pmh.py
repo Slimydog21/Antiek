@@ -32,17 +32,20 @@ from __future__ import annotations
 import json
 import os
 import xml.etree.ElementTree as ET
+from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator, List, Optional
 
 import httpx
 
 from acquisition.arxiv.oai_records import parse_records
 from acquisition.arxiv.throttle import ArxivThrottle
-from substrate.schemas.documents import ArxivOaiRecord, RightsCensus
-from substrate.schemas.documents import _TierTally  # package-internal accumulator
+from substrate.schemas.documents import (
+    ArxivOaiRecord,
+    RightsCensus,
+    _TierTally,  # package-internal accumulator
+)
 
 DEFAULT_OAI_BASE_URL = "https://export.arxiv.org/oai2"
 DEFAULT_METADATA_PREFIX = "arXiv"
@@ -83,8 +86,8 @@ class HarvestState:
     the fallback incremental ``from`` if a token ever expires.
     """
 
-    resumption_token: Optional[str] = None
-    last_datestamp: Optional[str] = None
+    resumption_token: str | None = None
+    last_datestamp: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -93,7 +96,7 @@ class HarvestState:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "HarvestState":
+    def from_dict(cls, d: dict) -> HarvestState:
         return cls(
             resumption_token=d.get("resumption_token"),
             last_datestamp=d.get("last_datestamp"),
@@ -105,8 +108,8 @@ class _Page:
     """One ListRecords page: its parsed records + the token for the next page
     (``None`` when the cursor is exhausted)."""
 
-    records: List[ArxivOaiRecord]
-    resumption_token: Optional[str]
+    records: list[ArxivOaiRecord]
+    resumption_token: str | None
 
 
 class OaiPmhHarvester:
@@ -123,10 +126,10 @@ class OaiPmhHarvester:
         self,
         *,
         throttle: ArxivThrottle,
-        base_url: Optional[str] = None,
+        base_url: str | None = None,
         metadata_prefix: str = DEFAULT_METADATA_PREFIX,
-        client: Optional[httpx.Client] = None,
-        state_path: Optional[str] = None,
+        client: httpx.Client | None = None,
+        state_path: str | None = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
     ) -> None:
         self._throttle = throttle
@@ -164,7 +167,7 @@ class OaiPmhHarvester:
 
     # -- across-crash high-water seed ----------------------------------------
 
-    def persisted_max_datestamp(self) -> Optional[str]:
+    def persisted_max_datestamp(self) -> str | None:
         """The running MAX datestamp persisted by an INTERRUPTED harvest, or
         ``None`` if there is no mid-harvest cursor (a clean prior run cleared
         the state file, or this is a fresh harvest).
@@ -183,9 +186,9 @@ class OaiPmhHarvester:
     def _page_url(
         self,
         *,
-        resumption_token: Optional[str],
-        from_date: Optional[str],
-        until_date: Optional[str],
+        resumption_token: str | None,
+        from_date: str | None,
+        until_date: str | None,
     ) -> str:
         """Compose a ListRecords URL.
 
@@ -251,8 +254,8 @@ class OaiPmhHarvester:
     def harvest(
         self,
         *,
-        from_date: Optional[str] = None,
-        until_date: Optional[str] = None,
+        from_date: str | None = None,
+        until_date: str | None = None,
         resume: bool = True,
     ) -> Iterator[ArxivOaiRecord]:
         """Yield every record across all resumption-token pages.
@@ -305,10 +308,10 @@ class OaiPmhHarvester:
     def harvest_census(
         self,
         *,
-        from_date: Optional[str] = None,
-        until_date: Optional[str] = None,
+        from_date: str | None = None,
+        until_date: str | None = None,
         resume: bool = True,
-        harvested_at: Optional[datetime] = None,
+        harvested_at: datetime | None = None,
     ) -> RightsCensus:
         """Page through a full harvest and fold it into a ``RightsCensus``.
 
@@ -326,11 +329,11 @@ class OaiPmhHarvester:
             metadata_prefix=self._metadata_prefix,
             from_date=from_date,
             until_date=until_date,
-            harvested_at=harvested_at or datetime.now(timezone.utc),
+            harvested_at=harvested_at or datetime.now(UTC),
         )
 
 
-def _extract_resumption_token(xml_bytes: bytes) -> Optional[str]:
+def _extract_resumption_token(xml_bytes: bytes) -> str | None:
     """The ``<resumptionToken>`` text for the next page, or ``None``.
 
     An EMPTY ``<resumptionToken/>`` is the OAI signal for "last page" and must

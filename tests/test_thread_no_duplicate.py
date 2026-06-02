@@ -27,14 +27,14 @@ from typing import Any
 
 import pytest
 
-# We reuse the SPR-03 no-copy seam assertion DIRECTLY (diligence #4 / rigor #3):
-# the thread-level guard is that same per-hop assertion, applied to every hop.
-from tests.test_seam_no_copy import _assert_no_copy
 from substrate.seams.thread import (
     assert_single_canonical_entity,
     reconstruct_thread,
 )
 
+# We reuse the SPR-03 no-copy seam assertion DIRECTLY (diligence #4 / rigor #3):
+# the thread-level guard is that same per-hop assertion, applied to every hop.
+from tests.test_seam_no_copy import _assert_no_copy
 
 # ---------------------------------------------------------------------------
 # Fixtures: a small flywheel emitted as SPR-03 seam events. These mirror the

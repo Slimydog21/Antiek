@@ -25,7 +25,7 @@ imports substrate) orchestrates read → insert → register.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from runtime.db_lock import LockedConnection
 from substrate import ip_holders
@@ -81,15 +81,15 @@ def register_book(
     con: LockedConnection,
     *,
     document_id: str,
-    content_class: Optional[str] = None,
-    rights_holder_name: Optional[str] = None,
-    ip_holder_id: Optional[str] = None,
-    toc: Optional[list[TocItem]] = None,
+    content_class: str | None = None,
+    rights_holder_name: str | None = None,
+    ip_holder_id: str | None = None,
+    toc: list[TocItem] | None = None,
     page_count: int = 0,
     pagination_scheme: str = "pdf_page",
-    cover_uri: Optional[str] = None,
-    provenance: Optional[str] = None,
-    license_basis: Optional[str] = None,
+    cover_uri: str | None = None,
+    provenance: str | None = None,
+    license_basis: str | None = None,
 ) -> BookAsset:
     """Register an already-inserted book document as a Read-workflow book.
 

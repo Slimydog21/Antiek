@@ -39,9 +39,15 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any
 
 try:
+    from ...interfaces.research.api.wrestling import _extract_json_object  # JSON helper
+    from ...processing.embedding import (
+        EmbeddingProvider,
+        default_embedding_provider,
+    )
+    from ...runtime.db_lock import connect_read, connect_write
     from ...substrate.dispatch import ProviderError, dispatch
     from ...substrate.event_log import emit_typed
     from ...substrate.graph import (
@@ -50,29 +56,22 @@ try:
         insert_edge,
         insert_node,
     )
-    from ...processing.embedding import (
-        EmbeddingProvider,
-        default_embedding_provider,
-    )
-    from ...runtime.db_lock import connect_read, connect_write
-    from ...interfaces.research.api.wrestling import _extract_json_object  # JSON helper
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))  # project root
+    from interfaces.research.api.wrestling import _extract_json_object  # type: ignore[no-redef]
+    from processing.embedding import (  # type: ignore[no-redef]
+        EmbeddingProvider,
+        default_embedding_provider,
+    )
+    from runtime.db_lock import connect_read, connect_write  # type: ignore[no-redef]
     from substrate.dispatch import ProviderError, dispatch  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.graph import (  # type: ignore[no-redef]
         default_db_path,
         ensure_initialized,
         insert_edge,
         insert_node,
     )
-    from processing.embedding import (  # type: ignore[no-redef]
-        EmbeddingProvider,
-        default_embedding_provider,
-    )
-    from runtime.db_lock import connect_read, connect_write  # type: ignore[no-redef]
-    from interfaces.research.api.wrestling import _extract_json_object  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +182,7 @@ class ExtractedNode:
     canonical_label: str
     description: str = ""
     confidence: float = 0.6
-    original_type: Optional[str] = None  # set when we coerced concept/market/technology → entity
+    original_type: str | None = None  # set when we coerced concept/market/technology → entity
 
 
 @dataclass(frozen=True)
@@ -212,7 +211,7 @@ class ExtractionResult:
 # ---------------------------------------------------------------------------
 
 
-def _normalize_node_type(raw: Any) -> tuple[str, Optional[str]]:
+def _normalize_node_type(raw: Any) -> tuple[str, str | None]:
     """Returns ``(antiek_type, original_if_coerced)``. Coerces
     Researchmaxx's "concept" / "market" / "technology" to "entity"
     with the original recorded in metadata."""
@@ -299,7 +298,7 @@ def parse_extraction_response(text: str) -> tuple[list[ExtractedNode], list[Extr
 # ---------------------------------------------------------------------------
 
 
-def _read_chunk(db_path: str, chunk_id: str) -> Optional[tuple[str, Optional[str], int]]:
+def _read_chunk(db_path: str, chunk_id: str) -> tuple[str, str | None, int] | None:
     """Look up ``(text, document_id, source_tier)`` for a chunk_id.
     Returns None when the chunk doesn't exist."""
     con = connect_read(db_path)
@@ -321,9 +320,9 @@ def extract_from_chunk(
     *,
     chunk_id: str,
     investigation_id: str,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
-    parent_event_id: Optional[str] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
+    parent_event_id: str | None = None,
 ) -> ExtractionResult:
     """The pipeline. Read chunk text → dispatch parameter_extractor →
     parse → write nodes + edges (each emits its own GRAPH_*_INSERTED

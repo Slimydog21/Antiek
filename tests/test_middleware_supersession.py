@@ -68,18 +68,18 @@ def test_review_decisions_is_the_closed_set():
     """Contract: this exact set, no more, no less. If a future change
     adds a decision, this test must be updated AND the SupersessionTarget
     Literal AND emit_for_decision branching."""
-    assert REVIEW_DECISIONS == frozenset({
+    assert frozenset({
         "apply_supersession",
         "dismiss_new",
         "dismiss_old",
         "coexist",
-    })
+    }) == REVIEW_DECISIONS
 
 
 def test_contradiction_types_is_the_closed_set():
-    assert CONTRADICTION_TYPES == frozenset({
+    assert frozenset({
         "supersession", "uncertainty", "error",
-    })
+    }) == CONTRADICTION_TYPES
 
 
 # ---------------------------------------------------------------------------

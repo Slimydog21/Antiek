@@ -46,9 +46,10 @@ from __future__ import annotations
 import abc
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from ...constants import (
@@ -86,7 +87,7 @@ VALID_KINDS: tuple[str, ...] = (VERIFIABLE, JUDGED, OUTCOME)
 
 
 def _utc_iso_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 @dataclass
@@ -103,14 +104,14 @@ class RubricResult:
     rubric_id: str
     kind: str
     score: float            # normalized to [0, 1]; 1 = best
-    passed: Optional[bool] = None   # for hard-filter rubrics; None for graded
-    details: Dict[str, Any] = field(default_factory=dict)
-    policy_id_scored: Optional[str] = None
-    judge_policy_id: Optional[str] = None
+    passed: bool | None = None   # for hard-filter rubrics; None for graded
+    details: dict[str, Any] = field(default_factory=dict)
+    policy_id_scored: str | None = None
+    judge_policy_id: str | None = None
     param_version: str = field(default_factory=lambda: ANTIEK_PARAM_VERSION)
     evaluated_at: str = field(default_factory=_utc_iso_now)
 
-    def to_payload(self) -> Dict[str, Any]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "rubric_id": self.rubric_id,
             "kind": self.kind,
@@ -150,13 +151,13 @@ class Rubric(abc.ABC):
 
     @abc.abstractmethod
     def score(
-        self, target: Any, *, context: Optional[Dict[str, Any]] = None,
+        self, target: Any, *, context: dict[str, Any] | None = None,
     ) -> RubricResult:
         """Score ``target``. Each subclass documents the shape it
         accepts via its docstring."""
 
 
-_REGISTRY: Dict[str, Rubric] = {}
+_REGISTRY: dict[str, Rubric] = {}
 
 
 def register(rubric: Rubric) -> None:
@@ -171,13 +172,13 @@ def get(rubric_id: str) -> Rubric:
     return _REGISTRY[rubric_id]
 
 
-def all_rubrics(kind: Optional[str] = None) -> List[Rubric]:
+def all_rubrics(kind: str | None = None) -> list[Rubric]:
     if kind is None:
         return list(_REGISTRY.values())
     return [r for r in _REGISTRY.values() if r.kind == kind]
 
 
-def known_ids() -> List[str]:
+def known_ids() -> list[str]:
     return sorted(_REGISTRY.keys())
 
 
@@ -207,10 +208,10 @@ def emit_score(
     investigation_id: str,
     result: RubricResult,
     *,
-    synthesis_id: Optional[str] = None,
-    target_claim_id: Optional[str] = None,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    synthesis_id: str | None = None,
+    target_claim_id: str | None = None,
+    parent_event_id: str | None = None,
+) -> str | None:
     """Write a typed ``RUBRIC_SCORED`` event into the trajectory.
 
     Kind → payload-field mapping (the Sprint 5 day 2-3 gap closer):
@@ -226,8 +227,8 @@ def emit_score(
     event's ``policy_id`` so trajectory consumers can filter by
     grading judge.
     """
-    deterministic_score: Optional[float] = None
-    judged_score: Optional[float] = None
+    deterministic_score: float | None = None
+    judged_score: float | None = None
     if result.kind == VERIFIABLE:
         deterministic_score = float(result.score)
     elif result.kind == JUDGED:
@@ -257,10 +258,10 @@ def score_and_emit(
     target: Any,
     *,
     investigation_id: str,
-    context: Optional[Dict[str, Any]] = None,
-    synthesis_id: Optional[str] = None,
-    target_claim_id: Optional[str] = None,
-    parent_event_id: Optional[str] = None,
+    context: dict[str, Any] | None = None,
+    synthesis_id: str | None = None,
+    target_claim_id: str | None = None,
+    parent_event_id: str | None = None,
 ) -> RubricResult:
     """Score with the named rubric and emit the result as a typed
     event. Returns the ``RubricResult`` so the caller can also use
@@ -297,7 +298,7 @@ class ParaphraseGuardRubric(Rubric):
     kind = VERIFIABLE
 
     def score(
-        self, target: Any, *, context: Optional[Dict[str, Any]] = None,
+        self, target: Any, *, context: dict[str, Any] | None = None,
     ) -> RubricResult:
         # Local import — keeps this module standalone-importable even
         # if roles.decomposer isn't installed.
@@ -350,7 +351,7 @@ class ConstraintDeterministicRubric(Rubric):
     kind = VERIFIABLE
 
     def score(
-        self, target: Any, *, context: Optional[Dict[str, Any]] = None,
+        self, target: Any, *, context: dict[str, Any] | None = None,
     ) -> RubricResult:
         violations = (target or {}).get("final_violations", []) if isinstance(target, dict) else []
         constraints = (target or {}).get("constraints", []) if isinstance(target, dict) else []
@@ -384,7 +385,7 @@ class CitationProvenanceRubric(Rubric):
     kind = VERIFIABLE
 
     def score(
-        self, target: Any, *, context: Optional[Dict[str, Any]] = None,
+        self, target: Any, *, context: dict[str, Any] | None = None,
     ) -> RubricResult:
         thesis = target if isinstance(target, dict) else {}
         components = thesis.get("thesis_components", []) or []
@@ -428,7 +429,7 @@ class ThesisConfirmationRubric(Rubric):
     kind = OUTCOME
 
     def score(
-        self, target: Any, *, context: Optional[Dict[str, Any]] = None,
+        self, target: Any, *, context: dict[str, Any] | None = None,
     ) -> RubricResult:
         outcomes = (target or {}).get("thesis_outcomes", []) if isinstance(target, dict) else []
         if not outcomes:
@@ -475,7 +476,7 @@ class LlmJudgeRubric(Rubric):
         self,
         rubric_id: str,
         judge_fn: Callable[
-            [Any, Optional[Dict[str, Any]]], "tuple[float, Dict[str, Any]]",
+            [Any, dict[str, Any] | None], tuple[float, dict[str, Any]],
         ],
         judge_policy_id: str,
     ):
@@ -485,7 +486,7 @@ class LlmJudgeRubric(Rubric):
         super().__init__()
 
     def score(
-        self, target: Any, *, context: Optional[Dict[str, Any]] = None,
+        self, target: Any, *, context: dict[str, Any] | None = None,
     ) -> RubricResult:
         score_val, details = self.judge_fn(target, context)
         score_val = max(0.0, min(1.0, float(score_val)))

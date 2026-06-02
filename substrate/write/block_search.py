@@ -31,8 +31,9 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence
+from typing import Any
 
 EMBED_WEIGHT = 1.0  # embedding contributes up to +1.0 atop text_score
 
@@ -42,9 +43,9 @@ class BlockHit:
     node_id: str
     label: str
     node_type: str
-    source_tier: Optional[int]
-    document_id: Optional[str]
-    document_title: Optional[str]
+    source_tier: int | None
+    document_id: str | None
+    document_title: str | None
     score: float
 
 
@@ -72,7 +73,7 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (na * nb) if na and nb else 0.0
 
 
-def _node_meta(metadata_text: Optional[str]) -> dict:
+def _node_meta(metadata_text: str | None) -> dict:
     if not metadata_text:
         return {}
     try:
@@ -82,12 +83,12 @@ def _node_meta(metadata_text: Optional[str]) -> dict:
     return meta if isinstance(meta, dict) else {}
 
 
-def _node_chunk_id(metadata_text: Optional[str]) -> Optional[str]:
+def _node_chunk_id(metadata_text: str | None) -> str | None:
     cid = _node_meta(metadata_text).get("chunk_id")
     return str(cid) if cid else None
 
 
-def _node_source_document_id(metadata_text: Optional[str]) -> Optional[str]:
+def _node_source_document_id(metadata_text: str | None) -> str | None:
     """The grounding document recorded directly on the node, used when the
     node has no chunk anchor to resolve it through. A user-authored in-book
     marginalia note (Read SPR-07 M3) carries its book here even when the
@@ -101,10 +102,10 @@ def search_blocks(
     con: Any,
     *,
     query: str = "",
-    folder_id: Optional[str] = None,
-    source_document_id: Optional[str] = None,
-    query_embedding: Optional[Sequence[float]] = None,
-    node_types: Optional[Sequence[str]] = None,
+    folder_id: str | None = None,
+    source_document_id: str | None = None,
+    query_embedding: Sequence[float] | None = None,
+    node_types: Sequence[str] | None = None,
     limit: int = 20,
 ) -> list[BlockHit]:
     """Search the repository. Returns up to ``limit`` ranked ``BlockHit``s.

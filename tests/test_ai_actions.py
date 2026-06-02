@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from substrate.ai_actions import (
@@ -13,13 +11,12 @@ from substrate.ai_actions import (
 )
 from substrate.ai_actions.actions import _hash_prev
 from substrate.schemas.events import (
-    AIActionAppliedPayload,
-    AIActionUndonePayload,
-    ActionType,
     EVENT_SCHEMA_VERSION,
     TYPED_PAYLOAD_ACTION_TYPES,
+    ActionType,
+    AIActionAppliedPayload,
+    AIActionUndonePayload,
 )
-
 
 # ── Schema-level sanity ──────────────────────────────────────────────
 
@@ -151,7 +148,7 @@ def test_undo_restores_notebook_block(tmp_path):
     sets it back to prose."""
     cm = _fresh_db(tmp_path)
     con = cm.__enter__()
-    from substrate.notebooks import create_notebook, append_block, get_notebook
+    from substrate.notebooks import append_block, create_notebook, get_notebook
 
     nb_id = create_notebook(con, title="T")
     block_id = append_block(
@@ -239,7 +236,7 @@ def test_undo_emits_linking_event(tmp_path):
     """The ai.action.undone event references the applied event by id."""
     cm = _fresh_db(tmp_path)
     con = cm.__enter__()
-    from substrate.notebooks import create_notebook, append_block
+    from substrate.notebooks import append_block, create_notebook
 
     nb_id = create_notebook(con, title="T")
     block_id = append_block(con, notebook_id=nb_id, block_type="prose", content={})

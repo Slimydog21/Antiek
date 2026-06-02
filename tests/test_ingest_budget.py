@@ -35,7 +35,6 @@ from substrate.ingest_budget import (  # noqa: E402
     BudgetState,
 )
 from substrate.ingest_checkpoint import CheckpointStore  # noqa: E402
-
 from tools import run_corpus_ingest as rci  # noqa: E402
 
 _GIB = 1024 ** 3

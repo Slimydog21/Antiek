@@ -23,6 +23,14 @@ so callers can swap implementations (e.g., LLM judge for voice-style
 in production vs heuristic in tests).
 """
 
+from .checks import (
+    SourceTierBounds,
+    assess_extraction_quality,
+    check_extraction_quality,
+    check_source_tier,
+    check_verification,
+    check_voice_style,
+)
 from .gate import (
     CandidateNote,
     CheckResult,
@@ -30,14 +38,6 @@ from .gate import (
     QualityGateResult,
     QualityGateVerdict,
     run_quality_gate,
-)
-from .checks import (
-    SourceTierBounds,
-    assess_extraction_quality,
-    check_extraction_quality,
-    check_verification,
-    check_voice_style,
-    check_source_tier,
 )
 
 __all__ = [

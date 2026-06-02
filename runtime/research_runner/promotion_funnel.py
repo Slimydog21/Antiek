@@ -24,22 +24,26 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 try:
-    from ...runtime.db_lock import connect_write
     from ...graph.insight_question import (
-        graph_db_path, promote_insight, promote_question,
+        graph_db_path,
+        promote_insight,
+        promote_question,
     )
+    from ...runtime.db_lock import connect_write
     from .protocol import StepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import connect_write  # type: ignore[no-redef]
-    from substrate.graph.insight_question import (  # type: ignore[no-redef]
-        graph_db_path, promote_insight, promote_question,
-    )
     from runtime.research_runner.protocol import StepEvent  # type: ignore[no-redef]
+    from substrate.graph.insight_question import (  # type: ignore[no-redef]
+        graph_db_path,
+        promote_insight,
+        promote_question,
+    )
 
 
 _FUNNEL_DONE = object()
@@ -48,11 +52,11 @@ _FUNNEL_DONE = object()
 class PromotionFunnel:
     """Serialized drain of research notes/questions into graph nodes."""
 
-    def __init__(self, *, db_path: Optional[str] = None, embedding_provider: Any = None):
+    def __init__(self, *, db_path: str | None = None, embedding_provider: Any = None):
         self._db_path = db_path or graph_db_path()
         self._embedding_provider = embedding_provider
-        self._queue: "asyncio.Queue" = asyncio.Queue()
-        self._worker: Optional[asyncio.Task] = None
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._worker: asyncio.Task | None = None
         self.promoted_insights = 0
         self.promoted_questions = 0
         self.errors: list[str] = []

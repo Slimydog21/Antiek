@@ -19,7 +19,6 @@ from substrate.ducklake import (
     resolve_db_path,
 )
 
-
 # ── Catalog backends ──────────────────────────────────────────────
 
 

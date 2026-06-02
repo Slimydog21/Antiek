@@ -30,7 +30,7 @@ a ``MockTransport`` — NO live HTTP in CI.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -46,7 +46,7 @@ def _server_source(server: str) -> str:
     return server.strip().lower()
 
 
-def _normalize_license_code(raw_license: Optional[str]) -> Optional[str]:
+def _normalize_license_code(raw_license: str | None) -> str | None:
     """Map biorxiv's underscore license code to the canonical CC short-code
     vocabulary the shared licenses_core table matches. SYNTAX ONLY — no rights
     verdict is made here; the chokepoint decides servability from the code.
@@ -114,7 +114,7 @@ def parse_details_response(payload: dict[str, Any], *, server: str) -> list[Pape
     return out
 
 
-def _http_get(url: str, *, client: Optional[httpx.Client]) -> dict:
+def _http_get(url: str, *, client: httpx.Client | None) -> dict:
     """Fetch a biorxiv ``/details`` page as JSON.
 
     HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is built from an
@@ -164,8 +164,8 @@ def fetch_details(
     interval: str = "2024-01-01/2024-12-31",
     cursor: int = 0,
     limit: int = 25,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
     throttle: Any = None,
 ) -> list[PaperRecord]:
     """Fetch a page of preprint details from one server.

@@ -38,7 +38,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import duckdb
 import pytest
@@ -54,12 +54,8 @@ from middleware.archive.archive import (
 )
 from middleware.backtest import backtest
 from middleware.backtest.db import (
-    archived_synthesis_from_row,
-    count_added_edges_since,
-    count_superseded_edges_since,
     load_chunk_tier_changes_since,
     load_outcomes_for_synthesis,
-    load_superseded_cited_edges,
 )
 from middleware.outcomes.recorder import (
     build_outcome_record,
@@ -69,7 +65,6 @@ from middleware.source_tier import record_chunk_tier_override
 from runtime.db_lock import connect_write
 from substrate.graph.ops import insert_document, insert_edge, insert_node
 from substrate.graph.schema import SCHEMA_TABLES, init_database_at_path, list_tables
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -91,7 +86,7 @@ def db_path(monkeypatch):
 def _inputs(*, ts=None, **kw) -> ArchiveInputs:
     base = dict(
         target_question="What is X?",
-        synthesis_timestamp=ts or datetime.now(timezone.utc),
+        synthesis_timestamp=ts or datetime.now(UTC),
         status="passed",
         implicit_recommendation="proceed",
         thesis_text="X is Y because Z.",
@@ -138,7 +133,7 @@ def test_schema_rejects_bad_status(db_path):
                 " status, implicit_recommendation) "
                 "VALUES (?, ?, ?, ?, ?)",
                 [
-                    "syn-bad", "Q?", datetime.now(timezone.utc),
+                    "syn-bad", "Q?", datetime.now(UTC),
                     "NOT_A_VALID_STATUS", "proceed",
                 ],
             )
@@ -306,7 +301,7 @@ def _seed_chunk(db_path: str, chunk_id: str) -> None:
 
 def test_tier_override_writes_and_reads(db_path):
     _seed_chunk(db_path, "c-tier-1")
-    set_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+    set_at = datetime.now(UTC) - timedelta(seconds=5)
     with connect_write(db_path, purpose="test") as con:
         record_chunk_tier_override(
             con, chunk_id="c-tier-1",
@@ -330,7 +325,7 @@ def test_tier_override_writes_and_reads(db_path):
 def test_tier_override_chunk_ids_filter(db_path):
     _seed_chunk(db_path, "c-keep")
     _seed_chunk(db_path, "c-drop")
-    set_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+    set_at = datetime.now(UTC) - timedelta(seconds=5)
     with connect_write(db_path, purpose="test") as con:
         for cid in ("c-keep", "c-drop"):
             record_chunk_tier_override(
@@ -350,12 +345,11 @@ def test_tier_override_chunk_ids_filter(db_path):
 
 def test_tier_override_invalid_tier_raises(db_path):
     _seed_chunk(db_path, "c-bad")
-    with connect_write(db_path, purpose="test") as con:
-        with pytest.raises(ValueError):
-            record_chunk_tier_override(
-                con, chunk_id="c-bad",
-                original_tier=2, override_tier=9, reason="x",
-            )
+    with connect_write(db_path, purpose="test") as con, pytest.raises(ValueError):
+        record_chunk_tier_override(
+            con, chunk_id="c-bad",
+            original_tier=2, override_tier=9, reason="x",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +360,7 @@ def test_tier_override_invalid_tier_raises(db_path):
 def test_backtest_happy_path(db_path):
     # Archive a synthesis, seed a cited edge that's later superseded,
     # record an outcome, run backtest, check report shape + counts.
-    archive_ts = datetime.now(timezone.utc) - timedelta(hours=1)
+    archive_ts = datetime.now(UTC) - timedelta(hours=1)
 
     # Seed substrate: 1 doc, 2 nodes, 1 edge (cited).
     with connect_write(db_path, purpose="seed") as con:
@@ -399,7 +393,7 @@ def test_backtest_happy_path(db_path):
     with connect_write(db_path, purpose="supersede") as con:
         con.execute(
             "UPDATE edges SET valid_until = ? WHERE edge_id = ?",
-            [datetime.now(timezone.utc).replace(tzinfo=None), eid],
+            [datetime.now(UTC).replace(tzinfo=None), eid],
         )
 
     # Record an outcome.

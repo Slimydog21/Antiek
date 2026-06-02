@@ -48,10 +48,10 @@ import errno
 import fcntl
 import os
 import time
-from typing import Any, Iterable, Optional, Protocol, Sequence, runtime_checkable
+from collections.abc import Iterable, Sequence
+from typing import Any, Protocol, runtime_checkable
 
 import duckdb
-
 
 DEFAULT_TIMEOUT_S = 300  # 5 minutes — long enough for a 200-paper ingest
 
@@ -75,7 +75,7 @@ def _stale_pid_check(lock_path: str) -> None:
     correctly serializes. We only clean up when the stamped PID is dead.
     """
     try:
-        with open(lock_path, "r") as f:
+        with open(lock_path) as f:
             content = f.read(64)
     except (FileNotFoundError, OSError):
         return
@@ -109,7 +109,7 @@ def _log_write_event(
     purpose: str,
     duration_s: float,
     success: bool,
-    error: Optional[str] = None,
+    error: str | None = None,
 ) -> None:
     """Append one row to the `write_log` table on a fresh, briefly-locked
     connection.
@@ -194,7 +194,7 @@ class LockedConnection:
 
     def __init__(
         self,
-        con: "duckdb.DuckDBPyConnection",
+        con: duckdb.DuckDBPyConnection,
         lock_fd: int,
         lock_path: str,
         *,
@@ -209,7 +209,7 @@ class LockedConnection:
         self._db_path = db_path
         self._purpose = purpose or "-"
         self._acquired_at = acquired_at or time.monotonic()
-        self._error: Optional[str] = None
+        self._error: str | None = None
 
     def __getattr__(self, name):
         return getattr(self._con, name)
@@ -334,7 +334,7 @@ def connect_write(
     )
 
 
-def connect_read(db_path: str) -> "duckdb.DuckDBPyConnection":
+def connect_read(db_path: str) -> duckdb.DuckDBPyConnection:
     """Open the DB read-only. Use this instead of raw duckdb.connect(...,
     read_only=True) at read sites so every DB access funnels through one
     module — the future place to add per-purpose observability.
@@ -427,9 +427,9 @@ class WriteContext(Protocol):
     + documentation; the implementation is the existing LockedConnection.
     """
 
-    def execute(self, sql: str, params: Optional[Sequence[Any]] = None) -> Any: ...
+    def execute(self, sql: str, params: Sequence[Any] | None = None) -> Any: ...
     def executemany(self, sql: str, params_list: Iterable[Sequence[Any]]) -> Any: ...
-    def query(self, sql: str, params: Optional[Sequence[Any]] = None) -> Any: ...
+    def query(self, sql: str, params: Sequence[Any] | None = None) -> Any: ...
     def commit(self) -> None: ...
     def rollback(self) -> None: ...
 
@@ -466,7 +466,7 @@ class FlockWriteCoordinator:
     def __init__(
         self,
         db_path: str,
-        lock_path: Optional[str] = None,
+        lock_path: str | None = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
     ):
         self.db_path = db_path

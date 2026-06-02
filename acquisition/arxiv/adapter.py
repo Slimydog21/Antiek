@@ -51,8 +51,8 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
 
 logger = logging.getLogger("acquisition.arxiv.adapter")
 
@@ -131,9 +131,9 @@ class IngestResult:
     (``ANTIEK_EVENTS_DISABLED``); the DB writes still happen."""
 
     document_id: str
-    chunk_ids: List[str] = field(default_factory=list)
-    node_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    node_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
 
 
@@ -171,8 +171,8 @@ def ingest_paper(
     *,
     investigation_id: str,
     source_tier: int = DEFAULT_ARXIV_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> IngestResult:
     """Ingest one arXiv abstract into the substrate.
 
@@ -214,9 +214,9 @@ def ingest_paper(
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
 
-    chunks: List[Chunk] = chunk_markdown(text)
-    chunk_ids: List[str] = []
-    node_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(text)
+    chunk_ids: list[str] = []
+    node_ids: list[str] = []
     chunks_written = 0
 
     emb = embedder or default_embedding_provider()
@@ -321,7 +321,7 @@ class IngestPaperWithRightsResult:
     redistributable: bool
     servability: str
     servable_full_text: bool
-    license_uri: Optional[str]
+    license_uri: str | None
     license_basis: str
 
 
@@ -373,7 +373,7 @@ def _default_fetch_pdf(arxiv_id: str) -> bytes:
 
 def _record_fetch_audit(
     *,
-    db_path: Optional[str],
+    db_path: str | None,
     arxiv_id: str,
     document_id: str,
     source_url: str,
@@ -427,11 +427,11 @@ def ingest_paper_with_rights(
     paper: ArxivPaper,
     *,
     investigation_id: str,
-    pdf_bytes: Optional[bytes] = None,
-    fetch_pdf: Optional[PdfFetcher] = None,
+    pdf_bytes: bytes | None = None,
+    fetch_pdf: PdfFetcher | None = None,
     source_tier: int = DEFAULT_ARXIV_FULLTEXT_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> IngestPaperWithRightsResult:
     """Ingest a paper's FULL TEXT through the shared servable-book path,
     gated on the paper's declared license.

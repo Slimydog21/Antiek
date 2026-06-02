@@ -51,14 +51,17 @@ from __future__ import annotations
 import hashlib
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
 logger = logging.getLogger("antiek.acquisition.arxiv.pdf_fetch")
 
 from acquisition.arxiv.client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
-from acquisition.arxiv.throttle import ArxivBanned, ArxivThrottle  # noqa: F401  (re-export for callers)
+from acquisition.arxiv.throttle import (  # noqa: F401  (re-export for callers)
+    ArxivBanned,
+    ArxivThrottle,
+)
 from acquisition.openaccess.unpaywall import NotAPdf, _looks_like_pdf
 
 # Conservative byte bounds for a single arXiv paper PDF. The lower bound rejects a
@@ -106,7 +109,7 @@ def _pdf_url(arxiv_id: str) -> str:
 
 
 def _record_fetch_audit(
-    audit_con: Any, fetched: "FetchedPdf"
+    audit_con: Any, fetched: FetchedPdf
 ) -> None:
     """SPR-09 M4 — record an ``arxiv.fetch`` leg after a successful, verified,
     throttled fetch. Defensively isolated: a failure in the audit layer must NEVER
@@ -140,7 +143,7 @@ def fetch_pdf(
     arxiv_id: str,
     *,
     throttle: ArxivThrottle,
-    client: Optional[httpx.Client] = None,
+    client: httpx.Client | None = None,
     min_bytes: int = MIN_PDF_BYTES,
     max_bytes: int = MAX_PDF_BYTES,
     audit_con: Any = None,

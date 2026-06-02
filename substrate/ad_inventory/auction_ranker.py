@@ -42,7 +42,6 @@ candidate is scored twice and no ordering is computed then thrown away.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from .ad_bidding import AdInventoryItem
 from .auction_features import AuctionCandidate, extract_features
@@ -67,7 +66,7 @@ def learned_ranker_enabled() -> bool:
     return os.environ.get(LEARNED_RANKER_ENV, "").strip().lower() in _TRUTHY
 
 
-def _load_model_from_env() -> Optional[AuctionModel]:
+def _load_model_from_env() -> AuctionModel | None:
     """Load the artifact named by ``ANTIEK_AD_RANKER_MODEL_PATH``. Returns None
     (NOT raises) on any problem — a missing/unreadable/stale artifact must
     degrade to rule-based, not error. In-process file read only; no network."""
@@ -148,8 +147,8 @@ def _learned_select(
     *,
     context: PageContext,
     scored: list[tuple[float, TargetedInventoryItem]],
-    flat_inventory_fallback: Optional[list[AdInventoryItem]],
-) -> Optional[AdInventoryItem]:
+    flat_inventory_fallback: list[AdInventoryItem] | None,
+) -> AdInventoryItem | None:
     """Pick from the rule-eligible candidates by the single objective.
 
     Consumes the ALREADY-SCORED ``(predicted_value, ti)`` pairs (features were
@@ -184,9 +183,9 @@ def select_ad(
     *,
     context: PageContext,
     targeted_inventory: list[TargetedInventoryItem],
-    flat_inventory_fallback: Optional[list[AdInventoryItem]] = None,
-    model: Optional[AuctionModel] = None,
-) -> Optional[AdInventoryItem]:
+    flat_inventory_fallback: list[AdInventoryItem] | None = None,
+    model: AuctionModel | None = None,
+) -> AdInventoryItem | None:
     """The seam-compatible selection entrypoint.
 
     Identical signature/return to ``select_targeted_ad`` plus an optional

@@ -26,21 +26,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Iterable, List, Optional
 
 DEFAULT_RETENTION_DAYS = 30
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
-def _events_dir(events_dir: Optional[str]) -> Path:
+def _events_dir(events_dir: str | None) -> Path:
     if events_dir:
         return Path(events_dir)
     # Lazy import to avoid the circular acquisition.search.__init__
@@ -49,7 +47,7 @@ def _events_dir(events_dir: Optional[str]) -> Path:
     return Path(default_discovery_events_dir())
 
 
-def _parse_event_ts(raw: dict) -> Optional[datetime]:
+def _parse_event_ts(raw: dict) -> datetime | None:
     """Best-effort parse of the event's emitted_at ISO timestamp.
     None means the event will be conservatively kept (not rolled
     up) — same posture as `runtime/weekly_report.py`'s parser."""
@@ -85,9 +83,9 @@ class RollupResult:
 def rollup_expired(
     *,
     retention_days: int = DEFAULT_RETENTION_DAYS,
-    db_path: Optional[str] = None,
-    events_dir: Optional[str] = None,
-    now: Optional[datetime] = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+    now: datetime | None = None,
 ) -> RollupResult:
     """Walk the discovery-events directory; for every file whose
     most-recent event is older than `retention_days`, fold all of
@@ -101,7 +99,6 @@ def rollup_expired(
     (the second run finds no remaining files because the first
     truncated them).
     """
-    import duckdb
     from substrate.graph import default_db_path
 
     now = now or _now_utc()
@@ -129,7 +126,7 @@ def rollup_expired(
             "total_cost_usd": 0.0,
         }
     )
-    files_to_truncate: List[Path] = []
+    files_to_truncate: list[Path] = []
 
     for f in sorted(edir.rglob("*.jsonl")):
         files_examined += 1
@@ -140,8 +137,8 @@ def rollup_expired(
         # Find the most recent event timestamp in the file. If any
         # event is newer than the cutoff, skip the whole file —
         # partial rollups would lose data.
-        most_recent: Optional[datetime] = None
-        parsed_events: List[dict] = []
+        most_recent: datetime | None = None
+        parsed_events: list[dict] = []
         for line in lines:
             line = line.strip()
             if not line:
@@ -224,7 +221,7 @@ def rollup_expired(
         run_at = now
         for (provider, day, q_hash), b in buckets.items():
             summary_id = hashlib.sha256(
-                f"{provider}\x1f{day}\x1f{q_hash}".encode("utf-8")
+                f"{provider}\x1f{day}\x1f{q_hash}".encode()
             ).hexdigest()[:32]
             con.execute(
                 """
@@ -283,11 +280,12 @@ def rollup_expired(
 def recent_summary(
     *,
     days: int = 7,
-    db_path: Optional[str] = None,
-) -> List[dict]:
+    db_path: str | None = None,
+) -> list[dict]:
     """Read the most-recent `days` of discovery_summary rows.
     Operator-facing helper; the audit CLI consumes this."""
     import duckdb
+
     from substrate.graph import default_db_path
 
     resolved = db_path or default_db_path()

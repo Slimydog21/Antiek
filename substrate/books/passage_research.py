@@ -36,13 +36,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from substrate.event_log import emit_typed, trajectory
 from substrate.schemas.events import QuestionEscalatedToResearchPayload
 
-from .serve_guard import serve_full_text_guarded
 from .servability import ServabilityStatus
+from .serve_guard import serve_full_text_guarded
 
 # A passage is addressed by (document_id, page_index). We encode that as a
 # synthetic question_id so the existing escalation event can carry it
@@ -55,7 +55,7 @@ def passage_id(document_id: str, page_index: int) -> str:
     return f"{_PASSAGE_PREFIX}:{document_id}:p{page_index}"
 
 
-def parse_passage_id(pid: str) -> Optional[tuple[str, int]]:
+def parse_passage_id(pid: str) -> tuple[str, int] | None:
     m = _PASSAGE_RE.match(pid)
     if not m:
         return None
@@ -71,8 +71,8 @@ class ResearchSeed:
 
     document_id: str
     page_index: int
-    book_title: Optional[str]
-    book_author: Optional[str]
+    book_title: str | None
+    book_author: str | None
     servability: str
     seed_text: str
     gated: bool
@@ -83,7 +83,7 @@ def build_research_seed(
     *,
     document_id: str,
     page_index: int,
-    passage_text: Optional[str] = None,
+    passage_text: str | None = None,
 ) -> ResearchSeed:
     """Build the (gate-safe) research seed for a passage.
 
@@ -138,7 +138,7 @@ def link_passage_to_research(
     page_index: int,
     investigation_id: str,
     parent_investigation_id: str = "read-spin",
-) -> Optional[str]:
+) -> str | None:
     """Record that a passage spawned a research. Reuses the existing
     ``question.escalated_to_research`` event — the passage is the
     "question", the research is the child investigation. Returns the
@@ -181,7 +181,7 @@ def passage_for_research(
     investigation_id: str,
     *,
     parent_investigation_id: str = "read-spin",
-) -> Optional[tuple[str, int]]:
+) -> tuple[str, int] | None:
     """Backward link: the (document_id, page_index) a research was spun
     from. Lets the completed research link back to the originating
     passage."""

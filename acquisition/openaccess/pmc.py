@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 import httpx
 
@@ -47,17 +47,17 @@ class PMCArticle:
     has no open full-text row — a counted miss). ``resolution`` is the
     deny-by-default verdict from the per-article license string."""
 
-    pmcid: Optional[str]
-    doi: Optional[str]
+    pmcid: str | None
+    doi: str | None
     title: str
     is_open_access: bool
-    pdf_url: Optional[str]
-    license_uri: Optional[str]
+    pdf_url: str | None
+    license_uri: str | None
     resolution: LicenseResolution
     source: str = "europepmc"
 
 
-def _normalize_license(raw: Optional[str]) -> Optional[str]:
+def _normalize_license(raw: str | None) -> str | None:
     """Europe PMC emits "cc by" / "cc-by" / "cc by-nc-nd". Map to the
     canonical CC URI fragment so the CC license rows match. Unrecognised
     strings pass through verbatim (the resolver then gates them)."""
@@ -75,7 +75,7 @@ def _normalize_license(raw: Optional[str]) -> Optional[str]:
     return raw
 
 
-def _extract_open_pdf_url(article: dict[str, Any]) -> Optional[str]:
+def _extract_open_pdf_url(article: dict[str, Any]) -> str | None:
     urls = (article.get("fullTextUrlList") or {}).get("fullTextUrl") or []
     for u in urls:
         style = (u.get("documentStyle") or "").lower()
@@ -85,11 +85,11 @@ def _extract_open_pdf_url(article: dict[str, Any]) -> Optional[str]:
     return None
 
 
-def parse_search_response(payload: dict[str, Any]) -> List[PMCArticle]:
+def parse_search_response(payload: dict[str, Any]) -> list[PMCArticle]:
     """Europe PMC ``/search`` (resultType=core) JSON -> articles. Pure; the
     recorded-response tests target this directly."""
     results = (payload.get("resultList") or {}).get("result") or []
-    out: List[PMCArticle] = []
+    out: list[PMCArticle] = []
     for art in results:
         license_uri = _normalize_license(art.get("license"))
         out.append(
@@ -106,7 +106,7 @@ def parse_search_response(payload: dict[str, Any]) -> List[PMCArticle]:
     return out
 
 
-def _build_search_url(query: str, *, base_url: Optional[str]) -> str:
+def _build_search_url(query: str, *, base_url: str | None) -> str:
     base = base_url or os.environ.get("ANTIEK_EUROPEPMC_BASE_URL", DEFAULT_BASE_URL)
     qs = urllib.parse.urlencode(
         {"query": query, "format": "json", "resultType": "core"}
@@ -117,10 +117,10 @@ def _build_search_url(query: str, *, base_url: Optional[str]) -> str:
 def resolve_by_doi(
     doi: str,
     *,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
-    throttle: Optional[OAThrottle] = None,
-) -> Optional[PMCArticle]:
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
+    throttle: OAThrottle | None = None,
+) -> PMCArticle | None:
     """Resolve a DOI to its PMC article + OA verdict. Returns ``None`` when
     Europe PMC has no record for the DOI."""
     articles = _search(f"DOI:{doi}", client=client, base_url=base_url, throttle=throttle)
@@ -130,10 +130,10 @@ def resolve_by_doi(
 def _search(
     query: str,
     *,
-    client: Optional[httpx.Client],
-    base_url: Optional[str],
-    throttle: Optional[OAThrottle],
-) -> List[PMCArticle]:
+    client: httpx.Client | None,
+    base_url: str | None,
+    throttle: OAThrottle | None,
+) -> list[PMCArticle]:
     url = _build_search_url(query, base_url=base_url)
 
     def _get() -> dict:
@@ -164,8 +164,8 @@ def _search(
 def download_pdf(
     pdf_url: str,
     *,
-    client: Optional[httpx.Client] = None,
-    throttle: Optional[OAThrottle] = None,
+    client: httpx.Client | None = None,
+    throttle: OAThrottle | None = None,
 ) -> bytes:
     """Download PMC PDF bytes. Transient errors retry via the (non-arXiv)
     ``OAThrottle``.

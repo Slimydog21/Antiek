@@ -16,8 +16,6 @@ first. The split is deliberate: 'we recorded what happened' is not
 
 from __future__ import annotations
 
-from typing import Any
-
 from substrate.loop_3.trajectory_harvest import HarvestedTrajectory, harvest_trajectory_for_prime_rl
 
 from .async_interview import resume

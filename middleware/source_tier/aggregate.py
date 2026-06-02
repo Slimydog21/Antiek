@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import sys
 from collections import Counter
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 try:
     from ...constants import TIER_AGGREGATE_K, TIER_HIGHEST, TIER_LOWEST
@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 
-def effective_tier(tiers: Iterable[int], k: int = TIER_AGGREGATE_K) -> Optional[int]:
+def effective_tier(tiers: Iterable[int], k: int = TIER_AGGREGATE_K) -> int | None:
     """Lowest ``t`` in [TIER_HIGHEST, TIER_LOWEST] such that at least
     ``k`` sources are at tier ≤ ``t``.
 

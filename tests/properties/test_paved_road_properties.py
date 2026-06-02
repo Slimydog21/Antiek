@@ -22,7 +22,7 @@ hypothesis = pytest.importorskip("hypothesis", reason="hypothesis not installed"
 from hypothesis import given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
-from substrate.errors import BudgetExceeded, SubstrateError  # noqa: E402
+from substrate.errors import BudgetExceeded  # noqa: E402
 from substrate.exhaustive import (  # noqa: E402
     ReferenceOutcome,
     classify_reference_outcome,
@@ -33,7 +33,7 @@ from substrate.result_helpers import (  # noqa: E402
     try_decode_json,
     try_parse_model,
 )
-from substrate.results import Err, Ok, Result  # noqa: E402
+from substrate.results import Err, Ok  # noqa: E402
 
 PROPERTY_SETTINGS = settings(max_examples=200, deadline=None)
 # Concurrency properties run fewer examples — each spins real threads.

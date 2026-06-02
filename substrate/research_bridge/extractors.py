@@ -19,9 +19,7 @@ into a clear user message rather than poisoning the graph with garbage text.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import Optional
 
 SUPPORTED_EXTENSIONS = ("txt", "md", "markdown", "text", "html", "htm", "pdf")
 # Documented as degrading rather than clean — surfaced in the result.
@@ -38,7 +36,7 @@ class ExtractionResult:
     reason: str = ""         # failure reason when ok=False
 
 
-def _ext_of(filename: Optional[str], content_type: Optional[str]) -> str:
+def _ext_of(filename: str | None, content_type: str | None) -> str:
     if filename and "." in filename:
         return filename.rsplit(".", 1)[1].lower()
     if content_type:
@@ -55,7 +53,7 @@ def _ext_of(filename: Optional[str], content_type: Optional[str]) -> str:
 
 
 def extract_text(
-    data, *, filename: Optional[str] = None, content_type: Optional[str] = None,
+    data, *, filename: str | None = None, content_type: str | None = None,
 ) -> ExtractionResult:
     """Extract text from ``data`` (bytes or str). Dispatches on extension /
     content-type. Never raises on a bad file — returns ``ok=False``."""

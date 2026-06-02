@@ -37,7 +37,6 @@ import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 try:
     from ...event_log import emit_typed
@@ -55,7 +54,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
         SupersessionApplyPayload,
         SupersessionCoexistPayload,
         SupersessionDismissPayload,
-        SupersessionTarget,
     )
 
 
@@ -143,8 +141,8 @@ def emit_supersession_apply(
     new_valid_until: datetime,
     reviewer: str,
     review_notes: str = "",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a SUPERSESSION_APPLY event. Call AFTER the edges table
     commit so we never advertise an apply that didn't write."""
     return emit_typed(
@@ -171,8 +169,8 @@ def emit_supersession_dismiss(
     valid_until: datetime,
     reviewer: str,
     review_notes: str = "",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a SUPERSESSION_DISMISS event. ``target`` is enforced by the
     Pydantic Literal on the payload — pass "new" if dismissing the new
     edge, "old" if dismissing the old edge."""
@@ -197,8 +195,8 @@ def emit_supersession_coexist(
     candidate_id: str,
     reviewer: str,
     review_notes: str = "",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a SUPERSESSION_COEXIST event. No edge mutation occurs;
     this is the audit signal that the reviewer chose to keep both
     edges active."""
@@ -224,8 +222,8 @@ def emit_for_decision(
     reviewer: str,
     valid_until: datetime,
     review_notes: str = "",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Convenience: pick the right emit helper based on the decision
     string. Useful when the review code already validates the decision
     and just needs to fire whichever event is correct.

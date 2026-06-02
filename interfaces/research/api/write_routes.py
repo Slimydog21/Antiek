@@ -35,8 +35,9 @@ no fabricated citations), so no REST path can mint orphan prose.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator, Literal, Optional
+from typing import Any, Literal
 
 import duckdb
 from fastapi import APIRouter, HTTPException, Query
@@ -45,10 +46,11 @@ from pydantic import BaseModel, Field
 from roles.interviewer.drivers import DriverSet
 from runtime.db_lock import connect_write
 from substrate.graph import default_db_path, ensure_initialized
-from substrate.write import block_search, folders as folders_mod
+from substrate.write import block_search
+from substrate.write import folders as folders_mod
 from substrate.write.brainstorm_blocks import drivers_to_blocks
 from substrate.write.draft_generation import build_creative_writer_context, generate_section
-from substrate.write.outline import build_outline_tree, OutlineError, OutlineNode
+from substrate.write.outline import OutlineError, OutlineNode, build_outline_tree
 from substrate.write.outline_block import (
     OutlineBlock,
     OutlineBlockError,
@@ -142,9 +144,9 @@ class PlaceBlockRequest(BaseModel):
     ]
     provenance_kind: Literal["graph_node", "user_authored", "synthesized", "brainstorm"]
     block_index: int = Field(..., ge=0)
-    node_id: Optional[str] = None
-    content: Optional[str] = None
-    deliverable_id: Optional[str] = None
+    node_id: str | None = None
+    content: str | None = None
+    deliverable_id: str | None = None
 
 
 class MoveBlockRequest(BaseModel):
@@ -162,7 +164,7 @@ class FolderMemberRequest(BaseModel):
 
 class BrainstormBlocksRequest(BaseModel):
     section_id: str
-    deliverable_id: Optional[str] = None
+    deliverable_id: str | None = None
     insights: list[str] = Field(default_factory=list)
     questions: list[str] = Field(default_factory=list)
     data_points: list[str] = Field(default_factory=list)
@@ -326,8 +328,8 @@ def remove_folder_block(folder_id: str, node_id: str) -> dict:
 @write_router.get("/blocks/search")
 def search_repository(
     q: str = Query(default="", max_length=300),
-    folder_id: Optional[str] = Query(default=None),
-    source_document_id: Optional[str] = Query(default=None),
+    folder_id: str | None = Query(default=None),
+    source_document_id: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
 ) -> dict:
     with _read() as con:

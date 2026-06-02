@@ -29,7 +29,7 @@ from __future__ import annotations
 import enum
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from .consent import ConsentScope, has_consent
 from .project import interview_ids, set_publish_intent

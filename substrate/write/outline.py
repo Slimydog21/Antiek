@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -46,12 +46,12 @@ class OutlineNode:
     """One section in the outline tree, with its blocks and children."""
 
     section_id: str
-    title: Optional[str]
+    title: str | None
     section_index: int
-    parent_section_id: Optional[str]
+    parent_section_id: str | None
     depth: int
     blocks: list[OutlineBlock] = field(default_factory=list)
-    children: list["OutlineNode"] = field(default_factory=list)
+    children: list[OutlineNode] = field(default_factory=list)
 
 
 def _assert_write_locked(con: Any) -> None:
@@ -134,8 +134,8 @@ def reparent_section(
     con: LockedConnection,
     *,
     section_id: str,
-    new_parent_section_id: Optional[str],
-    new_index: Optional[int] = None,
+    new_parent_section_id: str | None,
+    new_index: int | None = None,
 ) -> None:
     """Move ``section_id`` under ``new_parent_section_id`` (or to the root
     if None). Refuses to create a cycle (a section cannot become its own

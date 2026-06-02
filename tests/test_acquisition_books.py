@@ -47,7 +47,6 @@ import os
 import sys
 import tempfile
 from types import SimpleNamespace
-from typing import List
 
 import pytest
 
@@ -61,13 +60,12 @@ from acquisition.books import (
     read_pdf,
 )
 from acquisition.books.reader import (
+    PdfPage,
     _clean_page_text,
     _join_pages_to_markdown,
     _metadata_field,
     _promote_headings,
-    PdfPage,
 )
-
 
 # ---------------------------------------------------------------------------
 # Stub reader: a fake PdfReader the production import path can swap in
@@ -87,7 +85,7 @@ class _StubReader:
     texts + a metadata dict; production accepts BytesIO or a path,
     so the stub accepts anything and ignores it."""
 
-    def __init__(self, _source=None, page_texts: List[str] = None, meta: dict = None):
+    def __init__(self, _source=None, page_texts: list[str] = None, meta: dict = None):
         self._pages = [_StubPage(t) for t in (page_texts or [])]
         self._meta = SimpleNamespace(
             get=lambda key: (meta or {}).get(key),
@@ -107,7 +105,7 @@ def stub_reader_factory(monkeypatch):
     """Returns a function ``install(pages=..., meta=...)`` that
     monkeypatches the PdfReader symbol inside the reader module so
     the next read_pdf call uses the stub."""
-    def install(pages: List[str], meta: dict = None):
+    def install(pages: list[str], meta: dict = None):
         def factory(source):
             return _StubReader(source, page_texts=pages, meta=meta or {})
         monkeypatch.setattr(
@@ -425,8 +423,9 @@ def test_ingest_idempotent_on_rows(temp_substrate, stub_reader_factory):
 
 
 def test_ingest_nodes_carry_source_book(temp_substrate, stub_reader_factory):
-    import duckdb
     import json
+
+    import duckdb
 
     stub_reader_factory(pages=[_LONG_PAGE], meta={})
     res = ingest_pdf(

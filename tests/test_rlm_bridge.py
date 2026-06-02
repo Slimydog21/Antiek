@@ -7,17 +7,12 @@ not ratified) plus the size-estimator edge cases. See
 
 from __future__ import annotations
 
-import os
-
-import pytest
-
 from orchestration.rlm.bridge import (
     RLM_BYTES_PER_TOKEN_ESTIMATE,
     estimate_tokens_from_bytes,
     is_ratified,
     maybe_escalate_to_rlm,
 )
-
 
 # ── Token estimator ──────────────────────────────────────────────────
 

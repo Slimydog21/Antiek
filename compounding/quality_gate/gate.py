@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Callable, Optional
+from datetime import UTC, datetime
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class QualityGateError(Exception):
@@ -138,7 +137,7 @@ def evaluate_notebook_for_public(
     cited_chunk_tiers: list[int],
     corpus_sector_terms: list[str],
     rubric_score: float,
-    gate: Optional[QualityGate] = None,
+    gate: QualityGate | None = None,
 ) -> PublicGraphAcceptanceVerdict:
     """End-to-end evaluation of a notebook for public-graph promotion.
 

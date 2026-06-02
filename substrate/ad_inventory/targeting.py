@@ -20,7 +20,8 @@ signals are even eligible to feed targeting.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from substrate.constants import READER_TARGETING_SIGNAL_ALLOWLIST
 

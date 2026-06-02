@@ -26,15 +26,17 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 try:
     from .._json_decode import extract_json_object as _extract_json_object
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 # Closed vocabularies — must equal the schema-side Literal sets.
@@ -61,7 +63,7 @@ class ParameterValidationError(ValueError):
 class ParsedMetricValue:
     value_type: str  # one of METRIC_VALUE_TYPES
     value: Any = None
-    unit: Optional[str] = None
+    unit: str | None = None
 
 
 @dataclass(frozen=True)
@@ -71,7 +73,7 @@ class ParsedParameter:
     evidence_status: str               # one of EVIDENCE_STATUS_VALUES
     source_chunk_ids: tuple[str, ...]
     constraint_strictness: str         # one of CONSTRAINT_STRICTNESS_VALUES
-    qualitative_descriptor: Optional[str] = None
+    qualitative_descriptor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -101,14 +103,14 @@ def _require_str(obj: Any, field_name: str, ctx: str, *, allow_empty: bool = Fal
     return obj
 
 
-def _require_str_list(obj: Any, field_name: str, ctx: str) -> List[str]:
+def _require_str_list(obj: Any, field_name: str, ctx: str) -> list[str]:
     if obj is None:
         return []
     if not isinstance(obj, list):
         raise ParameterValidationError(
             f"{ctx}: {field_name!r} must be a list (got {type(obj).__name__})"
         )
-    out: List[str] = []
+    out: list[str] = []
     for i, item in enumerate(obj):
         if not isinstance(item, str) or not item.strip():
             raise ParameterValidationError(
@@ -175,7 +177,7 @@ def _normalize_metric_value(raw: Any, ctx: str) -> ParsedMetricValue:
             f"{ctx}.metric_value.unit: empty string is forbidden — use "
             "null (or omit) when there is genuinely no unit"
         )
-    unit: Optional[str] = unit_raw if isinstance(unit_raw, str) else None
+    unit: str | None = unit_raw if isinstance(unit_raw, str) else None
 
     # Value handling — type must agree with value_type
     value = raw.get("value")

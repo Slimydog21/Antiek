@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional, Protocol
+from typing import Protocol
 
 from acquisition.voice.client import Transcriber, Transcript, transcribe_audio
 from roles.note_taker.parser import ExtractedNote
@@ -60,8 +60,8 @@ class TranscriptionOutcome:
     value, never raised through to crash the reader (rigor: ASR failure
     handled, never silently dropped)."""
 
-    transcript: Optional[Transcript]
-    error: Optional[str]
+    transcript: Transcript | None
+    error: str | None
 
     @property
     def ok(self) -> bool:
@@ -80,7 +80,7 @@ class VoiceNoteResult:
     document_id: str
     page_index: int
     source: str  # always "voice"
-    audio_ref: Optional[str]
+    audio_ref: str | None
     transcript_text: str
     notes: list[ExtractedNote]
     emitted_event_ids: list[str] = field(default_factory=list)
@@ -90,8 +90,8 @@ def transcribe_voice_note(
     audio_bytes: bytes,
     *,
     filename: str = "voice-note.webm",
-    language: Optional[str] = None,
-    transcriber: Optional[Transcriber] = None,
+    language: str | None = None,
+    transcriber: Transcriber | None = None,
 ) -> TranscriptionOutcome:
     """Transcribe captured audio via the existing Whisper path. ASR
     failures (network, quota, bad audio) are caught and returned as
@@ -112,9 +112,9 @@ def distill_voice_note(
     transcript_text: str,
     distiller: NoteDistiller,
     investigation_id: str,
-    audio_ref: Optional[str] = None,
+    audio_ref: str | None = None,
     confirmed: bool,
-    capture_event_id: Optional[str] = None,
+    capture_event_id: str | None = None,
     emit: bool = True,
 ) -> VoiceNoteResult:
     """Distill a CONFIRMED transcript into insight/question notes anchored

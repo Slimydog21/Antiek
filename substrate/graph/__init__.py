@@ -34,7 +34,7 @@ def default_db_path() -> str:
     return _os.path.expanduser(_DUCKDB_PATH)
 
 
-def ensure_initialized(db_path: _Optional[str] = None) -> str:
+def ensure_initialized(db_path: str | None = None) -> str:
     """Make sure the schema is present at ``db_path``. Returns the
     resolved path. Idempotent — CREATE IF NOT EXISTS is the workhorse.
 
@@ -64,6 +64,21 @@ from .ops import (
     new_random_id,
     update_section_prose,
 )
+from .rlm_tools import (
+    CATEGORY_TOOL_MAP,
+    MAX_TOOL_OUTPUT_CHARS,
+    MAX_TOOL_ROUNDS,
+    LLMCall,
+    SubLLMWithTools,
+    equipped_llm_batch,
+    extract_json,
+    fetch_url,
+    get_builtin_tool_names,
+    get_tool_specs,
+    search_graph,
+    tools_for_category,
+    web_search,
+)
 from .schema import (
     ANTIEK_GRAPH_SCHEMA_V1_SQL,
     SCHEMA_TABLES,
@@ -78,21 +93,6 @@ from .search import (
     open_read,
     search,
     search_nodes_by_label,
-)
-from .rlm_tools import (
-    CATEGORY_TOOL_MAP,
-    LLMCall,
-    MAX_TOOL_OUTPUT_CHARS,
-    MAX_TOOL_ROUNDS,
-    SubLLMWithTools,
-    equipped_llm_batch,
-    extract_json,
-    fetch_url,
-    get_builtin_tool_names,
-    get_tool_specs,
-    search_graph,
-    tools_for_category,
-    web_search,
 )
 from .traverse import (
     TraversalAlgorithm,

@@ -19,10 +19,6 @@ trail names WHY it gated rather than logging a bare "unrecognised license".
 
 from __future__ import annotations
 
-from typing import Optional
-
-from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
-
 from acquisition.licenses_core import (  # noqa: F401
     CC_LICENSE_ROWS,
     CC_PDM_ROW,
@@ -34,6 +30,7 @@ from acquisition.licenses_core import (  # noqa: F401
     license_basis_string,
     resolve_against_table,
 )
+from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 
 # --- OA-specific rows (beyond the shared CC family) ---
 
@@ -84,7 +81,7 @@ _OA_TABLE: tuple[LicenseRow, ...] = (
 )
 
 
-def resolve_oa_license(license_uri: Optional[str]) -> LicenseResolution:
+def resolve_oa_license(license_uri: str | None) -> LicenseResolution:
     """Map an open-access license string/URI to a servable-class resolution.
 
     Deny-by-default: ``None`` / empty / unmatched (including bronze with no

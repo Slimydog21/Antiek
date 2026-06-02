@@ -16,20 +16,27 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 try:
-    from ...runtime.db_lock import connect_read, connect_write
     from ...graph.insight_question import graph_db_path, promote_question
     from ...graph.ops import insert_edge
+    from ...runtime.db_lock import connect_read, connect_write
     from .tree_contract import ApprovalState, PlanNode, PlanTree
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from roles.cascade_planner.tree_contract import (  # type: ignore[no-redef]
+        ApprovalState,
+        PlanNode,
+        PlanTree,
+    )
     from runtime.db_lock import connect_read, connect_write  # type: ignore[no-redef]
-    from substrate.graph.insight_question import graph_db_path, promote_question  # type: ignore[no-redef]
+    from substrate.graph.insight_question import (  # type: ignore[no-redef]
+        graph_db_path,
+        promote_question,
+    )
     from substrate.graph.ops import insert_edge  # type: ignore[no-redef]
-    from roles.cascade_planner.tree_contract import ApprovalState, PlanNode, PlanTree  # type: ignore[no-redef]
 
 
 # The tree-structure relation (free-form on edges.relation; not part of the
@@ -43,7 +50,7 @@ def persist_tree(
     *,
     investigation_id: str,
     embedding_provider: Any = None,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     con: Any = None,
 ) -> str:
     """Persist ``tree`` to the graph; returns the root question node id.
@@ -121,7 +128,7 @@ def _persist_children(c, parent: PlanNode, investigation_id, provider) -> None:
         _persist_children(c, child, investigation_id, provider)
 
 
-def load_tree(root_node_id: str, *, db_path: Optional[str] = None, con: Any = None) -> Optional[PlanTree]:
+def load_tree(root_node_id: str, *, db_path: str | None = None, con: Any = None) -> PlanTree | None:
     """Reconstruct a PlanTree from the graph by walking ``decomposes_into``
     edges from the root. Terminates on cycles via a visited set."""
     owned = con is None

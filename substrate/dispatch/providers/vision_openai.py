@@ -12,7 +12,6 @@ gpt-4o-mini, and the GPT-4-vision-preview family.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import httpx
 
@@ -20,7 +19,6 @@ from .vision_anthropic import (
     VisionDispatchResult,
     VisionProviderError,
 )
-
 
 _DEFAULT_TIMEOUT_S = 120.0
 
@@ -39,11 +37,11 @@ class OpenAIVisionProvider:
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         api_key_env: str = "OPENAI_API_KEY",
         base_url: str = "https://api.openai.com",
         timeout_s: float = _DEFAULT_TIMEOUT_S,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
     ):
         self._api_key = api_key
         self._api_key_env = api_key_env

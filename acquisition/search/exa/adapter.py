@@ -30,8 +30,8 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional
 from urllib.parse import urlparse
 
 # Repo root on path for direct invocation (matches the pattern used by
@@ -42,6 +42,16 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+# Tier allowlists live in substrate/constants.py per spec §6.6 —
+# tier assignment is a substrate decision, not a search-API one.
+# Import here so the adapter can consult them; never define them
+# here.
+from substrate.constants import (  # noqa: E402
+    CURATED_NEWS_TIER_3 as _CURATED_NEWS_TIER_3,
+)
+from substrate.constants import (
+    RESEARCH_HOSTS_TIER_2 as _RESEARCH_HOSTS_TIER_2,
+)
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.legal_gate import LegalGate, default_legal_gate  # noqa: E402
 from substrate.schemas.events import (  # noqa: E402
@@ -52,16 +62,6 @@ from substrate.schemas.events import (  # noqa: E402
 from .budget import check_and_reserve  # noqa: E402
 from .cache import DEFAULT_TTL_SECONDS, cache_key, lookup, store  # noqa: E402
 from .client import ExaClient, ExaSearchCategory, ExaSearchResult  # noqa: E402
-
-
-# Tier allowlists live in substrate/constants.py per spec §6.6 —
-# tier assignment is a substrate decision, not a search-API one.
-# Import here so the adapter can consult them; never define them
-# here.
-from substrate.constants import (  # noqa: E402
-    CURATED_NEWS_TIER_3 as _CURATED_NEWS_TIER_3,
-    RESEARCH_HOSTS_TIER_2 as _RESEARCH_HOSTS_TIER_2,
-)
 
 _DISCOVERY_ID_PREFIX = "disc-exa-"
 
@@ -83,20 +83,20 @@ class DiscoveryProposed:
     provider: str
     query: str
     url: str
-    title: Optional[str]
-    published_date: Optional[str]
-    author: Optional[str]
-    relevance_score: Optional[float]
+    title: str | None
+    published_date: str | None
+    author: str | None
+    relevance_score: float | None
     suggested_tier: int
-    text_snippet_preview: Optional[str]
+    text_snippet_preview: str | None
     # Backward-compat read fallback. Per spec §14.7 the canonical
     # location is `provider_specific["response_id"]`; the top-level
     # mirror stays so callers reading v6-v8 events still see the
     # value. New emitters write to `provider_specific`; read paths
     # prefer it.
-    provider_response_id: Optional[str]
+    provider_response_id: str | None
     cost_usd_estimate: float
-    proposed_event_id: Optional[str]
+    proposed_event_id: str | None
     # Spec §14.7 overflow bag — provider-shaped fields live here.
     # Defaults to {} on the runtime dataclass for ergonomic
     # construction in tests; the underlying payload's
@@ -113,9 +113,9 @@ class DiscoveryPromotionResult:
 
     discovery_id: str
     decision: str  # one of: ingested, rejected_by_legal_gate, rejected_by_operator, fetch_failed
-    document_id: Optional[str]
-    selected_event_id: Optional[str]
-    rejection_reason: Optional[str]
+    document_id: str | None
+    selected_event_id: str | None
+    rejection_reason: str | None
     legal_gate_kind: str
     chunks_written: int = 0
 
@@ -129,7 +129,7 @@ class DiscoveryBudgetExceeded(RuntimeError):
 # ── Tier suggestion heuristic ─────────────────────────────────────
 
 
-def suggest_tier(url: str, category: Optional[str] = None) -> int:
+def suggest_tier(url: str, category: str | None = None) -> int:
     """Spec §6.6 heuristic.
 
     - Tier 1: primary source. NEVER auto-assigned; operator-only.
@@ -176,7 +176,7 @@ def _discovery_id(url: str, investigation_id: str, query: str = "") -> str:
     a query (verifying within-investigation stability) still pass.
     """
     h = hashlib.sha256(
-        f"{url}\x1f{investigation_id}\x1f{query}".encode("utf-8")
+        f"{url}\x1f{investigation_id}\x1f{query}".encode()
     ).hexdigest()[:16]
     return f"{_DISCOVERY_ID_PREFIX}{h}"
 
@@ -189,18 +189,18 @@ def discover(
     query: str,
     investigation_id: str,
     num_results: int = 10,
-    category: Optional[ExaSearchCategory] = None,
-    include_domains: Optional[Iterable[str]] = None,
-    exclude_domains: Optional[Iterable[str]] = None,
-    start_published_date: Optional[str] = None,
-    end_published_date: Optional[str] = None,
-    client: Optional[ExaClient] = None,
-    daily_budget_usd: Optional[float] = None,
-    events_dir: Optional[str] = None,
-    db_path: Optional[str] = None,
+    category: ExaSearchCategory | None = None,
+    include_domains: Iterable[str] | None = None,
+    exclude_domains: Iterable[str] | None = None,
+    start_published_date: str | None = None,
+    end_published_date: str | None = None,
+    client: ExaClient | None = None,
+    daily_budget_usd: float | None = None,
+    events_dir: str | None = None,
+    db_path: str | None = None,
     use_cache: bool = True,
     cache_ttl_seconds: int = DEFAULT_TTL_SECONDS,
-) -> List[DiscoveryProposed]:
+) -> list[DiscoveryProposed]:
     """Run an Exa search; emit DiscoveryProposed events; return the
     proposals for operator review.
 
@@ -270,7 +270,7 @@ def discover(
         end_published_date=end_published_date,
     )
 
-    proposals: List[DiscoveryProposed] = []
+    proposals: list[DiscoveryProposed] = []
     for r in response.results:
         proposals.append(
             _emit_proposed(
@@ -319,7 +319,7 @@ def discover(
     return proposals
 
 
-def _default_db_path_or_none() -> Optional[str]:
+def _default_db_path_or_none() -> str | None:
     """Resolve the substrate DuckDB path if configured, else None.
 
     Tests that don't want cache touch the substrate set
@@ -377,10 +377,10 @@ def find_similar(
     investigation_id: str,
     num_results: int = 10,
     exclude_source_domain: bool = True,
-    client: Optional[ExaClient] = None,
-    daily_budget_usd: Optional[float] = None,
-    events_dir: Optional[str] = None,
-) -> List[DiscoveryProposed]:
+    client: ExaClient | None = None,
+    daily_budget_usd: float | None = None,
+    events_dir: str | None = None,
+) -> list[DiscoveryProposed]:
     """Spec §17.3 — findSimilar ships in Wedge 1.
 
     Each result is emitted as a ``DiscoveryProposed`` event with the
@@ -406,7 +406,7 @@ def find_similar(
         num_results=num_results,
         exclude_source_domain=exclude_source_domain,
     )
-    proposals: List[DiscoveryProposed] = []
+    proposals: list[DiscoveryProposed] = []
     for r in response.results:
         proposals.append(
             _emit_proposed(
@@ -425,8 +425,8 @@ def _emit_proposed(
     *,
     query: str,
     investigation_id: str,
-    category: Optional[str],
-    events_dir: Optional[str],
+    category: str | None,
+    events_dir: str | None,
 ) -> DiscoveryProposed:
     discovery_id = _discovery_id(r.url, investigation_id, query)
     tier = suggest_tier(r.url, category=category)
@@ -493,11 +493,11 @@ def promote_discovery(
     discovery: DiscoveryProposed,
     *,
     investigation_id: str,
-    source_tier: Optional[int] = None,
-    legal_gate: Optional[LegalGate] = None,
-    db_path: Optional[str] = None,
-    embedder: Optional[object] = None,
-    events_dir: Optional[str] = None,
+    source_tier: int | None = None,
+    legal_gate: LegalGate | None = None,
+    db_path: str | None = None,
+    embedder: object | None = None,
+    events_dir: str | None = None,
 ) -> DiscoveryPromotionResult:
     """Promote a prior discovery to ingestion.
 
@@ -616,8 +616,8 @@ def reject_discovery(
     discovery: DiscoveryProposed,
     *,
     investigation_id: str,
-    reason: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    reason: str | None = None,
+    events_dir: str | None = None,
 ) -> DiscoveryPromotionResult:
     """Operator-side dismissal of a proposal without ingestion.
 

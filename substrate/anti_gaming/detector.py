@@ -6,7 +6,6 @@ that the PayoutRouter can respect.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .attribution_fraud import (
     AttributionFraudScorer,
@@ -18,7 +17,6 @@ from .click_fraud import (
 )
 from .verdict import FraudSignal, FraudVerdict, FraudVerdictKind, verdict_from_signals
 from .view_fraud import (
-    SessionBurstWindow,
     ViewFraudScorer,
     score_view_event,
 )
@@ -40,7 +38,7 @@ class AntiGamingDetector:
 
 def _merge_verdicts(
     verdicts: list[FraudVerdict],
-    subject_ref: Optional[str] = None,
+    subject_ref: str | None = None,
 ) -> FraudVerdict:
     all_signals: list[FraudSignal] = []
     for v in verdicts:
@@ -58,7 +56,7 @@ def run_full_check(
     view_dwell_ms: float,
     ad_id: str,
     ts_seconds: float,
-    creator_id: Optional[str] = None,
+    creator_id: str | None = None,
     chain_depth: int = 0,
 ) -> FraudVerdict:
     """Run all three detector classes on a single impression-and-click.

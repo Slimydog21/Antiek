@@ -33,22 +33,20 @@ import re
 
 import pytest
 
+import substrate.context_pack.knowledge_reuse as kr
 from processing.embedding.embed import HashEmbedding
 from runtime.db_lock import connect_write
-from substrate.graph.insight_question import promote_insight
-from substrate.graph.ops import insert_node
-from substrate.graph.retrieval_substrate import make_substrate
-from substrate.graph.schema import init_database
-from substrate.event_log.events import trajectory
-
-import substrate.context_pack.knowledge_reuse as kr
 from substrate.context_pack.assembler import (
     CANONICAL_RENDER_ORDER,
     DEFAULT_KIND_PRIORITY,
     DefaultTokenCounter,
     LayerSource,
 )
-
+from substrate.event_log.events import trajectory
+from substrate.graph.insight_question import promote_insight
+from substrate.graph.ops import insert_node
+from substrate.graph.retrieval_substrate import make_substrate
+from substrate.graph.schema import init_database
 
 # ---------------------------------------------------------------------------
 # Seed helpers — a graph with depositable, §9.0-servable prior knowledge units.
@@ -365,7 +363,9 @@ def _fake_units(n: int, *, prefix: str = "unit", inv: str = "inv-prior", sim_sta
     touching the DB. Uses a tiny stand-in unit object carrying the fields
     RetrievedUnit reads."""
     from substrate.contracts.nodes import (
-        KnowledgeUnitContract, ProvenanceLink, ServabilityTag,
+        KnowledgeUnitContract,
+        ProvenanceLink,
+        ServabilityTag,
     )
 
     out = []

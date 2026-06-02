@@ -30,7 +30,6 @@ relax. A future edit adds itself to the canonical source, not a fifth copy.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 CREATIVE_WRITER_PROMPT_VERSION = "1.0.0"
 CREATIVE_WRITER_TIER = "synthesis"  # routes to the synthesis tier
@@ -147,7 +146,7 @@ class CreativeWriterBlock:
     block_kind: str  # 'insight' | 'open_question' | 'operator_note' | 'claim'
     label: str  # short title or first-line for the block
     body: str  # the block's content
-    source_tier: Optional[int] = None  # 1..5 if known
+    source_tier: int | None = None  # 1..5 if known
 
 
 @dataclass(frozen=True)
@@ -157,7 +156,7 @@ class AdjacentSection:
 
     section_index: int
     title: str
-    prose_text: Optional[str] = None  # None means "upcoming"
+    prose_text: str | None = None  # None means "upcoming"
 
 
 @dataclass(frozen=True)
@@ -169,9 +168,9 @@ class CreativeWriterContext:
     section_title: str
     section_index: int
     section_count: int
-    blocks: List[CreativeWriterBlock] = field(default_factory=list)
+    blocks: list[CreativeWriterBlock] = field(default_factory=list)
     style_guide: str = ""
-    adjacent_sections: List[AdjacentSection] = field(default_factory=list)
+    adjacent_sections: list[AdjacentSection] = field(default_factory=list)
 
 
 def _render_block(block: CreativeWriterBlock) -> str:

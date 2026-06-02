@@ -144,7 +144,7 @@ def test_projection_allowlist_matches_constant():
 
 
 def test_default_servability_constant_is_gated():
-    assert BOOK_DEFAULT_SERVABILITY == ServabilityStatus.GATED_METADATA_ONLY.value
+    assert ServabilityStatus.GATED_METADATA_ONLY.value == BOOK_DEFAULT_SERVABILITY
 
 
 # ---------------------------------------------------------------------------

@@ -29,31 +29,31 @@ signing + quality-gate path; per-thread go/defer verdict in
 docs/sprint30_thread_decisions.md.
 """
 
+from .protocol import (
+    FederationPeer,
+    FederationRegistry,
+    IngestionReport,
+    QualityGateCallable,
+    QualityGateResult,
+    ingest_slice,
+    request_slice,
+    serve_slice,
+)
 from .signing import (
+    SignatureError,
+    SignedManifest,
     SigningKey,
     VerifyingKey,
-    SignedManifest,
-    SignatureError,
     generate_keypair,
     sign_manifest,
     verify_manifest,
 )
 from .slice import (
     FederationSlice,
-    SliceManifest,
-    SliceItem,
-    SliceNegotiation,
     NegotiationStatus,
-)
-from .protocol import (
-    FederationPeer,
-    FederationRegistry,
-    QualityGateResult,
-    QualityGateCallable,
-    IngestionReport,
-    request_slice,
-    serve_slice,
-    ingest_slice,
+    SliceItem,
+    SliceManifest,
+    SliceNegotiation,
 )
 
 __all__ = [

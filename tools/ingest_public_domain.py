@@ -41,8 +41,8 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -193,12 +193,12 @@ class BatchReport:
 def discover(
     client: SourceClient,
     *,
-    subject: Optional[str],
-    search: Optional[str],
-    ids: Optional[Sequence[int]],
+    subject: str | None,
+    search: str | None,
+    ids: Sequence[int] | None,
     curated: bool,
     limit: int,
-    archive_client: Optional[SourceClient] = None,
+    archive_client: SourceClient | None = None,
 ) -> list[PublicDomainWork]:
     """Resolve the selectors to a candidate list.
 
@@ -332,7 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
 
@@ -352,7 +352,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             return 2
 
-    ids: Optional[list[int]] = None
+    ids: list[int] | None = None
     if args.ids:
         try:
             ids = [int(x) for x in args.ids.split(",") if x.strip()]

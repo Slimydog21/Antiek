@@ -11,10 +11,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .verdict import FraudSignal, FraudVerdict, verdict_from_signals
-
 
 BURST_WINDOW_SECONDS = 60
 BURST_THRESHOLD_PER_MINUTE = 30
@@ -63,7 +61,7 @@ def score_view_event(
     dwell_ms: float,
     session_rate_per_minute: float,
     is_repeat_impression: bool,
-    subject_ref: Optional[str] = None,
+    subject_ref: str | None = None,
 ) -> FraudVerdict:
     """Score a single view event."""
     signals: list[FraudSignal] = []

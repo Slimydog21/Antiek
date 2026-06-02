@@ -19,14 +19,16 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 try:
     from .._json_decode import extract_json_object as _extract_json_object
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 # Closed vocabularies — kept here for fail-loud parser-side checks.
@@ -57,13 +59,13 @@ class ParsedClaim:
     confidence: str
     confidence_basis: str
     edge_ids: tuple[str, ...] = field(default_factory=tuple)
-    source_tier_min: Optional[int] = None  # None or [1, 5]
+    source_tier_min: int | None = None  # None or [1, 5]
 
 
 @dataclass(frozen=True)
 class ParsedGap:
     gap_description: str
-    additional_retrieval_suggested: Optional[str] = None
+    additional_retrieval_suggested: str | None = None
 
 
 @dataclass(frozen=True)
@@ -98,14 +100,14 @@ def _require_str(obj: Any, field_name: str, ctx: str, *, allow_empty: bool = Fal
     return obj
 
 
-def _require_str_list(obj: Any, field_name: str, ctx: str) -> List[str]:
+def _require_str_list(obj: Any, field_name: str, ctx: str) -> list[str]:
     if obj is None:
         return []
     if not isinstance(obj, list):
         raise EvidenceValidationError(
             f"{ctx}: {field_name!r} must be a list (got {type(obj).__name__})"
         )
-    out: List[str] = []
+    out: list[str] = []
     for i, item in enumerate(obj):
         if not isinstance(item, str) or not item.strip():
             raise EvidenceValidationError(
@@ -115,7 +117,7 @@ def _require_str_list(obj: Any, field_name: str, ctx: str) -> List[str]:
     return out
 
 
-def _parse_source_tier(obj: Any, ctx: str) -> Optional[int]:
+def _parse_source_tier(obj: Any, ctx: str) -> int | None:
     """``None`` is allowed; integers must lie in [1, 5]; ``0`` is
     REJECTED (the upstream schema bug the prompt explicitly warns
     against)."""
@@ -200,7 +202,7 @@ def _parse_gap(obj: Any, idx: int) -> ParsedGap:
 def parse_evidence_response(
     text: str,
     *,
-    expected_sub_question: Optional[str] = None,
+    expected_sub_question: str | None = None,
 ) -> EvidenceResult:
     """Parse + validate an Evidence Retriever raw response.
 

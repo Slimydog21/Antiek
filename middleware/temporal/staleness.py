@@ -22,7 +22,6 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 try:
     from ...constants import RELATION_TO_CLAIM_CLASS, STALENESS_TTL_DAYS
@@ -55,12 +54,12 @@ class StalenessVerdict:
     """
 
     is_stale: bool
-    claim_class: Optional[str]
-    ttl_days: Optional[int]
+    claim_class: str | None
+    ttl_days: int | None
     age_days: int
 
 
-def classify_relation(relation: Optional[str]) -> Optional[str]:
+def classify_relation(relation: str | None) -> str | None:
     """Map a graph relation string → claim_class key in STALENESS_TTL_DAYS.
     Returns None when no mapping is known (heuristic substring match
     handled here for slight variations like ``raised_series_a``)."""
@@ -76,7 +75,7 @@ def classify_relation(relation: Optional[str]) -> Optional[str]:
     return None
 
 
-def evaluate_staleness(relation: Optional[str], age_days: int) -> StalenessVerdict:
+def evaluate_staleness(relation: str | None, age_days: int) -> StalenessVerdict:
     """Decide whether an edge with the given relation and age is stale.
 
     Returns a ``StalenessVerdict``. The scanner walks edges, calls this
@@ -120,8 +119,8 @@ def emit_staleness_flagged(
     claim_class: str,
     ttl_days: int,
     age_days: int,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a GRAPH_STALENESS_FLAGGED event. Returns event_id."""
     return emit_typed(
         investigation_id,
@@ -146,8 +145,8 @@ def emit_staleness_resolve(
     entity_id: str,
     status: str,
     notes: str = "",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a STALENESS_RESOLVE event when a flag is resolved.
 
     ``status`` must be one of {"refreshed", "confirmed_stale", "dismissed"}

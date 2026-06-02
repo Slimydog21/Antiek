@@ -14,6 +14,7 @@ import tempfile
 
 import pytest
 
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from roles.cascade_planner import (
     MAX_BRANCHES,
     PlanNotApproved,
@@ -30,7 +31,6 @@ from roles.cascade_planner import (
 )
 from roles.cascade_planner.tree_contract import PlanTree
 from substrate.graph.schema import init_database_at_path
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:

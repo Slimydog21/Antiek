@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Literal
 
 # Shared JSON-tolerant decoder lives at roles/_json_decode.py — moved
 # there in Sprint 4 day 4-5 precisely because importing it from
@@ -23,7 +23,9 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 # Closed failure-reason set — mirrors the Literal on
@@ -58,9 +60,9 @@ class GroundingVerdict:
     """
 
     grounded: bool
-    located_chunk_id: Optional[str]
+    located_chunk_id: str | None
     confidence: float
-    reason: Optional[str]
+    reason: str | None
 
 
 def parse_grounder_response(text: str) -> GroundingVerdict:

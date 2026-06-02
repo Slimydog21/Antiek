@@ -17,8 +17,8 @@ import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -30,7 +30,8 @@ except ImportError:  # pragma: no cover
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.constants import SYSTEM_INVESTIGATION_ID  # type: ignore[no-redef]
     from substrate.graph.ops import (  # type: ignore[no-redef]
-        content_addressed_id, insert_node, new_random_id,
+        insert_node,
+        new_random_id,
     )
 
 
@@ -80,7 +81,7 @@ class ExtractionResult:
     input_tokens: int
     output_tokens: int
     cost_usd: float
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class ExtractorError(RuntimeError):
@@ -91,7 +92,7 @@ class ExtractorError(RuntimeError):
 
 
 def _load_prompt_template() -> str:
-    with open(_PROMPT_FILE, "r", encoding="utf-8") as f:
+    with open(_PROMPT_FILE, encoding="utf-8") as f:
         return f.read()
 
 
@@ -99,7 +100,7 @@ def render_prompt(
     *,
     raw_text: str,
     source: str,
-    operator_label: Optional[str],
+    operator_label: str | None,
     document_id: str,
 ) -> str:
     template = _load_prompt_template()
@@ -201,7 +202,7 @@ def _promote_insight_to_node(
     llm_confidence: float,
     extractor_version: int,
     model_id: str,
-) -> Optional[str]:
+) -> str | None:
     """Best-effort: insert a nodes row for the insight. Returns node_id
     or None if promotion failed (which leaves promoted_node_id NULL).
     Failures must not poison the extraction.
@@ -233,7 +234,7 @@ def _promote_insight_to_node(
         return None
 
 
-def _fetch_paste_row(con: LockedConnection, document_id: str) -> Optional[dict]:
+def _fetch_paste_row(con: LockedConnection, document_id: str) -> dict | None:
     row = con.execute(
         """
         SELECT rp.document_id, rp.source, rp.raw_sha256, d.raw_text
@@ -255,7 +256,7 @@ def _fetch_paste_row(con: LockedConnection, document_id: str) -> Optional[dict]:
 
 def _cache_lookup_document_id(
     con: LockedConnection, raw_sha256: str, extractor_version: int, this_doc_id: str
-) -> Optional[str]:
+) -> str | None:
     row = con.execute(
         """
         SELECT rp.document_id
@@ -376,7 +377,7 @@ def _log_extraction(
     insights_count: int,
     open_questions_count: int,
     quote_drops: int,
-    error_message: Optional[str],
+    error_message: str | None,
 ) -> None:
     _ = started_at_epoch  # reserved for future latency analytics
     con.execute(
@@ -404,7 +405,7 @@ def extract_paste(
     *,
     llm_callable: LlmCallable,
     regenerate: bool = False,
-    operator_label: Optional[str] = None,
+    operator_label: str | None = None,
 ) -> ExtractionResult:
     """Run extraction for one paste. Idempotent via (sha, version) cache."""
     if not isinstance(con, LockedConnection):
@@ -600,7 +601,7 @@ class StoredItem:
     model_id: str
 
 
-def list_insights(con, *, document_id: str, version: Optional[int] = None) -> list[StoredItem]:
+def list_insights(con, *, document_id: str, version: int | None = None) -> list[StoredItem]:
     if version is None:
         rows = con.execute(
             "SELECT insight_id, document_id, summary, quote, "
@@ -632,7 +633,7 @@ def list_insights(con, *, document_id: str, version: Optional[int] = None) -> li
 
 
 def list_open_questions(
-    con, *, document_id: str, version: Optional[int] = None
+    con, *, document_id: str, version: int | None = None
 ) -> list[StoredItem]:
     if version is None:
         rows = con.execute(

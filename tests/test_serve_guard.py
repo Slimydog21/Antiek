@@ -32,12 +32,12 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from runtime.db_lock import connect_read, connect_write  # noqa: E402
+from substrate.books.serve import serve_full_text  # noqa: E402
 from substrate.books.serve_guard import (  # noqa: E402
     _rights_context,
     serve_full_text_guarded,
 )
-from runtime.db_lock import connect_read, connect_write  # noqa: E402
-from substrate.books.serve import serve_full_text  # noqa: E402
 from substrate.constants import (  # noqa: E402
     GATED_DEFAULT_CONTENT_CLASS,
     SOURCE_DECLARED_OPEN_CONTENT_CLASS,

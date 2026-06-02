@@ -8,13 +8,11 @@ the DB.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from substrate.dp_shuffler.epsilon_registry import EpsilonRegistry
 
 from .default_registry import DEFAULT_DELETION_SLA_DAYS, default_registry
-
 
 _DEFAULT_SUBSTRATE_CONTROLS: tuple[str, ...] = (
     "encryption at rest (per-graph keys via KMS)",
@@ -58,10 +56,10 @@ class TrustCenterPayload:
 
 def build_publication(
     *,
-    registry: Optional[EpsilonRegistry] = None,
-    loop_3_unlock_status: Optional[dict[str, bool]] = None,
-    substrate_controls: Optional[tuple[str, ...]] = None,
-    compliance_frameworks: Optional[tuple[str, ...]] = None,
+    registry: EpsilonRegistry | None = None,
+    loop_3_unlock_status: dict[str, bool] | None = None,
+    substrate_controls: tuple[str, ...] | None = None,
+    compliance_frameworks: tuple[str, ...] | None = None,
     deletion_sla_days: int = DEFAULT_DELETION_SLA_DAYS,
 ) -> TrustCenterPayload:
     """Assemble the publication payload.
@@ -92,7 +90,7 @@ def build_publication(
 
 def list_surface_descriptions(
     *,
-    registry: Optional[EpsilonRegistry] = None,
+    registry: EpsilonRegistry | None = None,
 ) -> list[dict]:
     """Enumerate registered surfaces in description form for the
     PrivacyDashboard — caller may include per-category descriptions

@@ -46,8 +46,9 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Literal, Optional, Protocol, Sequence
+from typing import Literal, Protocol
 
 try:
     from ..constants import (
@@ -160,7 +161,7 @@ class LayerSource:
     kind: LayerKind
     source: str
     content: str
-    priority: Optional[int] = None
+    priority: int | None = None
 
     @property
     def effective_priority(self) -> int:
@@ -196,8 +197,8 @@ class ContextPack:
     target_tokens: int
     actual_tokens: int
     budget_overrun: bool
-    truncation_strategy_applied: Optional[TruncationStrategy]
-    event_id: Optional[str]
+    truncation_strategy_applied: TruncationStrategy | None
+    event_id: str | None
 
 
 # ---------------------------------------------------------------------------
@@ -391,10 +392,10 @@ def assemble_context_pack(
     role: str,
     investigation_id: str,
     layers: Iterable[LayerSource],
-    target_tokens: Optional[int] = None,
+    target_tokens: int | None = None,
     truncation: TruncationStrategy = "smart",
-    counter: Optional[TokenCounter] = None,
-    parent_event_id: Optional[str] = None,
+    counter: TokenCounter | None = None,
+    parent_event_id: str | None = None,
 ) -> ContextPack:
     """Assemble a context pack.
 
@@ -437,7 +438,7 @@ def assemble_context_pack(
         kept = rendered
         actual = total
         budget_overrun = False
-        strategy_applied: Optional[TruncationStrategy] = None
+        strategy_applied: TruncationStrategy | None = None
     else:
         budget_overrun = True
         if truncation == "smart":

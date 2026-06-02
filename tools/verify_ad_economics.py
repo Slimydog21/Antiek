@@ -32,7 +32,7 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 # Run-standalone bootstrap: this worktree has NO venv of its own; the venv's
 # editable .pth points at the main Antiek tree, so `python tools/verify_...py`
@@ -111,9 +111,9 @@ class AssetSpec:
     """A prod-shaped asset visible in a session's frame."""
 
     asset_id: str
-    chunk_id: Optional[str]
-    content_class: Optional[str]
-    publisher: Optional[str]  # display_name of the pre_onboarded holder, or None
+    chunk_id: str | None
+    content_class: str | None
+    publisher: str | None  # display_name of the pre_onboarded holder, or None
     area: float
     prominence: float
     dwell_ms: int
@@ -272,7 +272,7 @@ class SessionResult:
     page_id: str
     lens: str
     n_seconds: int
-    selected_ad_id: Optional[str]
+    selected_ad_id: str | None
     selected_cpm_usd: Decimal
     ad_value_usd_cents: int
     accrual: WindowAccrual
@@ -319,7 +319,7 @@ def _frame_for(session: SessionSpec) -> WindowFrameBatch:
 
 
 def _select_ad_for(session: SessionSpec,
-                   inventory: list[TargetedInventoryItem]) -> Optional[AdInventoryItem]:
+                   inventory: list[TargetedInventoryItem]) -> AdInventoryItem | None:
     """Pick the ad via the REAL SPR-10 selection seam (rule-based default; no
     learned model injected so this is the guaranteed rule-based path)."""
     context = PageContext(
@@ -351,7 +351,7 @@ def run_chain(con: Any, corpus: tuple[SessionSpec, ...]) -> list[SessionResult]:
         selected = _select_ad_for(session, inventory)
         batch = _frame_for(session)
 
-        asset_to_ip_holder: dict[str, Optional[str]] = {}
+        asset_to_ip_holder: dict[str, str | None] = {}
         for a in session.assets:
             asset_to_ip_holder[a.asset_id] = (
                 publisher_to_holder.get(a.publisher) if a.publisher else None
@@ -397,8 +397,8 @@ def trace_escrow(con: Any, corpus: tuple[SessionSpec, ...],
     No parallel attribution logic — explain_asset_earning is the one tracer."""
     # Build the period-wide citation map + the period revenue (Σ ad value).
     chunk_to_document: dict[str, str] = {}
-    content_class_by_doc: dict[str, Optional[str]] = {}
-    holder_by_doc: dict[str, Optional[str]] = {}
+    content_class_by_doc: dict[str, str | None] = {}
+    holder_by_doc: dict[str, str | None] = {}
     for session in corpus:
         chunk_to_document.update(session.cited_chunks)
         for a in session.assets:
@@ -508,7 +508,7 @@ def reconcile(con: Any, results: list[SessionResult]) -> Reconciliation:
         per_window_reconciles=per_window_ok,
         creator_rev_share=CREATOR_REV_SHARE,
         platform_cut=PLATFORM_CUT,
-        split_sums_to_one=(CREATOR_REV_SHARE + PLATFORM_CUT == Decimal("1")),
+        split_sums_to_one=(Decimal("1") == CREATOR_REV_SHARE + PLATFORM_CUT),
         all_non_negative=non_negative,
     )
 
@@ -800,7 +800,7 @@ def render_report(report: VerificationReport) -> str:
     lines.append(f"  no Stripe path under tools/stripe_connect/ invoked: "
                  f"{report.safety.no_stripe_path_invoked}")
     lines.append("")
-    lines.append(f"  >>> disbursed: $0 (G2/G3 open) <<<")
+    lines.append("  >>> disbursed: $0 (G2/G3 open) <<<")
     lines.append("")
     lines.append("=" * 78)
     overall = (
@@ -824,7 +824,7 @@ def _reaccrue_identical(con: Any, corpus: tuple[SessionSpec, ...]) -> None:
     }
     for session in corpus:
         batch = _frame_for(session)
-        a2h: dict[str, Optional[str]] = {
+        a2h: dict[str, str | None] = {
             a.asset_id: (publisher_to_holder.get(a.publisher) if a.publisher else None)
             for a in session.assets
         }

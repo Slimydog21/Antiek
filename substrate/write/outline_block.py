@@ -48,8 +48,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Literal
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -58,16 +59,15 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
 
 from substrate.schemas.events import (
     OutlineBlockMovedPayload,
     OutlineBlockPlacedPayload,
     OutlineBlockRemovedPayload,
 )
-
 
 # ---------------------------------------------------------------------------
 # Taxonomy
@@ -132,14 +132,14 @@ class OutlineBlock:
     section_id: str
     block_kind: str
     provenance_kind: str
-    node_id: Optional[str]
-    source_block_kind: Optional[str]
-    source_block_id: Optional[str]
-    content: Optional[str]
+    node_id: str | None
+    source_block_kind: str | None
+    source_block_id: str | None
+    content: str | None
     block_index: int
-    cluster_id: Optional[str]
-    created_at: Optional[str] = None
-    metadata: Optional[dict] = None
+    cluster_id: str | None
+    created_at: str | None = None
+    metadata: dict | None = None
 
     @property
     def is_user_originated(self) -> bool:
@@ -164,8 +164,8 @@ def _validate_composition(
     *,
     block_kind: str,
     provenance_kind: str,
-    node_id: Optional[str],
-    content: Optional[str],
+    node_id: str | None,
+    content: str | None,
 ) -> None:
     """Enforce the no-orphan-prose / no-fabricated-citation invariants
     before any write. Raises ``OutlineBlockError`` with a precise reason."""
@@ -224,7 +224,7 @@ def _assert_write_locked(con: Any) -> None:
         )
 
 
-def _maybe_json(obj: Optional[Any]) -> Optional[str]:
+def _maybe_json(obj: Any | None) -> str | None:
     if obj is None:
         return None
     if isinstance(obj, str):
@@ -255,16 +255,16 @@ def place_block(
     block_kind: str,
     provenance_kind: str,
     block_index: int,
-    node_id: Optional[str] = None,
-    content: Optional[str] = None,
-    source_block_kind: Optional[str] = None,
-    source_block_id: Optional[str] = None,
-    cluster_id: Optional[str] = None,
-    metadata: Optional[Any] = None,
-    deliverable_id: Optional[str] = None,
+    node_id: str | None = None,
+    content: str | None = None,
+    source_block_kind: str | None = None,
+    source_block_id: str | None = None,
+    cluster_id: str | None = None,
+    metadata: Any | None = None,
+    deliverable_id: str | None = None,
     investigation_id: str = "__operator__",
-    outline_block_id: Optional[str] = None,
-    parent_event_id: Optional[str] = None,
+    outline_block_id: str | None = None,
+    parent_event_id: str | None = None,
     on_conflict: Literal["error", "ignore"] = "error",
 ) -> str:
     """Place a lego block into an outline section. Returns its
@@ -364,7 +364,7 @@ def move_block(
     to_section_id: str,
     to_index: int,
     investigation_id: str = "__operator__",
-    parent_event_id: Optional[str] = None,
+    parent_event_id: str | None = None,
 ) -> None:
     """Reorder a block within its section, or move it to another section
     (reparent). Emits ``OUTLINE_BLOCK_MOVED`` with both endpoints."""
@@ -408,7 +408,7 @@ def remove_block(
     *,
     outline_block_id: str,
     investigation_id: str = "__operator__",
-    parent_event_id: Optional[str] = None,
+    parent_event_id: str | None = None,
 ) -> bool:
     """Remove a block from an outline. Returns True if a row was removed.
     The underlying graph node is untouched — removal is a composition
@@ -471,7 +471,7 @@ def list_section_blocks(con: Any, section_id: str) -> list[OutlineBlock]:
     return [_row_to_block(r) for r in rows]
 
 
-def get_block(con: Any, outline_block_id: str) -> Optional[OutlineBlock]:
+def get_block(con: Any, outline_block_id: str) -> OutlineBlock | None:
     """Fetch one block by id, or None."""
     row = con.execute(
         f"SELECT {_SELECT_COLS} FROM outline_blocks WHERE outline_block_id = ?",

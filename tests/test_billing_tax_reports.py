@@ -177,7 +177,7 @@ def test_write_csv_creates_file(db):
         path,
     )
     assert os.path.exists(written)
-    with open(written, "r", encoding="utf-8") as fh:
+    with open(written, encoding="utf-8") as fh:
         contents = fh.read()
     assert "acct_a,2026,100.00,1,false" in contents
 

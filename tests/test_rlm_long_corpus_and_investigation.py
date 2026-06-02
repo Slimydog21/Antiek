@@ -4,15 +4,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import pytest
-
 from orchestration.rlm.long_corpus import LongCorpusBatch, synthesize_long_corpus
 from orchestration.rlm.rlm_investigation import (
     RLMInvestigationConfig,
     RLMIterationOutcome,
     run_rlm_investigation,
 )
-
 
 # ── RLM-2 long-corpus synthesizer ────────────────────────────────────
 

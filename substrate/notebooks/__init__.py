@@ -32,9 +32,8 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any, Optional
-
 
 # Block types — must match the SQL CHECK constraint in
 # substrate/graph/schema.py:notebook_blocks.block_type.
@@ -64,7 +63,7 @@ class NotebookBlock:
     notebook_id: str
     block_index: int
     block_type: str
-    ref_id: Optional[str]  # substrate reference (claim_id, note_id, etc); NULL for prose/latex
+    ref_id: str | None  # substrate reference (claim_id, note_id, etc); NULL for prose/latex
     content_json: dict
     created_at: str
 
@@ -73,8 +72,8 @@ class NotebookBlock:
 class Notebook:
     notebook_id: str
     title: str
-    investigation_id: Optional[str]
-    document_id: Optional[str]
+    investigation_id: str | None
+    document_id: str | None
     owner_user_id: str
     content_class: str
     created_at: str
@@ -84,7 +83,7 @@ class Notebook:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
@@ -96,11 +95,11 @@ def create_notebook(
     con: Any,
     *,
     title: str,
-    investigation_id: Optional[str] = None,
-    document_id: Optional[str] = None,
+    investigation_id: str | None = None,
+    document_id: str | None = None,
     owner_user_id: str = "__operator__",
     content_class: str = "user_owned",
-    metadata: Optional[dict] = None,
+    metadata: dict | None = None,
 ) -> str:
     """Create a notebook. Returns the notebook_id.
 
@@ -136,7 +135,7 @@ def append_block(
     *,
     block_type: str,
     content: dict,
-    ref_id: Optional[str] = None,
+    ref_id: str | None = None,
 ) -> str:
     """Append a block to the end of a notebook. Block types must match
     VALID_BLOCK_TYPES; the SQL CHECK constraint enforces too.
@@ -179,8 +178,8 @@ def update_block(
     notebook_id: str,
     block_id: str,
     *,
-    content: Optional[dict] = None,
-    ref_id: Optional[str] = None,
+    content: dict | None = None,
+    ref_id: str | None = None,
     clear_ref_id: bool = False,
 ) -> bool:
     """Edit one block in place. Returns True if the block was found
@@ -320,7 +319,7 @@ def reorder_blocks(
     )
 
 
-def get_notebook(con: Any, notebook_id: str) -> Optional[Notebook]:
+def get_notebook(con: Any, notebook_id: str) -> Notebook | None:
     """Read a notebook + ordered blocks. Returns None if not found.
 
     **Does not resolve substrate references**; the caller (or a render
@@ -381,9 +380,9 @@ def get_notebook(con: Any, notebook_id: str) -> Optional[Notebook]:
 def list_notebooks(
     con: Any,
     *,
-    owner_user_id: Optional[str] = None,
-    investigation_id: Optional[str] = None,
-    document_id: Optional[str] = None,
+    owner_user_id: str | None = None,
+    investigation_id: str | None = None,
+    document_id: str | None = None,
     limit: int = 100,
 ) -> list[Notebook]:
     """List notebooks. Pass owner_user_id to scope to a single user

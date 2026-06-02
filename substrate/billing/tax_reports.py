@@ -36,10 +36,9 @@ import csv
 import io
 import os
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
-
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 # Per IRS regulations (effective 2026 tax year): aggregate non-employee
 # compensation ≥ $600 in a calendar year triggers 1099-NEC reporting.
@@ -75,12 +74,12 @@ class TaxReportRecord:
     tax_year: int
     total_payout_usd_cents: int
     above_1099_threshold: bool
-    csv_export_path: Optional[str]
+    csv_export_path: str | None
     emitted_at: str
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 # ── Aggregation ────────────────────────────────────────────────────
@@ -197,7 +196,7 @@ def record_emission(
     con: Any,
     *,
     aggregates: list[AnnualPayoutAggregate],
-    csv_export_path: Optional[str] = None,
+    csv_export_path: str | None = None,
 ) -> list[TaxReportRecord]:
     """Insert one ``tax_reports`` row per aggregate, marking the
     emission. Returns the persisted records.
@@ -238,7 +237,7 @@ def record_emission(
 
 
 def load_emissions(
-    con: Any, *, tax_year: Optional[int] = None,
+    con: Any, *, tax_year: int | None = None,
 ) -> list[TaxReportRecord]:
     """Read back the emission audit log. Optional tax_year filter."""
     ensure_table(con)

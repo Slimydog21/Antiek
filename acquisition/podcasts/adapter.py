@@ -15,7 +15,6 @@ import hashlib
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -61,12 +60,12 @@ MIN_INGEST_WORD_COUNT = 100
 class IngestPodcastResult:
     document_id: str
     episode_id: str
-    chunk_ids: List[str] = field(default_factory=list)
-    node_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    node_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
 
 
 def podcast_doc_id(episode_id: str) -> str:
@@ -118,9 +117,9 @@ def ingest_podcast_episode(
     *,
     investigation_id: str,
     source_tier: int = DEFAULT_PODCAST_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
-    transcript_override: Optional[str] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
+    transcript_override: str | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> IngestPodcastResult:
     """Ingest one episode. Pass ``transcript_override`` when the caller
@@ -174,9 +173,9 @@ def ingest_podcast_episode(
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
 
-    chunks: List[Chunk] = chunk_markdown(full_text)
-    chunk_ids: List[str] = []
-    node_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(full_text)
+    chunk_ids: list[str] = []
+    node_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -261,14 +260,14 @@ def ingest_feed(
     investigation_id: str,
     max_episodes: int = 10,
     source_tier: int = DEFAULT_PODCAST_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
-) -> List[IngestPodcastResult]:
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
+) -> list[IngestPodcastResult]:
     """Ingest the N most-recent episodes from an RSS feed. Each
     episode goes through ``ingest_podcast_episode``. Returns a list
     of per-episode results so the caller can aggregate / report."""
     podcast = fetch_feed(feed_url, max_episodes=max_episodes)
-    results: List[IngestPodcastResult] = []
+    results: list[IngestPodcastResult] = []
     for episode in podcast.episodes:
         try:
             r = ingest_podcast_episode(

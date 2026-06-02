@@ -24,8 +24,8 @@ import pytest
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.books import ingest as bingest
-from substrate.books.serve import ServeResult, serve_full_text
 from substrate.books.servability import ServabilityStatus
+from substrate.books.serve import ServeResult, serve_full_text
 from substrate.graph.ops import insert_document
 from substrate.rights_audit import (
     REASON_GATED_BODY_REACHABLE,

@@ -39,8 +39,9 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 try:
     from ...constants import (
@@ -56,7 +57,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 from ..phase_log import PhaseAssertionError, PhaseLog
-
 
 # ---------------------------------------------------------------------------
 # Types
@@ -109,7 +109,7 @@ def check_precondition(
     investigation_id: str,
     phase: int,
     *,
-    log_dir: Optional[str] = None,
+    log_dir: str | None = None,
 ) -> PreconditionOutcome:
     """Verify every phase before ``phase`` in ``AUTONOMOUS_RESEARCH_PHASES``
     has been entered AND exited. Does NOT require verification — the
@@ -156,7 +156,7 @@ def check_precondition(
         )
     return PreconditionOutcome(
         ok=True, missing_phases=(),
-        reason=f"all prior phases entered + exited",
+        reason="all prior phases entered + exited",
     )
 
 
@@ -170,10 +170,10 @@ def enter_phase(
     phase: int,
     *,
     topic: str = "",
-    note: Optional[str] = None,
-    metadata_json: Optional[str] = None,
+    note: str | None = None,
+    metadata_json: str | None = None,
     enforce_precondition: bool = True,
-    log_dir: Optional[str] = None,
+    log_dir: str | None = None,
 ) -> None:
     """Mark a phase entered. Raises ``PhaseAssertionError`` when
     ``enforce_precondition=True`` and a prior phase hasn't been
@@ -194,9 +194,9 @@ def exit_phase(
     investigation_id: str,
     phase: int,
     *,
-    outputs_paths: Optional[list[str]] = None,
-    outputs_hash: Optional[str] = None,
-    log_dir: Optional[str] = None,
+    outputs_paths: list[str] | None = None,
+    outputs_hash: str | None = None,
+    log_dir: str | None = None,
 ) -> None:
     """Mark a phase exited. The phase log's atomic-write + typed
     PHASE_EXIT mirror handle persistence + telemetry."""
@@ -212,8 +212,8 @@ def verify_phase(
     investigation_id: str,
     phase: int,
     *,
-    postcondition_check: Optional[PostconditionCheck] = None,
-    log_dir: Optional[str] = None,
+    postcondition_check: PostconditionCheck | None = None,
+    log_dir: str | None = None,
 ) -> VerifyOutcome:
     """Run the postcondition check; on pass, mark the phase verified
     via ``PhaseLog.verify`` with the check's reason as evidence.
@@ -246,7 +246,7 @@ def assert_phase(
     investigation_id: str,
     phase: int,
     *,
-    log_dir: Optional[str] = None,
+    log_dir: str | None = None,
 ) -> None:
     """Raise ``PhaseAssertionError`` when the phase did not pass
     verification. Mirrors ``PhaseLog.assert_phase_completed``."""
@@ -257,7 +257,7 @@ def assert_phase(
 def assert_ready_for_completion(
     investigation_id: str,
     *,
-    log_dir: Optional[str] = None,
+    log_dir: str | None = None,
 ) -> None:
     """Phase 9 gate. Raises on any required phase that did not
     verify (default: phases 6, 7, 8 per
@@ -274,8 +274,8 @@ def assert_ready_for_completion(
 def phase_status(
     investigation_id: str,
     *,
-    postcondition_check: Optional[PostconditionCheck] = None,
-    log_dir: Optional[str] = None,
+    postcondition_check: PostconditionCheck | None = None,
+    log_dir: str | None = None,
 ) -> dict[str, Any]:
     """Snapshot of the phase log PLUS a live re-run of every entered
     phase's postcondition. The live check does NOT modify the log —

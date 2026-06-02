@@ -32,11 +32,12 @@ reproduces the verdict (defensibility — the claim is checkable, not trusted).
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Optional
+from typing import Any
 
-from substrate.books.serve import ServeResult, serve_full_text
 from substrate.books.servability import is_servable_full_text, servability_of
+from substrate.books.serve import ServeResult, serve_full_text
 
 # Violation reason tokens. Stable strings the orchestrator + SPR-10 + the test
 # suite key off — named here so they have one home and can't drift per-caller.
@@ -71,7 +72,7 @@ class RightsAuditResult:
     gated: int
     violations: list[RightsViolation] = field(default_factory=list)
 
-    def violation_ids(self, reason: Optional[str] = None) -> list[str]:
+    def violation_ids(self, reason: str | None = None) -> list[str]:
         """Document ids that violated, optionally filtered to one reason."""
         return [
             v.document_id

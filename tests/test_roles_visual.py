@@ -11,16 +11,13 @@ from roles.visual import (
     VISUAL_SYSTEM_PROMPT,
     VISUAL_TEMPERATURE,
     VISUAL_TIER,
-    VisualClaim,
     VisualContext,
     VisualFrame,
-    VisualRegion,
     VisualValidationError,
     parse_visual_response,
     render_full_prompt,
     render_user_template,
 )
-
 
 # ── Constants ──────────────────────────────────────────────────────
 

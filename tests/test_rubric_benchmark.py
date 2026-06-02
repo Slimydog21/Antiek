@@ -30,7 +30,6 @@ import pytest
 from benchmarks import fixtures, rubric_latency
 from substrate.synthesis_rubric.scorer import score_synthesis
 
-
 # ---------------------------------------------------------------------------
 # Fixture generator determinism
 # ---------------------------------------------------------------------------

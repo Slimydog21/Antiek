@@ -7,11 +7,10 @@ abstraction; production wires AWS KMS / GCP Cloud KMS / Vault.
 
 from __future__ import annotations
 
-import os
 import secrets
 import threading
 from dataclasses import dataclass, field
-from typing import Optional, Protocol
+from typing import Protocol
 
 
 class KeyProviderError(Exception):
@@ -37,7 +36,7 @@ class KeyProvider(Protocol):
     """The substrate operations the per-user storage needs."""
 
     def generate_data_key(self, *, graph_id: str) -> KeyMaterial: ...
-    def lookup(self, *, graph_id: str) -> Optional[KeyMaterial]: ...
+    def lookup(self, *, graph_id: str) -> KeyMaterial | None: ...
     def rotate(self, *, graph_id: str) -> KeyMaterial: ...
     def revoke(self, *, graph_id: str) -> None: ...
 
@@ -65,7 +64,7 @@ class InMemoryKeyProvider:
             self.keys[graph_id] = material
             return material
 
-    def lookup(self, *, graph_id: str) -> Optional[KeyMaterial]:
+    def lookup(self, *, graph_id: str) -> KeyMaterial | None:
         with self._lock:
             return self.keys.get(graph_id)
 
@@ -129,7 +128,7 @@ class KMSStubKeyProvider:
             wrapped_data_key=bytes(wrapped),
         )
 
-    def lookup(self, *, graph_id: str) -> Optional[KeyMaterial]:
+    def lookup(self, *, graph_id: str) -> KeyMaterial | None:
         # KMS doesn't store wrapped data keys; the substrate's
         # catalog (substrate/ducklake/catalog.py) does. This stub
         # always returns None; production wires the catalog lookup.

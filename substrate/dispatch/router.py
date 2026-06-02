@@ -21,9 +21,10 @@ from __future__ import annotations
 import hashlib
 import os
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any
 
 import yaml  # type: ignore[import]
 
@@ -41,14 +42,13 @@ except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
-    from event_log import emit_typed  # type: ignore[no-redef]
-    from schemas import DispatchCallPayload  # type: ignore[no-redef]
     from dispatch.base import (  # type: ignore[no-redef]
         NormalizedUsage,
         Provider,
         ProviderError,
-        RawProviderResponse,
     )
+    from event_log import emit_typed  # type: ignore[no-redef]
+    from schemas import DispatchCallPayload  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -73,13 +73,13 @@ class TierConfig:
     another TierConfig to try when the primary call raises ProviderError."""
 
     name: str
-    provider: Optional[str]
-    model: Optional[str]
+    provider: str | None
+    model: str | None
     max_tokens: int
     temperature: float
     context_budget_tokens: int
     pricing: TierPricing = field(default_factory=TierPricing)
-    fallback: Optional["TierConfig"] = None
+    fallback: TierConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -91,13 +91,13 @@ class DispatchConfig:
     tiers: Mapping[str, TierConfig]
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "DispatchConfig":
-        with open(path, "r", encoding="utf-8") as f:
+    def from_yaml(cls, path: str | Path) -> DispatchConfig:
+        with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return cls._from_dict(data)
 
     @classmethod
-    def _from_dict(cls, data: Mapping[str, Any]) -> "DispatchConfig":
+    def _from_dict(cls, data: Mapping[str, Any]) -> DispatchConfig:
         tier_defaults: Mapping[str, Any] = data.get("tier_defaults", {})
         tiers: dict[str, TierConfig] = {}
 
@@ -128,7 +128,7 @@ class DispatchConfig:
         resolved: dict[str, TierConfig] = {}
         for tier_name, tier_data in data["tiers"].items():
             base = tiers[tier_name]
-            fallback_obj: Optional[TierConfig] = None
+            fallback_obj: TierConfig | None = None
             fb = tier_data.get("fallback")
             if isinstance(fb, dict):
                 fallback_obj = TierConfig(
@@ -199,9 +199,9 @@ class DispatchResult:
     provider: str
     model: str
     tier: str
-    finish_reason: Optional[str]
+    finish_reason: str | None
     fallback_chain_index: int  # 0 = primary, 1 = first fallback, etc.
-    event_id: Optional[str]  # the DispatchCall event_id for this success
+    event_id: str | None  # the DispatchCall event_id for this success
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +272,7 @@ _FINISH_REASON_MAP = {
 }
 
 
-def normalize_finish_reason(provider_native: Optional[str]) -> Optional[str]:
+def normalize_finish_reason(provider_native: str | None) -> str | None:
     """Map a provider's finish reason into the DispatchCallPayload Literal
     set. Returns None if input is None; returns 'error' for unknown values
     (so the failure mode is queryable rather than silent)."""
@@ -289,7 +289,7 @@ def normalize_finish_reason(provider_native: Optional[str]) -> Optional[str]:
 def _emit_dispatch_call(
     *,
     investigation_id: str,
-    parent_event_id: Optional[str],
+    parent_event_id: str | None,
     role: str,
     tier: str,
     provider: str,
@@ -300,9 +300,9 @@ def _emit_dispatch_call(
     verification_required: bool,
     fallback_chain_index: int,
     prompt_hash: str,
-    finish_reason: Optional[str],
-    context_pack_event_id: Optional[str],
-) -> Optional[str]:
+    finish_reason: str | None,
+    context_pack_event_id: str | None,
+) -> str | None:
     """Emit one DispatchCall event. Returns the event_id."""
     return emit_typed(
         investigation_id,
@@ -332,14 +332,14 @@ def dispatch(
     role: str,
     *,
     investigation_id: str,
-    max_tokens: Optional[int] = None,
+    max_tokens: int | None = None,
     verification_required: bool = False,
-    context_pack_event_id: Optional[str] = None,
-    parent_event_id: Optional[str] = None,
-    config: Optional[DispatchConfig] = None,
-    config_path: Optional[str | Path] = None,
-    provider_override: Optional[str] = None,
-    model_override: Optional[str] = None,
+    context_pack_event_id: str | None = None,
+    parent_event_id: str | None = None,
+    config: DispatchConfig | None = None,
+    config_path: str | Path | None = None,
+    provider_override: str | None = None,
+    model_override: str | None = None,
 ) -> DispatchResult:
     """Route an LLM call.
 
@@ -420,9 +420,9 @@ def dispatch(
             fallback=tier.fallback,
         )
     chain_index = 0
-    last_error: Optional[ProviderError] = None
+    last_error: ProviderError | None = None
 
-    current: Optional[TierConfig] = tier
+    current: TierConfig | None = tier
     while current is not None:
         if current.provider is None or current.model is None:
             # Tier defined but no concrete backend (e.g. "local" placeholder).

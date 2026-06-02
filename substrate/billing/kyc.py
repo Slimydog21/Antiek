@@ -39,9 +39,8 @@ from __future__ import annotations
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
-
+from datetime import UTC, datetime
+from typing import Any
 
 # Per master-spec §9.5: $10 minimum payout threshold. Settlement of
 # any decision strictly above this floor requires the recipient's
@@ -79,14 +78,14 @@ class KycRecord:
     state: KycState
     last_state_change_at: str
     operator_notes: str = ""
-    rejection_reason: Optional[str] = None
+    rejection_reason: str | None = None
     # Stripe Connect onboarding link / account id reference. Substrate
     # stores the opaque handle; the integration layer interprets it.
-    stripe_account_ref: Optional[str] = None
+    stripe_account_ref: str | None = None
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 # ── In-memory registry (mirrors AdvertiserRegistry pattern) ────────
@@ -100,7 +99,7 @@ class KycRegistry:
 
     records: list[KycRecord] = field(default_factory=list)
 
-    def latest(self, recipient_ref: str) -> Optional[KycRecord]:
+    def latest(self, recipient_ref: str) -> KycRecord | None:
         """Most recent record for the given recipient, or None."""
         for r in reversed(self.records):
             if r.recipient_ref == recipient_ref:
@@ -115,7 +114,7 @@ def invite(
     registry: KycRegistry,
     *,
     recipient_ref: str,
-    stripe_account_ref: Optional[str] = None,
+    stripe_account_ref: str | None = None,
     operator_notes: str = "",
 ) -> KycRecord:
     """Move NOT_STARTED → INVITED. Idempotent: re-inviting an INVITED
@@ -177,7 +176,7 @@ def complete(
     registry: KycRegistry,
     *,
     recipient_ref: str,
-    stripe_account_ref: Optional[str] = None,
+    stripe_account_ref: str | None = None,
 ) -> KycRecord:
     """Move IN_PROGRESS → COMPLETED. Final allowed account ref rides
     here (Stripe issues a stable account_id at completion)."""

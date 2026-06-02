@@ -20,10 +20,10 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from substrate.schemas import (
+    TYPED_PAYLOAD_ACTION_TYPES,
     ActionType,
     InvestigationChaseHaltedPayload,
     InvestigationStartRequestedPayload,
-    TYPED_PAYLOAD_ACTION_TYPES,
 )
 
 
@@ -146,9 +146,9 @@ def test_accumulated_cost_zero_when_no_dispatches(events_dir):
 
 def test_accumulated_cost_sums_across_chain(events_dir):
     """Two-investigation chain with $0.05 + $0.03 dispatches sums to $0.08."""
+    from orchestration.loop_one.orchestrator import _accumulated_chase_cost_usd
     from substrate.event_log import emit_typed
     from substrate.schemas import DispatchCallPayload
-    from orchestration.loop_one.orchestrator import _accumulated_chase_cost_usd
 
     # Parent
     _emit_start("inv-parent")

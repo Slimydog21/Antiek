@@ -23,7 +23,7 @@ constraint; the open public-contribution ecosystem is gated on G7
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from substrate.graph.ops import insert_interview_project
 
@@ -39,7 +39,7 @@ _SUBJECT_STATUSES = frozenset({"living", "deceased", "non_identifiable", "unknow
 class SpeakProject:
     project_id: str
     title: str
-    subject_ref: Optional[str]
+    subject_ref: str | None
     subject_status: str
     publish_intent: str
     invitation_mode: str
@@ -49,12 +49,12 @@ def create_project(
     con: Any,
     *,
     title: str,
-    subject_ref: Optional[str] = None,
+    subject_ref: str | None = None,
     subject_status: str = "unknown",
     publish_intent: str = "private_never_published",
-    topic_description: Optional[str] = None,
-    interview_guide: Optional[Any] = None,
-    project_id: Optional[str] = None,
+    topic_description: str | None = None,
+    interview_guide: Any | None = None,
+    project_id: str | None = None,
 ) -> SpeakProject:
     """Create a Speak project: the base ``interview_projects`` row plus
     the ``speak_projects`` sidecar carrying publish intent + subject."""

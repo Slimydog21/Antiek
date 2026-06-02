@@ -50,24 +50,19 @@ if _REPO not in sys.path:
 
 from interfaces.research.environments import (
     DecomposerEnvironment,
-    DecomposerReward,
-    DecomposerRollout,
     DecomposerTask,
 )
 from skills.verification.rubric import (
     JUDGED,
     VERIFIABLE,
-    ParaphraseGuardRubric,
     Rubric,
     RubricResult,
 )
 from substrate.constants import (
-    KEYWORDS_MAX,
     KEYWORDS_MIN,
     SUB_QUESTIONS_MAX,
     SUB_QUESTIONS_MIN,
 )
-
 
 # ---------------------------------------------------------------------------
 # Stub embedder so the paraphrase rubric can run without sentence-transformers

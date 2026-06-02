@@ -31,10 +31,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional
 
 from .ad_bidding import AdInventoryItem
-
 
 # Weights are intentionally exposed as module constants so the operator
 # can tune them without touching the matcher. The default weighting
@@ -62,8 +60,8 @@ class PageContext:
     decision-maker readers).
     """
 
-    sector: Optional[str]
-    sub_sector: Optional[str]
+    sector: str | None
+    sub_sector: str | None
     audience_intents: tuple[str, ...]
     # Carried for fallback to flat-topic matching when inventory
     # hasn't been re-tagged yet. The flat topic list is the union
@@ -148,8 +146,8 @@ def select_targeted_ad(
     *,
     context: PageContext,
     targeted_inventory: list[TargetedInventoryItem],
-    flat_inventory_fallback: Optional[list[AdInventoryItem]] = None,
-) -> Optional[AdInventoryItem]:
+    flat_inventory_fallback: list[AdInventoryItem] | None = None,
+) -> AdInventoryItem | None:
     """Pick the inventory item with the highest (match-score × CPM).
 
     Ties are broken by CPM (higher wins), then by ``inventory_id``
@@ -198,8 +196,8 @@ def select_targeted_ad_rule_based(
     *,
     context: PageContext,
     targeted_inventory: list[TargetedInventoryItem],
-    flat_inventory_fallback: Optional[list[AdInventoryItem]] = None,
-) -> Optional[AdInventoryItem]:
+    flat_inventory_fallback: list[AdInventoryItem] | None = None,
+) -> AdInventoryItem | None:
     """The flag-independent rule-based selection core (the Sprint 25+ matcher).
 
     This is the guaranteed fallback the SPR-10 learned ranker degrades to, and
@@ -242,8 +240,8 @@ def select_targeted_ad_rule_based(
 def context_from_decomposer_topics(
     topics: list[str],
     *,
-    sector: Optional[str] = None,
-    sub_sector: Optional[str] = None,
+    sector: str | None = None,
+    sub_sector: str | None = None,
     audience_intents: tuple[str, ...] = (),
 ) -> PageContext:
     """Build a ``PageContext`` from the legacy decomposer topic list

@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.voice_style import (
     SuppressionContext,
-    SuppressionVerdict,
     ViolationKind,
     VoiceStyleScore,
     evaluate_inline_suppression,
@@ -14,7 +11,6 @@ from substrate.voice_style import (
 )
 from substrate.voice_style.rubric import score_voice_style_detailed
 from substrate.voice_style.suppression import SuppressionVerdictKind
-
 
 GOOD_PROSE = (
     "The Hippo dispatch posture matured along two axes in 2026. "

@@ -11,7 +11,6 @@ from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.public_graph import (
     MAX_EM_DASHES_PER_NOTE,
-    MIN_WORDS_PER_NOTE,
     NoteQualityInput,
     QualityFailureReason,
     QualityGateOutcome,

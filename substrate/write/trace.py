@@ -29,7 +29,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 try:
     from ..books.servability import is_servable_full_text, servability_of
@@ -61,14 +61,14 @@ class TraceTarget:
 
     kind: TraceKind
     full_text_allowed: bool
-    document_id: Optional[str] = None
-    document_title: Optional[str] = None
+    document_id: str | None = None
+    document_title: str | None = None
     chunk_ids: list[str] = field(default_factory=list)
-    servability_status: Optional[str] = None
+    servability_status: str | None = None
     detail: str = ""
 
 
-def resolve_trace_target(con: Any, block: Union[OutlineBlock, str]) -> TraceTarget:
+def resolve_trace_target(con: Any, block: OutlineBlock | str) -> TraceTarget:
     """Resolve the trace target for a block. ``con`` is any duckdb
     connection (read-only is fine)."""
     chain = resolve_provenance(con, block)
@@ -110,7 +110,7 @@ def resolve_trace_target(con: Any, block: Union[OutlineBlock, str]) -> TraceTarg
     )
 
 
-def _document_gate_state(con: Any, document_id: str) -> tuple[Optional[str], bool]:
+def _document_gate_state(con: Any, document_id: str) -> tuple[str | None, bool]:
     """Read the document's content_class and its book-level takedown
     override (if any). A non-book document simply has no book_assets row →
     taken_down False; its content_class still drives the gate."""

@@ -28,7 +28,7 @@ no second gating mechanism to drift out of sync.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from substrate.constants import (
     PERSONAL_READABLE_CONTENT_CLASSES,
@@ -71,19 +71,19 @@ class ServeResult:
 
     document_id: str
     found: bool
-    servability: Optional[ServabilityStatus]
+    servability: ServabilityStatus | None
     servable: bool
-    full_text: Optional[str]
-    snippet: Optional[str]
-    title: Optional[str]
-    author: Optional[str]
+    full_text: str | None
+    snippet: str | None
+    title: str | None
+    author: str | None
     reason: str
     # Rights context (populated by serve_full_text_guarded; defaulted here so
     # the bare gate and all existing construction sites are unchanged).
-    tier: Optional[str] = None
+    tier: str | None = None
     ad_eligible: bool = False
-    canonical_url: Optional[str] = None
-    license: Optional[str] = None
+    canonical_url: str | None = None
+    license: str | None = None
 
 
 def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> ServeResult:
@@ -185,7 +185,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     )
 
 
-def _snippet(raw_text: Optional[str]) -> Optional[str]:
+def _snippet(raw_text: str | None) -> str | None:
     """Bounded body excerpt for gated books. None when there's no body."""
     if not raw_text:
         return None

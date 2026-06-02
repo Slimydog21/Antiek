@@ -25,7 +25,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Literal
 
 try:
     from ..event_log import emit_typed
@@ -50,9 +50,9 @@ class EditLocator:
 
     deliverable_id: str
     section_id: str
-    outline_block_id: Optional[str] = None
-    paragraph_index: Optional[int] = None
-    sentence_index: Optional[int] = None
+    outline_block_id: str | None = None
+    paragraph_index: int | None = None
+    sentence_index: int | None = None
 
     def key(self) -> str:
         """A stable, comparable string key for this locator."""
@@ -73,15 +73,15 @@ class EditPair:
     locator: EditLocator
     granularity: str
     edit_kind: str
-    before_text: Optional[str]
-    after_text: Optional[str]
+    before_text: str | None
+    after_text: str | None
     reverted: bool
-    session_id: Optional[str]
-    event_id: Optional[str] = None
-    emitted_at: Optional[str] = None
+    session_id: str | None
+    event_id: str | None = None
+    emitted_at: str | None = None
 
     @classmethod
-    def from_event(cls, ev: dict) -> "EditPair":
+    def from_event(cls, ev: dict) -> EditPair:
         p = ev.get("payload", {}) or {}
         return cls(
             locator=EditLocator(
@@ -107,13 +107,13 @@ def capture_edit(
     locator: EditLocator,
     edit_kind: EditKind,
     granularity: Granularity,
-    before_text: Optional[str] = None,
-    after_text: Optional[str] = None,
+    before_text: str | None = None,
+    after_text: str | None = None,
     reverted: bool = False,
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
     investigation_id: str = "__operator__",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Capture one granular edit as an ``edit.captured`` event. Returns
     the event_id (or None when events are disabled).
 

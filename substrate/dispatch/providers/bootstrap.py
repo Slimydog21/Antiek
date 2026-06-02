@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Dict, List, Optional, Set
 
 from ..router import register_provider
 from .anthropic import AnthropicProvider
@@ -35,7 +34,7 @@ from .openai_compat import OpenAICompatProvider
 
 # (provider_name, factory) — factory returns an instance or None when
 # the required env var is missing.
-def _maybe_deepseek() -> Optional[OpenAICompatProvider]:
+def _maybe_deepseek() -> OpenAICompatProvider | None:
     # DeepSeek V4 Pro — the "deep" research tier's primary provider
     # (see substrate/dispatch/research_tier.py). DeepSeek's API speaks
     # the OpenAI chat-completions shape verbatim, so it reuses the
@@ -62,13 +61,13 @@ def _maybe_deepseek() -> Optional[OpenAICompatProvider]:
     )
 
 
-def _maybe_anthropic() -> Optional[AnthropicProvider]:
+def _maybe_anthropic() -> AnthropicProvider | None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     return AnthropicProvider(api_key_env="ANTHROPIC_API_KEY")
 
 
-def _maybe_openrouter() -> Optional[OpenAICompatProvider]:
+def _maybe_openrouter() -> OpenAICompatProvider | None:
     if not os.environ.get("OPENROUTER_API_KEY"):
         return None
     # OpenRouter's base already includes /api/v1; the chat-completions
@@ -82,7 +81,7 @@ def _maybe_openrouter() -> Optional[OpenAICompatProvider]:
     )
 
 
-def _maybe_xiaomi() -> Optional[OpenAICompatProvider]:
+def _maybe_xiaomi() -> OpenAICompatProvider | None:
     # Xiaomi MiMo V2.5 Pro — the "fast" research tier's primary provider
     # (see substrate/dispatch/research_tier.py). MiMo's API speaks the
     # OpenAI chat-completions shape, so it reuses the same
@@ -117,7 +116,7 @@ def _maybe_xiaomi() -> Optional[OpenAICompatProvider]:
     )
 
 
-def _maybe_hermes() -> Optional[OpenAICompatProvider]:
+def _maybe_hermes() -> OpenAICompatProvider | None:
     # Hermes is the operator's local subscription gateway. Disabled
     # by default; opt-in via HERMES_API_KEY + ANTIEK_HERMES_BASE_URL.
     #
@@ -155,8 +154,8 @@ _DEFAULT_PROVIDERS = [
 def register_default_providers(
     *,
     quiet: bool = False,
-    only: Optional[List[str]] = None,
-) -> Set[str]:
+    only: list[str] | None = None,
+) -> set[str]:
     """Instantiate + register every provider whose API key env var is
     present. Returns the set of registered names. Idempotent — calling
     twice re-registers (the router's register_provider is overwrite-
@@ -164,8 +163,8 @@ def register_default_providers(
 
     ``quiet`` suppresses stderr breadcrumbs (used by tests). ``only``
     restricts to a named subset (used by the smoke runner)."""
-    registered: Set[str] = set()
-    skipped: List[str] = []
+    registered: set[str] = set()
+    skipped: list[str] = []
     selected = _DEFAULT_PROVIDERS
     if only is not None:
         wanted = set(only)

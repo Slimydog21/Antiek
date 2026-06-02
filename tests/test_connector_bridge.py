@@ -39,7 +39,6 @@ from runtime.db_lock import connect_write  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     NormalizedUsage,
-    ProviderError,
     RawProviderResponse,
     TierConfig,
     TierPricing,

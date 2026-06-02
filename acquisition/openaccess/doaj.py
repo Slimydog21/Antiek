@@ -34,7 +34,7 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Any
 
 import httpx
 
@@ -55,17 +55,17 @@ class DOAJArticle:
     DOAJ carries (DOAJ doesn't host bytes). ``resolution`` is the
     deny-by-default verdict from the journal-level CC license."""
 
-    doi: Optional[str]
+    doi: str | None
     title: str
     in_doaj: bool
-    fulltext_url: Optional[str]
-    license_uri: Optional[str]
+    fulltext_url: str | None
+    license_uri: str | None
     resolution: LicenseResolution
     issns: tuple[str, ...] = ()
     source: str = "doaj"
 
 
-def _extract_license_uri(bibjson: dict[str, Any]) -> Optional[str]:
+def _extract_license_uri(bibjson: dict[str, Any]) -> str | None:
     """Pull the CC URI from a DOAJ bibjson license block. Article-level
     license wins when present; else the journal-level license. Prefer the
     explicit CC ``url``; fall back to the ``type`` short form."""
@@ -88,17 +88,17 @@ def _extract_license_uri(bibjson: dict[str, Any]) -> Optional[str]:
     return first.get("type")
 
 
-def _extract_fulltext_url(bibjson: dict[str, Any]) -> Optional[str]:
+def _extract_fulltext_url(bibjson: dict[str, Any]) -> str | None:
     for link in bibjson.get("link") or []:
         if (link.get("type") or "").lower() == "fulltext":
             return link.get("url")
     return None
 
 
-def parse_search_response(payload: dict[str, Any]) -> List[DOAJArticle]:
+def parse_search_response(payload: dict[str, Any]) -> list[DOAJArticle]:
     """DOAJ ``/search/articles`` JSON -> articles. Pure; the recorded-response
     tests target this directly."""
-    out: List[DOAJArticle] = []
+    out: list[DOAJArticle] = []
     for res in payload.get("results") or []:
         bib = res.get("bibjson") or {}
         ids = bib.get("identifier") or []
@@ -122,7 +122,7 @@ def parse_search_response(payload: dict[str, Any]) -> List[DOAJArticle]:
     return out
 
 
-def parse_journal_response(payload: dict[str, Any]) -> Optional[str]:
+def parse_journal_response(payload: dict[str, Any]) -> str | None:
     """DOAJ ``/search/journals`` JSON -> the journal-level CC license URI (or
     None). Pure; the recorded-response tests target this directly."""
     results = payload.get("results") or []
@@ -131,21 +131,21 @@ def parse_journal_response(payload: dict[str, Any]) -> Optional[str]:
     return _extract_license_uri(results[0].get("bibjson") or {})
 
 
-def _base(base_url: Optional[str]) -> str:
+def _base(base_url: str | None) -> str:
     return base_url or os.environ.get("ANTIEK_DOAJ_BASE_URL", DEFAULT_BASE_URL)
 
 
-def _build_article_url(doi: str, *, base_url: Optional[str]) -> str:
+def _build_article_url(doi: str, *, base_url: str | None) -> str:
     # DOAJ's article search-by-DOI path. The DOI is path-encoded.
     return f"{_base(base_url)}/search/articles/doi:{urllib.parse.quote(doi, safe='')}"
 
 
-def _build_journal_url(issn: str, *, base_url: Optional[str]) -> str:
+def _build_journal_url(issn: str, *, base_url: str | None) -> str:
     return f"{_base(base_url)}/search/journals/issn:{urllib.parse.quote(issn, safe='')}"
 
 
 def _get_json(
-    url: str, *, client: Optional[httpx.Client], throttle: Optional[OAThrottle]
+    url: str, *, client: httpx.Client | None, throttle: OAThrottle | None
 ) -> dict:
     def _get() -> dict:
         from acquisition.arxiv.rate_governor import (
@@ -174,10 +174,10 @@ def _get_json(
 def journal_license_by_issn(
     issn: str,
     *,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
-    throttle: Optional[OAThrottle] = None,
-) -> Optional[str]:
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
+    throttle: OAThrottle | None = None,
+) -> str | None:
     """Look up a DOAJ journal by ISSN and return its CC license URI (or None)."""
     payload = _get_json(
         _build_journal_url(issn, base_url=base_url), client=client, throttle=throttle
@@ -188,10 +188,10 @@ def journal_license_by_issn(
 def confirm_by_doi(
     doi: str,
     *,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
-    throttle: Optional[OAThrottle] = None,
-) -> Optional[DOAJArticle]:
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
+    throttle: OAThrottle | None = None,
+) -> DOAJArticle | None:
     """Confirm a DOI is in a DOAJ open-access journal + resolve its license.
 
     The article record carries the ISSN but NOT the license (measured in the

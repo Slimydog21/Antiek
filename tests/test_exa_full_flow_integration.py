@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List
 
 import duckdb
 import httpx
@@ -81,10 +80,10 @@ def _count(db: str, table: str, where: str = "") -> int:
         con.close()
 
 
-def _read_action_types(events_dir: Path) -> List[str]:
+def _read_action_types(events_dir: Path) -> list[str]:
     """Read every JSONL file in events_dir; return action_types in
     emit order."""
-    out: List[str] = []
+    out: list[str] = []
     for f in sorted(events_dir.rglob("*.jsonl")):
         for line in f.read_text().splitlines():
             line = line.strip()
@@ -112,9 +111,9 @@ def test_spec_6_10_full_flow_discover_promote_ingest_idempotent(
       4. Integration: discover → ingest_url → graph writes in order.
       5. Idempotent re-run produces no duplicate graph rows.
     """
+    import acquisition.urls.adapter as urls_adapter_mod
     from acquisition.search.exa import ExaClient, discover, promote_discovery
     from acquisition.urls.adapter import url_doc_id
-    import acquisition.urls.adapter as urls_adapter_mod
 
     # ── Step 1: synthetic Exa response via MockTransport ──────────
     target_url = "https://example.com/the-article"
@@ -242,9 +241,9 @@ def test_spec_6_10_re_promote_via_different_query_still_idempotent(
     The spec's "no duplicate graph rows" criterion holds even when
     the discovery_id differs.
     """
+    import acquisition.urls.adapter as urls_adapter_mod
     from acquisition.search.exa import ExaClient, discover, promote_discovery
     from acquisition.urls.adapter import url_doc_id
-    import acquisition.urls.adapter as urls_adapter_mod
 
     target_url = "https://example.com/cross-query-article"
 

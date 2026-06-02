@@ -9,8 +9,8 @@ report supplies the number the operator uses to flip that gate.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Iterable, Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

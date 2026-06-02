@@ -32,7 +32,6 @@ from acquisition.corpus_quality import CandidateRef  # noqa: E402
 from substrate.event_log.events import trajectory  # noqa: E402
 from substrate.ingest_budget import BudgetGovernor, BudgetReading  # noqa: E402
 from substrate.ingest_checkpoint import CheckpointStore  # noqa: E402
-
 from tools import run_corpus_ingest as rci  # noqa: E402
 
 _GIB = 1024 ** 3

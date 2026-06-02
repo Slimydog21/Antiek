@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.anti_gaming import (
     AntiGamingDetector,
     FraudVerdictKind,
@@ -16,7 +14,6 @@ from substrate.anti_gaming import (
     score_view_event,
     ua_entropy,
 )
-
 
 # ── Click fraud ────────────────────────────────────────────────────
 

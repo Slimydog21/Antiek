@@ -39,19 +39,18 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from substrate.coordination.consent_view import build_consent_view
 from substrate.coordination.cost_view import (
     MarginStatus,
     Workflow,
     build_cost_view,
     workflow_for_role,
 )
-from substrate.coordination.consent_view import build_consent_view
 from substrate.coordination.gate_ledger import parse_gate_ledger
 from substrate.event_log.events import emit_typed
 from substrate.graph.schema import ANTIEK_GRAPH_SCHEMA_V2_SPRINT18_SQL
 from substrate.ip_holders import accrue_escrow, create_pre_onboarded
 from substrate.schemas.events import DispatchCallPayload
-
 
 _REPO = Path(__file__).resolve().parents[1]
 

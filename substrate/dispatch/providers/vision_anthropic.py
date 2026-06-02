@@ -33,10 +33,9 @@ Tests inject ``MockVisionProvider`` (also in this module).
 
 from __future__ import annotations
 
-import base64
 import os
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Protocol
 
 import httpx
 
@@ -103,11 +102,11 @@ class AnthropicVisionProvider:
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         api_key_env: str = "ANTHROPIC_API_KEY",
         base_url: str = "https://api.anthropic.com",
         timeout_s: float = _DEFAULT_TIMEOUT_S,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
         anthropic_version: str = _ANTHROPIC_VERSION,
     ):
         self._api_key = api_key
@@ -258,7 +257,7 @@ class MockVisionProvider:
     canned_input_tokens: int = 100
     canned_output_tokens: int = 50
     canned_model: str = "claude-3-5-sonnet-20241022"
-    raise_with: Optional[VisionProviderError] = None
+    raise_with: VisionProviderError | None = None
     calls: list[dict] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:

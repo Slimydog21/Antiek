@@ -24,8 +24,8 @@ Audit-leak discipline:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 from substrate.schemas.events import (
     ActionType,
@@ -41,7 +41,6 @@ from substrate.schemas.events import (
 from .federation import FederatedOutboundCitation
 from .inbound import InboundCitationOutcome
 from .partner_identity import PartnerSubstrate, PartnerTrustState
-
 
 # ── Pure converters ────────────────────────────────────────────────
 
@@ -158,7 +157,7 @@ def _envelope(
         action_type=action_type,
         payload=payload,  # type: ignore[arg-type]
         param_version=param_version,
-        emitted_at=datetime.now(timezone.utc),
+        emitted_at=datetime.now(UTC),
     )
 
 

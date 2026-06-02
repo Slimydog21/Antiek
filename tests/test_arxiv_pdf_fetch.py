@@ -118,17 +118,15 @@ def test_html_interstitial_is_not_a_pdf(throttle):
             200, content=_HTML_INTERSTITIAL, headers={"content-type": "text/html"}
         )
 
-    with _client(handler) as c:
-        with pytest.raises(NotAPdf):
-            fetch_pdf("2402.00002", throttle=throttle, client=c)
+    with _client(handler) as c, pytest.raises(NotAPdf):
+        fetch_pdf("2402.00002", throttle=throttle, client=c)
 
 
 def test_html_body_without_content_type_rejected_on_magic_bytes(throttle):
     """Even with no content-type, an HTML body fails the %PDF magic-byte check."""
     def handler(req): return httpx.Response(200, content=_HTML_INTERSTITIAL)
-    with _client(handler) as c:
-        with pytest.raises(NotAPdf):
-            fetch_pdf("2402.00010", throttle=throttle, client=c)
+    with _client(handler) as c, pytest.raises(NotAPdf):
+        fetch_pdf("2402.00010", throttle=throttle, client=c)
 
 
 # ---------------------------------------------------------------------------
@@ -140,9 +138,8 @@ def test_too_small_pdf_rejected(throttle):
     tiny = b"%PDF-1.4\n"  # starts %PDF but far under MIN_PDF_BYTES
     def handler(req):
         return httpx.Response(200, content=tiny, headers={"content-type": "application/pdf"})
-    with _client(handler) as c:
-        with pytest.raises(PdfTooSmall):
-            fetch_pdf("2402.00003", throttle=throttle, client=c)
+    with _client(handler) as c, pytest.raises(PdfTooSmall):
+        fetch_pdf("2402.00003", throttle=throttle, client=c)
 
 
 def test_too_large_pdf_rejected(throttle):
@@ -150,9 +147,8 @@ def test_too_large_pdf_rejected(throttle):
         return httpx.Response(
             200, content=_VALID_PDF, headers={"content-type": "application/pdf"}
         )
-    with _client(handler) as c:
-        with pytest.raises(PdfTooLarge):
-            fetch_pdf("2402.00004", throttle=throttle, client=c, max_bytes=8)
+    with _client(handler) as c, pytest.raises(PdfTooLarge):
+        fetch_pdf("2402.00004", throttle=throttle, client=c, max_bytes=8)
 
 
 def test_size_guards_subclass_not_a_pdf(throttle):
@@ -170,9 +166,8 @@ def test_size_guards_subclass_not_a_pdf(throttle):
 def test_404_withdrawn_id_raises_status_error(throttle):
     def handler(req):
         return httpx.Response(404, content=b"not found")
-    with _client(handler) as c:
-        with pytest.raises(httpx.HTTPStatusError):
-            fetch_pdf("2402.00005", throttle=throttle, client=c)
+    with _client(handler) as c, pytest.raises(httpx.HTTPStatusError):
+        fetch_pdf("2402.00005", throttle=throttle, client=c)
 
 
 # ---------------------------------------------------------------------------
@@ -209,9 +204,8 @@ def test_active_ban_blocks_fetch_entirely(throttle):
     def handler(req):  # pragma: no cover - must not run
         raise AssertionError("fetch ran despite an active ban")
 
-    with _client(handler) as c:
-        with pytest.raises(ArxivBanned):
-            fetch_pdf("2402.00007", throttle=throttle, client=c)
+    with _client(handler) as c, pytest.raises(ArxivBanned):
+        fetch_pdf("2402.00007", throttle=throttle, client=c)
 
 
 # ---------------------------------------------------------------------------

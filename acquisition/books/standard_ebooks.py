@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -36,7 +35,7 @@ OPDS_FEED_URL = "https://standardebooks.org/feeds/opds/all"
 _ENTRY_RE = re.compile(r"<entry\b.*?</entry>", re.IGNORECASE | re.DOTALL)
 
 
-def _tag_text(entry_xml: str, local_name: str) -> Optional[str]:
+def _tag_text(entry_xml: str, local_name: str) -> str | None:
     """First inner text of an element with the given local name (ignoring any
     namespace prefix), or None."""
     m = re.search(
@@ -51,7 +50,7 @@ def _tag_text(entry_xml: str, local_name: str) -> Optional[str]:
     return text or None
 
 
-def _link_href(entry_xml: str, *, predicate) -> Optional[str]:
+def _link_href(entry_xml: str, *, predicate) -> str | None:
     for m in re.finditer(r"<(?:\w+:)?link\b([^>]*)/?>", entry_xml, re.IGNORECASE):
         attrs = m.group(1)
         href_m = re.search(r'href\s*=\s*"([^"]+)"', attrs, re.IGNORECASE)
@@ -63,7 +62,7 @@ def _link_href(entry_xml: str, *, predicate) -> Optional[str]:
     return None
 
 
-def _slug_from_id(id_text: Optional[str], source_uri: str) -> str:
+def _slug_from_id(id_text: str | None, source_uri: str) -> str:
     """Stable SE book slug for the dedup source-id. SE entry ids look like
     ``url:https://standardebooks.org/ebooks/<author>/<title>``; fall back to the
     acquisition link path."""
@@ -74,7 +73,7 @@ def _slug_from_id(id_text: Optional[str], source_uri: str) -> str:
     return candidate or source_uri
 
 
-def _entry_to_candidate(entry_xml: str) -> Optional[BookCandidate]:
+def _entry_to_candidate(entry_xml: str) -> BookCandidate | None:
     title = _tag_text(entry_xml, "title")
     if not title:
         return None

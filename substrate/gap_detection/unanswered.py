@@ -8,7 +8,7 @@ hole the next research can fill. Deterministic from graph state; read-only.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 # A resolved_by edge below this extraction_confidence is treated as a weak
 # resolution — the question still counts as open. 0.5 = "better than a coin
@@ -22,7 +22,7 @@ class OpenQuestion:
     text: str
 
 
-def find_unanswered_questions(con: Any) -> List[OpenQuestion]:
+def find_unanswered_questions(con: Any) -> list[OpenQuestion]:
     """Return question nodes with no (sufficiently-confident) resolved_by
     edge. Ordered by node_id for determinism."""
     rows = con.execute(

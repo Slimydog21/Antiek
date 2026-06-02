@@ -10,13 +10,11 @@ from substrate.dp_shuffler import (
     EpsilonRegistry,
     EpsilonRegistryError,
     LocalRandomizer,
-    SurfaceConfig,
     aggregate_with_dp,
     randomized_response,
     register_surface,
 )
 from substrate.dp_shuffler.epsilon_registry import MAX_EPSILON, SENSITIVITY_BUDGETS
-
 
 # ── Epsilon registry policy enforcement ──────────────────────────────
 

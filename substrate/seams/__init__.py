@@ -49,9 +49,9 @@ from .contracts import (
     SeamStatus,
     SpeakToReadSeam,
     SpeakToWriteSeam,
+    Workflow,
     WriteToReadSeam,
     WriteToSpeakSeam,
-    Workflow,
     seam_status,
 )
 from .servability_gate import (

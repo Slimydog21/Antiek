@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from interfaces.research.api.broadcast import EventBroadcaster
 from interfaces.research.api.visual import (
     claims_extracted_event,
     dispatch_visual_role,
@@ -21,7 +22,6 @@ from substrate.dispatch.providers.vision_anthropic import (
     MockVisionProvider,
     VisionProviderError,
 )
-from interfaces.research.api.broadcast import EventBroadcaster
 from substrate.schemas.events import ActionType
 
 

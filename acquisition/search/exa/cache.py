@@ -23,8 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
 
 DEFAULT_TTL_SECONDS: int = 24 * 60 * 60
 
@@ -35,11 +34,11 @@ def cache_key(
     investigation_id: str,
     provider: str = "exa",
     num_results: int = 10,
-    category: Optional[str] = None,
-    include_domains: Optional[List[str]] = None,
-    exclude_domains: Optional[List[str]] = None,
-    start_published_date: Optional[str] = None,
-    end_published_date: Optional[str] = None,
+    category: str | None = None,
+    include_domains: list[str] | None = None,
+    exclude_domains: list[str] | None = None,
+    start_published_date: str | None = None,
+    end_published_date: str | None = None,
 ) -> str:
     """Stable hash over every parameter that should produce identical
     Exa results. Order-invariant for the domain lists. Hex digest,
@@ -64,15 +63,15 @@ def cache_key(
 def _now_utc() -> datetime:
     """Naive UTC. DuckDB TIMESTAMP is timezone-naive; we keep app-side
     arithmetic naive too so storage round-trips identity-preserving."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def lookup(
     key: str,
     *,
     db_path: str,
-    now: Optional[datetime] = None,
-) -> Optional[List[dict]]:
+    now: datetime | None = None,
+) -> list[dict] | None:
     """Return the cached proposals list (as a list of dicts ready to
     re-hydrate into DiscoveryProposed) if the key is present AND
     not expired. None otherwise.
@@ -116,13 +115,13 @@ def lookup(
 def store(
     key: str,
     *,
-    proposals: List,
+    proposals: list,
     query: str,
     investigation_id: str,
     provider: str = "exa",
     ttl_seconds: int = DEFAULT_TTL_SECONDS,
     db_path: str,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> None:
     """Insert or refresh the cache entry. Idempotent via ON CONFLICT.
     `proposals` should be a list of DiscoveryProposed dataclass
@@ -177,7 +176,7 @@ def store(
 def purge_expired(
     *,
     db_path: str,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> int:
     """Delete expired rows. Returns the number purged. Safe to run
     periodically (e.g. from a nightly job); the lazy-expire on read

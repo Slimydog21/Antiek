@@ -63,7 +63,6 @@ import os
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Optional
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -133,7 +132,7 @@ class PlannedCandidate:
     assessable_text: str
     assess_body: bool
     ingest: IngestThunk
-    allow_null_author_reason: Optional[str] = None
+    allow_null_author_reason: str | None = None
 
     def quality_verdict(self) -> QualityVerdict:
         """Gate this candidate on the text available for its source. The
@@ -305,7 +304,7 @@ class ExecuteReport:
 
 
 def execute_plan(
-    plan: CorpusPlan, *, db_path: Optional[str], dry_run: bool
+    plan: CorpusPlan, *, db_path: str | None, dry_run: bool
 ) -> ExecuteReport:
     """Ingest the plan's ``to_ingest`` set. On ``dry_run`` no thunk is called
     and nothing is written. Per-item failures are isolated so one bad fetch
@@ -355,7 +354,7 @@ def execute_plan(
 
 
 def _arxiv_bulk_candidates(
-    *, snapshot_path: str, category: Optional[str], limit: int,
+    *, snapshot_path: str, category: str | None, limit: int,
     investigation_id: str,
 ) -> list[PlannedCandidate]:
     """Discover arXiv candidates from the LOCAL bulk metadata snapshot — never
@@ -434,9 +433,9 @@ def _arxiv_bulk_candidates(
 
 
 def _arxiv_candidates(
-    *, query: Optional[str], category: Optional[str],
-    ids: Optional[Sequence[str]], limit: int, investigation_id: str,
-    arxiv_source: str = "export", bulk_snapshot: Optional[str] = None,
+    *, query: str | None, category: str | None,
+    ids: Sequence[str] | None, limit: int, investigation_id: str,
+    arxiv_source: str = "export", bulk_snapshot: str | None = None,
 ) -> list[PlannedCandidate]:
     if arxiv_source == "bulk":
         return _arxiv_bulk_candidates(
@@ -565,7 +564,7 @@ class _BodyCachingClient:
         self._inner = inner
         self._body_cache: dict[str, bytes] = {}
 
-    def get_json(self, url: str, *, params: Optional[dict] = None) -> dict:
+    def get_json(self, url: str, *, params: dict | None = None) -> dict:
         return self._inner.get_json(url, params=params)  # type: ignore[attr-defined]
 
     def get_bytes(self, url: str) -> bytes:
@@ -652,8 +651,8 @@ def _pd_curated_book_candidates(
 
 
 def _public_domain_candidates(
-    *, subject: Optional[str], search_term: Optional[str],
-    ids: Optional[Sequence[int]], curated: bool, limit: int,
+    *, subject: str | None, search_term: str | None,
+    ids: Sequence[int] | None, curated: bool, limit: int,
     investigation_id: str, min_interval_s: float,
 ) -> list[PlannedCandidate]:
     from acquisition.books.public_domain import (
@@ -674,7 +673,7 @@ def _public_domain_candidates(
     client = _BodyCachingClient(
         SourceClient(min_interval_s=min_interval_s, persistent=persistent)
     )
-    selected_ids: Optional[Sequence[int]] = ids
+    selected_ids: Sequence[int] | None = ids
     if curated:
         selected_ids = list(CURATED_GUTENBERG_IDS)
         limit = max(limit, len(selected_ids))
@@ -787,8 +786,8 @@ PAPER_AGGREGATOR_OA_SOURCES = ("core", "semantic_scholar", "biorxiv", "medrxiv",
 
 
 def _paper_aggregator_candidates(
-    *, source: str, query: Optional[str], limit: int, investigation_id: str,
-    biorxiv_server: str = "biorxiv", biorxiv_interval: Optional[str] = None,
+    *, source: str, query: str | None, limit: int, investigation_id: str,
+    biorxiv_server: str = "biorxiv", biorxiv_interval: str | None = None,
 ) -> list[PlannedCandidate]:
     """Discover + plan candidates from a SPR-07 paper aggregator (CORE / S2 /
     bioRxiv-medRxiv / PLOS).
@@ -882,8 +881,8 @@ def _paper_aggregator_candidates(
 
 
 def _discover_paper_records(
-    *, source: str, query: Optional[str], limit: int, throttle,
-    biorxiv_server: str, biorxiv_interval: Optional[str],
+    *, source: str, query: str | None, limit: int, throttle,
+    biorxiv_server: str, biorxiv_interval: str | None,
 ):
     """Dispatch to the right SPR-07 paper aggregator's discovery, returning raw
     PaperRecords. Each connector reads its per-record declared license."""
@@ -967,7 +966,7 @@ def _stage_paper_metadata_only(
 
 
 def _opt_in_candidates(
-    *, manifest_path: Optional[str], limit: int, investigation_id: str,
+    *, manifest_path: str | None, limit: int, investigation_id: str,
 ) -> list[PlannedCandidate]:
     """Discover §9.10 publisher-opt-in candidates from a catalog manifest FILE.
 
@@ -999,7 +998,7 @@ def _opt_in_candidates(
         body = entry.body_text
         if body is None and entry.body_path:
             try:
-                with open(entry.body_path, "r", encoding="utf-8") as f:
+                with open(entry.body_path, encoding="utf-8") as f:
                     body = f.read()
             except OSError:
                 body = None
@@ -1051,8 +1050,8 @@ def _opt_in_candidates(
 
 
 def _open_access_candidates(
-    *, source: str, query: Optional[str], author: Optional[str],
-    dois: Optional[Sequence[str]], limit: int, investigation_id: str,
+    *, source: str, query: str | None, author: str | None,
+    dois: Sequence[str] | None, limit: int, investigation_id: str,
 ) -> list[PlannedCandidate]:
     from acquisition.openaccess import OAThrottle
     from acquisition.openaccess.ingest import build_license_basis, ingest_oa_item
@@ -1096,7 +1095,7 @@ def _open_access_candidates(
                 return "skipped: no fetchable PDF"
             from acquisition.openaccess.unpaywall import NotAPdf
 
-            last_exc: Optional[Exception] = None
+            last_exc: Exception | None = None
             for u in _urls:
                 try:
                     result = ingest_oa_item(
@@ -1150,9 +1149,9 @@ TEXTBOOK_SOURCES = ("openstax", "libretexts", "doab", "mit_ocw")
 
 def _textbook_candidates(
     *, source: str, limit: int, investigation_id: str,
-    libretexts_library: Optional[str] = None,
-    doab_query: Optional[str] = None,
-    ocw_query: Optional[str] = None,
+    libretexts_library: str | None = None,
+    doab_query: str | None = None,
+    ocw_query: str | None = None,
 ) -> list[PlannedCandidate]:
     """Discover one open-textbook source's candidates as PlannedCandidates.
 
@@ -1167,6 +1166,8 @@ def _textbook_candidates(
     """
     from acquisition.textbooks import (
         SourceError as TextbookSourceError,
+    )
+    from acquisition.textbooks import (
         ThrottledClient,
         ingest_textbook,
     )
@@ -1489,13 +1490,13 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def _csv_ints(value: Optional[str]) -> Optional[list[int]]:
+def _csv_ints(value: str | None) -> list[int] | None:
     if not value:
         return None
     return [int(x) for x in value.split(",") if x.strip()]
 
 
-def _csv_strs(value: Optional[str]) -> Optional[list[str]]:
+def _csv_strs(value: str | None) -> list[str] | None:
     if not value:
         return None
     return [x.strip() for x in value.split(",") if x.strip()]
@@ -1729,19 +1730,19 @@ def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
 
 import json as _json  # noqa: E402
 import time as _time  # noqa: E402
-
-from substrate.event_log.events import log_event, trajectory  # noqa: E402
-from substrate.ingest_budget import (  # noqa: E402
-    BudgetGovernor,
-    BudgetState,
-)
-from substrate.ingest_checkpoint import CheckpointStore  # noqa: E402
+from datetime import UTC
 
 # The investigation_id every continuous-engine event is filed under. A standing
 # corpus ingest is a system sweep, not a single user investigation, so it uses
 # the SYSTEM sentinel so `investigation_id = 'system'` lifts the whole run from
 # the event log (the same convention the substrate's bulk sweeps use).
 from substrate.constants import SYSTEM_INVESTIGATION_ID  # noqa: E402
+from substrate.event_log.events import log_event, trajectory  # noqa: E402
+from substrate.ingest_budget import (  # noqa: E402
+    BudgetGovernor,
+    BudgetState,
+)
+from substrate.ingest_checkpoint import CheckpointStore  # noqa: E402
 
 # Typed (free-form) event action_types for the continuous engine. The event log
 # accepts free-form action_type strings on the legacy log_event path (the typed
@@ -1789,7 +1790,7 @@ class _StagingAccumulator:
     def should_merge(
         self, *, count_threshold: int, size_threshold: int,
         interval_threshold: float, now: float,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Return the FIRST tripped trigger name (count|size|interval) or None.
         Order is count, then size, then interval — whichever trips first; a
         single call returns one reason so the caller fires exactly one merge."""
@@ -1806,7 +1807,7 @@ class _StagingAccumulator:
         return None
 
 
-def _emit(action_type: str, payload: dict, *, events_dir: Optional[str] = None) -> None:
+def _emit(action_type: str, payload: dict, *, events_dir: str | None = None) -> None:
     """Emit one continuous-engine event under the SYSTEM investigation. Filed on
     the legacy free-form log_event path (no typed schema needed); telemetry is
     best-effort and never breaks the run (log_event swallows write errors)."""
@@ -1872,8 +1873,8 @@ class ContinuousRunner:
         self,
         args: argparse.Namespace,
         *,
-        checkpoint: Optional[CheckpointStore] = None,
-        governor: Optional[BudgetGovernor] = None,
+        checkpoint: CheckpointStore | None = None,
+        governor: BudgetGovernor | None = None,
         now: Callable[[], float] = _time.time,
         sleep: Callable[[float], None] = _time.sleep,
     ) -> None:
@@ -1901,7 +1902,7 @@ class ContinuousRunner:
         )
         self.max_rounds = getattr(args, "max_rounds", None)
         self.round_sleep_s = float(getattr(args, "round_sleep_s", 0.0))
-        self._accum: Optional[_StagingAccumulator] = None
+        self._accum: _StagingAccumulator | None = None
         if args.staging_db and not self.dry_run:
             self._accum = _StagingAccumulator(
                 staging_db=os.path.abspath(os.path.expanduser(args.staging_db)),
@@ -1996,7 +1997,7 @@ class ContinuousRunner:
 
         # Plan + execute the FRESH survivors through the unchanged spine. The
         # plan is pure; execute_plan stages (or, in dry-run, writes nothing).
-        merged_summary: Optional[dict] = None
+        merged_summary: dict | None = None
         if fresh:
             plan = plan_corpus(fresh)
             # Map kept candidate -> its source so per-source ingested counts are
@@ -2065,7 +2066,7 @@ class ContinuousRunner:
         _emit(EVT_ROUND, round_summary, events_dir=self.events_dir)
         return round_summary
 
-    def _advance_cursor(self, current: Optional[str]) -> str:
+    def _advance_cursor(self, current: str | None) -> str:
         """Advance a source's opaque cursor. We use a monotonic round counter so
         the cursor strictly advances (never resets) across restarts — the
         contract the resume test asserts. (Per-source pagination tokens are an
@@ -2170,9 +2171,9 @@ class ContinuousRunner:
 
 def status_snapshot(
     *,
-    checkpoint: Optional[CheckpointStore] = None,
-    events_dir: Optional[str] = None,
-    db_path: Optional[str] = None,
+    checkpoint: CheckpointStore | None = None,
+    events_dir: str | None = None,
+    db_path: str | None = None,
 ) -> dict:
     """Reconstruct the run-health snapshot from PERSISTED state only — the event
     log (per-source counts, reject rates, last-merge, governor state) + the
@@ -2190,7 +2191,7 @@ def status_snapshot(
     rows = trajectory(SYSTEM_INVESTIGATION_ID, events_dir=events_dir)
     per_source: dict[str, dict] = {}
     last_merge_ts = 0.0
-    last_governor: Optional[dict] = None
+    last_governor: dict | None = None
     for r in rows:
         at = r.get("action_type")
         payload = r.get("payload") or {}
@@ -2256,7 +2257,7 @@ def status_snapshot(
     }
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
 
@@ -2334,11 +2335,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # NOT a generic 'no candidates' (M3 criterion 3): the operator/SPR-09
     # scheduler reads this to time a resume instead of re-hitting banned sources.
     if outcome.all_banned:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         resume = outcome.soonest_resume
         when = (
-            datetime.fromtimestamp(resume, tz=timezone.utc).isoformat()
+            datetime.fromtimestamp(resume, tz=UTC).isoformat()
             if resume > 0 else "unknown"
         )
         print(

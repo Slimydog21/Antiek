@@ -22,7 +22,6 @@ Plus accuracy + grounding checks for M1 (the impact map) and M5 (the snapshot).
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -36,7 +35,6 @@ from substrate.coordination.gate_ledger import (
     parse_quick_status_table,
 )
 from substrate.coordination.roadmap import build_roadmap
-
 
 # ── 1. The no-fork equality: two independent parses agree ────────────────────
 

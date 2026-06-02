@@ -102,7 +102,7 @@ import os
 import threading
 import time
 from datetime import date
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, Query
@@ -224,7 +224,7 @@ class JobResponse(BaseModel):
     enabled: bool = True
     job_id: str
     status: str
-    image_url: Optional[str] = None
+    image_url: str | None = None
 
 
 class SceneArt(BaseModel):
@@ -252,7 +252,7 @@ class DisabledResponse(BaseModel):
     enabled: bool = False
     isFallback: bool = True
     reason: str
-    scene_key: Optional[str] = None
+    scene_key: str | None = None
 
 
 # ── Budget + rate state (process-local; NOT DuckDB) ─────────────────────
@@ -366,7 +366,7 @@ class _SceneCache:
                 pass
         return self._ttl_s
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         now = time.monotonic()
         with self._lock:
             entry = self._store.get(key)
@@ -400,7 +400,7 @@ def _base_url() -> str:
     return os.environ.get("ANTIEK_KREA_BASE_URL", _DEFAULT_BASE_URL).rstrip("/")
 
 
-def _api_token() -> Optional[str]:
+def _api_token() -> str | None:
     """Graceful-absence read of the Krea token (mirrors bootstrap.py's
     ``if not os.environ.get(...): return None``). Returns None when the
     token is unset OR blank — the disabled path, not an error."""
@@ -444,7 +444,7 @@ def _scene_prompt(mood: str, day_night: str, season: str) -> str:
 #    live Krea schema differs from the docs) ────────────────────────────
 
 
-def _ensure_client(client: Optional[httpx.Client]) -> tuple[httpx.Client, bool]:
+def _ensure_client(client: httpx.Client | None) -> tuple[httpx.Client, bool]:
     """Return (client, owns). Accept an injected client for tests
     (httpx.MockTransport) — same injectable-client idiom as
     openai_compat.OpenAICompatProvider. When None, build a short-timeout
@@ -469,7 +469,7 @@ def _submit_generation(
     token: str,
     req: GenerateRequest,
     *,
-    client: Optional[httpx.Client] = None,
+    client: httpx.Client | None = None,
 ) -> tuple[str, str]:
     """POST {BASE}/generate/image → (job_id, status). DOC-DERIVED shape.
     Reuses the openai_compat httpx idiom: monotonic timing, separate
@@ -528,7 +528,7 @@ def _poll_job(
     token: str,
     job_id: str,
     *,
-    client: Optional[httpx.Client] = None,
+    client: httpx.Client | None = None,
 ) -> JobResponse:
     """GET {BASE}/jobs/{id} → JobResponse. DOC-DERIVED shape. One poll
     (not the loop) — the loop lives in the /krea/scene handler so a single
@@ -597,15 +597,15 @@ def register_krea_routes(app: FastAPI) -> None:
     # client. Set via app.state.krea_http_client in a test.
     app.state.krea_http_client = None
 
-    def _http() -> Optional[httpx.Client]:
+    def _http() -> httpx.Client | None:
         return getattr(app.state, "krea_http_client", None)
 
-    def _disabled(reason: str, scene: Optional[str] = None) -> JSONResponse:
+    def _disabled(reason: str, scene: str | None = None) -> JSONResponse:
         """Build the typed 503 fallback body. ALWAYS 503, NEVER 500."""
         payload = DisabledResponse(reason=reason, scene_key=scene)
         return JSONResponse(status_code=503, content=payload.model_dump())
 
-    def _gate() -> Optional[str]:
+    def _gate() -> str | None:
         """Return a fallback reason if generation is NOT permitted right
         now, else None. Order: kill-switch (operator override, key-
         independent) → no-key → over-budget → rate-limited. The first

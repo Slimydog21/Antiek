@@ -47,10 +47,9 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 GOLDEN_TRACE_SCHEMA_VERSION: int = 1
 
@@ -73,22 +72,22 @@ class RoleCall(BaseModel):
 
     sequence_index: int = Field(ge=0)
     role: str
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    provider: str | None = None
+    model: str | None = None
     # The prompt sent to the model and the parsed structured output.
     # ``input_json`` is a structured representation of the inputs
     # (sub_question, context_pack layers, etc.); ``input_text`` is the
     # full string actually sent. Both are stored so a replay can use
     # whichever representation is more stable.
     input_json: dict[str, Any] = Field(default_factory=dict)
-    input_text: Optional[str] = None
+    input_text: str | None = None
     output_json: dict[str, Any] = Field(default_factory=dict)
-    output_text: Optional[str] = None
+    output_text: str | None = None
     input_hash: str
     output_hash: str
-    latency_ms: Optional[int] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
+    latency_ms: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 class GoldenTrace(BaseModel):
@@ -99,14 +98,14 @@ class GoldenTrace(BaseModel):
     trace_id: str
     captured_at: datetime
     schema_version: int = GOLDEN_TRACE_SCHEMA_VERSION
-    researchmaxx_commit: Optional[str] = None
+    researchmaxx_commit: str | None = None
     investigation_id: str
     target_question: str
     role_calls: list[RoleCall] = Field(default_factory=list)
     # Final outputs the extraction must reproduce.
-    final_synthesis_id: Optional[str] = None
-    final_thesis_text: Optional[str] = None
-    final_thesis_hash: Optional[str] = None
+    final_synthesis_id: str | None = None
+    final_thesis_text: str | None = None
+    final_thesis_hash: str | None = None
     # Operator notes — non-structural, free-form context for the
     # reviewer comparing replay output to capture output.
     operator_notes: str = ""

@@ -30,8 +30,8 @@ import hashlib
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from typing import Dict, Iterable, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 try:
     from ...constants import (
@@ -65,7 +65,7 @@ def default_log_dir() -> str:
 def _utc_iso_now() -> str:
     """ISO-8601 timestamp with the ``Z`` suffix — matches the substrate
     event-envelope timestamp format (substrate/event_log/events.py)."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def hash_paths(paths: Iterable[str]) -> str:
@@ -108,7 +108,7 @@ class PhaseLog:
     never instantiate ``PhaseLog`` directly with raw data.
     """
 
-    def __init__(self, path: str, data: Dict):
+    def __init__(self, path: str, data: dict):
         self.path = path
         self.data = data
 
@@ -118,8 +118,8 @@ class PhaseLog:
         investigation_id: str,
         *,
         topic: str = "",
-        log_dir: Optional[str] = None,
-    ) -> "PhaseLog":
+        log_dir: str | None = None,
+    ) -> PhaseLog:
         d = log_dir or default_log_dir()
         os.makedirs(d, exist_ok=True)
         path = os.path.join(d, f"{investigation_id}.json")
@@ -159,9 +159,9 @@ class PhaseLog:
     def enter(
         self,
         phase_id: int,
-        note: Optional[str] = None,
+        note: str | None = None,
         *,
-        metadata_json: Optional[str] = None,
+        metadata_json: str | None = None,
     ) -> None:
         """Mark a phase entered.
 
@@ -192,8 +192,8 @@ class PhaseLog:
         self,
         phase_id: int,
         *,
-        outputs_hash: Optional[str] = None,
-        outputs_paths: Optional[Iterable[str]] = None,
+        outputs_hash: str | None = None,
+        outputs_paths: Iterable[str] | None = None,
     ) -> None:
         """Mark a phase exited. If ``outputs_paths`` is provided the
         hash is computed from sorted-path file contents (see
@@ -284,7 +284,7 @@ class PhaseLog:
                 + "\n".join(f"  - {m}" for m in missing)
             )
 
-    def snapshot(self) -> Dict:
+    def snapshot(self) -> dict:
         """Deep copy of the JSON state — safe to hand to archive code
         without worrying about subsequent mutation."""
         return json.loads(json.dumps(self.data))

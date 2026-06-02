@@ -13,8 +13,10 @@ from typing import Any
 from substrate.conversation.compaction import (
     ContextPressureNeedsOperator,
     ContextPressureTooHigh,
-    compact as compact_fn,
     should_compact,
+)
+from substrate.conversation.compaction import (
+    compact as compact_fn,
 )
 from substrate.conversation.event_log import EventLog
 from substrate.conversation.policy import CompactionConfig, CompactionPolicy

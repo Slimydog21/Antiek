@@ -101,7 +101,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from .attribution import eligibility_decision, monetization_eligible
 from .attribution_explain import _largest_remainder_cents
@@ -186,8 +186,8 @@ class FrameAttentionSample:
     viewport_area_fraction: float
     prominence: float
     focused_dwell_ms: int
-    content_class: Optional[str] = None
-    chunk_id: Optional[str] = None
+    content_class: str | None = None
+    chunk_id: str | None = None
 
     def __post_init__(self) -> None:
         if not (0.0 <= self.viewport_area_fraction <= 1.0):
@@ -314,7 +314,7 @@ class AssetWeight:
     'why did this asset get this weight this second')."""
 
     asset_id: str
-    chunk_id: Optional[str]
+    chunk_id: str | None
     weight: Decimal                 # normalized share of the second ∈ [0,1]
     raw_weight: float               # pre-normalization blend value
     viewport_area_fraction: float

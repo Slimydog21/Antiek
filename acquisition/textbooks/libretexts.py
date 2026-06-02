@@ -31,7 +31,6 @@ Compose, do not reimplement: shared ``ThrottledClient`` (SPR-03 ban-aware),
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from ._common import SourceError, TextbookWork, ThrottledClient, ingest_textbook
 
@@ -78,7 +77,7 @@ _LICENSE_CODE_TO_STRING = {
 }
 
 
-def _declared_license(item: dict) -> Optional[str]:
+def _declared_license(item: dict) -> str | None:
     """Read this item's DECLARED license, preferring a canonical CC URI, then a
     code normalized to the CC short-code string classify() understands.
 
@@ -105,7 +104,7 @@ def _declared_license(item: dict) -> Optional[str]:
     return None
 
 
-def _to_work(item: dict) -> Optional[TextbookWork]:
+def _to_work(item: dict) -> TextbookWork | None:
     title = (item.get("title") or item.get("name") or "").strip()
     if not title:
         logger.info("libretexts item %s skipped: no title", item.get("id"))
@@ -135,7 +134,7 @@ def _to_work(item: dict) -> Optional[TextbookWork]:
 
 
 def discover(
-    client: ThrottledClient, *, library: Optional[str] = None, limit: int = 25
+    client: ThrottledClient, *, library: str | None = None, limit: int = 25
 ) -> list[TextbookWork]:
     """Discover LibreTexts books/pages, each carrying its OWN declared license.
 

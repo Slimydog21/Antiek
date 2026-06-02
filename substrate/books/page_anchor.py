@@ -27,14 +27,13 @@ coordinate is the same one the reader uses: page index = N − 1 (0-based).
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 # ``## Page N`` → chunker section "Page N". Tolerant of surrounding whitespace
 # and case, matching the reader's PAGE_MARKER (paginate.ts) one-for-one.
 _PAGE_SECTION_RE = re.compile(r"^\s*page\s+(\d+)\s*$", re.IGNORECASE)
 
 
-def page_index_from_section_path(section_path: Optional[str]) -> Optional[int]:
+def page_index_from_section_path(section_path: str | None) -> int | None:
     """The 0-based reader page index a chunk anchors to, or ``None`` when the
     chunk's ``section_path`` does not resolve to a page marker.
 

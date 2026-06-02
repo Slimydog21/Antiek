@@ -22,8 +22,8 @@ citations are excluded from the result.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Iterable, Mapping
 
 # Map ConfidenceLevel ("very_high" / "high" / "low" / "very_low") to a
 # numeric weight for the math. The synthesizer's 4-value scale (not
