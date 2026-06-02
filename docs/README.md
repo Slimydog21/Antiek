@@ -9,8 +9,8 @@ individual implementation.
   the prior codebase, and the validation criteria for the eventual
   hardware decision. Read this before making any architectural change.
 
-- **`agent-execution/`** — ANT-H2V hard-to-vary protocol for agent
-  sessions (`HARD_TO_VARY.md`, templates). Read before diagnosing or
+- **`docs/agent-execution/HARD_TO_VARY.md`** — ANT-H2V hard-to-vary protocol
+  for agent sessions (with `TEMPLATES.md`). Read before diagnosing or
   closing Research/cascade bugs. Program index:
   [`docs/htmlspec/antiek-hard-to-vary-execution/index.html`](htmlspec/antiek-hard-to-vary-execution/index.html).
 
