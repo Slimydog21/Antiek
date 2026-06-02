@@ -59,18 +59,8 @@ _REGISTER_CALLEES = frozenset({"register_source_document", "register_book"})
 # the §9.0 per-source content_class decision (P1b). CLOSED list — a new adapter
 # not here that inserts-without-registering fails. Remove an entry when that
 # adapter migrates to register_source_document; an empty set == migration done.
-_MIGRATION_PENDING: frozenset[str] = frozenset(
-    {
-        "acquisition/arxiv/adapter.py",       # hand-stamps content_class; route through the chokepoint in P1b
-        "acquisition/interview/adapter.py",   # §9.0: user_content content_class decision
-        "acquisition/podcasts/adapter.py",    # §9.0: third-party media content_class decision
-        "acquisition/twitter/adapter.py",     # §9.0: user/third-party content_class decision
-        "acquisition/urls/adapter.py",        # §9.0: fetched-web content_class decision
-        "acquisition/voice/adapter.py",       # §9.0: user_content content_class decision
-        "acquisition/youtube/adapter.py",     # §9.0: third-party media content_class decision
-        "acquisition/substack/adapter.py",    # §9.0: third-party newsletter content_class decision (SR-03+)
-    }
-)
+# P1b migration complete (SR-05): every adapter registers after insert.
+_MIGRATION_PENDING: frozenset[str] = frozenset()
 
 
 def _callee_name(node: ast.AST) -> str | None:

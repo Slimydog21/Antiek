@@ -82,6 +82,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
 from .client import ArxivPaper
@@ -246,6 +250,11 @@ def ingest_paper(
                 "pdf_url": paper.pdf_url,
             },
             on_conflict="ignore",
+        )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.ACADEMIC_PREPRINT,
         )
 
         for i, chunk in enumerate(chunks):

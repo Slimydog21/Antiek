@@ -52,6 +52,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 from substrate.schemas.events import (  # noqa: E402
     FetchFallbackEscalatedPayload,
@@ -383,6 +387,12 @@ def ingest_url(
                 "fetched_at": datetime.now(UTC).isoformat(),
             },
             on_conflict=insert_on_conflict,
+        )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.WEB,
+            content_class=PERSONAL_READING_CONTENT_CLASS,
         )
         # Spec §14.2 — record the requested_url→document_id alias so
         # future fetches that resolve to a different final_url for
