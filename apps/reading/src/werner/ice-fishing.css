@@ -1,6 +1,6 @@
 /*
- * Werner ice-fishing chrome (SPR-13). Geometry + motion only — token-lint clean
- * except the brand worm accent documented in the spec.
+ * Werner ice-fishing chrome (SPR-13). Geometry + motion only — colours via
+ * design tokens (var(--emperor) bait worm, var(--werner-bill) hook).
  */
 
 @keyframes werner-bait-bob {
@@ -25,7 +25,7 @@
 }
 
 .werner-ice-bait__worm {
-  fill: #e85d5d; /* brand worm — only allowed hex in ice-fishing module */
+  fill: var(--emperor);
 }
 
 .werner-ice-bait__hook {
