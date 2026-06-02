@@ -1,7 +1,10 @@
 import { useEffect, useRef } from "react";
 
 /**
- * useMouseFollow (SPR-05) — the ~0.5-second-LAGGED cursor pursuit.
+ * useMouseFollow (SPR-05 / WERNER-ICE) — sample-delay lagged hook + live bait read.
+ *
+ * Lag budget (honest): LAG_MS sample delay in this hook; mascot reel closes the
+ * gap in PenguinMascot (REEL_TAU_MS). Idle roam uses ROAM_STROLL_MS / REST_* only.
  *
  * It is a SAMPLE-DELAY pursuit, not an ease-time-constant chase. We record
  * the pointer into a small ring buffer stamped with the (fake-clock-aware)

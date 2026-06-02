@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { wernerIceFishingCursor } from "./iceFishingFlags";
 import { WernerIceBait } from "./WernerIceBait";
+import { WernerFishingLayer } from "./WernerFishingLayer";
 
 /**
  * Shell-level ice-fishing cursor policy (SPR-13): bait overlay + cursor:none on
@@ -19,7 +20,12 @@ export function WernerIceCursorShell() {
     return () => root.classList.remove("werner-ice-cursor-hidden");
   }, [active]);
 
-  return <WernerIceBait disabled={!active} />;
+  return (
+    <>
+      <WernerFishingLayer disabled={!active} />
+      <WernerIceBait disabled={!active} />
+    </>
+  );
 }
 
 export default WernerIceCursorShell;
