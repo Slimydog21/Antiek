@@ -13,6 +13,11 @@ branch as gated-but-public ``restricted_pending_opt_in``. The union is
 
 from __future__ import annotations
 
+from substrate.constants import (
+    GATED_DEFAULT_CONTENT_CLASS,
+    PERSONAL_READING_CONTENT_CLASS,
+)
+
 # Policy tags privileged to bypass the restricted-content gate.
 # Per master-spec §9.0 retrieval-time gating: restricted content (i.e.
 # content_class='restricted_pending_opt_in') is retrievable only on
@@ -33,7 +38,7 @@ PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
 # escrow. It is the exact mirror of constants.GATED_DEFAULT_CONTENT_CLASS (the
 # write side names the same gate state) — do NOT add personal_reading here.
 RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "restricted_pending_opt_in",
+    GATED_DEFAULT_CONTENT_CLASS,
 })
 
 # Content classes that are OWNER-ONLY: the owner reads them in full on a
