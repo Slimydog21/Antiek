@@ -68,7 +68,7 @@ Repro passing **does not** prove live decompose or provider health — only that
 | B3 | Per row: evidence (`test_file:line` or `file:line` + rationale) | No “tested” without file reference |
 | B4 | Mark in-scope vs out-of-scope for **this** sprint | Temptations logged, not silently expanded |
 
-Use the Scope Map template (`TEMPLATES.md`). SPR-10 fills `docs/agent-execution/PLATFORM_EXEC_MATRIX.md`; until then, the handoff Scope Map section is mandatory.
+Use the Scope Map template (`TEMPLATES.md`) **or** cite row IDs from [`PLATFORM_EXEC_MATRIX.md`](PLATFORM_EXEC_MATRIX.md). Handoff-only Scope Maps remain valid when the matrix row set is a subset.
 
 **Pass:** Another agent can answer “what did we prove?” from the table alone.  
 **Fail:** “Platform OK,” “all paths work,” or “engine fine” without rows.
@@ -178,7 +178,9 @@ An auditor marks **FAIL** if any row is true for the session under review.
 | SPR-03–04 | `verify_handoff.ts`, `audit_agent_session.sh` |
 | SPR-05 | `AMS_BRIDGE.md`, `scripts/agent_ams_ref_lint.sh`, `tools/ams-v2/ref-lint.sh` |
 | SPR-06 | [`cascade-case-study.md`](cascade-case-study.md) |
-| SPR-07 | Werner operator-acceptance + H2V handoff gates |
-| SPR-08–10 | `canonical_verify.sh`, CI wiring, `PLATFORM_EXEC_MATRIX.md` |
+| SPR-07 | [`WERNER_EXEC_ADAPTER.md`](WERNER_EXEC_ADAPTER.md), `OPERATOR_VERIFY_CASCADE_DECOMPOSE.md` |
+| SPR-08 | [`scripts/canonical_verify.sh`](../../scripts/canonical_verify.sh) |
+| SPR-09 | `.github/workflows/agent_execution_gates.yml` |
+| SPR-10 | [`PLATFORM_EXEC_MATRIX.md`](PLATFORM_EXEC_MATRIX.md) |
 
 Executors cite this file **before** touching cascade code, AMS surfaces, Werner mascot paths, or closing any investigation that claims verification.

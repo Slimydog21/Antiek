@@ -15,6 +15,8 @@ individual implementation.
   [`agent-execution/AMS_BRIDGE.md`](agent-execution/AMS_BRIDGE.md);
   cascade case study:
   [`agent-execution/cascade-case-study.md`](agent-execution/cascade-case-study.md).
+  platform matrix:
+  [`agent-execution/PLATFORM_EXEC_MATRIX.md`](agent-execution/PLATFORM_EXEC_MATRIX.md).
   Program index:
   [`docs/htmlspec/antiek-hard-to-vary-execution/index.html`](htmlspec/antiek-hard-to-vary-execution/index.html).
 

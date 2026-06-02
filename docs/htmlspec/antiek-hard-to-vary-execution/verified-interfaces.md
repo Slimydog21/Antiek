@@ -36,11 +36,15 @@
 
 | Concern | Path | Verdict | Notes |
 |---------|------|---------|-------|
-| Phase A–E protocol | `docs/agent-execution/HARD_TO_VARY.md` | `NEW-to-build` | On ANT-EXEC branches; absent on `origin/main` until merge — cite `NEW:` in sprint HTML |
-| Handoff paste | `docs/agent-execution/TEMPLATES.md` | `NEW-to-build` | Env Card, Scope Map, Gate results (branch) |
-| Program index | `docs/htmlspec/antiek-hard-to-vary-execution/index.html` | `NEW-to-build` | HTML envelope; may be added in parallel waves |
-| AMS bridge | `NEW: docs/agent-execution/AMS_BRIDGE.md` | `NEW-to-build` | SPR-05 — ref-lint ↔ Phase E |
-| Cascade case study | `docs/agent-execution/cascade-case-study.md` | `NEW-to-build` | SPR-06 narrative (may exist on branch before main) |
+| Phase A–E protocol | `docs/agent-execution/HARD_TO_VARY.md` | `NEW-to-build` | Merge tip; flip to VERIFIED after `origin/main` contains path |
+| Handoff paste | `docs/agent-execution/TEMPLATES.md` | `NEW-to-build` | Env Card, Scope Map, Gate results |
+| Program index | `docs/htmlspec/antiek-hard-to-vary-execution/index.html` | `NEW-to-build` | Sprint roster + verify block |
+| Theater taxonomy | `docs/agent-execution/THEATER_TAXONOMY.md` | `NEW-to-build` | SPR-02 T-01… |
+| AMS bridge | `docs/agent-execution/AMS_BRIDGE.md` | `NEW-to-build` | SPR-05 — ref-lint ↔ Phase E |
+| Cascade case study | `docs/agent-execution/cascade-case-study.md` | `NEW-to-build` | SPR-06 narrative |
+| Werner adapter | `docs/agent-execution/WERNER_EXEC_ADAPTER.md` | `NEW-to-build` | SPR-07 — product htmlspec pointer |
+| Canonical verify | `scripts/canonical_verify.sh` | `NEW-to-build` | SPR-08 profile/cascade/handoff/agent-gates |
+| Platform matrix | `docs/agent-execution/PLATFORM_EXEC_MATRIX.md` | `NEW-to-build` | SPR-10 closure rows P-01…P-10 |
 
 ---
 
@@ -95,7 +99,16 @@ Before `### Status: done` on a spec-touching sprint:
 2. `npx tsx tools/agent/verify_handoff.ts <handoff.md>` → `HANDOFF_OK`
 3. `bash scripts/audit_agent_session.sh <handoff.md>` → `AUDIT_OK`
 4. `### Not proved` lists what ref-lint + pytest did **not** cover
+5. `./scripts/canonical_verify.sh agent-gates` → `CANONICAL_VERIFY_OK: agent-gates` (SPR-08/09)
 
 ---
 
-_Seeded by ANT-EXEC-H2V SPR-05 (AMS bridge) · 2026-06-02._
+## 6. CI (SPR-09)
+
+| Concern | Path | Verdict | Notes |
+|---------|------|---------|-------|
+| Agent execution workflow | `.github/workflows/agent_execution_gates.yml` | `NEW-to-build` | path-filtered; cascade + handoff fixtures |
+
+---
+
+_Updated ANT-EXEC-H2V SPR-05–10 · 2026-06-02._
