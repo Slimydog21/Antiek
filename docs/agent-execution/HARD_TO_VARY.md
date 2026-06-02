@@ -174,7 +174,8 @@ An auditor marks **FAIL** if any row is true for the session under review.
 | SPR-01 | This file + `TEMPLATES.md` |
 | SPR-02 | Theater taxonomy + repro scripts |
 | SPR-03–04 | `verify_handoff.ts`, `audit_agent_session.sh` |
-| SPR-05–06 | AMS bridge, `CASE_STUDY_CASCADE.md` |
+| SPR-05 | `AMS_BRIDGE.md`, `scripts/agent_ams_ref_lint.sh`, `tools/ams-v2/ref-lint.sh` |
+| SPR-06 | `cascade-case-study.md` |
 | SPR-07 | Werner operator-acceptance + H2V handoff gates |
 | SPR-08–10 | `canonical_verify.sh`, CI wiring, `PLATFORM_EXEC_MATRIX.md` |
 
