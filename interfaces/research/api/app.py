@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import (
     Body,
@@ -1246,17 +1246,17 @@ def create_app(
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
                 try:
-                    from substrate.auth import verify_session_cookie
+                    from substrate.auth import SessionClaims, verify_session_cookie
                     claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
                     claims = None
                 if claims is not None:
-                    cookie_email = claims.email.strip().lower()
+                    cookie_email = cast(SessionClaims, claims).email.strip().lower()
                     if not operator_emails or cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
-                            email=claims.email,
+                            email=cast(SessionClaims, claims).email,
                         )
                         return await call_next(request)
 
