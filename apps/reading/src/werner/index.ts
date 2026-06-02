@@ -8,7 +8,7 @@
  *
  *   wernerState  — the pure state machine (idle/following/waddling/emoting/frozen)
  *   WernerStage  — the imperative command controller (the SPR-10 seam)
- *   useMouseFollow — the ~5s-lagged cursor pursuit (read-only ref seam)
+ *   useMouseFollow — the ~0.5s-lagged cursor pursuit (read-only ref seam)
  *   emotes       — the emote vocabulary mapped onto existing animated marks
  *   choreography — the PRODUCT_ACTIVATE → waddle-to-control listener (SPR-10),
  *                  plus the opt-in `data-werner-target` click path (SPR-10 M4)
