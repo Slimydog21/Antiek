@@ -24,8 +24,9 @@
 
 ## Run complete (2026-06-02)
 
-- **Commit:** `4c082fa` on `main`
-- **Sharpen round 2:** verifier-critic → staged untracked spec/docs/tests → re-gates green
+- **Branch:** `prcrouch/ant-h2v` @ `3e95bfb` (rebased on `origin/main` @ `2b59fed`)
+- **PR:** https://github.com/Slimydog21/Antiek/pull/52 — operator merge
+- **Sharpen round 2:** verifier-critic **MERGE** (0 BLOCKING)
 - **Monitor:** Tasks pane (Ctrl+T) for subagent tree on future runs
 
 ## Canonical verify (operator)
