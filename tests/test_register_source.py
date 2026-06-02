@@ -17,7 +17,10 @@ import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
+from substrate.constants import (
+    GATED_DEFAULT_CONTENT_CLASS,
+    PERSONAL_READING_CONTENT_CLASS,
+)
 from substrate.graph.ops import insert_document
 from substrate.graph.schema import init_database
 from substrate.ip_holders import list_all
@@ -188,6 +191,24 @@ def test_idempotent_reregister_preserves_ip_holder(con):
     ).fetchone()
     assert row[0] == first
     assert row[1] == "restricted_pending_opt_in"
+
+
+def test_personal_reading_content_class_accepted(con):
+    """personal_reading must be in VALID_CONTENT_CLASSES so P1b adapters and
+    re-register paths can stamp the Personal-Reading Lane without a typo raise."""
+    _insert(con, "doc-pr", document_type="web_article")
+    cls = register_source_document(
+        con,
+        document_id="doc-pr",
+        source_kind=SourceKind.WEB,
+        content_class=PERSONAL_READING_CONTENT_CLASS,
+        run_self_check=True,
+    )
+    assert cls == PERSONAL_READING_CONTENT_CLASS
+    row = con.execute(
+        "SELECT content_class FROM documents WHERE document_id='doc-pr'"
+    ).fetchone()
+    assert row[0] == PERSONAL_READING_CONTENT_CLASS
 
 
 def test_self_check_raises_on_t3_license_drift(con):

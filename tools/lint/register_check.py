@@ -68,6 +68,7 @@ _MIGRATION_PENDING: frozenset[str] = frozenset(
         "acquisition/urls/adapter.py",        # §9.0: fetched-web content_class decision
         "acquisition/voice/adapter.py",       # §9.0: user_content content_class decision
         "acquisition/youtube/adapter.py",     # §9.0: third-party media content_class decision
+        "acquisition/substack/adapter.py",    # §9.0: third-party newsletter content_class decision (SR-03+)
     }
 )
 
