@@ -472,6 +472,39 @@ non-arXiv fetchers, so it is deferred unless egress genuinely spreads.
 
 ---
 
+## D17 — Personal-Reading Lane live-ingest cluster (the prod-only network steps)
+
+**Status:** ⚠️ Partial. The lane shipped + is live on prod (PR #43 merge
+`9aeb2c9`, deployed 2026-06-01); the connectors, classification gate, monitoring,
+BYOK store, and the standing `corpus_audit` backstops all run. What's deferred is
+the **one-time real-network ingest** behind each connector — every live-fetch
+step is `@pytest.mark.skipif`/prod-only, with offline behaviour fully proven
+against fixtures (`FakeSourceClient`, `httpx.MockTransport`).
+**Unlock criterion:** an operator ingest window (a manual, supervised run with
+real network + the relevant credential). No code change required — these are
+operator-invoked ingest runs, not new engineering.
+**Spec reference:** `specs/antiek-personal-lane/` SPR-04/05/06/08; the go-live
+procedure is `infrastructure/runbooks/personal-lane.md` (audit-gated).
+**Blocks-what:** nothing in the substrate (the lane is dormant-correct and
+auditable empty). It blocks only the *populated-corpus* state — until an ingest
+window runs, the personal lane holds zero real third-party documents on prod.
+**Action when unlocked (per connector, all operator-invoked):**
+- **SPR-04 Bernays** — live Project-Gutenberg #61364 + archive.org Propaganda
+  fetch (public-domain titles only; per-title renewal check is operator gate
+  **G12**, not this deferral).
+- **SPR-05 Paul Graham essays** — `python -m acquisition.urls.paulgraham`
+  against the live `paulgraham.com/articles.html` (robots-honoring, 3.0s throttle).
+- **SPR-06 Substack** — supply the real (gitignored) subscriptions manifest and
+  run `ingest_subscriptions` over the operator's subscribed `/feed`s.
+- **SPR-08 X BYOK** — register the operator's own X API key in `runtime/byok`
+  and run the live smoke (`ANTIEK_X_BYOK_LIVE_KEY`); X content stays
+  `personal_reading`/`social_thread`, excluded from training per operator gate
+  **G11**.
+After any ingest, run the lane audit (`substrate/corpus_audit.py`) to confirm
+zero third-party docs on a servable class.
+
+---
+
 ## Cross-reference: unlock criterion → deferrals it gates
 
 | Unlock criterion | Deferrals that close |
@@ -486,6 +519,7 @@ non-arXiv fetchers, so it is deferred unless egress genuinely spreads.
 | Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
 | Read-surface integration sprints (geometry pass / `source.read` emit / marginalia persistence / review-state resolver; each its own `docs/decisions/spr-0{5,6,7,8}-*.md`) | D13 (Physics of Reading live surface integrations) |
 | Operator ratifies the Physics of Reading canon (`physics-of-reading.md` draft→ratified) | D13's CI-guard advisory→blocking flip |
+| Operator ingest window (real network + per-connector credential) | D17 (Personal-Reading Lane live-ingest cluster) |
 
 ---
 

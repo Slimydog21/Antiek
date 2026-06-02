@@ -525,6 +525,37 @@ new interaction primitives, all behind the existing gates.
   `deploy.yml` frontend play builds from the LOCAL working tree (so it inherits
   uncommitted parallel-session WIP); the frontend ships via Pages-from-`main`.
 
+### Personal-Reading Lane — shipped to prod (2026-06-01)
+
+DOCUMENTATION ONLY — this note changes NO money gate. The 10-sprint
+Personal-Reading Lane (the §9.0 fix that adds a fourth rights state,
+`personal_reading`: owner-readable, never served / attributed / trained) merged
+to `main` as **PR #43 (merge `9aeb2c9`, `EVENT_SCHEMA_VERSION` 24→27)** and was
+**deployed live** on 2026-06-01 (`ansible-playbook backup.yml` → R2, then
+`deploy.yml`). Verified live at `https://api.antiek.ai/health`:
+`schema_version: 27` + `build_sha: 9aeb2c9` (= `origin/main` tip).
+
+- **Three operator gate-actions this lane added** are recorded above:
+  **G10** (Stripe Press §9.10 opt-in), **G11** (X no-training standing duty),
+  **G12** (Bernays per-title renewal check). All operator-only; the lane code is
+  done.
+- **The live-ingest steps are deferred** to an operator ingest window —
+  `engineering_deferrals.md` **D17** (SPR-04 Gutenberg/archive.org · SPR-05 live
+  PG · SPR-06 real Substack subscriptions · SPR-08 X BYOK live smoke). The lane
+  is dormant-correct + auditable-empty on prod until then; go-live procedure is
+  `infrastructure/runbooks/personal-lane.md` (audit-gated).
+- **Standing mechanical backstops** (no operator action): the
+  `corpus_audit.py` lane checks (`third_party_servable`,
+  `personal_reading_nonattributable`, `personal_reading_not_in_training`) + the
+  two-sided serve gate (write-side deny-by-default `graph/ops.py`, read-side
+  exclusion `graph/search.py`).
+- The `test_magic_link_rejects_tampered_token` flake noted above is the same
+  pre-existing order-flake this run also hit on CI — not introduced by the lane
+  (0-line auth diff); belongs to whoever owns auth. (PRcrouch also re-ran a
+  pre-existing `test_arxiv_audit` order-flake that fails on `main` itself; both
+  point at the deferred suite-parallelization CI-infra task in
+  `docs/decisions/ci-pytest-timeout.md`.)
+
 ### Reference docs for cross-session continuity
 
 - `docs/operator_gate_actions.md` — this file. Update on every gate
