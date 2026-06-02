@@ -262,19 +262,21 @@ class ChunkResponse(BaseModel):
 
     ``servable`` carries the §9.0 retrieval-gate verdict to the surface
     so the reader's "open this source" affordance and the data layer
-    cannot disagree. The gate applied here is the SAME one
-    ``substrate/graph/search.py`` applies to chunk retrieval on a
-    non-privileged path: content in ``RESTRICTED_CONTENT_CLASSES``
-    (restricted-pending-opt-in) or under a takedown is withheld; a NULL /
-    legacy research chunk passes (grandfathered) exactly as it does in
-    chunk search — this is the operator reading their own research
-    chunks, not the public "Spotify for books" full-text serve path
-    (which is the stricter allowlist in ``substrate/books/serve.py``).
-    When ``servable`` is False, ``text`` is withheld (empty string) — a
-    restricted source's body never leaves this endpoint, even on a
-    direct API call — but the named-source label (title) still resolves
-    so the reader sees an honest "not available to open" state rather
-    than a blank citation."""
+    cannot disagree. The gate applied here matches
+    ``substrate/graph/retrieval_gate.is_chunk_body_withheld`` — the
+    same non-privileged chunk gate ``search()`` and VSS use via
+    ``non_privileged_chunk_sql_clause``: ``restricted_pending_opt_in``,
+    ``personal_reading``, or a takedown withholds the body; a NULL /
+    legacy research chunk passes (grandfathered) exactly as in chunk
+    search — this is the operator reading their own research chunks,
+    not the public "Spotify for books" full-text serve path (the
+    stricter allowlist in ``substrate/books/serve.py``). When
+    ``servable`` is False, ``text`` is withheld (empty string) — the
+    body never leaves this endpoint, even on a direct API call — but
+    the named-source label (title) still resolves so the reader sees an
+    honest "not available to open" state rather than a blank citation.
+    ``servability`` distinguishes ``restricted`` vs ``personal_only``
+    vs ``taken_down`` for the surface."""
 
     chunk_id: str
     text: str
@@ -2144,24 +2146,24 @@ def create_app(
         modal + SPR-04's named-source render to surface the chunk text +
         source document title for any cited chunk_id.
 
-        §9.0 retrieval gate: a chunk whose source is RESTRICTED
-        (content_class in ``RESTRICTED_CONTENT_CLASSES``) or under a
-        takedown has its body WITHHELD here, at the query layer — the
-        same gate ``substrate/graph/search.py`` applies to chunk
-        retrieval — so a frontend that calls this directly still cannot
-        pull body text out of a restricted source. A NULL / legacy
-        research chunk passes (grandfathered), matching chunk search; the
-        stricter book full-text allowlist lives in
-        ``substrate/books/serve.py`` and governs the public serve path,
-        not this reading-surface preview. The named-source label (title)
-        still resolves so the reader sees an honest "not available to
-        open" state, never a blank citation. The verdict rides as
-        ``servable`` / ``servability`` so the surface need not re-derive
-        it."""
+        §9.0 retrieval gate: ``is_chunk_body_withheld`` from
+        ``substrate/graph/retrieval_gate`` — the same non-privileged
+        chunk gate as ``search()`` / VSS — withholds bodies for
+        ``restricted_pending_opt_in``, ``personal_reading``, or a
+        takedown so a frontend that calls this directly still cannot pull
+        chunk text out of a withheld source. A NULL / legacy research
+        chunk passes (grandfathered), matching chunk search; the stricter
+        book full-text allowlist lives in ``substrate/books/serve.py``
+        and governs the public serve path, not this reading-surface
+        preview. The named-source label (title) still resolves so the
+        reader sees an honest "not available to open" state, never a
+        blank citation. The verdict rides as ``servable`` /
+        ``servability`` (``restricted`` / ``personal_only`` /
+        ``taken_down``) so the surface need not re-derive it."""
         import duckdb as _duckdb
 
         from substrate.graph import default_db_path
-        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
+        from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
         db_path = default_db_path()
         try:
@@ -2203,14 +2205,10 @@ def create_app(
 
         content_class = row[7]
         taken_down = bool(row[8])
-        # Takedown wins over everything; otherwise withhold only the
-        # named restricted classes (NULL/legacy passes — same as search).
-        if taken_down:
-            servable, label = False, "taken_down"
-        elif content_class in RESTRICTED_CONTENT_CLASSES:
-            servable, label = False, "restricted"
-        else:
-            servable, label = True, None
+        withheld, label = is_chunk_body_withheld(
+            content_class, taken_down=taken_down,
+        )
+        servable = not withheld
         return ChunkResponse(
             chunk_id=row[0],
             # Withhold the body for a non-servable source. The whole point

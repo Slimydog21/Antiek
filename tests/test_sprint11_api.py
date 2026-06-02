@@ -208,6 +208,23 @@ def test_get_chunk_servable_source_returns_body(temp_substrate):
     assert body["document_title"] == "Title of doc-public"
 
 
+def test_get_chunk_personal_reading_withholds_body(temp_substrate):
+    """RG-03: personal_reading is owner-only — the HTTP chunk path must
+    withhold the body on the same non-privileged gate as search/VSS."""
+    chunk_id = _seed_chunk(
+        temp_substrate, document_id="doc-personal",
+        content_class="personal_reading",
+        text="SECRET owner-only essay body that must not be served.",
+    )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is False
+    assert body["servability"] == "personal_only"
+    assert body["text"] == ""
+    assert "SECRET" not in body["text"]
+    assert body["document_title"] == "Title of doc-personal"
+
+
 def test_get_chunk_restricted_source_not_opened(temp_substrate):
     """SPR-04 gate (verification): a restricted source's body is WITHHELD
     at the endpoint. The title still resolves (honest "not available to
