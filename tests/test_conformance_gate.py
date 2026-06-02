@@ -14,9 +14,15 @@ fork or a renumber is now a loud CI failure instead of a silent drift.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
+
+_REPO = Path(__file__).resolve().parents[1]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
 
 from substrate.contracts import (
     CODEGEN_CONTRACTS,
@@ -25,6 +31,7 @@ from substrate.contracts import (
     verify_conformance,
 )
 from tools.codegen import check_conformance
+import tools.codegen.chunk_provenance as chunk_provenance
 
 # ── M2 positive — the gate is clean on the current trunk ──────────────────────
 
@@ -56,6 +63,22 @@ def test_sprint_lock_resolves_every_downstream_citation() -> None:
     """Acceptance: the frozen DRW sprint-lock resolves all downstream Read/
     Write/Speak citations (seam #6 risk surface clean)."""
     assert check_conformance.sprint_lock_errors() == []
+
+
+def test_chunk_provenance_policy_aligned_on_trunk() -> None:
+    """ASR SR-09 P5: personal_reading chunks/documents stay non-citable and
+    aligned with retrieval / attribution / public-graph vocabularies."""
+    assert check_conformance.chunk_provenance_errors() == []
+
+
+def test_personal_reading_chunk_and_document_non_citable() -> None:
+    """Explicit API pins: owner lane is never a public synthesis citation."""
+    assert chunk_provenance.PERSONAL_READING_CONTENT_CLASS == "personal_reading"
+    assert "personal_reading" in chunk_provenance.NON_CITABLE_CONTENT_CLASSES
+    assert chunk_provenance.is_chunk_citable("personal_reading") is False
+    assert chunk_provenance.is_document_citable("personal_reading") is False
+    assert chunk_provenance.is_chunk_citable("public_domain") is True
+    assert chunk_provenance.is_chunk_citable(None) is False
 
 
 def test_real_impls_are_actually_checked_not_just_stubs() -> None:
@@ -154,6 +177,36 @@ def test_injected_sprint_renumber_fails_the_gate(
 def test_revert_restores_a_clean_sprint_lock() -> None:
     """The renumber injection was scoped; the lock resolves cleanly again."""
     assert check_conformance.sprint_lock_errors() == []
+
+
+# ── M2 negative #4 — injected non-citable policy drift fails the gate ─────────
+
+
+def test_injected_personal_reading_citable_fails_the_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If personal_reading were removed from NON_CITABLE_CONTENT_CLASSES, the
+    gate must fail — the shortcut that would let owner-only reading leak into
+    public synthesis citations."""
+    monkeypatch.setattr(
+        chunk_provenance,
+        "NON_CITABLE_CONTENT_CLASSES",
+        frozenset(),
+    )
+
+    errors = check_conformance.chunk_provenance_errors()
+    assert errors, "empty NON_CITABLE must produce provenance errors"
+    joined = "\n".join(errors)
+    assert "personal_reading" in joined
+    assert "NON_CITABLE_CONTENT_CLASSES" in joined
+
+    assert check_conformance.run_gate() == 1
+
+
+def test_revert_restores_clean_chunk_provenance() -> None:
+    """Provenance injection was scoped; policy aligns again."""
+    assert check_conformance.chunk_provenance_errors() == []
+    assert chunk_provenance.is_chunk_citable("personal_reading") is False
 
 
 # ── M2 negative #3 — an out-of-range citation is a loud KeyError ──────────────
