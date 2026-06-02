@@ -36,11 +36,11 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 try:
-    from ...runtime.db_lock import connect_read
+    from ...runtime.db_lock import connect_read  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ class SentenceTransformerEmbedding:
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         try:
-            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+            from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "sentence-transformers not installed. Run "
@@ -134,7 +134,7 @@ def search(
     document_ids: Sequence[str] | None = None,
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
-) -> dict:
+) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
 
@@ -246,7 +246,7 @@ def search(
 
     rows = con.execute(sql, params).fetchall()
 
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     for (
         chunk_id, section, text, tokens, doc_id, chunk_index,
         title, tier, dtype, sim,
@@ -279,7 +279,9 @@ def search(
     }
 
 
-def _fetch_edges_and_nodes(con: Any, chunk_id: str) -> tuple[list[dict], list[dict]]:
+def _fetch_edges_and_nodes(
+    con: Any, chunk_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Helper for ``with_edges=True``: returns the edges sourced from
     a chunk and the nodes those edges connect."""
     edge_rows = con.execute(
@@ -310,7 +312,7 @@ def _fetch_edges_and_nodes(con: Any, chunk_id: str) -> tuple[list[dict], list[di
     ]
 
     node_ids = {e[1] for e in edge_rows} | {e[2] for e in edge_rows}
-    nodes: list[dict] = []
+    nodes: list[dict[str, Any]] = []
     if node_ids:
         placeholders = ",".join(["?"] * len(node_ids))
         node_rows = con.execute(
@@ -329,7 +331,9 @@ def _fetch_edges_and_nodes(con: Any, chunk_id: str) -> tuple[list[dict], list[di
     return edges, nodes
 
 
-def search_nodes_by_label(con: Any, query: str, limit: int = 10) -> list[dict]:
+def search_nodes_by_label(
+    con: Any, query: str, limit: int = 10,
+) -> list[dict[str, Any]]:
     """ILIKE search over ``nodes.canonical_label``. Used as a companion
     to vector search for label-direct hits — "PsiQuantum" as a query
     should find the PsiQuantum node even if no chunk embedding is

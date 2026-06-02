@@ -28,11 +28,11 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from runtime.db_lock import connect_read, connect_write
-from substrate.graph.ops import insert_chunk, insert_document
-from substrate.graph.schema import init_database
-from substrate.graph.retrieval_substrate import make_substrate
-from substrate.graph.search import search
+from runtime.db_lock import connect_read, connect_write  # noqa: E402
+from substrate.graph.ops import insert_chunk, insert_document  # noqa: E402
+from substrate.graph.retrieval_substrate import make_substrate  # noqa: E402
+from substrate.graph.schema import init_database  # noqa: E402
+from substrate.graph.search import search  # noqa: E402
 
 DOC_PUBLIC = "doc-pd"
 DOC_PERSONAL = "doc-pr"

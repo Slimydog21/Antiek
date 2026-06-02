@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 from substrate.graph.retrieval_gate import (
-    PERSONAL_ONLY_CONTENT_CLASSES,
     _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
+    PERSONAL_ONLY_CONTENT_CLASSES,
 )
 
 

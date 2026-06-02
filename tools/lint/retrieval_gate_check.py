@@ -103,9 +103,11 @@ def _docstring_lines(tree: ast.Module) -> set[int]:
     if tree.body:
         _mark_docstring(tree.body[0])
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if node.body:
-                _mark_docstring(node.body[0])
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.body
+        ):
+            _mark_docstring(node.body[0])
     return lines
 
 
@@ -173,27 +175,39 @@ def _scan_file(rel: str, py: Path) -> list[str]:
 
     for node in ast.walk(tree):
         candidate: str | None = None
+        sql_site: ast.Constant | ast.BinOp | None = None
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             candidate = node.value
+            sql_site = node
         elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
             candidate = _concat_constant_str(node)
-        if candidate is not None and _is_restricted_only_sql(candidate):
+            if candidate is not None:
+                sql_site = node
+        if (
+            candidate is not None
+            and sql_site is not None
+            and _is_restricted_only_sql(candidate)
+        ):
             _report(
-                node.lineno,
+                sql_site.lineno,
                 "RESTRICTED-only chunk-gate SQL (NOT IN restricted_pending_opt_in "
                 "without personal_reading) — use "
                 "retrieval_gate.non_privileged_chunk_sql_clause",
             )
 
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in {"list", "tuple", "sorted"} and node.args:
-                if _name_is_restricted_classes(node.args[0]):
-                    _report(
-                        node.lineno,
-                        f"RESTRICTED-only chunk gate via {node.func.id}"
-                        "(RESTRICTED_CONTENT_CLASSES) — use "
-                        "non_privileged_chunk_sql_clause",
-                    )
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in {"list", "tuple", "sorted"}
+            and node.args
+            and _name_is_restricted_classes(node.args[0])
+        ):
+            _report(
+                node.lineno,
+                f"RESTRICTED-only chunk gate via {node.func.id}"
+                "(RESTRICTED_CONTENT_CLASSES) — use "
+                "non_privileged_chunk_sql_clause",
+            )
 
         if isinstance(node, ast.Compare) and len(node.ops) == 1:
             if not isinstance(node.ops[0], ast.In):
@@ -203,16 +217,12 @@ def _scan_file(rel: str, py: Path) -> list[str]:
             ):
                 continue
             left = node.left
-            if isinstance(left, ast.Name) and left.id == "content_class":
-                _report(
-                    node.lineno,
-                    "RESTRICTED-only HTTP withhold (content_class in "
-                    "RESTRICTED_CONTENT_CLASSES) — use "
-                    "is_chunk_body_withheld",
+            if (
+                (isinstance(left, ast.Name) and left.id == "content_class")
+                or (
+                    isinstance(left, ast.Attribute)
+                    and left.attr == "content_class"
                 )
-            elif (
-                isinstance(left, ast.Attribute)
-                and left.attr == "content_class"
             ):
                 _report(
                     node.lineno,
