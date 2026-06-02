@@ -27,8 +27,8 @@ substrate.books cycle (``substrate.books.ingest`` imports this module).
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
 from runtime.db_lock import LockedConnection
 from substrate import ip_holders
@@ -39,7 +39,7 @@ from substrate.constants import (
 from substrate.graph.ops import update_document_gate_columns
 
 
-class SourceKind(str, Enum):
+class SourceKind(StrEnum):
     """What kind of source a document came from.
 
     Drives escrow eligibility: a ``user_content`` document has no external
@@ -106,9 +106,9 @@ def register_source_document(
     *,
     document_id: str,
     source_kind: SourceKind,
-    content_class: Optional[str] = None,
-    ip_holder_id: Optional[str] = None,
-    rights_holder_name: Optional[str] = None,
+    content_class: str | None = None,
+    ip_holder_id: str | None = None,
+    rights_holder_name: str | None = None,
     run_self_check: bool = True,
 ) -> str:
     """Register an already-inserted document's rights, deny-by-default. The

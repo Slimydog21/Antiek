@@ -61,8 +61,8 @@ from substrate.schemas.events import (  # noqa: E402
     FetchFallbackEscalatedPayload,
 )
 
-from .client import FetchedHtml, fetch
-from .extract import MarkdownDoc, html_to_markdown
+from .client import FetchedHtml, fetch  # noqa: E402
+from .extract import MarkdownDoc, html_to_markdown  # noqa: E402
 
 DEFAULT_URL_SOURCE_TIER = 4
 _NODE_LABEL_MAX = 160

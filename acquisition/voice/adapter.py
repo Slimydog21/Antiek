@@ -51,7 +51,7 @@ from substrate.rights.register import (  # noqa: E402
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import Transcriber, Transcript, transcribe_audio
+from .client import Transcriber, Transcript, transcribe_audio  # noqa: E402
 
 DEFAULT_VOICE_SOURCE_TIER = 2  # operator-originated → tier 2 (primary)
 _NODE_LABEL_MAX = 160

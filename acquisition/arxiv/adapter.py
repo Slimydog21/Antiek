@@ -88,8 +88,8 @@ from substrate.rights.register import (  # noqa: E402
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import ArxivPaper
-from .licenses import license_basis_string, resolve_license
+from .client import ArxivPaper  # noqa: E402
+from .licenses import license_basis_string, resolve_license  # noqa: E402
 
 # Tier policy: arXiv preprints are academic but unrefereed → tier 3.
 # Tier 1 = peer-reviewed primary; Tier 5 = uncited social. The

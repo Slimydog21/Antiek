@@ -277,7 +277,7 @@ def ingest_twitter_thread(
             source_kind=SourceKind.USER_CONTENT,
             content_class=content_class,
         )
-        for i, (chunk, tw) in enumerate(zip(chunks, thread.tweets)):
+        for i, (chunk, tw) in enumerate(zip(chunks, thread.tweets, strict=True)):
             chunk_id = insert_chunk(
                 con,
                 document_id=document_id,

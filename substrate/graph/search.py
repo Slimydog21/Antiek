@@ -115,10 +115,6 @@ def cosine_similarity_sql(
 # Canonical gate constants + SQL helper live in retrieval_gate.py; re-exported
 # here so existing imports from substrate.graph.search keep working.
 from substrate.graph.retrieval_gate import (  # noqa: E402
-    PERSONAL_ONLY_CONTENT_CLASSES,
-    PRIVILEGED_POLICY_TAGS,
-    RESTRICTED_CONTENT_CLASSES,
-    _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
     non_privileged_chunk_sql_clause,
 )
 

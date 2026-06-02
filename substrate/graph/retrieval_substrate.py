@@ -156,10 +156,10 @@ class BruteForceSubstrate:
         )
 
     def close(self) -> None:
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -472,10 +472,10 @@ class DuckDbVssSubstrate:
         }
 
     def close(self) -> None:
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 def _exists(path: str) -> bool:

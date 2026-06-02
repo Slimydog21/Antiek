@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     Body,
@@ -50,7 +50,8 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from datetime import UTC
+import contextlib  # noqa: E402
+from datetime import UTC  # noqa: E402
 
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -823,8 +824,8 @@ def _rubric_score_from_trajectory(rows: list[dict]) -> RubricScore | None:
         notes = payload.get("notes")
         notes_str = notes if isinstance(notes, str) else ""
 
-        def _sub(key: str) -> float | None:
-            m = re.search(rf"\b{re.escape(key)}=([01](?:\.\d+)?)", notes_str)
+        def _sub(key: str, _notes: str = notes_str) -> float | None:
+            m = re.search(rf"\b{re.escape(key)}=([01](?:\.\d+)?)", _notes)
             if not m:
                 return None
             try:
@@ -1648,7 +1649,7 @@ def create_app(
     # ── GET trajectory ──────────────────────────────────────────
 
     @app.post("/ai/undo", response_model=EmittedEventResponse)
-    async def post_ai_undo(req: AIUndoRequest = Body(...)) -> EmittedEventResponse:
+    async def post_ai_undo(req: AIUndoRequest = Body(...)) -> EmittedEventResponse:  # noqa: B008
         """Undo a previously-applied AI sidecar action (§5.5 Wedge 4).
 
         Looks up the ``ai.action.applied`` event in the trajectory
@@ -1808,7 +1809,7 @@ def create_app(
         # Non-fatal if it fails; the start event already encodes the
         # lineage in its own payload.
         if req.parent_investigation_id:
-            try:
+            try:  # noqa: SIM105
                 emit_typed(
                     investigation_id,
                     InvestigationSpawnedFromPayload(
@@ -2032,7 +2033,7 @@ def create_app(
             for r in rows:
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
-                if at in (start_action, spawned_action):
+                if at in (start_action, spawned_action):  # noqa: SIM102
                     if policy_is_daemon(r.get("policy_id")):
                         spawned_by_daemon = True
                 if at in (start_action, spawned_action, completed_action,
@@ -2079,10 +2080,8 @@ def create_app(
                     terminal_status = "stopped"
                     completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
-                    except (TypeError, ValueError):
-                        pass
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -2164,8 +2163,8 @@ def create_app(
 
         from substrate.graph import default_db_path
         from substrate.graph.retrieval_gate import (
-            PERSONAL_ONLY_CONTENT_CLASSES,
             _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
+            PERSONAL_ONLY_CONTENT_CLASSES,
         )
 
         db_path = default_db_path()
@@ -2813,7 +2812,8 @@ def create_app(
                 filename=f"{deliverable_id}.substack.md",
             )
         if format == "html":
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s):
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             parts = [
                 "<!doctype html>",
                 f"<html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>",
@@ -2855,7 +2855,8 @@ def create_app(
                 ) from e
             import base64
             import io
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s):
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             # Researcher's-notebook print stylesheet per master-spec §5.
             # Serif body font; generous line-height; no SaaS-dashboard
             # primary blues; @page margins set for A4 with title block.
@@ -2915,7 +2916,8 @@ def create_app(
                 ) from e
             import base64
             import tempfile
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s):
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             book = epub.EpubBook()
             book.set_identifier(deliverable_id)
             book.set_title(title)
@@ -2956,10 +2958,8 @@ def create_app(
                     epub_bytes = fh.read()
             finally:
                 import os
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
             return ExportFormat(
                 format="epub",
                 content=base64.b64encode(epub_bytes).decode("ascii"),
@@ -3136,7 +3136,7 @@ def create_app(
                 synthesis_id, emit_event=emit_event,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc))
+            raise HTTPException(status_code=404, detail=str(exc))  # noqa: B904
 
         def _to_resp(algo, result) -> AttributionAlgorithmShares:
             return AttributionAlgorithmShares(
@@ -3339,10 +3339,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="interview not found")
         guide = {}
         if row[7]:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 guide = _json.loads(row[7])
-            except (ValueError, TypeError):
-                pass
         turns = []
         if row[4]:
             try:
@@ -3383,7 +3381,7 @@ def create_app(
                     text=req.text,
                 )
             except ValueError as exc:
-                raise HTTPException(status_code=404, detail=str(exc))
+                raise HTTPException(status_code=404, detail=str(exc))  # noqa: B904
             (status,) = con.execute(
                 "SELECT status FROM interviews WHERE interview_id = ?",
                 [interview_id],
@@ -3654,7 +3652,7 @@ def create_app(
 
         # Emit the escalation event into the SOURCE investigation so
         # subsequent /watch-for-later calls correctly hide this question.
-        try:
+        try:  # noqa: SIM105
             emit_typed(
                 found_source_inv,
                 QuestionEscalatedToResearchPayload(
@@ -3723,7 +3721,7 @@ def create_app(
         status_code=201,
     )
     async def create_publisher(
-        req: PublisherCreateRequest = Body(...),
+        req: PublisherCreateRequest = Body(...),  # noqa: B008
     ) -> PublisherResponse:
         """Create a pre-onboarded IP holder account. Per §9.10:
         notification email + claim flow are operator-driven steps
@@ -3890,7 +3888,7 @@ def create_app(
         status_code=201,
     )
     async def post_notebook(
-        req: NotebookCreateRequest = Body(...),
+        req: NotebookCreateRequest = Body(...),  # noqa: B008
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
@@ -3956,7 +3954,7 @@ def create_app(
     )
     async def append_notebook_block(
         notebook_id: str,
-        req: NotebookAppendBlockRequest = Body(...),
+        req: NotebookAppendBlockRequest = Body(...),  # noqa: B008
     ) -> NotebookResponse:
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
@@ -3985,7 +3983,7 @@ def create_app(
     async def patch_notebook_block(
         notebook_id: str,
         block_id: str,
-        req: NotebookUpdateBlockRequest = Body(...),
+        req: NotebookUpdateBlockRequest = Body(...),  # noqa: B008
     ) -> NotebookResponse:
         """Update one block in place. content + ref_id are optional;
         omitting both is a no-op. block_type is immutable — the UI
@@ -4051,7 +4049,7 @@ def create_app(
     )
     async def reorder_notebook_blocks(
         notebook_id: str,
-        req: NotebookReorderBlocksRequest = Body(...),
+        req: NotebookReorderBlocksRequest = Body(...),  # noqa: B008
     ) -> NotebookResponse:
         """Re-order a notebook's blocks. The request body must carry
         a complete permutation of the current block IDs; partial
@@ -4090,7 +4088,7 @@ def create_app(
     )
     async def put_notebook_content(
         notebook_id: str,
-        req: NotebookPutContentRequest = Body(...),
+        req: NotebookPutContentRequest = Body(...),  # noqa: B008
     ) -> NotebookResponse:
         """Atomic-replace a notebook's content from a TipTap document.
 
@@ -4285,7 +4283,7 @@ def create_app(
         response_model=QualityGateEvaluationResponse,
     )
     async def quality_gate_evaluate(
-        req: QualityGateEvaluationRequest = Body(...),
+        req: QualityGateEvaluationRequest = Body(...),  # noqa: B008
     ) -> QualityGateEvaluationResponse:
         from compounding.quality_gate import evaluate_notebook_for_public
         verdict = evaluate_notebook_for_public(
@@ -4424,7 +4422,7 @@ def create_app(
 
     @app.post("/cross-graph/ask-experts", response_model=AskExpertsResponse)
     async def cross_graph_ask_experts(
-        req: AskExpertsRequest = Body(...),
+        req: AskExpertsRequest = Body(...),  # noqa: B008
     ) -> AskExpertsResponse:
         """Find users opted in to cross-user interview requests whose
         public-graph contributions overlap the topic query. Per
@@ -4472,7 +4470,7 @@ def create_app(
         response_model=AttributionResponse,
     )
     async def attribution_compute(
-        req: AttributionComputeRequest = Body(...),
+        req: AttributionComputeRequest = Body(...),  # noqa: B008
     ) -> AttributionResponse:
         """Compute per-document attribution shares for a synthesis
         page. Three algorithms per master-spec §9.3."""
@@ -4527,7 +4525,7 @@ def create_app(
         response_model=OutcomeRecordResponse,
     )
     async def post_outcome(
-        req: OutcomeRecordRequest = Body(...),
+        req: OutcomeRecordRequest = Body(...),  # noqa: B008
     ) -> OutcomeRecordResponse:
         """Record an operator-graded outcome for a synthesis page.
         Per master-spec §13.8: outcomes feed the Phase 8 skill-growth
@@ -4601,30 +4599,24 @@ def create_app(
                 out: list = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_TO(**item))
-                        except Exception:
-                            pass
                 return out
 
             def _coerce_falsification(items):
                 out: list = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_FO(**item))
-                        except Exception:
-                            pass
                 return out
 
             def _coerce_risk(items):
                 out: list = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_ERO(**item))
-                        except Exception:
-                            pass
                 return out
 
             decision_alignment_obj: _DA | None = None
@@ -4754,7 +4746,7 @@ def create_app(
         response_model=CrossGraphCitationResponse,
     )
     async def post_cross_graph_citation(
-        req: CrossGraphCitationRequest = Body(...),
+        req: CrossGraphCitationRequest = Body(...),  # noqa: B008
     ) -> CrossGraphCitationResponse:
         """Record a cross-graph citation. The attribution pipeline
         picks this up downstream and routes 70% of any attached ad
@@ -4831,7 +4823,7 @@ def create_app(
         response_model=ThoughtPartnerResponseBody,
     )
     async def post_thought_partner(
-        req: ThoughtPartnerRequest = Body(...),
+        req: ThoughtPartnerRequest = Body(...),  # noqa: B008
     ) -> ThoughtPartnerResponseBody:
         """Run a single thought-partner turn. Sprint 21 scaffold:
         until the dispatch tier wires through, this returns a
@@ -5002,7 +4994,7 @@ def create_app(
 
     @app.post("/loop-3/checklist", response_model=Loop3StatusResponse)
     async def post_loop3_checklist(
-        req: Loop3ChecklistUpdateRequest = Body(...),
+        req: Loop3ChecklistUpdateRequest = Body(...),  # noqa: B008
     ) -> Loop3StatusResponse:
         """Mark one criterion met/unmet. Refuses unknown criterion
         names — operator typos surface as 422 rather than silently
@@ -5018,7 +5010,7 @@ def create_app(
         try:
             criterion = Loop3UnlockCriterion(req.criterion)
         except ValueError as exc:
-            raise HTTPException(
+            raise HTTPException(  # noqa: B904
                 status_code=422,
                 detail={
                     "code": "unknown_criterion",
@@ -5147,7 +5139,7 @@ def create_app(
         response_model=FederationConfigResponse,
     )
     async def put_federation_config(
-        req: FederationConfigUpdateRequest = Body(...),
+        req: FederationConfigUpdateRequest = Body(...),  # noqa: B008
     ) -> FederationConfigResponse:
         """Replace the federation config. Partner-substrate IDs are
         validated against ``[a-zA-Z0-9_-]+`` to keep them path-safe
@@ -5238,7 +5230,7 @@ def create_app(
         try:
             from middleware.backtest.analysis import backtest
         except ImportError as exc:
-            raise HTTPException(
+            raise HTTPException(  # noqa: B904
                 status_code=503,
                 detail=f"backtest module unavailable: {exc!r}",
             )
@@ -5247,13 +5239,13 @@ def create_app(
             with connect_read(default_db_path()) as con:
                 report = backtest(con, synthesis_id)
         except FileNotFoundError as exc:
-            raise HTTPException(
+            raise HTTPException(  # noqa: B904
                 status_code=404,
                 detail=f"synthesis not archived: {exc!r}",
             )
         except Exception as exc:
             # Most likely: synthesis_id doesn't exist in archives.
-            raise HTTPException(
+            raise HTTPException(  # noqa: B904
                 status_code=404,
                 detail=f"backtest unavailable for {synthesis_id!r}: {exc!r}",
             )
@@ -5316,7 +5308,7 @@ def create_app(
     )
     async def post_deletion_request(
         request: Request,
-        req: DeletionRequestBody = Body(...),
+        req: DeletionRequestBody = Body(...),  # noqa: B008
     ) -> DeletionRequestResponse:
         """Schedule a user's 'delete everything' request. Per master-
         spec §13.3: 30-day SLA, 7-day cancellation window. Identity

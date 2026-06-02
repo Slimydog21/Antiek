@@ -59,7 +59,7 @@ RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
 # restricted_pending_opt_in (e.g. a tag privileged for one but not the other),
 # the separate set already supports it; folding them together would not.
 PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "personal_reading",
+    PERSONAL_READING_CONTENT_CLASS,
 })
 
 # The full set of content classes withheld from a non-privileged retrieval —
