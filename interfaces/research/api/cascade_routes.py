@@ -254,7 +254,13 @@ async def create_plan(req: CreatePlanRequest) -> dict:
                 return [SubQuestion(question=s) for s in req.sub_questions]
         report = build_plan(req.problem, decomposer=_Fixed(), max_depth=req.max_depth)
     else:
-        report = _decompose(req.problem, req.max_depth)
+        try:
+            report = _decompose(req.problem, req.max_depth)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"decompose_failed: {type(exc).__name__}: {exc}",
+            ) from exc
     tree = report.tree
     with _write("create_plan") as con:
         root_id = persist_tree(tree, investigation_id="__operator__",

@@ -55,12 +55,22 @@ class DispatchDecomposer:
     """Production decomposer: dispatch the decomposer role and parse."""
 
     def decompose(self, question: str, *, context: str = "") -> List[SubQuestion]:
+        import uuid
+
         from substrate.dispatch import dispatch
         from roles.decomposer import parse_decomposer_response, render_full_prompt
-        prompt = render_full_prompt(question) if callable(render_full_prompt) else question
-        result = dispatch(prompt, role="decomposer")
+
+        investigation_id = f"decomp-{uuid.uuid4().hex[:12]}"
+        prompt = render_full_prompt(
+            investigation_id=investigation_id,
+            question=question,
+            context=context,
+        )
+        result = dispatch(prompt, role="decomposer", investigation_id=investigation_id)
         text = getattr(result, "text", None) or str(result)
-        parsed = parse_decomposer_response(text)
+        parsed = parse_decomposer_response(
+            text, expected_investigation_id=investigation_id,
+        )
         return [SubQuestion(question=sq.sub_question, rationale=sq.rationale,
                             focus_boundary=sq.category)
                 for sq in parsed.decomposition]

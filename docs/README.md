@@ -9,6 +9,10 @@ individual implementation.
   the prior codebase, and the validation criteria for the eventual
   hardware decision. Read this before making any architectural change.
 
+- **`agent-execution/`** — ANT-H2V hard-to-vary protocol for agent
+  sessions (`HARD_TO_VARY.md`, templates). Read before diagnosing or
+  closing Research/cascade bugs.
+
 Additional docs land here as the build proceeds:
 
 - `migration_log.md` (planned) — what moved from where, when, why.
