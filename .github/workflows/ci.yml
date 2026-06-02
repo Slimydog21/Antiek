@@ -185,6 +185,13 @@ jobs:
         run: |
           python tools/lint/serve_invariants_check.py
 
+      - name: Retrieval-gate drift check
+        # ASR SR-03: forbid RESTRICTED-only chunk-gate reimplementation outside
+        # retrieval_gate.py / search.py (delegate). Catches VSS + HTTP regressions
+        # that omit personal_reading from the non-privileged denylist.
+        run: |
+          python tools/lint/retrieval_gate_check.py
+
       - name: arXiv contact-guard check
         # SPR-09 M3: forbid a NEW provider.send( / OutboundEmail( site outside
         # the allowlist (operator magic-link auth.py + the deny-by-default
