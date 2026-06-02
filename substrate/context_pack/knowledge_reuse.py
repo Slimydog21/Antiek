@@ -301,6 +301,7 @@ def retrieve_prior_units(
     question_text: str,
     limit: int = DEFAULT_RETRIEVE_LIMIT,
     policy_tag: str = "attribution_eligible",
+    privileged_caller: object = None,
 ) -> List[RetrievedUnit]:
     """Retrieve prior knowledge units ranked by similarity to ``question_text``.
 
@@ -340,7 +341,10 @@ def retrieve_prior_units(
     # substrate swaps this path too. Failures here must not crash ``start`` — a
     # retrieval seam hiccup degrades to "no reuse", never a dead investigation.
     try:
-        retrieval_substrate.query(question_text, top_k=max(1, int(limit)), policy_tag=policy_tag)
+        retrieval_substrate.query(
+            question_text, top_k=max(1, int(limit)), policy_tag=policy_tag,
+            privileged_caller=privileged_caller,
+        )
     except Exception:  # pragma: no cover — seam hiccup degrades to no-reuse
         return []
 

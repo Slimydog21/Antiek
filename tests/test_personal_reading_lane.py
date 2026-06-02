@@ -37,6 +37,7 @@ from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.schema import init_database
 from substrate.graph.search import (
     PERSONAL_ONLY_CONTENT_CLASSES,
+    PRIVILEGED_CALLER_TOKEN,
     RESTRICTED_CONTENT_CLASSES,
     search,
 )
@@ -223,8 +224,18 @@ def test_search_gate_includes_personal_reading_on_operator_only(env):
     _seed_chunk(env["db_path"], "doc-pr", "personal_reading", "quantum optics review")
     con = connect_write(env["db_path"], purpose="search")
     try:
+        # operator_only is a privileged tag (the owner's full-read path). As of
+        # SPR-03 a privileged tag is code-enforced: the caller MUST present
+        # PRIVILEGED_CALLER_TOKEN, else search() raises PrivilegedPolicyTagError
+        # (a money/ad-path caller cannot reach the bypass). The owner-read path
+        # legitimately holds the token — same discipline as the grounder.
         res = search(
-            con, "quantum", model=StubEmbedding(), top_k=10, policy_tag="operator_only"
+            con,
+            "quantum",
+            model=StubEmbedding(),
+            top_k=10,
+            policy_tag="operator_only",
+            privileged_caller=PRIVILEGED_CALLER_TOKEN,
         )
     finally:
         con.close()

@@ -30,7 +30,7 @@ import pytest
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database_at_path
 from substrate.graph import ops
-from substrate.graph.search import search
+from substrate.graph.search import PRIVILEGED_CALLER_TOKEN, search
 from substrate.collective_graph.eligibility import (
     CollectiveGraphDocument,
     is_attribution_eligible,
@@ -398,7 +398,10 @@ def test_personal_lane_hidden_from_public_search(temp_db):
     from runtime.db_lock import connect_read
     with connect_read(temp_db) as con:
         public = search(con, text, model=model, top_k=10)  # default gate
-        owner = search(con, text, model=model, top_k=10, policy_tag="operator_only")
+        owner = search(
+            con, text, model=model, top_k=10, policy_tag="operator_only",
+            privileged_caller=PRIVILEGED_CALLER_TOKEN,
+        )
 
     public_ids = {r["document_id"] for r in public["results"]}
     owner_ids = {r["document_id"] for r in owner["results"]}

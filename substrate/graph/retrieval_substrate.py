@@ -29,12 +29,15 @@ What's here:
   spike modules referenced by the SPR-05 decision record.
 
 §9.0 gate (CRITICAL — composed, never re-implemented): every impl delegates
-the restricted-content gate to the *same* ``search()`` call (or, for VSS, the
-*same* ``PRIVILEGED_POLICY_TAGS`` / ``RESTRICTED_CONTENT_CLASSES`` predicate
-that ``search()`` applies). On main the gate is still the fail-open DENYLIST
-(``content_class IS NULL OR NOT IN (...)``) — the §9.0 allowlist unification
-is staged separately (PR #38, unmerged). This seam composes *whatever is on
-main*; it does not assume the fix landed.
+the servability gate to the *same* owned predicate. The brute-force impl calls
+``search()`` directly; the VSS impl reuses the SAME deny-by-default ALLOWLIST
+(``content_class IN servable_full_text_content_classes()``) and the SAME
+``PRIVILEGED_CALLER_TOKEN`` stage-safety guard that ``search()`` applies. As of
+SPR-03 the polarity is unified: there is no second fail-open denylist on the
+VSS path — both impls reach byte-for-byte the same §9.0 verdict (NULL / unknown
+/ restricted / personal_reading all denied on a non-privileged tag; the
+privileged owner bypass requires the token). The seam composes one polarity,
+owned in ``substrate/books/servability.py``.
 
 §16 single-writer (CRITICAL): no substrate is a writer. Every impl reads
 through a read-only connection (``runtime.db_lock.connect_read``); the
@@ -50,21 +53,25 @@ from typing import Any, Optional, Protocol, Sequence, runtime_checkable
 
 try:
     from .search import (
-        EmbeddingModel,
+        PRIVILEGED_CALLER_TOKEN,
         PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
+        EmbeddingModel,
+        PrivilegedPolicyTagError,
         search,
         search_nodes_by_label,
+        servable_full_text_content_classes,
     )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from substrate.graph.search import (  # type: ignore[no-redef]
-        EmbeddingModel,
+        PRIVILEGED_CALLER_TOKEN,
         PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
+        EmbeddingModel,
+        PrivilegedPolicyTagError,
         search,
         search_nodes_by_label,
+        servable_full_text_content_classes,
     )
 
 try:
@@ -108,6 +115,7 @@ class RetrievalSubstrate(Protocol):
         source_tier_max: Optional[int] = None,
         document_ids: Optional[Sequence[str]] = None,
         policy_tag: str = "attribution_eligible",
+        privileged_caller: object = None,
     ) -> dict: ...
 
 
@@ -143,7 +151,13 @@ class BruteForceSubstrate:
         source_tier_max: Optional[int] = None,
         document_ids: Optional[Sequence[str]] = None,
         policy_tag: str = "attribution_eligible",
+        privileged_caller: object = None,
     ) -> dict:
+        # The §9.0 stage-safety token is forwarded verbatim to search(): a
+        # privileged policy_tag without it raises there, so the seam never
+        # silently widens the bypass (an unprivileged caller of this wrapper
+        # cannot reach a privileged tag any more than it could call search()
+        # directly).
         return search(
             self._con,
             text,
@@ -152,6 +166,7 @@ class BruteForceSubstrate:
             source_tier_max=source_tier_max,
             document_ids=document_ids,
             policy_tag=policy_tag,
+            privileged_caller=privileged_caller,
         )
 
     def close(self) -> None:
@@ -377,25 +392,41 @@ class DuckDbVssSubstrate:
         source_tier_max: Optional[int] = None,
         document_ids: Optional[Sequence[str]] = None,
         policy_tag: str = "attribution_eligible",
+        privileged_caller: object = None,
     ) -> dict:
         if not self.vss_active:
             # Fallback path — identical to the brute-force reference.
             return search(
                 self._con, text, model=self._model, top_k=top_k,
                 source_tier_max=source_tier_max, document_ids=document_ids,
-                policy_tag=policy_tag,
+                policy_tag=policy_tag, privileged_caller=privileged_caller,
             )
         return self._vss_query(
             text, top_k=top_k, source_tier_max=source_tier_max,
             document_ids=document_ids, policy_tag=policy_tag,
+            privileged_caller=privileged_caller,
         )
 
     def _vss_query(
         self, text: str, *, top_k: int, source_tier_max: Optional[int],
         document_ids: Optional[Sequence[str]], policy_tag: str,
+        privileged_caller: object = None,
     ) -> dict:
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
+
+        # §9.0 stage-safety guard (SPR-03), enforced on the VSS path too — the
+        # privileged bypass WIDENS access identically here, so the same token
+        # discipline applies: a privileged tag without PRIVILEGED_CALLER_TOKEN
+        # is refused rather than silently honoured. Without this, the VSS impl
+        # would be a token-less side door around search()'s guard.
+        if policy_tag in PRIVILEGED_POLICY_TAGS and privileged_caller is not PRIVILEGED_CALLER_TOKEN:
+            raise PrivilegedPolicyTagError(
+                f"policy_tag={policy_tag!r} bypasses the §9.0 chunk gate and "
+                "may be used ONLY by an operator-only caller presenting "
+                "search.PRIVILEGED_CALLER_TOKEN as privileged_caller (§9.0 "
+                "deny-by-default)."
+            )
 
         # Honest empty for an explicitly-empty document scope (mirrors search()).
         scoped_ids: Optional[list[str]] = None
@@ -435,14 +466,20 @@ class DuckDbVssSubstrate:
         if source_tier_max is not None:
             sql += " AND d.source_tier <= ?"
             params.append(int(source_tier_max))
-        # §9.0 gate — composed from search.py's CANONICAL constants + the
-        # SAME predicate main applies (fail-open denylist on main; the §9.0
-        # allowlist unification is staged separately in PR #38, unmerged).
+        # §9.0 gate — deny-by-default ALLOWLIST, routed through the SAME owned
+        # predicate the brute-force search() path uses
+        # (substrate/books/servability.py via servable_full_text_content_classes).
+        # SPR-03 unifies the polarity: this VSS path no longer carries its own
+        # fail-open denylist (under which a NULL/unknown content_class passed);
+        # it now serves a chunk's parent document only when its content_class
+        # resolves to full-text-servable, so NULL/unknown/restricted/
+        # personal_reading are ALL excluded — byte-for-byte the verdict the
+        # brute-force reference reaches, which is the whole point of the seam.
         if policy_tag not in PRIVILEGED_POLICY_TAGS:
-            restricted = list(RESTRICTED_CONTENT_CLASSES)
-            placeholders = ",".join("?" for _ in restricted)
-            sql += f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
-            params.extend(restricted)
+            servable_classes = sorted(servable_full_text_content_classes())
+            placeholders = ",".join("?" for _ in servable_classes)
+            sql += f" AND d.content_class IN ({placeholders})"
+            params.extend(servable_classes)
         sql += " ORDER BY array_cosine_distance(" + emb + ", " + vec_str + ") ASC LIMIT ?"
         params.append(int(top_k))
 

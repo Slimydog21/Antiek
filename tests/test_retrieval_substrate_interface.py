@@ -28,7 +28,11 @@ from substrate.graph.retrieval_substrate import (
     make_substrate,
 )
 from substrate.graph import retrieval_substrate as _rs
-from substrate.graph.search import search
+from substrate.graph.search import (
+    PRIVILEGED_CALLER_TOKEN,
+    PrivilegedPolicyTagError,
+    search,
+)
 
 # Hang-proof probe (LOAD-only, memoized, NO network install unless the operator
 # opts in via ANTIEK_VSS_ALLOW_INSTALL). On a network-restricted CI runner this
@@ -164,12 +168,17 @@ def test_gate_excludes_restricted_under_attribution_eligible(seeded_db, kind):
 @pytest.mark.parametrize("kind", ["vss", "brute_force"])
 def test_gate_includes_restricted_under_private_research(seeded_db, kind):
     """Restricted content IS retrievable under the privileged
-    private_research tag — for BOTH impls."""
+    private_research tag — for BOTH impls.
+
+    SPR-03: a privileged tag is code-enforced on the seam too — the caller
+    must present PRIVILEGED_CALLER_TOKEN (the same stage-safety guard search()
+    applies), else the query raises. The owner/operator path holds the token."""
     db, emb, _ = seeded_db
     sub = make_substrate(kind, db, model=emb)
     try:
         res = sub.query("quantum computing milestones", top_k=20,
-                        policy_tag="private_research")
+                        policy_tag="private_research",
+                        privileged_caller=PRIVILEGED_CALLER_TOKEN)
         ids = {r["chunk_id"] for r in res["results"]}
         assert "c-restricted-1" in ids, f"{kind} withheld restricted under private_research"
     finally:
@@ -186,6 +195,24 @@ def test_unknown_policy_tag_fails_closed(seeded_db):
                         policy_tag="typo_should_not_unlock")
         ids = {r["chunk_id"] for r in res["results"]}
         assert "c-restricted-1" not in ids
+    finally:
+        sub.close()
+
+
+@pytest.mark.parametrize("kind", ["vss", "brute_force"])
+def test_privileged_tag_without_token_is_refused_on_seam(seeded_db, kind):
+    """SPR-03 non-vacuity: the §9.0 stage-safety guard bites on the seam, not
+    just on a direct search() call. A caller requesting a privileged tag
+    WITHOUT PRIVILEGED_CALLER_TOKEN is refused on BOTH impls — so the seam is
+    not a token-less side door around search()'s guard. (The VSS impl enforces
+    this in _vss_query; the brute-force impl inherits it by forwarding to
+    search().)"""
+    db, emb, _ = seeded_db
+    sub = make_substrate(kind, db, model=emb)
+    try:
+        with pytest.raises(PrivilegedPolicyTagError):
+            sub.query("quantum computing milestones", top_k=20,
+                      policy_tag="private_research")  # no token → refused
     finally:
         sub.close()
 

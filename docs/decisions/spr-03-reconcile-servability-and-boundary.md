@@ -173,6 +173,72 @@ One forced consequence of the M3 flip:
   `pytest tests/test_invariant_registry_meta.py -q` to pass with the guard flipped (M3
   acceptance). It returns to `@unguarded` if the operator rejects the staged §9.0 PR.
 
+## Rebase reconciliation onto current main (2026-06-02) — Full unification
+
+When this PR was opened (2026-05-31) its base was current; by 2026-06-02 `main`
+had advanced **77 commits** and the PR went `CONFLICTING`. The stale green checks
+predated the drift. Rebased onto `origin/main`; the conflict was confined to the two
+§9.0 core files, and resolving it surfaced that #38's design — written knowing only
+the grounder — was **incomplete against the main that landed in between**. The
+operator chose **Full unification** (over "thread token to owner paths only" or
+"keep #38 minimal").
+
+**What main added during the drift (the Personal-Reading Lane, PR #43):** a 4th
+rights state `personal_reading` → `PERSONAL_READABLE` (owner-reads-in-full /
+never-publicly-servable / never-attributable), plus `PERSONAL_ONLY_CONTENT_CLASSES`
+and `_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES` in `search.py` (the latter imported by
+the money-path `substrate/attribution/compute.py`), and a SECOND copy of the §9.0
+gate inside `substrate/graph/retrieval_substrate.py`'s VSS path (a fail-open denylist
+whose own comment said "the §9.0 allowlist unification is staged separately in PR
+#38, unmerged").
+
+**Conflict resolution (deterministic — both sides converge):**
+- `substrate/books/servability.py` — clean union: main's `PERSONAL_READABLE` branch
+  (kept out of `_CONTENT_CLASS_TO_STATUS`, so the import-time drift assert
+  `servable_full_text_content_classes() == SERVABLE_CONTENT_CLASSES` is untouched) +
+  this PR's owned predicate. `is_content_class_servable_full_text('personal_reading')`
+  is `False` (it resolves to `PERSONAL_READABLE`, not a servable status).
+- `substrate/graph/search.py` — adopted this PR's deny-by-default ALLOWLIST. It
+  **subsumes** main's denylist: `personal_reading` and `restricted` are excluded on
+  the non-privileged path exactly as the denylist did, and NULL/unknown are
+  additionally denied (the bug fix). Retained main's `PERSONAL_ONLY_CONTENT_CLASSES` /
+  `_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES` as **vocabulary anchors** (compute.py +
+  `test_personal_reading_lane.py` import them) — same treatment this PR already gives
+  `RESTRICTED_CONTENT_CLASSES`.
+
+**Full unification (the scope the operator chose):**
+- `substrate/graph/retrieval_substrate.py` — the VSS path's second §9.0 gate now
+  routes through the SAME owned allowlist (`content_class IN
+  servable_full_text_content_classes()`), and the SAME `PRIVILEGED_CALLER_TOKEN`
+  stage-safety guard is enforced in `_vss_query` so the seam is not a token-less side
+  door. `privileged_caller` is threaded through the `RetrievalSubstrate` Protocol +
+  both impls (`BruteForceSubstrate.query` forwards to `search()`; `VssSubstrate.query`
+  forwards to the fallback `search()` and to `_vss_query`). One polarity now, owned in
+  `servability.py`; the "staged separately, unmerged" marker is resolved.
+- `substrate/context_pack/knowledge_reuse.py` — `retrieve_prior_units` gained a
+  `privileged_caller` passthrough to the seam (its `except Exception → return []` would
+  otherwise silently mask the guard for a future privileged caller).
+
+**Correctly OUT of scope (not a duplicate polarity):** `orchestration/monitoring/
+monitor.py`'s `putter_feed` gate is a DIFFERENT mechanism — it serves a pre-filtered
+`personal_reading`-only feed and gates the **body field** on `owner_path`. Routing it
+through the servability allowlist would be *wrong* (it would empty the owner's own
+feed, since `personal_reading` is non-servable). Left untouched.
+
+**Tests updated to the now-required token** (intent preserved, not weakened): the
+owner-read paths must present `PRIVILEGED_CALLER_TOKEN` —
+`test_personal_reading_lane.py::test_search_gate_includes_personal_reading_on_operator_only`,
+`test_monitoring_mode.py::test_personal_lane_hidden_from_public_search`,
+`test_retrieval_substrate_interface.py::test_gate_includes_restricted_under_private_research`.
+Added `test_privileged_tag_without_token_is_refused_on_seam` (parametrized vss +
+brute_force) — non-vacuity that the guard bites on the seam, not just on a direct
+`search()` call. Full affected suite (servability/graph/retrieval/personal-lane/
+monitoring/knowledge-reuse/attribution/payout): **green**.
+
+**Money path still untouched:** `compute.py`/`payout.py` diff remains empty; the
+retained vocabulary constants keep their values, so `compute.py`'s import + filter are
+unaffected (`test_attribution.py`, `test_payout_pipeline_integration.py` green).
+
 ## Out of scope (untouched)
 
 `substrate/attribution/compute.py`, `payout.py`, Stripe connect (the money path);
