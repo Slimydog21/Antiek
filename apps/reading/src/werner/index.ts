@@ -39,10 +39,15 @@ export {
   SAMPLE_INTERVAL_MS,
   FOLLOW_EASE,
   POINTER_IDLE_MS,
+  centerLaggedTarget,
   type MouseFollow,
   type FollowReading,
   type UseMouseFollowOptions,
 } from "./useMouseFollow";
+
+export { wernerIceFishingCursor } from "./iceFishingFlags";
+export { WernerIceBait } from "./WernerIceBait";
+export { WernerIceCursorShell } from "./WernerIceCursorShell";
 
 export {
   EmoteView,
