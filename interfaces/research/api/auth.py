@@ -27,9 +27,9 @@ middleware's job is verify-on-every-request.
 from __future__ import annotations
 
 import os
-from typing import Any
 import re
 from collections.abc import Sequence
+from typing import Any
 from urllib.parse import urlencode, urljoin
 
 from fastapi import FastAPI, HTTPException, Request, Response
