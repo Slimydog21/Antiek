@@ -36,7 +36,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -375,10 +375,8 @@ async def launch(root_id: str, req: LaunchRequest) -> dict:
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
-    try:
+    with suppress(Exception):  # pragma: no cover — best-effort
         await session.join_and_merge()
-    except Exception:  # pragma: no cover — background completion is best-effort
-        pass
 
 
 @cascade_router.get("/sessions/{session_id}")

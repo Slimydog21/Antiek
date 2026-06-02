@@ -19,16 +19,16 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Protocol, Sequence
+from typing import Any, Protocol
 
 try:
+    from .focus import MAX_BRANCHES, is_over_broad
     from .tree_contract import PlanNode, PlanTree
-    from .focus import MAX_BRANCHES, focus_check, is_over_broad
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles.cascade_planner.tree_contract import PlanNode, PlanTree  # type: ignore[no-redef]
-    from roles.cascade_planner.focus import MAX_BRANCHES, focus_check, is_over_broad  # type: ignore[no-redef]
+    from roles.cascade_planner.focus import MAX_BRANCHES, is_over_broad
+    from roles.cascade_planner.tree_contract import PlanNode, PlanTree
 
 
 DEFAULT_MAX_DEPTH = 3
@@ -48,17 +48,17 @@ class Decomposer(Protocol):
     """problem text → list of sub-questions. Production wraps the decomposer
     role (dispatch + parse_decomposer_response); tests inject a fake."""
 
-    def decompose(self, question: str, *, context: str = "") -> List[SubQuestion]: ...
+    def decompose(self, question: str, *, context: str = "") -> list[SubQuestion]: ...
 
 
 class DispatchDecomposer:
     """Production decomposer: dispatch the decomposer role and parse."""
 
-    def decompose(self, question: str, *, context: str = "") -> List[SubQuestion]:
+    def decompose(self, question: str, *, context: str = "") -> list[SubQuestion]:
         import uuid
 
-        from substrate.dispatch import dispatch
         from roles.decomposer import parse_decomposer_response, render_full_prompt
+        from substrate.dispatch import dispatch
 
         investigation_id = f"decomp-{uuid.uuid4().hex[:12]}"
         prompt = render_full_prompt(
@@ -79,8 +79,8 @@ class DispatchDecomposer:
 @dataclass
 class PlanReport:
     tree: PlanTree
-    capped_nodes: List[str]          # local_ids where MAX_BRANCHES truncated
-    over_broad_leaves: List[str]     # leaves still over-broad at max depth (honest)
+    capped_nodes: list[str]          # local_ids where MAX_BRANCHES truncated
+    over_broad_leaves: list[str]     # leaves still over-broad at max depth (honest)
 
 
 def build_plan(
@@ -90,11 +90,11 @@ def build_plan(
     context: str = "",
     max_depth: int = DEFAULT_MAX_DEPTH,
     seed_kind: str = "problem",
-    seed_provenance: Optional[dict] = None,
+    seed_provenance: dict[str, Any] | None = None,
 ) -> PlanReport:
     """Decompose ``problem`` into a focus-checked, editable tree."""
-    capped: List[str] = []
-    over_broad: List[str] = []
+    capped: list[str] = []
+    over_broad: list[str] = []
 
     root = PlanNode(question=problem, rationale="root problem")
     _expand(root, decomposer, context, depth=0, max_depth=max_depth,
@@ -105,7 +105,7 @@ def build_plan(
 
 
 def _expand(node: PlanNode, decomposer: Decomposer, context: str, *,
-            depth: int, max_depth: int, capped: List[str], over_broad: List[str]) -> None:
+            depth: int, max_depth: int, capped: list[str], over_broad: list[str]) -> None:
     if depth >= max_depth:
         if is_over_broad(node.question) and depth > 0:
             over_broad.append(node.local_id)  # honest: still broad, out of depth

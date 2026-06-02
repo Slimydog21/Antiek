@@ -18,7 +18,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import interfaces.research.api.cascade_routes as cr
-from interfaces.research.api.app import create_app
 
 
 class _StubEmbedding:
