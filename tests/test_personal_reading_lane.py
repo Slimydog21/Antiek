@@ -207,8 +207,10 @@ def _seed_chunk(db_path: str, document_id: str, content_class, text: str):
 
 
 def test_search_gate_excludes_personal_reading_on_default_policy(env):
-    _seed_chunk(env["db_path"], "doc-pd", "public_domain", "quantum optics review")
-    _seed_chunk(env["db_path"], "doc-pr", "personal_reading", "quantum optics review")
+    # Distinct chunk bodies so content-addressed chunk_id does not collide —
+    # identical text would dedupe to one row and vacuously hide gate leaks.
+    _seed_chunk(env["db_path"], "doc-pd", "public_domain", "quantum optics public domain review")
+    _seed_chunk(env["db_path"], "doc-pr", "personal_reading", "quantum optics personal lane review")
     con = connect_write(env["db_path"], purpose="search")
     try:
         res = search(con, "quantum", model=StubEmbedding(), top_k=10)
