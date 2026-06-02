@@ -102,6 +102,20 @@ export default function WernerRig({ size, label, style }: WernerRigProps) {
           <ellipse cx="46" cy="36" rx="3" ry="8" fill="var(--werner-coat)" />
         </g>
 
+        {/* Ice-fishing rod (WERNER-ICE SPR-14) — right flipper shoulder, tip ~(50,22). */}
+        <g data-werner-rod="" aria-hidden="true">
+          <ellipse cx="44" cy="30" rx="2" ry="3" fill="var(--werner-coat)" />
+          <line
+            x1="44"
+            y1="30"
+            x2="50"
+            y2="22"
+            stroke="var(--werner-coat)"
+            strokeWidth={2}
+            strokeLinecap="round"
+          />
+        </g>
+
         {/* Feet — two sun-coloured webbed feet on the foot line. These are the
             primary walk-cycle signal: they lift in alternation as he strolls. */}
         <g
