@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ANT-H2V — Master Spec</title>
+<style>
+/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+
+  /* Spacing scale (4px base) */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-11: 44px;
+  --space-12: 48px;
+
+  /* Typography scale */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-body: 15px;
+  --text-lg: 16px;
+  --text-xl: 17px;
+  --text-2xl: 22px;
+  --text-3xl: 32px;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: var(--text-body);
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-7) var(--space-12) var(--space-7);
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-7) var(--space-7) var(--space-6) var(--space-7);
+  margin-bottom: var(--space-7);
+}
+
+header.hero .eyebrow {
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 var(--space-1) 0;
+}
+
+header.hero h1 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-3xl);
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-xl);
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-6) var(--space-6) var(--space-5) var(--space-6);
+  margin: 0 0 var(--space-5) 0;
+}
+
+section.block > h2 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 var(--space-4) 0;
+  color: var(--color-muted);
+  font-size: var(--text-base);
+}
+
+section.block h3 {
+  margin: var(--space-5) 0 var(--space-2) 0;
+  font-size: var(--text-body);
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 var(--space-3) 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 var(--space-3) 0;
+  padding-left: var(--space-5);
+}
+
+section.block li { margin-bottom: var(--space-1); }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: var(--space-2); height: var(--space-2); border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: var(--space-4) 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: var(--text-md);
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-1) 0 var(--space-3) 0;
+  font-size: var(--text-base);
+}
+
+table.spec th, table.spec td {
+  padding: var(--space-2) 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: var(--text-md);
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  margin: var(--space-2) 0 var(--space-3) 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-sm);
+  margin: var(--space-2) 0 var(--space-3) 0;
+  font-size: var(--text-base);
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-3);
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: var(--space-2);
+}
+
+.rigor-card h4 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-body);
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: var(--text-base);
+}
+
+.milestone .title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: var(--space-1);
+}
+
+.milestone .desc {
+  font-size: var(--text-base);
+  margin: var(--space-1) 0 var(--space-2) 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: var(--space-1) 0 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: var(--space-1) 0 0 0; padding-left: var(--space-4); }
+.milestone .criteria li { margin-bottom: 3px; }
+.milestone .files {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-md);
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: var(--border-thin);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: var(--space-2) 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: var(--text-base);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--text-sm);
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: var(--space-6) 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: var(--space-5) 0 var(--space-1) 0;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page page--wide">
+
+  <header class="hero">
+    <p class="eyebrow">Master spec · ANT-H2V</p>
+    <h1>Hard-to-Vary Execution — Cascade Auto-Decompose</h1>
+    <p class="tagline">Close the Research <code>POST /research/plans</code> auto-decompose path with mechanically verifiable gates and a reusable agent execution protocol.</p>
+    <div class="meta-row">
+      <span class="tag tag--blue"><span class="dot"></span>Status: Ready to execute</span>
+      <span class="tag tag--yellow"><span class="dot"></span>Owner: Operator + Grok executor</span>
+      <span class="tag tag--grey">8 sprints · 4 waves</span>
+      <span class="tag tag--grey">Generated 2026-06-02</span>
+    </div>
+  </header>
+
+  <section class="block">
+    <h2>Goal</h2>
+    <p class="lede">What success looks like and how we measure it.</p>
+    <p>Restore Research cascade auto-decomposition (operator submits a problem without manual sub-questions) with <strong>bounded, falsifiable claims</strong>. Every sprint produces artifacts an adversarial re-read cannot dismiss as theater.</p>
+    <h3>Success criteria</h3>
+    <ul>
+      <li>Hermetic tests cover <code>DispatchDecomposer</code> and the HTTP branch that omits <code>sub_questions</code> (merge-bar: tests for non-test changes).</li>
+      <li>Repo contains <code>docs/agent-execution/HARD_TO_VARY.md</code> — Phase A–E protocol forbidding repeated <code>pytest | tail</code>, wrong Python/cwd, memory-without-test, and unbounded “platform OK”.</li>
+      <li>Closure dossier (SPR-08) lists each decompose entry point with <em>tested / untested / live-LLM-required</em> — no superlative without a row.</li>
+      <li>Operator can verify live decompose once via SPR-07 card without reading chat history.</li>
+    </ul>
+    <h3>Failure mode to avoid</h3>
+    <p>The egghead-session pattern: correct root cause + 50× truncated pytest from wrong cwd/Python + “engine fine across platform” without scope map. That is <strong>easy-to-vary</strong> verification — remove the repetition and the conclusion unchanged.</p>
+  </section>
+
+  <section class="block">
+    <h2>Context &amp; motivation</h2>
+    <p class="lede">Why this, why now.</p>
+    <p><code>DispatchDecomposer.decompose</code> called <code>render_full_prompt(question)</code> (positional) and <code>dispatch(...)</code> without <code>investigation_id</code>. Both raise <code>TypeError</code> before any provider request — UI shows “no result” (HTTP 500).</p>
+    <p>Fix is present in <code class="mono">roles/cascade_planner/planner.py</code> but production path had <strong>zero</strong> tests; cascade API tests always pass manual <code>sub_questions</code>. This spec closes the gap and encodes execution discipline for all future Antiek agent work.</p>
+  </section>
+
+  <section class="block">
+    <h2>Architecture overview</h2>
+    <p class="lede">Load-bearing paths only.</p>
+    <div class="dep-graph">Reading UI → POST /research/plans
+  ├─ sub_questions[] → _Fixed decomposer → build_plan (no LLM)
+  └─ (omit sub_questions) → _decompose()
+        → DispatchDecomposer.decompose
+        → render_full_prompt(*, investigation_id, question, context)
+        → dispatch(..., investigation_id=...)
+        → parse_decomposer_response → build_plan → persist_tree
+
+Parallel (out of sprint scope): Loop1 POST /investigations
+  → DECOMPOSE_QUESTION_REQUESTED → make_decomposer_handler (already keyword-correct)</div>
+    <h3>Key invariants</h3>
+    <ul>
+      <li>Pre-network <code>TypeError</code> on auto-decompose ⇒ Python contract bug, not “engine down.”</li>
+      <li><code>FakeDecomposer</code> tests prove tree logic only — not the production adapter.</li>
+      <li>Error handling belongs at API boundary (<code>create_plan</code>), not inside <code>dispatch</code> (merge-bar #8).</li>
+    </ul>
+  </section>
+
+  <section class="block">
+    <h2>Sprint roster</h2>
+    <p class="lede">Same-wave sprints may run in parallel. Later waves wait for dependencies.</p>
+
+    <div class="wave-band">Wave 1 — independent</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-01-agent-protocol.html">
+        <span class="id">SPR-01</span>
+        <span class="title">Hard-to-Vary Agent Execution Protocol</span>
+        <span class="goal">Repo artifacts: Phase A–E, templates, forbidden patterns.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--grey">docs only</span></span>
+      </a>
+      <a class="sprint-card" href="sprint-02-contract-repro.html">
+        <span class="id">SPR-02</span>
+        <span class="title">Contract lock + failure dossier + repro script</span>
+        <span class="goal">No-network repro; documented failure chain.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--grey">script</span></span>
+      </a>
+    </div>
+
+    <div class="wave-band">Wave 2 — waits on SPR-02</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-03-dispatch-decomposer-test.html">
+        <span class="id">SPR-03</span>
+        <span class="title">DispatchDecomposer hermetic unit test</span>
+        <span class="goal">Stub dispatch; assert SubQuestion mapping.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--grey">pytest</span></span>
+      </a>
+      <a class="sprint-card" href="sprint-04-http-auto-decompose.html">
+        <span class="id">SPR-04</span>
+        <span class="title">HTTP auto-decompose hermetic test</span>
+        <span class="goal">POST /plans without sub_questions hits branch.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--grey">pytest</span></span>
+      </a>
+    </div>
+
+    <div class="wave-band">Wave 3 — waits on SPR-03 + SPR-04</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-05-api-error-boundary.html">
+        <span class="id">SPR-05</span>
+        <span class="title">Cascade route error boundary</span>
+        <span class="goal">502 with decompose_failed detail, not raw 500.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 3</span></span>
+      </a>
+      <a class="sprint-card" href="sprint-06-audit-gate.html">
+        <span class="id">SPR-06</span>
+        <span class="title">Decomposer dispatch contract audit gate</span>
+        <span class="goal">Scripted grep gate for call-site drift.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 3</span></span>
+      </a>
+    </div>
+
+    <div class="wave-band">Wave 4 — closure</div>
+    <div class="sprint-grid">
+      <a class="sprint-card" href="sprint-07-operator-verify.html">
+        <span class="id">SPR-07</span>
+        <span class="title">Operator verification card</span>
+        <span class="goal">Single manual E2E path with live LLM optional.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 4</span></span>
+      </a>
+      <a class="sprint-card" href="sprint-08-platform-matrix.html">
+        <span class="id">SPR-08</span>
+        <span class="title">Platform matrix + closure dossier</span>
+        <span class="goal">Bounded claims; evidence column filled.</span>
+        <span class="footer"><span class="tag tag--blue">Wave 4</span></span>
+      </a>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Decision log</h2>
+    <table class="spec">
+      <thead><tr><th>Decision</th><th>Why</th><th>What would change it</th><th>Date</th></tr></thead>
+      <tbody>
+        <tr><td>Separate protocol (SPR-01) from code fixes</td><td>Prevents one-off fix without durable agent discipline</td><td>Operator rejects doc overhead</td><td class="mono">2026-06-02</td></tr>
+        <tr><td>Hermetic stub tests, not live LLM in CI</td><td>Hard-to-vary: deterministic, no flake</td><td>Contract tests impossible without network</td><td class="mono">2026-06-02</td></tr>
+        <tr><td>Do not unify cascade + event-bus decomposer</td><td>Paraphrase guard only on bus path; scope creep</td><td>Product mandates identical semantics</td><td class="mono">2026-06-02</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Rejected alternatives</h2>
+    <table class="spec">
+      <thead><tr><th>Alternative</th><th>Why rejected</th><th>Reconsider if…</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Fix providers / “engine” first</strong></td><td>Failure is pre-dispatch TypeError</td><td>Repro shows HTTP errors after correct Python calls</td></tr>
+        <tr><td><strong>50× pytest with tail -80</strong></td><td>Verification theater; wrong env</td><td>—</td></tr>
+        <tr><td><strong>Only FakeDecomposer tests</strong></td><td>Never exercises DispatchDecomposer</td><td>—</td></tr>
+        <tr><td><strong>Agent memory instead of regression test</strong></td><td>Does not gate CI</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Open questions</h2>
+    <table class="spec">
+      <thead><tr><th>Question</th><th>Assumption</th><th>Resolver</th></tr></thead>
+      <tbody>
+        <tr><td>Does UI call createPlan without sub_questions?</td><td>Yes — operator symptom matches auto branch</td><td>apps/reading/src/api/research.ts</td></tr>
+        <tr><td>Live LLM required for operator sign-off?</td><td>SPR-07 manual path with configured provider</td><td>Operator</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="block">
+    <h2>Glossary</h2>
+    <table class="spec">
+      <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Hard to vary</strong></td><td>Removing any verification step or artifact breaks the defensibility of “done.”</td></tr>
+        <tr><td><strong>Env card</strong></td><td>cwd, python path, version — pasted once per verify run.</td></tr>
+        <tr><td><strong>Failure dossier</strong></td><td>file:line, exception type, LLM contacted: yes/no, HTTP status seen by UI.</td></tr>
+        <tr><td><strong>DispatchDecomposer</strong></td><td>Production <code>Decomposer</code> in cascade_planner calling substrate dispatch.</td></tr>
+        <tr><td><strong>FakeDecomposer</strong></td><td>Test double for tree/focus tests; does not call dispatch.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="spec-footer">
+    Generated by <code>htmlspec</code> · Companion: <code>grok-execution-brief.md</code> · 2026-06-02
+    <br><a href="grok-execution-brief.md">Grok execution brief</a>
+  </footer>
+
+</main>
+</body>
+</html>

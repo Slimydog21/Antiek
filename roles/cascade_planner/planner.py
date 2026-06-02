@@ -19,19 +19,16 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Callable, List, Optional, Protocol, Sequence
 
 try:
-    from .focus import MAX_BRANCHES, focus_check, is_over_broad
     from .tree_contract import PlanNode, PlanTree
+    from .focus import MAX_BRANCHES, focus_check, is_over_broad
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles.cascade_planner.focus import (  # type: ignore[no-redef]
-        MAX_BRANCHES,
-        is_over_broad,
-    )
     from roles.cascade_planner.tree_contract import PlanNode, PlanTree  # type: ignore[no-redef]
+    from roles.cascade_planner.focus import MAX_BRANCHES, focus_check, is_over_broad  # type: ignore[no-redef]
 
 
 DEFAULT_MAX_DEPTH = 3
@@ -51,19 +48,29 @@ class Decomposer(Protocol):
     """problem text → list of sub-questions. Production wraps the decomposer
     role (dispatch + parse_decomposer_response); tests inject a fake."""
 
-    def decompose(self, question: str, *, context: str = "") -> list[SubQuestion]: ...
+    def decompose(self, question: str, *, context: str = "") -> List[SubQuestion]: ...
 
 
 class DispatchDecomposer:
     """Production decomposer: dispatch the decomposer role and parse."""
 
-    def decompose(self, question: str, *, context: str = "") -> list[SubQuestion]:
-        from roles.decomposer import parse_decomposer_response, render_full_prompt
+    def decompose(self, question: str, *, context: str = "") -> List[SubQuestion]:
+        import uuid
+
         from substrate.dispatch import dispatch
-        prompt = render_full_prompt(question) if callable(render_full_prompt) else question
-        result = dispatch(prompt, role="decomposer")
+        from roles.decomposer import parse_decomposer_response, render_full_prompt
+
+        investigation_id = f"decomp-{uuid.uuid4().hex[:12]}"
+        prompt = render_full_prompt(
+            investigation_id=investigation_id,
+            question=question,
+            context=context,
+        )
+        result = dispatch(prompt, role="decomposer", investigation_id=investigation_id)
         text = getattr(result, "text", None) or str(result)
-        parsed = parse_decomposer_response(text)
+        parsed = parse_decomposer_response(
+            text, expected_investigation_id=investigation_id,
+        )
         return [SubQuestion(question=sq.sub_question, rationale=sq.rationale,
                             focus_boundary=sq.category)
                 for sq in parsed.decomposition]
@@ -72,8 +79,8 @@ class DispatchDecomposer:
 @dataclass
 class PlanReport:
     tree: PlanTree
-    capped_nodes: list[str]          # local_ids where MAX_BRANCHES truncated
-    over_broad_leaves: list[str]     # leaves still over-broad at max depth (honest)
+    capped_nodes: List[str]          # local_ids where MAX_BRANCHES truncated
+    over_broad_leaves: List[str]     # leaves still over-broad at max depth (honest)
 
 
 def build_plan(
@@ -83,11 +90,11 @@ def build_plan(
     context: str = "",
     max_depth: int = DEFAULT_MAX_DEPTH,
     seed_kind: str = "problem",
-    seed_provenance: dict | None = None,
+    seed_provenance: Optional[dict] = None,
 ) -> PlanReport:
     """Decompose ``problem`` into a focus-checked, editable tree."""
-    capped: list[str] = []
-    over_broad: list[str] = []
+    capped: List[str] = []
+    over_broad: List[str] = []
 
     root = PlanNode(question=problem, rationale="root problem")
     _expand(root, decomposer, context, depth=0, max_depth=max_depth,
@@ -98,7 +105,7 @@ def build_plan(
 
 
 def _expand(node: PlanNode, decomposer: Decomposer, context: str, *,
-            depth: int, max_depth: int, capped: list[str], over_broad: list[str]) -> None:
+            depth: int, max_depth: int, capped: List[str], over_broad: List[str]) -> None:
     if depth >= max_depth:
         if is_over_broad(node.question) and depth > 0:
             over_broad.append(node.local_id)  # honest: still broad, out of depth
