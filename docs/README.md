@@ -11,8 +11,10 @@ individual implementation.
 
 - **`agent-execution/HARD_TO_VARY.md`** — ANT-H2V hard-to-vary protocol
   (`agent-execution/TEMPLATES.md` for handoff paste). Read before diagnosing or
-  closing Research/cascade bugs. AMS ref-lint bridge (Phase E):
-  [`agent-execution/AMS_BRIDGE.md`](agent-execution/AMS_BRIDGE.md).
+  closing Research/cascade bugs. AMS ref-lint (Phase E):
+  [`agent-execution/AMS_BRIDGE.md`](agent-execution/AMS_BRIDGE.md);
+  cascade case study:
+  [`agent-execution/cascade-case-study.md`](agent-execution/cascade-case-study.md).
   Program index:
   [`docs/htmlspec/antiek-hard-to-vary-execution/index.html`](htmlspec/antiek-hard-to-vary-execution/index.html).
 
