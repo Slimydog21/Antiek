@@ -264,8 +264,9 @@ class ChunkResponse(BaseModel):
     so the reader's "open this source" affordance and the data layer
     cannot disagree. The gate applied here is the SAME one
     ``substrate/graph/search.py`` applies to chunk retrieval on a
-    non-privileged path: content in ``RESTRICTED_CONTENT_CLASSES``
-    (restricted-pending-opt-in) or under a takedown is withheld; a NULL /
+    non-privileged path: content in the canonical non-privileged denylist
+    (``restricted_pending_opt_in`` + ``personal_reading`` via
+    ``retrieval_gate``) or under a takedown is withheld; a NULL /
     legacy research chunk passes (grandfathered) exactly as it does in
     chunk search — this is the operator reading their own research
     chunks, not the public "Spotify for books" full-text serve path
@@ -2144,8 +2145,9 @@ def create_app(
         modal + SPR-04's named-source render to surface the chunk text +
         source document title for any cited chunk_id.
 
-        §9.0 retrieval gate: a chunk whose source is RESTRICTED
-        (content_class in ``RESTRICTED_CONTENT_CLASSES``) or under a
+        §9.0 retrieval gate: a chunk whose source is on the canonical
+        non-privileged denylist (``retrieval_gate`` union:
+        ``restricted_pending_opt_in`` + ``personal_reading``) or under a
         takedown has its body WITHHELD here, at the query layer — the
         same gate ``substrate/graph/search.py`` applies to chunk
         retrieval — so a frontend that calls this directly still cannot
@@ -2161,7 +2163,10 @@ def create_app(
         import duckdb as _duckdb
 
         from substrate.graph import default_db_path
-        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
+        from substrate.graph.retrieval_gate import (
+            PERSONAL_ONLY_CONTENT_CLASSES,
+            _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
+        )
 
         db_path = default_db_path()
         try:
@@ -2203,12 +2208,16 @@ def create_app(
 
         content_class = row[7]
         taken_down = bool(row[8])
-        # Takedown wins over everything; otherwise withhold only the
-        # named restricted classes (NULL/legacy passes — same as search).
+        # Takedown wins over everything; otherwise withhold the canonical
+        # non-privileged denylist (NULL/legacy passes — same as search).
         if taken_down:
             servable, label = False, "taken_down"
-        elif content_class in RESTRICTED_CONTENT_CLASSES:
-            servable, label = False, "restricted"
+        elif content_class in _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES:
+            servable = False
+            if content_class in PERSONAL_ONLY_CONTENT_CLASSES:
+                label = "personal_readable"
+            else:
+                label = "restricted"
         else:
             servable, label = True, None
         return ChunkResponse(

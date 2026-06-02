@@ -30,8 +30,8 @@ What's here:
 
 §9.0 gate (CRITICAL — composed, never re-implemented): every impl delegates
 the restricted-content gate to the *same* ``search()`` call (or, for VSS, the
-*same* ``PRIVILEGED_POLICY_TAGS`` / ``RESTRICTED_CONTENT_CLASSES`` predicate
-that ``search()`` applies). On main the gate is still the fail-open DENYLIST
+*same* ``retrieval_gate.non_privileged_chunk_sql_clause`` helper that
+``search()`` applies). On main the gate is still the fail-open DENYLIST
 (``content_class IS NULL OR NOT IN (...)``) — the §9.0 allowlist unification
 is staged separately (PR #38, unmerged). This seam composes *whatever is on
 main*; it does not assume the fix landed.
@@ -50,9 +50,8 @@ from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 try:
+    from .retrieval_gate import non_privileged_chunk_sql_clause
     from .search import (
-        PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
         EmbeddingModel,
         search,
         search_nodes_by_label,
@@ -60,9 +59,10 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.graph.retrieval_gate import (  # type: ignore[no-redef]
+        non_privileged_chunk_sql_clause,
+    )
     from substrate.graph.search import (  # type: ignore[no-redef]
-        PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
         EmbeddingModel,
         search,
         search_nodes_by_label,
@@ -436,14 +436,13 @@ class DuckDbVssSubstrate:
         if source_tier_max is not None:
             sql += " AND d.source_tier <= ?"
             params.append(int(source_tier_max))
-        # §9.0 gate — composed from search.py's CANONICAL constants + the
-        # SAME predicate main applies (fail-open denylist on main; the §9.0
-        # allowlist unification is staged separately in PR #38, unmerged).
-        if policy_tag not in PRIVILEGED_POLICY_TAGS:
-            restricted = list(RESTRICTED_CONTENT_CLASSES)
-            placeholders = ",".join("?" for _ in restricted)
-            sql += f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
-            params.extend(restricted)
+        # §9.0 gate — composed from retrieval_gate (same helper as search()).
+        gate_sql, gate_params = non_privileged_chunk_sql_clause(
+            table_alias="d",
+            policy_tag=policy_tag,
+        )
+        sql += gate_sql
+        params.extend(gate_params)
         sql += " ORDER BY array_cosine_distance(" + emb + ", " + vec_str + ") ASC LIMIT ?"
         params.append(int(top_k))
 
