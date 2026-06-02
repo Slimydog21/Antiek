@@ -3,7 +3,8 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import wernerDefault from "../../brand/werner/poses/anchor/werner_default_v5_nano_corrected.png";
 import { LemonButton, LemonInput } from "../../components/lemon";
-import { requestMagicLink, useAuth } from "../../lib/auth";
+import { authLoginErrorDisplay, requestMagicLink, useAuth } from "../../lib/auth";
+import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 
 /**
  * Login surface — Antiek's owned login page (H6 ship, 2026-05-21
@@ -28,6 +29,8 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [errorHint, setErrorHint] = useState<string | null>(null);
+  const [diagnosticCode, setDiagnosticCode] = useState<AuthDiagnosticCode | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,12 +53,17 @@ export default function Login() {
     if (!email) return;
     setStatus("sending");
     setErrorMsg("");
+    setErrorHint(null);
+    setDiagnosticCode(null);
     const result = await requestMagicLink(email, nextPath);
     if (result.kind === "sent") {
       setStatus("sent");
     } else {
       setStatus("error");
-      setErrorMsg(result.message);
+      const { message, hint } = authLoginErrorDisplay(result);
+      setErrorMsg(message);
+      setErrorHint(hint);
+      setDiagnosticCode(result.diagnostic_code);
     }
   }
 
@@ -142,7 +150,12 @@ export default function Login() {
                   {status === "sending" ? "Sending…" : "Send sign-in link"}
                 </LemonButton>
                 {status === "error" && (
-                  <p className="text-[12px] text-emperor mt-1">{errorMsg}</p>
+                  <div className="mt-1 space-y-1" data-auth-diagnostic={diagnosticCode ?? undefined}>
+                    <p className="text-[12px] text-emperor">{errorMsg}</p>
+                    {errorHint ? (
+                      <p className="text-[11px] text-shadow-2 dark:text-starlight leading-relaxed">{errorHint}</p>
+                    ) : null}
+                  </div>
                 )}
               </form>
             </>
