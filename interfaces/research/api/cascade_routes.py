@@ -105,9 +105,9 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except PlanNotApproved as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 def _embedding_provider() -> EmbeddingProvider:
@@ -134,8 +134,10 @@ def _research_loop_factory() -> Callable[[LoopContext], AsyncIterator[StepEvent]
 def _command(kind: str, payload: dict[str, Any] | None) -> Command:
     try:
         return Command(kind=CommandKind(kind), payload=payload or {})
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"unknown steer command {kind!r}")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"unknown steer command {kind!r}",
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
