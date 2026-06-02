@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 from .._json_decode import extract_json_object
 
@@ -18,9 +17,9 @@ class InterviewerValidationError(ValueError):
 class InterviewerResult:
     interviewer_text: str
     should_end: bool
-    must_cover_remaining_indices: List[int]
+    must_cover_remaining_indices: list[int]
     follow_up_for_prior_turn: bool
-    reasoning_note: Optional[str]
+    reasoning_note: str | None
 
 
 def parse_interviewer_response(raw: str) -> InterviewerResult:
@@ -39,7 +38,7 @@ def parse_interviewer_response(raw: str) -> InterviewerResult:
         raise InterviewerValidationError(
             "must_cover_remaining_indices must be a list"
         )
-    indices: List[int] = []
+    indices: list[int] = []
     for v in raw_indices:
         if not isinstance(v, int) or v < 0:
             raise InterviewerValidationError(

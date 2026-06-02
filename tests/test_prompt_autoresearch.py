@@ -9,17 +9,14 @@ import pytest
 from tools.prompt_autoresearch import (
     BudgetCap,
     BudgetExceeded,
-    CompositeScore,
     PromptAutoresearchRunner,
     PromptMutation,
-    PromptMutationOutcome,
     composite_score,
     deterministic_voice_style_score,
     grounding_preserved_rate,
     sector_vocab_overlap,
 )
 from tools.prompt_autoresearch.runner import ProductionEnvironmentRefusal, make_id
-
 
 # ── Score components ────────────────────────────────────────────────
 
@@ -68,7 +65,7 @@ def test_composite_score_combines_correctly():
     )
     # weights: 0.4 * rubric + 0.3 * vs + 0.2 * sv + 0.1 * gr
     # rubric=0.8, vs~=1.0 (no padding, no em-dashes), sv=1.0, gr=1.0
-    assert 0.4 * 0.8 + 0.3 + 0.2 + 0.1 == pytest.approx(cs.total)
+    assert pytest.approx(cs.total) == 0.4 * 0.8 + 0.3 + 0.2 + 0.1
 
 
 # ── Budget ──────────────────────────────────────────────────────────

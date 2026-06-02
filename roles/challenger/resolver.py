@@ -33,8 +33,6 @@ content; the seq determinism is verified against the shipped rule.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from .prompt import DEFAULT_CHALLENGE_PROMPT
 
 
@@ -85,7 +83,7 @@ def make_dispatch_resolver(
     ``living_note.challenge_note(resolver=...)``. Lazy dispatch import so
     this module stays loadable without the provider stack."""
 
-    def _resolve(current_text: str, challenge_text: str) -> Optional[str]:
+    def _resolve(current_text: str, challenge_text: str) -> str | None:
         from substrate.dispatch import ProviderError, dispatch  # lazy
 
         prompt = (
@@ -106,7 +104,7 @@ def make_dispatch_resolver(
     return _resolve
 
 
-def parse_resolution(response_text: str, *, current_text: str) -> Optional[str]:
+def parse_resolution(response_text: str, *, current_text: str) -> str | None:
     """Parse the challenger's refine-or-decline JSON. Returns the refined
     text when the model resolved (and it actually differs from the
     original), else ``None`` (decline → escalate). A malformed response

@@ -22,12 +22,11 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from substrate.schemas import (
+    TYPED_PAYLOAD_ACTION_TYPES,
     ActionType,
     InvestigationSpawnedFromPayload,
     InvestigationStartRequestedPayload,
-    TYPED_PAYLOAD_ACTION_TYPES,
 )
-
 
 # ── 1. Schema additions ─────────────────────────────────────────────
 

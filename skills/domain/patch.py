@@ -29,7 +29,6 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
 
 
 def default_skills_root() -> Path:
@@ -55,7 +54,7 @@ PLACEHOLDER_TEXT = "(Findings will be added.)"
 
 def find_section_boundaries(
     skill_content: str, section_name: str,
-) -> Tuple[int, int, str]:
+) -> tuple[int, int, str]:
     """Find the line-range and text of one section.
 
     Returns ``(start_line, end_line, current_content_between_headers)``.
@@ -77,7 +76,7 @@ def find_section_boundaries(
         rf"^#{{2,}}\s+{re.escape(section_name)}\b", re.IGNORECASE
     )
 
-    start_idx: Optional[int] = None
+    start_idx: int | None = None
     for i, line in enumerate(lines):
         if section_pattern.match(line):
             start_idx = i + 1  # content starts after the header
@@ -159,7 +158,7 @@ def patch_skill(
     skill_name: str,
     findings: dict,
     *,
-    skills_root: Optional[Path] = None,
+    skills_root: Path | None = None,
 ) -> list[str]:
     """Patch a knowledge skill with extracted findings.
 

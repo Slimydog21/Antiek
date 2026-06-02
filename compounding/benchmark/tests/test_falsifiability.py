@@ -25,8 +25,6 @@ real warm<cold or warm>cold signal. These tests prove the response; the mock RUN
 
 from __future__ import annotations
 
-from typing import List
-
 from compounding.benchmark.aggregate import aggregate_comparison
 from compounding.benchmark.measure import CostToResolve
 from compounding.benchmark.validity import (
@@ -48,7 +46,7 @@ def _cost(token: float, *, sources: int = 0, wall: float = 0.0) -> CostToResolve
     )
 
 
-def _runs(values: List[float], **kw) -> List[CostToResolve]:
+def _runs(values: list[float], **kw) -> list[CostToResolve]:
     return [_cost(v, **kw) for v in values]
 
 

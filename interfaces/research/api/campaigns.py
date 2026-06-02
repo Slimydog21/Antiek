@@ -12,8 +12,6 @@ the substrate's event log + the payout_transfers table on demand.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -27,7 +25,7 @@ class CampaignSummaryResponse(BaseModel):
     platform_share_usd_cents: int
     # Where the advertiser stands relative to their monthly budget,
     # if a budget was specified at submission.
-    monthly_budget_usd_cents: Optional[int]
+    monthly_budget_usd_cents: int | None
 
 
 def _refuse(status_code: int, code: str, message: str) -> HTTPException:
@@ -47,7 +45,7 @@ def _resolve_db_path() -> str:
 
 def _load_advertiser_budget(
     con, advertiser_id: str,
-) -> tuple[bool, Optional[int]]:
+) -> tuple[bool, int | None]:
     """Returns (advertiser_exists, monthly_budget_usd_cents)."""
     try:
         row = con.execute(

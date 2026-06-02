@@ -15,7 +15,6 @@ from substrate.federation import (
     FederationRegistry,
     QualityGateResult,
     SignatureError,
-    SigningKey,
     SliceItem,
     generate_keypair,
     ingest_slice,
@@ -30,7 +29,7 @@ from substrate.federation.signing import SignedManifest
 def _items(n: int = 3) -> list[SliceItem]:
     out: list[SliceItem] = []
     for i in range(n):
-        body = f"note body {i}".encode("utf-8")
+        body = f"note body {i}".encode()
         out.append(SliceItem(
             note_id=f"note-{i}",
             user_id=f"u-{i}",
@@ -271,7 +270,7 @@ def test_signature_includes_item_hashes():
         created_at_source=bad_items[0].created_at_source,
     )
     # Build a new manifest reflecting the tampered hashes.
-    from substrate.federation.slice import build_manifest, FederationSlice
+    from substrate.federation.slice import FederationSlice, build_manifest
     bad_manifest = build_manifest(
         source_substrate_id=fslice.manifest.source_substrate_id,
         topic_scope=fslice.manifest.topic_scope,

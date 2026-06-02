@@ -25,7 +25,8 @@ from __future__ import annotations
 import os
 import sys
 from collections import Counter
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 try:
     from ...constants import (
@@ -42,7 +43,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 from .types import VerificationResult
 
-
 # ---------------------------------------------------------------------------
 # Plausibility checks (cheap filters)
 # ---------------------------------------------------------------------------
@@ -50,9 +50,9 @@ from .types import VerificationResult
 
 def check_numeric_range(
     value: Any,
-    expected_min: Optional[float] = None,
-    expected_max: Optional[float] = None,
-) -> Optional[str]:
+    expected_min: float | None = None,
+    expected_max: float | None = None,
+) -> str | None:
     """Return an issue string if a numeric value is outside the
     range; ``None`` for non-numeric (the type check is a separate
     rubric) or for values inside the range."""
@@ -65,7 +65,7 @@ def check_numeric_range(
     return None
 
 
-def check_sign(value: Any, expected_sign: str) -> Optional[str]:
+def check_sign(value: Any, expected_sign: str) -> str | None:
     """``expected_sign`` is one of ``positive`` / ``negative`` /
     ``non-negative`` / ``non-positive``. Unknown signs are silently
     ignored (returning ``None``) so an upstream typo doesn't gate
@@ -85,8 +85,8 @@ def check_sign(value: Any, expected_sign: str) -> Optional[str]:
 
 
 def check_units_rough(
-    value: Any, expected_magnitude: Tuple[float, float],
-) -> Optional[str]:
+    value: Any, expected_magnitude: tuple[float, float],
+) -> str | None:
     """Flag values more than 3 orders of magnitude outside the
     expected ``(low, high)`` envelope. Generous on purpose — the goal
     is to catch unit-confusion bugs (m vs mm, GB vs MB), not enforce
@@ -99,7 +99,7 @@ def check_units_rough(
     return None
 
 
-def check_expected_shape(value: Any, expected_type: type) -> Optional[str]:
+def check_expected_shape(value: Any, expected_type: type) -> str | None:
     """Type check. ``None`` when types match; issue string otherwise."""
     if not isinstance(value, expected_type):
         return (
@@ -112,16 +112,16 @@ def check_expected_shape(value: Any, expected_type: type) -> Optional[str]:
 def run_plausibility_checks(
     value: Any,
     *,
-    expected_type: Optional[type] = None,
-    expected_min: Optional[float] = None,
-    expected_max: Optional[float] = None,
-    expected_sign: Optional[str] = None,
-    expected_magnitude: Optional[Tuple[float, float]] = None,
-) -> List[str]:
+    expected_type: type | None = None,
+    expected_min: float | None = None,
+    expected_max: float | None = None,
+    expected_sign: str | None = None,
+    expected_magnitude: tuple[float, float] | None = None,
+) -> list[str]:
     """Run all configured plausibility checks. Empty list ⇒ all
     checks passed. Caller (``verified_answer``) decides whether to
     reject or just flag."""
-    issues: List[str] = []
+    issues: list[str] = []
     if expected_type is not None:
         iss = check_expected_shape(value, expected_type)
         if iss:
@@ -173,9 +173,9 @@ REPHRASE_TEMPLATES: tuple[str, ...] = (
 )
 
 
-def rephrase_framings(claim: str, context: str, count: int = 2) -> List[str]:
+def rephrase_framings(claim: str, context: str, count: int = 2) -> list[str]:
     """Generate ``count`` rephrased prompts from the templates."""
-    prompts: List[str] = []
+    prompts: list[str] = []
     for i in range(min(count, len(REPHRASE_TEMPLATES))):
         prompts.append(REPHRASE_TEMPLATES[i].format(claim=claim, context=context))
     return prompts
@@ -190,7 +190,7 @@ def _normalize_response(s: str) -> str:
     return s.strip().lower().rstrip(".,;:!?\"'")
 
 
-def _responses_agree(responses: List[str]) -> Tuple[bool, Optional[str]]:
+def _responses_agree(responses: list[str]) -> tuple[bool, str | None]:
     """Heuristic: two responses agree if their normalized forms match.
 
     Tiers in order:
@@ -225,7 +225,7 @@ def _responses_agree(responses: List[str]) -> Tuple[bool, Optional[str]]:
     return False, None
 
 
-def _count_agreements(responses: List[str]) -> int:
+def _count_agreements(responses: list[str]) -> int:
     """Number of responses matching the most-common normalized form."""
     if not responses:
         return 0
@@ -242,7 +242,7 @@ def _count_agreements(responses: List[str]) -> int:
 def verify_claim(
     claim: str,
     context: str,
-    llm_batch_fn: Callable[[List[str]], List[str]],
+    llm_batch_fn: Callable[[list[str]], list[str]],
     *,
     claim_id: str = "",
     redispatch_count: int = RLM_VERIFY_REDISPATCH_COUNT,
@@ -330,14 +330,14 @@ def verify_claim(
 def verified_answer(
     claim: str,
     context: str,
-    llm_batch_fn: Callable[[List[str]], List[str]],
+    llm_batch_fn: Callable[[list[str]], list[str]],
     *,
     claim_id: str = "",
-    expected_type: Optional[type] = None,
-    expected_min: Optional[float] = None,
-    expected_max: Optional[float] = None,
-    expected_sign: Optional[str] = None,
-    expected_magnitude: Optional[Tuple[float, float]] = None,
+    expected_type: type | None = None,
+    expected_min: float | None = None,
+    expected_max: float | None = None,
+    expected_sign: str | None = None,
+    expected_magnitude: tuple[float, float] | None = None,
 ) -> VerificationResult:
     """Full verification gate for a claim that produces a single
     factual answer. Plausibility runs AFTER re-dispatch on the agreed
@@ -381,10 +381,10 @@ def verified_answer(
 
 
 def verify_layer_answers(
-    answers: Dict[str, Any],
-    node_specs: List[Dict[str, Any]],
-    llm_batch_fn: Callable[[List[str]], List[str]],
-) -> Dict[str, VerificationResult]:
+    answers: dict[str, Any],
+    node_specs: list[dict[str, Any]],
+    llm_batch_fn: Callable[[list[str]], list[str]],
+) -> dict[str, VerificationResult]:
     """Verify every non-null answer in a DAG layer before propagation.
 
     ``node_specs`` provides per-node ``id`` / ``question`` / ``deps``;
@@ -395,7 +395,7 @@ def verify_layer_answers(
     Null answers fail with ``disagreement_reason="answer is None"`` so
     the gate can distinguish "not yet computed" from "failed to
     verify"."""
-    results: Dict[str, VerificationResult] = {}
+    results: dict[str, VerificationResult] = {}
     node_map = {n["id"]: n for n in node_specs}
 
     for node_id, answer in answers.items():

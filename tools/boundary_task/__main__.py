@@ -22,7 +22,6 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
-from datetime import datetime, timezone
 
 from tools.boundary_task import store
 

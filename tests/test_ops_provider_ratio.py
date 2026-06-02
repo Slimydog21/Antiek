@@ -11,7 +11,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -45,7 +45,7 @@ def _write_dispatch_event(
     minutes_ago: int = 1,
 ) -> None:
     """Append one dispatch.call event to <inv_id>.jsonl in events_dir."""
-    ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    ts = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
     ev = {
         "event_id": f"evt-{provider}-{finish}-{minutes_ago}",
         "investigation_id": inv_id,

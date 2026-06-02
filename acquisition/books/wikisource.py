@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -54,7 +53,7 @@ _CC_BY_SA_CATEGORY_TOKENS = ("cc-by-sa", "cc by-sa")
 _COPYRIGHT_CATEGORY_TOKENS = ("copyrighted", "non-free", "fair use")
 
 
-def _establish_rights(categories: list[str]) -> tuple[Optional[str], Optional[str]]:
+def _establish_rights(categories: list[str]) -> tuple[str | None, str | None]:
     """Map a page's categories to (license_uri, pd_signal) for classify().
 
     Deny-by-default: an explicit copyright/non-free category disqualifies the
@@ -162,7 +161,7 @@ def _body_for(fetcher: ThrottledFetcher, pagename: str) -> str:
 
 def candidate_for(
     fetcher: ThrottledFetcher, pagename: str
-) -> Optional[BookCandidate]:
+) -> BookCandidate | None:
     """Resolve one Wikisource page to a candidate (PD established from its
     license category), or None when the page has no usable body. A non-PD page
     still returns a candidate with license_uri=None/pd_signal=None so classify()

@@ -95,7 +95,7 @@ class SourceCensus:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "SourceCensus":
+    def from_dict(cls, d: dict[str, Any]) -> SourceCensus:
         """Build from a parsed JSON object, failing loudly on a missing or malformed
         field — a census that omits or corrupts a gating metric must NOT default to a
         passing value (that would be a silent gate bypass). Every field is required;

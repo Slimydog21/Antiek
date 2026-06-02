@@ -39,14 +39,13 @@ Why a two-value tier at all (and not one always-deep default)?
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Literal, Tuple
-
+from typing import Literal
 
 # The closed set. Adding a third value is a deliberate edit here, gated
 # by the same scope discipline above — never an open-ended dropdown.
 ResearchTier = Literal["fast", "deep"]
 
-RESEARCH_TIERS: Tuple[ResearchTier, ...] = ("fast", "deep")
+RESEARCH_TIERS: tuple[ResearchTier, ...] = ("fast", "deep")
 
 # Sensible default when the caller doesn't pick. "deep" is the default
 # because a cold research question is the high-value case; the operator
@@ -76,7 +75,7 @@ class ResearchTierTarget:
 # providers/bootstrap.py (``xiaomi`` = MiMo, ``deepseek`` = DeepSeek).
 # The model ids are the per-call argument the OpenAICompatProvider sends;
 # they are NOT pinned in bootstrap (one endpoint serves several models).
-_RESEARCH_TIER_MAP: Dict[ResearchTier, ResearchTierTarget] = {
+_RESEARCH_TIER_MAP: dict[ResearchTier, ResearchTierTarget] = {
     "fast": ResearchTierTarget(
         tier="fast",
         provider="xiaomi",  # MiMo endpoint registered in bootstrap.py

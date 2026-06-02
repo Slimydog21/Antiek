@@ -45,8 +45,10 @@ def main() -> int:
     from orchestration.continuous.daemon import (
         DaemonConfig,
         DaemonState,
-        main as daemon_main,
         run_one_iteration,
+    )
+    from orchestration.continuous.daemon import (
+        main as daemon_main,
     )
 
     if args.once:

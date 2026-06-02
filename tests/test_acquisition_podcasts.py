@@ -10,8 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -24,18 +23,14 @@ from acquisition.podcasts import (
     Episode,
     Podcast,
     fetch_feed,
-    ingest_feed,
     ingest_podcast_episode,
     podcast_doc_id,
 )
 from acquisition.podcasts.client import (
     _clean_srt,
     _clean_vtt,
-    _detect_audio_url,
-    _detect_transcript_url,
     _parse_duration,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────
 # Fixtures + helpers
@@ -87,7 +82,7 @@ def temp_substrate(monkeypatch):
 
 
 class _StubEmbedder:
-    def encode(self, text: str) -> List[float]:
+    def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
         v[h % 16] = 1.0
@@ -236,7 +231,7 @@ def _fake_episode() -> Episode:
         episode_id="ep-1-dpi-suppression",
         title="Episode 1: DPI suppression",
         description="A deep dive on adaptive filtering.",
-        published_at=datetime(2026, 5, 12, tzinfo=timezone.utc),
+        published_at=datetime(2026, 5, 12, tzinfo=UTC),
         duration_seconds=3600,
         audio_url="https://podcast.example/ep1.mp3",
         transcript_url="https://podcast.example/ep1.txt",

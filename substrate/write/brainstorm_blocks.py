@@ -67,7 +67,7 @@ def drivers_to_blocks(
     con: LockedConnection,
     *,
     section_id: str,
-    drivers: "DriverSet",
+    drivers: DriverSet,
     deliverable_id: str | None = None,
     investigation_id: str = "__operator__",
     start_index: int = 0,

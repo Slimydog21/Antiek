@@ -42,8 +42,9 @@ SPR-03 no-copy guard exercises its seams with fakes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal, Mapping, Optional, Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from .contracts import EntityKind, Workflow
 
@@ -84,11 +85,11 @@ class ThreadHop:
     entity_kind: EntityKind
     # The seam event id that produced this hop (the handoff into this workflow).
     # None on the origin hop (the entity's birth — no seam created it).
-    seam_event_id: Optional[str]
-    seam_action_type: Optional[str]
+    seam_event_id: str | None
+    seam_action_type: str | None
     # The originating provenance reference the seam carried (an event/region/
     # source id), so the hop is auditable back to the trajectory. None at origin.
-    provenance_ref: Optional[str]
+    provenance_ref: str | None
     # Whether the workflow this hop lands in has a built surface. Drives the
     # honest stub — the thread does not lie about what exists.
     built: bool = True
@@ -162,7 +163,7 @@ def _payload_of(event: SeamEvent) -> Mapping[str, Any]:
     return {}
 
 
-def _seam_entity(event: SeamEvent) -> tuple[Optional[str], Optional[str], Optional[str]]:
+def _seam_entity(event: SeamEvent) -> tuple[str | None, str | None, str | None]:
     """Pull (entity_id, entity_kind, provenance_ref) from a seam event,
     tolerating both the envelope-level and payload-level placement."""
     payload = _payload_of(event)
@@ -176,7 +177,7 @@ def _seam_entity(event: SeamEvent) -> tuple[Optional[str], Optional[str], Option
     )
 
 
-def _detect_inline_copy(event: SeamEvent) -> Optional[str]:
+def _detect_inline_copy(event: SeamEvent) -> str | None:
     """Return the name of a copy-indicating field if the seam event inlined the
     entity's content (a provenance bug), else None. A seam moves a *reference*;
     a payload that carries the entity's text is a fork, and the thread walk must
@@ -193,7 +194,7 @@ def reconstruct_thread(
     node_id: str,
     *,
     seam_events: Iterable[SeamEvent],
-    origin_entity_kind: Optional[EntityKind] = None,
+    origin_entity_kind: EntityKind | None = None,
     provenance_edges: Sequence[ProvenanceEdge] = (),
     built_workflows: Iterable[Workflow] = ("research", "read", "write", "speak"),
 ) -> Thread:
@@ -241,7 +242,7 @@ def reconstruct_thread(
 
     # First pass: parse every seam event into a uniform tuple, flag inline
     # copies (content in the payload — a fork by construction).
-    parsed: list[tuple[SeamEvent, str, Optional[str], str, Optional[str], Optional[str]]] = []
+    parsed: list[tuple[SeamEvent, str, str | None, str, str | None, str | None]] = []
     for ev in seam_events:
         action_type = str(ev.get("action_type") or "")
         if action_type not in _SEAM_ACTION_DIRECTION:
@@ -261,7 +262,7 @@ def reconstruct_thread(
     # lineage, divergent entity_id) stay in the component and surface its wrong
     # id, rather than being silently dropped by an id-equality filter.
     def _tokens(
-        entity_id: Optional[str], provenance_ref: Optional[str], event_id: Optional[str]
+        entity_id: str | None, provenance_ref: str | None, event_id: str | None
     ) -> set[str]:
         return {t for t in (entity_id, provenance_ref, event_id) if t}
 
@@ -280,7 +281,7 @@ def reconstruct_thread(
 
     # Keep the lineage's seam events, ordered by emission time then event id
     # (matching trajectory()'s own ordering). Reject any inline-content copy.
-    relevant: list[tuple[SeamEvent, str, str, Optional[str], Optional[str]]] = []
+    relevant: list[tuple[SeamEvent, str, str, str | None, str | None]] = []
     for ev, action_type, entity_id, entity_kind, provenance_ref, copied_field in parsed:
         event_id = str(ev.get("event_id")) if ev.get("event_id") else None
         if not (_tokens(entity_id, provenance_ref, event_id) & lineage):

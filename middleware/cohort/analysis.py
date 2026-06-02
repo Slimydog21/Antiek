@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import os
 import sys
-from collections import defaultdict
-from typing import Any, Dict, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 try:
     from ...constants import (
@@ -36,11 +36,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 from .types import CohortOutcomeRow, CohortSynthesisRow
 
-
 # Weights for the proceed-confirmation score (spec §E.3). Replaces the
 # upstream's keyword-scan of the prose ``decision_outcome_at_observation``
 # field with a structured grade.
-_PROCEED_OUTCOME_WEIGHTS: Dict[str, float] = {
+_PROCEED_OUTCOME_WEIGHTS: dict[str, float] = {
     "confirmed": 1.0,
     "partially_confirmed": 0.5,
     "disconfirmed": 0.0,
@@ -50,8 +49,8 @@ _PROCEED_OUTCOME_WEIGHTS: Dict[str, float] = {
 
 def analyze(
     cohort: Sequence[CohortSynthesisRow],
-    outcomes_by_synthesis: Dict[str, List[CohortOutcomeRow]],
-) -> Dict[str, Any]:
+    outcomes_by_synthesis: dict[str, list[CohortOutcomeRow]],
+) -> dict[str, Any]:
     """Compute the four cohort dimensions over ``cohort`` + observations.
 
     ``outcomes_by_synthesis`` maps synthesis_id → list of observation
@@ -63,7 +62,7 @@ def analyze(
     cohort_with_outcomes = [c for c in cohort if c.synthesis_id in outcomes_by_synthesis]
 
     # ── 1. Thesis accuracy by confidence stratum ──
-    by_confidence: Dict[str, Dict[str, int]] = {
+    by_confidence: dict[str, dict[str, int]] = {
         c: {"total": 0, "confirmed": 0, "partially_confirmed": 0,
             "disconfirmed": 0, "unresolved": 0}
         for c in ("high", "moderate", "low", "unknown")
@@ -71,7 +70,7 @@ def analyze(
     for c in cohort_with_outcomes:
         thesis = c.thesis or {}
         components = thesis.get("thesis_components", [])
-        claim_to_conf: Dict[str, str] = {}
+        claim_to_conf: dict[str, str] = {}
         for comp in components:
             claim_to_conf[comp.get("claim", "")] = comp.get("confidence", "unknown")
         for obs in outcomes_by_synthesis[c.synthesis_id]:
@@ -87,7 +86,7 @@ def analyze(
                 bucket["total"] += 1
                 bucket[outcome] = bucket.get(outcome, 0) + 1
 
-    calibration: Dict[str, Dict[str, Any]] = {}
+    calibration: dict[str, dict[str, Any]] = {}
     for conf, stats in by_confidence.items():
         total = stats["total"]
         if total == 0:

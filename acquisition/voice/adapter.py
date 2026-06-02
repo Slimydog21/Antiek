@@ -17,8 +17,7 @@ import hashlib
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -58,13 +57,13 @@ MIN_INGEST_WORD_COUNT = 8  # voice notes are short; lower threshold
 @dataclass(frozen=True)
 class IngestVoiceNoteResult:
     document_id: str
-    chunk_ids: List[str] = field(default_factory=list)
-    node_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    node_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
-    transcript_text: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
+    transcript_text: str | None = None
     duration_seconds: float = 0.0
 
 
@@ -85,7 +84,7 @@ def _format_voice_note_markdown(
     transcript: str,
     recorded_at: datetime,
     duration_seconds: float,
-    language: Optional[str],
+    language: str | None,
 ) -> str:
     """Render the voice note as chunker-friendly markdown."""
     lines = [
@@ -109,14 +108,14 @@ def ingest_voice_note(
     transcript: str,
     *,
     investigation_id: str,
-    title: Optional[str] = None,
-    recorded_at: Optional[datetime] = None,
+    title: str | None = None,
+    recorded_at: datetime | None = None,
     duration_seconds: float = 0.0,
-    language: Optional[str] = None,
+    language: str | None = None,
     operator_id: str = "__operator__",
     source_tier: int = DEFAULT_VOICE_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> IngestVoiceNoteResult:
     """Write a transcribed voice note into the substrate graph.
@@ -125,7 +124,7 @@ def ingest_voice_note(
     tests). This adapter does not perform transcription itself; pair
     with ``transcribe_and_ingest`` to chain the two.
     """
-    when = recorded_at or datetime.now(timezone.utc)
+    when = recorded_at or datetime.now(UTC)
     document_id = voice_note_doc_id(operator_id, when)
     auto_title = title or f"Voice note {when.strftime('%Y-%m-%d %H:%M')}"
     full_text = _format_voice_note_markdown(
@@ -167,9 +166,9 @@ def ingest_voice_note(
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
 
-    chunks: List[Chunk] = chunk_markdown(full_text)
-    chunk_ids: List[str] = []
-    node_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(full_text)
+    chunk_ids: list[str] = []
+    node_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -250,11 +249,11 @@ def transcribe_and_ingest(
     filename: str,
     investigation_id: str,
     operator_id: str = "__operator__",
-    title: Optional[str] = None,
-    language: Optional[str] = None,
-    transcriber: Optional[Transcriber] = None,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    title: str | None = None,
+    language: str | None = None,
+    transcriber: Transcriber | None = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> IngestVoiceNoteResult:
     """End-to-end: transcribe audio via whisper, then write into the
     substrate graph. Pass a stub ``transcriber`` in tests."""
@@ -266,7 +265,7 @@ def transcribe_and_ingest(
         tx.text,
         investigation_id=investigation_id,
         title=title,
-        recorded_at=datetime.now(timezone.utc),
+        recorded_at=datetime.now(UTC),
         duration_seconds=tx.duration_seconds,
         language=tx.language or language,
         operator_id=operator_id,

@@ -110,9 +110,9 @@ import ast
 import json
 import os
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Read-only DB access funnels through the one sanctioned read path. There is NO
 # import of connect_write anywhere in this module (§16: the audit must not
@@ -121,13 +121,11 @@ from runtime.db_lock import connect_read
 from substrate.ad_inventory.attribution import PUBLIC_GRAPH_CONTENT_CLASSES
 from substrate.books.serve import serve_full_text
 from substrate.collective_graph.eligibility import (
-    NON_ATTRIBUTABLE_CONTENT_CLASSES,
     CollectiveGraphDocument,
     is_attribution_eligible,
 )
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
-    NON_TRAINABLE_CONTENT_CLASSES,
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
     THIRD_PARTY_DOCUMENT_TYPES,
@@ -138,7 +136,6 @@ from substrate.dedup import (
     identity_key,
 )
 from substrate.ingest_budget import (
-    DEFAULT_HARD_DB_SIZE_BYTES,
     BudgetGovernor,
     BudgetState,
 )
@@ -522,7 +519,7 @@ def _check_personal_nonattributable(con: Any) -> CheckResult:
     )
 
 
-def _pass_public_probe() -> "QualityGateResult":
+def _pass_public_probe() -> QualityGateResult:
     """A minimal PASS_PUBLIC quality-gate result used ONLY to probe
     ``is_attribution_eligible`` in :func:`_check_personal_nonattributable`.
 
@@ -724,7 +721,7 @@ def _check_gated_leak(con: Any) -> CheckResult:
     )
 
 
-def _basis_contradicts_servable(basis: Optional[str]) -> bool:
+def _basis_contradicts_servable(basis: str | None) -> bool:
     """Whether a ``license_basis`` asserts the work is GATED.
 
     A servable ``content_class`` carrying such a basis is a class/basis
@@ -794,11 +791,11 @@ def _check_dedup(con: Any) -> CheckResult:
 
 def _document_identity_record(
     document_id: str,
-    source_uri: Optional[str],
-    title: Optional[str],
-    author: Optional[str],
-    raw_text: Optional[str],
-    metadata: Optional[str],
+    source_uri: str | None,
+    title: str | None,
+    author: str | None,
+    raw_text: str | None,
+    metadata: str | None,
 ) -> IdentityRecord:
     """Map a documents row to a dedup ``IdentityRecord``.
 
@@ -837,7 +834,7 @@ def _document_identity_record(
         except (ValueError, TypeError):
             meta = {}
 
-    def _m(*keys: str) -> Optional[str]:
+    def _m(*keys: str) -> str | None:
         for k in keys:
             v = meta.get(k)
             if isinstance(v, str) and v.strip():
@@ -954,7 +951,7 @@ def _check_extraction(con: Any) -> CheckResult:
     )
 
 
-def _check_budget(con: Any, db_path: str, governor: Optional[BudgetGovernor]) -> CheckResult:
+def _check_budget(con: Any, db_path: str, governor: BudgetGovernor | None) -> CheckResult:
     """(e) Corpus is within the SPR-09 budget ceiling.
 
     Composes ``substrate.ingest_budget.BudgetGovernor`` — the same governor the
@@ -1091,9 +1088,7 @@ class _ContentClassLiteralVisitor(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> None:
         for target in node.targets:
-            if isinstance(target, ast.Name) and target.id == "content_class":
-                self._flag_if_literal(node.value, node.lineno)
-            elif isinstance(target, ast.Attribute) and target.attr == "content_class":
+            if isinstance(target, ast.Name) and target.id == "content_class" or isinstance(target, ast.Attribute) and target.attr == "content_class":
                 self._flag_if_literal(node.value, node.lineno)
         self.generic_visit(node)
 
@@ -1113,7 +1108,7 @@ def _acquisition_root() -> Path:
     return Path(__file__).resolve().parent.parent / _BINDING_ROOT
 
 
-def assert_no_content_class_bypass(root: Optional[str] = None) -> BindingResult:
+def assert_no_content_class_bypass(root: str | None = None) -> BindingResult:
     """THE BINDING: assert no connector assigns content_class outside classify().
 
     AST-scans every ``*.py`` under ``acquisition/{books,textbooks,papers,opt_in}/``
@@ -1168,7 +1163,7 @@ def _display_path(py_file: Path, base: Path) -> str:
 def run_audit(
     db_path: str,
     *,
-    governor: Optional[BudgetGovernor] = None,
+    governor: BudgetGovernor | None = None,
     include_binding: bool = True,
 ) -> AuditResult:
     """Open ``db_path`` READ-ONLY and run all six corpus checks (+ the static
@@ -1276,8 +1271,8 @@ class CorpusSummary:
 def summarize_corpus(
     db_path: str,
     *,
-    audit: Optional[AuditResult] = None,
-    governor: Optional[BudgetGovernor] = None,
+    audit: AuditResult | None = None,
+    governor: BudgetGovernor | None = None,
 ) -> CorpusSummary:
     """Build the corpus-state summary. Runs the audit (if not provided) so the
     verdict line is the SAME object the audit returns — never a recomputed
@@ -1324,7 +1319,7 @@ def summarize_corpus(
 # Coarse source label from a source_uri host, so the by-source line groups by
 # the connector family (gutenberg / archive.org / arxiv / a publisher host)
 # rather than fanning out one bucket per document URL.
-def _source_label(source_uri: Optional[str]) -> str:
+def _source_label(source_uri: str | None) -> str:
     if not source_uri:
         return "(unknown)"
     s = str(source_uri)
@@ -1363,7 +1358,7 @@ def _print_audit(result: AuditResult, *, as_json: bool) -> None:
                 print(f"        - {off}")
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m substrate.corpus_audit",
         description=(

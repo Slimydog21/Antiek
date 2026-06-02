@@ -24,11 +24,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 import httpx
-
 
 # --- VTT / SRT regex ---------------------------------------------------------
 # We strip cue numbering, timestamps, and tag artifacts so the
@@ -55,11 +53,11 @@ class Episode:
     episode_id: str  # GUID from RSS, or computed hash of audio_url
     title: str
     description: str
-    published_at: Optional[datetime]
+    published_at: datetime | None
     duration_seconds: int  # 0 when not advertised
-    audio_url: Optional[str]
-    transcript_url: Optional[str]
-    episode_url: Optional[str]  # web page for the episode, if distinct
+    audio_url: str | None
+    transcript_url: str | None
+    episode_url: str | None  # web page for the episode, if distinct
 
 
 @dataclass(frozen=True)
@@ -71,7 +69,7 @@ class Podcast:
     author: str
     description: str
     language: str
-    episodes: List[Episode] = field(default_factory=list)
+    episodes: list[Episode] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +77,7 @@ class Podcast:
 # ---------------------------------------------------------------------------
 
 
-def _detect_transcript_url(entry: dict) -> Optional[str]:
+def _detect_transcript_url(entry: dict) -> str | None:
     """Look for a transcript URL in an RSS entry. Supports:
       - <podcast:transcript url="..." type="text/plain | text/vtt | text/srt"/>
         (Podcasting 2.0 namespace, parsed by feedparser as
@@ -124,7 +122,7 @@ def _detect_transcript_url(entry: dict) -> Optional[str]:
     return None
 
 
-def _detect_audio_url(entry: dict) -> Optional[str]:
+def _detect_audio_url(entry: dict) -> str | None:
     """Find the audio enclosure URL. feedparser exposes RSS enclosures
     as ``entry.enclosures``; we accept anything with audio/* MIME."""
     enclosures = (
@@ -175,7 +173,7 @@ def _parse_duration(entry: dict) -> int:
     return 0
 
 
-def _parse_published(entry: dict) -> Optional[datetime]:
+def _parse_published(entry: dict) -> datetime | None:
     """Parse the entry's published timestamp. feedparser already
     converts ``pubDate`` into ``published_parsed`` (time.struct_time);
     we convert to UTC datetime."""
@@ -188,7 +186,7 @@ def _parse_published(entry: dict) -> Optional[datetime]:
     try:
         import time as _time
         epoch = _time.mktime(parsed)  # type: ignore[arg-type]
-        return datetime.fromtimestamp(epoch, tz=timezone.utc)
+        return datetime.fromtimestamp(epoch, tz=UTC)
     except (TypeError, ValueError):
         return None
 
@@ -196,8 +194,8 @@ def _parse_published(entry: dict) -> Optional[datetime]:
 def fetch_feed(
     feed_url: str,
     *,
-    max_episodes: Optional[int] = None,
-    client: Optional[httpx.Client] = None,
+    max_episodes: int | None = None,
+    client: httpx.Client | None = None,
 ) -> Podcast:
     """Fetch + parse an RSS feed. Returns a ``Podcast`` with episodes.
 
@@ -240,7 +238,7 @@ def fetch_feed(
     if max_episodes is not None:
         entries = entries[:max_episodes]
 
-    episodes: List[Episode] = []
+    episodes: list[Episode] = []
     for e in entries:
         eid = (
             (e.get("id") if isinstance(e, dict) else getattr(e, "id", None))
@@ -301,7 +299,7 @@ def _clean_srt(text: str) -> str:
 def fetch_episode_transcript(
     transcript_url: str,
     *,
-    client: Optional[httpx.Client] = None,
+    client: httpx.Client | None = None,
 ) -> str:
     """Fetch a transcript file and normalize to plain text. Returns
     the cleaned text, or an empty string when the fetch fails."""

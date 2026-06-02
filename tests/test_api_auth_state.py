@@ -8,7 +8,6 @@ resolution happens in middleware; endpoints trust request.state.
 
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app

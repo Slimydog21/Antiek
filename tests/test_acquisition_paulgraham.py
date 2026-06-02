@@ -22,15 +22,14 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from acquisition.urls import paulgraham as pg
 from acquisition.urls.adapter import url_doc_id
 from acquisition.urls.client import FetchedHtml
-from acquisition.urls import paulgraham as pg
 from substrate.constants import (
     PERSONAL_READABLE_CONTENT_CLASSES,
     PERSONAL_READING_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
 )
-
 
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "paulgraham")
 
@@ -373,13 +372,13 @@ def test_owner_read_full_body_not_snippet(temp_substrate):
 def test_attribution_ineligible_for_ingested_essay(temp_substrate):
     """An ingested PG essay is non-attributable: is_attribution_eligible() is
     False and its class is absent from the public-graph ad surface."""
-    from substrate.collective_graph.eligibility import (
-        CollectiveGraphDocument,
-        is_attribution_eligible,
-    )
     from substrate.ad_inventory.attribution import (
         PUBLIC_GRAPH_CONTENT_CLASSES,
         monetization_eligible,
+    )
+    from substrate.collective_graph.eligibility import (
+        CollectiveGraphDocument,
+        is_attribution_eligible,
     )
 
     summary, url = _run_one(temp_substrate)
@@ -399,8 +398,8 @@ def test_attribution_ineligible_for_ingested_essay(temp_substrate):
 
 
 def test_attribution_lane_membership_invariants():
-    from substrate.collective_graph.eligibility import NON_ATTRIBUTABLE_CONTENT_CLASSES
     from substrate.ad_inventory.attribution import PUBLIC_GRAPH_CONTENT_CLASSES
+    from substrate.collective_graph.eligibility import NON_ATTRIBUTABLE_CONTENT_CLASSES
 
     assert PERSONAL_READING_CONTENT_CLASS in NON_ATTRIBUTABLE_CONTENT_CLASSES
     assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES

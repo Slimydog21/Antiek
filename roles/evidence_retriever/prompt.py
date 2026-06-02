@@ -26,7 +26,6 @@ from __future__ import annotations
 
 from substrate.voice_style.constructions import render_voice_addendum
 
-
 EVIDENCE_RETRIEVER_PROMPT_VERSION = "1.0.0"
 EVIDENCE_RETRIEVER_TARGET_MODEL = "deepseek/deepseek-v4-pro"
 EVIDENCE_RETRIEVER_TEMPERATURE = 0.0

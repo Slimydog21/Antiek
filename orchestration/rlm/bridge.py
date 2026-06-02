@@ -28,17 +28,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from decimal import Decimal
-from typing import Optional
 
 from orchestration.rlm.session import (
     RLM_DOC_THRESHOLD_TOKENS,
     RLM_SESSION_COST_USD_CAP,
     RLMRatificationRequired,
-    RLMSession,
     create_session,
 )
-
 
 RLM_BYTES_PER_TOKEN_ESTIMATE: int = 4
 """Rough char-to-token ratio used at document-load time when we have
@@ -59,10 +55,10 @@ class RLMBridgeDecision:
     above_threshold: bool
     ratified: bool
     escalated: bool
-    session_id: Optional[str]
+    session_id: str | None
     reason: str
 
-    def to_typed_payload(self) -> "RLMBridgeDecidedPayload":  # noqa: F821
+    def to_typed_payload(self) -> RLMBridgeDecidedPayload:  # noqa: F821
         """Materialize this decision as the canonical typed event
         payload for the trajectory. Callers wired into the event
         broadcaster use this to land an ``rlm.bridge.decided`` row.

@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Callable, Optional
 
 from .budget import BudgetCap, BudgetExceeded
 from .score import CompositeScore, composite_score
@@ -38,7 +38,7 @@ def _check_local_only() -> None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -49,7 +49,7 @@ class PromptMutation:
 
     mutation_id: str
     role: str
-    parent_baseline_id: Optional[str]
+    parent_baseline_id: str | None
     proposed_prompt: str  # the candidate new prompt text
     rationale: str  # one-line description of the change
     proposed_at: str = field(default_factory=_now_iso)

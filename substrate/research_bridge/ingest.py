@@ -18,7 +18,6 @@ import hashlib
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -39,11 +38,16 @@ except ImportError:  # pragma: no cover
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.graph.ops import (  # type: ignore[no-redef]
-        content_addressed_id, insert_chunk, insert_document, new_random_id,
+        content_addressed_id,
+        insert_chunk,
+        insert_document,
+        new_random_id,
     )
     from substrate.research_bridge.paste_log import log_paste_event  # type: ignore[no-redef]
     from substrate.research_bridge.source_detection import (  # type: ignore[no-redef]
-        KNOWN_SOURCES, SourceDetectionResult, detect_source,
+        KNOWN_SOURCES,
+        SourceDetectionResult,
+        detect_source,
     )
 
 
@@ -121,12 +125,12 @@ def ingest_paste(
     con: LockedConnection,
     *,
     raw_text: str,
-    operator_label: Optional[str] = None,
-    session_id: Optional[str] = None,
-    source_override: Optional[str] = None,
+    operator_label: str | None = None,
+    session_id: str | None = None,
+    source_override: str | None = None,
     source_tier: int = DEFAULT_PASTE_TIER,
     call_site: str = "unknown",
-    investigation_id: Optional[str] = None,
+    investigation_id: str | None = None,
     do_chunk: bool = True,
 ) -> IngestResult:
     """Ingest one pasted deep-research output. Returns IngestResult."""

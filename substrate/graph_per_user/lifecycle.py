@@ -34,8 +34,7 @@ from __future__ import annotations
 import enum
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from substrate.ducklake.catalog import DuckLakeCatalog
 from substrate.ducklake.routing import ShardingStrategy
@@ -44,7 +43,7 @@ from .key_provider import KeyMaterial, KeyProvider, KeyProviderError
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class PerUserStorageEventKind(str, enum.Enum):
@@ -63,7 +62,7 @@ class PerUserStorageEvent:
     kind: PerUserStorageEventKind
     user_id: str
     db_path: str
-    key_id: Optional[str]
+    key_id: str | None
     at: str = field(default_factory=_now_iso)
 
 
@@ -138,7 +137,7 @@ def open_user_graph(
     user_id: str,
     catalog: DuckLakeCatalog,
     key_provider: KeyProvider,
-) -> Optional[tuple[PerUserStorage, PerUserStorageEvent]]:
+) -> tuple[PerUserStorage, PerUserStorageEvent] | None:
     """Return an open handle, or None if user has no graph yet.
 
     Looking up does NOT modify the catalog or key store. Caller

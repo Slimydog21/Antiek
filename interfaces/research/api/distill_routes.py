@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -42,11 +41,11 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
-from runtime.db_lock import connect_read  # noqa: E402
+from roles.challenger import ChallengeUnavailable, make_dispatch_resolver  # noqa: E402
 from roles.note_taker import distillation_for  # noqa: E402
 from roles.note_taker.living_note import challenge_note  # noqa: E402
-from roles.challenger import ChallengeUnavailable, make_dispatch_resolver  # noqa: E402
+from runtime.db_lock import connect_read  # noqa: E402
+from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 
 distill_router = APIRouter(prefix="/research", tags=["distill"])
 
@@ -68,11 +67,11 @@ class DistilledNodeOut(BaseModel):
     node_id: str
     kind: str                       # "insight" | "question"
     text: str
-    confidence: Optional[str] = None
-    source_document_id: Optional[str] = None
+    confidence: str | None = None
+    source_document_id: str | None = None
     refinement_count: int = 0
     escalated: bool = False
-    reserved_child_investigation_id: Optional[str] = None
+    reserved_child_investigation_id: str | None = None
 
 
 class DistillationOut(BaseModel):
@@ -91,9 +90,9 @@ class ChallengeOut(BaseModel):
     # exactly one of {refined, superseded, escalated} describes the outcome
     applied: bool                   # the note's text changed in place
     superseded: bool = False        # a stale refinement lost the seq race
-    new_text: Optional[str] = None
+    new_text: str | None = None
     escalated: bool = False
-    reserved_child_investigation_id: Optional[str] = None
+    reserved_child_investigation_id: str | None = None
 
 
 # ---------------------------------------------------------------------------

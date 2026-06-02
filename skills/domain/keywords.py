@@ -17,10 +17,9 @@ defense-systems-knowledge inline note).
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
 
-
-DOMAIN_KEYWORDS: Dict[str, List[str]] = {
+DOMAIN_KEYWORDS: dict[str, list[str]] = {
     "quantum-computing-knowledge": [
         "quantum", "qubit", "error correction", "fault-tolerant", "fault-tolerance",
         "psiQuantum", "ion trap", "superconducting qubit", "neutral atom",
@@ -128,7 +127,7 @@ DOMAIN_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
-def classify_domains(question: str, thesis: Any) -> List[str]:
+def classify_domains(question: str, thesis: Any) -> list[str]:
     """Return knowledge skill names that match this investigation.
 
     Matches against ``question`` + ``thesis.thesis_summary`` +
@@ -147,7 +146,7 @@ def classify_domains(question: str, thesis: Any) -> List[str]:
             if isinstance(comp, dict):
                 text += " " + (comp.get("claim") or "").lower()
 
-    matched: List[str] = []
+    matched: list[str] = []
     for skill_name, keywords in DOMAIN_KEYWORDS.items():
         if any(kw in text for kw in keywords):
             matched.append(skill_name)

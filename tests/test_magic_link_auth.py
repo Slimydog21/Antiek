@@ -31,14 +31,12 @@ from substrate.auth import (
     InvalidSessionCookie,
     InvalidToken,
     MockEmailProvider,
-    OutboundEmail,
     TokenExpired,
     mint_magic_link_token,
     mint_session_cookie,
     verify_magic_link_token,
     verify_session_cookie,
 )
-
 
 _OPERATOR = "ftn208@nyu.edu"
 _SECRET = "test-secret-" + "x" * 48

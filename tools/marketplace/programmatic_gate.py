@@ -23,14 +23,12 @@ import argparse
 import enum
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from substrate.marketplace_metrics import (
     MarketplaceSnapshot,
     build_snapshot_from_inputs,
 )
-
 
 # §9.4 + §9.6 thresholds.
 SELF_SERVICE_THRESHOLD_CENTS = 5_000_000  # $50K/mo per §9.6
@@ -39,7 +37,7 @@ MANUAL_CURATION_HOURS_PER_WEEK_THRESHOLD = 20  # operator's manual cost ceiling
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class ProgrammaticVerdictKind(str, enum.Enum):
@@ -53,7 +51,7 @@ class ProgrammaticGateVerdict:
     current_monthly_spend_cents: int
     crosses_self_service_threshold: bool
     crosses_programmatic_capacity: bool
-    operator_manual_hours_per_week: Optional[int]
+    operator_manual_hours_per_week: int | None
     reasoning: str
     computed_at: str
 
@@ -61,7 +59,7 @@ class ProgrammaticGateVerdict:
 def evaluate_programmatic_gate(
     snapshot: MarketplaceSnapshot,
     *,
-    operator_manual_hours_per_week: Optional[int] = None,
+    operator_manual_hours_per_week: int | None = None,
 ) -> ProgrammaticGateVerdict:
     """Decide GO/DEFER from the marketplace snapshot."""
     spend = snapshot.advertisers.total_spend_current_cents

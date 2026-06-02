@@ -5,12 +5,11 @@ from __future__ import annotations
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class FraudVerdictKind(str, enum.Enum):
@@ -35,7 +34,7 @@ class FraudVerdict:
     verdict_id: str = field(default_factory=lambda: f"av-{uuid.uuid4().hex[:12]}")
     kind: FraudVerdictKind = FraudVerdictKind.PASS
     signals: tuple[FraudSignal, ...] = ()
-    subject_ref: Optional[str] = None
+    subject_ref: str | None = None
     decided_at: str = field(default_factory=_now_iso)
 
     @property
@@ -52,7 +51,7 @@ BLOCK_THRESHOLD = 0.75
 def verdict_from_signals(
     signals: tuple[FraudSignal, ...],
     *,
-    subject_ref: Optional[str] = None,
+    subject_ref: str | None = None,
 ) -> FraudVerdict:
     """Compose a verdict from signals using the documented thresholds.
 

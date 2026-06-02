@@ -33,11 +33,10 @@ the single-writer invariant clean.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
 
 from .skill_propagation import SkillRuleDigest
-
 
 MIN_USERS_FOR_PROMOTION: int = 3
 """Number of distinct contributors required before a rule may be
@@ -145,7 +144,7 @@ class SkillRuleAccumulator:
 
     # ── Promotion verdicts ──────────────────────────────────────────
 
-    def evaluate(self, rule_id: str) -> Optional[PromotionDecision]:
+    def evaluate(self, rule_id: str) -> PromotionDecision | None:
         """Return a ``PromotionDecision`` for one rule, or None if the
         rule has zero contributions.
 

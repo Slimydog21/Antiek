@@ -23,9 +23,10 @@ caller choose the right cadence (every contribution vs. nightly batch).
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 from substrate.schemas.events import ActionType, Event
 
@@ -86,7 +87,7 @@ def _audit_event(decision: PromotionDecision, *, investigation_id: str) -> Event
         action_type=ActionType.SKILL_RULE_PROMOTED,
         payload=payload,
         param_version="substrate-v0",
-        emitted_at=datetime.now(timezone.utc),
+        emitted_at=datetime.now(UTC),
     )
 
 
@@ -95,7 +96,7 @@ def drain_promotable_to_substrate(
     accumulator: SkillRuleAccumulator,
     con: Any,
     investigation_id: str = "__shared_substrate__",
-    broadcast: Optional[BroadcastFn] = None,
+    broadcast: BroadcastFn | None = None,
 ) -> list[WriteOutcome]:
     """Drain every promotable rule in the accumulator to the shared
     substrate's ``skill_rules`` table.

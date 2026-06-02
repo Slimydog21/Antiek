@@ -63,7 +63,6 @@ import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import nacl.secret
 import nacl.utils
@@ -102,10 +101,10 @@ class CredentialMetadata:
 
     cred_id: str
     account_handle: str
-    pipeline_kind: Optional[str] = None
+    pipeline_kind: str | None = None
 
 
-def _load_master_key(key_bytes: Optional[bytes], key_file: Optional[str]) -> bytes:
+def _load_master_key(key_bytes: bytes | None, key_file: str | None) -> bytes:
     """Resolve the 32-byte master key.
 
     Precedence: an explicitly injected ``key_bytes`` (tests) wins; otherwise read
@@ -155,10 +154,10 @@ def store_credential(
     account_handle: str,
     secret: str,
     *,
-    pipeline_kind: Optional[str] = None,
-    artifact_path: Optional[str] = None,
-    key_bytes: Optional[bytes] = None,
-    key_file: Optional[str] = None,
+    pipeline_kind: str | None = None,
+    artifact_path: str | None = None,
+    key_bytes: bytes | None = None,
+    key_file: str | None = None,
 ) -> str:
     """Encrypt ``secret`` at rest and return a non-secret ``cred_id``.
 
@@ -190,9 +189,9 @@ def store_credential(
 def load_credential(
     cred_id: str,
     *,
-    artifact_path: Optional[str] = None,
-    key_bytes: Optional[bytes] = None,
-    key_file: Optional[str] = None,
+    artifact_path: str | None = None,
+    key_bytes: bytes | None = None,
+    key_file: str | None = None,
 ) -> SecretStr:
     """Decrypt the credential for ``cred_id`` and return it as a redacting
     :class:`SecretStr` (the plaintext is reachable only via ``.reveal()``).
@@ -214,7 +213,7 @@ def load_credential(
 
 def list_credentials(
     *,
-    artifact_path: Optional[str] = None,
+    artifact_path: str | None = None,
 ) -> list[CredentialMetadata]:
     """List the NON-SECRET metadata for every stored credential. Never decrypts,
     never touches the key — safe to call from a config/listing surface."""

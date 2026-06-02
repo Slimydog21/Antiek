@@ -33,9 +33,10 @@ Field sourcing (OPERATOR_INPUTS §2, verified against main):
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from collections.abc import Iterable, Sequence
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any
 
 try:
     from substrate.event_log import trajectory as _trajectory
@@ -74,11 +75,11 @@ class CostToResolve:
     summed_latency_ms: int = 0
     dispatch_calls: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def _parse_emitted_at(value: Any) -> Optional[datetime]:
+def _parse_emitted_at(value: Any) -> datetime | None:
     """Parse an ISO-8601 ``emitted_at`` (the event log writes ``...Z``).
     Returns None for a missing/unparseable timestamp so a partial trajectory
     degrades gracefully rather than crashing the measurement."""
@@ -95,15 +96,15 @@ def _parse_emitted_at(value: Any) -> Optional[datetime]:
         return None
 
 
-def _payload(row: Dict[str, Any]) -> Dict[str, Any]:
+def _payload(row: dict[str, Any]) -> dict[str, Any]:
     p = row.get("payload")
     return p if isinstance(p, dict) else {}
 
 
 def measure_trajectory(
-    rows: Sequence[Dict[str, Any]],
+    rows: Sequence[dict[str, Any]],
     *,
-    seeded_node_ids: Optional[Iterable[str]] = None,
+    seeded_node_ids: Iterable[str] | None = None,
 ) -> CostToResolve:
     """Compute the cost-to-resolve vector from a list of trajectory rows.
 
@@ -124,8 +125,8 @@ def measure_trajectory(
     summed_latency = 0
     dispatch_calls = 0
     sources = 0
-    inserted_ids: List[str] = []
-    times: List[datetime] = []
+    inserted_ids: list[str] = []
+    times: list[datetime] = []
 
     for row in rows:
         action = row.get("action_type")
@@ -177,8 +178,8 @@ def measure_trajectory(
 def measure_investigation(
     investigation_id: str,
     *,
-    events_dir: Optional[str] = None,
-    seeded_node_ids: Optional[Iterable[str]] = None,
+    events_dir: str | None = None,
+    seeded_node_ids: Iterable[str] | None = None,
 ) -> CostToResolve:
     """Read an investigation's trajectory off the event log and measure it.
 

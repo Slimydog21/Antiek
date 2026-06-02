@@ -59,7 +59,6 @@ from roles.evidence_retriever import (  # noqa: E402
     render_user_template,
 )
 
-
 # ---------------------------------------------------------------------------
 # A. Prompt
 # ---------------------------------------------------------------------------
@@ -361,10 +360,10 @@ def test_parse_insufficient_evidence_wrong_type_rejected():
 
 
 def test_evidence_types_canonical_three():
-    assert EVIDENCE_TYPES == frozenset({"direct", "inferred", "gap"})
+    assert frozenset({"direct", "inferred", "gap"}) == EVIDENCE_TYPES
 
 
 def test_evidence_confidence_canonical_four():
-    assert EVIDENCE_CONFIDENCE_LEVELS == frozenset({
+    assert frozenset({
         "high", "moderate", "low", "insufficient",
-    })
+    }) == EVIDENCE_CONFIDENCE_LEVELS

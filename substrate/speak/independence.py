@@ -23,10 +23,10 @@ truth (rigor #1).
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 
-def effective_key(*, independence_key: Optional[str], interview_id: Optional[str]) -> str:
+def effective_key(*, independence_key: str | None, interview_id: str | None) -> str:
     """The key an attestation counts under. Explicit shared-origin key
     wins; otherwise the interviewee is the unit (so one person repeating
     themselves isn't N attestations)."""

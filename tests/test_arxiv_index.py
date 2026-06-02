@@ -21,7 +21,7 @@ if _REPO not in sys.path:
 
 from acquisition.arxiv.index import index_body  # noqa: E402
 from runtime.db_lock import connect_read, connect_write  # noqa: E402
-from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
+from substrate.graph import ensure_initialized  # noqa: E402
 from substrate.graph.ops import insert_document  # noqa: E402
 
 _BODY = "# A Paper\n\nThis is the body of an open paper. " * 30

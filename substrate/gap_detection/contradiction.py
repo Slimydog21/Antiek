@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any
 
 # Two nodes must be at least this cosine-similar to even be *considered* for
 # contradiction — below it they are about different things and cannot conflict.
@@ -68,9 +69,9 @@ def _cosine(u, v) -> float:
 def find_contradictions(
     con: Any,
     *,
-    verifier: Optional[Verifier] = None,
+    verifier: Verifier | None = None,
     similarity_threshold: float = SIMILARITY_THRESHOLD,
-) -> List[Contradiction]:
+) -> list[Contradiction]:
     """Return verified contradictory pairs among insight/claim nodes.
     Ordered by (node_id_a, node_id_b) for determinism."""
     verify = verifier or negation_verifier
@@ -85,7 +86,7 @@ def find_contradictions(
         [MAX_NODES_SCANNED],
     ).fetchall()
     items = [(r[0], r[1], list(r[2]) if r[2] is not None else None) for r in rows]
-    out: List[Contradiction] = []
+    out: list[Contradiction] = []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
             sim = _cosine(items[i][2], items[j][2])

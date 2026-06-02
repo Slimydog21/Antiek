@@ -13,7 +13,6 @@ import tempfile
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.schema import init_database
 from substrate.ad_inventory.attribution import (
     ATTRIBUTION_ALGORITHM_VERSION,
     compute_attribution_option_a,
@@ -26,6 +25,7 @@ from substrate.ad_inventory.attribution_audit import (
     record_attribution,
     replay,
 )
+from substrate.graph.schema import init_database
 
 
 @pytest.fixture

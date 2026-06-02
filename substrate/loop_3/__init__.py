@@ -18,27 +18,27 @@ from `integration_autoresearch.md` Wedge 4. The two are compared at
 unlock time, not before.
 """
 
-from .unlock_gate import (
-    Loop3UnlockCriterion,
-    Loop3UnlockRequired,
-    UnlockChecklist,
-    check_unlocked,
-)
 from .sft_runner import (
     SFTConfig,
     SFTIteration,
     SFTRunner,
     run_sft_iteration,
 )
+from .trajectory_harvest import (
+    HarvestedTrajectory,
+    harvest_trajectory_for_prime_rl,
+)
+from .unlock_gate import (
+    Loop3UnlockCriterion,
+    Loop3UnlockRequired,
+    UnlockChecklist,
+    check_unlocked,
+)
 from .verifiers_env import (
     VerifierEnvScaffold,
     VerifierObservation,
     VerifierReward,
     build_env_from_trajectory,
-)
-from .trajectory_harvest import (
-    HarvestedTrajectory,
-    harvest_trajectory_for_prime_rl,
 )
 
 __all__ = [

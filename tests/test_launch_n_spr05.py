@@ -36,17 +36,22 @@ import tempfile
 
 import pytest
 
-from runtime.research_runner import (
-    BudgetCap, BudgetManager, HostLocalRunner, PromotionFunnel, RunState,
-    daytona_enabled, make_demo_loop,
-)
-from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
+from runtime.db_lock import connect_read
 from runtime.remote_exec import build_research_runner, remote_exec_enabled
 from runtime.remote_exec.factory import ENABLE_ENV
+from runtime.research_runner import (
+    BudgetCap,
+    BudgetManager,
+    HostLocalRunner,
+    PromotionFunnel,
+    RunState,
+    daytona_enabled,
+    make_demo_loop,
+)
+from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
 from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
-from runtime.db_lock import connect_read
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:
@@ -243,6 +248,7 @@ def test_gate_set_but_unavailable_falls_back_to_host_local(monkeypatch, caplog):
     test_remote_exec_fallback.py owns the exhaustive fallback contract; this is
     the SPR-05 framing of it.)"""
     import logging
+
     from tests.remote_exec_fakes import UnavailableProvider
     monkeypatch.setenv(ENABLE_ENV, "1")
     with caplog.at_level(logging.WARNING, logger="antiek.remote_exec"):

@@ -50,10 +50,8 @@ favors code-as-data.
 
 from __future__ import annotations
 
-from typing import Tuple
-
 # ── Banned hostnames (suffix-matched) ─────────────────────────────
-BANNED_DOMAINS: Tuple[str, ...] = (
+BANNED_DOMAINS: tuple[str, ...] = (
     # Empty seed. Each entry MUST cite the court order, takedown
     # notice, or lawyer-reviewed source that justifies inclusion.
     # Examples of the entry shape, kept commented out:
@@ -64,7 +62,7 @@ BANNED_DOMAINS: Tuple[str, ...] = (
 
 
 # ── Banned source-corpus identifiers ──────────────────────────────
-BANNED_CORPUS_IDS: Tuple[str, ...] = (
+BANNED_CORPUS_IDS: tuple[str, ...] = (
     # Examples of the entry shape:
     #
     # "books3",          # cite: AG MDL ECF No. ...
@@ -73,7 +71,7 @@ BANNED_CORPUS_IDS: Tuple[str, ...] = (
 
 
 # ── Banned author substrings (case-folded) ────────────────────────
-BANNED_AUTHORS: Tuple[str, ...] = (
+BANNED_AUTHORS: tuple[str, ...] = (
     # Authors whose works are subject to active restriction. Each
     # entry MUST carry the citing court order or settlement
     # reference in a code comment so it's discoverable in the
@@ -82,14 +80,14 @@ BANNED_AUTHORS: Tuple[str, ...] = (
 
 
 # ── Banned title substrings (case-folded) ─────────────────────────
-BANNED_TITLE_SUBSTRINGS: Tuple[str, ...] = (
+BANNED_TITLE_SUBSTRINGS: tuple[str, ...] = (
     # Tighter than author. Only titles narrow enough to
     # disambiguate (unique novels, specific journal articles).
 )
 
 
 # ── Banned content-hash prefixes (sha256 hex, typically 8-16 chars) ─
-BANNED_CONTENT_HASH_PREFIXES: Tuple[str, ...] = (
+BANNED_CONTENT_HASH_PREFIXES: tuple[str, ...] = (
     # For AG MDL fingerprint-based matching. Compute via
     # ``content_hash[:N]`` where N matches the operator's chosen
     # collision-probability vs registry-size tradeoff. 8 chars

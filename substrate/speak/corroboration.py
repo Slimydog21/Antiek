@@ -27,8 +27,9 @@ clusters) — embeddings narrow, the check decides.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 from .events import (
     SPEAK_CLAIM_CONTRADICTED,
@@ -43,7 +44,7 @@ from .third_party import ClaimRecord, list_claims
 # Type aliases for the injectable checks.
 EquivalenceFn = Callable[[str, str], bool]
 ContradictionFn = Callable[[str, str], bool]
-IndependenceKeyFn = Callable[[ClaimRecord], Optional[str]]
+IndependenceKeyFn = Callable[[ClaimRecord], str | None]
 
 
 def confidence_for(independent_attesters: int) -> float:
@@ -105,7 +106,7 @@ class Cluster:
 def _union_find_clusters(
     claims: list[ClaimRecord],
     *,
-    embedder: Optional[Any],
+    embedder: Any | None,
     equivalence: EquivalenceFn,
     similarity_threshold: float,
 ) -> list[list[ClaimRecord]]:
@@ -125,7 +126,7 @@ def _union_find_clusters(
     def union(i: int, j: int) -> None:
         parent[find(i)] = find(j)
 
-    embeddings: Optional[list[list[float]]] = None
+    embeddings: list[list[float]] | None = None
     if embedder is not None:
         embeddings = [embedder.encode(c.text) for c in claims]
 
@@ -152,10 +153,10 @@ def corroborate_project(
     con: Any,
     project_id: str,
     *,
-    embedder: Optional[Any] = None,
-    equivalence: Optional[EquivalenceFn] = None,
-    contradiction: Optional[ContradictionFn] = None,
-    independence_key_for: Optional[IndependenceKeyFn] = None,
+    embedder: Any | None = None,
+    equivalence: EquivalenceFn | None = None,
+    contradiction: ContradictionFn | None = None,
+    independence_key_for: IndependenceKeyFn | None = None,
     similarity_threshold: float = 0.82,
 ) -> list[Cluster]:
     """Cluster the project's claims, mark corroboration / contradiction,

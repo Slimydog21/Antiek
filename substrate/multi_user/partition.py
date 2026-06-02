@@ -16,11 +16,8 @@ exposes the partition transition; the gate logic lives in
 from __future__ import annotations
 
 import enum
-import json
-import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 
 class PartitionKind(str, enum.Enum):
@@ -40,7 +37,7 @@ class PartitionInvariantViolation(Exception):
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)

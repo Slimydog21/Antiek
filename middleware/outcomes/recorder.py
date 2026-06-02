@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Mapping
 from dataclasses import asdict
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from .types import (
     DecisionAlignmentInput,
@@ -30,9 +31,9 @@ def build_outcome_record(
     *,
     synthesis_id: str,
     payload: Mapping[str, Any],
-    observer: Optional[str] = None,
-    notes: Optional[str] = None,
-    outcome_id: Optional[str] = None,
+    observer: str | None = None,
+    notes: str | None = None,
+    outcome_id: str | None = None,
 ) -> OutcomeRecord:
     """Validate + project a raw payload into an ``OutcomeRecord``.
 

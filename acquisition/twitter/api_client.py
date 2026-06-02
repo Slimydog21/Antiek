@@ -38,7 +38,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from acquisition.twitter.adapter import Tweet, TwitterThread
 from runtime.byok.secret_str import SecretStr
@@ -72,9 +72,9 @@ class XApiClient:
     """
 
     cred_id: str
-    artifact_path: Optional[str] = None
-    key_bytes: Optional[bytes] = None
-    key_file: Optional[str] = None
+    artifact_path: str | None = None
+    key_bytes: bytes | None = None
+    key_file: str | None = None
     page_size: int = _DEFAULT_PAGE_SIZE
     max_pages: int = _DEFAULT_MAX_PAGES
 
@@ -167,7 +167,7 @@ class XApiClient:
         )
         params.setdefault("expansions", "author_id")
         params.setdefault("user.fields", "username,verified")
-        token: Optional[str] = None
+        token: str | None = None
         for _ in range(max(1, self.max_pages)):
             p = dict(params)
             if token:
@@ -249,7 +249,7 @@ def to_thread(
     )
 
 
-def _parse_ts(value: Any) -> Optional[datetime]:
+def _parse_ts(value: Any) -> datetime | None:
     if not value or not isinstance(value, str):
         return None
     try:

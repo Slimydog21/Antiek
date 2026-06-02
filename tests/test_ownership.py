@@ -19,7 +19,6 @@ from substrate.ownership import (
 )
 from substrate.results import Err, Ok, Result
 
-
 # ---------------------------------------------------------------------- #
 # OwnershipHandle — basic read/write                                     #
 # ---------------------------------------------------------------------- #

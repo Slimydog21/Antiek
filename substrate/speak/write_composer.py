@@ -38,10 +38,9 @@ exposure. No speak_claim is promoted to the shared graph.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from .contracts import OutlineBlock, OutlineComposer
-
 
 # Speak claims are interview-attested, non-node content; the outline block is
 # a composition synthesized from them. ("synthesized","synthesized") is the

@@ -19,23 +19,22 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 try:
-    from ...runtime.db_lock import connect_read, connect_write
     from ...event_log import log_event
     from ...graph.insight_question import graph_db_path
-    from .tree_contract import PlanTree
+    from ...runtime.db_lock import connect_read, connect_write
     from .persist import _json
+    from .tree_contract import PlanTree
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from roles.cascade_planner.persist import _json  # type: ignore[no-redef]
     from runtime.db_lock import connect_read, connect_write  # type: ignore[no-redef]
     from substrate.event_log import log_event  # type: ignore[no-redef]
     from substrate.graph.insight_question import graph_db_path  # type: ignore[no-redef]
-    from roles.cascade_planner.tree_contract import PlanTree  # type: ignore[no-redef]
-    from roles.cascade_planner.persist import _json  # type: ignore[no-redef]
 
 
 class PlanNotApproved(RuntimeError):
@@ -48,8 +47,8 @@ def approve_plan(
     *,
     approver: str,
     investigation_id: str,
-    db_path: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
     con: Any = None,
 ) -> dict:
     """Approve the plan rooted at ``root_node_id``. Writes approval state to
@@ -64,7 +63,7 @@ def approve_plan(
         meta = _json(row[0])
         approval = meta.get("approval", {"state": "draft", "plan_version": 1})
         approval["state"] = "approved"
-        approval["approved_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        approval["approved_at"] = datetime.now(UTC).isoformat().replace("+00:00", "Z")
         approval["approved_by"] = approver
         meta["approval"] = approval
         c.execute("UPDATE nodes SET metadata = ? WHERE node_id = ?",
@@ -80,7 +79,7 @@ def approve_plan(
             c.close()
 
 
-def load_approval(root_node_id: str, *, db_path: Optional[str] = None, con: Any = None) -> dict:
+def load_approval(root_node_id: str, *, db_path: str | None = None, con: Any = None) -> dict:
     owned = con is None
     c = con if con is not None else connect_read(db_path or graph_db_path())
     try:
@@ -93,13 +92,13 @@ def load_approval(root_node_id: str, *, db_path: Optional[str] = None, con: Any 
             c.close()
 
 
-def is_plan_launchable(root_node_id: str, *, db_path: Optional[str] = None, con: Any = None) -> bool:
+def is_plan_launchable(root_node_id: str, *, db_path: str | None = None, con: Any = None) -> bool:
     """The gate SPR-06 consults. True only when the plan is in the approved
     state (and has not been edited since — edits reset it to draft)."""
     return load_approval(root_node_id, db_path=db_path, con=con).get("state") == "approved"
 
 
-def assert_launchable(root_node_id: str, *, db_path: Optional[str] = None, con: Any = None) -> None:
+def assert_launchable(root_node_id: str, *, db_path: str | None = None, con: Any = None) -> None:
     """SPR-06 calls this before fan-out; raises if the plan is not approved."""
     if not is_plan_launchable(root_node_id, db_path=db_path, con=con):
         raise PlanNotApproved(

@@ -17,32 +17,30 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Optional
 
 import httpx
 import pytest
 
 from acquisition.search.exa import (
+    VERIFIER_LOOKUP_MAX_K,
     DiscoveryBudgetExceeded,
     ExaClient,
-    VERIFIER_LOOKUP_MAX_K,
     exa_lookup_claim,
 )
 from acquisition.search.exa.budget import (
-    BudgetState,
     DEFAULT_DAILY_BUDGET_USD,
+    BudgetState,
     _utc_date_stamp,
     read_state,
     write_state,
 )
 from substrate.schemas.events import (
-    ActionType,
     EVENT_SCHEMA_VERSION,
-    ExaLookupResult,
     TYPED_PAYLOAD_ACTION_TYPES,
+    ActionType,
+    ExaLookupResult,
     VerifierLookupPayload,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -67,7 +65,7 @@ def isolated_env(tmp_path, monkeypatch):
     }
 
 
-def _mock_exa_client(responses: List[dict], *, status: int = 200) -> ExaClient:
+def _mock_exa_client(responses: list[dict], *, status: int = 200) -> ExaClient:
     it = iter(responses)
     last = [None]
 
@@ -119,6 +117,7 @@ def test_verifier_lookup_in_typed_union():
 
 def test_verifier_lookup_payload_roundtrips_through_union():
     from pydantic import TypeAdapter
+
     from substrate.schemas.events import TypedPayload
 
     p = VerifierLookupPayload(

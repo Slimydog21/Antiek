@@ -23,8 +23,7 @@ import hashlib
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -87,8 +86,8 @@ def url_doc_id(url: str) -> str:
 
 
 def lookup_url_alias(
-    requested_url: str, *, db_path: Optional[str] = None,
-) -> Optional[str]:
+    requested_url: str, *, db_path: str | None = None,
+) -> str | None:
     """Consult the `url_alias` table for a prior ingestion of this
     URL. Returns the canonical `document_id` if found, None
     otherwise.
@@ -139,13 +138,13 @@ class IngestUrlResult:
 
     document_id: str
     final_url: str
-    chunk_ids: List[str] = field(default_factory=list)
-    node_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    node_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
-    author: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
+    author: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -158,23 +157,23 @@ def _try_browserbase_escalation(
     url: str,
     primary_word_count: int,
     investigation_id: str,
-    wait_for: Optional[str],
-) -> Optional[FetchedHtml]:
+    wait_for: str | None,
+) -> FetchedHtml | None:
     """Drive a Browserbase session and emit
     ``FetchFallbackEscalatedPayload`` regardless of outcome. Returns
     the new ``FetchedHtml`` on success, ``None`` on any failure so
     the caller can fall back to the original skip path."""
     from .budget_browserbase import BrowserbaseBudgetExceeded
     from .client_browserbase import (
+        DEFAULT_SESSION_COST_USD,
         BrowserbaseFetchError,
         BrowserbaseRobotsDisallowed,
         BrowserbaseUnavailable,
-        DEFAULT_SESSION_COST_USD,
         fetch_via_browserbase,
     )
 
     fallback_word_count = 0
-    fetched: Optional[FetchedHtml] = None
+    fetched: FetchedHtml | None = None
     estimated_cost = DEFAULT_SESSION_COST_USD
     try:
         fetched = fetch_via_browserbase(url, wait_for=wait_for)
@@ -211,15 +210,15 @@ def ingest_url(
     *,
     investigation_id: str,
     source_tier: int = DEFAULT_URL_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
-    http_client: Optional[object] = None,
-    fetched: Optional[FetchedHtml] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
+    http_client: object | None = None,
+    fetched: FetchedHtml | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
     on_conflict: str = "ignore",
     # Wedge 2 (Browserbase escalation) — opt-in per call (default off).
     fallback_to_browserbase: bool = False,
-    browserbase_wait_for: Optional[str] = None,
+    browserbase_wait_for: str | None = None,
 ) -> IngestUrlResult:
     """Fetch ``url``, extract markdown, ingest into substrate.
 
@@ -319,9 +318,9 @@ def ingest_url(
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
 
-    chunks: List[Chunk] = chunk_markdown(text)
-    chunk_ids: List[str] = []
-    node_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(text)
+    chunk_ids: list[str] = []
+    node_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -381,7 +380,7 @@ def ingest_url(
                 "final_url": page.final_url,
                 "content_type": page.content_type,
                 "status_code": page.status_code,
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
+                "fetched_at": datetime.now(UTC).isoformat(),
             },
             on_conflict=insert_on_conflict,
         )
@@ -396,7 +395,7 @@ def ingest_url(
         # SQL CURRENT_TIMESTAMP keyword) because DuckDB's ON CONFLICT
         # parser interprets CURRENT_TIMESTAMP in the UPDATE SET clause
         # as a column reference, which fails binding.
-        now_ts = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_ts = datetime.now(UTC).replace(tzinfo=None)
         for alias in {page.requested_url, page.final_url}:
             if not alias:
                 continue

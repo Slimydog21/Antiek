@@ -390,11 +390,11 @@ def test_constraint_kinds_match_schema_literal():
     """CONSTRAINT_KINDS in middleware/constraint_check/constraints.py
     MUST equal ConstraintKind from substrate/schemas. Drift would let
     the evaluator produce a kind the payload validator would reject."""
-    assert CONSTRAINT_KINDS == set(typing.get_args(ConstraintKind))
+    assert set(typing.get_args(ConstraintKind)) == CONSTRAINT_KINDS
 
 
 def test_constraint_strictness_matches_schema_literal():
-    assert CONSTRAINT_STRICTNESS_VALUES == set(typing.get_args(ConstraintStrictness))
+    assert set(typing.get_args(ConstraintStrictness)) == CONSTRAINT_STRICTNESS_VALUES
 
 
 def test_non_converging_statuses_are_subset_of_loop_status():
@@ -402,4 +402,4 @@ def test_non_converging_statuses_are_subset_of_loop_status():
     MUST also be a valid ConstraintLoopStatus — the same value can't
     be a valid loop terminal in one layer and unknown in the other."""
     all_loop_statuses = set(typing.get_args(ConstraintLoopStatus))
-    assert NON_CONVERGING_STATUSES <= all_loop_statuses
+    assert all_loop_statuses >= NON_CONVERGING_STATUSES

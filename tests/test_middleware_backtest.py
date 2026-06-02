@@ -31,7 +31,6 @@ from middleware.backtest import (  # noqa: E402
     project_superseded_edges,
 )
 
-
 # ---------------------------------------------------------------------------
 # 1. Pure row-tuple projections
 # ---------------------------------------------------------------------------
@@ -141,8 +140,11 @@ def test_backtest_unknown_synthesis_raises_key_error():
     """Calling backtest with an unknown synthesis_id surfaces a
     KeyError so the operator sees the failure rather than getting
     an empty report."""
+    import os
+    import tempfile
+
     import duckdb
-    import tempfile, os
+
     from substrate.graph.schema import init_database_at_path
 
     tmp = tempfile.mkdtemp()

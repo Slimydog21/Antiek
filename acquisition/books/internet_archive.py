@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -96,7 +95,7 @@ def _as_list(value) -> list[str]:
     return []
 
 
-def ia_rights_input(meta: dict) -> tuple[Optional[str], Optional[str]]:
+def ia_rights_input(meta: dict) -> tuple[str | None, str | None]:
     """THE one IA-status → classify-input mapping. Returns (license_uri,
     pd_signal); both None when PD is NOT established → classify() gates.
 
@@ -141,7 +140,7 @@ def ia_rights_input(meta: dict) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-def _pdf_download_url(identifier: str, files) -> Optional[str]:
+def _pdf_download_url(identifier: str, files) -> str | None:
     for f in files or []:
         name = f.get("name", "")
         if isinstance(name, str) and name.lower().endswith(".pdf"):
@@ -151,7 +150,7 @@ def _pdf_download_url(identifier: str, files) -> Optional[str]:
 
 def item_candidate(
     fetcher: ThrottledFetcher, identifier: str
-) -> Optional[BookCandidate]:
+) -> BookCandidate | None:
     """Layer-2 per-item re-check: read the item's own metadata, re-derive the
     rights input via :func:`ia_rights_input`, and build a candidate. An item
     without a PDF file is skipped (None); an item without established PD status
@@ -191,7 +190,7 @@ def item_candidate(
 def advancedsearch(
     fetcher: ThrottledFetcher,
     *,
-    query: Optional[str] = None,
+    query: str | None = None,
     limit: int = 25,
 ) -> list[str]:
     """Layer-1 discovery: IA advancedsearch constrained to NOT_IN_COPYRIGHT.
@@ -219,7 +218,7 @@ def advancedsearch(
 def discover(
     fetcher: ThrottledFetcher,
     *,
-    query: Optional[str] = None,
+    query: str | None = None,
     limit: int = 25,
 ) -> list[BookCandidate]:
     """Discover up to ``limit`` IA candidates: layer-1 NOT_IN_COPYRIGHT query

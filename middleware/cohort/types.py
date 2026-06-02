@@ -11,7 +11,7 @@ inside the substrate's middleware without a DB dependency.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -30,9 +30,9 @@ class CohortSynthesisRow:
     synthesis_timestamp: str
     target_question: str
     status: str
-    thesis: Optional[dict[str, Any]] = None
-    implicit_recommendation: Optional[str] = None
-    sector: Optional[str] = None
+    thesis: dict[str, Any] | None = None
+    implicit_recommendation: str | None = None
+    sector: str | None = None
 
 
 @dataclass(frozen=True)
@@ -49,4 +49,4 @@ class CohortOutcomeRow:
     thesis_outcomes: list[dict[str, Any]] = field(default_factory=list)
     falsification_outcomes: list[dict[str, Any]] = field(default_factory=list)
     execution_risk_outcomes: list[dict[str, Any]] = field(default_factory=list)
-    decision_alignment: Optional[dict[str, Any]] = None
+    decision_alignment: dict[str, Any] | None = None

@@ -29,14 +29,16 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 try:
     from .._json_decode import extract_json_object as _extract_json_object
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 # Count bounds from the design doc.
@@ -111,12 +113,12 @@ def _require_str_list(
     *,
     min_len: int,
     max_len: int,
-) -> List[str]:
+) -> list[str]:
     if not isinstance(obj, list):
         raise StyleExtractorValidationError(
             f"{field_name!r} must be a list (got {type(obj).__name__})"
         )
-    out: List[str] = []
+    out: list[str] = []
     for i, v in enumerate(obj):
         if not isinstance(v, str) or not v.strip():
             raise StyleExtractorValidationError(

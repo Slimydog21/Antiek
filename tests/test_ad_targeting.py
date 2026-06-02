@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.ad_targeting import (
     AdCampaign,
-    AdSlotPlacement,
-    MatchScore,
     PageTopicVector,
     match_candidates,
     score_campaign,

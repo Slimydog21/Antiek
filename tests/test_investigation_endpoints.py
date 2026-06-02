@@ -19,7 +19,6 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path
@@ -33,12 +32,6 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
 from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
-    DispatchConfig,
-    NormalizedUsage,
-    ProviderError,
-    RawProviderResponse,
-    TierConfig,
-    TierPricing,
     register_provider,
     reset_provider_registry,
 )
@@ -48,15 +41,15 @@ from substrate.schemas import ActionType  # noqa: E402
 # Reuse the stub provider + canned responses from the orchestrator
 # end-to-end test — same shape applies here.
 from tests.test_loop_one_orchestrator import (  # noqa: E402
-    _DECOMPOSER_RESPONSE,
-    _PARAMETER_EXTRACTOR_RESPONSE,
     _CONNECTOR_RESPONSE,
-    _SYNTHESIZER_RESPONSE,
+    _DECOMPOSER_RESPONSE,
     _KNOWLEDGE_EXTRACTION_RESPONSE,
-    _RoleStubProvider,
+    _PARAMETER_EXTRACTOR_RESPONSE,
+    _SYNTHESIZER_RESPONSE,
     _all_role_config,
     _evidence_response_for,
     _patch_dispatch,
+    _RoleStubProvider,
 )
 
 

@@ -24,7 +24,6 @@ see ``substrate/seams/thread.py`` rigor #2).
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -59,14 +58,14 @@ class ThreadHopResponse(BaseModel):
     workflow: Workflow
     entity_id: str
     entity_kind: EntityKind
-    seam_event_id: Optional[str] = None
-    seam_action_type: Optional[str] = None
-    provenance_ref: Optional[str] = None
+    seam_event_id: str | None = None
+    seam_action_type: str | None = None
+    provenance_ref: str | None = None
     built: bool = True
     via_provisional_seam: bool = False
 
     @classmethod
-    def of(cls, hop: ThreadHop) -> "ThreadHopResponse":
+    def of(cls, hop: ThreadHop) -> ThreadHopResponse:
         return cls(
             workflow=hop.workflow,
             entity_id=hop.entity_id,
@@ -86,7 +85,7 @@ class ThreadStubResponse(BaseModel):
     reason: str
 
     @classmethod
-    def of(cls, stub: ThreadStub) -> "ThreadStubResponse":
+    def of(cls, stub: ThreadStub) -> ThreadStubResponse:
         return cls(workflow=stub.workflow, reason=stub.reason)
 
 
@@ -100,7 +99,7 @@ class ThreadResponse(BaseModel):
     is_degenerate: bool
 
     @classmethod
-    def of(cls, thread: Thread) -> "ThreadResponse":
+    def of(cls, thread: Thread) -> ThreadResponse:
         return cls(
             canonical_entity_id=thread.canonical_entity_id,
             canonical_entity_kind=thread.canonical_entity_kind,
@@ -110,7 +109,7 @@ class ThreadResponse(BaseModel):
         )
 
 
-def _collect_seam_events(events_dir: Optional[str] = None) -> list[dict[str, object]]:
+def _collect_seam_events(events_dir: str | None = None) -> list[dict[str, object]]:
     """Scan every investigation's event log for ``seam.*`` events. Read-only.
 
     Linear scan across the per-investigation files; fine for a single operator
@@ -141,8 +140,8 @@ def _collect_seam_events(events_dir: Optional[str] = None) -> list[dict[str, obj
 def build_thread(
     node_id: str,
     *,
-    events_dir: Optional[str] = None,
-    origin_entity_kind: Optional[EntityKind] = None,
+    events_dir: str | None = None,
+    origin_entity_kind: EntityKind | None = None,
 ) -> Thread:
     """Reconstruct ``node_id``'s thread from the event log. Read-only.
 
@@ -162,7 +161,7 @@ def build_thread(
     return thread
 
 
-def make_router(*, events_dir: Optional[str] = None) -> APIRouter:
+def make_router(*, events_dir: str | None = None) -> APIRouter:
     """Build the read-only thread-navigation router.
 
     GET /thread/{node_id} — reconstruct the entity's cross-workflow thread.

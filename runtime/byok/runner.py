@@ -28,7 +28,7 @@ a fixture-backed fake with NO network; the live path is the operator's own smoke
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 
 from acquisition.twitter.adapter import (
     IngestTwitterResult,
@@ -76,12 +76,12 @@ def _fetch_for_pipeline(client: _ClientLike, pipeline: BYOKPipeline) -> list[dic
 def run_pipeline(
     pipeline_id: str,
     *,
-    db_path: Optional[str] = None,
-    config_path: Optional[str] = None,
-    artifact_path: Optional[str] = None,
-    key_bytes: Optional[bytes] = None,
-    key_file: Optional[str] = None,
-    client: Optional[_ClientLike] = None,
+    db_path: str | None = None,
+    config_path: str | None = None,
+    artifact_path: str | None = None,
+    key_bytes: bytes | None = None,
+    key_file: str | None = None,
+    client: _ClientLike | None = None,
     embedder: Any = None,
 ) -> RunPipelineResult:
     """Run a registered pipeline → ingest its threads as ``personal_reading``.

@@ -21,7 +21,6 @@ module reconstructs from what it is given and never invents an impression count.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .attribution import (
     AttributionAlgorithm,
@@ -75,7 +74,7 @@ class AssetEarningExplanation:
     """The full "why did this asset earn this" answer for one asset + period."""
 
     document_id: str
-    ip_holder_id: Optional[str]
+    ip_holder_id: str | None
     algorithm: str
     period_label: str
     total_earned_usd_cents: int
@@ -118,14 +117,14 @@ def explain_asset_earning(
     period_label: str,
     chunk_to_document: dict[str, str],
     period_revenue_usd_cents: int,
-    chunk_to_claim_confidence: Optional[dict[str, float]] = None,
-    document_to_source_tier: Optional[dict[str, int]] = None,
-    claim_load_bearing_scores: Optional[dict[str, float]] = None,
-    chunk_to_claim_id: Optional[dict[str, str]] = None,
-    chunk_to_impression_id: Optional[dict[str, str]] = None,
-    impression_to_session: Optional[dict[str, str]] = None,
-    ip_holder_id: Optional[str] = None,
-    content_class: Optional[str] = None,
+    chunk_to_claim_confidence: dict[str, float] | None = None,
+    document_to_source_tier: dict[str, int] | None = None,
+    claim_load_bearing_scores: dict[str, float] | None = None,
+    chunk_to_claim_id: dict[str, str] | None = None,
+    chunk_to_impression_id: dict[str, str] | None = None,
+    impression_to_session: dict[str, str] | None = None,
+    ip_holder_id: str | None = None,
+    content_class: str | None = None,
 ) -> AssetEarningExplanation:
     """Explain why ``document_id`` earned what it did over ``period_label``.
 

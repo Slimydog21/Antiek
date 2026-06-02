@@ -41,8 +41,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any
 
 import requests
 
@@ -97,8 +98,8 @@ class ThrottledFetcher:
         min_interval_s: float = DEFAULT_MIN_INTERVAL_S,
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout_s: float = DEFAULT_TIMEOUT_S,
-        session: Optional[requests.Session] = None,
-        persistent: Optional["SourceThrottle"] = None,
+        session: requests.Session | None = None,
+        persistent: SourceThrottle | None = None,
     ) -> None:
         self._source = source
         self._min_interval_s = min_interval_s
@@ -121,19 +122,19 @@ class ThrottledFetcher:
                 time.sleep(wait)
             self._last_request_at = time.monotonic()
 
-    def get_json(self, url: str, *, params: Optional[dict] = None) -> dict:
+    def get_json(self, url: str, *, params: dict | None = None) -> dict:
         return self._request(url, params=params).json()
 
-    def get_text(self, url: str, *, params: Optional[dict] = None) -> str:
+    def get_text(self, url: str, *, params: dict | None = None) -> str:
         return self._request(url, params=params).text
 
-    def get_bytes(self, url: str, *, params: Optional[dict] = None) -> bytes:
+    def get_bytes(self, url: str, *, params: dict | None = None) -> bytes:
         return self._request(url, params=params).content
 
     def _request(
-        self, url: str, *, params: Optional[dict] = None
+        self, url: str, *, params: dict | None = None
     ) -> requests.Response:
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(self._max_retries):
             self._throttle()
             try:
@@ -194,22 +195,22 @@ class BookCandidate:
     source: str  # connector source name (e.g. "standard_ebooks")
     source_id: str  # source-local id, namespaced by source
     title: str
-    author: Optional[str]
+    author: str | None
     source_uri: str
     download_url: str
     download_format: str  # "pdf" | "text"
-    license_uri: Optional[str] = None
-    pd_signal: Optional[str] = None
-    isbn: Optional[str] = None
-    oclc: Optional[str] = None
-    rights_holder_name: Optional[str] = None
+    license_uri: str | None = None
+    pd_signal: str | None = None
+    isbn: str | None = None
+    oclc: str | None = None
+    rights_holder_name: str | None = None
     subjects: Sequence[str] = field(default_factory=tuple)
     # When a connector already holds the body at discovery (e.g. Wikisource's
     # cleaned wikitext fetched via the API), it carries it inline so ingest
     # does NOT fetch ``download_url`` again — the SPR-03 throttle was already
     # consulted for the API call that produced it. ``download_format`` still
     # says how to turn it into PDF bytes.
-    inline_body: Optional[bytes] = None
+    inline_body: bytes | None = None
 
     def source_declaration(self) -> Mapping[str, Any]:
         """The ``source_declaration`` mapping handed to classify(). Carries the
@@ -247,13 +248,13 @@ class IngestOutcome:
 
     candidate: BookCandidate
     ingested: bool
-    content_class: Optional[str] = None
-    license_basis: Optional[str] = None
+    content_class: str | None = None
+    license_basis: str | None = None
     servable: bool = False
-    servability: Optional[str] = None
-    document_id: Optional[str] = None
+    servability: str | None = None
+    document_id: str | None = None
     word_count: int = 0
-    skipped_reason: Optional[str] = None
+    skipped_reason: str | None = None
 
 
 def _to_pdf_bytes(raw: bytes, candidate: BookCandidate) -> bytes:
@@ -283,7 +284,7 @@ def classify_and_ingest(
     fetcher: ThrottledFetcher,
     *,
     investigation_id: str = "inv-library",
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     embedder: Any = None,
 ) -> IngestOutcome:
     """Classify ``candidate`` through the SPR-02 chokepoint, then ingest it

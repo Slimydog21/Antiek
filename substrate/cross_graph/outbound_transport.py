@@ -19,12 +19,11 @@ the bridge fires correctly without making real network calls.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+from typing import Protocol
 
 import httpx
 
 from .federation import FederatedOutboundCitation
-
 
 # Default timeout — federation calls cross network boundaries; keep
 # the bound moderately generous so transient delays don't fail every
@@ -53,9 +52,9 @@ class OutboundTransmitResult:
     """
 
     status: str
-    rejection: Optional[str]
+    rejection: str | None
     detail: str
-    partner_response_body: Optional[dict]
+    partner_response_body: dict | None
 
 
 class OutboundTransport(Protocol):
@@ -84,7 +83,7 @@ class HttpxOutboundTransport:
     def __init__(
         self,
         *,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
     ):
         self._client = client
         self._owns_client = client is None
@@ -175,9 +174,9 @@ class MockOutboundTransport:
 
     name: str = "mock_outbound"
     canned_status: str = "accepted"
-    canned_rejection: Optional[str] = None
+    canned_rejection: str | None = None
     canned_detail: str = ""
-    canned_response_body: Optional[dict] = None
+    canned_response_body: dict | None = None
     calls: list[dict] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:

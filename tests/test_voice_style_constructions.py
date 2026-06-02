@@ -38,7 +38,6 @@ from substrate.voice_style.constructions import (
     PADDING,
 )
 
-
 # ── Canonical data ──────────────────────────────────────────────────
 
 

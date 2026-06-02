@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -43,6 +42,12 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from roles.evidence_retriever import (  # noqa: E402
+    EvidenceResult,
+    EvidenceValidationError,
+    parse_evidence_response,
+    render_full_prompt,
+)
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
@@ -53,15 +58,8 @@ from substrate.schemas import (  # noqa: E402
     EvidentiaryGap,
     SupportingClaim,
 )
-from roles.evidence_retriever import (  # noqa: E402
-    EvidenceResult,
-    EvidenceValidationError,
-    parse_evidence_response,
-    render_full_prompt,
-)
 
 from .broadcast import EventBroadcaster
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -121,7 +119,7 @@ def _dispatch_and_parse(
     event: Event,
     *,
     sub_question: str,
-) -> tuple[Optional[EvidenceResult], str]:
+) -> tuple[EvidenceResult | None, str]:
     """Run one evidence_retriever dispatch + parse. Returns
     ``(EvidenceResult, policy_id)`` on success, ``(None, fallback_id)``
     on dispatch or parse failure."""
@@ -235,7 +233,7 @@ async def _emit_delivered(
 
 async def _broadcast_emitted(
     event: Event,
-    emitted_event_id: Optional[str],
+    emitted_event_id: str | None,
     broadcaster: EventBroadcaster,
 ) -> None:
     """Look up the just-emitted event and broadcast so subscribed WS

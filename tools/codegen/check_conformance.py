@@ -46,9 +46,10 @@ exactly the claim the gate verifies.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -72,7 +73,6 @@ from substrate.contracts import (  # noqa: E402
     verify_conformance,
 )
 
-
 # ── The conformance registry ─────────────────────────────────────────────────
 # One row per SPR-01 contract. ``conformer`` is the live implementation class
 # the product ships (when built); ``stub_status`` documents why a stub stands in
@@ -89,7 +89,7 @@ class ConformanceRow:
 
     contract: type[BaseModel]
     # The live impl class (a dataclass / model the product ships). None ⇒ stub.
-    conformer: Optional[Callable[[], Any]] = None
+    conformer: Callable[[], Any] | None = None
     # Why a stub stands in (required iff conformer is None). The honest record
     # of which legs are real vs stub (intellectual honesty #1).
     stub_status: str = ""

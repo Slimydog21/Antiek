@@ -6,35 +6,13 @@ from .db_path import (
     default_db_path,
     ensure_research_bridge_initialized,
 )
-from .schema import (
-    ANTIEK_RESEARCH_BRIDGE_SCHEMA_V1_SQL,
-    init_research_bridge,
-    init_research_bridge_at_path,
-)
-from .source_detection import (
-    KNOWN_SOURCES,
-    SourceDetectionResult,
-    detect_source,
-)
-from .ingest import (
-    IngestResult,
-    PASTE_DOCUMENT_TYPE,
-    PasteEmptyError,
-    PasteTooLargeError,
-    ingest_paste,
-    MAX_PASTE_BYTES,
-)
-from .paste_log import (
-    list_paste_events,
-    log_paste_event,
-)
 from .extractor import (
     EXTRACTOR_VERSION,
     ExtractedItem,
     ExtractionResult,
     ExtractorError,
-    LlmCallResult,
     LlmCallable,
+    LlmCallResult,
     StoredItem,
     extract_paste,
     list_insights,
@@ -58,7 +36,28 @@ from .gap import (
     record_prompt_signal,
     would_run_percentage,
 )
-
+from .ingest import (
+    MAX_PASTE_BYTES,
+    PASTE_DOCUMENT_TYPE,
+    IngestResult,
+    PasteEmptyError,
+    PasteTooLargeError,
+    ingest_paste,
+)
+from .paste_log import (
+    list_paste_events,
+    log_paste_event,
+)
+from .schema import (
+    ANTIEK_RESEARCH_BRIDGE_SCHEMA_V1_SQL,
+    init_research_bridge,
+    init_research_bridge_at_path,
+)
+from .source_detection import (
+    KNOWN_SOURCES,
+    SourceDetectionResult,
+    detect_source,
+)
 
 __all__ = [
     "ANTIEK_RESEARCH_BRIDGE_SCHEMA_V1_SQL",

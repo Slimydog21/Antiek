@@ -34,12 +34,12 @@ from __future__ import annotations
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class AdvertiserStatus(str, enum.Enum):
@@ -82,8 +82,8 @@ class AdvertiserRecord:
     submitted_at: str
     last_status_change_at: str
     operator_notes: str = ""
-    rejection_reason: Optional[str] = None
-    monthly_budget_usd_cents: Optional[int] = None
+    rejection_reason: str | None = None
+    monthly_budget_usd_cents: int | None = None
 
 
 @dataclass
@@ -100,7 +100,7 @@ class AdvertiserRegistry:
 
     records: list[AdvertiserRecord] = field(default_factory=list)
 
-    def latest(self, advertiser_id: str) -> Optional[AdvertiserRecord]:
+    def latest(self, advertiser_id: str) -> AdvertiserRecord | None:
         """Return the most recent record for an advertiser, or None."""
         for r in reversed(self.records):
             if r.advertiser_id == advertiser_id:
@@ -129,8 +129,8 @@ def submit_application(
     contact_email: str,
     verticals: tuple[str, ...],
     audience_intents: tuple[str, ...] = (),
-    monthly_budget_usd_cents: Optional[int] = None,
-    advertiser_id: Optional[str] = None,
+    monthly_budget_usd_cents: int | None = None,
+    advertiser_id: str | None = None,
 ) -> AdvertiserRecord:
     """Submit a new advertiser application. Lands in PENDING_REVIEW.
 

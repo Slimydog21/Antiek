@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from typing import Any, Optional
-
+from typing import Any
 
 THOUGHT_PARTNER_SYSTEM_PROMPT = """\
 You are the thought-partner role in Antiek's Brainstorming Workstation
@@ -52,7 +50,7 @@ def compose_thought_partner_prompt(
     *,
     user_prompt: str,
     selected_notes: list[dict[str, Any]],
-    sector_style_guide: Optional[str] = None,
+    sector_style_guide: str | None = None,
 ) -> str:
     """Compose the per-call prompt for the thought-partner role.
 

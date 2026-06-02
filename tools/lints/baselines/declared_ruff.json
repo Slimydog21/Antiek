@@ -1,0 +1,4327 @@
+{
+  "generated_at": "2026-06-02T10:05:47.639038+00:00",
+  "lint": "declared_bar_ruff",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 87,
+      "path": "acquisition/arxiv/adapter.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 88,
+      "path": "acquisition/arxiv/adapter.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 163,
+      "path": "acquisition/arxiv/oai_pmh.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 60,
+      "path": "acquisition/arxiv/pdf_fetch.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 61,
+      "path": "acquisition/arxiv/pdf_fetch.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 65,
+      "path": "acquisition/arxiv/pdf_fetch.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 176,
+      "path": "acquisition/arxiv/rate_governor.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:B904",
+      "line": 271,
+      "path": "acquisition/arxiv/rate_governor.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 281,
+      "path": "acquisition/arxiv/rate_governor.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 316,
+      "path": "acquisition/arxiv/rate_governor.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 205,
+      "path": "acquisition/arxiv/throttle.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 52,
+      "path": "acquisition/books/adapter.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP007",
+      "line": 58,
+      "path": "acquisition/books/adapter.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 65,
+      "path": "acquisition/corpus_quality.py"
+    },
+    {
+      "col": 65,
+      "kind": "ruff:B023",
+      "line": 253,
+      "path": "acquisition/openaccess/openalex.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM108",
+      "line": 70,
+      "path": "acquisition/papers/core.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 47,
+      "path": "acquisition/podcasts/adapter.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:F401",
+      "line": 32,
+      "path": "acquisition/search/__init__.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:F401",
+      "line": 34,
+      "path": "acquisition/search/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 52,
+      "path": "acquisition/search/exa/adapter.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM108",
+      "line": 37,
+      "path": "acquisition/search/exa/budget.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 181,
+      "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 197,
+      "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:B905",
+      "line": 320,
+      "path": "acquisition/search/retention.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 65,
+      "path": "acquisition/substack/adapter.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 98,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 112,
+      "path": "acquisition/textbooks/doab.py"
+    },
+    {
+      "col": 41,
+      "kind": "ruff:B905",
+      "line": 270,
+      "path": "acquisition/twitter/adapter.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 60,
+      "path": "acquisition/urls/adapter.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 61,
+      "path": "acquisition/urls/adapter.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM108",
+      "line": 49,
+      "path": "acquisition/urls/budget_browserbase.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 244,
+      "path": "acquisition/urls/client_browserbase.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 290,
+      "path": "acquisition/urls/client_browserbase.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 343,
+      "path": "acquisition/urls/client_browserbase.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 347,
+      "path": "acquisition/urls/client_browserbase.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM103",
+      "line": 136,
+      "path": "acquisition/urls/paulgraham.py"
+    },
+    {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 32,
+      "path": "acquisition/video/__init__.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:F401",
+      "line": 34,
+      "path": "acquisition/video/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 50,
+      "path": "acquisition/voice/adapter.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM103",
+      "line": 45,
+      "path": "apps/reading/src/brand/werner/color_correct.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 117,
+      "path": "benchmarks/fixtures.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 375,
+      "path": "benchmarks/retrieval_bench.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 457,
+      "path": "benchmarks/retrieval_bench.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM108",
+      "line": 141,
+      "path": "compounding/benchmark/aggregate.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 18,
+      "path": "compounding/quality_gate/gate.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 12,
+      "path": "compounding/skill_growth/gate.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:B904",
+      "line": 188,
+      "path": "interfaces/research/api/ad_impressions.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 53,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 68,
+      "kind": "ruff:B023",
+      "line": 826,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:F821",
+      "line": 1058,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 49,
+      "kind": "ruff:B008",
+      "line": 1650,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 1810,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM102",
+      "line": 2034,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:SIM105",
+      "line": 2081,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:E731",
+      "line": 2807,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:E731",
+      "line": 2849,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:E731",
+      "line": 2909,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 2950,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 3130,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 3333,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:B904",
+      "line": 3377,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 3648,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 39,
+      "kind": "ruff:B008",
+      "line": 3717,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:B008",
+      "line": 3884,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 43,
+      "kind": "ruff:B008",
+      "line": 3950,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 43,
+      "kind": "ruff:B008",
+      "line": 3979,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:B008",
+      "line": 4045,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:B008",
+      "line": 4084,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:B008",
+      "line": 4279,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:B008",
+      "line": 4418,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:B008",
+      "line": 4466,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:B008",
+      "line": 4521,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:SIM105",
+      "line": 4595,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:SIM105",
+      "line": 4605,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:SIM105",
+      "line": 4615,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:B008",
+      "line": 4748,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:B008",
+      "line": 4825,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:B008",
+      "line": 4996,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 5012,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 46,
+      "kind": "ruff:B008",
+      "line": 5141,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 5232,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 5241,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 5247,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:B008",
+      "line": 5310,
+      "path": "interfaces/research/api/app.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 87,
+      "path": "interfaces/research/api/broadcast.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 92,
+      "path": "interfaces/research/api/broadcast.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 107,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 109,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 134,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 372,
+      "path": "interfaces/research/api/cascade_routes.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 78,
+      "path": "interfaces/research/api/connector.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:E741",
+      "line": 165,
+      "path": "interfaces/research/api/coordination.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 12,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP045",
+      "line": 27,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:UP045",
+      "line": 36,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 49,
+      "kind": "ruff:UP045",
+      "line": 60,
+      "path": "interfaces/research/api/creator_payouts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 67,
+      "path": "interfaces/research/api/cross_doc.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 94,
+      "path": "interfaces/research/api/cross_doc.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 73,
+      "path": "interfaces/research/api/decomposer.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 139,
+      "path": "interfaces/research/api/distill_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 150,
+      "path": "interfaces/research/api/distill_routes.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 62,
+      "path": "interfaces/research/api/evidence_retriever.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 64,
+      "path": "interfaces/research/api/grounding.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 56,
+      "path": "interfaces/research/api/note_taking.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 60,
+      "path": "interfaces/research/api/parameter_extractor.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 123,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 125,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 131,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 133,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 140,
+      "path": "interfaces/research/api/speak_routes.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 76,
+      "path": "interfaces/research/api/synthesizer.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 38,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 67,
+      "path": "interfaces/research/api/wrestling.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 108,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 458,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 463,
+      "path": "interfaces/research/api/write_routes.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 210,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 32,
+      "kind": "ruff:B905",
+      "line": 339,
+      "path": "interfaces/research/rlm_dag.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM103",
+      "line": 374,
+      "path": "interfaces/research/rlm_repl.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 117,
+      "path": "middleware/constraint_check/loop.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:F401",
+      "line": 31,
+      "path": "middleware/ip_holder_resolver/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:SIM105",
+      "line": 40,
+      "path": "middleware/source_tier/rules.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F401",
+      "line": 47,
+      "path": "middleware/supersession/supersession.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F401",
+      "line": 42,
+      "path": "orchestration/audit/phase_audit.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B007",
+      "line": 200,
+      "path": "orchestration/cascade_session.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 22,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP045",
+      "line": 46,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP017",
+      "line": 47,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP017",
+      "line": 49,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM108",
+      "line": 55,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 30,
+      "kind": "ruff:UP045",
+      "line": 63,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP045",
+      "line": 67,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP037",
+      "line": 135,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 39,
+      "kind": "ruff:UP045",
+      "line": 140,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 148,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 184,
+      "path": "orchestration/continuous/budget.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 23,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:F401",
+      "line": 31,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 32,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP045",
+      "line": 49,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:UP045",
+      "line": 52,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 62,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP017",
+      "line": 113,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP017",
+      "line": 114,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 118,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:UP045",
+      "line": 120,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:UP045",
+      "line": 187,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 281,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 282,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:UP045",
+      "line": 284,
+      "path": "orchestration/continuous/daemon.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 22,
+      "path": "orchestration/continuous/research_topic.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:F401",
+      "line": 26,
+      "path": "orchestration/continuous/research_topic.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 22,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 28,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:UP045",
+      "line": 70,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 41,
+      "kind": "ruff:UP045",
+      "line": 94,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:UP045",
+      "line": 172,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:UP017",
+      "line": 174,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 48,
+      "kind": "ruff:UP017",
+      "line": 177,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:UP017",
+      "line": 179,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:UP045",
+      "line": 198,
+      "path": "orchestration/continuous/scoring.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 71,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 104,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:B905",
+      "line": 178,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 883,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 944,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 1089,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:SIM115",
+      "line": 163,
+      "path": "orchestration/phase_runner/postconditions.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:SIM115",
+      "line": 238,
+      "path": "orchestration/phase_runner/postconditions.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM102",
+      "line": 506,
+      "path": "orchestration/phase_runner/postconditions.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:F401",
+      "line": 52,
+      "path": "processing/extraction/extract.py"
+    },
+    {
+      "col": 32,
+      "kind": "ruff:F401",
+      "line": 30,
+      "path": "roles/cascade_planner/approval.py"
+    },
+    {
+      "col": 38,
+      "kind": "ruff:F401",
+      "line": 25,
+      "path": "roles/cascade_planner/planner.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 189,
+      "path": "roles/connector/prompt.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B904",
+      "line": 53,
+      "path": "roles/creative_writer/parser.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 53,
+      "path": "roles/decomposer/paraphrase.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 120,
+      "path": "roles/decomposer/prompt.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 153,
+      "path": "roles/evidence_retriever/prompt.py"
+    },
+    {
+      "col": 32,
+      "kind": "ruff:F401",
+      "line": 29,
+      "path": "roles/note_taker/scheduler.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:SIM105",
+      "line": 119,
+      "path": "roles/note_taker/scheduler.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 117,
+      "path": "roles/style_extractor/prompt.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 201,
+      "path": "roles/synthesizer/prompt.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 91,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 165,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 169,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 238,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:B904",
+      "line": 304,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 312,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:B904",
+      "line": 522,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 527,
+      "path": "runtime/db_lock.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 94,
+      "path": "runtime/remote_exec/provider.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 268,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 282,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 325,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 367,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:F841",
+      "line": 129,
+      "path": "runtime/research_runner/budget.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 358,
+      "path": "runtime/research_runner/host_local.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 41,
+      "path": "runtime/research_runner/protocol.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 59,
+      "path": "runtime/research_runner/protocol.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM102",
+      "line": 323,
+      "path": "runtime/weekly_report.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM103",
+      "line": 57,
+      "path": "skills/domain/extract.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:B905",
+      "line": 220,
+      "path": "skills/verification/rlm.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 21,
+      "path": "substrate/ad_inventory/ad_bidding.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 45,
+      "path": "substrate/ad_inventory/advertiser_onboarding.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 362,
+      "path": "substrate/ad_inventory/advertiser_onboarding.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 42,
+      "path": "substrate/ad_inventory/attribution.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 28,
+      "path": "substrate/ad_inventory/decisions_log.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 75,
+      "path": "substrate/ad_inventory/decisions_log.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM102",
+      "line": 130,
+      "path": "substrate/ad_inventory/intent_targeting.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM102",
+      "line": 133,
+      "path": "substrate/ad_inventory/intent_targeting.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM102",
+      "line": 136,
+      "path": "substrate/ad_inventory/intent_targeting.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 84,
+      "path": "substrate/ad_inventory/inventory_persistence.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP017",
+      "line": 26,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 34,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 49,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 44,
+      "kind": "ruff:UP037",
+      "line": 162,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:I001",
+      "line": 188,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:F401",
+      "line": 189,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM102",
+      "line": 219,
+      "path": "substrate/ad_inventory/payout.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 70,
+      "path": "substrate/ad_inventory/transfer_initiator.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 19,
+      "path": "substrate/advertisers/store.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 36,
+      "path": "substrate/anti_gaming/red_team.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 15,
+      "path": "substrate/anti_gaming/verdict.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 16,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 39,
+      "kind": "ruff:UP045",
+      "line": 54,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:UP045",
+      "line": 97,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 99,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 41,
+      "kind": "ruff:UP045",
+      "line": 157,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:UP045",
+      "line": 158,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 50,
+      "kind": "ruff:SIM118",
+      "line": 221,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 61,
+      "kind": "ruff:SIM118",
+      "line": 225,
+      "path": "substrate/attribution/compute.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 66,
+      "path": "substrate/autoresearch/proposal.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 57,
+      "path": "substrate/billing/kyc.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 288,
+      "path": "substrate/billing/kyc.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 177,
+      "path": "substrate/billing/tax_reports.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM108",
+      "line": 107,
+      "path": "substrate/books/passage_research.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 279,
+      "path": "substrate/books/personal_space.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 46,
+      "path": "substrate/books/servability.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:E741",
+      "line": 460,
+      "path": "substrate/context_pack/assembler.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:F401",
+      "line": 35,
+      "path": "substrate/context_pack/note_injection.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 101,
+      "path": "substrate/context_pack/note_retrieval.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 37,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 38,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 44,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 45,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 54,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 59,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 66,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 67,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 68,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 69,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 70,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 71,
+      "path": "substrate/contracts/__init__.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 190,
+      "path": "substrate/contracts/dependency_map.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 72,
+      "path": "substrate/coordination/cost_view.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 141,
+      "path": "substrate/coordination/cost_view.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 59,
+      "path": "substrate/coordination/gate_ledger.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 86,
+      "path": "substrate/coordination/gate_ledger.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 71,
+      "path": "substrate/coordination/roadmap.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:F821",
+      "line": 522,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP031",
+      "line": 984,
+      "path": "substrate/corpus_audit.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 31,
+      "path": "substrate/cross_graph/federation_config_store.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 68,
+      "path": "substrate/cross_graph/inbound.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 287,
+      "path": "substrate/cross_graph/inbound.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 84,
+      "path": "substrate/cross_graph/partner_identity.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 350,
+      "path": "substrate/cross_graph/partner_identity.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 390,
+      "path": "substrate/cross_graph/partner_identity.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 85,
+      "path": "substrate/cross_graph_writer/queue.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 91,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 124,
+      "path": "substrate/dedup.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 35,
+      "path": "substrate/deletion_worker/worker.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 55,
+      "path": "substrate/deletion_worker/worker.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM102",
+      "line": 122,
+      "path": "substrate/deletion_worker/worker.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 43,
+      "path": "substrate/dispatch/multi_cloud.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM102",
+      "line": 178,
+      "path": "substrate/dispatch/multi_cloud.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F401",
+      "line": 39,
+      "path": "substrate/dispatch/router.py"
+    },
+    {
+      "col": 39,
+      "kind": "ruff:B008",
+      "line": 44,
+      "path": "substrate/ducklake/migration.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 8,
+      "path": "substrate/ducklake/stage.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F401",
+      "line": 99,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 568,
+      "path": "substrate/event_log/events.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 41,
+      "path": "substrate/federation/protocol.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 100,
+      "path": "substrate/federation/slice.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 19,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:F401",
+      "line": 19,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 31,
+      "kind": "ruff:F401",
+      "line": 19,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 63,
+      "path": "substrate/gap_detection/contradiction.py"
+    },
+    {
+      "col": 32,
+      "kind": "ruff:F401",
+      "line": 20,
+      "path": "substrate/graph/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 51,
+      "path": "substrate/graph/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 67,
+      "path": "substrate/graph/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 82,
+      "path": "substrate/graph/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 89,
+      "path": "substrate/graph/__init__.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 97,
+      "path": "substrate/graph/__init__.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 200,
+      "path": "substrate/graph/insight_question.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 262,
+      "path": "substrate/graph/migrate_v9_insight_question.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F401",
+      "line": 48,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F401",
+      "line": 49,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:B905",
+      "line": 310,
+      "path": "substrate/graph/ops.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 118,
+      "path": "substrate/graph/retrieval_adapters/ducklake.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 117,
+      "path": "substrate/graph/retrieval_adapters/turbopuffer.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 159,
+      "path": "substrate/graph/retrieval_substrate.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 476,
+      "path": "substrate/graph/retrieval_substrate.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B904",
+      "line": 185,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 473,
+      "path": "substrate/graph/rlm_tools.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 49,
+      "path": "substrate/graph_per_user/lifecycle.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 217,
+      "path": "substrate/graph_per_user/lifecycle.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 108,
+      "path": "substrate/ingest_budget.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:F401",
+      "line": 21,
+      "path": "substrate/ip_holders/__init__.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:F401",
+      "line": 23,
+      "path": "substrate/ip_holders/__init__.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:F401",
+      "line": 25,
+      "path": "substrate/ip_holders/__init__.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:F401",
+      "line": 44,
+      "path": "substrate/legal_gate/__init__.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 46,
+      "path": "substrate/loop_3/checklist_store.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 10,
+      "path": "substrate/loop_3/unlock_gate.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM102",
+      "line": 255,
+      "path": "substrate/marketplace_metrics/book_escrow.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 25,
+      "path": "substrate/marketplace_metrics/dashboard.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 66,
+      "path": "substrate/marketplace_metrics/dashboard.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 53,
+      "path": "substrate/multi_user/crdt_scaffold/access_control.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F841",
+      "line": 192,
+      "path": "substrate/multi_user/crdt_scaffold/interfaces.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 23,
+      "path": "substrate/multi_user/partition.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM102",
+      "line": 115,
+      "path": "substrate/multi_user/partition.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM118",
+      "line": 226,
+      "path": "substrate/multi_user/skill_accumulator.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 165,
+      "path": "substrate/multi_user/skill_writer.py"
+    },
+    {
+      "col": 37,
+      "kind": "ruff:F401",
+      "line": 35,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:F401",
+      "line": 36,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM105",
+      "line": 345,
+      "path": "substrate/notebooks/__init__.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP046",
+      "line": 64,
+      "path": "substrate/ownership.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:UP045",
+      "line": 70,
+      "path": "substrate/payouts/contact_guard.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:F401",
+      "line": 67,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:UP045",
+      "line": 154,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 171,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 51,
+      "kind": "ruff:UP045",
+      "line": 205,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:RET504",
+      "line": 338,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 352,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 51,
+      "kind": "ruff:UP045",
+      "line": 503,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 35,
+      "kind": "ruff:UP045",
+      "line": 565,
+      "path": "substrate/payouts/ledger.py"
+    },
+    {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 44,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 36,
+      "kind": "ruff:F401",
+      "line": 45,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:F401",
+      "line": 46,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 77,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 86,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 26,
+      "path": "substrate/public_notes_ingest/pipeline.py"
+    },
+    {
+      "col": 32,
+      "kind": "ruff:B008",
+      "line": 67,
+      "path": "substrate/quality_gate/checks.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 29,
+      "path": "substrate/quality_gate/gate.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 45,
+      "path": "substrate/quality_gate/gate.py"
+    },
+    {
+      "col": 29,
+      "kind": "ruff:F401",
+      "line": 26,
+      "path": "substrate/research_bridge/extractor.py"
+    },
+    {
+      "col": 54,
+      "kind": "ruff:F401",
+      "line": 24,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 68,
+      "kind": "ruff:F401",
+      "line": 24,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:F401",
+      "line": 25,
+      "path": "substrate/research_bridge/versioning.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:UP047",
+      "line": 99,
+      "path": "substrate/result_helpers.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:UP047",
+      "line": 160,
+      "path": "substrate/result_helpers.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP046",
+      "line": 103,
+      "path": "substrate/results.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:UP046",
+      "line": 156,
+      "path": "substrate/results.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:UP047",
+      "line": 223,
+      "path": "substrate/results.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:UP047",
+      "line": 227,
+      "path": "substrate/results.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 25,
+      "path": "substrate/rev_share/rollover.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM105",
+      "line": 31,
+      "path": "substrate/rev_share/rollover_persistence.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B007",
+      "line": 84,
+      "path": "substrate/rev_share/rollover_persistence.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 47,
+      "path": "substrate/schemas/documents.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 57,
+      "path": "substrate/schemas/events.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 277,
+      "path": "substrate/source_throttle.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 46,
+      "path": "substrate/speak/consent.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 84,
+      "path": "substrate/speak/corroboration.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM102",
+      "line": 135,
+      "path": "substrate/speak/corroboration.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 45,
+      "path": "substrate/speak/economics_mode.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 50,
+      "path": "substrate/speak/economics_mode.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 64,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 70,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 244,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 245,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 47,
+      "kind": "ruff:UP045",
+      "line": 342,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 387,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:UP045",
+      "line": 388,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 35,
+      "kind": "ruff:E741",
+      "line": 442,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:E741",
+      "line": 443,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:E741",
+      "line": 444,
+      "path": "substrate/speak/payout_verifier.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM103",
+      "line": 94,
+      "path": "substrate/speak/publish_gate.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM103",
+      "line": 201,
+      "path": "substrate/unit_dedup.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 52,
+      "path": "substrate/voice_style/ab_runner.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 25,
+      "path": "substrate/voice_style/rubric.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:E741",
+      "line": 82,
+      "path": "substrate/voice_style/rubric.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:E741",
+      "line": 87,
+      "path": "substrate/voice_style/rubric.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:E741",
+      "line": 143,
+      "path": "substrate/voice_style/rubric.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 30,
+      "path": "substrate/voice_style/suppression.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 70,
+      "path": "substrate/write/block_search.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 35,
+      "path": "substrate/write/clustering.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM102",
+      "line": 381,
+      "path": "substrate/write/outline_block.py"
+    },
+    {
+      "col": 51,
+      "kind": "ruff:F401",
+      "line": 40,
+      "path": "substrate/write/style_profile.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 26,
+      "path": "tests/_textbook_fixtures.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/books/conftest.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 38,
+      "path": "tests/books/test_pd_dedup_cross_source.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:B011",
+      "line": 131,
+      "path": "tests/books/test_standard_ebooks.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:F821",
+      "line": 7,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:F821",
+      "line": 12,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:F821",
+      "line": 17,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:F821",
+      "line": 18,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 2,
+      "kind": "ruff:F821",
+      "line": 22,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:F821",
+      "line": 24,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:F821",
+      "line": 29,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:F821",
+      "line": 31,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:F821",
+      "line": 36,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:F821",
+      "line": 37,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:F821",
+      "line": 39,
+      "path": "tests/fixtures/lints/bypass_sample.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM113",
+      "line": 129,
+      "path": "tests/remote_exec_fakes.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:E741",
+      "line": 100,
+      "path": "tests/test_accrual_ledger.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 55,
+      "path": "tests/test_acquisition_arxiv.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 62,
+      "path": "tests/test_acquisition_arxiv.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 57,
+      "path": "tests/test_acquisition_books.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 62,
+      "path": "tests/test_acquisition_books.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 25,
+      "path": "tests/test_acquisition_paulgraham.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 26,
+      "path": "tests/test_acquisition_paulgraham.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/test_acquisition_paulgraham.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_acquisition_paulgraham.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F811",
+      "line": 231,
+      "path": "tests/test_acquisition_paulgraham.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F811",
+      "line": 248,
+      "path": "tests/test_acquisition_paulgraham.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F811",
+      "line": 253,
+      "path": "tests/test_acquisition_paulgraham.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_acquisition_podcasts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_acquisition_podcasts.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 190,
+      "path": "tests/test_acquisition_search_exa_cache.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 16,
+      "path": "tests/test_acquisition_twitter.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 45,
+      "path": "tests/test_acquisition_urls.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 51,
+      "path": "tests/test_acquisition_urls.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 21,
+      "path": "tests/test_acquisition_voice.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_acquisition_youtube.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_acquisition_youtube.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 48,
+      "path": "tests/test_ad_inventory_persistence.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 118,
+      "path": "tests/test_ad_inventory_persistence.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 169,
+      "path": "tests/test_advertiser_onboarding_persistence.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 83,
+      "path": "tests/test_advertisers_store.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 180,
+      "path": "tests/test_agentmail_provider.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 189,
+      "path": "tests/test_agentmail_provider.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 196,
+      "path": "tests/test_agentmail_provider.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 51,
+      "path": "tests/test_ai_actions.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B007",
+      "line": 174,
+      "path": "tests/test_api_sprint18_19_endpoints.py"
+    },
+    {
+      "col": 28,
+      "kind": "ruff:SIM115",
+      "line": 387,
+      "path": "tests/test_arxiv_ingest.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_arxiv_oai_pmh.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 17,
+      "path": "tests/test_attribution.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_attribution.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 230,
+      "path": "tests/test_attribution.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B007",
+      "line": 33,
+      "path": "tests/test_attribution_ab_report.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 50,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 55,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 56,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 60,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 64,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 65,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 66,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 67,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 128,
+      "path": "tests/test_backtest_db.py"
+    },
+    {
+      "col": 56,
+      "kind": "ruff:F811",
+      "line": 196,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 69,
+      "kind": "ruff:F811",
+      "line": 248,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 46,
+      "kind": "ruff:F811",
+      "line": 299,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:F811",
+      "line": 329,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 39,
+      "kind": "ruff:F811",
+      "line": 383,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 54,
+      "kind": "ruff:F811",
+      "line": 418,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:SIM115",
+      "line": 465,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 61,
+      "kind": "ruff:F811",
+      "line": 484,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 60,
+      "kind": "ruff:F811",
+      "line": 497,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:SIM115",
+      "line": 614,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:SIM115",
+      "line": 627,
+      "path": "tests/test_bernays_public_domain.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 208,
+      "path": "tests/test_billing_kyc.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_block_repository.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_block_repository.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_block_repository.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 31,
+      "path": "tests/test_block_repository.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 32,
+      "path": "tests/test_block_repository.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 41,
+      "path": "tests/test_block_repository.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/test_brainstorm_interview.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_brainstorm_interview.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_brainstorm_interview.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_brainstorm_interview.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 31,
+      "path": "tests/test_brainstorm_interview.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 32,
+      "path": "tests/test_brainstorm_interview.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 33,
+      "path": "tests/test_brainstorm_interview.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:B011",
+      "line": 101,
+      "path": "tests/test_byok_store.py"
+    },
+    {
+      "col": 27,
+      "kind": "ruff:E741",
+      "line": 56,
+      "path": "tests/test_caddy_allowlist_coverage.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 286,
+      "path": "tests/test_clis_exa_and_legal_gate.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 61,
+      "path": "tests/test_contact_guard.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:E741",
+      "line": 301,
+      "path": "tests/test_context_pack.py"
+    },
+    {
+      "col": 41,
+      "kind": "ruff:E741",
+      "line": 321,
+      "path": "tests/test_context_pack.py"
+    },
+    {
+      "col": 21,
+      "kind": "ruff:SIM108",
+      "line": 392,
+      "path": "tests/test_context_pack.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 96,
+      "path": "tests/test_contracts_conformance.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 97,
+      "path": "tests/test_contracts_conformance.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 98,
+      "path": "tests/test_contracts_conformance.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 99,
+      "path": "tests/test_contracts_conformance.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 101,
+      "path": "tests/test_contracts_conformance.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F841",
+      "line": 114,
+      "path": "tests/test_contributor_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 33,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 34,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 48,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 51,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 52,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP031",
+      "line": 434,
+      "path": "tests/test_corpus_audit.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 36,
+      "path": "tests/test_corpus_ingest_resilience.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 145,
+      "path": "tests/test_crdt_grant_revoke_race.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 149,
+      "path": "tests/test_crdt_grant_revoke_race.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 182,
+      "path": "tests/test_crdt_grant_revoke_race.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 249,
+      "path": "tests/test_crdt_grant_revoke_race.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 51,
+      "path": "tests/test_decomposer_env.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 55,
+      "path": "tests/test_decomposer_env.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 61,
+      "path": "tests/test_decomposer_env.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 21,
+      "path": "tests/test_dispatch_bootstrap.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_dispatch_bootstrap.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 74,
+      "path": "tests/test_dispatch_bootstrap.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 40,
+      "path": "tests/test_dispatch_fallback_chain.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 45,
+      "path": "tests/test_dispatch_fallback_chain.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 46,
+      "path": "tests/test_dispatch_fallback_chain.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 47,
+      "path": "tests/test_dispatch_fallback_chain.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_draft_generation.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_draft_generation.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 38,
+      "path": "tests/test_draft_generation.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_edit_capture.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 40,
+      "path": "tests/test_edit_capture.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:SIM115",
+      "line": 216,
+      "path": "tests/test_edit_capture.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 166,
+      "path": "tests/test_escape_hatch.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 416,
+      "path": "tests/test_events_schema.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 332,
+      "path": "tests/test_federation_event_emit.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:B017",
+      "line": 101,
+      "path": "tests/test_graph_insight_question.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:B017",
+      "line": 204,
+      "path": "tests/test_graph_insight_question.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:B017",
+      "line": 208,
+      "path": "tests/test_graph_insight_question.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 320,
+      "path": "tests/test_knowledge_reuse_spr06.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 436,
+      "path": "tests/test_knowledge_reuse_spr06.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 320,
+      "path": "tests/test_legal_gate.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 427,
+      "path": "tests/test_loop_one_concurrent.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 435,
+      "path": "tests/test_loop_one_concurrent.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:B905",
+      "line": 445,
+      "path": "tests/test_loop_one_concurrent.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 137,
+      "path": "tests/test_max_context_pack.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 45,
+      "path": "tests/test_merge_staging.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:SIM115",
+      "line": 321,
+      "path": "tests/test_orchestration_phase_log.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:SIM115",
+      "line": 324,
+      "path": "tests/test_orchestration_phase_log.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_orchestrator_chase.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 60,
+      "path": "tests/test_orchestrator_chase.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 84,
+      "path": "tests/test_orchestrator_chase.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 32,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 33,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 41,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 42,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 43,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 52,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 53,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 54,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 60,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 139,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 149,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 159,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 168,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 180,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 210,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 231,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 60,
+      "kind": "ruff:SIM115",
+      "line": 349,
+      "path": "tests/test_outline_block.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:SIM115",
+      "line": 148,
+      "path": "tests/test_papers_arxiv_bulk.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 142,
+      "path": "tests/test_partner_identity_persistence.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 3,
+      "path": "tests/test_payout_decisions_log.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F401",
+      "line": 22,
+      "path": "tests/test_payout_decisions_log.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 121,
+      "path": "tests/test_payout_event_emit.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM108",
+      "line": 190,
+      "path": "tests/test_payout_pipeline_integration.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 41,
+      "path": "tests/test_personal_lane_read_side.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 42,
+      "path": "tests/test_personal_lane_read_side.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 43,
+      "path": "tests/test_personal_lane_read_side.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 47,
+      "path": "tests/test_personal_lane_read_side.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 48,
+      "path": "tests/test_personal_lane_read_side.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:E731",
+      "line": 210,
+      "path": "tests/test_personal_space.py"
+    },
+    {
+      "col": 35,
+      "kind": "ruff:E741",
+      "line": 44,
+      "path": "tests/test_prime_intellect_compat.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 94,
+      "path": "tests/test_processing.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:B905",
+      "line": 139,
+      "path": "tests/test_processing.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 26,
+      "path": "tests/test_promote_context.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/test_promote_context.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_promote_context.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_promote_context.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_promote_context.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 31,
+      "path": "tests/test_promote_context.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 51,
+      "path": "tests/test_public_domain_ingest.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B007",
+      "line": 292,
+      "path": "tests/test_reclassify_personal_reading.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:B007",
+      "line": 225,
+      "path": "tests/test_research_runner.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 257,
+      "path": "tests/test_results.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 263,
+      "path": "tests/test_results.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 146,
+      "path": "tests/test_retrieval_bench.py"
+    },
+    {
+      "col": 14,
+      "kind": "ruff:B017",
+      "line": 233,
+      "path": "tests/test_retrieval_substrate_interface.py"
+    },
+    {
+      "col": 60,
+      "kind": "ruff:E741",
+      "line": 64,
+      "path": "tests/test_rev_share.py"
+    },
+    {
+      "col": 35,
+      "kind": "ruff:E741",
+      "line": 68,
+      "path": "tests/test_rev_share.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:E741",
+      "line": 84,
+      "path": "tests/test_rev_share.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:E741",
+      "line": 99,
+      "path": "tests/test_rev_share.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 61,
+      "path": "tests/test_rlm_dag.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 69,
+      "path": "tests/test_rlm_dag.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 332,
+      "path": "tests/test_rlm_repl.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 283,
+      "path": "tests/test_rlm_tools.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 14,
+      "path": "tests/test_role_creative_writer.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 14,
+      "path": "tests/test_role_voice_note_followup.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 193,
+      "path": "tests/test_roles_grounder_challenger.py"
+    },
+    {
+      "col": 10,
+      "kind": "ruff:B017",
+      "line": 64,
+      "path": "tests/test_rollover_persistence.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:B905",
+      "line": 44,
+      "path": "tests/test_rubric_benchmark.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:B905",
+      "line": 48,
+      "path": "tests/test_rubric_benchmark.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:B007",
+      "line": 115,
+      "path": "tests/test_seam_conformance.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:B011",
+      "line": 204,
+      "path": "tests/test_seam_single_escrow_writer.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F841",
+      "line": 515,
+      "path": "tests/test_skills_domain.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 679,
+      "path": "tests/test_skills_verification.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:B905",
+      "line": 193,
+      "path": "tests/test_source_throttle.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_sources_ingest.py"
+    },
+    {
+      "col": 54,
+      "kind": "ruff:E741",
+      "line": 414,
+      "path": "tests/test_speak_api.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 10,
+      "path": "tests/test_speak_payout_verifier.py"
+    },
+    {
+      "col": 49,
+      "kind": "ruff:E741",
+      "line": 280,
+      "path": "tests/test_speak_payout_verifier.py"
+    },
+    {
+      "col": 48,
+      "kind": "ruff:E741",
+      "line": 295,
+      "path": "tests/test_speak_payout_verifier.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:E741",
+      "line": 347,
+      "path": "tests/test_speak_payout_verifier.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F841",
+      "line": 458,
+      "path": "tests/test_spec_gaps.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_sprint11_api.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 17,
+      "path": "tests/test_sprint14_api.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 17,
+      "path": "tests/test_sprint15_api.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 20,
+      "path": "tests/test_sprint16_interviews.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 106,
+      "path": "tests/test_sprint16_interviews.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 3,
+      "path": "tests/test_stripe_connect.py"
+    },
+    {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 7,
+      "path": "tests/test_stripe_connect.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F401",
+      "line": 10,
+      "path": "tests/test_stripe_connect.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F401",
+      "line": 14,
+      "path": "tests/test_stripe_connect.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F401",
+      "line": 16,
+      "path": "tests/test_stripe_connect.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:SIM300",
+      "line": 56,
+      "path": "tests/test_stripe_connect.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:SIM300",
+      "line": 57,
+      "path": "tests/test_stripe_connect.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:I001",
+      "line": 6,
+      "path": "tests/test_stripe_payouts.py"
+    },
+    {
+      "col": 8,
+      "kind": "ruff:F401",
+      "line": 8,
+      "path": "tests/test_stripe_payouts.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP017",
+      "line": 259,
+      "path": "tests/test_stripe_payouts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/test_style_conditioning.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_style_conditioning.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_style_conditioning.py"
+    },
+    {
+      "col": 22,
+      "kind": "ruff:SIM115",
+      "line": 160,
+      "path": "tests/test_style_conditioning.py"
+    },
+    {
+      "col": 24,
+      "kind": "ruff:E741",
+      "line": 427,
+      "path": "tests/test_style_extractor.py"
+    },
+    {
+      "col": 58,
+      "kind": "ruff:E741",
+      "line": 427,
+      "path": "tests/test_style_extractor.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:E741",
+      "line": 428,
+      "path": "tests/test_style_extractor.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:E741",
+      "line": 442,
+      "path": "tests/test_style_extractor.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:E741",
+      "line": 459,
+      "path": "tests/test_style_extractor.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 188,
+      "path": "tests/test_substrate_end_to_end.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 21,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 40,
+      "kind": "ruff:F811",
+      "line": 93,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 56,
+      "kind": "ruff:F811",
+      "line": 114,
+      "path": "tests/test_textbooks_doab.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 25,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 34,
+      "kind": "ruff:F811",
+      "line": 90,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:F811",
+      "line": 149,
+      "path": "tests/test_textbooks_libretexts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 24,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 25,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 26,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 45,
+      "kind": "ruff:F811",
+      "line": 82,
+      "path": "tests/test_textbooks_mit_ocw.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 19,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 20,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 21,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 22,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 23,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 56,
+      "kind": "ruff:F811",
+      "line": 89,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 52,
+      "kind": "ruff:F811",
+      "line": 123,
+      "path": "tests/test_textbooks_openstax.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 26,
+      "path": "tests/test_trace_to_source.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 27,
+      "path": "tests/test_trace_to_source.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_trace_to_source.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_trace_to_source.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_trace_to_source.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 161,
+      "path": "tests/test_transfer_initiator.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 20,
+      "path": "tests/test_voice_style_prompts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 21,
+      "path": "tests/test_voice_style_prompts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 28,
+      "path": "tests/test_write_routes.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 29,
+      "path": "tests/test_write_routes.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 30,
+      "path": "tests/test_write_routes.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 31,
+      "path": "tests/test_write_routes.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM117",
+      "line": 341,
+      "path": "tests/test_write_routes.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:B011",
+      "line": 206,
+      "path": "tests/test_x_byok_ingest.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:F841",
+      "line": 107,
+      "path": "tests/tools/test_boundary_task.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 413,
+      "path": "tools/arxiv_census.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM108",
+      "line": 271,
+      "path": "tools/dispatch_tier_verdict/analyzer.py"
+    },
+    {
+      "col": 16,
+      "kind": "ruff:RET504",
+      "line": 41,
+      "path": "tools/gepa/pareto_front.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM102",
+      "line": 81,
+      "path": "tools/lint/boundary_check.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM110",
+      "line": 190,
+      "path": "tools/lint/contact_guard_check.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM102",
+      "line": 157,
+      "path": "tools/lint/rate_governor_check.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM103",
+      "line": 183,
+      "path": "tools/lint/reachability_gate.py"
+    },
+    {
+      "col": 12,
+      "kind": "ruff:SIM109",
+      "line": 240,
+      "path": "tools/lint/reachability_gate.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM108",
+      "line": 495,
+      "path": "tools/lint/reachability_gate.py"
+    },
+    {
+      "col": 5,
+      "kind": "ruff:SIM103",
+      "line": 161,
+      "path": "tools/lint/serve_invariants_check.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 43,
+      "path": "tools/marketplace/programmatic_gate.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:SIM103",
+      "line": 30,
+      "path": "tools/prompt_autoresearch/budget.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 1733,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 9,
+      "kind": "ruff:F841",
+      "line": 1932,
+      "path": "tools/run_corpus_ingest.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP017",
+      "line": 14,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 17,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 33,
+      "kind": "ruff:UP045",
+      "line": 67,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 68,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 42,
+      "kind": "ruff:UP045",
+      "line": 106,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP045",
+      "line": 122,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 26,
+      "kind": "ruff:UP045",
+      "line": 146,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 147,
+      "path": "tools/stripe_connect/accounts.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:UP035",
+      "line": 24,
+      "path": "tools/stripe_connect/payouts.py"
+    },
+    {
+      "col": 20,
+      "kind": "ruff:F401",
+      "line": 24,
+      "path": "tools/stripe_connect/payouts.py"
+    },
+    {
+      "col": 11,
+      "kind": "ruff:UP012",
+      "line": 55,
+      "path": "tools/stripe_connect/payouts.py"
+    },
+    {
+      "col": 19,
+      "kind": "ruff:UP045",
+      "line": 67,
+      "path": "tools/stripe_connect/payouts.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:F541",
+      "line": 158,
+      "path": "tools/stripe_connect/payouts.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:F841",
+      "line": 187,
+      "path": "tools/stripe_connect/payouts.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP017",
+      "line": 42,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 7,
+      "kind": "ruff:UP042",
+      "line": 45,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 91,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 92,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 93,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 23,
+      "kind": "ruff:UP045",
+      "line": 132,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 18,
+      "kind": "ruff:UP045",
+      "line": 133,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 15,
+      "kind": "ruff:UP045",
+      "line": 134,
+      "path": "tools/stripe_connect/pricing.py"
+    },
+    {
+      "col": 25,
+      "kind": "ruff:UP017",
+      "line": 31,
+      "path": "tools/stripe_connect/providers.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 46,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 47,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 48,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 49,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 54,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 58,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 59,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 60,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 65,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 71,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 76,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 1,
+      "kind": "ruff:E402",
+      "line": 77,
+      "path": "tools/verify_ad_economics.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:F841",
+      "line": 718,
+      "path": "tools/verify_ad_economics.py"
+    }
+  ]
+}

@@ -29,11 +29,10 @@ invariant intact); membership writes emit a typed folder event.
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -113,7 +112,7 @@ def ensure_folders_schema(con: LockedConnection) -> None:
 def create_folder(
     con: LockedConnection, *, name: str,
     owner_user_id: str = "__operator__",
-    folder_id: Optional[str] = None,
+    folder_id: str | None = None,
     investigation_id: str = "__operator__",
 ) -> str:
     """Create a folder. Returns its folder_id."""

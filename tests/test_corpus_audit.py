@@ -42,13 +42,14 @@ from substrate.corpus_audit import (
     CHECK_THIRD_PARTY_SERVABLE,
     _check_personal_not_in_training_impl,
     assert_no_content_class_bypass,
-    main as corpus_audit_main,
     run_audit,
     summarize_corpus,
 )
+from substrate.corpus_audit import (
+    main as corpus_audit_main,
+)
 from substrate.graph.schema import init_database_at_path
 from substrate.ingest_budget import BudgetGovernor
-
 
 # ---------------------------------------------------------------------------
 # Temp-DB seeding helpers — build a corpus row by row, no network, no prod DB.

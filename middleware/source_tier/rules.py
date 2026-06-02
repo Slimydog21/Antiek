@@ -34,7 +34,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from typing import Dict, List, Mapping, Optional
+from collections.abc import Mapping
 
 # Package-relative imports with a direct-script fallback.
 try:
@@ -63,7 +63,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
 # Document type → tier. When the ingester sees a document_type that's not
 # here it falls through to tier 5 — the conservative default. Better to
 # misclassify high-quality content as low-trust than the reverse.
-DOCUMENT_TYPE_TIER: Dict[str, int] = {
+DOCUMENT_TYPE_TIER: dict[str, int] = {
     # ── Tier 1: primary, attributable, audited ──
     "expert_interview":                  1,
     "primary_expert_interview":          1,
@@ -119,7 +119,7 @@ DOCUMENT_TYPE_TIER: Dict[str, int] = {
 # unknown. These are the fallback heuristics that let ingestion still
 # produce a defensible tier when the upstream pipeline did not classify
 # the document explicitly.
-_FALLBACK_KEYWORDS_PER_TIER: Dict[int, List[str]] = {
+_FALLBACK_KEYWORDS_PER_TIER: dict[int, list[str]] = {
     1: [
         "sec filing", "10-k", "10-q", "10k", "10q",
         "audited financial", "annual report (audited)",
@@ -160,7 +160,7 @@ def _safe_lower(val) -> str:
 # ---------------------------------------------------------------------------
 
 
-def classify(document_type: Optional[str]) -> int:
+def classify(document_type: str | None) -> int:
     """Return tier 1–5 for the given document_type. Unknown types default
     to 5. This is the fast deterministic path — when the ingester has a
     known ``document_type`` value, this function is the answer."""
@@ -171,7 +171,7 @@ def classify(document_type: Optional[str]) -> int:
 
 def assign_tier_at_ingestion(
     document_metadata: Mapping[str, object],
-) -> tuple[int, str, List[str]]:
+) -> tuple[int, str, list[str]]:
     """Document-tier assignment at ingestion time (spec §C.1).
 
     Primary path: look up ``document_type`` in the deterministic catalogue.
@@ -199,8 +199,8 @@ def assign_tier_at_ingestion(
     if not haystack.strip():
         return 4, "default", []  # "we know nothing" → tech-press tier
 
-    scores: Dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-    matched: List[str] = []
+    scores: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    matched: list[str] = []
     for tier, kws in _FALLBACK_KEYWORDS_PER_TIER.items():
         for kw in kws:
             if kw in haystack:
@@ -335,12 +335,12 @@ def emit_tier_assigned(
     *,
     investigation_id: str,
     document_id: str,
-    document_type: Optional[str],
+    document_type: str | None,
     assigned_tier: int,
     classification_method: str,
-    keyword_matches: Optional[List[str]] = None,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    keyword_matches: list[str] | None = None,
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a GRAPH_TIER_ASSIGNED event for one document. Returns event_id."""
     return emit_typed(
         investigation_id,
@@ -364,10 +364,10 @@ def emit_tier_overridden(
     original_tier: int,
     adjusted_tier: int,
     adjustment_method: str,
-    hedging_signals: List[str],
+    hedging_signals: list[str],
     reason: str,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a GRAPH_TIER_OVERRIDDEN event. The asymmetry invariant
     (adjusted_tier >= original_tier) is asserted here as a defense — the
     middleware's own check should already enforce it, but this is the
@@ -398,9 +398,9 @@ def emit_tier_rewrite_bulk(
     total: int,
     updated: int,
     unchanged: int,
-    by_tier: Dict[int, int],
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    by_tier: dict[int, int],
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a TIER_REWRITE_BULK event for a global reclassification sweep."""
     return emit_typed(
         investigation_id,

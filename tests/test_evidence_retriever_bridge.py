@@ -54,12 +54,11 @@ from substrate.dispatch import (  # noqa: E402
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
+    Event,
     EvidenceConfidence,
     EvidenceRetrieveDeliveredPayload,
     EvidenceType,
-    Event,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -406,6 +405,7 @@ def test_supporting_claim_payload_rejects_source_tier_zero():
     must too — defends against drift if a future parser change
     forgets the rule."""
     from pydantic import ValidationError
+
     from substrate.schemas import SupportingClaim
     with pytest.raises(ValidationError):
         SupportingClaim(
@@ -417,6 +417,7 @@ def test_supporting_claim_payload_rejects_source_tier_zero():
 
 def test_supporting_claim_payload_rejects_source_tier_six():
     from pydantic import ValidationError
+
     from substrate.schemas import SupportingClaim
     with pytest.raises(ValidationError):
         SupportingClaim(
@@ -441,8 +442,8 @@ def test_supporting_claim_payload_accepts_none_source_tier():
 
 
 def test_evidence_types_match_schema_literal():
-    assert EVIDENCE_TYPES == set(typing.get_args(EvidenceType))
+    assert set(typing.get_args(EvidenceType)) == EVIDENCE_TYPES
 
 
 def test_evidence_confidence_levels_match_schema_literal():
-    assert EVIDENCE_CONFIDENCE_LEVELS == set(typing.get_args(EvidenceConfidence))
+    assert set(typing.get_args(EvidenceConfidence)) == EVIDENCE_CONFIDENCE_LEVELS

@@ -7,8 +7,6 @@ substrate instances, which exercises the actual exit criterion:
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.cross_graph.federation import (
     FederationConfig,
     federate_outbound_citation,
@@ -29,7 +27,6 @@ from substrate.cross_graph.partner_identity import (
     revoke_partner,
     trust_partner,
 )
-
 
 # ── Helpers ────────────────────────────────────────────────────────
 

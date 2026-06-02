@@ -28,7 +28,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional, Protocol, Tuple
+from typing import Any, Protocol
 
 from .extraction_prompt import make_extraction_prompt
 from .keywords import classify_domains
@@ -61,7 +61,7 @@ def _ke_repair_enabled() -> bool:
 
 def _try_parse_json(
     raw: str,
-) -> Tuple[Optional[dict], Optional[json.JSONDecodeError]]:
+) -> tuple[dict | None, json.JSONDecodeError | None]:
     """Strict JSON parse + brace-slice fallback. Returns
     ``(parsed_dict, None)`` on success; ``(None, error)`` on failure.
 
@@ -85,7 +85,7 @@ def _try_parse_json(
         return None, e_direct
 
 
-def _repair_prefix(parse_err: Optional[json.JSONDecodeError]) -> str:
+def _repair_prefix(parse_err: json.JSONDecodeError | None) -> str:
     """Build the corrective prefix the one-shot retry prepends to the
     user prompt. Tells the model what broke + restates the schema
     contract verbatim — same approach as the upstream KE repair pass."""
@@ -106,7 +106,7 @@ def extract_findings(
     thesis: Any,
     domain: str,
     llm_call: LLMCall,
-) -> Optional[dict]:
+) -> dict | None:
     """Call the injected ``llm_call`` to extract findings for one
     domain. Returns the parsed dict (sections → finding lists) or
     ``None`` on transport / parse / retry-also-failed.
@@ -166,8 +166,8 @@ class ExtractionResult:
     decide whether the phase actually compounded (any domain
     patched ⇒ verify; empty ⇒ skip-verify legitimately)."""
 
-    domains_matched: List[str] = field(default_factory=list)
-    patched_skills: dict[str, List[str]] = field(default_factory=dict)
+    domains_matched: list[str] = field(default_factory=list)
+    patched_skills: dict[str, list[str]] = field(default_factory=dict)
     findings_extracted: dict[str, dict] = field(default_factory=dict)
 
     @property
@@ -187,9 +187,9 @@ def extract_and_patch(
     thesis: Any,
     investigation_id: str,
     *,
-    llm_call: Optional[LLMCall] = None,
+    llm_call: LLMCall | None = None,
     dry_run: bool = False,
-    skills_root: Optional[Any] = None,
+    skills_root: Any | None = None,
 ) -> ExtractionResult:
     """Phase 8 entry point. Classify domains, extract findings via
     ``llm_call``, patch the matching SKILL.md files.

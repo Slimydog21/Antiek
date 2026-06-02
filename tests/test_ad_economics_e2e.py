@@ -34,7 +34,6 @@ from runtime.db_lock import connect_write
 from substrate import ip_holders
 from substrate.ad_inventory.payout import CREATOR_REV_SHARE, PLATFORM_CUT
 from substrate.speak import contributor
-
 from tools import verify_ad_economics as ve
 
 

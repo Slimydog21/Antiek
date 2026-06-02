@@ -25,9 +25,9 @@ import hashlib
 import math
 import random
 import statistics
-from typing import List, Sequence, Tuple
+from collections.abc import Sequence
 
-from .measure import CostToResolve, METRIC_NAMES
+from .measure import METRIC_NAMES, CostToResolve
 from .result_schema import ArmComparison, MetricDelta
 
 DEFAULT_BOOTSTRAP_RESAMPLES = 10_000
@@ -41,7 +41,7 @@ def _metric_value(cost: CostToResolve, metric: str) -> float:
 def _metric_seed(seed: int, metric: str) -> int:
     """A stable per-(seed, metric) RNG seed. Process-independent (unlike builtin
     ``hash``) so the bootstrap CI reproduces across CI runs."""
-    h = hashlib.sha256(f"{seed}:{metric}".encode("utf-8")).hexdigest()
+    h = hashlib.sha256(f"{seed}:{metric}".encode()).hexdigest()
     return int(h[:8], 16)
 
 
@@ -49,7 +49,7 @@ def _paired_diffs(
     warm: Sequence[CostToResolve],
     cold: Sequence[CostToResolve],
     metric: str,
-) -> List[float]:
+) -> list[float]:
     """Per-run warm − cold differences for one metric. Runs are paired by index
     (run i warm vs run i cold), so the difference cancels per-run shared noise —
     the paired design the §2 confounds-held protocol assumes."""
@@ -113,7 +113,7 @@ def bootstrap_ci(
     confidence: float = DEFAULT_CI,
     resamples: int = DEFAULT_BOOTSTRAP_RESAMPLES,
     seed: int = 0,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Bias-corrected percentile bootstrap CI of the MEAN of ``diffs``.
 
     Returns ``(point, ci_low, ci_high)`` where ``point`` is the observed mean
@@ -127,7 +127,7 @@ def bootstrap_ci(
         return point, point, point
 
     rng = random.Random(seed)
-    means: List[float] = []
+    means: list[float] = []
     for _ in range(resamples):
         sample = [diffs[rng.randrange(n)] for _ in range(n)]
         means.append(statistics.fmean(sample))
@@ -157,7 +157,7 @@ def bootstrap_ci(
     return point, ci_low, ci_high
 
 
-def t_interval(diffs: Sequence[float], *, confidence: float = DEFAULT_CI) -> Tuple[float, float, float]:
+def t_interval(diffs: Sequence[float], *, confidence: float = DEFAULT_CI) -> tuple[float, float, float]:
     """Student-t CI of the mean of ``diffs``. Returns ``(point, ci_low,
     ci_high)``. Available for the small-n case where a bootstrap of few distinct
     values under-covers; the README documents the choice."""

@@ -16,29 +16,23 @@ What this file proves:
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parent
 sys.path.insert(0, str(_REPO))
 
 from substrate.schemas import (  # noqa: E402
-    ActionType,
     TYPED_PAYLOAD_ACTION_TYPES,
     WRESTLING_ACTION_TYPES,
+    ActionType,
 )
-from substrate.schemas import events as schema_module  # noqa: E402
 from tools.codegen.emit_types import (  # noqa: E402
-    DEFAULT_OUTPUT,
     PAYLOAD_MODELS,
     render,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. CI gate — staleness

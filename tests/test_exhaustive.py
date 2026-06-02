@@ -12,7 +12,6 @@ from substrate.exhaustive import (
     classify_reference_outcome,
 )
 
-
 # ---------------------------------------------------------------------- #
 # classify_reference_outcome — the canonical pattern works               #
 # ---------------------------------------------------------------------- #

@@ -16,7 +16,6 @@ conversion at emit time). The Day 3 constraint-loop machinery reads
 
 from __future__ import annotations
 
-
 PARAMETER_EXTRACTOR_PROMPT_VERSION = "1.0.0"
 PARAMETER_EXTRACTOR_TARGET_MODEL = "deepseek/deepseek-v4-pro"
 PARAMETER_EXTRACTOR_TEMPERATURE = 0.0

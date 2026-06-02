@@ -28,8 +28,9 @@ re-implement throttling or PDF sniffing.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import IO, TYPE_CHECKING, Iterator, Optional
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from typing import IO, TYPE_CHECKING
 
 from .client import ArxivPaper
 
@@ -70,16 +71,16 @@ def _parse_versions(record: dict) -> tuple[str, datetime, datetime]:
     upd = record.get("update_date")
     if upd:
         try:
-            updated_at = datetime.fromisoformat(str(upd)).replace(tzinfo=timezone.utc)
+            updated_at = datetime.fromisoformat(str(upd)).replace(tzinfo=UTC)
         except ValueError:
             updated_at = published_at
     return version_suffix, published_at, updated_at
 
 
-_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
-def _parse_rfc822(value: str) -> Optional[datetime]:
+def _parse_rfc822(value: str) -> datetime | None:
     """arXiv ``versions[].created`` is an RFC-822 date
     (``Mon, 2 Apr 2007 19:18:42 GMT``). Parse to tz-aware UTC; return None on
     any failure so the caller can fall back to the epoch."""
@@ -92,8 +93,8 @@ def _parse_rfc822(value: str) -> Optional[datetime]:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def record_to_paper(record: dict) -> ArxivPaper:
@@ -170,8 +171,8 @@ def _authors(record: dict) -> list[str]:
 def iter_bulk_candidates(
     snapshot: IO[str],
     *,
-    category: Optional[str] = None,
-    limit: Optional[int] = None,
+    category: str | None = None,
+    limit: int | None = None,
 ) -> Iterator[ArxivPaper]:
     """Stream ``ArxivPaper`` candidates from an open JSON-Lines snapshot.
 
@@ -210,23 +211,23 @@ def iter_bulk_candidates(
 def bulk_candidates_from_path(
     snapshot_path: str,
     *,
-    category: Optional[str] = None,
-    limit: Optional[int] = None,
+    category: str | None = None,
+    limit: int | None = None,
 ) -> list[ArxivPaper]:
     """Convenience: open the snapshot at ``snapshot_path`` and materialize up
     to ``limit`` candidates. The materialization is bounded by ``limit`` (the
     iterator stops early), so this never holds more than ``limit`` records —
     the streaming guarantee is preserved for any sane limit."""
-    with open(snapshot_path, "r", encoding="utf-8") as fh:
+    with open(snapshot_path, encoding="utf-8") as fh:
         return list(iter_bulk_candidates(fh, category=category, limit=limit))
 
 
 def fetch_bulk_pdf(
     paper: ArxivPaper,
     *,
-    throttle: "SourceThrottle",
-    client: "Optional[httpx.Client]" = None,
-    _arxiv_throttle: Optional["object"] = None,
+    throttle: SourceThrottle,
+    client: httpx.Client | None = None,
+    _arxiv_throttle: object | None = None,
 ) -> bytes:
     """Fetch a bulk-discovered paper's PDF, reusing the shared SourceThrottle
     (key ``arxiv_pdf``) for cross-process spacing/ban-safety and the shared
@@ -265,17 +266,15 @@ def fetch_bulk_pdf(
     (the production path passes nothing → the real canonical throttle on the
     shared ``~/.antiek/arxiv_throttle.json``).
     """
-    import httpx
-
-    from acquisition.openaccess.pdf_detect import assert_pdf
-
-    from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
 
     from acquisition.arxiv.rate_governor import (
         canonical_arxiv_throttle,
         govern_if_arxiv,
         install_arxiv_request_hook,
     )
+    from acquisition.openaccess.pdf_detect import assert_pdf
+
+    from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
 
     arxiv_throttle = (
         _arxiv_throttle if _arxiv_throttle is not None else canonical_arxiv_throttle()

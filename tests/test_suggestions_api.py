@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -49,7 +49,7 @@ def _write(events: str, investigation_id: str, action_type: str, payload: dict,
         "investigation_id": investigation_id,
         "action_type": action_type,
         "policy_id": policy_id,
-        "emitted_at": datetime.now(timezone.utc).isoformat(),
+        "emitted_at": datetime.now(UTC).isoformat(),
         "payload": payload,
     }
     with open(path, "a", encoding="utf-8") as f:

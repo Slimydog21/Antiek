@@ -34,22 +34,20 @@ Box-bounded invariants (inherited, never re-implemented):
 """
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime as _dt
 import json
-from typing import Any, Optional
+from typing import Any
 
-import contextlib
-
+from orchestration.continuous.research_topic import topic_id_for
 from runtime.db_lock import connect_read, connect_write
-from substrate.research_bridge.db_path import default_db_path
 from substrate.graph.search import (
     PRIVILEGED_POLICY_TAGS,
     EmbeddingModel,
     cosine_similarity_sql,
 )
-from orchestration.continuous.research_topic import topic_id_for
-
+from substrate.research_bridge.db_path import default_db_path
 
 # The personal lane — the ONLY content_class monitoring mode ever surfaces.
 # Mirrors the owner-only class in substrate.graph.search; kept as a local
@@ -70,7 +68,7 @@ OWNER_POLICY_TAG = "operator_only"
 DEFAULT_TOP_K = 20
 
 
-def resolve_db_path(path: Optional[str]) -> str:
+def resolve_db_path(path: str | None) -> str:
     """Resolve the substrate DB path: the explicit ``path`` when given, else
     the canonical default (``substrate.research_bridge.db_path.default_db_path``
     — honors ANTIEK_DUCKDB_PATH / constants.DUCKDB_PATH). One resolver so every
@@ -91,7 +89,7 @@ def _utcnow_str() -> str:
     Callers that pass acquired_at as a tz-aware ISO are normalized via
     ``_naive_utc`` before comparison.
     """
-    return _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None).isoformat()
+    return _dt.datetime.now(_dt.UTC).replace(tzinfo=None).isoformat()
 
 
 def _naive_utc(ts: str) -> str:
@@ -107,12 +105,12 @@ def _naive_utc(ts: str) -> str:
     except ValueError:
         return ts
     if dt.tzinfo is not None:
-        dt = dt.astimezone(_dt.timezone.utc).replace(tzinfo=None)
+        dt = dt.astimezone(_dt.UTC).replace(tzinfo=None)
     return dt.isoformat(sep=" ")
 
 
 @contextlib.contextmanager
-def _read(con: Any, path: Optional[str]):
+def _read(con: Any, path: str | None):
     """Yield a read connection.
 
     If the caller passed a live connection, reuse it (and do NOT close it —
@@ -152,12 +150,12 @@ class Monitor:
 
     monitor_id: str
     investigation_id: str
-    title: Optional[str]
+    title: str | None
     query_terms: list[str]
-    centroid: Optional[list[float]]
-    centroid_dim: Optional[int]
+    centroid: list[float] | None
+    centroid_dim: int | None
     last_seen_at: str
-    created_at: Optional[str] = None
+    created_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -215,7 +213,7 @@ def _derive_query_terms(document_ids: list[str], con: Any) -> list[str]:
 
 def _compute_centroid(
     document_ids: list[str], con: Any, model: EmbeddingModel
-) -> tuple[Optional[list[float]], Optional[int]]:
+) -> tuple[list[float] | None, int | None]:
     """Element-wise mean of the bound documents' chunk embeddings.
 
     Returns ``(None, None)`` when the thread has zero embedded chunks —
@@ -256,9 +254,9 @@ def create_monitor(
     *,
     investigation_id: str,
     model: EmbeddingModel,
-    document_ids: Optional[list[str]] = None,
-    title: Optional[str] = None,
-    path: Optional[str] = None,
+    document_ids: list[str] | None = None,
+    title: str | None = None,
+    path: str | None = None,
 ) -> Monitor:
     """Create (idempotently upsert) a monitor for an investigation.
 
@@ -357,8 +355,8 @@ _MONITOR_COLS = (
 
 
 def get_monitor(
-    con: Any = None, monitor_id: str = "", *, path: Optional[str] = None
-) -> Optional[Monitor]:
+    con: Any = None, monitor_id: str = "", *, path: str | None = None
+) -> Monitor | None:
     """Fetch one monitor by id. Reads via the caller's connection when given,
     else opens a short-lived read connection from ``path``."""
     with _read(con, path) as rcon:
@@ -369,7 +367,7 @@ def get_monitor(
     return _row_to_monitor(row) if row else None
 
 
-def list_monitors(con: Any = None, *, path: Optional[str] = None) -> list[Monitor]:
+def list_monitors(con: Any = None, *, path: str | None = None) -> list[Monitor]:
     """List all monitors, newest first."""
     with _read(con, path) as rcon:
         rows = rcon.execute(
@@ -379,7 +377,7 @@ def list_monitors(con: Any = None, *, path: Optional[str] = None) -> list[Monito
     return [_row_to_monitor(r) for r in rows]
 
 
-def delete_monitor(con: Any, monitor_id: str, *, path: Optional[str] = None) -> bool:
+def delete_monitor(con: Any, monitor_id: str, *, path: str | None = None) -> bool:
     """Delete a monitor. Returns True if a row was removed.
 
     The single write funnels through ``connect_write``. Deleting a monitor
@@ -407,8 +405,8 @@ class RefreshResult:
     """The outcome of one refresh: the new items + the advanced checkpoint."""
 
     monitor_id: str
-    new_items: list["FeedItem"]
-    new_checkpoint: Optional[str]
+    new_items: list[FeedItem]
+    new_checkpoint: str | None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -422,10 +420,10 @@ def _select_new_personal_items(
     con: Any,
     *,
     last_seen_at: str,
-    centroid: Optional[list[float]],
-    centroid_dim: Optional[int],
+    centroid: list[float] | None,
+    centroid_dim: int | None,
     top_k: int,
-) -> list["FeedItem"]:
+) -> list[FeedItem]:
     """Personal-lane documents acquired strictly AFTER ``last_seen_at``.
 
     Strictly ``>`` on the checkpoint (NOT ``>=``) so an item ingested in
@@ -489,10 +487,10 @@ def refresh_monitor(
     con: Any = None,
     monitor_id: str = "",
     *,
-    model: Optional[EmbeddingModel] = None,
+    model: EmbeddingModel | None = None,
     top_k: int = DEFAULT_TOP_K,
-    path: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    path: str | None = None,
+    events_dir: str | None = None,
 ) -> RefreshResult:
     """Surface personal-lane items ingested since the monitor's checkpoint.
 
@@ -586,10 +584,10 @@ class FeedItem:
     """
 
     document_id: str
-    title: Optional[str]
-    body: Optional[str]
-    similarity: Optional[float]
-    acquired_at: Optional[str]
+    title: str | None
+    body: str | None
+    similarity: float | None
+    acquired_at: str | None
     content_class: str
     open_route: str
 
@@ -609,11 +607,11 @@ def putter_feed(
     con: Any = None,
     monitor_id: str = "",
     *,
-    model: Optional[EmbeddingModel] = None,
+    model: EmbeddingModel | None = None,
     with_body: bool = True,
     policy_tag: str = OWNER_POLICY_TAG,
     top_k: int = DEFAULT_TOP_K,
-    path: Optional[str] = None,
+    path: str | None = None,
 ) -> list[FeedItem]:
     """The grazing feed for a monitor — NOT a query box.
 

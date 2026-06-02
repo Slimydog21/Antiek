@@ -35,9 +35,10 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping, Optional, Protocol
+from typing import Protocol
 
 # arXiv API terms of use: at most one request per three seconds. We honor
 # the ceiling, not a fraction of it, because the ban is IP-scoped and the
@@ -90,7 +91,7 @@ class _State:
     banned_until: float = 0.0
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, object]) -> "_State":
+    def from_dict(cls, d: Mapping[str, object]) -> _State:
         return cls(
             last_request_at=float(d.get("last_request_at", 0.0) or 0.0),
             banned_until=float(d.get("banned_until", 0.0) or 0.0),
@@ -122,7 +123,7 @@ class ArxivThrottle:
     def __init__(
         self,
         *,
-        state_path: Optional[str] = None,
+        state_path: str | None = None,
         min_spacing_s: float = MIN_REQUEST_SPACING_S,
         default_ban_backoff_s: float = DEFAULT_BAN_BACKOFF_S,
         now: Callable[[], float] = time.time,
@@ -187,7 +188,7 @@ class ArxivThrottle:
         self._write_state(state)
 
     def note_response(
-        self, status_code: int, headers: Optional[Mapping[str, str]] = None
+        self, status_code: int, headers: Mapping[str, str] | None = None
     ) -> None:
         """Record the outcome of a request. On 429, set ``banned_until``.
 
@@ -214,8 +215,8 @@ class ArxivThrottle:
 
     def request(
         self,
-        send: "Callable[[], _ResponseLike]",
-    ) -> "_ResponseLike":
+        send: Callable[[], _ResponseLike],
+    ) -> _ResponseLike:
         """Issue one throttled request and record its outcome.
 
         ``send`` performs the actual HTTP GET and returns a response exposing

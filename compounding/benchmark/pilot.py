@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import math
 import statistics
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional, Sequence
 
 from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
 from .question_set import BenchmarkQuestion
@@ -67,13 +67,13 @@ class PilotReport:
     (pooled across the representative questions, cold arm) the proposal keys off;
     ``cell_stats`` is the full per-arm breakdown for the record."""
 
-    cv: Dict[str, float]
-    cold_means: Dict[str, float]
-    cell_stats: List[CellStats]
-    questions: List[str]
+    cv: dict[str, float]
+    cold_means: dict[str, float]
+    cell_stats: list[CellStats]
+    questions: list[str]
     runs_per_cell: int
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "cv": self.cv,
             "cold_means": self.cold_means,
@@ -93,7 +93,7 @@ class ProposedParameters:
     control_tolerance: float
     derivation: str
 
-    def to_dict(self) -> Dict[str, object]:
+    def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
@@ -110,9 +110,9 @@ def _cv(values: Sequence[float]) -> float:
 
 
 def propose_parameters(
-    pilot_cv: Dict[str, float],
+    pilot_cv: dict[str, float],
     *,
-    cold_means: Optional[Dict[str, float]] = None,
+    cold_means: dict[str, float] | None = None,
     target_relative_half_width: float = TARGET_RELATIVE_HALF_WIDTH,
 ) -> ProposedParameters:
     """PURE: derive ``{n, material_floor, control_tolerance}`` from observed CV.
@@ -175,7 +175,7 @@ def run_pilot(
     all three arms, and report realized per-metric CV. Drives the real harness
     on the mock path (the demo loop) — the pipeline is demonstrated; the numbers
     are honestly the mock path's (zero-variance) numbers."""
-    by_arm: Dict[str, Dict[str, List[float]]] = {
+    by_arm: dict[str, dict[str, list[float]]] = {
         "cold": {m: [] for m in PILOT_CV_METRICS},
         "warm": {m: [] for m in PILOT_CV_METRICS},
         "irrelevant": {m: [] for m in PILOT_CV_METRICS},
@@ -194,7 +194,7 @@ def run_pilot(
                 for m in PILOT_CV_METRICS:
                     by_arm[arm_name][m].append(float(getattr(res.cost, m)))
 
-    cell_stats: List[CellStats] = []
+    cell_stats: list[CellStats] = []
     for arm_name, metrics in by_arm.items():
         for m, values in metrics.items():
             cell_stats.append(CellStats(

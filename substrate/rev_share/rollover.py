@@ -10,11 +10,8 @@ Per master-spec §9.5:
 from __future__ import annotations
 
 import enum
-import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
-
+from datetime import UTC, datetime
 
 MINIMUM_PAYOUT_USD_CENTS = 1000  # §9.5 — $10
 ROLLOVER_CEILING_MONTHS = 12
@@ -22,7 +19,7 @@ NOTICE_MONTH = 9
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class RolloverState(str, enum.Enum):
@@ -38,7 +35,7 @@ class RolloverEntry:
 
     recipient_ref: str
     balance_cents: int = 0
-    accrual_started_month: Optional[int] = None  # months-since-epoch index
+    accrual_started_month: int | None = None  # months-since-epoch index
     state: RolloverState = RolloverState.ACCRUING
     last_event_at: str = field(default_factory=_now_iso)
     history: list[tuple[str, str, int]] = field(default_factory=list)

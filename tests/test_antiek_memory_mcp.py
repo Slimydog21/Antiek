@@ -5,10 +5,7 @@ from __future__ import annotations
 import io
 import json
 
-import pytest
-
 from tools.antiek_memory import (
-    AntiekMemoryServer,
     ResourceContent,
     ToolResult,
     compute_tool_hash,
@@ -16,7 +13,6 @@ from tools.antiek_memory import (
     serve_stdio,
 )
 from tools.antiek_memory.server import CANONICAL_TOOLS, make_default_server
-
 
 # ── Protocol compliance ──────────────────────────────────────────────
 

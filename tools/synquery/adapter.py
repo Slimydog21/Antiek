@@ -3,11 +3,15 @@ expert searches + ingests returned transcripts."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
-from .client import SynqueryClient, SynqueryExpert, SynqueryInterview, feature_flag_enabled
-from .client import SynqueryAPIError
+from .client import (
+    SynqueryAPIError,
+    SynqueryClient,
+    SynqueryExpert,
+    SynqueryInterview,
+    feature_flag_enabled,
+)
 
 
 @dataclass(frozen=True)
@@ -18,7 +22,7 @@ class SynqueryRequest:
 
     question_id: str
     question_text: str
-    investigation_id: Optional[str]
+    investigation_id: str | None
     operator_budget_usd: float  # operator's cap on this expert call
 
 
@@ -29,7 +33,7 @@ class SynqueryResponse:
 
     request_question_id: str
     matched_experts: list[SynqueryExpert]
-    booking_handle: Optional[SynqueryInterview] = None
+    booking_handle: SynqueryInterview | None = None
 
 
 @dataclass

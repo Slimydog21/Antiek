@@ -10,8 +10,8 @@ this bridge is invoked — the contract is enforced at the source.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 from substrate.schemas.events import (
     ActionType,
@@ -56,7 +56,7 @@ def make_broadcasting_observation_hook(
             action_type=ActionType.PREFERENCE_OBSERVATION_RECORDED,
             payload=payload,
             param_version=param_version,
-            emitted_at=datetime.now(timezone.utc),
+            emitted_at=datetime.now(UTC),
         )
         broadcast(evt)
 

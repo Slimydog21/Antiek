@@ -31,7 +31,6 @@ import json
 import os
 import sys
 
-import pytest
 from fastapi.testclient import TestClient
 
 _HERE = os.path.dirname(os.path.abspath(__file__))

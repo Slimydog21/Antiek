@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, List, Literal, Optional
+from typing import Literal
 
 import httpx
 
@@ -66,8 +67,8 @@ class ExaClientError(RuntimeError):
         self,
         message: str,
         *,
-        status: Optional[int] = None,
-        url: Optional[str] = None,
+        status: int | None = None,
+        url: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
@@ -84,12 +85,12 @@ class ExaSearchResult:
     """
 
     url: str
-    title: Optional[str]
-    published_date: Optional[str]  # ISO-8601 when provided; we don't parse
-    author: Optional[str]
-    relevance_score: Optional[float]
-    text_snippet_preview: Optional[str]
-    provider_response_id: Optional[str]
+    title: str | None
+    published_date: str | None  # ISO-8601 when provided; we don't parse
+    author: str | None
+    relevance_score: float | None
+    text_snippet_preview: str | None
+    provider_response_id: str | None
     cost_usd_estimate: float
 
 
@@ -101,11 +102,11 @@ class ExaSearchResponse:
     result for cross-reference with Exa's dashboard.
     """
 
-    results: List[ExaSearchResult] = field(default_factory=list)
-    request_id: Optional[str] = None
+    results: list[ExaSearchResult] = field(default_factory=list)
+    request_id: str | None = None
 
 
-def _resolve_api_key(api_key: Optional[str]) -> str:
+def _resolve_api_key(api_key: str | None) -> str:
     if api_key:
         return api_key
     v = os.environ.get("EXA_API_KEY")
@@ -117,7 +118,7 @@ def _resolve_api_key(api_key: Optional[str]) -> str:
     return v
 
 
-def _resolve_base_url(base_url: Optional[str]) -> str:
+def _resolve_base_url(base_url: str | None) -> str:
     if base_url:
         return base_url.rstrip("/")
     return os.environ.get("EXA_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
@@ -136,11 +137,11 @@ class ExaClient:
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
-        client: Optional[httpx.Client] = None,
-        sleep: Optional[object] = None,
+        client: httpx.Client | None = None,
+        sleep: object | None = None,
     ) -> None:
         self._api_key = _resolve_api_key(api_key)
         self._base_url = _resolve_base_url(base_url)
@@ -155,11 +156,11 @@ class ExaClient:
         *,
         query: str,
         num_results: int = 10,
-        category: Optional[ExaSearchCategory] = None,
-        include_domains: Optional[Iterable[str]] = None,
-        exclude_domains: Optional[Iterable[str]] = None,
-        start_published_date: Optional[str] = None,
-        end_published_date: Optional[str] = None,
+        category: ExaSearchCategory | None = None,
+        include_domains: Iterable[str] | None = None,
+        exclude_domains: Iterable[str] | None = None,
+        start_published_date: str | None = None,
+        end_published_date: str | None = None,
         search_type: Literal["neural", "keyword", "auto"] = "auto",
     ) -> ExaSearchResponse:
         if not query.strip():
@@ -275,7 +276,7 @@ class ExaClient:
         return 2 ** (attempt - 1)
 
     @staticmethod
-    def _retry_after_seconds(r: httpx.Response) -> Optional[float]:
+    def _retry_after_seconds(r: httpx.Response) -> float | None:
         v = r.headers.get("retry-after")
         if not v:
             return None
@@ -290,7 +291,7 @@ class ExaClient:
     ) -> ExaSearchResponse:
         request_id = raw.get("requestId") or raw.get("autopromptString") or None
         results_raw = raw.get("results") or []
-        results: List[ExaSearchResult] = []
+        results: list[ExaSearchResult] = []
         # Per-result cost is the per-call cost amortized across results.
         # An empty response still charged once; we attribute that to a
         # synthetic zero-cost result list (caller's responsibility to log).

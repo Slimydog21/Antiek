@@ -41,14 +41,14 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
 
 # The three §2 cells. ``high_overlap`` is the headline; ``zero_overlap_control``
 # is the validity gate; ``partial_overlap`` is the load-bearing dose-response
 # middle. These are the only valid overlap classes — the loader rejects any
 # other value (M1: every overlap_class valid).
-OVERLAP_CLASSES: Tuple[str, ...] = (
+OVERLAP_CLASSES: tuple[str, ...] = (
     "high_overlap",
     "partial_overlap",
     "zero_overlap_control",
@@ -73,7 +73,7 @@ class BenchmarkQuestion:
     question_id: str
     text: str
     overlap_class: str
-    seeded_unit_ids: Tuple[str, ...]
+    seeded_unit_ids: tuple[str, ...]
     headline_pooled: bool
 
     def __post_init__(self) -> None:
@@ -90,15 +90,15 @@ class QuestionSet:
     the canonical question serialization; ``seed`` drives the benchmark's
     deterministic run harness."""
 
-    questions: Tuple[BenchmarkQuestion, ...]
+    questions: tuple[BenchmarkQuestion, ...]
     seed: int
     frozen_sha: str
     version: str
 
-    def by_class(self, overlap_class: str) -> List[BenchmarkQuestion]:
+    def by_class(self, overlap_class: str) -> list[BenchmarkQuestion]:
         return [q for q in self.questions if q.overlap_class == overlap_class]
 
-    def headline_questions(self) -> List[BenchmarkQuestion]:
+    def headline_questions(self) -> list[BenchmarkQuestion]:
         """The high-overlap external+synthesis questions pooled into the
         headline delta (the internal-mechanism probe is excluded)."""
         return [
@@ -106,14 +106,14 @@ class QuestionSet:
             if q.overlap_class == "high_overlap" and q.headline_pooled
         ]
 
-    def control_questions(self) -> List[BenchmarkQuestion]:
+    def control_questions(self) -> list[BenchmarkQuestion]:
         return self.by_class("zero_overlap_control")
 
     def __len__(self) -> int:
         return len(self.questions)
 
 
-def _canonical_question_payload(questions: Sequence[Dict]) -> bytes:
+def _canonical_question_payload(questions: Sequence[dict]) -> bytes:
     """The bytes the ``frozen_sha`` is computed over.
 
     Each question is reduced to its frozen fields in a fixed key order and the
@@ -135,7 +135,7 @@ def _canonical_question_payload(questions: Sequence[Dict]) -> bytes:
     return json.dumps(reduced, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def compute_frozen_sha(questions: Sequence[Dict]) -> str:
+def compute_frozen_sha(questions: Sequence[dict]) -> str:
     """Content-addressed sha of the question set. ``sha256:`` prefix mirrors the
     ``_sha256_prefix`` convention used in ``substrate/dispatch/router.py``."""
     return "sha256:" + hashlib.sha256(_canonical_question_payload(questions)).hexdigest()
@@ -149,7 +149,7 @@ def load_question_set(path: str = QUESTION_SET_PATH) -> QuestionSet:
     caught at load (the set is frozen, not merely labelled frozen). Re-loading
     the same path always yields the identical ``frozen_sha`` (M1 acceptance:
     ``test_frozen``)."""
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         raw = json.load(f)
 
     recorded_sha = raw["frozen_sha"]

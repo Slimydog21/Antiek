@@ -34,8 +34,6 @@ from __future__ import annotations
 import io
 import os
 import sys
-import tempfile
-from typing import Optional
 
 import pytest
 
@@ -43,6 +41,10 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+# Import the CLI module so its curated archive ids + the curated basis
+# overrides are registered (the import side-effect registers
+# CURATED_PD_BASIS_OVERRIDES). Tests reference its lists directly.
+import tools.ingest_public_domain as cli  # noqa: E402
 from acquisition.books.public_domain import (  # noqa: E402
     archive_candidate,
     gutenberg_candidates,
@@ -52,16 +54,10 @@ from acquisition.books.public_domain import (  # noqa: E402
 # Reuse the offline harness the existing PD test built — do not re-invent it.
 from tests.test_public_domain_ingest import (  # noqa: E402
     FakeSourceClient,
-    _StubEmbedder,
     _gutendex_page,
+    _StubEmbedder,
     temp_substrate,  # noqa: F401  (pytest fixture, imported for use)
 )
-
-# Import the CLI module so its curated archive ids + the curated basis
-# overrides are registered (the import side-effect registers
-# CURATED_PD_BASIS_OVERRIDES). Tests reference its lists directly.
-import tools.ingest_public_domain as cli  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — real extractable PDFs for the two titles + canned source records
@@ -217,8 +213,8 @@ def test_crystallizing_ingested_servable_public_domain(temp_substrate):
     assert outcome.servability == "public_domain"
     assert outcome.servable_full_text is True
     # doc id is the content-hash form (doc-book-<sha256[:16]>).
-    from acquisition.books.public_domain import _to_pdf_bytes  # noqa: PLC0415
     from acquisition.books.adapter import book_doc_id  # noqa: PLC0415
+    from acquisition.books.public_domain import _to_pdf_bytes  # noqa: PLC0415
 
     pdf_bytes = _to_pdf_bytes(_CRYSTALLIZING_TXT, work)
     assert outcome.document_id == book_doc_id(pdf_bytes)

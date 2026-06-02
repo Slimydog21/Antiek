@@ -53,16 +53,18 @@ import json
 import os
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Optional
+from typing import Any
 
 # Ensure repo root on path for direct CLI invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from orchestration.phase_log import default_log_dir as phase_log_default_dir  # noqa: E402
 from substrate.event_log import default_events_dir, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
@@ -75,9 +77,6 @@ from substrate.schemas import (  # noqa: E402
     QuestionIdentifiedPayload,
     SynthesizeDeliveredPayload,
 )
-
-from orchestration.phase_log import default_log_dir as phase_log_default_dir  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -121,7 +120,7 @@ def default_reports_dir() -> str:
     )
 
 
-def _parse_date(s: Optional[str], *, end_of_day: bool = False) -> Optional[datetime]:
+def _parse_date(s: str | None, *, end_of_day: bool = False) -> datetime | None:
     if not s:
         return None
     dt = datetime.strptime(s, "%Y-%m-%d")
@@ -131,26 +130,26 @@ def _parse_date(s: Optional[str], *, end_of_day: bool = False) -> Optional[datet
 
 
 def _resolve_window(
-    since: Optional[str], until: Optional[str],
+    since: str | None, until: str | None,
 ) -> tuple[datetime, datetime]:
     """Default window = last 7 days ending now (UTC, tzinfo-naive)."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = datetime.now(UTC).replace(tzinfo=None)
     end = _parse_date(until, end_of_day=True) or now
     start = _parse_date(since) or (end - timedelta(days=7))
     return start, end
 
 
-def _iso(dt: Optional[datetime]) -> Optional[str]:
+def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat() if dt else None
 
 
-def _pct(num: int, denom: int) -> Optional[float]:
+def _pct(num: int, denom: int) -> float | None:
     if denom <= 0:
         return None
     return round(num / denom, 3)
 
 
-def _parse_event_ts(s: Any) -> Optional[datetime]:
+def _parse_event_ts(s: Any) -> datetime | None:
     """ISO 8601 with optional ``Z`` suffix. Returns tzinfo-naive UTC."""
     if not s:
         return None
@@ -159,7 +158,7 @@ def _parse_event_ts(s: Any) -> Optional[datetime]:
     except (TypeError, ValueError):
         return None
     if ts.tzinfo is not None:
-        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        ts = ts.astimezone(UTC).replace(tzinfo=None)
     return ts
 
 
@@ -168,7 +167,7 @@ def _parse_event_ts(s: Any) -> Optional[datetime]:
 # ---------------------------------------------------------------------------
 
 
-def _iter_investigation_ids(events_dir: Optional[str] = None) -> Iterator[str]:
+def _iter_investigation_ids(events_dir: str | None = None) -> Iterator[str]:
     """Walk the events directory; yield the investigation_id of every
     persisted trajectory (Parquet or JSONL)."""
     d = events_dir or default_events_dir()
@@ -190,7 +189,7 @@ def _iter_investigation_ids(events_dir: Optional[str] = None) -> Iterator[str]:
 def iter_window_events(
     start: datetime, end: datetime,
     *,
-    events_dir: Optional[str] = None,
+    events_dir: str | None = None,
 ) -> Iterator[Event]:
     """Walk every persisted trajectory and yield validated ``Event``
     objects whose ``emitted_at`` lies in ``[start, end]``. Malformed
@@ -217,7 +216,7 @@ def iter_window_events(
 def collect_phase_telemetry(
     start: datetime, end: datetime,
     *,
-    log_dir: Optional[str] = None,
+    log_dir: str | None = None,
 ) -> dict[str, Any]:
     """Aggregate per-phase entered / exited / verified counts across
     all investigations whose phase_log ``created_at`` falls in the
@@ -277,7 +276,7 @@ def collect_phase_telemetry(
         }
 
     p8 = phases_out[KEYSTONE_PHASE]
-    callout: Optional[str] = None
+    callout: str | None = None
     if n_inv == 0:
         callout = None
     elif p8["entered"] == 0:
@@ -499,7 +498,7 @@ class WeeklyReport:
     """Top-level report payload. ``to_dict`` for JSON; ``to_markdown``
     + ``to_html`` for the operator-facing renderings."""
 
-    window: dict[str, Optional[str]]
+    window: dict[str, str | None]
     generated_at: str
     phase_telemetry: dict[str, Any]
     lifecycle: dict[str, Any]
@@ -526,7 +525,7 @@ class WeeklyReport:
 def collect_acquisition_cost(
     start: datetime, end: datetime,
     *,
-    budget_dir: Optional[str] = None,
+    budget_dir: str | None = None,
 ) -> dict[str, Any]:
     """Sum discovery-layer spend from the Exa budget sidecars
     (`~/.antiek/budgets/exa_<utc-date>.json`).
@@ -564,7 +563,7 @@ def collect_acquisition_cost(
     for f in sorted(budget_path.glob("exa_*.json")):
         try:
             stem_date = f.stem.replace("exa_", "")
-            day = datetime.strptime(stem_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            day = datetime.strptime(stem_date, "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             continue
         if day < start.replace(hour=0, minute=0, second=0, microsecond=0):
@@ -602,9 +601,9 @@ def collect_acquisition_cost(
 def build_report(
     start: datetime, end: datetime,
     *,
-    events_dir: Optional[str] = None,
-    log_dir: Optional[str] = None,
-    budget_dir: Optional[str] = None,
+    events_dir: str | None = None,
+    log_dir: str | None = None,
+    budget_dir: str | None = None,
 ) -> WeeklyReport:
     """Aggregate all sections. Reads the entire window's event
     history into memory once and partitions it across the section
@@ -619,7 +618,7 @@ def build_report(
     acq = collect_acquisition_cost(start, end, budget_dir=budget_dir)
     return WeeklyReport(
         window={"since": _iso(start), "until": _iso(end)},
-        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        generated_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
         phase_telemetry=phase,
         lifecycle=lifecycle,
         constraint_distribution=constraint,
@@ -853,7 +852,7 @@ def report_to_html(r: WeeklyReport) -> str:
 # ---------------------------------------------------------------------------
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description=(
             "Antiek weekly observability report — aggregates phase "

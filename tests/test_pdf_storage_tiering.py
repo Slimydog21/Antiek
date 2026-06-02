@@ -353,6 +353,5 @@ def test_guard_would_raise_on_a_t3_body_drift(temp_db):
             con, doc_id, content_class="source_declared_open", set_content_class=True
         )
 
-    with connect_read(temp_db) as con:
-        with pytest.raises(T3BodyServeError):
-            serve_full_text_guarded(con, doc_id)
+    with connect_read(temp_db) as con, pytest.raises(T3BodyServeError):
+        serve_full_text_guarded(con, doc_id)

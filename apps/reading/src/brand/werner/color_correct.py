@@ -26,7 +26,6 @@ from pathlib import Path
 
 from PIL import Image
 
-
 # Brand sun #F5DF24 — the one constant
 BRAND_R, BRAND_G, BRAND_B = 0xF5, 0xDF, 0x24
 BRAND_H, BRAND_S, BRAND_V = colorsys.rgb_to_hsv(BRAND_R / 255, BRAND_G / 255, BRAND_B / 255)
@@ -98,7 +97,7 @@ def main() -> None:
         targets += sorted(p for p in anchor_dir.glob("werner_*_v5_nano.png"))
 
     print(f"Processing {len(targets)} image(s) → target hue: H={BRAND_H:.3f} S={BRAND_S:.3f}")
-    print(f"Brand sun = #F5DF24")
+    print("Brand sun = #F5DF24")
     for p in targets:
         correct(p)
     print("done.")

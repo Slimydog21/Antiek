@@ -14,12 +14,12 @@ exit criterion."""
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from .partner_identity import (
-    PartnerIdentityError,
     PartnerRegistry,
     generate_partner_token,
     is_partner_trusted,
@@ -27,7 +27,7 @@ from .partner_identity import (
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ class CrossGraphReference:
     referencing_investigation_id: str
     referenced_user_id: str  # whose public note is cited
     referenced_note_id: str
-    federated_substrate_id: Optional[str]  # None for same-substrate; non-None for federation
+    federated_substrate_id: str | None  # None for same-substrate; non-None for federation
     cited_at: str = field(default_factory=_now_iso)
 
 
@@ -85,7 +85,7 @@ def record_cross_graph_citation(
     referencing_investigation_id: str,
     referenced_user_id: str,
     referenced_note_id: str,
-    federated_substrate_id: Optional[str] = None,
+    federated_substrate_id: str | None = None,
 ) -> CrossGraphReference:
     """Record a cross-graph citation. Returns the reference handle.
     The attribution pipeline picks this up and routes 70% of any
@@ -144,8 +144,8 @@ def federate_outbound_citation(
     revenue_routing_handle: str,
     referenced_user_opted_in: bool,
     referenced_user_attribution_consented: bool,
-    nonce: Optional[str] = None,
-    on_emitted: Optional[OutboundEmittedHook] = None,
+    nonce: str | None = None,
+    on_emitted: OutboundEmittedHook | None = None,
 ) -> FederatedOutboundCitation:
     """Federate a citation outbound to a partner substrate.
 

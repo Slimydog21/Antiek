@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -39,7 +39,6 @@ from orchestration.continuous import (  # noqa: E402
     policy_is_daemon,
 )
 from orchestration.continuous.suggestions import _chased_question_keys  # noqa: E402
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -61,7 +60,7 @@ def _write_gap(
     gaps: list[tuple[str, str | None]],
     emitted_at: datetime | None = None,
 ) -> None:
-    when = emitted_at or datetime.now(timezone.utc)
+    when = emitted_at or datetime.now(UTC)
     path = Path(events_dir) / f"{investigation_id}.jsonl"
     row = {
         "event_id": f"evt-{investigation_id}-gap",
@@ -92,7 +91,7 @@ def _write_start(
         "investigation_id": investigation_id,
         "action_type": "investigation.start_requested",
         "policy_id": policy_id,
-        "emitted_at": datetime.now(timezone.utc).isoformat(),
+        "emitted_at": datetime.now(UTC).isoformat(),
         "payload": {"question": question},
     }
     with open(path, "a", encoding="utf-8") as f:
@@ -246,7 +245,7 @@ def test_policy_is_daemon_matches_the_daemon_spawn_policy():
     """The translation seam: the daemon's spawn policy is recognised as
     daemon-spawned; an operator policy is not. The constant is the same string
     the daemon stamps on its spawns."""
-    assert DAEMON_SPAWN_POLICY_ID == DaemonConfig.spawn_policy_id
+    assert DaemonConfig.spawn_policy_id == DAEMON_SPAWN_POLICY_ID
     assert policy_is_daemon(DAEMON_SPAWN_POLICY_ID) is True
     assert policy_is_daemon("operator-cli") is False
     assert policy_is_daemon(None) is False

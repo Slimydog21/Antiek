@@ -167,6 +167,8 @@ def assess_extraction_quality(text: str) -> CheckResult:
     """
     from acquisition.corpus_quality import (
         CheckResultKind as _CqKind,
+    )
+    from acquisition.corpus_quality import (
         check_ocr_garbage,
         check_real_word_ratio,
     )

@@ -44,9 +44,9 @@ import json
 import os
 import random
 import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Mapping, Optional, Sequence
 
 # Default per-source spacing. A research-batch tool is not latency-sensitive,
 # so a courteous floor keeps us off any rate-limiter's radar. OA polite pools
@@ -125,7 +125,7 @@ class _SourceState:
     banned_until: float = 0.0
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, object]) -> "_SourceState":
+    def from_dict(cls, d: Mapping[str, object]) -> _SourceState:
         return cls(
             last_request_at=float(d.get("last_request_at", 0.0) or 0.0),
             banned_until=float(d.get("banned_until", 0.0) or 0.0),
@@ -145,7 +145,7 @@ class _AllState:
     sources: dict[str, _SourceState] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, object]) -> "_AllState":
+    def from_dict(cls, d: Mapping[str, object]) -> _AllState:
         raw = d.get("sources") if isinstance(d, Mapping) else None
         sources: dict[str, _SourceState] = {}
         if isinstance(raw, Mapping):
@@ -175,9 +175,9 @@ class SourceThrottle:
     def __init__(
         self,
         *,
-        state_path: Optional[str] = None,
+        state_path: str | None = None,
         default_min_interval_s: float = DEFAULT_MIN_INTERVAL_S,
-        min_interval_overrides: Optional[Mapping[str, float]] = None,
+        min_interval_overrides: Mapping[str, float] | None = None,
         default_ban_backoff_s: float = DEFAULT_BAN_BACKOFF_S,
         now: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
@@ -258,7 +258,7 @@ class SourceThrottle:
         self,
         source: str,
         status_code: int,
-        headers: Optional[Mapping[str, str]] = None,
+        headers: Mapping[str, str] | None = None,
     ) -> None:
         """Record a request outcome for ``source``. On a 429/503 arm the
         ``banned_until`` sentinel; any other status is a no-op.
@@ -349,7 +349,7 @@ class RotationDecision:
     when a resume could first succeed.
     """
 
-    next_source: Optional[str]
+    next_source: str | None
     skipped: tuple[tuple[str, float], ...]
     soonest_banned_until: float = 0.0
 

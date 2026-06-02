@@ -39,7 +39,6 @@ from middleware.source_tier import (  # noqa: E402
 from substrate.constants import SYSTEM_INVESTIGATION_ID  # noqa: E402
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
-    ActionType,
     Event,
     TierAssignedPayload,
     TierOverriddenPayload,

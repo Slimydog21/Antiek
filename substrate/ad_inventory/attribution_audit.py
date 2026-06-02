@@ -25,8 +25,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from .attribution import (
     ATTRIBUTION_ALGORITHM_VERSION,
@@ -39,7 +39,7 @@ from .attribution import (
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _canonical_json(obj: Any) -> str:
@@ -190,7 +190,7 @@ def _row_to_record(r: tuple) -> AttributionAuditRecord:
     )
 
 
-def load_record(con: Any, audit_id: str) -> Optional[AttributionAuditRecord]:
+def load_record(con: Any, audit_id: str) -> AttributionAuditRecord | None:
     """Load one audit record by id (the replay entry point)."""
     ensure_table(con)
     row = con.execute(

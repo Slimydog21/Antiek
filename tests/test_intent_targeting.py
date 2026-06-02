@@ -5,9 +5,9 @@ from __future__ import annotations
 from decimal import Decimal
 
 from substrate.ad_inventory import (
+    MIN_MATCH_SCORE,
     AdInventoryItem,
     InventoryTargeting,
-    MIN_MATCH_SCORE,
     PageContext,
     TargetedInventoryItem,
     context_from_decomposer_topics,

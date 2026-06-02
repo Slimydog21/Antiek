@@ -23,40 +23,58 @@ from .app import (
     create_app,
 )
 from .broadcast import EventBroadcaster, EventHandler
+from .connector import (
+    make_connector_handler,
+)
+from .connector import (
+    register_handlers as register_connector_handlers,
+)
 from .cross_doc import (
     make_cross_doc_handler,
+)
+from .cross_doc import (
     register_handlers as register_cross_doc_handlers,
 )
 from .decomposer import (
     make_decomposer_handler,
+)
+from .decomposer import (
     register_handlers as register_decomposer_handlers,
 )
 from .evidence_retriever import (
     make_evidence_retriever_handler,
+)
+from .evidence_retriever import (
     register_handlers as register_evidence_retriever_handlers,
-)
-from .connector import (
-    make_connector_handler,
-    register_handlers as register_connector_handlers,
-)
-from .parameter_extractor import (
-    make_parameter_extractor_handler,
-    register_handlers as register_parameter_extractor_handlers,
-)
-from .synthesizer import (
-    make_synthesizer_handler,
-    register_handlers as register_synthesizer_handlers,
 )
 from .grounding import (
     make_grounding_handler,
+)
+from .grounding import (
     register_handlers as register_grounding_handlers,
 )
 from .note_taking import (
     make_note_taker_handler,
+)
+from .note_taking import (
     register_handlers as register_note_taking_handlers,
+)
+from .parameter_extractor import (
+    make_parameter_extractor_handler,
+)
+from .parameter_extractor import (
+    register_handlers as register_parameter_extractor_handlers,
+)
+from .synthesizer import (
+    make_synthesizer_handler,
+)
+from .synthesizer import (
+    register_handlers as register_synthesizer_handlers,
 )
 from .wrestling import (
     make_distillation_handler,
+)
+from .wrestling import (
     register_handlers as register_wrestling_handlers,
 )
 

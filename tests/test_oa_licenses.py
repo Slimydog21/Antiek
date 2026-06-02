@@ -31,7 +31,6 @@ from acquisition.openaccess.licenses import (  # noqa: E402
 from substrate.books.ingest import _VALID_BOOK_CONTENT_CLASSES  # noqa: E402
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Servable
 # ---------------------------------------------------------------------------

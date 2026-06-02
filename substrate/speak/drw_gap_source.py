@@ -39,8 +39,7 @@ centrality-ranked shared-graph structural gaps for the project.
 
 from __future__ import annotations
 
-import json
-from typing import Any, List, Optional, Sequence
+from typing import Any
 
 from .contracts import GapSource, OpenQuestion
 
@@ -79,7 +78,7 @@ class DRWGapSource:
             return set()
         return {r[0] for r in rows}
 
-    def open_questions(self, project_id: str, *, limit: int = 20) -> List[OpenQuestion]:
+    def open_questions(self, project_id: str, *, limit: int = 20) -> list[OpenQuestion]:
         project_nodes = self._project_node_ids(project_id)
         if not project_nodes:
             return []  # nothing of this project is in the shared graph (yet)
@@ -87,7 +86,7 @@ class DRWGapSource:
             from substrate.gap_detection import detect_gaps
         except ImportError:  # pragma: no cover — DRW not importable
             return []
-        out: List[OpenQuestion] = []
+        out: list[OpenQuestion] = []
         for cand in detect_gaps(self.con):
             # Project scope: every backing node must belong to this project, so
             # an unrelated investigation's gap never leaks into this interviewer.
@@ -115,7 +114,7 @@ class CompositeGapSource:
     def __init__(self, *sources: GapSource):
         self._sources = [s for s in sources if s is not None]
 
-    def open_questions(self, project_id: str, *, limit: int = 20) -> List[OpenQuestion]:
+    def open_questions(self, project_id: str, *, limit: int = 20) -> list[OpenQuestion]:
         best: dict[str, OpenQuestion] = {}
         for src in self._sources:
             for g in src.open_questions(project_id, limit=limit):

@@ -165,7 +165,7 @@ def test_verify_passing_postcondition_writes_evidence(log_dir):
     exit_phase("inv-vp", 8)
 
     def passing_check(phase, investigation_id):
-        return True, f"skill.md grew by 120 lines"
+        return True, "skill.md grew by 120 lines"
 
     outcome = verify_phase("inv-vp", 8, postcondition_check=passing_check)
     assert outcome.passed is True

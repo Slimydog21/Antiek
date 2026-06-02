@@ -36,8 +36,9 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
 
 # Ensure repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -45,11 +46,6 @@ _PKG_ROOT = os.path.dirname(
 )
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
-
-from substrate.constants import (  # noqa: E402
-    RLM_MAX_RECURSION_DEPTH,
-    RLM_VERIFY_AGREEMENT_MIN,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -66,11 +62,11 @@ class DagNode:
 
     id: str
     question: str
-    deps: List[str] = field(default_factory=list)
+    deps: list[str] = field(default_factory=list)
     category: str = ""
     evidence_type_required: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id, "question": self.question, "deps": self.deps,
             "category": self.category,
@@ -78,7 +74,7 @@ class DagNode:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, Any]) -> "DagNode":
+    def from_dict(cls, d: dict[str, Any]) -> DagNode:
         return cls(
             id=d["id"], question=d["question"],
             deps=list(d.get("deps") or []),
@@ -91,14 +87,14 @@ class DagNode:
 class Dag:
     """A decomposition DAG with explicit dependency structure."""
 
-    nodes: List[DagNode]
+    nodes: list[DagNode]
     final_assembly: str = ""
-    cycles: List[List[str]] = field(default_factory=list)
+    cycles: list[list[str]] = field(default_factory=list)
     planning_model: str = ""
     planning_latency_s: float = 0.0
 
     @classmethod
-    def from_plan_json(cls, plan: Dict[str, Any], **meta) -> "Dag":
+    def from_plan_json(cls, plan: dict[str, Any], **meta) -> Dag:
         nodes = [DagNode.from_dict(n) for n in plan.get("nodes", [])]
         return cls(
             nodes=nodes,
@@ -107,9 +103,9 @@ class Dag:
             **meta,
         )
 
-    def validate(self) -> List[str]:
+    def validate(self) -> list[str]:
         """Return list of structural issues. Empty = valid."""
-        issues: List[str] = []
+        issues: list[str] = []
         node_ids = {n.id for n in self.nodes}
         if not node_ids:
             issues.append("DAG has no nodes")
@@ -129,14 +125,14 @@ class Dag:
             )
         return issues
 
-    def topological_layers(self) -> List[List[DagNode]]:
+    def topological_layers(self) -> list[list[DagNode]]:
         """Group nodes into layers by dependency depth. Layer 0 =
         roots; within a layer, all nodes are mutually independent and
         can be dispatched in one ``llm_batch`` call. Unreachable
         nodes (from cycles or bad deps) surface in the last layer."""
         remaining = {n.id: n for n in self.nodes}
-        resolved: Set[str] = set()
-        layers: List[List[DagNode]] = []
+        resolved: set[str] = set()
+        layers: list[list[DagNode]] = []
 
         while remaining:
             layer = [
@@ -157,7 +153,7 @@ class Dag:
     def layer_count(self) -> int:
         return len(self.topological_layers())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "nodes": [n.to_dict() for n in self.nodes],
             "final": self.final_assembly,
@@ -221,7 +217,7 @@ def plan_dag(
     llm_query_fn: Callable[[str], str],
     *,
     context: str = "",
-    decomposition_examples: Optional[List[Dict]] = None,
+    decomposition_examples: list[dict] | None = None,
     model: str = "deepseek/deepseek-v4-pro",
 ) -> Dag:
     """Dispatch the DAG planning sub-LLM. Returns a parsed ``Dag``.
@@ -267,23 +263,23 @@ class DagExecutionResult:
     """The result of executing a full DAG."""
 
     dag: Dag
-    answers: Dict[str, Any]
-    verification_results: Dict[str, Any]
+    answers: dict[str, Any]
+    verification_results: dict[str, Any]
     layers: int
     total_nodes: int
-    nodes_failed_verification: List[str]
+    nodes_failed_verification: list[str]
     total_sub_llm_calls: int
     elapsed_s: float
 
-    def final_answer(self) -> Dict[str, Any]:
+    def final_answer(self) -> dict[str, Any]:
         return dict(self.answers)
 
 
 def execute_dag(
     dag: Dag,
     llm_query_fn: Callable[[str], str],
-    llm_batch_fn: Callable[[List[str]], List[str]],
-    verify_fn: Optional[Callable[..., Any]] = None,
+    llm_batch_fn: Callable[[list[str]], list[str]],
+    verify_fn: Callable[..., Any] | None = None,
     *,
     max_retries_per_node: int = 2,
 ) -> DagExecutionResult:
@@ -309,14 +305,14 @@ def execute_dag(
         )
 
     layers = dag.topological_layers()
-    answers: Dict[str, Any] = {}
-    verification_results: Dict[str, Any] = {}
-    nodes_failed: List[str] = []
+    answers: dict[str, Any] = {}
+    verification_results: dict[str, Any] = {}
+    nodes_failed: list[str] = []
     total_calls = 0
 
     for layer in layers:
-        prompts: List[str] = []
-        node_ids_this_layer: List[str] = []
+        prompts: list[str] = []
+        node_ids_this_layer: list[str] = []
         for node in layer:
             node_ids_this_layer.append(node.id)
             parent_context = ""
@@ -338,7 +334,7 @@ def execute_dag(
 
         batch_results = llm_batch_fn(prompts)
         total_calls += len(prompts)
-        layer_answers: Dict[str, str] = {
+        layer_answers: dict[str, str] = {
             nid: result
             for nid, result in zip(node_ids_this_layer, batch_results)
         }

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
-
 
 KNOWN_SOURCES: tuple[str, ...] = ("chatgpt", "anthropic", "grok", "alphasense", "other")
 MIN_CONFIDENCE: float = 0.5

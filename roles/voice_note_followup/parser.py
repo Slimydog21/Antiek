@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 from .._json_decode import extract_json_object
 
@@ -18,17 +17,17 @@ class VoiceNoteFollowupValidationError(ValueError):
 @dataclass(frozen=True)
 class FollowupPrompt:
     prompt: str
-    anchor_block_id: Optional[str]
+    anchor_block_id: str | None
     rationale: str
 
 
 @dataclass(frozen=True)
 class VoiceNoteFollowupResult:
-    prompts: List[FollowupPrompt]
+    prompts: list[FollowupPrompt]
 
 
 def parse_voice_note_followup_response(
-    raw: str, *, known_block_ids: Optional[set[str]] = None,
+    raw: str, *, known_block_ids: set[str] | None = None,
 ) -> VoiceNoteFollowupResult:
     """Parse + validate the role's output. When ``known_block_ids`` is
     passed, ``anchor_block_id`` values not in the set raise."""
@@ -50,7 +49,7 @@ def parse_voice_note_followup_response(
             f"too many prompts ({len(prompts_raw)}); max is {MAX_PROMPTS}"
         )
 
-    parsed: List[FollowupPrompt] = []
+    parsed: list[FollowupPrompt] = []
     for i, item in enumerate(prompts_raw):
         if not isinstance(item, dict):
             raise VoiceNoteFollowupValidationError(

@@ -22,9 +22,9 @@ from __future__ import annotations
 import dataclasses
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Protocol types
@@ -54,7 +54,7 @@ class ResourceContent:
 
     uri: str
     mime_type: str
-    text: Optional[str] = None
+    text: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -88,13 +88,13 @@ class AntiekMemoryServer:
 
     tools: list[ToolDescription] = field(default_factory=list)
     handler_fns: dict[str, Callable[[dict], ToolResult]] = field(default_factory=dict)
-    resource_handler: Optional[Callable[[str], Optional[ResourceContent]]] = None
+    resource_handler: Callable[[str], ResourceContent | None] | None = None
     server_info: dict = field(default_factory=lambda: {
         "name": "antiek-memory",
         "version": "0.1.0",
     })
 
-    def handle_request(self, request: dict) -> Optional[dict]:
+    def handle_request(self, request: dict) -> dict | None:
         """Process one JSON-RPC request and return the response dict.
         Returns None for notifications (requests without an `id`)."""
         rpc_id = request.get("id")

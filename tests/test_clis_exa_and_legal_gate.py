@@ -13,16 +13,20 @@ from __future__ import annotations
 import io
 import json
 import re
-from typing import Any, List, Optional
+from datetime import UTC
 
 import httpx
 import pytest
 
 from acquisition.search.exa.__main__ import (
+    _build_parser as build_exa_parser,
+)
+from acquisition.search.exa.__main__ import (
     _cmd_budget,
     _cmd_discover,
     _cmd_lookup,
-    _build_parser as build_exa_parser,
+)
+from acquisition.search.exa.__main__ import (
     main as exa_main,
 )
 from acquisition.search.exa.client import ExaClient
@@ -30,9 +34,10 @@ from substrate.legal_gate.audit import (
     _inconsistencies,
     _probe,
     _registry_summary,
+)
+from substrate.legal_gate.audit import (
     main as audit_main,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -302,7 +307,7 @@ def test_exa_cli_retention_summary_with_rows(isolated_env, monkeypatch):
     """Populate the discovery_summary table and verify the summary
     subcommand renders the rows."""
     import json as _json
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     from pathlib import Path
 
     db = str(Path(isolated_env["tmpdir"]) / "graph.duckdb")
@@ -315,7 +320,7 @@ def test_exa_cli_retention_summary_with_rows(isolated_env, monkeypatch):
 
     edir = Path(isolated_env["tmpdir"]) / "discovery_events"
     edir.mkdir(parents=True, exist_ok=True)
-    old_ts = (datetime.now(timezone.utc) - timedelta(days=45)).replace(tzinfo=None).isoformat() + "Z"
+    old_ts = (datetime.now(UTC) - timedelta(days=45)).replace(tzinfo=None).isoformat() + "Z"
     (edir / "old.jsonl").write_text(_json.dumps({
         "action_type": "discovery.proposed", "emitted_at": old_ts,
         "payload": {"provider": "exa", "query": "old query",

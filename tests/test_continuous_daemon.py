@@ -16,8 +16,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -35,7 +34,6 @@ from orchestration.continuous import (  # noqa: E402
     GapEntry,
     GapRegistry,
     ResearchTopic,
-    no_op_spawn,
     normalize_gap_description,
     run_one_iteration,
     score_gap,
@@ -47,7 +45,6 @@ from orchestration.continuous.scoring import (  # noqa: E402
     MAX_CHASE_COUNT,
     RECENCY_HALF_LIFE_DAYS,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 
@@ -71,7 +68,7 @@ def _write_evidence_delivered(
 ) -> None:
     """Write an evidence.retrieve.delivered event to the daemon's
     expected jsonl format."""
-    when = emitted_at or datetime.now(timezone.utc)
+    when = emitted_at or datetime.now(UTC)
     path = Path(events_dir) / f"{investigation_id}.jsonl"
     payload = {
         "action_type": "evidence.retrieve.delivered",
@@ -102,7 +99,7 @@ def _write_question_identified(
     question_text: str,
     emitted_at: datetime | None = None,
 ) -> None:
-    when = emitted_at or datetime.now(timezone.utc)
+    when = emitted_at or datetime.now(UTC)
     path = Path(events_dir) / f"{investigation_id}.jsonl"
     payload = {
         "action_type": "question.identified",
@@ -137,7 +134,7 @@ def test_normalize_gap_description_empty_returns_sentinel():
 
 def test_gap_registry_deduplicates_within_one_investigation():
     reg = GapRegistry()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     reg.observe(
         gap_description="Need data on dispatch cost",
         additional_retrieval_suggested=None,
@@ -157,7 +154,7 @@ def test_gap_registry_deduplicates_within_one_investigation():
 
 def test_gap_registry_counts_cross_investigation_co_occurrence():
     reg = GapRegistry()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for iid in ("inv-1", "inv-2", "inv-3"):
         reg.observe(
             gap_description="What is the §13.9 quality gate threshold?",
@@ -172,7 +169,7 @@ def test_gap_registry_counts_cross_investigation_co_occurrence():
 def test_score_gap_recency_decays_per_half_life():
     """A gap 1 half-life old should score about half its co_occurrence
     component (interaction is 1.0 absent the boost)."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     fresh = GapEntry(
         normalized_key="k1", gap_description="x",
         additional_retrieval_suggested=None,
@@ -192,7 +189,7 @@ def test_score_gap_recency_decays_per_half_life():
 
 
 def test_score_gap_returns_zero_after_max_chase_count():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     entry = GapEntry(
         normalized_key="k", gap_description="x",
         additional_retrieval_suggested=None,
@@ -204,7 +201,7 @@ def test_score_gap_returns_zero_after_max_chase_count():
 
 
 def test_score_gap_interaction_boost_lifts_score():
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     base = GapEntry(
         normalized_key="k", gap_description="x",
         additional_retrieval_suggested=None,

@@ -25,17 +25,23 @@ sees structured claims stream into the notes panel.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import sys
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from datetime import UTC
+
+from processing.embedding import (  # noqa: E402
+    EmbeddingProvider,
+    default_embedding_provider,
+)
+from runtime.db_lock import connect_write  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
@@ -57,14 +63,8 @@ from substrate.schemas import (  # noqa: E402
     DocumentRegionSelectedPayload,
     Event,
 )
-from processing.embedding import (  # noqa: E402
-    EmbeddingProvider,
-    default_embedding_provider,
-)
-from runtime.db_lock import connect_write  # noqa: E402
 
 from .broadcast import EventBroadcaster
-
 
 # The role-tail prompt appended after the context pack. Asks for
 # structured JSON; the parser tolerates loose formatting (Markdown code
@@ -114,7 +114,7 @@ def _new_claim_id() -> str:
     return "c-" + uuid.uuid4().hex[:12]
 
 
-def _extract_json_object(text: str) -> Optional[dict]:
+def _extract_json_object(text: str) -> dict | None:
     """Back-compat alias for ``roles._json_decode.extract_json_object``.
     The body moved to a shared module in Sprint 4 day 4-5 because
     three role-side parsers needed it and importing from wrestling.py
@@ -127,7 +127,7 @@ def _extract_json_object(text: str) -> Optional[dict]:
 def _parse_claims_response(
     text: str,
     *,
-    region_id: Optional[str],
+    region_id: str | None,
 ) -> tuple[list[Claim], str]:
     """Parse the model's JSON response into ``(claims, rendered_text)``.
 
@@ -193,7 +193,7 @@ def _parse_claims_response(
 def _resolve_region_text_from_db(
     db_path: str,
     region_id: str,
-) -> Optional[str]:
+) -> str | None:
     """Prefer the chunks table for region text lookup. The wrestling
     bridge's region-handler stores the chunk row keyed by a derived
     chunk_id; we can query for it directly without walking the
@@ -223,7 +223,7 @@ def _resolve_region_text_from_db(
 def _resolve_region_text_from_trajectory(
     investigation_id: str,
     region_id: str,
-) -> Optional[str]:
+) -> str | None:
     """Trajectory-based fallback. Walks the JSONL events for the
     investigation looking for the matching ``document.region_selected``
     event. O(events_per_investigation) — fine for hundreds-of-events
@@ -240,11 +240,11 @@ def _resolve_region_text_from_trajectory(
 
 def _resolve_region_text(
     investigation_id: str,
-    document_id: Optional[str],
-    region_id: Optional[str],
+    document_id: str | None,
+    region_id: str | None,
     *,
-    db_path: Optional[str] = None,
-) -> Optional[str]:
+    db_path: str | None = None,
+) -> str | None:
     """Resolve region text. Prefers chunks-table lookup (Sprint 3
     graph integration); falls back to trajectory walk. Returns None
     when neither path produces a match.
@@ -279,7 +279,7 @@ def _region_to_chunk_id(region_id: str) -> str:
 def make_distillation_handler(
     broadcaster: EventBroadcaster,
     *,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
 ):
     """Build the async handler closed over a broadcaster. The handler
     is registered against ``ActionType.DISTILLATION_REQUESTED``; on
@@ -410,8 +410,8 @@ def make_distillation_handler(
 
 def make_document_loaded_handler(
     *,
-    db_path: Optional[str] = None,
-    broadcaster: Optional["EventBroadcaster"] = None,
+    db_path: str | None = None,
+    broadcaster: EventBroadcaster | None = None,
 ):
     """Build the handler that mirrors ``document.loaded`` events into a
     row in the documents table. Sprint 3 Day 2-3: the wrestling bridge
@@ -501,9 +501,12 @@ def make_document_loaded_handler(
                 if broadcaster is not None:
                     try:
                         import uuid as _uuid
-                        from datetime import datetime as _dt, timezone as _tz
+                        from datetime import datetime as _dt
+
                         from substrate.schemas.events import (
                             ActionType as _AT,
+                        )
+                        from substrate.schemas.events import (
                             Event as _TypedEvent,
                         )
 
@@ -516,7 +519,7 @@ def make_document_loaded_handler(
                             action_type=_AT.RLM_BRIDGE_DECIDED,
                             payload=bridge_payload,
                             param_version="wrestling-v0",
-                            emitted_at=_dt.now(_tz.utc),
+                            emitted_at=_dt.now(UTC),
                             document_id=event.document_id,
                         )
                         await broadcaster.broadcast(bridge_event)
@@ -538,8 +541,8 @@ def make_document_loaded_handler(
 def make_region_selected_handler(
     *,
     broadcaster: EventBroadcaster,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ):
     """Build the handler that mirrors ``document.region_selected``
     events into the graph: writes a chunks row (with embedding for the
@@ -658,8 +661,8 @@ def make_region_selected_handler(
 def register_handlers(
     broadcaster: EventBroadcaster,
     *,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> None:
     """Wire every wrestling handler into the broadcaster. Called once
     at app startup (see ``app.create_app``).

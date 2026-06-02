@@ -15,12 +15,12 @@ Kept separate because the two paths surface different evidence:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 def _utc_iso_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 @dataclass
@@ -33,13 +33,13 @@ class VerifyResult:
     agreed: bool
     agreement_count: int
     dispatched_count: int
-    votes: List[Dict[str, Any]] = field(default_factory=list)
-    dispatched_responses: List[Dict[str, Any]] = field(default_factory=list)
+    votes: list[dict[str, Any]] = field(default_factory=list)
+    dispatched_responses: list[dict[str, Any]] = field(default_factory=list)
     tiebreaker_used: bool = False
     ts: str = field(default_factory=_utc_iso_now)
     notes: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -56,13 +56,13 @@ class VerificationResult:
     accepted: bool
     agreement_count: int
     dispatch_count: int
-    responses: List[str] = field(default_factory=list)
-    agreed_answer: Optional[str] = None
-    disagreement_reason: Optional[str] = None
+    responses: list[str] = field(default_factory=list)
+    agreed_answer: str | None = None
+    disagreement_reason: str | None = None
     hedged: bool = False
-    plausibility_issues: List[str] = field(default_factory=list)
+    plausibility_issues: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "claim_id": self.claim_id,
             "accepted": self.accepted,

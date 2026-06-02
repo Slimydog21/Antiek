@@ -10,7 +10,6 @@ preserved.
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 
@@ -20,7 +19,7 @@ from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.speak import biography, invitations, project
 from substrate.speak.consent import ConsentScope, record_consent
-from substrate.speak.contracts import OutlineBlock, OutlineComposer
+from substrate.speak.contracts import OutlineComposer
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
 from substrate.speak.write_composer import WriteOutlineComposer, default_outline_composer

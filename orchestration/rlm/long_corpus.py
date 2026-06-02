@@ -14,13 +14,12 @@ RLM-1 but for synthesis instead of wrestling.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Callable, Optional
 
 from .session import (
     RLMSession,
-    RLMSessionState,
     create_session,
     iterate_session,
 )

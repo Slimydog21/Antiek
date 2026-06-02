@@ -5,12 +5,12 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, Protocol
+from datetime import UTC, datetime
+from typing import Protocol
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class SynqueryAPIError(Exception):
@@ -39,7 +39,7 @@ class SynqueryInterview:
     scheduled_at: str
     duration_minutes: int
     booking_status: str  # "pending" | "confirmed" | "cancelled" | "completed"
-    transcript_document_id: Optional[str] = None
+    transcript_document_id: str | None = None
 
 
 class SynqueryClient(Protocol):

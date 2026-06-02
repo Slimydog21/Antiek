@@ -69,7 +69,7 @@ class LegalGateVerdict:
     """
 
     allowed: bool
-    reason: Optional[str] = None
+    reason: str | None = None
     gate_kind: Literal["placeholder", "sql_where_registry"] = "placeholder"
 
 
@@ -148,7 +148,6 @@ def default_legal_gate() -> LegalGate:
     # Lazy import to avoid touching `gate.py` (which imports back
     # into this module for LegalGateVerdict) on every package
     # import.
-    from .gate import RegistryBackedLegalGate
     return RegistryBackedLegalGate()
 
 

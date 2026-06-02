@@ -25,7 +25,7 @@ with the single writer.
 from __future__ import annotations
 
 import logging
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -98,23 +98,23 @@ def _record_arxiv_serve_audit(db_path: str, document_id: str, result) -> None:
 
 class TocItemResponse(BaseModel):
     title: str
-    page_index: Optional[int]
+    page_index: int | None
     level: int
 
 
 class BookSummary(BaseModel):
     document_id: str
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
     servability: str
     servable_full_text: bool
     page_count: int
-    cover_uri: Optional[str]
-    ip_holder_id: Optional[str]
+    cover_uri: str | None
+    ip_holder_id: str | None
     taken_down: bool
 
     @classmethod
-    def from_asset(cls, a: BookAsset) -> "BookSummary":
+    def from_asset(cls, a: BookAsset) -> BookSummary:
         return cls(
             document_id=a.document_id,
             title=a.title,
@@ -130,12 +130,12 @@ class BookSummary(BaseModel):
 
 class BookDetail(BookSummary):
     pagination_scheme: str
-    provenance: Optional[str]
-    license_basis: Optional[str]
+    provenance: str | None
+    license_basis: str | None
     toc: list[TocItemResponse]
 
     @classmethod
-    def from_asset(cls, a: BookAsset) -> "BookDetail":
+    def from_asset(cls, a: BookAsset) -> BookDetail:
         return cls(
             **BookSummary.from_asset(a).model_dump(),
             pagination_scheme=a.pagination_scheme,
@@ -155,8 +155,8 @@ class BookListResponse(BaseModel):
 
 class CuratedBookResponse(BaseModel):
     document_id: str
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
     score: float
 
 
@@ -170,7 +170,7 @@ class SpinResearchRequest(BaseModel):
     # The reader's selected text. For a gated book it is IGNORED server-
     # side and replaced by the bounded snippet — the seed can never carry
     # gated full text, even if the client sends it (defense in depth).
-    passage_text: Optional[str] = None
+    passage_text: str | None = None
 
 
 class SpinResearchResponse(BaseModel):
@@ -206,11 +206,11 @@ class RecordImpressionsResponse(BaseModel):
 class FullTextResponse(BaseModel):
     document_id: str
     servable: bool
-    servability: Optional[str]
-    full_text: Optional[str]
-    snippet: Optional[str]
-    title: Optional[str]
-    author: Optional[str]
+    servability: str | None
+    full_text: str | None
+    snippet: str | None
+    title: str | None
+    author: str | None
     reason: str
     # Rights context (Read SPR-05) — the data the reader renders off the
     # backend response instead of a local flag. ``tier`` is the arXiv
@@ -218,10 +218,10 @@ class FullTextResponse(BaseModel):
     # ``ad_eligible`` is the ad-rail gate (T1-only for arXiv; == servable for
     # non-arXiv, preserving today's behaviour); ``canonical_url`` is the
     # arxiv.org/abs link or None; ``license`` is the license_uri or None.
-    tier: Optional[str] = None
+    tier: str | None = None
     ad_eligible: bool = False
-    canonical_url: Optional[str] = None
-    license: Optional[str] = None
+    canonical_url: str | None = None
+    license: str | None = None
 
 
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
@@ -251,7 +251,7 @@ class CitationResponse(BaseModel):
     # chunk's section_path did not resolve to a page marker (then
     # ``page_resolved`` is False and the surface shows an honest "page not
     # pinpointed" — never a fabricated page).
-    page_index: Optional[int] = None
+    page_index: int | None = None
     page_resolved: bool = False
     snippet: str
 
@@ -271,8 +271,8 @@ class AskBookResponse(BaseModel):
 class CorpusSearchHit(BaseModel):
     chunk_id: str
     document_id: str
-    document_title: Optional[str]
-    page_index: Optional[int] = None
+    document_title: str | None
+    page_index: int | None = None
     page_resolved: bool = False
     snippet: str
     similarity: float
@@ -299,7 +299,7 @@ class MetaReadingRequest(BaseModel):
     corpus_scope: Literal["hard", "soft"] = "hard"
     # An explicit pick of owned document ids (intersected with the owned set
     # under "hard" scope). Omit to scope to the whole owned servable corpus.
-    document_ids: Optional[list[str]] = None
+    document_ids: list[str] | None = None
 
 
 class MetaReadingResponse(BaseModel):
@@ -328,9 +328,9 @@ class PersonalAssetResponse(BaseModel):
     asset_id: str
     kind: Literal["meta_reading", "saved_read"]
     title: str
-    prompt: Optional[str]
+    prompt: str | None
     document_ids: list[str]
-    emitted_at: Optional[str]
+    emitted_at: str | None
     # The in-app route that re-opens the item (the meta-doc view / the reader).
     open_route: str
 
@@ -701,7 +701,7 @@ def register_book_routes(app: FastAPI) -> None:
     async def corpus_search(
         q: str,
         limit: int = 20,
-        document_id: Optional[str] = None,
+        document_id: str | None = None,
     ) -> CorpusSearchResponse:
         """Search the owned corpus by a natural-language query. Wraps
         ``substrate.graph.search.search`` with the DEFAULT (non-privileged)
@@ -869,7 +869,7 @@ def register_book_routes(app: FastAPI) -> None:
     # live in substrate/books/personal_space.py and reuse the SAME embedding
     # model SPR-04 curate + §7 search use (no new embedder).
 
-    def _book_title_resolver(document_id: str) -> Optional[str]:
+    def _book_title_resolver(document_id: str) -> str | None:
         """Map a read document_id → its book title so a saved read shows the
         book's name, not its id. Best-effort: a non-book / missing doc resolves
         to None and the caller falls back to the id (honest, never fabricated)."""
@@ -920,7 +920,7 @@ def register_book_routes(app: FastAPI) -> None:
         try:
             from substrate.graph.search import SentenceTransformerEmbedding
 
-            model: Optional[object] = SentenceTransformerEmbedding()
+            model: object | None = SentenceTransformerEmbedding()
         except RuntimeError:
             model = None
 

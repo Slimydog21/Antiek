@@ -33,7 +33,7 @@ import pytest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
-from interfaces.research.api import create_app, EventBroadcaster  # noqa: E402
+from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
 from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
@@ -50,7 +50,6 @@ from substrate.schemas import (  # noqa: E402
     DistillationDeliveredPayload,
     Event,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -657,15 +656,15 @@ def test_resolve_region_text_from_db_returns_chunk_text(tmp_path):
     db = str(tmp_path / "g.duckdb")
     _os.environ["ANTIEK_DUCKDB_PATH"] = db
 
+    from interfaces.research.api.wrestling import (
+        _region_to_chunk_id,
+        _resolve_region_text_from_db,
+    )
+    from runtime.db_lock import connect_write
     from substrate.graph import (
         ensure_initialized,
         insert_chunk,
         insert_document,
-    )
-    from runtime.db_lock import connect_write
-    from interfaces.research.api.wrestling import (
-        _region_to_chunk_id,
-        _resolve_region_text_from_db,
     )
 
     ensure_initialized(db)
@@ -687,8 +686,8 @@ def test_resolve_region_text_from_db_returns_chunk_text(tmp_path):
 
 
 def test_resolve_region_text_from_db_returns_none_when_missing(tmp_path):
-    from substrate.graph import ensure_initialized
     from interfaces.research.api.wrestling import _resolve_region_text_from_db
+    from substrate.graph import ensure_initialized
     db = str(tmp_path / "g.duckdb")
     ensure_initialized(db)
     assert _resolve_region_text_from_db(db, "r-doesnt-exist") is None

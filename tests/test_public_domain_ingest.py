@@ -41,7 +41,6 @@ import io
 import os
 import sys
 import tempfile
-from typing import Optional
 
 import pytest
 
@@ -59,7 +58,6 @@ from acquisition.books.public_domain import (
     strip_gutenberg_boilerplate,
     text_to_pdf,
 )
-
 
 # ---------------------------------------------------------------------------
 # Real-PDF fixture (reportlab) — offline, exercises the full read path
@@ -124,7 +122,7 @@ class FakeSourceClient:
         self.json_calls: list[str] = []
         self.bytes_calls: list[str] = []
 
-    def get_json(self, url: str, *, params: Optional[dict] = None) -> dict:
+    def get_json(self, url: str, *, params: dict | None = None) -> dict:
         self.json_calls.append(url)
         if url not in self._json:
             raise SourceError(f"no canned json for {url}")
@@ -509,7 +507,6 @@ def test_ingest_idempotent_by_row_count(temp_substrate):
 
 
 def test_source_client_retries_429_then_succeeds(monkeypatch):
-    import requests
 
     class _Resp:
         def __init__(self, status, payload=None):

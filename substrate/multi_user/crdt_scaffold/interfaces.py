@@ -7,7 +7,8 @@ The shape is intentionally backend-agnostic. A real implementation
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+from collections.abc import Mapping, Sequence
+from typing import Any, Protocol, runtime_checkable
 
 # Vector-clock representation: { actor_id -> counter }. Comparisons
 # are partial-order; two clocks may be unordered (concurrent).
@@ -131,7 +132,7 @@ class CRDTBackend(Protocol):
         """
         ...
 
-    def merge(self, other: "CRDTBackend") -> None:
+    def merge(self, other: CRDTBackend) -> None:
         """Merge another replica's ops into this one. After merge, both
         replicas should converge on the same access-control + edit
         state if the merge is mutual (both directions).

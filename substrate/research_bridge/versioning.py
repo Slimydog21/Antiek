@@ -19,25 +19,25 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, List, Optional
 
 try:
     from ...runtime.db_lock import LockedConnection, connect_read, connect_write
-    from ..graph.ops import content_addressed_id, insert_document
     from ..graph.insight_question import graph_db_path
+    from ..graph.ops import content_addressed_id, insert_document
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_read, connect_write  # type: ignore[no-redef]
+    from runtime.db_lock import (  # type: ignore[no-redef]
+        LockedConnection,
+    )
     from substrate.graph.ops import content_addressed_id, insert_document  # type: ignore[no-redef]
-    from substrate.graph.insight_question import graph_db_path  # type: ignore[no-redef]
 
 
 @dataclass(frozen=True)
 class DocumentVersion:
     document_id: str
     version: int
-    parent_document_id: Optional[str]
+    parent_document_id: str | None
 
 
 def _doc(con, document_id: str):
@@ -96,7 +96,7 @@ def create_document_version(
     return new_id
 
 
-def document_versions(con, root_or_any_id: str) -> List[DocumentVersion]:
+def document_versions(con, root_or_any_id: str) -> list[DocumentVersion]:
     """Walk the version chain for a document family, ordered by version.
     Accepts the root id or any version id (resolves to the root)."""
     row = _doc(con, root_or_any_id)

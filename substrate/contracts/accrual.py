@@ -37,7 +37,7 @@ integer wire shape.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -65,14 +65,14 @@ class AccrualContract(BaseModel):
     accrual_id: str
     source: AccrualSource
     # every accrual targets an ip_holder (even null, before claim/mapping).
-    ip_holder_id: Optional[str] = None
+    ip_holder_id: str | None = None
     # impression_ref (publisher) or interview_id (speak) — the originating ref.
     source_ref: str
     # integer cents; the single escrow writer's unit. Zero-buyer safe: 0 is a
     # real, honest balance, not a missing one.
     amount_cents: int = 0
     # contributor split fraction in [0, 1]; None for publisher-impression.
-    share_fraction: Optional[float] = None
+    share_fraction: float | None = None
     slop_gated: bool = False
     # accrual is never disbursable at the data layer — disbursement is a
     # G2+G3 gate decision, not a producer-settable flag.

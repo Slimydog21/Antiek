@@ -19,8 +19,7 @@ and never reaches into provider-specific shapes.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
-
+from typing import Any, Protocol, runtime_checkable
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -40,7 +39,7 @@ class ProviderError(Exception):
         model: str,
         latency_ms: int,
         retryable: bool = False,
-        request_id: Optional[str] = None,
+        request_id: str | None = None,
     ):
         super().__init__(message)
         self.provider = provider
@@ -112,9 +111,9 @@ class RawProviderResponse:
 
     text: str
     raw_usage: dict[str, Any]
-    finish_reason: Optional[str]
+    finish_reason: str | None
     latency_ms: int
-    request_id: Optional[str] = None
+    request_id: str | None = None
     # Additional provider-native metadata that the adapter wants to surface
     # for debugging but does not normalize. The router ignores this.
     extra: dict[str, Any] = field(default_factory=dict)

@@ -21,11 +21,10 @@ import pytest
 from substrate.contracts import (
     CODEGEN_CONTRACTS,
     NoteTakerOutputContract,
+    drw_sprint_lock,
     verify_conformance,
 )
-from substrate.contracts import drw_sprint_lock
 from tools.codegen import check_conformance
-
 
 # ── M2 positive — the gate is clean on the current trunk ──────────────────────
 

@@ -65,8 +65,9 @@ import json
 import os
 import re
 import sys
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 # Ensure substrate root on path.
 _PKG_ROOT = os.path.dirname(
@@ -134,7 +135,7 @@ RULES:
 
 
 def _build_system_prompt(
-    tool_specs: List[Dict], max_rounds: int,
+    tool_specs: list[dict], max_rounds: int,
 ) -> str:
     """Render the tool list into the system prompt."""
     if not tool_specs:
@@ -218,7 +219,7 @@ def web_search(query: str) -> str:
         try:
             _serp_url = "https://serpapi.com/search"
 
-            def _serp_send() -> "requests.Response":
+            def _serp_send() -> requests.Response:
                 return requests.get(
                     _serp_url,
                     params={
@@ -251,7 +252,7 @@ def web_search(query: str) -> str:
     try:
         _ddg_url = "https://html.duckduckgo.com/html/"
 
-        def _ddg_send() -> "requests.Response":
+        def _ddg_send() -> requests.Response:
             return requests.get(
                 _ddg_url,
                 params={"q": query},
@@ -275,8 +276,8 @@ def _parse_ddg_html(html: str, *, query: str) -> str:
     class DDGParser(HTMLParser):
         def __init__(self):
             super().__init__()
-            self.results: List[Dict] = []
-            self._current: Optional[Dict] = None
+            self.results: list[dict] = []
+            self._current: dict | None = None
             self._in_snippet = False
             self._in_title = False
             self._buf: str = ""
@@ -373,7 +374,7 @@ def fetch_url(url: str) -> str:
         # directly. The 429 ban sentinel is recorded inside ``govern_if_arxiv``'s
         # governed_request via the throttle's note_response.
         for _ in range(_FETCH_URL_MAX_REDIRECTS + 1):
-            def _send(_u: str = current) -> "requests.Response":
+            def _send(_u: str = current) -> requests.Response:
                 return requests.get(
                     _u, headers=headers, timeout=20, allow_redirects=False,
                 )
@@ -432,10 +433,10 @@ def search_graph(query: str, top_k: int = 5) -> str:
     ``substrate.graph.search.search`` with a read-only connection.
     Returns a formatted string the sub-LLM can read directly."""
     try:
-        from substrate.graph import default_db_path, ensure_initialized
-        from substrate.graph.search import search as _graph_search
-        from substrate.graph.search import SentenceTransformerEmbedding
         from runtime.db_lock import connect_read
+        from substrate.graph import default_db_path, ensure_initialized
+        from substrate.graph.search import SentenceTransformerEmbedding
+        from substrate.graph.search import search as _graph_search
     except ImportError as e:
         return f"search_graph error: import failed — {e!r}"
 
@@ -477,7 +478,7 @@ def search_graph(query: str, top_k: int = 5) -> str:
     return _format_graph_search_result(result, query=query)
 
 
-def _format_graph_search_result(result: Dict, *, query: str) -> str:
+def _format_graph_search_result(result: dict, *, query: str) -> str:
     """Render the graph search result as a sub-LLM-friendly string."""
     parts = [f"Graph search results for: {query}\n"]
     chunks = result.get("results", [])
@@ -521,7 +522,7 @@ def _format_graph_search_result(result: Dict, *, query: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-_BUILTIN_TOOLS: Dict[str, Dict] = {
+_BUILTIN_TOOLS: dict[str, dict] = {
     "web_search": {
         "fn": web_search,
         "description": "Search the web (DuckDuckGo or SerpAPI).",
@@ -552,11 +553,11 @@ _BUILTIN_TOOLS: Dict[str, Dict] = {
 }
 
 
-def get_builtin_tool_names() -> List[str]:
+def get_builtin_tool_names() -> list[str]:
     return list(_BUILTIN_TOOLS.keys())
 
 
-def get_tool_specs(names: List[str]) -> List[Dict]:
+def get_tool_specs(names: list[str]) -> list[dict]:
     """Return tool specs (metadata, not callables) for the given names."""
     specs = []
     for name in names:
@@ -616,8 +617,8 @@ class SubLLMWithTools:
     def __init__(
         self,
         *,
-        llm_call: Optional[LLMCall] = None,
-        investigation_id: Optional[str] = None,
+        llm_call: LLMCall | None = None,
+        investigation_id: str | None = None,
         role: str = DEFAULT_SUB_LLM_ROLE,
         max_rounds: int = MAX_TOOL_ROUNDS,
         temperature: float = DEFAULT_TEMPERATURE,
@@ -637,14 +638,14 @@ class SubLLMWithTools:
         self.max_rounds = max_rounds
         self.temperature = temperature
         self.synthesis_max_tokens = synthesis_max_tokens
-        self._tools: Dict[str, Dict] = {}
+        self._tools: dict[str, dict] = {}
 
     def register_tool(
         self,
         name: str,
         fn: Callable,
         description: str,
-        parameters: List[Dict],
+        parameters: list[dict],
     ) -> None:
         """Register a tool the sub-LLM can call."""
         self._tools[name] = {
@@ -657,7 +658,7 @@ class SubLLMWithTools:
             raise ValueError(f"Unknown built-in tool: {name!r}")
         self._tools[name] = dict(_BUILTIN_TOOLS[name])
 
-    def register_builtins(self, names: List[str]) -> None:
+    def register_builtins(self, names: list[str]) -> None:
         for name in names:
             self.register_builtin(name)
 
@@ -678,7 +679,7 @@ class SubLLMWithTools:
             for name, t in self._tools.items()
         ]
         system = _build_system_prompt(tool_specs, self.max_rounds)
-        user_parts: List[str] = [prompt]
+        user_parts: list[str] = [prompt]
 
         for _round in range(self.max_rounds):
             raw = self._call_llm(system, "\n\n".join(user_parts))
@@ -732,7 +733,7 @@ class SubLLMWithTools:
     def _call_llm(self, system: str, user: str) -> str:
         return self.llm_call(system, user)
 
-    def _execute_tool(self, name: str, args: Dict) -> str:
+    def _execute_tool(self, name: str, args: dict) -> str:
         fn = self._tools[name]["fn"]
         try:
             return str(fn(**args))
@@ -751,15 +752,15 @@ class SubLLMWithTools:
 
 
 def equipped_llm_batch(
-    tasks: List[Dict],
+    tasks: list[dict],
     *,
-    llm_call: Optional[LLMCall] = None,
-    investigation_id: Optional[str] = None,
+    llm_call: LLMCall | None = None,
+    investigation_id: str | None = None,
     role: str = DEFAULT_SUB_LLM_ROLE,
     max_parallel: int = 6,
     max_rounds: int = MAX_TOOL_ROUNDS,
     temperature: float = DEFAULT_TEMPERATURE,
-) -> List[str]:
+) -> list[str]:
     """Run multiple tool-equipped sub-LLM calls in parallel.
 
     Each task: ``{"prompt": str, "tools": ["web_search", ...]}``.
@@ -778,12 +779,12 @@ def equipped_llm_batch(
             temperature=temperature,
         )
 
-    def _run_one(task: Dict) -> str:
+    def _run_one(task: dict) -> str:
         sub = _build_sub()
         sub.register_builtins(task.get("tools", []))
         return sub.run(task["prompt"])
 
-    results: List[Optional[str]] = [None] * n
+    results: list[str | None] = [None] * n
     if n == 1 or max_parallel <= 1:
         for i, task in enumerate(tasks):
             results[i] = _run_one(task)
@@ -805,7 +806,7 @@ def equipped_llm_batch(
 # ---------------------------------------------------------------------------
 
 
-CATEGORY_TOOL_MAP: Dict[str, List[str]] = {
+CATEGORY_TOOL_MAP: dict[str, list[str]] = {
     "fact_retrieval": ["web_search", "search_graph"],
     "parameter_extraction": ["search_graph"],
     "cross_domain_connection": ["search_graph"],
@@ -814,6 +815,6 @@ CATEGORY_TOOL_MAP: Dict[str, List[str]] = {
 }
 
 
-def tools_for_category(category: str) -> List[str]:
+def tools_for_category(category: str) -> list[str]:
     """Recommended tool list for a DAG node / role category."""
     return CATEGORY_TOOL_MAP.get(category, [])

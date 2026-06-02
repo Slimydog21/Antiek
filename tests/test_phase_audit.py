@@ -32,7 +32,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from orchestration.audit import (  # noqa: E402
-    AuditFinding,
     audit_phase_log,
     collect_findings,
 )
@@ -42,10 +41,7 @@ from substrate.schemas import (  # noqa: E402
     ActionType,
     AuditFindingPayload,
     AutoPatchAppliedPayload,
-    ConstraintCompliance,
     Event,
-    FalsificationCondition,
-    SynthesizeDeliveredPayload,
 )
 
 

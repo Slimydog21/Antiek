@@ -24,8 +24,8 @@ adapter without refactoring.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from .payout import (
     PayoutRouter,
@@ -69,7 +69,7 @@ class AttributionToPayoutSubscription:
     """
 
     router: PayoutRouter
-    on_decisions: Optional[PayoutHook] = None
+    on_decisions: PayoutHook | None = None
 
     def handle(self, event: AttributionComputedEvent) -> list[RevShareDecision]:
         """Process one ``AttributionComputedEvent``. Returns the list
@@ -88,7 +88,7 @@ class AttributionToPayoutSubscription:
 
 def make_subscription(
     router: PayoutRouter,
-    on_decisions: Optional[PayoutHook] = None,
+    on_decisions: PayoutHook | None = None,
 ) -> AttributionToPayoutSubscription:
     """Factory. Mirrors the established substrate-side
     ``make_*`` factories that orchestrate.py wires up at boot."""

@@ -47,8 +47,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -113,7 +113,7 @@ class RemapPlan:
         return self.to_public_domain + self.to_source_declared_open
 
 
-def _classify_basis(basis: Optional[str]) -> Optional[str]:
+def _classify_basis(basis: str | None) -> str | None:
     """Map a license_basis provenance string to the corrected content_class,
     or ``None`` if the basis carries no CC marker (a genuine §9.10 claim).
 
@@ -260,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if _is_prod_db(args.db_path):

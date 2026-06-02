@@ -31,9 +31,7 @@ from __future__ import annotations
 
 import os
 import sys
-import time
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 
@@ -508,9 +506,9 @@ def test_phase_8_skill_file_mtime_fallback(tmp_path):
 
     # Use a past investigation start (1 hour ago) so the file's NOW
     # mtime is strictly after it. UTC-aware throughout.
-    past = datetime.now(timezone.utc).timestamp() - 3600
+    past = datetime.now(UTC).timestamp() - 3600
     os.utime(str(skill_file), (past + 1800, past + 1800))  # 30 min after start
-    started_at = datetime.fromtimestamp(past, tz=timezone.utc)
+    started_at = datetime.fromtimestamp(past, tz=UTC)
 
     ok, reason = check_phase_8(
         "inv-p8mtime",
@@ -544,7 +542,7 @@ def test_phase_8_naive_started_at_treated_as_utc(tmp_path):
     # mtime, so path B fails. Pre-fix on UTC+N machines, this would
     # silently pass because the naive timestamp() shifted backwards.
     from datetime import timedelta as _timedelta
-    future_naive_utc = (datetime.now(timezone.utc) + _timedelta(minutes=5)).replace(tzinfo=None)
+    future_naive_utc = (datetime.now(UTC) + _timedelta(minutes=5)).replace(tzinfo=None)
     assert future_naive_utc.tzinfo is None, "test setup assumes naive"
 
     ok, reason = check_phase_8(

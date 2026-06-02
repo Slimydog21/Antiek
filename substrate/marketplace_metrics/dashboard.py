@@ -15,7 +15,7 @@ evaluation.
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .advertiser_retention import AdvertiserRetentionReport
 from .creator_distribution import CreatorEarningsDistribution

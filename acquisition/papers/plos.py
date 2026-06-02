@@ -22,7 +22,7 @@ NO live HTTP in CI.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -96,7 +96,7 @@ def parse_search_response(payload: dict[str, Any]) -> list[PaperRecord]:
     return out
 
 
-def _http_get(url: str, *, client: Optional[httpx.Client]) -> dict:
+def _http_get(url: str, *, client: httpx.Client | None) -> dict:
     # HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is built from an
     # env/param-overridable base (the default api.plos.org), so the actual HTTP
     # send is routed through ``govern_if_arxiv``. For the ordinary non-arXiv PLOS
@@ -138,8 +138,8 @@ def search_articles(
     *,
     query: str,
     limit: int = 25,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
     throttle: Any = None,
 ) -> list[PaperRecord]:
     """Query the PLOS search API for articles matching ``query``. ``throttle``

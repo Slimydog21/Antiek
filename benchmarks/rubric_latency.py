@@ -45,7 +45,7 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from benchmarks.fixtures import build_corpus, serialize_corpus_summary
@@ -135,7 +135,7 @@ def run_benchmark(samples: int = DEFAULT_SAMPLES, warmup: int = DEFAULT_WARMUP) 
         warmup=warmup,
         corpus_size=len(corpus),
         git_sha=_git_sha(),
-        captured_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        captured_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
 
 

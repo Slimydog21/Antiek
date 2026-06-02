@@ -45,7 +45,6 @@ H. Graph search formatting:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 
@@ -57,7 +56,6 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from substrate.graph.rlm_tools import (  # noqa: E402
     CATEGORY_TOOL_MAP,
     MAX_TOOL_OUTPUT_CHARS,
-    MAX_TOOL_ROUNDS,
     SubLLMWithTools,
     _extract_text_from_html,
     _format_graph_search_result,
@@ -68,7 +66,6 @@ from substrate.graph.rlm_tools import (  # noqa: E402
     get_tool_specs,
     tools_for_category,
 )
-
 
 # ---------------------------------------------------------------------------
 # A. JSON extraction

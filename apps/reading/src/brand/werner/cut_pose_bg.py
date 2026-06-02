@@ -44,7 +44,6 @@ from pathlib import Path
 
 from PIL import Image
 
-
 # A pixel is "near-white background candidate" if every channel is high and the
 # channel spread is small (NEUTRAL — not a saturated yellow bill / blue accent,
 # which can also be bright). The Krea backdrop sits ≈(253,254,253); the brand
