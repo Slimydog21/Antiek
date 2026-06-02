@@ -123,12 +123,14 @@ Live provider checks (`docs/agent-execution/OPERATOR_VERIFY_CASCADE_DECOMPOSE.md
 
 **Goal:** Close with claims that **collapse** if any row, test, or gate is removed.
 
+**Case study (required read for cascade / Egghead lineage):** [`cascade-case-study.md`](cascade-case-study.md) — Egghead session, `TypeError` vs provider-down, `FakeDecomposer` vs `DispatchDecomposer`, `repro_cascade_decompose_contract.py`, gate table with real commands, Werner `ccb4c66` / `useMouseFollow` hop parallel.
+
 | Step | Action | Done when |
 |------|--------|-----------|
 | E1 | Platform matrix (or handoff Scope Map) has every row filled | No empty `tested` without evidence |
 | E2 | Handoff `### Not proved` lists what closure does **not** cover | Before `### Status` |
 | E3 | Handoff packet complete (all headings; `N/A — reason` if needed) | Matches `TEMPLATES.md` |
-| E4 | Steelman fastest path (“looks right, ship”) and what it loses | Regression, scope map, operator trust |
+| E4 | Steelman fastest path (“looks right, ship”) and what it loses | Regression, scope map, operator trust; cite case study §1 / §9 where Egghead/Werner theater applies |
 
 **Pass:** Adversarial reader can falsify each claim via matrix row or cited test.  
 **Fail:** Superlatives (“fully fixed,” “production ready,” “CI green” for serve/rights) without named blocking jobs and matrix backing.
@@ -174,7 +176,7 @@ An auditor marks **FAIL** if any row is true for the session under review.
 | SPR-01 | This file + `TEMPLATES.md` |
 | SPR-02 | Theater taxonomy + repro scripts |
 | SPR-03–04 | `verify_handoff.ts`, `audit_agent_session.sh` |
-| SPR-05–06 | AMS bridge, `CASE_STUDY_CASCADE.md` |
+| SPR-05–06 | AMS bridge, [`cascade-case-study.md`](cascade-case-study.md) |
 | SPR-07 | Werner operator-acceptance + H2V handoff gates |
 | SPR-08–10 | `canonical_verify.sh`, CI wiring, `PLATFORM_EXEC_MATRIX.md` |
 
