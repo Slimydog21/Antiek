@@ -11,7 +11,8 @@ individual implementation.
 
 - **`agent-execution/`** — ANT-H2V hard-to-vary protocol for agent
   sessions (`HARD_TO_VARY.md`, templates). Read before diagnosing or
-  closing Research/cascade bugs.
+  closing Research/cascade bugs. Program index:
+  [`docs/htmlspec/antiek-hard-to-vary-execution/index.html`](htmlspec/antiek-hard-to-vary-execution/index.html).
 
 Additional docs land here as the build proceeds:
 
