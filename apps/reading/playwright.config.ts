@@ -3,10 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Playwright config for the e2e suites.
  *
- *   npm run e2e        # Storybook smoke (http://localhost:6006) + AMS real-app gate
- *   npm run e2e:login  # ANT-AUTH-DIAG login surface (vite preview :4173)
- *   STORYBOOK_URL=…    # override the Storybook base
- *   AMS_APP_URL=…      # override the real-app SPA base (else vite preview boots it)
+ *   npm run e2e        # Storybook + AMS real-app gate
+ *   npm run e2e:login  # ANT-AUTH-DIAG login surface (LOGIN_E2E vite preview)
  */
 
 const STORYBOOK_BASE = process.env.STORYBOOK_URL ?? "http://localhost:6006";

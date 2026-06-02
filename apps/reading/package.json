@@ -11,6 +11,7 @@
     "bench:pdf-panel": "tsx scripts/bench_pdf_panel.ts",
     "e2e": "npm run build-storybook && npm run build && playwright test",
     "e2e:ams": "npm run build && playwright test --project=ams-real",
+    "e2e:login": "npm run build && LOGIN_E2E=1 playwright test --project=login-real",
     "e2e:ams:typecheck": "tsc --noEmit -p tsconfig.ams-e2e.json",
     "test:reflint": "vitest run --config vitest.tools.config.ts",
     "test:ams": "vitest run --config vitest.ams.config.ts",
