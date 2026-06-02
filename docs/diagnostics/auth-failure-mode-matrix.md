@@ -82,7 +82,7 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
 | `OPS-CF-403` | OPS | `curl` / probe gets **403**; browser Login may work | `403` | `curl -sS -o /dev/null -w "%{http_code}\n" -A "antiek-auth-probe/1.0" "${API:-https://api.antiek.ai}/health"` vs `curl -sS -o /dev/null -w "%{http_code}\n" -A "Mozilla/5.0" "${API:-https://api.antiek.ai}/health"` | Non-browser UA blocked at Cloudflare; browser path OK → adjust WAF / use browser-like UA in probes only | Operator |
 | `OPS-COOKIE-DOMAIN` | OPS | Callback appears to succeed but `/auth/me` is 401 on Pages origin | `401` on `/auth/me` | After callback: `curl -sS -b cookies.txt -c cookies.txt "${API:-https://api.antiek.ai}/auth/callback?token=VALID&next=/" -D - -o /dev/null` then `curl -sS -b cookies.txt "${API:-https://api.antiek.ai}/auth/me"` from app origin with `credentials: include` | `Set-Cookie` without `Domain=.antiek.ai` (or wrong domain) → set `ANTIEK_COOKIE_DOMAIN` per `infrastructure/runbooks/magic-link-auth.md` | SPR-03, operator |
 | `OPS-REDIRECT-API-HOST` | OPS | After magic link, browser lands on **api.antiek.ai** (JSON/404) not app | `302` | `curl -sS -D- -o /dev/null "${API:-https://api.antiek.ai}/auth/callback?token=VALID&next=/"` | `Location: https://api.antiek.ai/...` instead of `https://antiek.ai/...` → set `ANTIEK_FRONTEND_BASE_URL` or `ANTIEK_PUBLIC_BASE_URL` (`auth.py` `_frontend_base_url`) | SPR-03, operator |
-| `OPS-MIDDLEWARE-COMMA` | OPS | Magic link + cookie OK; API returns 401 for session paths when `ANTIEK_OPERATOR_EMAIL` lists multiple addresses comma-separated | `401` | Set `ANTIEK_OPERATOR_EMAIL=alice@x.com,bob@y.com`; sign in as `bob@y.com`; `curl -sS -b c.txt "${API:-https://api.antiek.ai}/auth/me"` | Session cookie email `bob@y.com` but middleware compares to full string `alice@x.com,bob@y.com` (`app.py` L1247–1248) while `auth.py` splits on comma (L97–107) → SPR-06 shared split helper | SPR-06 |
+| `OPS-MIDDLEWARE-COMMA` | OPS | *(fixed SPR-06)* Was: magic link + cookie OK but API 401 when env listed multiple comma-separated emails | `401` | Set `ANTIEK_OPERATOR_EMAIL=alice@x.com,bob@y.com`; sign in as `bob@y.com`; `curl -sS -b c.txt "${API:-https://api.antiek.ai}/auth/me"` | **Fixed:** `operator_allowlist_from_env()` shared by `auth.py` + `app.py` middleware (session cookie + CF Access paths). Regression: `tests/test_magic_link_auth.py::test_multi_email_allowlist_middleware_accepts_both_operators` | SPR-06 ✓ |
 
 ---
 
@@ -102,7 +102,7 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
 | `OPS-CF-403` | Cloudflare challenge / 403 with non-browser UA |
 | `OPS-COOKIE-DOMAIN` | Cookie present on API host only; missing on Pages |
 | `OPS-REDIRECT-API-HOST` | `Location` host is API not frontend |
-| `OPS-MIDDLEWARE-COMMA` | Cookie email ≠ full `expected_email` env string |
+| `OPS-MIDDLEWARE-COMMA` | *(historical)* Cookie email not in comma-split allowlist — fixed SPR-06 |
 
 ---
 

@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import wernerDefault from "../../brand/werner/poses/anchor/werner_default_v5_nano_corrected.png";
 import { LemonButton, LemonInput } from "../../components/lemon";
-import { authLoginErrorDisplay, requestMagicLink, useAuth } from "../../lib/auth";
+import {
+  authCallbackErrorDisplay,
+  authLoginErrorDisplay,
+  requestMagicLink,
+  useAuth,
+} from "../../lib/auth";
 import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 
 /**
@@ -47,6 +52,28 @@ export default function Login() {
     searchParams.get("next") ??
     (location.state as { from?: string } | null)?.from ??
     "/";
+
+  // Callback failures redirect here from api.antiek.ai (SPR-03).
+  useEffect(() => {
+    const callbackError = searchParams.get("error");
+    const display = authCallbackErrorDisplay(callbackError);
+    if (!display) return;
+    setStatus("error");
+    setErrorMsg(display.message);
+    setErrorHint(display.hint);
+    setDiagnosticCode(
+      callbackError === "magic_link_expired"
+        ? "B-POLICY-CALLBACK-EXPIRED"
+        : callbackError === "magic_link_invalid"
+          ? "B-POLICY-CALLBACK-INVALID"
+          : callbackError === "not_authorized"
+            ? "B-POLICY-CALLBACK-NOT-AUTH"
+            : null,
+    );
+    const next = new URLSearchParams(searchParams);
+    next.delete("error");
+    navigate({ pathname: "/login", search: next.toString() ? `?${next}` : "" }, { replace: true });
+  }, [searchParams, navigate]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

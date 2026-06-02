@@ -180,3 +180,37 @@ export function authLoginErrorDisplay(
       return { message: result.message, hint: null };
   }
 }
+
+/** Closed set for ``/login?error=`` from callback redirects (SPR-03). */
+export type AuthCallbackErrorCode =
+  | "magic_link_expired"
+  | "magic_link_invalid"
+  | "not_authorized";
+
+const CALLBACK_ERROR_COPY: Record<
+  AuthCallbackErrorCode,
+  { message: string; hint: string }
+> = {
+  magic_link_expired: {
+    message: "This sign-in link expired.",
+    hint: "Request a new link from the form below. Links expire in 15 minutes.",
+  },
+  magic_link_invalid: {
+    message: "This sign-in link is not valid.",
+    hint: "The link may be incomplete or already used. Request a new one below.",
+  },
+  not_authorized: {
+    message: "This email is not authorized for Antiek.",
+    hint: "Ask your operator to add your address to the server allowlist.",
+  },
+};
+
+export function authCallbackErrorDisplay(
+  code: string | null,
+): { message: string; hint: string } | null {
+  if (!code) return null;
+  if (code === "magic_link_expired" || code === "magic_link_invalid" || code === "not_authorized") {
+    return CALLBACK_ERROR_COPY[code];
+  }
+  return null;
+}

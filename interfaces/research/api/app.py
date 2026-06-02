@@ -1193,12 +1193,14 @@ def create_app(
 
     @app.middleware("http")
     async def _operator_auth_middleware(request, call_next):
+        from .operator_allowlist import operator_allowlist_from_env
+
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        expected_email = os.environ.get(_OPERATOR_EMAIL_ENV, "").strip().lower()
+        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
-        if not expected_token and not expected_email and not expected_st_client_id:
+        if not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
@@ -1251,8 +1253,8 @@ def create_app(
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
                     claims = None
                 if claims is not None:
-                    expected = expected_email.strip().lower()
-                    if not expected or claims.email.lower() == expected:
+                    cookie_email = claims.email.strip().lower()
+                    if not operator_emails or cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
@@ -1261,11 +1263,11 @@ def create_app(
                         return await call_next(request)
 
         # Path 2: Cloudflare Access — browser SSO (email header)
-        if expected_email:
+        if operator_emails:
             cf_email = request.headers.get(
                 _CF_ACCESS_EMAIL_HEADER, "",
             ).strip().lower()
-            if cf_email and cf_email == expected_email:
+            if cf_email and cf_email in operator_emails:
                 _attach_operator(request, method="cloudflare_access_email")
                 return await call_next(request)
 

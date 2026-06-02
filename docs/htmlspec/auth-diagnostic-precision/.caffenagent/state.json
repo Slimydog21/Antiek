@@ -1,0 +1,13 @@
+{
+  "spec_dir": "docs/htmlspec/auth-diagnostic-precision",
+  "target_branch": "main",
+  "started": "2026-06-02T14:10:00Z",
+  "sprints": {
+    "SPR-01": { "status": "in-progress", "round": 1, "branch": "caffen/SPR-01", "worktree": "docs/htmlspec/auth-diagnostic-precision/.caffenagent/wt/SPR-01", "gate_results": {}, "merge_sha": null },
+    "SPR-02": { "status": "pending", "round": 0, "branch": "caffen/SPR-02", "worktree": null, "gate_results": {}, "merge_sha": null },
+    "SPR-03": { "status": "pending", "round": 0, "branch": "caffen/SPR-03", "worktree": null, "gate_results": {}, "merge_sha": null },
+    "SPR-04": { "status": "pending", "round": 0, "branch": "caffen/SPR-04", "worktree": null, "gate_results": {}, "merge_sha": null },
+    "SPR-05": { "status": "pending", "round": 0, "branch": "caffen/SPR-05", "worktree": null, "gate_results": {}, "merge_sha": null },
+    "SPR-06": { "status": "pending", "round": 0, "branch": "caffen/SPR-06", "worktree": null, "gate_results": {}, "merge_sha": null }
+  }
+}
