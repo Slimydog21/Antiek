@@ -115,6 +115,105 @@ def _embedding_provider() -> EmbeddingProvider:
     return default_embedding_provider()
 
 
+def build_prod_retrieval_substrate() -> object | None:
+    """ACV SPR-02 — the flywheel's READ side, wired into the prod launch path.
+
+    Open the PRODUCTION ``RetrievalSubstrate`` so a launched research retrieves
+    + reuses prior knowledge units (``host_local.py`` ``_maybe_reuse_prior_knowledge``
+    fires only when this is non-None; with ``None`` the reuse hook early-returns
+    at ``host_local.py:259`` and no ``knowledge.reused`` event is ever emitted —
+    which is exactly why the flywheel shipped dead in prod).
+
+    Two binding choices, both load-bearing:
+
+    * **Embedding model — ``default_embedding_provider()``** (resolves to
+      ``SentenceTransformerEmbedding("all-MiniLM-L6-v2")`` when sentence-transformers
+      is installed, the prod posture). This MUST match the model the graph's
+      knowledge units were embedded with at ingestion: cosine similarity across
+      two different embedding spaces is meaningless, so a mismatched model would
+      silently zero out every reuse score. We deliberately do NOT use the
+      benchmark harness's ``HashEmbedding`` / ``make_substrate("brute_force")``
+      test path (``compounding/benchmark/harness.py``): that would green a probe
+      on the wrong code path. NOTE (honest): in an environment WITHOUT
+      sentence-transformers installed, ``default_embedding_provider()`` itself
+      falls back to ``HashEmbedding`` (reuse is then functional but not semantic);
+      the wire is identical, only the resolved provider differs by env.
+
+    * **Read-only over a SNAPSHOT COPY (§16 single-writer).** No substrate is a
+      writer of the live graph; the serialized host funnel through ``db_lock``
+      remains the sole graph writer. We open the substrate against a read-only
+      SNAPSHOT COPY of the graph file, not the live file directly, for one hard
+      DuckDB reason (verified SPR-02): DuckDB refuses to hold a read-only AND a
+      read-write connection to the SAME file in the SAME process at the same time
+      ("Can't open a connection to same database file with a different
+      configuration than existing connections" — in BOTH orderings). The launch
+      path opens read-write connections to the live graph (``ensure_initialized``
+      at ``_db()``, the promotion funnel, the cascade merge), so a substrate that
+      held a long-lived ``connect_read`` on the live file would collide with them
+      and crash the launch. Reading a point-in-time COPY sidesteps the in-process
+      conflict entirely and is strictly §16-safe (the copy is a throwaway temp
+      file; the live file is never opened by this connection and never written).
+      This mirrors what ``DuckDbVssSubstrate``'s own VSS-index path already does
+      internally (it materialises its HNSW index on a temp copy precisely so it
+      never writes the operator's graph). FRESHNESS (honest): reuse therefore sees
+      the graph as of launch time, which is correct — reuse is read-only priming
+      of a research that is about to start, not a live subscription.
+      KNOWN COST (SPR-03 owns ``retrieval_substrate.py``): when vss is loadable,
+      ``DuckDbVssSubstrate.open`` copies the snapshot AGAIN internally (one extra
+      copy). SPR-03 can add a "caller already provided an isolated copy" flag to
+      the substrate to drop the double-copy; this sprint consumes the seam as-is
+      rather than editing it.
+
+    GRACEFUL DEGRADATION (binding): returns ``None`` on ANY failure (DB missing,
+    model unavailable, VSS load fails, snapshot copy fails) and NEVER raises —
+    research must continue reuse-less rather than fail. The failure reason is
+    LOGGED so an operator can distinguish "reuse disabled" (this returned None)
+    from "reuse ran, found nothing" (substrate opened, graph empty → empty
+    ``knowledge.reused`` event). ``host_local.py``'s
+    ``if self._retrieval_substrate is None: return`` already no-ops on None — we
+    rely on it.
+    """
+    import logging
+    import os
+    import shutil
+    import tempfile
+
+    log = logging.getLogger("antiek.cascade_routes")
+    try:
+        from substrate.graph import default_db_path
+        from substrate.graph.retrieval_substrate import DuckDbVssSubstrate
+
+        live_path = default_db_path()
+        if not os.path.exists(live_path):
+            log.warning(
+                "reuse disabled: graph DB %r does not exist; research will run "
+                "without prior-knowledge reuse (no knowledge.reused event)",
+                live_path,
+            )
+            return None
+
+        # Point-in-time snapshot so the substrate's read-only connection never
+        # collides in-process with the launch path's read-write connections to
+        # the live file. The temp file is intentionally NOT cleaned up here: the
+        # substrate holds it open for the runner's lifetime; it lives under the
+        # OS temp dir and is reaped by the OS / a restart. (A future close hook
+        # is SPR-03 territory.)
+        scratch = tempfile.mkdtemp(prefix="antiek-reuse-snapshot-")
+        snapshot_path = os.path.join(scratch, "reuse_snapshot.duckdb")
+        shutil.copy(live_path, snapshot_path)
+
+        model = _embedding_provider()
+        return DuckDbVssSubstrate.open(snapshot_path, model=model)
+    except Exception as exc:  # noqa: BLE001 — reuse must never break a launch
+        log.warning(
+            "reuse disabled: could not open prod retrieval substrate "
+            "(%s: %s); research will run without prior-knowledge reuse and "
+            "no knowledge.reused event will fire for this launch",
+            type(exc).__name__, exc,
+        )
+        return None
+
+
 def _decompose(problem: str, max_depth: int) -> PlanReport:
     """The decomposer the plan endpoint uses when the caller does not supply
     sub-questions. A module attribute so tests can monkeypatch it to a
@@ -364,8 +463,18 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
     funnel = PromotionFunnel(db_path=_db(), embedding_provider=_embedding_provider())
+    # ACV SPR-02 — wire the flywheel's READ side. Without this kwarg the runner's
+    # reuse hook (host_local.py:259) early-returns on None and NO knowledge.reused
+    # event fires — the dead-flywheel defect. The factory uses
+    # default_embedding_provider() (all-MiniLM-L6-v2 in prod) because the graph's
+    # knowledge units were embedded with that model at ingestion and cosine across
+    # a different model is meaningless; it opens READ-ONLY (§16 single-writer — the
+    # host funnel through db_lock stays the sole graph writer). The factory returns
+    # None (never raises) if the substrate can't open, so a dead substrate degrades
+    # to a reuse-less research, never a broken launch.
     runner = HostLocalRunner(_research_loop_factory(), budget=budget,
-                             on_emit=funnel.submit, seal_on_complete=False)
+                             on_emit=funnel.submit, seal_on_complete=False,
+                             retrieval_substrate=build_prod_retrieval_substrate())
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     await session.launch(root_id, leaves)
     _SESSIONS[session_id] = session
