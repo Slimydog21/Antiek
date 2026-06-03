@@ -227,9 +227,11 @@ def test_main_defaults_expected_sha_to_origin_main(monkeypatch):
     monkeypatch.setattr(parity, "default_expected_sha", lambda: _GOOD_SHA)
     seen = {}
 
-    def _capture(url, expected_sha):
+    def _capture(url, expected_sha, *, auth_probe=False, auth_origin="https://antiek.ai"):
         seen["url"] = url
         seen["expected_sha"] = expected_sha
+        seen["auth_probe"] = auth_probe
+        seen["auth_origin"] = auth_origin
         return 0
 
     monkeypatch.setattr(parity, "run", _capture)
