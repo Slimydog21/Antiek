@@ -29,12 +29,11 @@ What's here:
   spike modules referenced by the SPR-05 decision record.
 
 §9.0 gate (CRITICAL — composed, never re-implemented): every impl delegates
-the restricted-content gate to the *same* ``search()`` call (or, for VSS, the
-*same* ``PRIVILEGED_POLICY_TAGS`` / ``RESTRICTED_CONTENT_CLASSES`` predicate
-that ``search()`` applies). On main the gate is still the fail-open DENYLIST
-(``content_class IS NULL OR NOT IN (...)``) — the §9.0 allowlist unification
-is staged separately (PR #38, unmerged). This seam composes *whatever is on
-main*; it does not assume the fix landed.
+the non-privileged chunk gate to the *same* canonical helper as ``search()`` —
+``retrieval_gate.non_privileged_chunk_sql_clause`` (BruteForce via ``search()``;
+VSS via the same helper in ``_vss_query``). Never hand-roll
+``RESTRICTED_CONTENT_CLASSES`` alone; owner-only ``personal_reading`` is
+excluded on the same branch as gated-but-public ``restricted_pending_opt_in``.
 
 §16 single-writer (CRITICAL): no substrate is a writer. Every impl reads
 through a read-only connection (``runtime.db_lock.connect_read``); the
@@ -50,9 +49,8 @@ from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 try:
+    from .retrieval_gate import non_privileged_chunk_sql_clause
     from .search import (
-        PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
         EmbeddingModel,
         search,
         search_nodes_by_label,
@@ -60,20 +58,19 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.graph.search import (  # type: ignore[no-redef]
-        PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
+    from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+    from substrate.graph.search import (
         EmbeddingModel,
         search,
         search_nodes_by_label,
     )
 
 try:
-    from ...runtime.db_lock import connect_read
+    from ...runtime.db_lock import connect_read  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read
 
 
 _log = logging.getLogger("antiek.retrieval_substrate")
@@ -109,7 +106,7 @@ class RetrievalSubstrate(Protocol):
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict: ...
+    ) -> dict[str, Any]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +141,7 @@ class BruteForceSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         return search(
             self._con,
             text,
@@ -156,10 +153,10 @@ class BruteForceSubstrate:
         )
 
     def close(self) -> None:
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +375,7 @@ class DuckDbVssSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         if not self.vss_active:
             # Fallback path — identical to the brute-force reference.
             return search(
@@ -394,7 +391,7 @@ class DuckDbVssSubstrate:
     def _vss_query(
         self, text: str, *, top_k: int, source_tier_max: int | None,
         document_ids: Sequence[str] | None, policy_tag: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
 
@@ -436,19 +433,18 @@ class DuckDbVssSubstrate:
         if source_tier_max is not None:
             sql += " AND d.source_tier <= ?"
             params.append(int(source_tier_max))
-        # §9.0 gate — composed from search.py's CANONICAL constants + the
-        # SAME predicate main applies (fail-open denylist on main; the §9.0
-        # allowlist unification is staged separately in PR #38, unmerged).
-        if policy_tag not in PRIVILEGED_POLICY_TAGS:
-            restricted = list(RESTRICTED_CONTENT_CLASSES)
-            placeholders = ",".join("?" for _ in restricted)
-            sql += f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
-            params.extend(restricted)
+        # §9.0 gate — same canonical helper as search(); never RESTRICTED-only.
+        gate_sql, gate_params = non_privileged_chunk_sql_clause(
+            table_alias="d",
+            policy_tag=policy_tag,
+        )
+        sql += gate_sql
+        params.extend(gate_params)
         sql += " ORDER BY array_cosine_distance(" + emb + ", " + vec_str + ") ASC LIMIT ?"
         params.append(int(top_k))
 
         rows = self._con.execute(sql, params).fetchall()
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         for (
             chunk_id, section, ctext, tokens, doc_id, chunk_index,
             title, tier, dtype, sim,
@@ -473,10 +469,10 @@ class DuckDbVssSubstrate:
         }
 
     def close(self) -> None:
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 def _exists(path: str) -> bool:
@@ -497,7 +493,7 @@ def make_substrate(
     *,
     model: EmbeddingModel,
     **adapter_kwargs: Any,
-):
+) -> RetrievalSubstrate:
     """Construct a ``RetrievalSubstrate`` for ``kind``.
 
     ``kind`` ∈ {"vss" (default winner), "brute_force" (reference),

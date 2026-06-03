@@ -185,6 +185,13 @@ jobs:
         run: |
           python tools/lint/serve_invariants_check.py
 
+      - name: Retrieval gate drift check
+        # RG-04: forbid RESTRICTED-only chunk-gate reimplementation on the VSS
+        # substrate and GET /chunks — must delegate to retrieval_gate helpers
+        # (non_privileged_chunk_sql_clause / is_chunk_body_withheld).
+        run: |
+          python tools/lint/retrieval_gate_check.py
+
       - name: arXiv contact-guard check
         # SPR-09 M3: forbid a NEW provider.send( / OutboundEmail( site outside
         # the allowlist (operator magic-link auth.py + the deny-by-default

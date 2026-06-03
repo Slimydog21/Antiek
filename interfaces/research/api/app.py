@@ -2161,7 +2161,7 @@ def create_app(
         import duckdb as _duckdb
 
         from substrate.graph import default_db_path
-        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
+        from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
         db_path = default_db_path()
         try:
@@ -2204,13 +2204,13 @@ def create_app(
         content_class = row[7]
         taken_down = bool(row[8])
         # Takedown wins over everything; otherwise withhold only the
-        # named restricted classes (NULL/legacy passes — same as search).
-        if taken_down:
-            servable, label = False, "taken_down"
-        elif content_class in RESTRICTED_CONTENT_CLASSES:
-            servable, label = False, "restricted"
+        # non-privileged excluded classes (NULL/legacy passes — search).
+        withheld, label = is_chunk_body_withheld(content_class, taken_down=taken_down)
+        if withheld:
+            servable, label = False, label
         else:
             servable, label = True, None
+
         return ChunkResponse(
             chunk_id=row[0],
             # Withhold the body for a non-servable source. The whole point

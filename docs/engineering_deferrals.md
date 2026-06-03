@@ -533,6 +533,18 @@ window runs, the personal lane holds zero real third-party documents on prod.
 After any ingest, run the lane audit (`substrate/corpus_audit.py`) to confirm
 zero third-party docs on a servable class.
 
+**Retrieval gate closure (RG-06, verified 2026-06-02):** the ingest window and
+unlock criterion above are **unchanged** — still operator-invoked real-network
+ingest only. RG-01..RG-05 closed the latent VSS + `GET /chunks` seams (defects
+A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D17 is a
+**mandatory retrieval spot-check after each connector ingest**: VSS query @
+`attribution_eligible` must not rank `personal_reading`, and
+`GET /chunks/{chunk_id}` must withhold body (`servable=False`,
+`servability=personal_only`). Procedure:
+`infrastructure/runbooks/retrieval-gate-closure.md` §2 (runs after
+`personal-lane.md` step 4 passes). **Halt ingest** if spot-check or
+`retrieval_gate_check` fails — do not continue the window.
+
 ## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
 
 **Status:** ❌ Deferred. The GATE shipped (PR #42 / `abde67e`); its PRODUCER did not.
@@ -540,7 +552,6 @@ zero third-party docs on a servable class.
 **Spec reference:** `docs/decisions/arxiv-corpus-first-reframe.md`; reframe P3b in `~/specs/antiek-arxiv-ingest/.caffenagent/reframe-run.json`.
 **Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until `reports/source_census.json` exists**, so the gate cannot block any onboarding until a census is produced. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
 **Action when unlocked:** implement `compute_source_census(con, source)` over the real corpus — `dedup_overlap_pct` via the one `substrate.dedup` identity ladder; metadata / linkback / t1 / open via plain `documents` SQL — then emit + commit `reports/source_census.json`, calibrate the PROVISIONAL thresholds against the first real arXiv census, and the wired CI gate enforces automatically.
-
 ---
 
 ## Cross-reference: unlock criterion → deferrals it gates
