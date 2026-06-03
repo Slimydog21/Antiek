@@ -54,6 +54,7 @@ concurrency between investigations.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -68,7 +69,7 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from datetime import UTC
+from datetime import UTC  # noqa: E402 — after sys.path bootstrap above
 
 from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from orchestration.audit import audit_phase_log  # noqa: E402
@@ -101,7 +102,7 @@ from substrate.schemas import (  # noqa: E402
     SynthesizeRequestedPayload,
 )
 
-from .coordinator import InvestigationCoordinator, broadcast_emit
+from .coordinator import InvestigationCoordinator, broadcast_emit  # noqa: E402
 
 _log = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ def _keyword_search_chunks(
         "chunk_id", "section_path", "chunk_text", "token_count",
         "document_title", "source_tier", "document_type", "hit_count",
     ]
-    return [dict(zip(cols, r)) for r in rows]
+    return [dict(zip(cols, r, strict=True)) for r in rows]
 
 
 def _render_chunks_block_for_sub_question(
@@ -928,7 +929,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             "patched" if result.any_patched
             else ("no_match" if not result.domains_matched else "failed")
         )
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover — diagnostic only
             _emit(
                 ctx.investigation_id,
                 AutoPatchAppliedPayload(
@@ -943,8 +944,6 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                 role="auto_patch",
                 policy_id="orchestrator-deterministic",
             )
-        except Exception:  # pragma: no cover — diagnostic only
-            pass
     return await _drive_phase(ctx, phase=8, work=work())
 
 
@@ -989,10 +988,8 @@ async def _run_investigation(
                 policy_id="orchestrator-deterministic",
             )
             # Audit the failure path so dashboards surface the gap.
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
                 audit_phase_log(ctx.investigation_id, emit=True)
-            except Exception:  # pragma: no cover — diagnostic
-                pass
             return
 
     # Phase 9: assert completion-ready.
@@ -1134,10 +1131,8 @@ def _accumulated_chase_cost_usd(investigation_id: str) -> float:
         for r in rows:
             at = r.get("action_type")
             if at == ActionType.DISPATCH_CALL.value:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     total += float((r.get("payload") or {}).get("cost_usd") or 0.0)
-                except (TypeError, ValueError):
-                    pass
             elif at == ActionType.INVESTIGATION_START_REQUESTED.value:
                 parent = (r.get("payload") or {}).get("parent_investigation_id")
         current = parent
