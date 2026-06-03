@@ -59,8 +59,14 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    import duckdb
+
+    from substrate.dispatch.research_tier import ResearchTier
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -71,7 +77,10 @@ if _PKG_ROOT not in sys.path:
 
 from datetime import UTC  # noqa: E402 — after sys.path bootstrap above
 
-from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
+from interfaces.research.api.broadcast import (  # noqa: E402
+    EventBroadcaster,
+    EventHandler,
+)
 from orchestration.audit import audit_phase_log  # noqa: E402
 from orchestration.phase_runner import (  # noqa: E402
     enter_phase,
@@ -147,12 +156,12 @@ def _extract_keywords(text: str, *, min_len: int = 3, max_n: int = 8) -> list[st
 
 
 def _keyword_search_chunks(
-    con,
+    con: duckdb.DuckDBPyConnection,
     keywords: list[str],
     top_k: int,
     *,
     policy_tag: str = "attribution_eligible",
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Lexical fallback. For each keyword run a LIKE; collect chunks
     with their match count; rank by match count then source tier.
     Cheap, deterministic, works without sentence-transformers.
@@ -256,7 +265,7 @@ def _render_chunks_block_for_sub_question(
     # hits since lexical matches are usually higher signal than weak
     # hash-embedding cosines.
     seen: set[str] = set()
-    merged: list[dict] = []
+    merged: list[dict[str, Any]] = []
     for r in embedding_hits + kw_hits:
         cid = r.get("chunk_id")
         if not cid or cid in seen:
@@ -328,7 +337,7 @@ class InvestigationContext:
     # Sprint 12: continuous-chase parameters threaded from the start
     # payload. When chase_mode != "off", the orchestrator hooks
     # _maybe_spawn_chase_child after _run_investigation completes.
-    chase_mode: str = "off"
+    chase_mode: Literal["off", "depth", "duration"] = "off"
     chase_value: int = 0
     chase_budget_usd: float = 2.0
     parent_investigation_id: str | None = None
@@ -338,12 +347,12 @@ class InvestigationContext:
     # substrate/dispatch/research_tier.py). Carried so a chase-spawned
     # child inherits the parent's tier rather than silently snapping back
     # to the default.
-    research_tier: str = "deep"
+    research_tier: ResearchTier | None = "deep"
 
 
-def _action_value(action_type) -> str:
+def _action_value(action_type: ActionType | str) -> str:
     """ActionType enum or string → string."""
-    if hasattr(action_type, "value"):
+    if isinstance(action_type, ActionType):
         return action_type.value
     return str(action_type)
 
@@ -437,7 +446,7 @@ async def _run_phase_1(
     orientation.md marker file so the file-artifact Phase 1
     postcondition (Prior Graph Knowledge section + chunk_/node_
     regex citation) passes."""
-    async def work():
+    async def work() -> None:
         await broadcast_emit(
             broadcaster,
             ctx.investigation_id,
@@ -503,7 +512,7 @@ async def _run_phase_2(
         ctx.fail_reason = "decomposition produced no sub-questions"
         return False
 
-    async def work():
+    async def work() -> None:
         # §9.0 research lane. Default 'attribution_eligible' (public lane,
         # unchanged behaviour). An owner researching their OWN acquired corpus
         # sets ANTIEK_RESEARCH_POLICY_TAG=private_research so their gated
@@ -564,7 +573,7 @@ async def _run_phase_3(
 ) -> bool:
     """Phase 3 (Round 1 critique) — extract parameters from the
     evidence retriever outputs."""
-    async def work():
+    async def work() -> None:
         evidence_block = json.dumps(
             [e.model_dump() for e in ctx.evidence],
             indent=2, default=str,
@@ -610,7 +619,7 @@ async def _run_phase_4(
     can land in a future sprint); the connector bridge handles
     empty-seed requests gracefully (role still gets a chance to
     confirm any pre-resolved mappings)."""
-    async def work():
+    async def work() -> None:
         await broadcast_emit(
             broadcaster,
             ctx.investigation_id,
@@ -648,7 +657,7 @@ async def _run_phase_5(ctx: InvestigationContext) -> bool:
     is subsumed by the constraint loop inside the synthesizer bridge.
     The orchestrator writes the marker file so the phase log stays
     contiguous for downstream audit."""
-    async def work():
+    async def work() -> None:
         body = (
             "# Round 2 critique\n\n"
             "_Constraint loop handled the round-2 critique role "
@@ -793,7 +802,10 @@ async def _run_phase_6(
         ctx.fail_reason = "phase 6 entered without parameters"
         return False
 
-    async def work():
+    async def work() -> None:
+        # Guarded by the `ctx.parameters is None` check above; re-assert
+        # here so the type narrows through the closure boundary.
+        assert ctx.parameters is not None
         decomposition_block = (
             ctx.decomposition.model_dump_json(indent=2)
             if ctx.decomposition is not None else "(none)"
@@ -851,7 +863,10 @@ async def _run_phase_7(ctx: InvestigationContext) -> bool:
         ctx.fail_reason = "phase 7 entered without synthesis"
         return False
 
-    async def work():
+    async def work() -> None:
+        # Guarded by the `ctx.synthesis is None` check above; re-assert
+        # here so the type narrows through the closure boundary.
+        assert ctx.synthesis is not None
         row = {
             "synthesis_id": f"syn-{ctx.investigation_id}",
             "investigation_id": ctx.investigation_id,
@@ -892,7 +907,10 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
         ctx.fail_reason = "phase 8 entered without synthesis"
         return False
 
-    async def work():
+    async def work() -> None:
+        # Guarded by the `ctx.synthesis is None` check above; re-assert
+        # here so the type narrows through the closure boundary.
+        assert ctx.synthesis is not None
         thesis = {
             "thesis_summary": ctx.synthesis.thesis_summary,
             "thesis_components": [
@@ -960,7 +978,7 @@ async def _run_investigation(
     """Walk all 9 phases. On any phase failure, emits
     ``investigation.failed`` and returns. On success, emits
     ``investigation.completed`` with the synthesis verdict."""
-    phases = [
+    phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_1(ctx, broadcaster, coordinator),
         lambda: _run_phase_2(ctx, broadcaster, coordinator),
         lambda: _run_phase_3(ctx, broadcaster, coordinator),
@@ -1037,7 +1055,7 @@ async def _run_investigation(
 def make_loop_one_handler(
     broadcaster: EventBroadcaster,
     coordinator: InvestigationCoordinator,
-):
+) -> EventHandler:
     """Build the Loop 1 handler. Subscribes to
     ``INVESTIGATION_START_REQUESTED``; for each request, spawns a
     detached task that runs the 9-phase sequence."""
@@ -1180,7 +1198,16 @@ async def _maybe_spawn_chase_child(
     depth, root_id = _walk_chase_chain(ctx.investigation_id)
     cost_total = _accumulated_chase_cost_usd(ctx.investigation_id)
 
-    halt_reason: str | None = None
+    halt_reason: (
+        Literal[
+            "depth_reached",
+            "duration_reached",
+            "budget_exceeded",
+            "no_open_questions",
+            "chase_disabled",
+        ]
+        | None
+    ) = None
     if ctx.chase_mode == "depth":
         if depth + 1 > ctx.chase_value:
             halt_reason = "depth_reached"
@@ -1228,6 +1255,11 @@ async def _maybe_spawn_chase_child(
             policy_id="orchestrator-chase",
         )
         return
+
+    # Reaching here means halt_reason is None, which (per the block above)
+    # is only possible when _select_chase_question returned a non-None
+    # question. Re-assert so the type narrows for the spawn payloads.
+    assert next_question is not None
 
     # Spawn the child: emit a new INVESTIGATION_START_REQUESTED event
     # for a fresh investigation id. The same handler picks it up and
