@@ -40,6 +40,16 @@ S0 leaves this directory empty. S3 lands the system:
 | `LemonModal`             | 100     |
 | `LemonToast`             | 200     |
 
+## Chrome mode (PostHog Feel)
+
+| Store | Renderer | Mode | Elevation |
+|-------|----------|------|-----------|
+| `WorkspaceStore` | `PanelLayoutPanel` (floating) | **opaque-chunky** | `shadowForStackDepth(depth, "opaque-chunky")` — wired FEEL-S2 |
+| `WorkspaceStore` | docked panels | flat | depth 0 — no stack shadow |
+| `windowsStore` | `WorkspaceWindow` | **glass-scene** | minimal title-bar shadow — wired FEEL-S3 |
+
+Contract: `src/design/FEEL_CONTRACT.md` + `elevation.ts`. ResearchWorkstation IDE is **exempt** (dense opaque center, not a floating stack).
+
 ## Full spec
 
 `docs/ui_redesign_posthog/sprint_03_panel_layout.html`

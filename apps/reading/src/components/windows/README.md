@@ -5,6 +5,15 @@ whole product pages over the SPR-04 mountainscape — multipliable like a
 developer's terminals. Built on the real floating primitives (no new
 window-manager dependency, D6).
 
+## Chrome mode (PostHog Feel)
+
+| Surface | Mode | Shadow policy |
+|---------|------|----------------|
+| `WorkspaceWindow` (floating) | **glass-scene** | `shadowForStackDepth(_, "glass-scene")` — z1 title-bar only; body blur unchanged (FEEL-S3) |
+| Scene / `GlassSurface` | exempt | no opaque stack chrome |
+
+Cascade geometry uses `cascadeOffset(n, "windows")` (28px step, 224px wrap) — must match `windowsStore` `cascadeRect`. Contract: `src/design/FEEL_CONTRACT.md`.
+
 ## Files
 
 | File | Role |
