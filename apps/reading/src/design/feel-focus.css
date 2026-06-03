@@ -1,0 +1,20 @@
+/**
+ * feel-focus.css — shared keyboard focus bundle (FEEL-S5).
+ * Controls: ring-sun. Panels/windows use outline-sun on chrome (see consumers).
+ */
+.feel-focusable:focus {
+  outline: none;
+}
+
+.feel-focusable:focus-visible {
+  outline: 2px solid var(--sun);
+  outline-offset: 2px;
+}
+
+.feel-focusable-ring:focus {
+  outline: none;
+}
+
+.feel-focusable-ring:focus-visible {
+  box-shadow: 0 0 0 2px var(--sun);
+}

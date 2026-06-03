@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 
 import LemonButton from "../components/lemon/LemonButton";
 import { LemonDropdown, LemonMenuItem } from "../components/lemon/LemonDropdown";
+import { press } from "../design/motion";
 
 import { useWorkspace } from "./WorkspaceStore";
 import { clampRectToViewport } from "./panelLayoutLogic";
@@ -131,7 +132,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
         className={
           "shrink-0 flex items-center gap-2 px-2.5 py-1.5 " +
           "border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2 " +
-          (draggable ? "cursor-grab active:cursor-grabbing select-none " : "") +
+          (draggable ? `cursor-grab active:cursor-grabbing select-none shadow-z1 dark:shadow-z1-night ${press} ` : "") +
           (focused ? "" : "opacity-90")
         }
         onPointerDown={onPointerDown}

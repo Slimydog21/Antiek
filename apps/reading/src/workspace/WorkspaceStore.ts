@@ -127,7 +127,7 @@ export const useWorkspace = create<Store>()((set, get) => ({
         props,
         mode,
         zIndex: z,
-        rect: initialFloatingRect(z),
+        rect: initialFloatingRect(s.floatingIds.length),
         size: defaultDockedSize(),
         pinned: false,
         title: opts.title ?? kind,

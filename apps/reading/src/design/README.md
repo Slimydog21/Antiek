@@ -10,7 +10,11 @@ off-white + glacial day surfaces, layered off-black + dark-grey night surfaces.
   by every component that needs a colour or shadow constant outside the
   Tailwind class system.
 - `tokens.css` — CSS-var sibling, for non-TS contexts (Storybook docs).
+- `elevation.ts` — stack depth → `shadow-z*` tiers + cascade offsets (PostHog
+  Feel programme). See `FEEL_CONTRACT.md`.
+- `FEEL_CONTRACT.md` — dual-store chrome modes (opaque-chunky vs glass-scene).
 - `moodboard.stories.tsx` — visual gate; operator-signed.
+- `Elevation.stories.tsx` — opaque vs glass reference swatches.
 
 ## Rules
 

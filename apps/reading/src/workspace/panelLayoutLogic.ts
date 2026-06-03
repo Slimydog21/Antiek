@@ -6,6 +6,7 @@
  * here; nothing else in `src/workspace/` should re-implement these.
  */
 
+import { cascadeOffset } from "../design/elevation";
 import type { PanelDescriptor } from "./panel.types";
 
 /** Distance from a floating panel's edge to the viewport edge that
@@ -69,10 +70,12 @@ export function reorderArray<T>(arr: T[], fromIndex: number, toIndex: number): T
  * each new floating panel ~22px right + down of the previous so they
  * don't stack exactly on top of each other.
  */
-export function initialFloatingRect(z: number): PanelDescriptor["rect"] {
+/** @param stackIndex — count of floating panels before this open (see `WorkspaceStore.open`). */
+export function initialFloatingRect(stackIndex: number): PanelDescriptor["rect"] {
+  const off = cascadeOffset(stackIndex, "panels");
   return {
-    x: 120 + ((z * 22) % 200),
-    y: 120 + ((z * 22) % 200),
+    x: 120 + off.x,
+    y: 120 + off.y,
     width: 560,
     height: 420,
   };

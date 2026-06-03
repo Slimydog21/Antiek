@@ -96,6 +96,18 @@ export const Scene: Story = {
               <LemonButton size="sm" onClick={() => reopen("FakeChat")}>
                 + Chat
               </LemonButton>
+              <LemonButton
+                size="sm"
+                data-testid="feel-three-stack"
+                onClick={() => {
+                  reset();
+                  open("FakeSidebar", {}, { mode: "floating", title: "Stack 1", id: "feel:1" });
+                  open("FakeNotebook", {}, { mode: "floating", title: "Stack 2", id: "feel:2" });
+                  open("FakeChat", {}, { mode: "floating", title: "Stack 3", id: "feel:3" });
+                }}
+              >
+                3-stack harness
+              </LemonButton>
             </div>
           </header>
 

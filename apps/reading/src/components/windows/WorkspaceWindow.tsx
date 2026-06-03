@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
+import { shadowForStackDepth } from "../../design/elevation";
 import { clampRectToViewport } from "../../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
@@ -60,6 +61,7 @@ export function WorkspaceWindow({
   onOpenHouse,
 }: WorkspaceWindowProps) {
   const win = useWindows((s) => s.windows[id]);
+  const orderIndex = useWindows((s) => Math.max(0, s.order.indexOf(id)));
   const isFocused = useWindows((s) => s.focusedId === id);
   const focus = useWindows((s) => s.focus);
   const close = useWindows((s) => s.close);
@@ -238,6 +240,12 @@ export function WorkspaceWindow({
       ? "bg-glass backdrop-blur-glass"
       : "bg-glass opacity-95";
 
+  let titleDepth = orderIndex;
+  if (isFocused) {
+    titleDepth = Math.min(3, titleDepth + 1);
+  }
+  const titleBarShadow = shadowForStackDepth(titleDepth, "glass-scene");
+
   return (
     <motion.div
       ref={rootRef}
@@ -256,8 +264,8 @@ export function WorkspaceWindow({
         surfaceClass +
         " border-edge border-glass rounded-hog flex flex-col overflow-hidden " +
         (isFocused
-          ? "shadow-z3 dark:shadow-z3-night outline outline-2 outline-offset-[3px] outline-sun"
-          : "shadow-z2 dark:shadow-z2-night")
+          ? " outline outline-2 outline-offset-[3px] outline-sun"
+          : "")
       }
       onMouseDownCapture={() => focus(id)}
       onKeyDown={onKeyDown}
@@ -270,6 +278,8 @@ export function WorkspaceWindow({
         className={
           "shrink-0 flex items-center gap-2 px-2.5 py-1.5 select-none " +
           "border-b-edge border-glass bg-glass " +
+          titleBarShadow +
+          " " +
           (isFull ? "cursor-default" : "cursor-grab active:cursor-grabbing") +
           " focus:outline-none focus-visible:ring-2 focus-visible:ring-sun"
         }
