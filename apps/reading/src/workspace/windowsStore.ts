@@ -64,6 +64,8 @@
 
 import { create } from "zustand";
 
+import { cascadeOffset } from "../design/elevation";
+
 /** A window hosts a product page identified by its route kind. The kind is a
  *  free string (the route key); openWindow.ts maps each to a renderer. We do
  *  NOT reuse PanelKind — a window hosts a *page*, not a panel surface. */
@@ -162,11 +164,10 @@ function uniqueId(prefix: string): string {
   return `win:${prefix}:${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** Cascade each new window ~28px down-right of the previous so a fresh
- *  window never lands exactly atop the last (matches the panel cascade feel). */
+/** Cascade each new window down-right of the previous (elevation contract). */
 function cascadeRect(n: number): WindowRect {
-  const step = (n * 28) % 224;
-  return { ...DEFAULT_RECT, x: DEFAULT_RECT.x + step, y: DEFAULT_RECT.y + step };
+  const off = cascadeOffset(n, "windows");
+  return { ...DEFAULT_RECT, x: DEFAULT_RECT.x + off.x, y: DEFAULT_RECT.y + off.y };
 }
 
 export const useWindows = create<Store>()((set, get) => ({

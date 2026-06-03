@@ -42,11 +42,16 @@ describe("elevation — shadowForStackDepth", () => {
     );
   });
 
-  it("glass-scene returns minimal title-bar shadow only (no depth scaling)", () => {
-    const shallow = shadowForStackDepth(0, "glass-scene");
-    const deep = shadowForStackDepth(3, "glass-scene");
-    expect(shallow).toBe("shadow-z1 dark:shadow-z1-night");
-    expect(deep).toBe(shallow);
+  it("glass-scene title-bar tiers scale with stack depth (body stays glass)", () => {
+    expect(shadowForStackDepth(0, "glass-scene")).toBe(
+      "shadow-z1 dark:shadow-z1-night",
+    );
+    expect(shadowForStackDepth(3, "glass-scene")).toBe(
+      "shadow-z3 dark:shadow-z3-night",
+    );
+    expect(shadowForStackDepth(0, "glass-scene")).not.toBe(
+      shadowForStackDepth(3, "glass-scene"),
+    );
   });
 });
 

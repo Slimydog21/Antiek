@@ -114,6 +114,19 @@ test.describe("AMS-v2 SPR-04 — windows are the default interaction", () => {
     await expect(wins).toHaveCount(3);
     for (let i = 0; i < 3; i++) await expect(wins.nth(i)).toBeVisible();
 
+    const titleBars = page.locator("[data-windows-layer] [data-window-titlebar]");
+    const barBoxes = await titleBars.evaluateAll((nodes) =>
+      nodes.map((n) => {
+        const r = n.getBoundingClientRect();
+        return { x: Math.round(r.x), y: Math.round(r.y) };
+      }),
+    );
+    expect(barBoxes.length).toBe(3);
+    const first = barBoxes[0];
+    const last = barBoxes[2];
+    expect(Math.abs(last.x - first.x)).toBeGreaterThanOrEqual(18);
+    expect(Math.abs(last.y - first.y)).toBeGreaterThanOrEqual(18);
+
     // The scene is sampled VISIBLE to the RIGHT of the cascaded windows (they
     // float top-left, ≤ x≈872px / 0.68; this band is right of all three),
     // proving the windows float OVER the scene rather than replacing it.
