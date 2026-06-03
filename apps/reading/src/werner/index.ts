@@ -39,10 +39,25 @@ export {
   SAMPLE_INTERVAL_MS,
   FOLLOW_EASE,
   POINTER_IDLE_MS,
+  centerLaggedTarget,
   type MouseFollow,
   type FollowReading,
   type UseMouseFollowOptions,
 } from "./useMouseFollow";
+
+export { wernerIceFishingCursor } from "./iceFishingFlags";
+export {
+  REEL_TAU_MS,
+  REEL_MAX_PX_PER_S,
+  ROAM_STROLL_MS,
+  ROAM_REST_MIN_MS,
+  ROAM_REST_MAX_MS,
+} from "./iceFishingConstants";
+export { reelStep, isReelSettled } from "./reelPursuit";
+export { WernerIceBait } from "./WernerIceBait";
+export { WernerFishingLayer } from "./WernerFishingLayer";
+export { WernerIceCursorShell } from "./WernerIceCursorShell";
+export { catenaryPath, rodTipFromMascotRect } from "./fishingLineGeometry";
 
 export {
   EmoteView,
