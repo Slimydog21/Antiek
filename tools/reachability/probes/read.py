@@ -39,7 +39,7 @@ Why this is an OUTCOME and not a file-presence check (rigor #3):
     restore → GREEN).
   - The DEEPER render outcome (BookReader actually renders Attribution +
     TocPanel + the float-menu without a TypeError) is asserted by the vitest
-    suite ``apps/reading/src/modes/Reading/Reading.test.tsx`` (27 tests),
+    suite ``apps/reading/src/modes/Reading/Reading.test.tsx`` (30 tests),
     which runs under ``npm test`` / the build's typecheck. This probe is the
     BLOCKING route/mount/variant assertion that complements that render test
     inside the SPR-01 gate.

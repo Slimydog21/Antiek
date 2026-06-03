@@ -52,11 +52,13 @@ centered-lagged-hook effect (`reelStep` / `isReelSettled` /
 (`PenguinMascot.iceFishing.test.tsx` + `.compat.` + `.integration.`) **pass
 17/17**; the whole `src/shell/` suite passes 96/96 under the default config;
 `npx tsc -b` exits 0; `npm run build` emits the production bundle (including
-the werner ice-fishing image assets). A single transient `werner-waddle`
-timing assertion (`PenguinMascot.test.tsx:278`) flaked **once** under a
-hand-picked multi-glob invocation under first-run load and did **not**
-reproduce across 6 subsequent runs nor in the default config — it is a
-fake-timer scheduling jitter, not an ice-fishing contradiction.
+the werner ice-fishing image assets). A `werner-waddle` timing assertion in
+the **pre-existing SPR-06 roam test** (`PenguinMascot.test.tsx:250`, NOT an
+ice-fishing test) reproduces in **~2 of 3 full-file runs** of that file under
+fake-timer load but **passes 5/5 when isolated** (`-t`) — i.e. test-pollution /
+scheduling jitter, **not** an ice-fishing contradiction and **not** introduced
+by SPR-04 (it predates this sprint in the werner series; SPR-04 changed zero TS).
+It does not gate this diff; the flaky roam test is flagged for a separate fix.
 
 **Action taken: NONE on the shell.** Stripping #52 lines from PenguinMascot
 would have meant inventing edits that do not exist. The convergence was
@@ -112,9 +114,10 @@ operator surfaces**, not Read features:
 | `MarketplaceMetrics` | `modes/MarketplaceMetrics/` | no (0 importers) | §9.0-gated, Wave-3 deferred |
 | `PayoutDashboard` | `modes/PayoutDashboard/` | no (0 importers) | §9.0-gated, Wave-3 deferred |
 
-(The 4 source references to "Economics" are a Speak-local `economics`
-useState + a `getEconomics`/`EconomicsView` Speak API — NOT the
-`modes/Economics` mode.)
+(The 2 source references to "Economics" are doc-comments in
+`apps/reading/src/reading-physics/types.ts:156` and
+`augmentations/accrual.ts:5` — NOT imports of the `modes/Economics` mode,
+which has zero real importers.)
 
 ### Decision: keep all 5 — defer, do NOT amputate
 
@@ -175,7 +178,7 @@ tree-shaken out of the bundle, or a render that throws at runtime. What would
 unblock it: a Playwright/chromium harness in CI (`apps/reading` declares
 `@playwright/test` + an `e2e` script; the chromium binary is not installed on
 this box). Until then, the render-throw failure mode is covered by the jsdom
-render suite `apps/reading/src/modes/Reading/Reading.test.tsx` (27 tests,
+render suite `apps/reading/src/modes/Reading/Reading.test.tsx` (30 tests,
 mounting `/read/:documentId` → BookReader and asserting Attribution + TocPanel
 + the float-menu render without a TypeError), which runs under `npm test`;
 and tree-shaking of an unconditional top-level `<Route>` is not a real risk.
