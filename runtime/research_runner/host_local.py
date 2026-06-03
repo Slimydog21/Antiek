@@ -43,6 +43,7 @@ import asyncio
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 try:
     from ...event_log import log_event, seal_investigation
@@ -105,6 +106,15 @@ class LoopContext:
         self._stop = False
         self._pending_redirect: str | None = None
         self.paused = False
+        # ACV SPR-06 — the assembled reuse pack from this investigation's
+        # ``start`` (the units ``_maybe_reuse_prior_knowledge`` injected). A
+        # reuse-CONSUMING browse loop reads this to short-circuit planned steps
+        # already covered by a reused unit (so cost drops when primed). It is a
+        # PLAIN READ-ONLY list of ``RetrievedUnit`` — the loop never writes the
+        # graph through it (§16). ``None`` for the cold path / a loop that
+        # ignores reuse (the demo loop), so reading it is purely additive and
+        # the demo loop is byte-unchanged.
+        self.pack: list[Any] | None = None
 
     # -- steering (mutated by the runner from steer()) -----------------
 
@@ -168,6 +178,12 @@ class _ResearchState:
         self.error: str | None = None
         self.follow_ups: list[str] = []
         self.started = False
+        # ACV SPR-06 — the reuse pack assembled in ``start`` (before the loop's
+        # LoopContext exists). Captured here so ``_run`` can attach it to the
+        # context the reuse-consuming loop reads. Empty list (not None) once
+        # reuse ran, even if it retrieved nothing — so the consuming loop sees
+        # "reuse ran, covered nothing" distinctly from "no reuse path".
+        self.reuse_pack: list[Any] | None = None
 
 
 class HostLocalRunner:
@@ -243,42 +259,60 @@ class HostLocalRunner:
         # event land before the first StepEvent the loop emits). No-op unless a
         # RetrievalSubstrate was injected; non-fatal on any failure (a retrieval
         # hiccup must degrade to "no reuse", never a dead investigation).
-        self._maybe_reuse_prior_knowledge(investigation_id, plan)
+        # ACV SPR-06: the retrieved units are captured on the state so ``_run``
+        # can thread them onto the LoopContext a reuse-CONSUMING loop reads.
+        st.reuse_pack = self._maybe_reuse_prior_knowledge(investigation_id, plan)
 
         st.task = asyncio.create_task(self._run(st))
         return Handle(investigation_id)
 
-    def _maybe_reuse_prior_knowledge(self, investigation_id: str, plan: ResearchPlan) -> None:
+    def _maybe_reuse_prior_knowledge(
+        self, investigation_id: str, plan: ResearchPlan
+    ) -> list[Any] | None:
         """AFF SPR-06 reuse hook (called exactly once from ``start``).
 
         Composes ``substrate.context_pack.knowledge_reuse`` — retrieve prior
         units relevant to ``plan.sub_question``, filter to §9.0-servable +
         token-bounded top-k, inject a single reuse layer into a context pack, and
         emit one ``knowledge.reused`` event on this investigation's JSONL. Lives
-        on the existing ``start`` path; adds no ResearchRunner protocol method."""
+        on the existing ``start`` path; adds no ResearchRunner protocol method.
+
+        ACV SPR-06: returns the INJECTED units (``assemble_context_pack_with_reuse``
+        already filtered them through §9.0-servability + the SPR-08 trust gate +
+        the relevance floor + the token budget, so this is exactly the pack the
+        model would see) so ``start`` can thread them onto the LoopContext a
+        reuse-CONSUMING loop reads. Returns ``None`` when no retrieval substrate
+        was injected (the cold path) and ``[]`` when reuse ran but injected
+        nothing (novel question) — the two are distinct so the loop can tell
+        "no reuse path" from "reuse covered nothing"."""
         if self._retrieval_substrate is None:
-            return
+            return None
         try:
             from substrate.context_pack.knowledge_reuse import (
                 assemble_context_pack_with_reuse,
                 retrieve_prior_units,
             )
         except ImportError:  # pragma: no cover — defensive
-            return
+            return None
         try:
             units = retrieve_prior_units(
                 self._retrieval_substrate,
                 question_text=plan.sub_question,
             )
-            assemble_context_pack_with_reuse(
+            pack = assemble_context_pack_with_reuse(
                 role=self._reuse_role,
                 investigation_id=investigation_id,
                 layers=[],
                 units=units,
                 events_dir=self._events_dir,
             )
+            # The INJECTED set only — the units that cleared every gate and
+            # actually landed in the pack. A consuming loop must only ever skip
+            # work a GENUINELY-injected unit covers, never a retrieved-but-
+            # dropped one (rigor #1: never fabricate a saving).
+            return list(pack.injected)
         except Exception:  # pragma: no cover — reuse never breaks a research
-            return
+            return []
 
     # -- the per-research coroutine ------------------------------------
 
@@ -287,6 +321,11 @@ class HostLocalRunner:
         async with self._semaphore:        # bounded concurrency
             st.started = True
             ctx = LoopContext(st.plan, self.budget)
+            # ACV SPR-06 — thread the reuse pack assembled in ``start`` onto the
+            # context so a reuse-CONSUMING loop can read ``ctx.pack`` and skip
+            # work already covered. None for the cold/no-substrate path; the demo
+            # loop ignores it (byte-unchanged).
+            ctx.pack = st.reuse_pack
             st.ctx = ctx
             st.state = RunState.RUNNING
             # Durable lifecycle marker on the per-investigation JSONL (the

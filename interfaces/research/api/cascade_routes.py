@@ -67,8 +67,8 @@ from runtime.research_runner import (
     LoopContext,
     PromotionFunnel,
     StepEvent,
-    make_demo_loop,
 )
+from runtime.research_runner.browse_loop import make_reuse_consuming_loop
 from substrate.graph import default_db_path, ensure_initialized
 
 cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
@@ -353,11 +353,26 @@ def _decompose(problem: str, max_depth: int) -> PlanReport:
 
 
 def _research_loop_factory() -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
-    """The browse loop each investigation runs. Default = SPR-02 demo loop;
-    the real Exa→Browserbase loop drops in here with no route change."""
+    """The browse loop each investigation runs.
+
+    ACV SPR-06: the prod loop is now the reuse-CONSUMING loop
+    (``make_reuse_consuming_loop``). It reads ``ctx.pack`` — the prior knowledge
+    units the runner's ``start`` injected (wired by SPR-02's
+    ``build_prod_retrieval_substrate``) — and SHORT-CIRCUITS any planned
+    sub-question a reused unit already covers, emitting a real ``dispatch.call``
+    cost ONLY for the UNCOVERED ones. So a warm research (one whose question the
+    graph already has knowledge for) does LESS work — and costs less — than a
+    cold one, which is the compounding the reachability ``compounding`` probe
+    asserts end-to-end. With an EMPTY/cold pack it does full work (n
+    dispatch.calls × cost_per_step), so a cold cascade launch's per-research cost
+    is unchanged from the demo loop's (n=3 × 0.01 = 0.03). ``events_dir=None``
+    lets it fall back to the SAME process-default event log the runner writes to,
+    so its dispatch.call lands where the measurement reads. The real
+    Exa→Browserbase loop drops in here later with no route change; the demo loop
+    stays the deterministic loop for unit CI (``make_demo_loop``)."""
     return cast(
         Callable[[LoopContext], AsyncIterator[StepEvent]],
-        make_demo_loop(steps=3, cost_per_step=0.01, emit_note=True),
+        make_reuse_consuming_loop(steps=3, cost_per_step=0.01, emit_note=True),
     )
 
 

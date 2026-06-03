@@ -56,6 +56,7 @@ from typing import Any
 
 from runtime.db_lock import connect_write
 from runtime.research_runner import HostLocalRunner
+from runtime.research_runner.browse_loop import make_reuse_consuming_loop
 from runtime.research_runner.host_local import make_demo_loop
 from runtime.research_runner.protocol import BudgetCap, ResearchPlan
 from substrate.graph.insight_question import promote_insight
@@ -126,6 +127,17 @@ _OFF_TOPIC_UNITS: tuple[str, ...] = (
 # module docstring). ``delay_s=0`` so wall_ms is event-emission span only.
 DEMO_STEPS = 3
 DEMO_COST_PER_STEP = 0.01
+
+# ACV SPR-06 — the two loop kinds the harness can drive. ``"demo"`` is the
+# reuse-BLIND deterministic demo loop (the KEYSTONE CAVEAT: warm ≈ cold, an
+# honest null — kept for fast deterministic unit CI). ``"consuming"`` is the
+# reuse-CONSUMING loop (``make_reuse_consuming_loop``) that reads the pack and
+# skips covered steps, so a warm run does LESS work than a cold one and the
+# measured token_cost delta is genuinely negative. The benchmark's REAL arm
+# selects "consuming"; "demo" stays the default so every existing caller is
+# byte-unchanged.
+LOOP_DEMO = "demo"
+LOOP_CONSUMING = "consuming"
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +260,7 @@ def run_arm(
     steps: int = DEMO_STEPS,
     cost_per_step: float = DEMO_COST_PER_STEP,
     run_index: int = 0,
+    loop_kind: str = LOOP_DEMO,
 ) -> ArmResult:
     """Run one arm of one question and measure its cost-to-resolve.
 
@@ -257,6 +270,13 @@ def run_arm(
     is injected as ``retrieval_substrate`` so ``start`` exercises the reuse path
     (retrieve_prior_units → filter_reusable → knowledge.reused). The cold arm
     passes ``retrieval_substrate=None`` (the automatic no-reuse path).
+
+    ``loop_kind`` selects the browse loop (ACV SPR-06): ``"demo"`` (default) is
+    the reuse-BLIND demo loop (warm ≈ cold, the honest null — kept for fast unit
+    CI); ``"consuming"`` is the reuse-CONSUMING loop that reads the pack and
+    skips covered steps, so warm does less work than cold and the measured delta
+    is genuinely negative. The reuse-substrate wiring (which arm gets a pack at
+    all) is UNCHANGED — only how the loop USES the pack changes.
 
     ``cache_enabled`` records the §2 dual-cache mode on the result; the
     deterministic demo loop makes no provider calls, so the flag is provenance
@@ -308,6 +328,7 @@ def run_arm(
                 steps=steps,
                 cost_per_step=cost_per_step,
                 seeded_node_ids=seeded_node_ids,
+                loop_kind=loop_kind,
             )
         )
     finally:
@@ -335,13 +356,29 @@ async def _drive_one(
     steps: int,
     cost_per_step: float,
     seeded_node_ids: Sequence[str],
+    loop_kind: str = LOOP_DEMO,
 ) -> CostToResolve:
     """Start one research on the host-local runner, drain its stream to ``done``,
     then measure the trajectory it wrote. This is the verified integration path:
     ``runner.start(...)`` → ``async for ev in runner.stream(handle)`` until
-    ``ev.kind == "done"``; events land on ``{events_dir}/{investigation_id}.jsonl``."""
+    ``ev.kind == "done"``; events land on ``{events_dir}/{investigation_id}.jsonl``.
+
+    ACV SPR-06: ``loop_kind`` chooses the loop. ``"consuming"`` builds the
+    reuse-CONSUMING loop, which reads ``ctx.pack`` (threaded by the runner's
+    ``start``) and emits a real ``dispatch.call`` ONLY for the UNCOVERED
+    sub-questions — so the warm arm (more covered) has fewer dispatch.calls and a
+    lower summed ``cost_usd`` than cold. The loop is handed THIS arm's
+    ``events_dir`` so its dispatch.call lands on the SAME per-investigation JSONL
+    ``measure_investigation`` reads. ``"demo"`` (default) keeps the reuse-blind
+    loop unchanged."""
+    if loop_kind == LOOP_CONSUMING:
+        loop_fn = make_reuse_consuming_loop(
+            steps=steps, cost_per_step=cost_per_step, events_dir=events_dir,
+        )
+    else:
+        loop_fn = make_demo_loop(steps=steps, cost_per_step=cost_per_step, delay_s=0.0)
     runner = HostLocalRunner(
-        loop_fn=make_demo_loop(steps=steps, cost_per_step=cost_per_step, delay_s=0.0),
+        loop_fn=loop_fn,
         events_dir=events_dir,
         retrieval_substrate=reuse_substrate,
         seal_on_complete=False,  # keep JSONL so trajectory() reads it without pyarrow

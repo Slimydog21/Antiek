@@ -31,7 +31,15 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from .aggregate import DEFAULT_BOOTSTRAP_RESAMPLES, aggregate_comparison
-from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
+from .harness import (
+    LOOP_CONSUMING,
+    LOOP_DEMO,
+    ArmResult,
+    ColdSeed,
+    IrrelevantSeed,
+    WarmSeed,
+    run_arm,
+)
 from .measure import CostToResolve
 from .pilot import propose_parameters, run_pilot
 from .profiles import BenchmarkProfile, load_profile
@@ -40,6 +48,14 @@ from .result_schema import ArmComparison, BenchmarkResult
 from .validity import HEADLINE_METRIC, decide
 
 RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "spr09_run.json")
+
+# ACV SPR-06 — the persisted pilot-report artifact (decision-0.2 §C.2-C.3 + B3).
+# ``--pilot`` writes the observed CV + the propose_parameters() output here so the
+# operator reads a committed report, ratifies the derived n/floor/tolerance, and
+# later passes ``--ratified --ratification-ref <this artifact's id>`` against it.
+PILOT_REPORT_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "results", "pilot_report.json"
+)
 
 # Documented placeholder. The recorded artifact's git_sha is set by the
 # orchestrator's commit (the artifact is written BEFORE the commit exists), so a
@@ -84,6 +100,62 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+def write_pilot_report(report, proposal, *, path: str, frozen_sha: str, git_sha: str) -> str:
+    """Persist the pilot-report artifact (ACV SPR-06 / decision-0.2 §C.2-C.4 + B3).
+
+    Records the observed per-metric CV, the cold means, the DERIVED proposal
+    (n/floor/tolerance) AND the derivation string + inputs they came from — the
+    full provenance the operator ratifies. Returns a stable ``pilot_report_id``
+    (content-addressed over frozen_sha + the CV + the proposal) that a later
+    ``run --ratified --ratification-ref <id>`` references, so the scored
+    artifact's ratification is reconstructable. The HUMAN ratification step is NOT
+    performed here — this only emits the report the operator reads."""
+    import hashlib
+    import json
+
+    body = {
+        "kind": "pilot_report",
+        "frozen_sha": frozen_sha,
+        "git_sha": git_sha,
+        "captured_at": _now_iso(),
+        "questions": report.questions,
+        "runs_per_cell": report.runs_per_cell,
+        "observed_cv": report.cv,
+        "cold_means": report.cold_means,
+        "cell_stats": [
+            {"arm": c.arm, "metric": c.metric, "mean": c.mean, "cv": c.cv, "n_runs": c.n_runs}
+            for c in report.cell_stats
+        ],
+        "proposed_parameters": {
+            "n": proposal.n,
+            "material_floor": proposal.material_floor,
+            "control_tolerance": proposal.control_tolerance,
+            "derivation": proposal.derivation,
+        },
+        "ratified": False,  # the operator flips this by RUNNING --ratified, not by editing here
+        "ratification_note": (
+            "OPERATOR STEP (not performed by this sprint): read this report, then run "
+            "`python -m compounding.benchmark.run --loop consuming --material-floor "
+            "<material_floor> --control-tolerance <control_tolerance> --n <n> --ratified "
+            "--ratification-ref <pilot_report_id>` to ratify these derived parameters "
+            "(decision-0.2 §A.6 / §C.4)."
+        ),
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            {"frozen_sha": frozen_sha, "cv": report.cv, "proposal": body["proposed_parameters"]},
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()[:16]
+    body["pilot_report_id"] = f"pilot:{digest}"
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(body, f, indent=2)
+        f.write("\n")
+    return body["pilot_report_id"]
+
+
 def _run_cell(
     questions: Sequence,
     arm_seed,
@@ -91,16 +163,21 @@ def _run_cell(
     events_dir: str,
     graphs_dir: str,
     n: int,
+    loop_kind: str = LOOP_DEMO,
 ) -> dict[str, list[CostToResolve]]:
     """Run ``n`` runs of ``arm_seed`` for each question. Returns
-    ``{question_id: [CostToResolve, ...]}`` (n entries per question)."""
+    ``{question_id: [CostToResolve, ...]}`` (n entries per question).
+
+    ACV SPR-06: ``loop_kind`` is threaded to ``run_arm`` so a ``--loop consuming``
+    benchmark drives the reuse-CONSUMING loop on every arm (cold pays for all
+    sub-questions, warm skips the covered ones → a genuinely negative delta)."""
     out: dict[str, list[CostToResolve]] = {}
     for q in questions:
         runs: list[CostToResolve] = []
         for run_index in range(n):
             res: ArmResult = run_arm(
                 q, arm_seed, events_dir=events_dir, graphs_dir=graphs_dir,
-                run_index=run_index,
+                run_index=run_index, loop_kind=loop_kind,
             )
             runs.append(res.cost)
         out[q.question_id] = runs
@@ -129,12 +206,21 @@ def run_benchmark(
     mock_run: bool = True,
     git_sha: str | None = None,
     parameters_ratified: bool = False,
+    ratification_ref: str | None = None,
+    loop_kind: str = LOOP_DEMO,
 ) -> BenchmarkResult:
     """Drive every arm over the frozen set, aggregate, gate, and build the
     artifact. ``material_floor`` / ``control_tolerance`` are operator-ratified
     for a scored run; for the mock artifact they default to 0 (the demo loop's
     zero-variance null makes any positive floor trivially unmet — the verdict is
-    null regardless, and the README is explicit about it)."""
+    null regardless, and the README is explicit about it).
+
+    ACV SPR-06: ``loop_kind`` selects the browse loop on every arm. ``"demo"``
+    (default) reproduces the historical reuse-blind null; ``"consuming"`` drives
+    the reuse-CONSUMING loop so the warm arm genuinely does less work and the
+    token_cost delta is strictly negative. ``ratification_ref`` is the
+    pilot-report / decision reference the operator ratified against (recorded in
+    the artifact when ``--ratified`` is passed — M3 auditability)."""
     seed = qs.seed
     headline_qids = [q.question_id for q in qs.headline_questions()]
     internal_qids = [q.question_id for q in qs.by_class("high_overlap") if not q.headline_pooled]
@@ -142,9 +228,9 @@ def run_benchmark(
     control_qids = [q.question_id for q in qs.control_questions()]
     all_qs = list(qs.questions)
 
-    cold = _run_cell(all_qs, ColdSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n)
-    warm = _run_cell(all_qs, WarmSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n)
-    irrelevant = _run_cell(all_qs, IrrelevantSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n)
+    cold = _run_cell(all_qs, ColdSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n, loop_kind=loop_kind)
+    warm = _run_cell(all_qs, WarmSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n, loop_kind=loop_kind)
+    irrelevant = _run_cell(all_qs, IrrelevantSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n, loop_kind=loop_kind)
 
     def compare(label, exp_qids, base_cell, exp_cell) -> ArmComparison:
         return aggregate_comparison(
@@ -184,6 +270,32 @@ def run_benchmark(
         control_per_domain_points=per_domain_points,
     )
 
+    if loop_kind == LOOP_CONSUMING:
+        notes = (
+            "Run on the reuse-CONSUMING browse loop (make_reuse_consuming_loop): "
+            "each arm plans n sub-questions and emits a real dispatch.call ONLY "
+            "for the sub-questions NOT covered by the reuse pack, so the warm arm "
+            "(more covered) has fewer dispatch.calls and a lower summed cost_usd "
+            "than cold. The headline token_cost_usd delta (warm − cold) is the "
+            "GENUINE compounding signal — negative when reuse pays — and is "
+            "reported verbatim (never clamped). The irrelevant arm shares no "
+            "salient tokens with the questions, so it covers nothing and stays "
+            "flat (the §2 validity control). validity_reason: "
+            f"{verdict.validity_reason}. headline_reason: {verdict.headline_reason}."
+        )
+    else:
+        notes = (
+            "MOCK run on the host-local demo loop (make_demo_loop), which is "
+            "reuse-blind and makes no provider dispatch.call — so token_cost_usd "
+            "is 0 for every arm and every delta is ~0. This is the keystone "
+            "finding: the instrument measures compounding (proven by "
+            "tests/test_falsifiability.py), but the demo loop does NOT consume "
+            "reuse, so compounding is UNPROVEN on the real loop. A live "
+            "mock_run=false run with a reuse-consuming browse loop + provider "
+            "creds is the operator-window measurement. validity_reason: "
+            f"{verdict.validity_reason}. headline_reason: {verdict.headline_reason}."
+        )
+
     return BenchmarkResult(
         frozen_sha=qs.frozen_sha,
         seed=seed,
@@ -200,17 +312,9 @@ def run_benchmark(
         control_tolerance=control_tolerance,
         material_floor=material_floor,
         parameters_ratified=parameters_ratified,
-        notes=(
-            "MOCK run on the host-local demo loop (make_demo_loop), which is "
-            "reuse-blind and makes no provider dispatch.call — so token_cost_usd "
-            "is 0 for every arm and every delta is ~0. This is the keystone "
-            "finding: the instrument measures compounding (proven by "
-            "tests/test_falsifiability.py), but the demo loop does NOT consume "
-            "reuse, so compounding is UNPROVEN on the real loop. A live "
-            "mock_run=false run with a reuse-consuming browse loop + provider "
-            "creds is the operator-window measurement. validity_reason: "
-            f"{verdict.validity_reason}. headline_reason: {verdict.headline_reason}."
-        ),
+        ratification_ref=ratification_ref,
+        loop_kind=loop_kind,
+        notes=notes,
     )
 
 
@@ -257,8 +361,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--material-floor", type=float, default=0.0)
     ap.add_argument("--control-tolerance", type=float, default=0.0)
     ap.add_argument("--pilot", action="store_true",
-                    help="run the pilot (5 runs/cell on representative questions) and "
-                         "print the DERIVED parameter proposal; does not write the artifact")
+                    help="run the pilot (5 runs/cell on representative questions), "
+                         "print the DERIVED parameter proposal, AND persist a pilot-report "
+                         "artifact (observed CV + proposed params) that --ratified references")
+    ap.add_argument("--loop", default=LOOP_DEMO, choices=[LOOP_DEMO, LOOP_CONSUMING],
+                    help="browse loop for the benchmark arms. 'demo' (default) = the "
+                         "reuse-blind demo loop (the keystone null, kept for fast unit CI); "
+                         "'consuming' = the reuse-CONSUMING loop that skips covered steps "
+                         "(the REAL arm — warm does less work than cold, delta < 0).")
+    ap.add_argument("--ratified", action="store_true",
+                    help="record parameters_ratified=true in the artifact. OMITTING it "
+                         "leaves it false (never silently true). A scored (mock_run=false) "
+                         "artifact WITHOUT this fails the ratified-scoring CI gate "
+                         "(tools/ratified_gate.py). This flag asserts the OPERATOR ratified "
+                         "the pilot-derived n/floor/tolerance (decision-0.2 §A.6) — it is "
+                         "the human ratification step's machine record, not a self-grade.")
+    ap.add_argument("--ratification-ref", default=None,
+                    help="the pilot-report artifact id / decision reference the --ratified "
+                         "flag ratifies against (recorded as ratification_ref for audit). "
+                         "Required to be non-empty when --ratified is passed.")
+    ap.add_argument("--pilot-out", default=None,
+                    help="path for the persisted pilot-report artifact (default: "
+                         "results/pilot_report.json). Used with --pilot.")
     ap.add_argument("--mock-run", default="true",
                     help="true (the only Phase-1 path) | false (live; needs provider creds + "
                          "operator-ratified n — refused here)")
@@ -310,7 +434,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  material_floor    = {proposal.material_floor:.6g}")
         print(f"  control_tolerance = {proposal.control_tolerance:.6g}")
         print(f"  derivation        = {proposal.derivation}")
+        # ACV SPR-06 (B3 / decision-0.2 §C.3): PERSIST the pilot report so the
+        # operator ratifies a committed artifact and --ratified can reference it.
+        pilot_out = args.pilot_out or PILOT_REPORT_PATH
+        pilot_id = write_pilot_report(
+            report, proposal, path=pilot_out,
+            frozen_sha=qs.frozen_sha, git_sha=read_git_sha(),
+        )
+        print(f"\nwrote pilot report {pilot_out}")
+        print(f"  pilot_report_id = {pilot_id}")
+        print(
+            "  NEXT (operator): ratify the derived n/floor/tolerance, then run a scored "
+            f"loop with --ratified --ratification-ref {pilot_id} (decision-0.2 §A.6/§C.4)."
+        )
         return 0
+
+    # ACV SPR-06: --ratified requires a non-empty ratification ref so the scored
+    # artifact records WHAT was ratified (M3 auditability — never a bare boolean).
+    if args.ratified and not (args.ratification_ref and args.ratification_ref.strip()):
+        print(
+            "REFUSED: --ratified requires --ratification-ref <pilot_report_id|decision-ref> "
+            "so the scored artifact records WHAT was ratified (decision-0.2 §A.6). "
+            "Run --pilot first to produce a pilot_report_id."
+        )
+        return 2
 
     result = run_benchmark(
         qs,
@@ -322,6 +469,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         control_tolerance=args.control_tolerance,
         mock_run=True,
         git_sha=read_git_sha(),
+        parameters_ratified=bool(args.ratified),
+        ratification_ref=(args.ratification_ref.strip() if args.ratified else None),
+        loop_kind=args.loop,
     )
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     result.write(args.out)

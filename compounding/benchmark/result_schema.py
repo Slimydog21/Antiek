@@ -82,6 +82,16 @@ class BenchmarkResult:
     material_floor: float
     notes: str = ""
     parameters_ratified: bool = False
+    # ACV SPR-06 — the ratification PROVENANCE (M3 auditability). When the
+    # operator passes ``--ratified``, this records WHAT was ratified (the
+    # pilot-report artifact id / decision reference) so a reader can reconstruct
+    # the ratified parameters, not just see a bare boolean. ``None`` when not
+    # ratified (and the gate requires it non-null for a scored run).
+    ratification_ref: str | None = None
+    # ACV SPR-06 — which browse loop produced this artifact: ``"demo"`` (the
+    # reuse-blind null) or ``"consuming"`` (the reuse-consuming real arm). Lets a
+    # reader tell a genuine measurement from the keystone null at a glance.
+    loop_kind: str = "demo"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -96,6 +106,8 @@ class BenchmarkResult:
             "control_tolerance": self.control_tolerance,
             "material_floor": self.material_floor,
             "parameters_ratified": self.parameters_ratified,
+            "ratification_ref": self.ratification_ref,
+            "loop_kind": self.loop_kind,
             "git_sha": self.git_sha,
             "captured_at": self.captured_at,
             "headline": _comparison_to_dict(self.headline),

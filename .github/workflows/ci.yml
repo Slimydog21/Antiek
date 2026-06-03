@@ -256,6 +256,21 @@ jobs:
       # after the full ~5400-test suite, OOM-killed it on the shared runner.
       # It now gets a fresh runner; the gate is unchanged (see that job).
 
+      - name: Ratified-scoring gate (ACV SPR-06 — BLOCKING)
+        # ACV SPR-06 / decision-0.2 §A.6 (B3). Fails the build for any benchmark
+        # result artifact under compounding/benchmark/results/ that is SCORED
+        # (mock_run=false) but NOT operator-ratified (parameters_ratified != true,
+        # or missing a ratification_ref). A mock run (mock_run=true) is exempt.
+        # This makes ratification a STRUCTURAL precondition of a scored compounding
+        # claim — closing the post-hoc-re-roll vector pre-registration alone leaves
+        # open. BLOCKING: the step's pass/fail is EXACTLY the gate's exit code — NO
+        # `|| echo` swallow, NO continue-on-error, NO `::warning::`-only (mirrors
+        # the reachability/keystone gates' contract, NOT the informational latency
+        # step's). Self-test: tests/test_ratified_gate.py. Decision:
+        # docs/decisions/ratified-scoring-gate.md.
+        run: |
+          python tools/ratified_gate.py
+
       - name: Source-onboarding corpus-value gate
         # Reframe finding #2: the WIRED stop-rule replacing the spec's PROSE
         # "measure before build". Blocks onboarding any source AFTER arXiv whose

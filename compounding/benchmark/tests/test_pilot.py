@@ -72,3 +72,59 @@ def test_run_pilot_drives_harness(tmp_path):
     assert set(report.cv) == {"token_cost_usd", "sources_fetched", "wall_ms"}
     # mock path: no dispatch cost → token cost CV is 0.
     assert report.cv["token_cost_usd"] == 0.0
+
+
+# ── ACV SPR-06 — the pilot-report artifact is persisted (M4 / B3) ─────────────
+
+
+def test_write_pilot_report_persists_artifact(tmp_path):
+    """``write_pilot_report`` persists the observed CV + derived params + a
+    content-addressed pilot_report_id that --ratified later references."""
+    import json
+
+    from compounding.benchmark.pilot import ProposedParameters
+    from compounding.benchmark.run import write_pilot_report
+
+    class _Rep:
+        cv = {"token_cost_usd": 0.0, "sources_fetched": 0.0, "wall_ms": 0.26}
+        cold_means = {"token_cost_usd": 0.0, "sources_fetched": 0.0, "wall_ms": 0.25}
+        cell_stats: list = []
+        questions = ["Q-HI-E1", "Q-ZC-01"]
+        runs_per_cell = 5
+
+    proposal = ProposedParameters(n=5, material_floor=0.0, control_tolerance=0.0, derivation="d")
+    path = str(tmp_path / "pilot_report.json")
+    pid = write_pilot_report(_Rep(), proposal, path=path, frozen_sha="sha256:abc", git_sha="deadbee")
+
+    assert pid.startswith("pilot:")
+    data = json.loads((tmp_path / "pilot_report.json").read_text())
+    assert data["kind"] == "pilot_report"
+    assert data["observed_cv"]["wall_ms"] == 0.26
+    assert data["proposed_parameters"]["n"] == 5
+    assert data["pilot_report_id"] == pid
+    assert data["ratified"] is False  # the operator flips this by RUNNING --ratified
+
+
+def test_pilot_report_id_is_content_addressed(tmp_path):
+    """Same inputs → same pilot_report_id (so --ratification-ref is stable);
+    different CV → different id (a re-run with new variance is a new report)."""
+    from compounding.benchmark.pilot import ProposedParameters
+    from compounding.benchmark.run import write_pilot_report
+
+    class _Rep:
+        cv = {"token_cost_usd": 0.0}
+        cold_means = {"token_cost_usd": 0.0}
+        cell_stats: list = []
+        questions = ["Q-HI-E1"]
+        runs_per_cell = 5
+
+    prop = ProposedParameters(n=5, material_floor=0.0, control_tolerance=0.0, derivation="d")
+    a = write_pilot_report(_Rep(), prop, path=str(tmp_path / "a.json"), frozen_sha="s", git_sha="g")
+    b = write_pilot_report(_Rep(), prop, path=str(tmp_path / "b.json"), frozen_sha="s", git_sha="g2")
+    assert a == b, "same frozen_sha + cv + proposal → same id (git_sha excluded from the digest)"
+
+    class _Rep2(_Rep):
+        cv = {"token_cost_usd": 0.5}
+
+    c = write_pilot_report(_Rep2(), prop, path=str(tmp_path / "c.json"), frozen_sha="s", git_sha="g")
+    assert c != a, "different observed CV → different id"
