@@ -20,7 +20,6 @@ if _REPO not in sys.path:
 from roles.evidence_retriever.prompt import EVIDENCE_RETRIEVER_SYSTEM_PROMPT
 from roles.synthesizer.prompt import SYNTHESIZER_SYSTEM_PROMPT
 
-
 # ── Synthesizer prompt ──────────────────────────────────────────────
 
 

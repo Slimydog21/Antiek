@@ -26,7 +26,7 @@ interviewer result), COMMITTED where the constant exists (the 70% split is
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -45,7 +45,7 @@ class InterviewerResultContract(BaseModel):
 
     interview_id: str
     project_id: str
-    contributor_ip_holder_id: Optional[str] = None
+    contributor_ip_holder_id: str | None = None
     extracted_claim_ids: tuple[str, ...] = ()
     corroboration: CorroborationStatus = "uncorroborated"
 
@@ -59,7 +59,7 @@ class ConsentContract(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     interview_id: str
-    ip_holder_id: Optional[str] = None
+    ip_holder_id: str | None = None
     scopes: tuple[ConsentScope, ...] = ()
     verified_before_publish: bool = False
     right_of_publicity_cleared: bool = False

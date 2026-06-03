@@ -11,7 +11,6 @@ brainstorming workstation from a passive parking lot into an active
 thought partner.
 """
 
-from .prompt import THOUGHT_PARTNER_SYSTEM_PROMPT, compose_thought_partner_prompt
 from .parser import (
     VALID_SHAPES,
     Challenge,
@@ -20,6 +19,7 @@ from .parser import (
     ThoughtPartnerResponse,
     parse_thought_partner_response,
 )
+from .prompt import THOUGHT_PARTNER_SYSTEM_PROMPT, compose_thought_partner_prompt
 
 __all__ = [
     "THOUGHT_PARTNER_SYSTEM_PROMPT",

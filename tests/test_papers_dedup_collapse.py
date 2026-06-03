@@ -16,12 +16,12 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from acquisition.arxiv.client import ArxivPaper  # noqa: E402
 from acquisition.corpus_quality import dedup_candidates  # noqa: E402
 from acquisition.papers import paper_candidate_ref  # noqa: E402
 from acquisition.papers.arxiv_bulk import paper_to_record as bulk_to_record  # noqa: E402
 from acquisition.papers.core import work_to_record as core_to_record  # noqa: E402
 from acquisition.papers.semantic_scholar import paper_to_record as s2_to_record  # noqa: E402
-from acquisition.arxiv.client import ArxivPaper  # noqa: E402
 from substrate.dedup import KeyType, collapse, identity_key  # noqa: E402
 
 _SHARED_DOI = "10.1234/the-same-paper"

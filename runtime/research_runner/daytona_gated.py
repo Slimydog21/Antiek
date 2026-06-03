@@ -20,17 +20,27 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 try:
     from .protocol import (
-        Command, CostState, Handle, ResearchPlan, Status, StepEvent,
+        Command,
+        CostState,
+        Handle,
+        ResearchPlan,
+        Status,
+        StepEvent,
     )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.research_runner.protocol import (  # type: ignore[no-redef]
-        Command, CostState, Handle, ResearchPlan, Status, StepEvent,
+        Command,
+        CostState,
+        Handle,
+        ResearchPlan,
+        Status,
+        StepEvent,
     )
 
 
@@ -83,7 +93,7 @@ class DaytonaRunner:
         self._guard()
         raise AssertionError("unreachable")  # pragma: no cover
 
-    def stream(self, handle: Handle) -> "AsyncIterator[StepEvent]":
+    def stream(self, handle: Handle) -> AsyncIterator[StepEvent]:
         self._guard()
         raise AssertionError("unreachable")  # pragma: no cover
 

@@ -27,7 +27,7 @@ Uses ``httpx`` so tests inject a ``MockTransport`` — NO live HTTP in CI.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -44,7 +44,7 @@ S2_THROTTLE_KEY = "semantic_scholar"
 DEFAULT_FIELDS = "title,abstract,externalIds,openAccessPdf,authors,corpusId"
 
 
-def _doi_arxiv(external_ids: Any) -> tuple[Optional[str], Optional[str]]:
+def _doi_arxiv(external_ids: Any) -> tuple[str | None, str | None]:
     """Pull (DOI, arXiv id) out of S2's ``externalIds`` map. The keys S2 uses
     are ``DOI`` and ``ArXiv``."""
     if not isinstance(external_ids, dict):
@@ -80,9 +80,9 @@ def paper_to_record(raw: dict[str, Any]) -> PaperRecord:
         raise ValueError("S2 paper has no corpusId / DOI / arXiv id")
 
     oa = raw.get("openAccessPdf")
-    pdf_url: Optional[str] = None
-    license_str: Optional[str] = None
-    license_field: Optional[str] = None
+    pdf_url: str | None = None
+    license_str: str | None = None
+    license_field: str | None = None
     has_body = False
     if isinstance(oa, dict) and oa.get("url"):
         pdf_url = str(oa["url"]).strip()
@@ -127,7 +127,7 @@ def parse_search_response(payload: dict[str, Any]) -> list[PaperRecord]:
 
 
 def _http_get(
-    url: str, *, api_key: Optional[str], client: Optional[httpx.Client]
+    url: str, *, api_key: str | None, client: httpx.Client | None
 ) -> dict:
     # HOST-GLOBAL arXiv GOVERNANCE (SPR-09 root fix): ``url`` is built from a
     # ``base_url`` that is env/param-overridable, so the actual send is routed
@@ -172,9 +172,9 @@ def search_papers(
     query: str,
     limit: int = 25,
     fields: str = DEFAULT_FIELDS,
-    api_key: Optional[str] = None,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
+    api_key: str | None = None,
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
     throttle: Any = None,
 ) -> list[PaperRecord]:
     """Query S2 for papers matching ``query``. ``throttle`` (a SourceThrottle)

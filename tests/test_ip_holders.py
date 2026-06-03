@@ -50,9 +50,9 @@ def test_first_cohort_publishers_match_master_spec():
 def test_valid_statuses_match_schema_check_constraint():
     """The Python-side VALID_STATUSES must match the SQL CHECK constraint
     in substrate/graph/schema.py. Drift here = silent invariant break."""
-    assert VALID_STATUSES == frozenset({
+    assert frozenset({
         "pre_onboarded", "invited", "claimed", "opted_out",
-    })
+    }) == VALID_STATUSES
 
 
 def test_create_pre_onboarded_starts_at_pre_onboarded(db):

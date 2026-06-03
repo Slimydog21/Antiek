@@ -73,7 +73,6 @@ from substrate.schemas import (  # noqa: E402
     SubQuestionCategory,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -343,12 +342,12 @@ def test_parser_accepts_when_investigation_id_matches():
 
 def test_decomposer_categories_match_schema_literal():
     import typing
-    assert DECOMPOSER_CATEGORIES == set(typing.get_args(SubQuestionCategory))
+    assert set(typing.get_args(SubQuestionCategory)) == DECOMPOSER_CATEGORIES
 
 
 def test_decomposer_evidence_types_match_schema_literal():
     import typing
-    assert DECOMPOSER_EVIDENCE_TYPES == set(typing.get_args(EvidenceTypeRequired))
+    assert set(typing.get_args(EvidenceTypeRequired)) == DECOMPOSER_EVIDENCE_TYPES
 
 
 # ---------------------------------------------------------------------------

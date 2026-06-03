@@ -8,7 +8,6 @@ the hook accumulates without leaking to siblings.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from substrate.hooks import HookContext, HookRegistry
 

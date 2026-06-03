@@ -8,7 +8,7 @@ import os
 import shutil
 import tempfile
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -62,7 +62,7 @@ def _make_doc_loaded_event(
         action_type=ActionType.DOCUMENT_LOADED,
         payload=payload,
         param_version="test-v0",
-        emitted_at=datetime.now(timezone.utc),
+        emitted_at=datetime.now(UTC),
         document_id=document_id,
     )
 

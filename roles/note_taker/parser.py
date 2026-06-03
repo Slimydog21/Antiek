@@ -11,7 +11,7 @@ import os
 import sys
 import uuid
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 # Shared JSON-tolerant decoder. See roles/_json_decode.py for the
 # extraction rationale (avoids import cycles through wrestling.py).
@@ -20,7 +20,9 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 # Confidence vocabulary must match ConfidenceLevel Literal on the

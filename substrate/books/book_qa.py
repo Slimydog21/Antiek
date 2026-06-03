@@ -38,11 +38,12 @@ override, not a second runtime). No new ASR/LLM/TTS host.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
 
 from substrate.dispatch.research_tier import resolve_research_tier
-from substrate.dispatch.router import ProviderError, dispatch
+from substrate.dispatch.router import dispatch
 from substrate.graph.search import EmbeddingModel, search
 
 from .page_anchor import page_index_from_section_path
@@ -67,7 +68,7 @@ class Citation:
 
     chunk_id: str
     document_id: str
-    page_index: Optional[int]
+    page_index: int | None
     page_resolved: bool
     snippet: str  # a bounded excerpt of the cited chunk (already gate-served)
 
@@ -99,7 +100,7 @@ class BookAnswer:
 
 def _build_prompt(
     *,
-    book_title: Optional[str],
+    book_title: str | None,
     question: str,
     history: Sequence[Turn],
     context_chunks: Sequence[dict],
@@ -157,10 +158,10 @@ def answer_book_question(
     question: str,
     model: EmbeddingModel,
     investigation_id: str,
-    history: Optional[Sequence[Turn]] = None,
+    history: Sequence[Turn] | None = None,
     research_tier: str = "deep",
     top_k: int = DEFAULT_QA_TOP_K,
-    config: Optional[Any] = None,
+    config: Any | None = None,
 ) -> BookAnswer:
     """Answer one talk-to-book turn, page-cited, gate-safe.
 

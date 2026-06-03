@@ -25,7 +25,7 @@ PR #42 (`abde67e`) replaces the spec's PROSE "measure before build" stop-rule wi
 
 It is CI/CLI-only — no prod-runtime surface imports it, so there is **no backend deploy**; the gate is live as a `main` CI step (the #42 merge CI run was green).
 
-## What is deferred — P3b (see `engineering_deferrals.md` D17)
+## What is deferred — P3b (see `engineering_deferrals.md` D18)
 
 The census **producer** — `compute_source_census(con, source)` over the real corpus (via the one `substrate.dedup` identity ladder) + the committed `reports/source_census.json` — is operator-gated: it needs the prod corpus + an **unbanned arXiv ingest window**. The gate is a no-op until then; the thresholds are PROVISIONAL until calibrated on the first real census.
 

@@ -17,8 +17,7 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional
-
+from datetime import UTC
 
 # ---------------------------------------------------------------------------
 # State machine types
@@ -48,7 +47,7 @@ class InterviewState:
 
     interview_id: str
     project_id: str
-    informant_handle: Optional[str]
+    informant_handle: str | None
     interview_guide: dict
     turns: list[InterviewTurn] = field(default_factory=list)
     must_cover_asked: set[str] = field(default_factory=set)
@@ -64,7 +63,7 @@ class InterviewState:
 def start_interview(
     project_id: str,
     interview_guide: dict,
-    informant_handle: Optional[str] = None,
+    informant_handle: str | None = None,
 ) -> InterviewState:
     """Initialize a new interview state. Caller is responsible for
     capturing consent before any turns are exchanged — orchestrator
@@ -88,7 +87,7 @@ class ConsentRequired(Exception):
 
 def advance_interview(
     state: InterviewState,
-    informant_response: Optional[str] = None,
+    informant_response: str | None = None,
     *,
     dispatch_fn=None,  # injection point for substrate.dispatch.dispatch
 ) -> InterviewState:
@@ -176,8 +175,8 @@ def advance_interview(
 
 
 def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    from datetime import datetime
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _has_open_followups(state: InterviewState) -> bool:

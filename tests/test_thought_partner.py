@@ -9,16 +9,10 @@ from roles.thought_partner import (
     compose_thought_partner_prompt,
     parse_thought_partner_response,
 )
-from roles.thought_partner.parser import (
-    Challenge,
-    Extension,
-    Synthesis,
-    ThoughtPartnerResponse,
-)
 
 
 def test_valid_shapes_match_spec():
-    assert VALID_SHAPES == frozenset({"challenge", "synthesis", "extension"})
+    assert frozenset({"challenge", "synthesis", "extension"}) == VALID_SHAPES
 
 
 def test_compose_prompt_includes_selected_notes():

@@ -51,8 +51,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 # Namespaced string kinds (NOT ActionType / typed payloads — see module docstring).
 ARXIV_FETCH = "arxiv.fetch"
@@ -82,7 +82,7 @@ _FORBIDDEN_DETAIL_KEYS: frozenset[str] = frozenset(
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _canonical_json(obj: Any) -> str:
@@ -92,7 +92,7 @@ def _canonical_json(obj: Any) -> str:
 
 
 def _event_id(
-    *, arxiv_id: str, kind: str, document_id: str, reason: Optional[str], detail_json: str
+    *, arxiv_id: str, kind: str, document_id: str, reason: str | None, detail_json: str
 ) -> str:
     """Deterministic sha256 id from (arxiv_id, kind, document_id, reason, detail).
 
@@ -120,9 +120,9 @@ class ArxivAuditEvent:
     arxiv_id: str
     document_id: str
     kind: str
-    reason: Optional[str]
-    tier: Optional[str]
-    amount_cents: Optional[int]
+    reason: str | None
+    tier: str | None
+    amount_cents: int | None
     detail: dict[str, Any]
     recorded_at: str
 
@@ -198,10 +198,10 @@ def record_event(
     arxiv_id: str,
     document_id: str,
     kind: str,
-    reason: Optional[str] = None,
-    tier: Optional[str] = None,
-    amount_cents: Optional[int] = None,
-    detail: Optional[dict[str, Any]] = None,
+    reason: str | None = None,
+    tier: str | None = None,
+    amount_cents: int | None = None,
+    detail: dict[str, Any] | None = None,
 ) -> str:
     """Append one audit event and return its ``event_id``.
 

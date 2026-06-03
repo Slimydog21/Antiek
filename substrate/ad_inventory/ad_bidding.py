@@ -9,15 +9,13 @@ intent. Builds on the existing substrate's topic classification
 from __future__ import annotations
 
 import enum
-import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Optional
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class BiddingPolicy(str, enum.Enum):
@@ -50,7 +48,7 @@ class AdImpression:
     impression_id: str
     inventory_id: str
     page_id: str  # synthesis page that showed the ad
-    investigation_id: Optional[str]
+    investigation_id: str | None
     revenue_usd_cents: int  # what the advertiser paid for this impression
     served_at: str = field(default_factory=_now_iso)
 
@@ -77,7 +75,7 @@ def select_lead_gen_ad(
     inventory: LeadGenAdInventory,
     *,
     page_topics: list[str],
-) -> Optional[AdInventoryItem]:
+) -> AdInventoryItem | None:
     """Pick the highest-CPM ad whose target_topics intersect
     page_topics. Returns None if no inventory matches."""
     candidates = inventory.by_topics(page_topics)

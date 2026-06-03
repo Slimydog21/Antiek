@@ -13,7 +13,6 @@ Run it to confirm injection stays well under the assembly path's own cost.
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 import time
 
@@ -28,9 +27,9 @@ class _HashEmbedding:
 
 
 def _seed_notes(db_path: str, n: int, provider) -> None:
-    from substrate.graph.schema import init_database_at_path
-    from substrate.graph.insight_question import promote_insight
     from runtime.db_lock import connect_write
+    from substrate.graph.insight_question import promote_insight
+    from substrate.graph.schema import init_database_at_path
     init_database_at_path(db_path)
     con = connect_write(db_path, purpose="bench_seed")
     try:

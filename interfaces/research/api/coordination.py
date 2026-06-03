@@ -26,6 +26,16 @@ import duckdb
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from substrate.coordination.consent_view import (
+    ConsentView,
+    IpHolderConsentRow,
+    build_consent_view,
+)
+from substrate.coordination.cost_view import (
+    CostView,
+    WorkflowCost,
+    build_cost_view,
+)
 from substrate.coordination.gate_ledger import (
     Gate,
     GateLedger,
@@ -36,17 +46,6 @@ from substrate.coordination.roadmap import (
     SprintRow,
     build_roadmap,
 )
-from substrate.coordination.cost_view import (
-    CostView,
-    WorkflowCost,
-    build_cost_view,
-)
-from substrate.coordination.consent_view import (
-    ConsentView,
-    IpHolderConsentRow,
-    build_consent_view,
-)
-
 
 # ── Response shapes ──────────────────────────────────────────────────────────
 
@@ -67,7 +66,7 @@ class GateResponse(BaseModel):
     impacts: list[GateImpactResponse]
 
     @classmethod
-    def from_gate(cls, g: Gate) -> "GateResponse":
+    def from_gate(cls, g: Gate) -> GateResponse:
         return cls(
             gate_id=g.gate_id,
             title=g.title,
@@ -104,7 +103,7 @@ class SprintResponse(BaseModel):
     unblocked: bool
 
     @classmethod
-    def from_row(cls, s: SprintRow) -> "SprintResponse":
+    def from_row(cls, s: SprintRow) -> SprintResponse:
         return cls(
             spec=s.spec,
             spec_label=s.spec_label,
@@ -143,7 +142,7 @@ class RoadmapResponse(BaseModel):
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
-    def from_roadmap(cls, rm: Roadmap) -> "RoadmapResponse":
+    def from_roadmap(cls, rm: Roadmap) -> RoadmapResponse:
         return cls(
             total_sprints=rm.total_sprints,
             superseded_count=rm.superseded_count,
@@ -188,7 +187,7 @@ class WorkflowCostResponse(BaseModel):
     margin_note: str
 
     @classmethod
-    def from_workflow_cost(cls, w: WorkflowCost) -> "WorkflowCostResponse":
+    def from_workflow_cost(cls, w: WorkflowCost) -> WorkflowCostResponse:
         return cls(
             workflow=w.workflow.value,
             raw_cost_usd=str(w.raw_cost_usd),
@@ -216,7 +215,7 @@ class CostViewResponse(BaseModel):
     events_dir: str
 
     @classmethod
-    def from_cost_view(cls, cv: CostView) -> "CostViewResponse":
+    def from_cost_view(cls, cv: CostView) -> CostViewResponse:
         return cls(
             per_workflow=[
                 WorkflowCostResponse.from_workflow_cost(w) for w in cv.per_workflow
@@ -254,7 +253,7 @@ class IpHolderConsentResponse(BaseModel):
     servability_note: str | None
 
     @classmethod
-    def from_row(cls, r: IpHolderConsentRow) -> "IpHolderConsentResponse":
+    def from_row(cls, r: IpHolderConsentRow) -> IpHolderConsentResponse:
         return cls(
             ip_holder_id=r.ip_holder_id,
             display_name=r.display_name,
@@ -302,7 +301,7 @@ class ConsentViewResponse(BaseModel):
     gate_source_path: str
 
     @classmethod
-    def from_consent_view(cls, cv: ConsentView) -> "ConsentViewResponse":
+    def from_consent_view(cls, cv: ConsentView) -> ConsentViewResponse:
         rep = cv.escrow_report
         return cls(
             holders=[IpHolderConsentResponse.from_row(h) for h in cv.holders],

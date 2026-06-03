@@ -35,7 +35,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Optional
 
 try:
     from ..loop_3.trajectory_harvest import HarvestedTrajectory

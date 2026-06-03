@@ -15,7 +15,9 @@ module, and the operator CLI can all be written against the same
 
 from __future__ import annotations
 
-from typing import Any, Iterable, List
+from collections.abc import Iterable
+from datetime import UTC
+from typing import Any
 
 from .types import (
     ArchivedSynthesis,
@@ -69,7 +71,7 @@ def build_report(
     superseded_edges_since: int,
     cited_edges_now_superseded: tuple[SupersededEdge, ...],
     chunks_retired_downward: tuple[ChunkTierChange, ...],
-    outcomes: List[dict[str, Any]],
+    outcomes: list[dict[str, Any]],
 ) -> BacktestReport:
     """Assemble the report once the DB-loader has produced its parts.
 
@@ -102,9 +104,10 @@ def backtest(con: Any, synthesis_id: str) -> BacktestReport:
 
     ``con`` may be any duckdb-compatible connection (read-only is
     fine — this path never writes)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from middleware.archive.archive import load_synthesis
+
     from .db import (
         archived_synthesis_from_row,
         count_added_edges_since,
@@ -125,7 +128,7 @@ def backtest(con: Any, synthesis_id: str) -> BacktestReport:
     # naive column silently returns no rows.
     since = datetime.fromisoformat(archive.synthesis_timestamp)
     if since.tzinfo is not None:
-        since = since.astimezone(timezone.utc).replace(tzinfo=None)
+        since = since.astimezone(UTC).replace(tzinfo=None)
 
     cited_chunks = tuple(row.substrate_manifest.get("chunk", ()) or ())
     cited_edges = tuple(row.substrate_manifest.get("edge", ()) or ())

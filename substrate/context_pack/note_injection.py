@@ -17,25 +17,42 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any
 
 try:
     from .assembler import (
-        ContextPack, DefaultTokenCounter, LayerSource, TokenCounter,
-        TruncationStrategy, assemble_context_pack, default_budget_for,
+        ContextPack,
+        DefaultTokenCounter,
+        LayerSource,
+        TokenCounter,
+        TruncationStrategy,
+        assemble_context_pack,
+        default_budget_for,
     )
-    from .note_retrieval import RetrievedNote, retrieve_project_notes
     from .note_budget import NoteCoverage, render_note, select_within_budget
+    from .note_retrieval import RetrievedNote, retrieve_project_notes
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))
     from context_pack.assembler import (  # type: ignore[no-redef]
-        ContextPack, DefaultTokenCounter, LayerSource, TokenCounter,
-        TruncationStrategy, assemble_context_pack, default_budget_for,
+        ContextPack,
+        DefaultTokenCounter,
+        LayerSource,
+        TokenCounter,
+        TruncationStrategy,
+        assemble_context_pack,
+        default_budget_for,
     )
-    from context_pack.note_retrieval import RetrievedNote, retrieve_project_notes  # type: ignore[no-redef]
-    from context_pack.note_budget import NoteCoverage, render_note, select_within_budget  # type: ignore[no-redef]
+    from context_pack.note_budget import (  # type: ignore[no-redef]
+        NoteCoverage,
+        render_note,
+        select_within_budget,
+    )
+    from context_pack.note_retrieval import (  # type: ignore[no-redef]
+        retrieve_project_notes,
+    )
 
 
 # The notes layer rides as graph_evidence (valid ContextLayer.kind, no schema
@@ -57,7 +74,7 @@ _NOTES_HEADER = (
 )
 
 
-def notes_token_budget(role: str, pack_budget: Optional[int] = None) -> int:
+def notes_token_budget(role: str, pack_budget: int | None = None) -> int:
     base = pack_budget if pack_budget is not None else default_budget_for(role)
     return min(NOTES_BUDGET_CAP_TOKENS, int(base * NOTES_BUDGET_FRACTION))
 
@@ -68,9 +85,9 @@ def build_project_notes_layer(
     task_text: str,
     embedding_provider: Any,
     token_budget: int,
-    counter: Optional[TokenCounter] = None,
-    restrict_node_ids: Optional[Sequence[str]] = None,
-) -> tuple[Optional[LayerSource], NoteCoverage]:
+    counter: TokenCounter | None = None,
+    restrict_node_ids: Sequence[str] | None = None,
+) -> tuple[LayerSource | None, NoteCoverage]:
     """Retrieve + budget the project notes and render them as a LayerSource.
     Returns ``(layer_or_None, coverage)``; layer is None when there are no
     notes to inject (so the pack is unchanged)."""
@@ -110,11 +127,11 @@ def assemble_context_pack_with_notes(
     task_text: str,
     embedding_provider: Any,
     include_project_notes: bool = True,
-    target_tokens: Optional[int] = None,
+    target_tokens: int | None = None,
     truncation: TruncationStrategy = "smart",
-    counter: Optional[TokenCounter] = None,
-    parent_event_id: Optional[str] = None,
-    restrict_node_ids: Optional[Sequence[str]] = None,
+    counter: TokenCounter | None = None,
+    parent_event_id: str | None = None,
+    restrict_node_ids: Sequence[str] | None = None,
 ) -> PackWithNotes:
     """Assemble a context pack with the project's insights/questions injected.
 

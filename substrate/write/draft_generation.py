@@ -33,8 +33,9 @@ from __future__ import annotations
 import os
 import re
 import sys
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Sequence
+from typing import Any
 
 try:
     from ..voice_style.rubric import score_voice_style
@@ -74,7 +75,7 @@ DispatchFn = Callable[[str, str], str]
 # ---------------------------------------------------------------------------
 
 
-def _block_text(block: OutlineBlock, *, node_label_resolver: Optional[Callable[[str], str]] = None) -> str:
+def _block_text(block: OutlineBlock, *, node_label_resolver: Callable[[str], str] | None = None) -> str:
     """Resolve a block's renderable text. graph-node blocks resolve their
     label via the resolver (the node is the content of record);
     user-originated blocks carry inline content."""
@@ -94,7 +95,7 @@ def build_creative_writer_context(
     section_count: int,
     blocks: Sequence[OutlineBlock],
     style_guide: str = "",
-    node_label_resolver: Optional[Callable[[str], str]] = None,
+    node_label_resolver: Callable[[str], str] | None = None,
 ) -> CreativeWriterContext:
     """Build the creative_writer context from OutlineBlocks. The block_id
     carried into the prompt is the OutlineBlock's node_id (graph-node) or
@@ -215,10 +216,10 @@ def enforce_voice_gate(prose_text: str) -> GateResult:
 @dataclass(frozen=True)
 class GenerationResult:
     status: str  # 'generated' | 'gap' | 'gate_failed' | 'invalid'
-    section_id: Optional[str]
+    section_id: str | None
     prose_text: str
-    citation_report: Optional[CitationReport]
-    gate: Optional[GateResult]
+    citation_report: CitationReport | None
+    gate: GateResult | None
     detail: str = ""
     # The role's per-paragraph provenance (paragraph_index → [block_ids]).
     # Empty for gap/invalid (nothing parsed). On a 'generated' result this is
@@ -231,7 +232,7 @@ def generate_section(
     *,
     ctx: CreativeWriterContext,
     dispatch_fn: DispatchFn,
-    section_id: Optional[str] = None,
+    section_id: str | None = None,
 ) -> GenerationResult:
     """Generate one section's prose. The LLM call is injected.
 
@@ -303,7 +304,7 @@ def persist_section_draft(
     result: GenerationResult,
     report: CitationReport,
     investigation_id: str = "__operator__",
-) -> Optional[str]:
+) -> str | None:
     """Persist a successful generation's prose + per-paragraph provenance, then
     emit the audit event — both through the single-writer funnel.
 
@@ -330,11 +331,11 @@ def persist_section_draft(
     # Lazy imports: keep this module importable without the substrate event log
     # / graph ops on a bare script path (mirrors the module's other fallbacks).
     try:
-        from ..graph.ops import update_section_prose
         from ..event_log import emit_typed
+        from ..graph.ops import update_section_prose
     except ImportError:  # pragma: no cover — direct-script fallback
-        from substrate.graph.ops import update_section_prose  # type: ignore[no-redef]
         from substrate.event_log import emit_typed  # type: ignore[no-redef]
+        from substrate.graph.ops import update_section_prose  # type: ignore[no-redef]
     from substrate.schemas.events import SectionDraftGeneratedPayload
 
     # JSON object keys are strings — store paragraph indices as string keys so

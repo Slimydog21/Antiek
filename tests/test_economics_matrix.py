@@ -20,7 +20,7 @@ from substrate.graph.schema import init_database
 from substrate.speak import economics_mode as em
 from substrate.speak import invitations, project
 from substrate.speak.consent import ConsentScope, record_consent
-from substrate.speak.economics_mode import MARGIN_PUBLIC, MARGIN_PRIVATE_PUBLISHED, resolve_policy
+from substrate.speak.economics_mode import MARGIN_PRIVATE_PUBLISHED, MARGIN_PUBLIC, resolve_policy
 from substrate.speak.schema import ensure_speak_schema
 
 

@@ -25,9 +25,9 @@ from __future__ import annotations
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from ...constants import ANTIEK_PARAM_VERSION
@@ -104,7 +104,7 @@ def _safe_str(v: Any) -> str:
 def _render_components(components: Any) -> str:
     if not components or not isinstance(components, list):
         return "_No thesis components recorded._\n"
-    lines: List[str] = []
+    lines: list[str] = []
     for i, c in enumerate(components, 1):
         if not isinstance(c, dict):
             lines.append(f"### Component {i}\n\n{_safe_str(c)}\n")
@@ -135,7 +135,7 @@ def _render_components(components: Any) -> str:
 def _render_falsifications(items: Any) -> str:
     if not items or not isinstance(items, list):
         return "_No falsification conditions recorded._\n"
-    lines: List[str] = []
+    lines: list[str] = []
     for i, f in enumerate(items, 1):
         if isinstance(f, dict):
             cond = f.get("condition", "(no condition)")
@@ -152,7 +152,7 @@ def _render_falsifications(items: Any) -> str:
 def _render_risks(items: Any) -> str:
     if not items or not isinstance(items, list):
         return "_No execution risks recorded._\n"
-    lines: List[str] = []
+    lines: list[str] = []
     for i, r in enumerate(items, 1):
         if isinstance(r, dict):
             desc = (
@@ -192,10 +192,10 @@ def _render_constraint_compliance(cc: Any) -> str:
 
 
 def _utc_iso_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def build_master_md(row: Dict[str, Any]) -> str:
+def build_master_md(row: dict[str, Any]) -> str:
     """Render the MASTER.md body from a synthesis row dict.
 
     Required keys: ``synthesis_id``. Optional keys: ``investigation_id``,
@@ -226,7 +226,7 @@ def build_master_md(row: Dict[str, Any]) -> str:
     implicit_thesis = thesis.get("implicit_recommendation") or implicit
     constraint_compliance = thesis.get("constraint_compliance")
 
-    parts: List[str] = []
+    parts: list[str] = []
     parts.append(f"{SYNTHESIS_ID_MARKER}{synthesis_id} -->")
     parts.append(f"<!-- param_version: {ANTIEK_PARAM_VERSION} -->")
     parts.append(f"<!-- generated_at: {_utc_iso_now()} -->")
@@ -293,11 +293,11 @@ def existing_marker_matches(path: Path, synthesis_id: str) -> bool:
 
 def _safe_emit_written(
     *,
-    investigation_id: Optional[str],
+    investigation_id: str | None,
     synthesis_id: str,
     path: str,
     byte_count: int,
-    topic_slug: Optional[str],
+    topic_slug: str | None,
 ) -> None:
     """Best-effort MASTER_MD_WRITTEN emit. Telemetry must never fail
     the disk-write path."""
@@ -324,11 +324,11 @@ def _safe_emit_written(
 
 def _safe_emit_skipped(
     *,
-    investigation_id: Optional[str],
+    investigation_id: str | None,
     synthesis_id: str,
     path: str,
     byte_count: int,
-    topic_slug: Optional[str],
+    topic_slug: str | None,
     reason: str,
 ) -> None:
     try:
@@ -353,11 +353,11 @@ def _safe_emit_skipped(
 
 
 def generate_master_md(
-    row: Dict[str, Any],
+    row: dict[str, Any],
     *,
-    topic_slug: Optional[str] = None,
-    output_dir: Optional[str] = None,
-    research_base: Optional[Path] = None,
+    topic_slug: str | None = None,
+    output_dir: str | None = None,
+    research_base: Path | None = None,
     filename: str = DEFAULT_FILENAME,
 ) -> Path:
     """Generate ``<output_dir>/<filename>`` from ``row``.

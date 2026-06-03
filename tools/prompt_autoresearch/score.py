@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-
 # Weights per integration_autoresearch.md §5.3.
 WEIGHT_RUBRIC = 0.40      # LLM-judged (the only non-deterministic component)
 WEIGHT_VOICE_STYLE = 0.30  # deterministic (em-dash count, padding patterns)

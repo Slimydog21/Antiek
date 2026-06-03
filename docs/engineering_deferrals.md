@@ -470,7 +470,70 @@ fully-global alternative) move enforcement to a global httpx transport on every
 external Client — the latter risks false-positives on the many legitimate
 non-arXiv fetchers, so it is deferred unless egress genuinely spreads.
 
-## D17 — arXiv source-census producer (the source-onboarding gate's data feed)
+## D17 — Mountain Shell v2 yellow re-tone is var-deep only (Tailwind mirror lags)
+
+**Status:** ⚠️ Partial. The design *tokens* are re-toned + AA-proven (SPR-09
+`af21f19`: `apps/reading/src/design/tokens.css` + `tokens.ts` softened the
+`--sun-*` ramp, kept `--sun`/`--bar-accent` loud, 12/12 contrast). The **Tailwind
+mirror is not** — `apps/reading/tailwind.config.js` still carries the loud
+`sun-deep: #B89A00` / `sun-glow: #FCE85E`, so the ~56 component consumers that
+resolve through Tailwind utilities (`text-sun-deep`, `bg-sun-glow`,
+`border-sun-deep`) still render the loud hue on screen. **NOT a regression** — it
+is the disclosed boundary of SPR-09's scope, recorded at ship time.
+**Unlock criterion:** anytime (operator-discretion / cheap tidy). No gate blocks
+it.
+**Spec reference:** `docs/decisions/ams-v2-shell-ship.md` + the verification
+report `docs/ams-v2/mountain-shell-v2-verification.md` §4 ("Yellow re-tone is
+var-deep only"); SPR-09 `af21f19`.
+**Blocks-what:** nothing — the var-deep re-tone is the shipped, AA-passing
+baseline. This is chrome-consistency polish, not a functional gap.
+
+The anti-pattern this entry guards against: a future agent seeing a loud-yellow
+Tailwind utility on screen and **re-softening the CSS vars** (which are already
+correct) instead of the Tailwind mirror. The vars are done; the residual is the
+`tailwind.config.js` hex mirror, and there is **no CI guard** catching the
+var↔Tailwind divergence.
+
+**Action when unlocked:** re-tone the `tailwind.config.js` `sun-*` hexes to match
+the softened `--sun-*` vars while keeping `--bar-accent` loud (`#F5DF24`); then
+re-run the contrast (`tokens.contrast.test.ts`) + `ams-real` gates; ideally add a
+CI guard asserting the config mirror stays in sync with the vars so the two
+cannot drift again.
+
+---
+
+## D17 — Personal-Reading Lane live-ingest cluster (the prod-only network steps)
+
+**Status:** ⚠️ Partial. The lane shipped + is live on prod (PR #43 merge
+`9aeb2c9`, deployed 2026-06-01); the connectors, classification gate, monitoring,
+BYOK store, and the standing `corpus_audit` backstops all run. What's deferred is
+the **one-time real-network ingest** behind each connector — every live-fetch
+step is `@pytest.mark.skipif`/prod-only, with offline behaviour fully proven
+against fixtures (`FakeSourceClient`, `httpx.MockTransport`).
+**Unlock criterion:** an operator ingest window (a manual, supervised run with
+real network + the relevant credential). No code change required — these are
+operator-invoked ingest runs, not new engineering.
+**Spec reference:** `specs/antiek-personal-lane/` SPR-04/05/06/08; the go-live
+procedure is `infrastructure/runbooks/personal-lane.md` (audit-gated).
+**Blocks-what:** nothing in the substrate (the lane is dormant-correct and
+auditable empty). It blocks only the *populated-corpus* state — until an ingest
+window runs, the personal lane holds zero real third-party documents on prod.
+**Action when unlocked (per connector, all operator-invoked):**
+- **SPR-04 Bernays** — live Project-Gutenberg #61364 + archive.org Propaganda
+  fetch (public-domain titles only; per-title renewal check is operator gate
+  **G12**, not this deferral).
+- **SPR-05 Paul Graham essays** — `python -m acquisition.urls.paulgraham`
+  against the live `paulgraham.com/articles.html` (robots-honoring, 3.0s throttle).
+- **SPR-06 Substack** — supply the real (gitignored) subscriptions manifest and
+  run `ingest_subscriptions` over the operator's subscribed `/feed`s.
+- **SPR-08 X BYOK** — register the operator's own X API key in `runtime/byok`
+  and run the live smoke (`ANTIEK_X_BYOK_LIVE_KEY`); X content stays
+  `personal_reading`/`social_thread`, excluded from training per operator gate
+  **G11**.
+After any ingest, run the lane audit (`substrate/corpus_audit.py`) to confirm
+zero third-party docs on a servable class.
+
+## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
 
 **Status:** ❌ Deferred. The GATE shipped (PR #42 / `abde67e`); its PRODUCER did not.
 **Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run.
@@ -494,6 +557,7 @@ non-arXiv fetchers, so it is deferred unless egress genuinely spreads.
 | Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
 | Read-surface integration sprints (geometry pass / `source.read` emit / marginalia persistence / review-state resolver; each its own `docs/decisions/spr-0{5,6,7,8}-*.md`) | D13 (Physics of Reading live surface integrations) |
 | Operator ratifies the Physics of Reading canon (`physics-of-reading.md` draft→ratified) | D13's CI-guard advisory→blocking flip |
+| Operator ingest window (real network + per-connector credential) | D17 (Personal-Reading Lane live-ingest cluster) |
 
 ---
 
@@ -520,6 +584,9 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
   resolution, marginalia audio-blob storage, the review-state resolver) have no
   calendar binding; the canon ratification is an independent operator-discretion
   action that only flips CI strictness.
+- **D17 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
+  / anytime cheap tidy; no calendar binding. Shipped baseline (var-deep re-tone)
+  is AA-passing; this is chrome-consistency polish only.
 
 **Bottom line:** of the 13 deferrals, **none can be closed this week**;
 **0 close this month** (every deferral is gated on either time, volume,

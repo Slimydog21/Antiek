@@ -2,22 +2,14 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
-
-import pytest
-
 from substrate.dp_shuffler import EpsilonRegistry, SurfaceConfig
 from substrate.telemetry_preferences import (
     InMemoryPreferenceStore,
     SqlitePreferenceStore,
-    UserTelemetryPreferences,
     apply_defaults_from_registry,
     is_enabled,
-    list_preferences,
     set_preference,
 )
-
 
 # ── InMemory store ─────────────────────────────────────────────
 

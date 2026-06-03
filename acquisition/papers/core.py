@@ -27,7 +27,7 @@ cross-process ban sentinel.
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -40,7 +40,7 @@ CORE_SOURCE = "core"
 CORE_THROTTLE_KEY = "core"
 
 
-def _first_doi(raw: dict[str, Any]) -> Optional[str]:
+def _first_doi(raw: dict[str, Any]) -> str | None:
     doi = raw.get("doi")
     if isinstance(doi, str) and doi.strip():
         return doi.strip()
@@ -53,7 +53,7 @@ def _first_doi(raw: dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _pdf_url(raw: dict[str, Any]) -> Optional[str]:
+def _pdf_url(raw: dict[str, Any]) -> str | None:
     """CORE's downloadable full-text URL, when present. ``downloadUrl`` is the
     direct file; ``fullTextIdentifier`` is a fallback. Either may be an HTML
     landing page — the shared ``assert_pdf`` gate catches that at fetch."""
@@ -120,7 +120,7 @@ def parse_works_response(payload: dict[str, Any]) -> list[PaperRecord]:
 
 
 def _http_post(
-    url: str, body: dict[str, Any], *, api_key: Optional[str], client: Optional[httpx.Client]
+    url: str, body: dict[str, Any], *, api_key: str | None, client: httpx.Client | None
 ) -> dict:
     # HOST-GLOBAL arXiv GOVERNANCE (SPR-09 host-based seam): ``url`` is
     # env/param-overridable (``ANTIEK_CORE_BASE_URL`` / ``base_url``), so the
@@ -163,9 +163,9 @@ def search_works(
     *,
     query: str,
     limit: int = 25,
-    api_key: Optional[str] = None,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
+    api_key: str | None = None,
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
     throttle: Any = None,
 ) -> list[PaperRecord]:
     """Query CORE for works matching ``query``.

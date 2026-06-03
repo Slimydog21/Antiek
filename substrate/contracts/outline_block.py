@@ -22,7 +22,7 @@ Field shapes verified against ``substrate/write/outline_block.py`` L76-93:
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -53,11 +53,11 @@ class OutlineBlockContract(BaseModel):
     block_kind: BlockKind
     provenance_kind: ProvenanceKind
     # node-backed → node_id set, content null; user-originated → reversed.
-    node_id: Optional[str] = None
-    content: Optional[str] = None
+    node_id: str | None = None
+    content: str | None = None
 
     @model_validator(mode="after")
-    def _no_orphan_prose(self) -> "OutlineBlockContract":
+    def _no_orphan_prose(self) -> OutlineBlockContract:
         """``graph_node ⟺ node_id present``. This is shape validation, not
         business logic — it is the contract's defining guarantee."""
         node_backed = self.provenance_kind in NODE_BACKED_PROVENANCE

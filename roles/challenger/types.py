@@ -9,7 +9,6 @@ the future autonomous challenger handler use the same shape.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .prompt import DEFAULT_CHALLENGE_PROMPT
 
@@ -31,17 +30,17 @@ class Challenge:
     """
 
     claim_text: str
-    challenged_claim_id: Optional[str] = None
-    anchor_region_id: Optional[str] = None
+    challenged_claim_id: str | None = None
+    anchor_region_id: str | None = None
     user_question: str = DEFAULT_CHALLENGE_PROMPT
 
 
 def compose_challenge(
     *,
     claim_text: str,
-    claim_id: Optional[str] = None,
-    anchor_region_id: Optional[str] = None,
-    user_question: Optional[str] = None,
+    claim_id: str | None = None,
+    anchor_region_id: str | None = None,
+    user_question: str | None = None,
 ) -> Challenge:
     """Build a ``Challenge`` with the default user_question when none
     is provided. Used by the UI button (user clicks → bridge posts)

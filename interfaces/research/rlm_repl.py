@@ -41,9 +41,10 @@ import io
 import os
 import sys
 import traceback
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 # Ensure substrate root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -59,7 +60,6 @@ from substrate.constants import (  # noqa: E402
     RLM_REPL_STDOUT_TRUNCATE,
 )
 
-
 # ---------------------------------------------------------------------------
 # Function registry
 # ---------------------------------------------------------------------------
@@ -69,8 +69,8 @@ class FunctionRegistry:
     """White-list of callables visible inside the REPL sandbox."""
 
     def __init__(self):
-        self._fns: Dict[str, Callable] = {}
-        self._packages: List[str] = list(RLM_REPL_AVAILABLE_PACKAGES)
+        self._fns: dict[str, Callable] = {}
+        self._packages: list[str] = list(RLM_REPL_AVAILABLE_PACKAGES)
 
     def install(self, name: str, fn: Callable) -> None:
         if not callable(fn):
@@ -81,10 +81,10 @@ class FunctionRegistry:
         if name not in self._packages:
             self._packages.append(name)
 
-    def installed_function_names(self) -> List[str]:
+    def installed_function_names(self) -> list[str]:
         return list(self._fns.keys())
 
-    def globals_snapshot(self) -> Dict[str, Any]:
+    def globals_snapshot(self) -> dict[str, Any]:
         """Dict fed into ``exec(code, sandbox_globals)``."""
         return dict(self._fns)
 
@@ -124,7 +124,7 @@ class SandboxSecurityError(RuntimeError):
 
 class SandboxValidator(ast.NodeVisitor):
     def __init__(self):
-        self.errors: List[str] = []
+        self.errors: list[str] = []
 
     def generic_visit(self, node):
         if type(node) not in _ALLOWED_NODE_TYPES:
@@ -167,12 +167,12 @@ class ReplSummary:
     answer_content_len: int
     answer_content_prefix: str  # first 200 chars
     answer_ready: bool
-    variable_sizes: Dict[str, int]
-    variable_types: Dict[str, str]
-    variable_prefixes: Dict[str, str]
+    variable_sizes: dict[str, int]
+    variable_types: dict[str, str]
+    variable_prefixes: dict[str, str]
     stdout_snippet: str  # truncated to RLM_REPL_STDOUT_TRUNCATE
-    exception: Optional[str] = None
-    last_exception_trace: Optional[str] = None
+    exception: str | None = None
+    last_exception_trace: str | None = None
 
     def format_for_prompt(self) -> str:
         parts = [
@@ -235,7 +235,7 @@ class RLMRepl:
 
     def __init__(
         self,
-        corpus: Optional[Dict[str, Any]] = None,
+        corpus: dict[str, Any] | None = None,
         *,
         max_iterations: int = 20,
         depth: int = 0,
@@ -244,14 +244,14 @@ class RLMRepl:
         self.max_iterations = max_iterations
         self.depth = depth
         self.iteration = 0
-        self._globals: Dict[str, Any] = {}
-        self._locals: Dict[str, Any] = {}
+        self._globals: dict[str, Any] = {}
+        self._locals: dict[str, Any] = {}
         self._stdout_buffer = io.StringIO()
-        self._exception: Optional[str] = None
-        self._exception_trace: Optional[str] = None
+        self._exception: str | None = None
+        self._exception_trace: str | None = None
 
         # The diffusion-answer pattern.
-        self.answer: Dict[str, Any] = {"content": "", "ready": False}
+        self.answer: dict[str, Any] = {"content": "", "ready": False}
 
         if corpus:
             for name, value in corpus.items():
@@ -263,9 +263,9 @@ class RLMRepl:
 
     def summarise(self) -> ReplSummary:
         """Produce constant-size metadata for the orchestrator."""
-        var_sizes: Dict[str, int] = {}
-        var_types: Dict[str, str] = {}
-        var_prefixes: Dict[str, str] = {}
+        var_sizes: dict[str, int] = {}
+        var_types: dict[str, str] = {}
+        var_prefixes: dict[str, str] = {}
         for name, value in self._globals.items():
             if name in ("answer", "__builtins__"):
                 continue
@@ -379,7 +379,7 @@ class RLMRepl:
         """Extract the final answer. Call after the loop terminates."""
         return str(self.answer.get("content", ""))
 
-    def snapshot(self) -> Dict[str, Any]:
+    def snapshot(self) -> dict[str, Any]:
         """JSON-serializable snapshot for archival."""
         return {
             "iteration": self.iteration,
@@ -406,7 +406,7 @@ def rlm_loop(
     repl: RLMRepl,
     generate_code: Callable[[ReplSummary], str],
     *,
-    max_iterations: Optional[int] = None,
+    max_iterations: int | None = None,
 ) -> str:
     """Run the full RLM loop to completion.
 
@@ -446,7 +446,7 @@ def make_llm_batch(
     llm_caller: Callable[[str], str],
     *,
     max_parallel: int = 6,
-) -> Callable[[List[str]], List[str]]:
+) -> Callable[[list[str]], list[str]]:
     """Wrap a raw LLM caller into the batched signature::
 
         llm_batch(prompts: list[str]) -> list[str]
@@ -454,8 +454,8 @@ def make_llm_batch(
     Dispatches prompts in parallel via ``ThreadPoolExecutor`` bounded
     by ``max_parallel``. Each prompt is an independent LLM call."""
 
-    def _llm_batch(prompts: List[str]) -> List[str]:
-        results: List[Optional[str]] = [None] * len(prompts)
+    def _llm_batch(prompts: list[str]) -> list[str]:
+        results: list[str | None] = [None] * len(prompts)
         workers = min(max_parallel, len(prompts)) if prompts else 0
         if workers <= 1:
             for i, p in enumerate(prompts):

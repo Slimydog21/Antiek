@@ -22,10 +22,6 @@ https://info.arxiv.org/help/license/index.html
 
 from __future__ import annotations
 
-from typing import Optional
-
-from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
-
 # Re-export the generic primitives so existing arXiv importers
 # (``acquisition.arxiv.adapter`` imports ``license_basis_string`` +
 # ``resolve_license`` from here; ``acquisition.arxiv.__init__`` re-exports
@@ -37,6 +33,7 @@ from acquisition.licenses_core import (  # noqa: F401
     license_basis_string,
     resolve_against_table,
 )
+from substrate.constants import GATED_DEFAULT_CONTENT_CLASS
 
 # arXiv's default "non-exclusive license to distribute". This lets arXiv host
 # the paper; the AUTHOR retains copyright. NO grant to Antiek. This is the
@@ -59,7 +56,7 @@ ARXIV_NONEXCLUSIVE_ROW: LicenseRow = LicenseRow(
 _LICENSE_TABLE: tuple[LicenseRow, ...] = (ARXIV_NONEXCLUSIVE_ROW,) + CC_LICENSE_ROWS
 
 
-def resolve_license(license_uri: Optional[str]) -> LicenseResolution:
+def resolve_license(license_uri: str | None) -> LicenseResolution:
     """Map an arXiv license URI to a servable-class resolution.
 
     Deny-by-default: a ``None`` / empty / unmatched URI resolves to

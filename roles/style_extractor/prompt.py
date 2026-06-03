@@ -37,7 +37,6 @@ role cannot be exercised against a live model here.
 
 from __future__ import annotations
 
-
 STYLE_EXTRACTOR_PROMPT_VERSION = "1.0.0"
 # Flash-tier per the design doc ("one extra flash-tier dispatch …
 # roughly $0.0002"). The router maps roles → tiers in config.yaml; the

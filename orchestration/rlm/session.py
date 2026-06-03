@@ -11,10 +11,8 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Optional
-
 
 # Per rlm_integration_spec.md proposed constants (Section F additions).
 RLM_DOC_THRESHOLD_TOKENS: int = 64_000  # documents above this use RLM mode
@@ -55,7 +53,7 @@ def _check_ratified() -> None:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -76,11 +74,11 @@ class RLMSessionState:
     session_id: str
     investigation_id: str
     root_role: str  # the role that triggered the RLM session (synthesizer | wrestler)
-    document_id: Optional[str]
+    document_id: str | None
     iteration_count: int = 0
     cost_usd_accumulated: Decimal = Decimal("0.00")
     started_at: str = field(default_factory=_now_iso)
-    completed_at: Optional[str] = None
+    completed_at: str | None = None
     status: str = "in_progress"  # | "completed" | "failed" | "cost_capped"
 
 
@@ -150,7 +148,7 @@ def create_session(
     *,
     investigation_id: str,
     root_role: str,
-    document_id: Optional[str] = None,
+    document_id: str | None = None,
 ) -> RLMSession:
     """Create an RLM session. Refuses to run if §6 ratification is
     not set."""

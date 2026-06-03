@@ -1,12 +1,12 @@
 /**
- * useMouseFollow.test.ts — the ~5s-lagged cursor pursuit (SPR-05).
+ * useMouseFollow.test.ts — the ~0.5s-lagged cursor pursuit (SPR-05).
  *
  * Deterministic: a FAKE CLOCK (injected `now`) advanced in lockstep with
  * vitest's fake `setInterval`, plus synthetic `pointermove` events. No real
  * time, no real mouse. Load-bearing claims:
- *  - the target trails the cursor by ~LAG_MS (where the mouse WAS 5s ago,
+ *  - the target trails the cursor by ~LAG_MS (where the mouse WAS 0.5s ago,
  *    not where it is now);
- *  - cold start (< 5s of history) falls back to the oldest sample (the lag
+ *  - cold start (< 0.5s of history) falls back to the oldest sample (the lag
  *    ramps up — an honest approximation);
  *  - a still pointer past POINTER_IDLE_MS reports pointerIdle (caller wanders);
  *  - reduced-motion (disabled) returns a frozen null target with NO listeners
@@ -71,13 +71,13 @@ describe("useMouseFollow", () => {
 
     // The mouse sits at A for a full LAG window, then jumps to B.
     movePointer(100, 100);
-    advance(LAG_MS + SAMPLE_INTERVAL_MS); // build >5s of history at A
+    advance(LAG_MS + SAMPLE_INTERVAL_MS); // build >0.5s of history at A
     movePointer(900, 700);
-    advance(SAMPLE_INTERVAL_MS * 4); // a beat at B, but < 5s
+    advance(SAMPLE_INTERVAL_MS * 4); // a beat at B, but < 0.5s
 
     const reading = result.current.read();
     expect(reading.target).not.toBeNull();
-    // The lagged target is still near A (~5s ago), NOT the live B.
+    // The lagged target is still near A (~0.5s ago), NOT the live B.
     expect(reading.target!.x).toBeLessThan(300);
     expect(reading.target!.y).toBeLessThan(300);
     expect(reading.pointerIdle).toBe(false); // just moved to B
@@ -91,17 +91,17 @@ describe("useMouseFollow", () => {
     // Let the full lag window pass with the pointer parked at B.
     advance(LAG_MS + SAMPLE_INTERVAL_MS);
     const reading = result.current.read();
-    // Now the 5s-old point IS B.
+    // Now the 0.5s-old point IS B.
     expect(reading.target!.x).toBeGreaterThan(700);
     expect(reading.target!.y).toBeGreaterThan(500);
   });
 
-  it("cold start (< 5s of history) falls back to the oldest sample (lag ramps up)", () => {
+  it("cold start (< 0.5s of history) falls back to the oldest sample (lag ramps up)", () => {
     const { result } = renderHook(() => useMouseFollow({ now }));
     movePointer(400, 300);
     advance(SAMPLE_INTERVAL_MS * 3); // only ~360ms of history, far under LAG_MS
     const reading = result.current.read();
-    // No 5s-old sample exists yet → use the oldest we have (≈ the first move).
+    // No 0.5s-old sample exists yet → use the oldest we have (≈ the first move).
     expect(reading.target).not.toBeNull();
     expect(reading.target!.x).toBe(400);
     expect(reading.target!.y).toBe(300);

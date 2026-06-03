@@ -25,6 +25,8 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from datetime import UTC
+
 from acquisition.arxiv.oai_pmh import OaiPmhHarvester  # noqa: E402
 from acquisition.arxiv.throttle import ArxivBanned, ArxivThrottle  # noqa: E402
 
@@ -393,7 +395,7 @@ def test_429_mid_harvest_sets_ban_then_resume_pauses(tmp_path):
 
 
 def test_harvest_census_pages_and_partitions(tmp_path):
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     clock = _FakeClock()
     h = OaiPmhHarvester(
@@ -405,7 +407,7 @@ def test_harvest_census_pages_and_partitions(tmp_path):
     census = h.harvest_census(
         from_date="2024-01-01",
         until_date="2024-01-31",
-        harvested_at=datetime(2026, 5, 29, tzinfo=timezone.utc),
+        harvested_at=datetime(2026, 5, 29, tzinfo=UTC),
     )
     # 5 records across 3 pages: 3 CC-BY (T1), 1 arxiv-default (T3),
     # 1 absent-license (T3 + ambiguous).

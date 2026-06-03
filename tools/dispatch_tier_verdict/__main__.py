@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from tools.dispatch_tier_verdict.analyzer import (
@@ -56,17 +56,17 @@ def main() -> int:
 
     def _parse_iso_to_utc(raw: str) -> datetime:
         dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
     since = (
         _parse_iso_to_utc(args.since)
         if args.since
-        else datetime.now(timezone.utc) - timedelta(days=14)
+        else datetime.now(UTC) - timedelta(days=14)
     )
     until = (
         _parse_iso_to_utc(args.until)
         if args.until
-        else datetime.now(timezone.utc)
+        else datetime.now(UTC)
     )
 
     print(f"Analyzing events in {args.events}")

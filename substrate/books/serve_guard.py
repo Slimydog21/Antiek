@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple
 
 from substrate.books.serve import ServeResult, serve_full_text
 from substrate.rights import (
@@ -94,9 +94,9 @@ class _RightsContext(NamedTuple):
     which is how the serve contract distinguishes "arXiv paper" from "existing
     book" downstream."""
 
-    tier: Optional[RightsTier]
-    arxiv_id: Optional[str]
-    license_uri: Optional[str]
+    tier: RightsTier | None
+    arxiv_id: str | None
+    license_uri: str | None
 
 
 def _rights_context(con: Any, document_id: str) -> _RightsContext:

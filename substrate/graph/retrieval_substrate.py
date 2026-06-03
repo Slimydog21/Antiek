@@ -46,13 +46,14 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from typing import Any, Optional, Protocol, Sequence, runtime_checkable
+from collections.abc import Sequence
+from typing import Any, Protocol, runtime_checkable
 
 try:
     from .search import (
-        EmbeddingModel,
         PRIVILEGED_POLICY_TAGS,
         RESTRICTED_CONTENT_CLASSES,
+        EmbeddingModel,
         search,
         search_nodes_by_label,
     )
@@ -60,9 +61,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from substrate.graph.search import (  # type: ignore[no-redef]
-        EmbeddingModel,
         PRIVILEGED_POLICY_TAGS,
         RESTRICTED_CONTENT_CLASSES,
+        EmbeddingModel,
         search,
         search_nodes_by_label,
     )
@@ -105,8 +106,8 @@ class RetrievalSubstrate(Protocol):
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
     ) -> dict: ...
 
@@ -132,7 +133,7 @@ class BruteForceSubstrate:
         self._model = model
 
     @classmethod
-    def open(cls, db_path: str, *, model: EmbeddingModel) -> "BruteForceSubstrate":
+    def open(cls, db_path: str, *, model: EmbeddingModel) -> BruteForceSubstrate:
         return cls(connect_read(db_path), model=model)
 
     def query(
@@ -140,8 +141,8 @@ class BruteForceSubstrate:
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
     ) -> dict:
         return search(
@@ -169,7 +170,7 @@ class BruteForceSubstrate:
 # Process-level memo for the vss-loadable probe. The probe runs AT MOST ONCE
 # per process (None = not yet probed), so neither the interface tests nor the
 # bench re-pay the cost per call. Reset only via _reset_vss_probe (tests).
-_VSS_PROBE_RESULT: Optional[bool] = None
+_VSS_PROBE_RESULT: bool | None = None
 _VSS_PROBE_COUNT = 0  # observability: proves the probe runs once, not per-test.
 
 # Explicit opt-in env flag for the NETWORK install of the vss extension. Unset
@@ -307,7 +308,7 @@ class DuckDbVssSubstrate:
         self._emb_col = self._VSS_COL if vss_active else "embedding"
 
     @classmethod
-    def open(cls, db_path: str, *, model: EmbeddingModel) -> "DuckDbVssSubstrate":
+    def open(cls, db_path: str, *, model: EmbeddingModel) -> DuckDbVssSubstrate:
         """Open the substrate. Tries to build an HNSW index over a temp copy
         of the graph; falls back to a read-only brute-force connection if vss
         is unavailable or the index cannot be built.
@@ -374,8 +375,8 @@ class DuckDbVssSubstrate:
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
     ) -> dict:
         if not self.vss_active:
@@ -391,14 +392,14 @@ class DuckDbVssSubstrate:
         )
 
     def _vss_query(
-        self, text: str, *, top_k: int, source_tier_max: Optional[int],
-        document_ids: Optional[Sequence[str]], policy_tag: str,
+        self, text: str, *, top_k: int, source_tier_max: int | None,
+        document_ids: Sequence[str] | None, policy_tag: str,
     ) -> dict:
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
 
         # Honest empty for an explicitly-empty document scope (mirrors search()).
-        scoped_ids: Optional[list[str]] = None
+        scoped_ids: list[str] | None = None
         if document_ids is not None:
             scoped_ids = list(dict.fromkeys(document_ids))
             if not scoped_ids:

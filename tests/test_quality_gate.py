@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from compounding.quality_gate import (
-    PublicGraphAcceptanceVerdict,
     QualityGate,
     QualityGateReason,
     SourceTierResult,
@@ -13,7 +10,6 @@ from compounding.quality_gate import (
     VoiceStyleResult,
     evaluate_notebook_for_public,
 )
-
 
 # ── Component verdicts ──────────────────────────────────────────────
 

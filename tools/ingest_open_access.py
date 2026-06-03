@@ -39,8 +39,8 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
 
 import httpx
 
@@ -48,8 +48,14 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.openaccess import OAThrottle, resolve_oa_license  # noqa: E402
-from acquisition.openaccess import doaj, openalex, pmc, unpaywall  # noqa: E402
+from acquisition.openaccess import (  # noqa: E402  # noqa: E402
+    OAThrottle,
+    doaj,
+    openalex,
+    pmc,
+    resolve_oa_license,
+    unpaywall,
+)
 from acquisition.openaccess.ingest import (  # noqa: E402
     build_license_basis,
     ingest_oa_item,
@@ -68,10 +74,10 @@ class Candidate:
     a landing-page-only Unpaywall/PMC hit) — such an item can be reported but
     not ingested."""
 
-    doi: Optional[str]
+    doi: str | None
     title: str
-    pdf_url: Optional[str]
-    license_uri: Optional[str]
+    pdf_url: str | None
+    license_uri: str | None
     resolution: LicenseResolution
     source: str
     how: str
@@ -95,15 +101,15 @@ class BatchReport:
 def _resolve_candidates(
     *,
     source: str,
-    query: Optional[str],
-    author: Optional[str],
-    dois: Optional[Sequence[str]],
+    query: str | None,
+    author: str | None,
+    dois: Sequence[str] | None,
     limit: int,
     throttle: OAThrottle,
-) -> List[Candidate]:
+) -> list[Candidate]:
     """Resolve the selectors to a candidate list for the chosen source. Each
     candidate carries its deny-by-default license verdict already computed."""
-    out: List[Candidate] = []
+    out: list[Candidate] = []
     if source == "openalex":
         works = openalex.search_works(
             search=query, author=author, per_page=limit, throttle=throttle
@@ -276,11 +282,11 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
 
-    dois: Optional[List[str]] = None
+    dois: list[str] | None = None
     if args.dois:
         dois = [x.strip() for x in args.dois.split(",") if x.strip()]
 

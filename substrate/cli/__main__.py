@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 
 def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:

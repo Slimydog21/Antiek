@@ -28,8 +28,9 @@ the shared ``SourceThrottle``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from acquisition.corpus_quality import CandidateRef
 from acquisition.licenses_core import ClassificationResult, classify
@@ -63,20 +64,20 @@ class PaperRecord:
     source: str  # provenance: "core" | "semantic_scholar" | "biorxiv" | ...
     source_id: str  # source-local id (CORE id / S2 corpusId / arXiv id / DOI)
     title: str
-    license: Optional[str] = None
-    doi: Optional[str] = None
-    arxiv_id: Optional[str] = None
-    abstract: Optional[str] = None
+    license: str | None = None
+    doi: str | None = None
+    arxiv_id: str | None = None
+    abstract: str | None = None
     authors: tuple[str, ...] = ()
-    pdf_url: Optional[str] = None  # a fetchable full-text PDF, when offered
+    pdf_url: str | None = None  # a fetchable full-text PDF, when offered
     has_servable_body: bool = False
     legitimate_source: bool = True  # public API / open dump -> always legitimate
     source_declaration: Mapping[str, Any] = field(default_factory=dict)
-    license_field: Optional[str] = None  # WHICH source field carried the license
+    license_field: str | None = None  # WHICH source field carried the license
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @property
-    def primary_author(self) -> Optional[str]:
+    def primary_author(self) -> str | None:
         return self.authors[0] if self.authors else None
 
 
@@ -155,7 +156,7 @@ def _source_basis(record: PaperRecord, result: ClassificationResult) -> str:
     return f"{record.source}{field_tag}; {result.license_basis}"
 
 
-def paper_candidate_ref(record: PaperRecord, *, body: Optional[str] = None) -> CandidateRef:
+def paper_candidate_ref(record: PaperRecord, *, body: str | None = None) -> CandidateRef:
     """Project a paper into the orchestrator's dedup ref so cross-source
     collapse keys through the single ``substrate.dedup`` ladder.
 
@@ -205,7 +206,7 @@ def ingest_servable_paper(
     investigation_id: str,
     pdf_bytes: bytes,
     source_tier: int = 2,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     embedder: Any = None,
 ) -> PaperIngestResult:
     """Stage a SERVABLE paper's full text through the shared servable-book path.

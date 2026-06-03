@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any, Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Any
 
 from .outline_block import OutlineBlock, list_section_blocks
 
@@ -39,7 +40,7 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / (na * nb)
 
 
-def _node_document(con: Any, node_id: str) -> Optional[str]:
+def _node_document(con: Any, node_id: str) -> str | None:
     """Resolve a node's source document id via its distillation chunk."""
     row = con.execute(
         "SELECT metadata FROM nodes WHERE node_id = ?", [node_id]
@@ -59,7 +60,7 @@ def _node_document(con: Any, node_id: str) -> Optional[str]:
     return doc_row[0] if doc_row else None
 
 
-def _node_embedding(con: Any, node_id: str) -> Optional[list[float]]:
+def _node_embedding(con: Any, node_id: str) -> list[float] | None:
     row = con.execute(
         "SELECT embedding FROM nodes WHERE node_id = ?", [node_id]
     ).fetchone()
@@ -70,7 +71,7 @@ def _node_embedding(con: Any, node_id: str) -> Optional[list[float]]:
 
 def cluster_blocks(
     con: Any,
-    blocks: Union[str, Sequence[OutlineBlock]],
+    blocks: str | Sequence[OutlineBlock],
     *,
     threshold: float = 0.82,
 ) -> dict[str, list[OutlineBlock]]:

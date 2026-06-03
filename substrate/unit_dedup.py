@@ -75,18 +75,13 @@ over this file is empty by construction).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
-
-# Tier 1 delegates ALL stable-id identity to the single identity home — no
-# re-derived normalizer, no second precedence ladder (M1 / rigor #4).
-from substrate.dedup import Confidence, IdentityRecord, identity_key
 
 # Tier 2 reuses the ONE embedding path. Imported lazily inside the function
 # (mirroring insight_question._default_provider) so a test can install a hash
 # provider via ANTIEK_EMBEDDING_PROVIDER=hash without paying the
 # sentence-transformers import at module load.
-
 # Cosine reuse: the codebase's single cosine formula lives in
 # interfaces.research.api.cross_doc._cosine. We bind it here so this module
 # COMPOSES it rather than minting a third one (rigor #4). This is an aliased
@@ -94,6 +89,9 @@ from substrate.dedup import Confidence, IdentityRecord, identity_key
 # normalizer over this file finds nothing.
 from interfaces.research.api.cross_doc import _cosine as _unit_cosine
 
+# Tier 1 delegates ALL stable-id identity to the single identity home — no
+# re-derived normalizer, no second precedence ladder (M1 / rigor #4).
+from substrate.dedup import Confidence, IdentityRecord, identity_key
 
 # ---------------------------------------------------------------------------
 # The cosine threshold — a defensible judgment call (rigor #5).
@@ -149,8 +147,8 @@ class CandidateUnit:
     text: str
     retrieval_key: str
     investigation_id: str
-    source_document_id: Optional[str] = None
-    identity_record: Optional[IdentityRecord] = None
+    source_document_id: str | None = None
+    identity_record: IdentityRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -167,8 +165,8 @@ class ExistingUnit:
     text: str
     retrieval_key: str
     investigation_id: str
-    source_document_id: Optional[str] = None
-    identity_record: Optional[IdentityRecord] = None
+    source_document_id: str | None = None
+    identity_record: IdentityRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -210,7 +208,7 @@ def _shares_scope(candidate: CandidateUnit, existing: ExistingUnit) -> bool:
 
 def _tier1_match(
     candidate: CandidateUnit, existing: ExistingUnit
-) -> Optional[DuplicateMatch]:
+) -> DuplicateMatch | None:
     """Tier 1 — exact / high-confidence identity. No embedding involved.
 
     Two arms, both high-confidence:
@@ -254,7 +252,7 @@ def find_near_duplicate(
     existing_units: Sequence[ExistingUnit],
     *,
     embedding_provider=None,
-) -> Optional[DuplicateMatch]:
+) -> DuplicateMatch | None:
     """Return the first existing unit ``candidate_unit`` duplicates, or None.
 
     PURE: no DB, no network, no clock. The deposit path calls this ONCE per
@@ -300,7 +298,7 @@ def find_near_duplicate(
         provider = default_embedding_provider()
 
     cand_vec = provider.encode(candidate_unit.text)
-    best: Optional[DuplicateMatch] = None
+    best: DuplicateMatch | None = None
     for existing in in_scope:
         cos = _unit_cosine(cand_vec, provider.encode(existing.text))
         if cos < UNIT_DEDUP_COSINE_THRESHOLD:

@@ -28,11 +28,10 @@ most valuable note is never the one dropped.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
 
 from .note_retrieval import RetrievedNote
-
 
 W_RELEVANCE = 0.60
 W_RECENCY = 0.20
@@ -86,9 +85,9 @@ def select_within_budget(
     notes: Sequence[RetrievedNote],
     *,
     token_budget: int,
-    counter: Optional[object] = None,
+    counter: object | None = None,
     header_text: str = "",
-) -> tuple[List[RetrievedNote], NoteCoverage]:
+) -> tuple[list[RetrievedNote], NoteCoverage]:
     """Select the highest-scored notes that fit ``token_budget`` tokens.
     Deterministic; highest-ranked are never the ones dropped."""
     counter = counter or _Counter()
@@ -98,7 +97,7 @@ def select_within_budget(
         key=lambda nt: (-score_note(nt, rn[nt.node_id]), nt.node_id),  # score desc, id asc
     )
     used = counter.count(header_text) if header_text else 0
-    selected: List[RetrievedNote] = []
+    selected: list[RetrievedNote] = []
     for nt in ranked:
         cost = counter.count(render_note(nt) + "\n")
         if used + cost > token_budget:

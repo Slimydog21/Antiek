@@ -34,19 +34,14 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
-
-import pytest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from skills.domain import (  # noqa: E402
-    DOMAIN_KEYWORDS,
     EXTRACTION_CONFIDENCE_TIERS,
     EXTRACTION_SECTIONS,
     EXTRACTION_SYSTEM_PROMPT,
-    EXTRACTION_USER_TEMPLATE,
     ExtractionResult,
     apply_finding_to_section,
     classify_domains,
@@ -57,7 +52,6 @@ from skills.domain import (  # noqa: E402
     make_extraction_prompt,
     patch_skill,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1-2. classify_domains
@@ -171,9 +165,9 @@ def test_extraction_sections_match_system_prompt_body():
 
 
 def test_extraction_confidence_tiers_are_the_canonical_four():
-    assert EXTRACTION_CONFIDENCE_TIERS == frozenset({
+    assert frozenset({
         "Measured", "Calculated", "Inferred", "Speculated",
-    })
+    }) == EXTRACTION_CONFIDENCE_TIERS
 
 
 # ---------------------------------------------------------------------------

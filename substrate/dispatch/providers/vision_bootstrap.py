@@ -19,14 +19,12 @@ text-dispatch ``register_default_providers()`` call.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from .vision_anthropic import (
     AnthropicVisionProvider,
     VisionProvider,
 )
 from .vision_openai import OpenAIVisionProvider
-
 
 _VISION_REGISTRY: dict[str, VisionProvider] = {}
 
@@ -37,7 +35,7 @@ def register_vision_provider(provider: VisionProvider) -> None:
     _VISION_REGISTRY[provider.name] = provider
 
 
-def get_vision_provider(name: str) -> Optional[VisionProvider]:
+def get_vision_provider(name: str) -> VisionProvider | None:
     """Look up a provider by name. Returns None if unregistered."""
     return _VISION_REGISTRY.get(name)
 
@@ -52,13 +50,13 @@ def clear_vision_registry() -> None:
     _VISION_REGISTRY.clear()
 
 
-def _maybe_anthropic_vision() -> Optional[AnthropicVisionProvider]:
+def _maybe_anthropic_vision() -> AnthropicVisionProvider | None:
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     return AnthropicVisionProvider(api_key_env="ANTHROPIC_API_KEY")
 
 
-def _maybe_openai_vision() -> Optional[OpenAIVisionProvider]:
+def _maybe_openai_vision() -> OpenAIVisionProvider | None:
     if not os.environ.get("OPENAI_API_KEY"):
         return None
     return OpenAIVisionProvider(api_key_env="OPENAI_API_KEY")

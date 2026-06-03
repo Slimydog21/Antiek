@@ -31,8 +31,9 @@ to*. It does not make publishing legally safe — that is G2 counsel.
 from __future__ import annotations
 
 import enum
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from .events import (
     SPEAK_CONSENT_RECORDED,
@@ -82,7 +83,7 @@ def record_consent(
     *,
     interview_id: str,
     scopes: Iterable[ConsentScope],
-    project_id: Optional[str] = None,
+    project_id: str | None = None,
 ) -> ConsentState:
     """Grant one or more consent scopes for an interview. Idempotent
     per scope (re-granting clears any prior revocation).
@@ -127,7 +128,7 @@ def revoke_consent(
     *,
     interview_id: str,
     scopes: Iterable[ConsentScope],
-    project_id: Optional[str] = None,
+    project_id: str | None = None,
 ) -> ConsentState:
     """Revoke one or more scopes. A revoked scope no longer satisfies
     ``require_consent``. Revoking ``record`` also clears the legacy

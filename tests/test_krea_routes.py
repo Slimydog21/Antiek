@@ -23,14 +23,11 @@ the default under test).
 
 from __future__ import annotations
 
-import os
-
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
-
 
 # ── Fixtures / helpers ──────────────────────────────────────────────────
 

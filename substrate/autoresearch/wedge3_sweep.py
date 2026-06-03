@@ -20,11 +20,10 @@ production wires `score_against_outcomes_table`, tests use stubs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from .proposal import CohortWindow, ConfigProposal, SweepAxes
-
 
 COHORT_MIN_OUTCOMES = 500  # per §14.1
 
@@ -62,7 +61,7 @@ class SweepResult:
     status: str  # "ok" | "cohort_too_small" | "no_improvement"
     ranked_candidates: tuple[SweepCandidate, ...]
     baseline_score: float
-    proposal: Optional[ConfigProposal] = None
+    proposal: ConfigProposal | None = None
 
 
 def _candidate_configs(

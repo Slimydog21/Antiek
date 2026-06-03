@@ -24,10 +24,7 @@ ledger naming nuance."""
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
-from decimal import Decimal
-from typing import Callable, Optional
-
+from dataclasses import dataclass
 
 # Algorithm-math version stamp (SPR-04 M3/M5). Bump this WHENEVER the math
 # in compute_attribution_option_{a,b,c} changes — a different weighting, a
@@ -118,11 +115,11 @@ class EligibilityDecision:
 
     eligible: bool
     deciding_field: str
-    deciding_value: Optional[str]
+    deciding_value: str | None
     reason: str
 
 
-def eligibility_decision(content_class: Optional[str]) -> EligibilityDecision:
+def eligibility_decision(content_class: str | None) -> EligibilityDecision:
     """Derive the monetization-eligibility decision from an asset's
     ``content_class`` (the EARN gate). Returns the full decision object so a
     dispute is answerable; :func:`monetization_eligible` is the boolean shortcut.
@@ -162,7 +159,7 @@ def eligibility_decision(content_class: Optional[str]) -> EligibilityDecision:
     )
 
 
-def monetization_eligible(content_class: Optional[str]) -> bool:
+def monetization_eligible(content_class: str | None) -> bool:
     """True iff an asset is publicly searchable in the Antiek graph and may
     therefore EARN (servable-body or gated-body alike). False for a private
     user upload (``content_class='user_owned'``) or unknown provenance.
@@ -175,7 +172,7 @@ def monetization_eligible(content_class: Optional[str]) -> bool:
 
 def eligible_shares(
     shares: dict[str, float],
-    document_to_content_class: dict[str, Optional[str]],
+    document_to_content_class: dict[str, str | None],
 ) -> dict[str, float]:
     """Drop ineligible documents from an attribution split, then renormalize
     the survivors to sum to 1.0 (conservation — the pool is conserved across
@@ -206,7 +203,7 @@ class AttributionResult:
     algorithm: AttributionAlgorithm
     page_id: str  # the synthesis page that was rendered
     shares: dict[str, float]  # document_id → share in [0, 1]
-    page_attribution_event_id: Optional[str] = None
+    page_attribution_event_id: str | None = None
 
 
 def compute_attribution_option_a(

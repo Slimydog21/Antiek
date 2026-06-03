@@ -12,7 +12,6 @@ The asserted split is the invariant in action across all four sources:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import tempfile
@@ -25,8 +24,13 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from acquisition.books.public_domain import text_to_pdf  # noqa: E402
-from acquisition.openaccess import OAThrottle  # noqa: E402
-from acquisition.openaccess import doaj, openalex, pmc, unpaywall  # noqa: E402
+from acquisition.openaccess import (  # noqa: E402
+    OAThrottle,  # noqa: E402
+    doaj,
+    openalex,
+    pmc,
+    unpaywall,
+)
 from acquisition.openaccess.ingest import (  # noqa: E402
     build_license_basis,
     ingest_oa_item,

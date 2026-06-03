@@ -37,7 +37,6 @@ from substrate.cross_graph_writer import (
 from substrate.dp_shuffler import EpsilonRegistry, SurfaceConfig
 from substrate.ducklake import (
     DuckLakeCatalog,
-    HashPrefixSharding,
     InMemoryCatalogBackend,
     NoSharding,
 )
@@ -51,7 +50,6 @@ from substrate.telemetry_preferences import (
     is_enabled,
     set_preference,
 )
-
 
 # ── 1. Cross-user read isolation ────────────────────────────────
 

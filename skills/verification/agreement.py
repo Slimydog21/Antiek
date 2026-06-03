@@ -21,10 +21,9 @@ Three functions ship:
 from __future__ import annotations
 
 import json
-from typing import Dict
 
 
-def default_agreement_synthesizer(a: Dict, b: Dict) -> bool:
+def default_agreement_synthesizer(a: dict, b: dict) -> bool:
     """Synthesizer outputs agree iff:
 
     - ``implicit_recommendation`` matches exactly, AND
@@ -56,7 +55,7 @@ def default_agreement_synthesizer(a: Dict, b: Dict) -> bool:
     return (overlap / union) >= 0.5
 
 
-def default_agreement_evidence(a: Dict, b: Dict) -> bool:
+def default_agreement_evidence(a: dict, b: dict) -> bool:
     """Evidence Retriever outputs agree iff:
 
     - ``insufficient_evidence`` flag matches exactly, AND
@@ -79,7 +78,7 @@ def default_agreement_evidence(a: Dict, b: Dict) -> bool:
     return (overlap / union) >= 0.5
 
 
-def default_agreement_strict(a: Dict, b: Dict) -> bool:
+def default_agreement_strict(a: dict, b: dict) -> bool:
     """Full structural equality via ``json.dumps(sort_keys=True)``
     fingerprint. For outcome records and gating decisions where any
     divergence is itself a bug."""

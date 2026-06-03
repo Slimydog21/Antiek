@@ -40,7 +40,6 @@ def _seed_skill_rule(
     from runtime.db_lock import connect_write
     from substrate.multi_user.skill_accumulator import (
         MIN_USERS_FOR_PROMOTION,
-        SkillRuleAccumulator,
     )
     from substrate.multi_user.skill_propagation import (
         SkillRuleDigest,

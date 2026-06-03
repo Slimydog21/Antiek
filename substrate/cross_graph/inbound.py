@@ -33,9 +33,10 @@ from __future__ import annotations
 
 import enum
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from .federation import CrossGraphReference, FederationConfig
 from .partner_identity import (
@@ -45,7 +46,6 @@ from .partner_identity import (
     is_partner_trusted,
     verify_partner_token,
 )
-
 
 # The replay window is the maximum age a nonce could still be inside
 # its token's validity, plus the clock-skew tolerance. Inbound tokens
@@ -57,7 +57,7 @@ DEFAULT_NONCE_RETENTION_SECONDS: int = (
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _now_unix() -> int:
@@ -121,7 +121,7 @@ class NonceLedger:
             del self.seen[n]
 
     def remember(
-        self, nonce: str, *, now_unix: Optional[int] = None,
+        self, nonce: str, *, now_unix: int | None = None,
     ) -> bool:
         """Record a nonce as seen. Returns True if this was a
         first-time observation; False if the nonce was already in
@@ -148,10 +148,10 @@ class InboundCitationOutcome:
     leak into audit logs)."""
 
     accepted: bool
-    rejection: Optional[InboundRejection] = None
+    rejection: InboundRejection | None = None
     detail: str = ""
-    reference: Optional[CrossGraphReference] = None
-    revenue_routing_handle: Optional[str] = None
+    reference: CrossGraphReference | None = None
+    revenue_routing_handle: str | None = None
     received_at: str = field(default_factory=_now_iso)
 
 
@@ -175,8 +175,8 @@ def accept_inbound_citation(
     nonce_ledger: NonceLedger,
     partner_id: str,
     token: str,
-    now_unix: Optional[int] = None,
-    on_outcome: Optional[InboundOutcomeHook] = None,
+    now_unix: int | None = None,
+    on_outcome: InboundOutcomeHook | None = None,
 ) -> InboundCitationOutcome:
     """Verify + record one inbound federation citation.
 
@@ -300,7 +300,7 @@ def ensure_nonce_table(con: Any) -> None:
 
 
 def prune_expired_nonces(
-    con: Any, *, now_unix: Optional[int] = None,
+    con: Any, *, now_unix: int | None = None,
 ) -> int:
     """Delete every nonce whose ``expires_at_unix`` has passed. Returns
     the count of rows removed. Safe to call from any code path —
@@ -324,7 +324,7 @@ def remember_nonce_persistent(
     nonce: str,
     partner_id: str,
     retention_seconds: int = DEFAULT_NONCE_RETENTION_SECONDS,
-    now_unix: Optional[int] = None,
+    now_unix: int | None = None,
 ) -> bool:
     """Atomically claim a nonce in the persistent ledger.
 
@@ -356,7 +356,7 @@ def remember_nonce_persistent(
 
 
 def load_active_nonces(
-    con: Any, *, now_unix: Optional[int] = None,
+    con: Any, *, now_unix: int | None = None,
 ) -> NonceLedger:
     """Reconstruct an in-memory ``NonceLedger`` from the persistent
     table, dropping any rows that have already expired. Used at

@@ -35,12 +35,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Optional
 
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,
     AdvertiserRecord,
-    AdvertiserStatus,
     activate_advertiser,
     approve_advertiser,
     churn_advertiser,
@@ -51,11 +49,10 @@ from substrate.ad_inventory.advertiser_onboarding import (
     suspend_advertiser,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────
 
 
-def _resolve_db_path(override: Optional[str]) -> str:
+def _resolve_db_path(override: str | None) -> str:
     if override:
         return override
     from substrate.graph import default_db_path, ensure_initialized
@@ -347,7 +344,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

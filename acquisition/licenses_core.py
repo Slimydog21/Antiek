@@ -20,8 +20,9 @@ This module is PURE — no I/O, no DB, no network — so the mapping is unit
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any
 
 from substrate.constants import (
     GATED_DEFAULT_CONTENT_CLASS,
@@ -61,7 +62,7 @@ class LicenseResolution:
     license_name: str
     rationale: str
     # The URI we resolved against (echoed back for the audit string).
-    license_uri: Optional[str]
+    license_uri: str | None
 
 
 @dataclass(frozen=True)
@@ -244,7 +245,7 @@ CC_SHORT_CODE_ROWS: tuple[LicenseRow, ...] = (
 
 
 def resolve_against_table(
-    license_uri: Optional[str], table: tuple[LicenseRow, ...]
+    license_uri: str | None, table: tuple[LicenseRow, ...]
 ) -> LicenseResolution:
     """Map a license URI to a servable-class resolution against ``table``.
 
@@ -379,7 +380,7 @@ def _is_truthy_pd_signal(value: Any) -> bool:
 
 
 def classify(
-    license: Optional[str],
+    license: str | None,
     source_declaration: Mapping[str, Any],
     *,
     legitimate_source: bool,
@@ -452,7 +453,7 @@ def classify(
 
 
 def _resolve_class(
-    license: Optional[str],
+    license: str | None,
     source_declaration: Mapping[str, Any],
 ) -> tuple[str, str, str, bool]:
     """Resolve (content_class, license_basis, rationale, accrual_eligible)
@@ -524,7 +525,7 @@ def _resolve_class(
     )
 
 
-def _grant_rights_holder(grant: Any) -> Optional[str]:
+def _grant_rights_holder(grant: Any) -> str | None:
     """Pull the rights-holder name out of a ``publisher_grant`` signal. The
     signal is a mapping (``{'rights_holder': 'MIT Press', ...}``) for the rich
     case; a bare truthy value (e.g. ``True``) is a grant with no named holder."""

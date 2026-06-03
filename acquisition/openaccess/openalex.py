@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 import httpx
 
@@ -44,13 +44,13 @@ class OpenAlexWork:
     oa_status alone (bronze is "free to read", not "free to redistribute")."""
 
     openalex_id: str
-    doi: Optional[str]
+    doi: str | None
     title: str
     is_oa: bool
-    oa_status: Optional[str]
-    best_oa_pdf_url: Optional[str]
-    best_oa_landing_url: Optional[str]
-    license_uri: Optional[str]
+    oa_status: str | None
+    best_oa_pdf_url: str | None
+    best_oa_landing_url: str | None
+    license_uri: str | None
     metadata: dict = field(default_factory=dict)
     # Ordered, de-duped PDF-URL candidates (best/primary/locations[].pdf_url,
     # then open_access.oa_url as a last-resort landing fallback). The OA ingest
@@ -60,7 +60,7 @@ class OpenAlexWork:
     pdf_url_candidates: tuple[str, ...] = ()
 
 
-def _normalize_doi(doi: Optional[str]) -> Optional[str]:
+def _normalize_doi(doi: str | None) -> str | None:
     """OpenAlex emits DOIs as full ``https://doi.org/10.x/...`` URLs; reduce
     to the bare ``10.x/...`` form the downstream resolvers expect."""
     if not doi:
@@ -111,12 +111,12 @@ def _parse_work(raw: dict[str, Any]) -> OpenAlexWork:
 
 def _build_url(
     *,
-    search: Optional[str],
-    author: Optional[str],
-    filters: Optional[str],
+    search: str | None,
+    author: str | None,
+    filters: str | None,
     per_page: int,
     mailto: str,
-    base_url: Optional[str],
+    base_url: str | None,
 ) -> str:
     """Compose the works query URL. ``search`` is full-text; ``author`` adds
     an ``author.id`` / display-name filter; ``filters`` is a raw OpenAlex
@@ -142,7 +142,7 @@ def _build_url(
     return f"{base}?{qs}"
 
 
-def _http_get(url: str, *, client: Optional[httpx.Client]) -> dict:
+def _http_get(url: str, *, client: httpx.Client | None) -> dict:
     # ``url`` is built from an env/param-overridable base, so route through the
     # host-based gate: the default api.openalex.org host is fetched directly;
     # were the base ever an arXiv host it would be governed by the shared gate.
@@ -167,7 +167,7 @@ def _http_get(url: str, *, client: Optional[httpx.Client]) -> dict:
     return r.json()
 
 
-def parse_works_response(payload: dict) -> List[OpenAlexWork]:
+def parse_works_response(payload: dict) -> list[OpenAlexWork]:
     """OpenAlex ``/works`` JSON -> list of works. Pure; the recorded-response
     tests target this directly."""
     return [_parse_work(w) for w in payload.get("results", [])]
@@ -200,13 +200,13 @@ def arxiv_doi(arxiv_id: str) -> str:
 
 def fetch_work_record(
     *,
-    arxiv_id: Optional[str] = None,
-    doi: Optional[str] = None,
-    client: Optional[httpx.Client] = None,
-    throttle: Optional[OAThrottle] = None,
-    base_url: Optional[str] = None,
+    arxiv_id: str | None = None,
+    doi: str | None = None,
+    client: httpx.Client | None = None,
+    throttle: OAThrottle | None = None,
+    base_url: str | None = None,
     mailto: str = POLITE_POOL_MAILTO,
-) -> Optional[dict]:
+) -> dict | None:
     """Fetch ONE raw OpenAlex work record, joined by arXiv id (primary) or DOI.
 
     Returns the FIRST raw result dict (the full OpenAlex JSON object, carrying
@@ -261,16 +261,16 @@ def fetch_work_record(
 
 def search_works(
     *,
-    search: Optional[str] = None,
-    author: Optional[str] = None,
-    filters: Optional[str] = None,
+    search: str | None = None,
+    author: str | None = None,
+    filters: str | None = None,
     per_page: int = 25,
     oa_only: bool = True,
     mailto: str = POLITE_POOL_MAILTO,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
-    throttle: Optional[OAThrottle] = None,
-) -> List[OpenAlexWork]:
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
+    throttle: OAThrottle | None = None,
+) -> list[OpenAlexWork]:
     """Query OpenAlex for candidate works.
 
     ``oa_only`` (default True) ANDs ``open_access.is_oa:true`` into the filter

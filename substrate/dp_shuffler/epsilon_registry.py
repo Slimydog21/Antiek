@@ -8,8 +8,6 @@ Per master-spec §16.2 REJECT canon: 'No epsilon > 10 on any DP claim.'
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
-
 
 MAX_EPSILON: float = 10.0  # §16.2 hard cap; 'pointless in terms of privacy' above this
 SENSITIVITY_BUDGETS = {

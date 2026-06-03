@@ -14,27 +14,34 @@ import asyncio
 import os
 import sys
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Sequence
+from typing import Any
 
 try:
     from ...event_log import emit_typed
-    from ...schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload
     from ...graph.insight_question import promote_insight, promote_question
+    from ...schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload
     from .distill import Distillation, Distiller
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload  # type: ignore[no-redef]
-    from substrate.graph.insight_question import promote_insight, promote_question  # type: ignore[no-redef]
     from roles.note_taker.distill import Distillation, Distiller  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.graph.insight_question import (  # type: ignore[no-redef]
+        promote_insight,
+        promote_question,
+    )
+    from substrate.schemas.events import (  # type: ignore[no-redef]
+        NoteEmergedPayload,
+        QuestionIdentifiedPayload,
+    )
 
 
 @dataclass
 class PassResult:
-    insight_node_ids: List[str] = field(default_factory=list)
-    question_node_ids: List[str] = field(default_factory=list)
+    insight_node_ids: list[str] = field(default_factory=list)
+    question_node_ids: list[str] = field(default_factory=list)
     dropped_provenance_free: int = 0
 
     @property
@@ -52,7 +59,7 @@ async def run_document_pass(
     supported_by: Sequence[str] = (),
     embedding_provider: Any = None,
     emit_events: bool = True,
-    events_dir: Optional[str] = None,
+    events_dir: str | None = None,
     con: Any = None,
 ) -> PassResult:
     """Distil + promote a document's insights/questions. A coroutine so the

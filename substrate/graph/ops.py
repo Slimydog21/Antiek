@@ -31,8 +31,9 @@ import json
 import os
 import sys
 import uuid
-from datetime import datetime
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from ...constants import (
@@ -51,17 +52,15 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.constants import (  # type: ignore[no-redef]
         PERSONAL_READING_CONTENT_CLASS,
         THIRD_PARTY_DOCUMENT_TYPES,
     )
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.schemas import (  # type: ignore[no-redef]
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
-        GraphScope,
-        NodeType,
     )
     from substrate.schemas.events import (  # type: ignore[no-redef]
         DocumentContentClassDefaultedPayload,
@@ -88,7 +87,7 @@ def new_random_id(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:16]}"
 
 
-def _maybe_json(obj: Any) -> Optional[str]:
+def _maybe_json(obj: Any) -> str | None:
     """Render an optional metadata dict to its TEXT column form. The
     schema uses TEXT (not VARIANT) so application code is the only
     JSON reader; mirror the convention from middleware/archive."""
@@ -131,17 +130,17 @@ def insert_document(
     document_id: str,
     source_tier: int,
     document_type: str,
-    source_uri: Optional[str] = None,
-    title: Optional[str] = None,
-    author: Optional[str] = None,
-    published_at: Optional[datetime] = None,
-    investigation_id: Optional[str] = None,
-    raw_text: Optional[str] = None,
-    metadata: Optional[Any] = None,
-    content_class: Optional[str] = None,
-    ip_holder_id: Optional[str] = None,
+    source_uri: str | None = None,
+    title: str | None = None,
+    author: str | None = None,
+    published_at: datetime | None = None,
+    investigation_id: str | None = None,
+    raw_text: str | None = None,
+    metadata: Any | None = None,
+    content_class: str | None = None,
+    ip_holder_id: str | None = None,
     on_conflict: OnConflict = "error",
-    events_dir: Optional[str] = None,
+    events_dir: str | None = None,
 ) -> str:
     """Insert one document row. Returns the document_id.
 
@@ -256,8 +255,8 @@ def update_document_gate_columns(
     con: LockedConnection,
     document_id: str,
     *,
-    content_class: Optional[str] = None,
-    ip_holder_id: Optional[str] = None,
+    content_class: str | None = None,
+    ip_holder_id: str | None = None,
     set_content_class: bool = False,
     set_ip_holder_id: bool = False,
     null_raw_text: bool = False,
@@ -325,10 +324,10 @@ def insert_chunk(
     document_id: str,
     chunk_index: int,
     text: str,
-    section_path: Optional[str] = None,
-    embedding: Optional[Sequence[float]] = None,
+    section_path: str | None = None,
+    embedding: Sequence[float] | None = None,
     token_count: int = 0,
-    chunk_id: Optional[str] = None,
+    chunk_id: str | None = None,
 ) -> str:
     """Insert one chunk row. If ``chunk_id`` is not provided, a
     content-addressed id is derived from the chunk text (matches the
@@ -369,10 +368,10 @@ def insert_node(
     node_type: str,  # NodeType Literal — validated at payload time
     graph_scope: str,  # GraphScope Literal — validated at payload time
     investigation_id: str,
-    embedding: Optional[Sequence[float]] = None,
-    metadata: Optional[Any] = None,
-    node_id: Optional[str] = None,
-    parent_event_id: Optional[str] = None,
+    embedding: Sequence[float] | None = None,
+    metadata: Any | None = None,
+    node_id: str | None = None,
+    parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
 ) -> str:
     """Insert one node row AND emit GRAPH_NODE_INSERTED. Returns the
@@ -429,12 +428,12 @@ def insert_edge(
     extraction_confidence: float,
     graph_scope: str,
     investigation_id: str,
-    chunk_id: Optional[str] = None,
-    source_document_id: Optional[str] = None,
-    valid_from: Optional[datetime] = None,
-    metadata: Optional[Any] = None,
-    edge_id: Optional[str] = None,
-    parent_event_id: Optional[str] = None,
+    chunk_id: str | None = None,
+    source_document_id: str | None = None,
+    valid_from: datetime | None = None,
+    metadata: Any | None = None,
+    edge_id: str | None = None,
+    parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
 ) -> str:
     """Insert one edge row AND emit GRAPH_EDGE_INSERTED. Returns the
@@ -500,10 +499,10 @@ def insert_deliverable(
     *,
     title: str,
     deliverable_kind: str,
-    investigation_root_id: Optional[str] = None,
+    investigation_root_id: str | None = None,
     owner_user_id: str = "__operator__",
-    metadata: Optional[Any] = None,
-    deliverable_id: Optional[str] = None,
+    metadata: Any | None = None,
+    deliverable_id: str | None = None,
 ) -> str:
     """Create a new deliverable (operator-facing document being
     assembled). Returns its ``deliverable_id``."""
@@ -530,11 +529,11 @@ def insert_section(
     *,
     deliverable_id: str,
     section_index: int,
-    title: Optional[str] = None,
-    parent_section_id: Optional[str] = None,
-    prose_text: Optional[str] = None,
-    prose_provenance: Optional[Any] = None,
-    section_id: Optional[str] = None,
+    title: str | None = None,
+    parent_section_id: str | None = None,
+    prose_text: str | None = None,
+    prose_provenance: Any | None = None,
+    section_id: str | None = None,
 ) -> str:
     """Insert one section under a deliverable. Returns ``section_id``."""
     _assert_write_locked(con)
@@ -577,7 +576,7 @@ def update_section_prose(
     *,
     section_id: str,
     prose_text: str,
-    prose_provenance: Optional[Any] = None,
+    prose_provenance: Any | None = None,
 ) -> None:
     """Persist generated/edited prose for a section. ``prose_provenance``
     is a JSON map (paragraph_index → list of contributing block_ids)
@@ -600,11 +599,11 @@ def insert_interview_project(
     con: LockedConnection,
     *,
     title: str,
-    topic_description: Optional[str] = None,
-    deliverable_id: Optional[str] = None,
-    interview_guide: Optional[Any] = None,
+    topic_description: str | None = None,
+    deliverable_id: str | None = None,
+    interview_guide: Any | None = None,
     owner_user_id: str = "__operator__",
-    project_id: Optional[str] = None,
+    project_id: str | None = None,
 ) -> str:
     """Create a new interview project. Returns the ``project_id``."""
     _assert_write_locked(con)
@@ -624,9 +623,9 @@ def insert_interview(
     con: LockedConnection,
     *,
     project_id: str,
-    informant_handle: Optional[str] = None,
-    informant_email: Optional[str] = None,
-    interview_id: Optional[str] = None,
+    informant_handle: str | None = None,
+    informant_email: str | None = None,
+    interview_id: str | None = None,
 ) -> str:
     """Invite an informant; creates an ``invited``-status row."""
     _assert_write_locked(con)
@@ -666,11 +665,10 @@ def append_interview_turn(
             turns = json.loads(existing_json)
         except (TypeError, ValueError):
             turns = []
-    from datetime import timezone as _tz
     turns.append({
         "role": role,
         "text": text,
-        "ts": datetime.now(_tz.utc).isoformat().replace("+00:00", "Z"),
+        "ts": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     })
     new_status = "in_progress" if status == "invited" else status
     started_at_sql = "CURRENT_TIMESTAMP" if status == "invited" else "started_at"
@@ -686,7 +684,7 @@ def complete_interview(
     con: LockedConnection,
     *,
     interview_id: str,
-    transcript_document_id: Optional[str] = None,
+    transcript_document_id: str | None = None,
 ) -> None:
     """Mark interview complete and link to its transcript document."""
     _assert_write_locked(con)

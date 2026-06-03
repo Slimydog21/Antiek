@@ -1052,7 +1052,6 @@ def test_concurrent_search_and_harvest_serialize_to_min_spacing(paths, canonical
 # a MockTransport (no network) and prove BOTH halves at the caller level.
 
 from acquisition.arxiv.rate_governor import (  # noqa: E402
-    canonical_arxiv_throttle,
     govern_if_arxiv,
     is_arxiv_url,
 )
@@ -1593,5 +1592,5 @@ def test_direct_arxiv_through_hooked_client_does_not_double_wait_or_deadlock(
 def _read_last_request_at(state_path: str) -> float:
     import json
 
-    with open(state_path, "r", encoding="utf-8") as f:
+    with open(state_path, encoding="utf-8") as f:
         return float(json.load(f).get("last_request_at", 0.0))

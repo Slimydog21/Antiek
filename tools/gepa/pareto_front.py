@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 class NSGAIIError(Exception):
@@ -23,7 +21,7 @@ class ScoreVector:
     cost_penalty: float           # negative USD; higher (less negative) better
     grounding_preserved: float    # [0, 1]; higher better
 
-    def dominates(self, other: "ScoreVector") -> bool:
+    def dominates(self, other: ScoreVector) -> bool:
         """Pareto-dominance: self ≥ other in all dimensions AND > in
         at least one."""
         ge_all = (
@@ -50,7 +48,7 @@ class Variant:
     variant_id: str
     prompt_text: str
     score: ScoreVector
-    parent_variant_id: Optional[str] = None
+    parent_variant_id: str | None = None
     rationale: str = ""
 
 

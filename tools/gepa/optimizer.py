@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
-from .pareto_front import ParetoFront, ScoreVector, Variant, non_dominated_sort
+from .pareto_front import ParetoFront, ScoreVector, Variant
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class GEPAOptimizer:
         *,
         prompt_text: str,
         score: ScoreVector,
-        parent_variant_id: Optional[str] = None,
+        parent_variant_id: str | None = None,
         rationale: str = "",
     ) -> tuple[Variant, bool]:
         """Evaluate one candidate. Returns (variant, was_admitted)."""

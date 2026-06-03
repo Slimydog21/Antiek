@@ -32,8 +32,6 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
 
 try:
     from ...constants import AUTONOMOUS_RESEARCH_REQUIRED_PHASES_FOR_COMPLETION
@@ -55,7 +53,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.schemas import (  # type: ignore[no-redef]
         ActionType,
         AuditFindingPayload,
-        AuditSeverity,
         AutoPatchAppliedPayload,
         Event,
     )
@@ -76,8 +73,8 @@ class AuditFinding:
     severity: str  # one of AuditSeverity values
     description: str
     evidence: str
-    target_phase: Optional[int] = None
-    target_path: Optional[str] = None
+    target_phase: int | None = None
+    target_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -123,8 +120,8 @@ def _check_postconditions(
     investigation_id: str,
     plog: PhaseLog,
     *,
-    research_dir: Optional[str],
-    knowledge_skills_dir: Optional[str],
+    research_dir: str | None,
+    knowledge_skills_dir: str | None,
 ) -> list[AuditFinding]:
     """For every phase that was entered (whether verified or not),
     re-run its postcondition as a live diagnostic. Failures emit
@@ -193,7 +190,7 @@ def _check_auto_patch_for_phase_8(
 
 
 def _check_skill_dir_populated(
-    knowledge_skills_dir: Optional[str],
+    knowledge_skills_dir: str | None,
 ) -> list[AuditFinding]:
     """``empty_skill_dir`` — the skills root exists but carries no
     ``<domain>-knowledge`` subdirs. Phase 8 can't compound into
@@ -211,7 +208,7 @@ def _check_skill_dir_populated(
         category="empty_skill_dir",
         severity="warning",
         description=(
-            f"Knowledge skills root has no <domain>-knowledge subdirs."
+            "Knowledge skills root has no <domain>-knowledge subdirs."
         ),
         evidence=(
             f"{skills_root} exists but contains no domain skill files. "
@@ -230,8 +227,8 @@ def _check_skill_dir_populated(
 def collect_findings(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-    knowledge_skills_dir: Optional[str] = None,
+    research_dir: str | None = None,
+    knowledge_skills_dir: str | None = None,
 ) -> list[AuditFinding]:
     """Run all audit checks; return the findings list WITHOUT
     emitting. Pure-data path for tests and dashboards that want to
@@ -252,8 +249,8 @@ def collect_findings(
 def audit_phase_log(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-    knowledge_skills_dir: Optional[str] = None,
+    research_dir: str | None = None,
+    knowledge_skills_dir: str | None = None,
     emit: bool = True,
 ) -> list[AuditFinding]:
     """Run the audit AND emit one ``AUDIT_FINDING_EMITTED`` event per

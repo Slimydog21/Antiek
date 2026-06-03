@@ -29,7 +29,6 @@ from substrate.books import ingest as bingest
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.schema import init_database
 
-
 # ---------------------------------------------------------------------------
 # Fixtures + helpers
 # ---------------------------------------------------------------------------
@@ -73,7 +72,7 @@ class _RecordingProvider:
         return NormalizedUsage(input_tokens=0, output_tokens=0)
 
 
-def register_fake(reply: str = "A synthesized answer.") -> "_RecordingProvider":
+def register_fake(reply: str = "A synthesized answer.") -> _RecordingProvider:
     """Register ONE fake provider under BOTH research-tier override names
     ('deepseek' for the deep tier, 'xiaomi' for fast) so book_qa/meta_reading's
     provider_override (which resolves from research_tier) lands on it whichever
@@ -442,9 +441,9 @@ def test_meta_reading_endpoint_saves_asset_through_funnel(db, client, monkeypatc
     """The deliverable is persisted as substrate truth: a
     read.meta_reading.generated event lands in the trajectory (single-writer
     funnel), re-openable later. NOT a side-store."""
-    from substrate.event_log import trajectory
-
     import sys
+
+    from substrate.event_log import trajectory
 
     monkeypatch.setattr(
         sys.modules["substrate.graph.search"], "SentenceTransformerEmbedding",

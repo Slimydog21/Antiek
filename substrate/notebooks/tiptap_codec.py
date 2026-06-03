@@ -25,7 +25,6 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-
 VALID_BLOCK_TYPES: frozenset[str] = frozenset({
     "prose",
     "region_embed",

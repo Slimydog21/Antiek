@@ -11,7 +11,6 @@ from substrate.voice_style import (
     run_voice_impact_audit,
 )
 
-
 GOOD_PROSE = (
     "The Hippo dispatch posture matured along two axes in 2026. "
     "The Hermes verify-tier acquired a chaos test that ratified "

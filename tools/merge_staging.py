@@ -52,14 +52,12 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from runtime.db_lock import connect_write  # noqa: E402
-
 
 # Merge order is dependency-respecting: ip_holders before documents (so a
 # document's ip_holder_id can be remapped to a live holder id), documents
@@ -375,7 +373,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     result = merge_staging(live_db=args.live_db, staging_db=args.staging_db)
     print(result.render())

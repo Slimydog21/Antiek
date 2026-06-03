@@ -82,11 +82,11 @@ def exercise(db_path: str) -> dict:
 
     # ── Federation config (§13.9 Phase 3) ──────────────────────────
     header("Federation config (§13.9 Phase 3)")
+    from substrate.cross_graph.federation import FederationConfig
     from substrate.cross_graph.federation_config_store import (
         load_config,
         save_config,
     )
-    from substrate.cross_graph.federation import FederationConfig
     with connect_write(db_path, purpose="exercise:fed") as con:
         save_config(con, FederationConfig(
             allowed_partner_substrates=("partner-research-coop",),
@@ -132,6 +132,7 @@ def exercise(db_path: str) -> dict:
             [tier1_chunk_id, tier1_doc_id],
         )
 
+    from compounding.quality_gate import evaluate_notebook_for_public
     from substrate.notebooks import (
         append_block,
         create_notebook,
@@ -139,7 +140,6 @@ def exercise(db_path: str) -> dict:
         get_notebook,
         promote_to_public,
     )
-    from compounding.quality_gate import evaluate_notebook_for_public
 
     with connect_write(db_path, purpose="exercise:nb_create") as con:
         nb_id = create_notebook(
@@ -368,6 +368,7 @@ def exercise(db_path: str) -> dict:
 
     # ── DP preference → dispatch hint (§16.2) ─────────────────────
     header("DP preferences → dispatch hint (§16.2)")
+    import substrate.dp_shuffler.preference_learning as _pref_mod
     from substrate.dispatch.preference_hints import (
         category_for_role,
         recommend_tier,
@@ -380,7 +381,6 @@ def exercise(db_path: str) -> dict:
         PreferenceLearningStream,
         PreferenceObservation,
     )
-    import substrate.dp_shuffler.preference_learning as _pref_mod
 
     # Deterministic stub of the randomizer for repro; the local-DP
     # randomization itself is exhaustively tested elsewhere.
@@ -475,7 +475,7 @@ def exercise(db_path: str) -> dict:
             legal_contact_email="ip@cup.example",
         )
         mark_invited(con, h1)
-    line(f"created 2 IP holders, invited 1")
+    line("created 2 IP holders, invited 1")
     summary["ip_holders_created"] = 2
     summary["ip_holders_invited"] = 1
 

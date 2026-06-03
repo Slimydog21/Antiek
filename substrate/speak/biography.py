@@ -28,8 +28,9 @@ resolved away.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any
 
 from roles.creative_writer import (
     CreativeWriterBlock,
@@ -91,8 +92,8 @@ def assemble_outline(
     *,
     project_id: str,
     title: str = "Biography",
-    deliverable_id: Optional[str] = None,
-    composer: Optional[OutlineComposer] = None,
+    deliverable_id: str | None = None,
+    composer: OutlineComposer | None = None,
 ) -> Outline:
     """Compose a biography outline of OutlineBlocks from the project's
     claims, each carrying provenance to its contributing interviewee(s)."""
@@ -139,10 +140,10 @@ def run_deepening(
     con: Any,
     *,
     project_id: str,
-    gap_source: Optional[Any] = None,
+    gap_source: Any | None = None,
     max_rounds: int = 3,
-    gather_fn: Optional[Callable[[int], None]] = None,
-    operator_stop: Optional[Callable[[int], bool]] = None,
+    gather_fn: Callable[[int], None] | None = None,
+    operator_stop: Callable[[int], bool] | None = None,
 ) -> DeepeningResult:
     """Recursively chase gaps, BOUNDED. Each round detects open questions
     (DRW gaps / SpeakGraphGapSource), emits interview prompts, and lets
@@ -159,7 +160,7 @@ def run_deepening(
     gap_source = gap_source or SpeakGraphGapSource(con)
     prompts: list[str] = []
     rounds_run = 0
-    prev_count: Optional[int] = None
+    prev_count: int | None = None
 
     for r in range(1, max_rounds + 1):
         if operator_stop is not None and operator_stop(r):
@@ -202,7 +203,7 @@ def generate_draft(
     project_id: str,
     outline: Outline,
     public: bool = False,
-    dispatch_fn: Optional[Callable[..., Any]] = None,
+    dispatch_fn: Callable[..., Any] | None = None,
     voice_style_threshold: float = DEFAULT_VOICE_STYLE_THRESHOLD,
 ) -> Draft:
     """Generate the biography draft from the outline.

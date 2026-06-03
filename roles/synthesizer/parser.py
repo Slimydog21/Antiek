@@ -43,14 +43,16 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 try:
     from .._json_decode import extract_json_object as _extract_json_object
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 CONFIDENCE_LEVELS: frozenset[str] = frozenset({
@@ -85,8 +87,8 @@ class ParsedThesisComponent:
     confidence: str
     supporting_chunk_ids: tuple[str, ...]
     supporting_path_indices: tuple[int, ...]
-    confidence_basis: Optional[str] = None
-    effective_source_tier: Optional[int] = None
+    confidence_basis: str | None = None
+    effective_source_tier: int | None = None
     hedging_required: bool = False
 
 
@@ -94,14 +96,14 @@ class ParsedThesisComponent:
 class ParsedFalsificationCondition:
     condition: str
     specific_observable: str
-    timeframe: Optional[str] = None
+    timeframe: str | None = None
 
 
 @dataclass(frozen=True)
 class ParsedExecutionRisk:
     risk: str
     severity_if_manifested: str
-    leading_indicator: Optional[str] = None
+    leading_indicator: str | None = None
 
 
 @dataclass(frozen=True)
@@ -133,7 +135,7 @@ class ThesisResult:
     execution_risks: tuple[ParsedExecutionRisk, ...]
     constraint_compliance: ParsedConstraintCompliance
     reasoning_paths_used: tuple[ParsedReasoningPath, ...]
-    conviction_level: Optional[float] = None
+    conviction_level: float | None = None
     raw: dict = field(default_factory=dict)
 
 
@@ -154,7 +156,7 @@ def _require_str(obj: Any, field_name: str, ctx: str, *, allow_empty: bool = Fal
     return obj
 
 
-def _opt_str(obj: Any, field_name: str, ctx: str) -> Optional[str]:
+def _opt_str(obj: Any, field_name: str, ctx: str) -> str | None:
     if obj is None:
         return None
     if not isinstance(obj, str):
@@ -164,14 +166,14 @@ def _opt_str(obj: Any, field_name: str, ctx: str) -> Optional[str]:
     return obj if obj else None
 
 
-def _require_str_list(obj: Any, field_name: str, ctx: str) -> List[str]:
+def _require_str_list(obj: Any, field_name: str, ctx: str) -> list[str]:
     if obj is None:
         return []
     if not isinstance(obj, list):
         raise SynthesizerValidationError(
             f"{ctx}: {field_name!r} must be a list"
         )
-    out: List[str] = []
+    out: list[str] = []
     for i, v in enumerate(obj):
         if not isinstance(v, str) or not v.strip():
             raise SynthesizerValidationError(
@@ -181,14 +183,14 @@ def _require_str_list(obj: Any, field_name: str, ctx: str) -> List[str]:
     return out
 
 
-def _require_int_list(obj: Any, field_name: str, ctx: str) -> List[int]:
+def _require_int_list(obj: Any, field_name: str, ctx: str) -> list[int]:
     if obj is None:
         return []
     if not isinstance(obj, list):
         raise SynthesizerValidationError(
             f"{ctx}: {field_name!r} must be a list"
         )
-    out: List[int] = []
+    out: list[int] = []
     for i, v in enumerate(obj):
         if not isinstance(v, int) or isinstance(v, bool) or v < 0:
             raise SynthesizerValidationError(
@@ -198,7 +200,7 @@ def _require_int_list(obj: Any, field_name: str, ctx: str) -> List[int]:
     return out
 
 
-def _parse_effective_source_tier(obj: Any, ctx: str) -> Optional[int]:
+def _parse_effective_source_tier(obj: Any, ctx: str) -> int | None:
     if obj is None:
         return None
     if isinstance(obj, bool):
@@ -482,7 +484,7 @@ def parse_synthesizer_response(text: str) -> ThesisResult:
     )
 
     conviction_raw = obj.get("conviction_level")
-    conviction: Optional[float] = None
+    conviction: float | None = None
     if conviction_raw is not None:
         if isinstance(conviction_raw, bool) or not isinstance(conviction_raw, (int, float)):
             raise SynthesizerValidationError(

@@ -42,6 +42,7 @@ from runtime.byok.pipelines import register_pipeline  # noqa: E402
 from runtime.byok.runner import run_pipeline  # noqa: E402
 from runtime.byok.store import store_credential  # noqa: E402
 from runtime.db_lock import connect_read, connect_write  # noqa: E402
+
 # SPR-01's training-exclusion denylist (the symbol M4 cites — NOT a parallel one).
 from substrate.constants import (  # noqa: E402
     GATED_DEFAULT_CONTENT_CLASS,

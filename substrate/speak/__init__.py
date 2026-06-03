@@ -31,17 +31,17 @@ consent``); this package init keeps the schema + event surface handy.
 
 from __future__ import annotations
 
+from .consent import ConsentScope, ScopedConsentRequired
+from .events import (
+    SPEAK_ACTION_TYPES,
+    record_speak_event,
+)
+from .publish_gate import PublishBlocked, PublishDecision
 from .schema import (
     ANTIEK_SPEAK_SCHEMA_SQL,
     SPEAK_SCHEMA_TABLES,
     ensure_speak_schema,
 )
-from .events import (
-    SPEAK_ACTION_TYPES,
-    record_speak_event,
-)
-from .consent import ConsentScope, ScopedConsentRequired
-from .publish_gate import PublishBlocked, PublishDecision
 
 __all__ = [
     "ANTIEK_SPEAK_SCHEMA_SQL",

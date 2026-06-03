@@ -13,8 +13,7 @@ publisher referenced via multiple documents gets one line item.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)

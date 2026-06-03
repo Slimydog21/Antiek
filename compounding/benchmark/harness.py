@@ -50,13 +50,14 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any
 
 from runtime.db_lock import connect_write
 from runtime.research_runner import HostLocalRunner
-from runtime.research_runner.protocol import BudgetCap, ResearchPlan
 from runtime.research_runner.host_local import make_demo_loop
+from runtime.research_runner.protocol import BudgetCap, ResearchPlan
 from substrate.graph.insight_question import promote_insight
 from substrate.graph.ops import insert_node
 from substrate.graph.retrieval_substrate import make_substrate
@@ -110,7 +111,7 @@ ArmSeed = "ColdSeed | WarmSeed | IrrelevantSeed"
 # control domains so they are GENUINELY unrelated to any high/partial question —
 # the graph is non-empty but topically disjoint. Cycled to match the warm arm's
 # seeded-unit count for any given question (graph-size parity).
-_OFF_TOPIC_UNITS: Tuple[str, ...] = (
+_OFF_TOPIC_UNITS: tuple[str, ...] = (
     "the Mariner 1 launch failure traced to a transcription error in guidance equations",
     "tardigrade anhydrobiosis relies on trehalose and intrinsically disordered proteins",
     "the Hanseatic Kontor resolved member disputes through an internal aldermen council",
@@ -160,14 +161,14 @@ def _seed_units(
     *,
     unit_texts: Sequence[str],
     prior_investigation: str,
-) -> List[str]:
+) -> list[str]:
     """Seed a graph with insight knowledge units, each grounded on a claim node +
     a servable document, in ONE write transaction (the single writer). Mirrors
     ``tests/test_knowledge_reuse_spr06.py::_seed_graph`` — the proven seeding
     convention — so the warm arm reaches units through the SAME path SPR-06's
     own tests exercise. Returns the deposited node ids."""
     con = connect_write(db_path, purpose="spr09_seed")
-    node_ids: List[str] = []
+    node_ids: list[str] = []
     try:
         init_database(con)
         con.execute("BEGIN")
@@ -217,20 +218,20 @@ def _init_empty_graph(db_path: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _warm_unit_texts(question: BenchmarkQuestion) -> List[str]:
+def _warm_unit_texts(question: BenchmarkQuestion) -> list[str]:
     """The on-topic seed texts for the warm arm. We derive a topical unit text
     from each ``seeded_unit_id`` label PLUS the question text, so the seeded
     units share vocabulary with the question (real similarity, not a back-door
     answer). A question with no seeded units (the zero-overlap control) seeds
     nothing in the warm arm — it cannot compound and must stay flat."""
-    texts: List[str] = []
+    texts: list[str] = []
     for unit_id in question.seeded_unit_ids:
         topic = unit_id.replace("u-", "").replace("-", " ")
         texts.append(f"{topic}: {question.text}")
     return texts
 
 
-def _irrelevant_unit_texts(count: int) -> List[str]:
+def _irrelevant_unit_texts(count: int) -> list[str]:
     """``count`` off-topic units (graph-size parity with the warm arm)."""
     if count <= 0:
         return []
@@ -239,7 +240,7 @@ def _irrelevant_unit_texts(count: int) -> List[str]:
 
 def run_arm(
     question: BenchmarkQuestion,
-    seed: "ArmSeed",
+    seed: ArmSeed,
     *,
     events_dir: str,
     graphs_dir: str,
@@ -272,7 +273,7 @@ def run_arm(
     db_path = handle.db_path
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-    seeded_node_ids: List[str] = []
+    seeded_node_ids: list[str] = []
     prior_inv = f"prior-{user_id}"
     if isinstance(seed, WarmSeed):
         texts = _warm_unit_texts(question)
@@ -329,7 +330,7 @@ async def _drive_one(
     *,
     investigation_id: str,
     question: BenchmarkQuestion,
-    reuse_substrate: Optional[Any],
+    reuse_substrate: Any | None,
     events_dir: str,
     steps: int,
     cost_per_step: float,

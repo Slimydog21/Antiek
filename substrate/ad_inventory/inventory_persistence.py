@@ -25,9 +25,9 @@ and would replace this with a bid-store; explicitly out of scope.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from .ad_bidding import AdInventoryItem
 from .intent_targeting import InventoryTargeting, TargetedInventoryItem
@@ -108,7 +108,7 @@ def _csv(values: tuple[str, ...]) -> str:
     return ",".join(v for v in values if v)
 
 
-def _de_csv(raw: Optional[str]) -> tuple[str, ...]:
+def _de_csv(raw: str | None) -> tuple[str, ...]:
     if not raw:
         return ()
     return tuple(v for v in raw.split(",") if v)
@@ -127,7 +127,7 @@ def upsert_inventory(
     target_sub_sectors: tuple[str, ...] = (),
     target_audience_intents: tuple[str, ...] = (),
     active: bool = True,
-    inventory_id: Optional[str] = None,
+    inventory_id: str | None = None,
 ) -> str:
     """Insert (or upsert via inventory_id) one inventory item.
     Returns the inventory_id. Per-advertiser inventory MUST carry

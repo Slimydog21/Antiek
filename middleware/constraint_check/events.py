@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 try:
     from ...event_log import emit_typed
@@ -40,8 +40,8 @@ def emit_constraint_violation_found(
     investigation_id: str,
     iteration: int,
     violation: Violation,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit one CONSTRAINT_VIOLATION_FOUND event. Called once per
     violation per iteration — a high-violation iteration produces many
     of these in sequence."""
@@ -65,8 +65,8 @@ def emit_constraint_revision_triggered(
     investigation_id: str,
     iteration: int,
     triggering_constraint_ids: Iterable[str],
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a CONSTRAINT_REVISION_TRIGGERED event when the loop
     decides to re-invoke the synthesizer because at least one HARD
     constraint is still violated. The ``triggering_constraint_ids``
@@ -89,8 +89,8 @@ def emit_constraint_loop_resolved(
     final_status: str,
     total_iterations: int,
     final_violation_count: int,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit exactly one CONSTRAINT_LOOP_RESOLVED event on loop
     termination. The ``final_status`` mirrors the Researchmaxx
     terminal vocabulary so a migrated cohort backtest stays

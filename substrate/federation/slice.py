@@ -17,13 +17,12 @@ import enum
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
-from typing import Optional
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -113,7 +112,7 @@ class SliceNegotiation:
     proposer_substrate_id: str = ""
     responder_substrate_id: str = ""
     topic_query: str = ""
-    proposed_manifest: Optional[SliceManifest] = None
+    proposed_manifest: SliceManifest | None = None
     status: NegotiationStatus = NegotiationStatus.PROPOSED
     history: list[tuple[str, str]] = field(default_factory=list)
 

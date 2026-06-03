@@ -38,7 +38,6 @@ import enum
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 class VendorClass(str, enum.Enum):
@@ -56,7 +55,7 @@ class VendorClassConfig:
     primary: str
     """The default provider for this class (e.g. ``hermes`` for LLM)."""
 
-    secondary: Optional[str]
+    secondary: str | None
     """The named multi-cloud-opt-in fallback (e.g. ``openrouter`` for
     LLM). None means "no secondary; single-vendor by design."
     """
@@ -135,7 +134,7 @@ _OVERRIDE_ENV_PREFIX = "ANTIEK_MULTI_CLOUD_"
 _OVERRIDE_FILE_NAME = "multi_cloud.toml"
 
 
-def _override_file_path() -> Optional[Path]:
+def _override_file_path() -> Path | None:
     home = os.environ.get("ANTIEK_HOME")
     if home:
         candidate = Path(home) / _OVERRIDE_FILE_NAME
@@ -149,7 +148,7 @@ def _parse_toml(path: Path) -> dict[str, dict[str, str]]:
     ``secondary``, ``reason`` keys. Same approach as idle_policy.
     """
     out: dict[str, dict[str, str]] = {}
-    current: Optional[str] = None
+    current: str | None = None
     for raw in path.read_text().splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
@@ -226,7 +225,7 @@ def resolve(
 def should_failover_to_secondary(
     vendor_class: VendorClass,
     primary_failed: bool,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Decision shim that callers in ``router.py`` invoke after the
     per-tier fallback chain exhausts.
 

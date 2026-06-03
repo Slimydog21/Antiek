@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import io
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence
 
 try:
     from pypdf import PdfReader  # type: ignore[import-not-found]
@@ -53,7 +53,7 @@ class TocEntry:
     dropped, per intellectual honesty (rigor #1)."""
 
     title: str
-    page_index: Optional[int]
+    page_index: int | None
     level: int
 
 
@@ -65,13 +65,13 @@ class ReadResult:
     when the PDF carries no outline — most scanned/auto-generated PDFs
     don't)."""
 
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
     page_count: int
     word_count: int
     markdown: str
-    pages: List[PdfPage] = field(default_factory=list)
-    toc: List[TocEntry] = field(default_factory=list)
+    pages: list[PdfPage] = field(default_factory=list)
+    toc: list[TocEntry] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def _clean_page_text(text: str) -> str:
     if not text:
         return ""
     text = _SOFT_WRAP_RE.sub(r"\1\2", text)
-    cleaned_lines: List[str] = []
+    cleaned_lines: list[str] = []
     for raw in text.splitlines():
         line = _MULTI_WS_RE.sub(" ", raw).rstrip()
         cleaned_lines.append(line)
@@ -111,7 +111,7 @@ def _promote_headings(text: str) -> str:
     content (i.e. they look like headings, not shout-style emphasis
     mid-paragraph)."""
     lines = text.splitlines()
-    out: List[str] = []
+    out: list[str] = []
     for i, line in enumerate(lines):
         stripped = line.strip()
         if (
@@ -132,8 +132,8 @@ def _promote_headings(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _extract_pages(reader: PdfReader) -> List[PdfPage]:
-    pages: List[PdfPage] = []
+def _extract_pages(reader: PdfReader) -> list[PdfPage]:
+    pages: list[PdfPage] = []
     for i, page in enumerate(reader.pages):
         try:
             raw = page.extract_text() or ""
@@ -149,7 +149,7 @@ def _extract_pages(reader: PdfReader) -> List[PdfPage]:
     return pages
 
 
-def _extract_outline(reader: PdfReader) -> List[TocEntry]:
+def _extract_outline(reader: PdfReader) -> list[TocEntry]:
     """Flatten pypdf's nested bookmark outline into ordered TocEntry rows.
 
     pypdf exposes ``reader.outline`` as a tree: a list whose items are
@@ -171,7 +171,7 @@ def _extract_outline(reader: PdfReader) -> List[TocEntry]:
     if not raw:
         return []
 
-    entries: List[TocEntry] = []
+    entries: list[TocEntry] = []
 
     def _walk(node: object, level: int) -> None:
         if isinstance(node, list):
@@ -181,7 +181,7 @@ def _extract_outline(reader: PdfReader) -> List[TocEntry]:
         title = getattr(node, "title", None)
         if not title:
             return
-        page_index: Optional[int]
+        page_index: int | None
         try:
             page_index = reader.get_destination_page_number(node)  # type: ignore[arg-type]
         except Exception:
@@ -201,7 +201,7 @@ def _extract_outline(reader: PdfReader) -> List[TocEntry]:
     return entries
 
 
-def _metadata_field(meta: object, key: str) -> Optional[str]:
+def _metadata_field(meta: object, key: str) -> str | None:
     """pypdf returns a dict-ish object; values may have a ``/`` prefix
     or come as ``IndirectObject``. Coerce to a plain string when we
     can; None when missing."""
@@ -224,7 +224,7 @@ def _join_pages_to_markdown(
 ) -> str:
     """Concatenate pages with ``## Page N`` markers so the chunker
     sees structural anchors instead of one blob."""
-    parts: List[str] = []
+    parts: list[str] = []
     for p in pages:
         if not p.text.strip():
             continue
@@ -257,7 +257,7 @@ def read_pdf(
 
     pages = _extract_pages(reader)
     toc = _extract_outline(reader)
-    markdown_parts: List[str] = []
+    markdown_parts: list[str] = []
     if title:
         markdown_parts.append(f"# {title}")
         markdown_parts.append("")

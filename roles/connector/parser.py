@@ -27,14 +27,16 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 try:
     from .._json_decode import extract_json_object as _extract_json_object
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles._json_decode import extract_json_object as _extract_json_object  # type: ignore[no-redef]
+    from roles._json_decode import (
+        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+    )
 
 
 TRAVERSAL_ALGORITHMS: frozenset[str] = frozenset({
@@ -58,9 +60,9 @@ class ParsedKeywordMapping:
     keyword: str
     similarity: float
     low_confidence: bool
-    matched_node_id: Optional[str] = None
-    matched_node_label: Optional[str] = None
-    matched_node_type: Optional[str] = None
+    matched_node_id: str | None = None
+    matched_node_label: str | None = None
+    matched_node_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -83,7 +85,7 @@ class ParsedNlRelationship:
 class ConnectorResult:
     keyword_mappings: tuple[ParsedKeywordMapping, ...]
     selected_algorithm: str
-    algorithm_rationale: Optional[str]
+    algorithm_rationale: str | None
     paths: tuple[ParsedGraphPath, ...]
     natural_language_relationships: tuple[ParsedNlRelationship, ...]
     raw: dict
@@ -101,7 +103,7 @@ def _require_str(obj: Any, field_name: str, ctx: str, *, allow_empty: bool = Fal
     return obj
 
 
-def _opt_str(obj: Any, field_name: str, ctx: str) -> Optional[str]:
+def _opt_str(obj: Any, field_name: str, ctx: str) -> str | None:
     if obj is None:
         return None
     if not isinstance(obj, str):
@@ -111,14 +113,14 @@ def _opt_str(obj: Any, field_name: str, ctx: str) -> Optional[str]:
     return obj if obj else None
 
 
-def _opt_str_list(obj: Any, field_name: str, ctx: str) -> List[str]:
+def _opt_str_list(obj: Any, field_name: str, ctx: str) -> list[str]:
     if obj is None:
         return []
     if not isinstance(obj, list):
         raise ConnectorValidationError(
             f"{ctx}: {field_name!r} must be a list (got {type(obj).__name__})"
         )
-    out: List[str] = []
+    out: list[str] = []
     for i, v in enumerate(obj):
         if not isinstance(v, str):
             raise ConnectorValidationError(

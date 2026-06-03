@@ -52,7 +52,7 @@ surfaces' own jobs (Research/Write/Speak), reused, not rebuilt here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from substrate.graph.ops import insert_deliverable
 
@@ -79,7 +79,7 @@ class BiographyComposition:
     investigation_id: str        # the Research folder (shared graph identity)
     deliverable_id: str          # the Write scaffold (investigation_root_id == investigation_id)
     project_id: str              # the Speak interview project
-    composition_event_id: Optional[str]  # the shared-funnel link event; None if events disabled
+    composition_event_id: str | None  # the shared-funnel link event; None if events disabled
 
 
 def create_biography(
@@ -87,7 +87,7 @@ def create_biography(
     *,
     investigation_id: str,
     subject_name: str,
-    title: Optional[str] = None,
+    title: str | None = None,
     subject_status: str = "unknown",
     publish_intent: str = "private_never_published",
 ) -> BiographyComposition:

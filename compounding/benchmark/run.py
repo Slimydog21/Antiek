@@ -27,8 +27,8 @@ from __future__ import annotations
 import argparse
 import os
 import tempfile
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from .aggregate import DEFAULT_BOOTSTRAP_RESAMPLES, aggregate_comparison
 from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
@@ -53,7 +53,7 @@ MOCK_N = 20
 MOCK_RESAMPLES = DEFAULT_BOOTSTRAP_RESAMPLES
 
 
-def read_git_sha(repo_root: Optional[str] = None) -> str:
+def read_git_sha(repo_root: str | None = None) -> str:
     """Read the short HEAD sha from ``.git`` via plain file reads (NOT a process
     launch — the §16 grep gate forbids process-launch tokens in this package).
     Returns the placeholder when ``.git`` is unreadable (e.g. a worktree gitdir
@@ -69,11 +69,11 @@ def read_git_sha(repo_root: Optional[str] = None) -> str:
         # honest "set at commit time" value anyway.
         if not os.path.isdir(git_dir):
             return GIT_SHA_PLACEHOLDER
-        with open(os.path.join(git_dir, "HEAD"), "r", encoding="utf-8") as f:
+        with open(os.path.join(git_dir, "HEAD"), encoding="utf-8") as f:
             head = f.read().strip()
         if head.startswith("ref:"):
             ref = head[4:].strip()
-            with open(os.path.join(git_dir, ref), "r", encoding="utf-8") as f:
+            with open(os.path.join(git_dir, ref), encoding="utf-8") as f:
                 return f.read().strip()[:7]
         return head[:7]
     except OSError:
@@ -81,7 +81,7 @@ def read_git_sha(repo_root: Optional[str] = None) -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _run_cell(
@@ -91,12 +91,12 @@ def _run_cell(
     events_dir: str,
     graphs_dir: str,
     n: int,
-) -> Dict[str, List[CostToResolve]]:
+) -> dict[str, list[CostToResolve]]:
     """Run ``n`` runs of ``arm_seed`` for each question. Returns
     ``{question_id: [CostToResolve, ...]}`` (n entries per question)."""
-    out: Dict[str, List[CostToResolve]] = {}
+    out: dict[str, list[CostToResolve]] = {}
     for q in questions:
-        runs: List[CostToResolve] = []
+        runs: list[CostToResolve] = []
         for run_index in range(n):
             res: ArmResult = run_arm(
                 q, arm_seed, events_dir=events_dir, graphs_dir=graphs_dir,
@@ -107,11 +107,11 @@ def _run_cell(
     return out
 
 
-def _pool(cell: Dict[str, List[CostToResolve]], question_ids: Sequence[str]) -> List[CostToResolve]:
+def _pool(cell: dict[str, list[CostToResolve]], question_ids: Sequence[str]) -> list[CostToResolve]:
     """Pool the per-run CostToResolve across the given questions into one list
     (run order preserved per question, questions concatenated) so the aggregator
     pairs warm[i] vs cold[i] within the pooled stream."""
-    pooled: List[CostToResolve] = []
+    pooled: list[CostToResolve] = []
     for qid in question_ids:
         pooled.extend(cell.get(qid, []))
     return pooled
@@ -127,7 +127,7 @@ def run_benchmark(
     material_floor: float = 0.0,
     control_tolerance: float = 0.0,
     mock_run: bool = True,
-    git_sha: Optional[str] = None,
+    git_sha: str | None = None,
     parameters_ratified: bool = False,
 ) -> BenchmarkResult:
     """Drive every arm over the frozen set, aggregate, gate, and build the
@@ -163,7 +163,7 @@ def run_benchmark(
 
     # Per-domain control points (one control question = one domain) for the §2
     # "single domain spikes" invalidation.
-    per_domain_points: List[float] = []
+    per_domain_points: list[float] = []
     for qid in control_qids:
         c = aggregate_comparison(
             f"control_{qid}",
@@ -247,7 +247,7 @@ def _refuse_prod_run(profile: BenchmarkProfile) -> int:
     return 2
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="AFF SPR-09 compounding benchmark (mock + pilot)")
     ap.add_argument("--question-set", default=QUESTION_SET_PATH)
     ap.add_argument("--n", type=int, default=MOCK_N,

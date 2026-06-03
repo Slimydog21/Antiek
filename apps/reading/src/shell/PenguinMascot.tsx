@@ -77,7 +77,7 @@ import "../werner/waddle.css";
  * the Werner steering engine (src/werner/), which RIDES the same machinery
  * — one penguin, one `pos` ref, one chained-timeout roam, one reduced-motion
  * guard:
- *   - the roam's hop target is now BIASED toward the ~5s-lagged cursor
+ *   - the roam's hop target is now BIASED toward the ~0.5s-lagged cursor
  *     (useMouseFollow) instead of a pure random hop; when the pointer is idle
  *     it keeps the original bounded wander. Same loop, same clamp, same
  *     class-swap, same reduced-motion early-return.
@@ -137,7 +137,7 @@ export function PenguinMascot() {
   const roamRearm = useRef<((delay?: number) => void) | null>(null);
 
   // ── SPR-05/10 steering layer (additive). ──
-  // The ~5s-lagged cursor pursuit. Disabled (frozen) under reduced motion so
+  // The ~0.5s-lagged cursor pursuit. Disabled (frozen) under reduced motion so
   // there is zero involuntary follow. Read by the roam at the top of each leg.
   const follow = useMouseFollow({ disabled: reduceMotion });
   // The active emote mark, rendered over the Werner mark. Only changes when an
@@ -204,9 +204,9 @@ export function PenguinMascot() {
   useEffect(() => {
     if (reduceMotion || typeof window === "undefined") return;
 
-    const STROLL_MS = 2600; // how long one leg takes (matches the transition)
-    const REST_MIN_MS = 1800;
-    const REST_MAX_MS = 4200;
+    const STROLL_MS = 800; // snappy legs for a responsive follow
+    const REST_MIN_MS = 300;
+    const REST_MAX_MS = 800;
 
     roamRearm.current = (delay = REST_MIN_MS) => {
       if (roamTimer.current !== null) window.clearTimeout(roamTimer.current);
@@ -258,16 +258,16 @@ export function PenguinMascot() {
     strollRef.current = strollTo;
     restGaitRef.current = restGait;
 
-    // Pick the next ambient hop target. Biased toward the ~5s-lagged cursor
-    // (a lazy eased pursuit — close PART of the gap toward where the mouse was
-    // ~5s ago) when following + the pointer is moving; otherwise the original
+    // Pick the next ambient hop target. Biased toward the ~0.5s-lagged cursor
+    // (a snappy eased pursuit — close most of the gap toward where the mouse was
+    // ~0.5s ago) when following + the pointer is moving; otherwise the original
     // bounded random wander (a short hop, not a teleport). Either way clamped.
     const nextHopTarget = (vw: number, vh: number) => {
       const reach = Math.max(120, Math.min(vw, vh) * 0.22);
       const reading = follow.read();
       if (following.current && reading.target && !reading.pointerIdle) {
-        // Eased pursuit: move a fraction of the way toward the lagged point so
-        // he trails lazily rather than snapping onto it.
+        // Eased pursuit: close most of the gap toward the lagged point so
+        // he follows promptly rather than drifting lazily.
         const dx = reading.target.x - pos.current.x;
         const dy = reading.target.y - pos.current.y;
         const ease = reading.ease ?? FOLLOW_EASE;

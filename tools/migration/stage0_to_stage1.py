@@ -37,8 +37,7 @@ import os
 import shutil
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from substrate.ducklake import (
     DuckLakeCatalog,
@@ -53,14 +52,14 @@ from substrate.graph_per_user import (
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
 class MigrationStep:
     user_id: str
     action: str  # "promote_operator_file" | "create_new_user"
-    from_path: Optional[str]
+    from_path: str | None
     to_path: str
     notes: str = ""
 
@@ -112,7 +111,7 @@ def plan_migration(
             action="create_new_user",
             from_path=None,
             to_path=target,
-            notes=f"fresh per-user DuckDB + per-graph key",
+            notes="fresh per-user DuckDB + per-graph key",
         ))
 
     return MigrationPlan(

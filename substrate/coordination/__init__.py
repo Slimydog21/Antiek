@@ -31,6 +31,20 @@ edits the gate file or a roster changes, the dashboard reflects it on next read.
 
 from __future__ import annotations
 
+from .consent_view import (
+    ConsentView,
+    DisbursementGate,
+    IpHolderConsentRow,
+    build_consent_view,
+)
+from .cost_view import (
+    CostView,
+    MarginStatus,
+    Workflow,
+    WorkflowCost,
+    build_cost_view,
+    workflow_for_role,
+)
 from .gate_ledger import (
     Gate,
     GateImpact,
@@ -42,24 +56,10 @@ from .gate_ledger import (
 )
 from .roadmap import (
     Roadmap,
+    SpecRoster,
     SprintRow,
     SprintStatus,
-    SpecRoster,
     build_roadmap,
-)
-from .cost_view import (
-    CostView,
-    MarginStatus,
-    Workflow,
-    WorkflowCost,
-    build_cost_view,
-    workflow_for_role,
-)
-from .consent_view import (
-    ConsentView,
-    DisbursementGate,
-    IpHolderConsentRow,
-    build_consent_view,
 )
 
 __all__ = [

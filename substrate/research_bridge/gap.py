@@ -6,8 +6,9 @@ import json
 import os
 import re
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence
+from typing import Any
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -25,7 +26,10 @@ except ImportError:  # pragma: no cover
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
     from substrate.research_bridge.extractor import (  # type: ignore[no-redef]
-        EXTRACTOR_VERSION, LlmCallable, LlmCallResult, _extract_json_object,
+        EXTRACTOR_VERSION,
+        LlmCallable,
+        LlmCallResult,
+        _extract_json_object,
     )
     from substrate.research_bridge.source_detection import KNOWN_SOURCES  # type: ignore[no-redef]
 
@@ -51,16 +55,16 @@ class GapPrompt:
     order_index: int
     prompt_text: str
     target_provider: str
-    expected_output_shape: Optional[str]
-    depends_on_prior_order_index: Optional[int]
-    rationale: Optional[str]
+    expected_output_shape: str | None
+    depends_on_prior_order_index: int | None
+    rationale: str | None
 
 
 @dataclass(frozen=True)
 class GapCluster:
     cluster_id: str
     label: str
-    rationale: Optional[str]
+    rationale: str | None
     priority_rank: int
     question_ids: tuple[str, ...]
 
@@ -84,12 +88,12 @@ class GapFinderError(RuntimeError):
 
 
 def _load_cluster_prompt() -> str:
-    with open(_CLUSTER_PROMPT_FILE, "r", encoding="utf-8") as f:
+    with open(_CLUSTER_PROMPT_FILE, encoding="utf-8") as f:
         return f.read()
 
 
 def _load_cascade_prompt() -> str:
-    with open(_CASCADE_PROMPT_FILE, "r", encoding="utf-8") as f:
+    with open(_CASCADE_PROMPT_FILE, encoding="utf-8") as f:
         return f.read()
 
 
@@ -305,8 +309,8 @@ def _insert_run(
     con: LockedConnection,
     *,
     run_id: str,
-    operator_label: Optional[str],
-    session_id: Optional[str],
+    operator_label: str | None,
+    session_id: str | None,
     scope_block_ids: Sequence[str],
     scope_question_ids: Sequence[str],
     cluster_model_id: str,
@@ -390,8 +394,8 @@ def find_gaps(
     *,
     scope_block_ids: Sequence[str],
     llm_callable: LlmCallable,
-    operator_label: Optional[str] = None,
-    session_id: Optional[str] = None,
+    operator_label: str | None = None,
+    session_id: str | None = None,
 ) -> GapRunResult:
     if not isinstance(con, LockedConnection):
         raise TypeError(
@@ -547,20 +551,20 @@ class StoredCluster:
     run_id: str
     label: str
     priority_rank: int
-    rationale: Optional[str]
+    rationale: str | None
 
 
 @dataclass(frozen=True)
 class StoredPrompt:
     prompt_id: str
     run_id: str
-    cluster_id: Optional[str]
+    cluster_id: str | None
     order_index: int
     prompt_text: str
     target_provider: str
-    expected_output_shape: Optional[str]
-    depends_on_prior_order_index: Optional[int]
-    rationale: Optional[str]
+    expected_output_shape: str | None
+    depends_on_prior_order_index: int | None
+    rationale: str | None
     input_tokens: int
     output_tokens: int
     cost_usd: float
@@ -569,8 +573,8 @@ class StoredPrompt:
 @dataclass(frozen=True)
 class StoredRun:
     run_id: str
-    operator_label: Optional[str]
-    session_id: Optional[str]
+    operator_label: str | None
+    session_id: str | None
     scope_block_ids: tuple[str, ...]
     scope_question_ids: tuple[str, ...]
     cluster_model_id: str
@@ -580,7 +584,7 @@ class StoredRun:
     created_at: str
 
 
-def list_gap_runs(con, *, limit: int = 20, session_id: Optional[str] = None) -> list[StoredRun]:
+def list_gap_runs(con, *, limit: int = 20, session_id: str | None = None) -> list[StoredRun]:
     if session_id is None:
         rows = con.execute(
             "SELECT run_id, operator_label, session_id, scope_block_ids, "
@@ -615,7 +619,7 @@ def list_gap_runs(con, *, limit: int = 20, session_id: Optional[str] = None) -> 
 
 def read_gap_run(
     con, run_id: str,
-) -> tuple[Optional[StoredRun], list[StoredCluster], list[StoredPrompt]]:
+) -> tuple[StoredRun | None, list[StoredCluster], list[StoredPrompt]]:
     run_row = con.execute(
         "SELECT run_id, operator_label, session_id, scope_block_ids, "
         "       scope_question_ids, cluster_model_id, total_input_tokens, "
@@ -672,7 +676,7 @@ def read_gap_run(
     return run, clusters, prompts
 
 
-def would_run_percentage(con, *, run_id: Optional[str] = None) -> tuple[int, int, float]:
+def would_run_percentage(con, *, run_id: str | None = None) -> tuple[int, int, float]:
     base_filter = ""
     params: list[Any] = []
     if run_id is not None:

@@ -27,25 +27,36 @@ import hashlib
 import os
 import sys
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 try:
     from ...runtime.db_lock import LockedConnection, connect_write
-    from ..graph.ops import content_addressed_id, insert_chunk, insert_document
     from ..graph.insight_question import graph_db_path
-    from .extractors import ExtractionResult, extract_text
+    from ..graph.ops import content_addressed_id, insert_chunk, insert_document
     from .detect_external import detect_external_research
+    from .extractors import ExtractionResult, extract_text
     from .ingest import CHUNK_TARGET_CHARS, _chunk_paragraphs, _split_paragraphs
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import LockedConnection, connect_write  # type: ignore[no-redef]
-    from substrate.graph.ops import content_addressed_id, insert_chunk, insert_document  # type: ignore[no-redef]
     from substrate.graph.insight_question import graph_db_path  # type: ignore[no-redef]
-    from substrate.research_bridge.extractors import ExtractionResult, extract_text  # type: ignore[no-redef]
-    from substrate.research_bridge.detect_external import detect_external_research  # type: ignore[no-redef]
+    from substrate.graph.ops import (  # type: ignore[no-redef]
+        content_addressed_id,
+        insert_chunk,
+        insert_document,
+    )
+    from substrate.research_bridge.detect_external import (
+        detect_external_research,  # type: ignore[no-redef]
+    )
+    from substrate.research_bridge.extractors import (  # type: ignore[no-redef]
+        ExtractionResult,
+        extract_text,
+    )
     from substrate.research_bridge.ingest import (  # type: ignore[no-redef]
-        CHUNK_TARGET_CHARS, _chunk_paragraphs, _split_paragraphs,
+        CHUNK_TARGET_CHARS,
+        _chunk_paragraphs,
+        _split_paragraphs,
     )
 
 
@@ -78,10 +89,10 @@ def ingest_file(
     con: LockedConnection,
     *,
     data,
-    filename: Optional[str] = None,
-    content_type: Optional[str] = None,
-    investigation_id: Optional[str] = None,
-    operator_label: Optional[str] = None,
+    filename: str | None = None,
+    content_type: str | None = None,
+    investigation_id: str | None = None,
+    operator_label: str | None = None,
     ip_holder_id: str = OPERATOR_IP_HOLDER,
     content_class: str = DEFAULT_CONTENT_CLASS,
     do_chunk: bool = True,
@@ -164,8 +175,8 @@ async def distill_ingested_document(
     *,
     investigation_id: str,
     distiller: Any,
-    db_path: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
 ) -> Any:
     """M3 — run SPR-03's document note pass over an ingested file so it
     immediately yields insight/question nodes. A coroutine, so ingest itself

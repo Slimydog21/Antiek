@@ -22,7 +22,6 @@ Spec: ~/specs/antiek-hashimoto-engineering/sprint-e3-vouching.html
 from __future__ import annotations
 
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 from textwrap import dedent
 
@@ -33,7 +32,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import check_integration_tiers as cit  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Helpers: build a synthetic repo + registry

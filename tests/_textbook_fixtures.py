@@ -16,7 +16,6 @@ import io
 import os
 import sys
 import tempfile
-from typing import Optional
 
 import pytest
 
@@ -66,7 +65,7 @@ class FakeClient:
         self.json_calls: list[str] = []
         self.bytes_calls: list[str] = []
 
-    def get_json(self, url: str, *, params: Optional[dict] = None) -> dict:
+    def get_json(self, url: str, *, params: dict | None = None) -> dict:
         self.json_calls.append(url)
         if url not in self._json:
             raise SourceError(f"no canned json for {url}")

@@ -48,14 +48,15 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Dict, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any
 
 try:
-    from ...runtime.db_lock import LockedConnection, connect_write
     from ...constants import (
         DUCKDB_PATH,
         validate_insight_question_edge,
     )
+    from ...runtime.db_lock import LockedConnection, connect_write
     from .ops import content_addressed_id, insert_edge, insert_node
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -119,7 +120,7 @@ def question_node_id(text: str) -> str:
     return content_addressed_id("question", canonical_text(text))
 
 
-def _node_type_of(con: LockedConnection, node_id: str) -> Optional[str]:
+def _node_type_of(con: LockedConnection, node_id: str) -> str | None:
     row = con.execute(
         "SELECT node_type FROM nodes WHERE node_id = ? LIMIT 1", [node_id]
     ).fetchone()
@@ -139,9 +140,9 @@ def _add_provenance_edges(
     investigation_id: str,
     source_tier: int,
     extraction_confidence: float,
-    source_document_id: Optional[str],
-    chunk_id: Optional[str],
-) -> Tuple[list, list]:
+    source_document_id: str | None,
+    chunk_id: str | None,
+) -> tuple[list, list]:
     """Create ``relation`` edges from ``source_node_id`` to each target
     node, validating against the controlled vocabulary. Returns
     ``(written_edge_ids, skipped_dangling_targets)``. A target that does
@@ -182,7 +183,7 @@ def _node_type_of_source(relation: str) -> str:
     return spec.source_type
 
 
-def _with_connection(con: Optional[LockedConnection], purpose: str, fn):
+def _with_connection(con: LockedConnection | None, purpose: str, fn):
     """Run ``fn(con)`` either on the caller's connection (caller owns the
     transaction) or on a fresh write-locked connection wrapped in an
     atomic BEGIN/COMMIT."""
@@ -211,14 +212,14 @@ def promote_insight(
     investigation_id: str,
     confidence: str = "unknown",
     supported_by: Sequence[str] = (),
-    source_document_id: Optional[str] = None,
-    chunk_id: Optional[str] = None,
+    source_document_id: str | None = None,
+    chunk_id: str | None = None,
     source_tier: int = 3,
-    extraction_confidence: Optional[float] = None,
+    extraction_confidence: float | None = None,
     embedding_provider: Any = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    source_kind: Optional[str] = None,
-    con: Optional[LockedConnection] = None,
+    metadata: dict[str, Any] | None = None,
+    source_kind: str | None = None,
+    con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
 ) -> str:
@@ -258,7 +259,7 @@ def promote_insight(
     )
 
     def _do(c: LockedConnection) -> str:
-        node_meta: Dict[str, Any] = dict(metadata or {})
+        node_meta: dict[str, Any] = dict(metadata or {})
         node_meta.update(
             {
                 "promoted_kind": "insight",
@@ -348,14 +349,14 @@ def promote_question(
     investigation_id: str,
     asks_about: Sequence[str] = (),
     resolved_by: Sequence[str] = (),
-    anchor_region_id: Optional[str] = None,
-    source_document_id: Optional[str] = None,
-    chunk_id: Optional[str] = None,
+    anchor_region_id: str | None = None,
+    source_document_id: str | None = None,
+    chunk_id: str | None = None,
     source_tier: int = 3,
     extraction_confidence: float = 0.5,
     embedding_provider: Any = None,
-    metadata: Optional[Dict[str, Any]] = None,
-    con: Optional[LockedConnection] = None,
+    metadata: dict[str, Any] | None = None,
+    con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
 ) -> str:
@@ -373,7 +374,7 @@ def promote_question(
     nid = question_node_id(text)
 
     def _do(c: LockedConnection) -> str:
-        node_meta: Dict[str, Any] = dict(metadata or {})
+        node_meta: dict[str, Any] = dict(metadata or {})
         node_meta.update(
             {
                 "promoted_kind": "question",
@@ -479,8 +480,8 @@ def _dedup_check(
     candidate_node_id: str,
     candidate_text: str,
     investigation_id: str,
-    source_document_id: Optional[str],
-    chunk_id: Optional[str],
+    source_document_id: str | None,
+    chunk_id: str | None,
     source_tier: int,
     extraction_confidence: float,
     provider: Any,
@@ -530,7 +531,7 @@ def _scoped_existing_units(
     *,
     node_type: str,
     investigation_id: str,
-    source_document_id: Optional[str],
+    source_document_id: str | None,
 ):
     """Read the already-deposited units in the candidate's provenance SCOPE
     (same investigation, or the same grounding document) and project them onto
@@ -599,8 +600,8 @@ def _link_duplicate(
     investigation_id: str,
     source_tier: int,
     extraction_confidence: float,
-    source_document_id: Optional[str],
-    chunk_id: Optional[str],
+    source_document_id: str | None,
+    chunk_id: str | None,
     match,
 ) -> str:
     """Record a ``duplicate_of`` edge candidate -> survivor and return the
@@ -633,6 +634,7 @@ def _link_duplicate(
     candidate_node_id) collapses idempotently via ``on_conflict='ignore'`` and
     is NOT double-counted."""
     from substrate.constants import DUPLICATE_OF_RELATION
+
     from .ops import content_addressed_id
 
     edge_id = content_addressed_id(
@@ -697,7 +699,7 @@ def _record_dangling(con: LockedConnection, node_id: str, relation: str, targets
 # ---------------------------------------------------------------------------
 
 
-def _event_payload(event: Dict[str, Any]) -> Dict[str, Any]:
+def _event_payload(event: dict[str, Any]) -> dict[str, Any]:
     """A trajectory row's payload is a dict (``trajectory`` already
     json.loads-es it). Tolerate a still-stringified payload defensively."""
     payload = event.get("payload")
@@ -711,12 +713,12 @@ def _event_payload(event: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def promote_from_note_event(
-    event: Dict[str, Any],
+    event: dict[str, Any],
     *,
-    con: Optional[LockedConnection] = None,
+    con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
-) -> Optional[str]:
+) -> str | None:
     """Promote a single ``note.emerged`` event into an insight node.
 
     Opt-in: returns ``None`` unless ``enabled=True`` (SPR-03 flips the
@@ -747,12 +749,12 @@ def promote_from_note_event(
 
 
 def promote_from_question_event(
-    event: Dict[str, Any],
+    event: dict[str, Any],
     *,
-    con: Optional[LockedConnection] = None,
+    con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
-) -> Optional[str]:
+) -> str | None:
     """Promote a single ``question.identified`` event into a question
     node. Opt-in (see :func:`promote_from_note_event`)."""
     if not enabled:
@@ -776,12 +778,12 @@ def promote_from_question_event(
 
 
 def promote_from_marginalia_event(
-    event: Dict[str, Any],
+    event: dict[str, Any],
     *,
-    con: Optional[LockedConnection] = None,
+    con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
-) -> Optional[str]:
+) -> str | None:
     """Promote a single ``marginalia.noted`` event into a **user-authored**
     per-book insight node (Read SPR-07 M3).
 
@@ -858,7 +860,7 @@ def promote_from_marginalia_event(
 # ---------------------------------------------------------------------------
 
 
-def servability_tag_for(content_class: Optional[str], *, taken_down: bool = False):
+def servability_tag_for(content_class: str | None, *, taken_down: bool = False):
     """Read the §9.0 classifier's answer for a unit grounded on a source of
     this ``content_class`` and return a ``ServabilityTag``. This does NOT
     re-derive deny-by-default — it asks ``substrate.books.servability`` (the
@@ -868,8 +870,8 @@ def servability_tag_for(content_class: Optional[str], *, taken_down: bool = Fals
     Literal only when it is one of the allowlisted full-text classes; otherwise
     it is recorded as None (unknown ⇒ non-servable)."""
     from substrate.books.servability import is_servable_full_text, servability_of
-    from substrate.contracts.servable import FULL_TEXT_SERVABLE
     from substrate.contracts.nodes import ServabilityTag
+    from substrate.contracts.servable import FULL_TEXT_SERVABLE
 
     status = servability_of(content_class, taken_down=taken_down)
     serves = is_servable_full_text(status)
@@ -884,7 +886,7 @@ def knowledge_unit_of(
     con: LockedConnection,
     node_id: str,
     *,
-    content_class: Optional[str] = None,
+    content_class: str | None = None,
     taken_down: bool = False,
     score_groundedness: bool = False,
 ):
@@ -929,7 +931,7 @@ def knowledge_unit_of(
     if row is None:
         raise ValueError(f"no node {node_id!r} to assemble into a knowledge unit")
     node_type, text, meta_raw = row
-    meta: Dict[str, Any] = {}
+    meta: dict[str, Any] = {}
     if meta_raw:
         try:
             meta = json.loads(meta_raw)
@@ -968,7 +970,7 @@ def knowledge_unit_of(
             "Ensure promote_insight/promote_question stamped investigation_id."
         )
 
-    groundedness_score: Optional[float] = None
+    groundedness_score: float | None = None
     if score_groundedness:
         groundedness_score = _score_unit_groundedness(con, text, chunk_id)
 
@@ -988,7 +990,7 @@ def knowledge_unit_of(
 
 
 def _score_unit_groundedness(
-    con: LockedConnection, unit_text: str, chunk_id: Optional[str]
+    con: LockedConnection, unit_text: str, chunk_id: str | None
 ) -> float:
     """Score one knowledge unit's text against the text of the chunk it is
     grounded on, using the shipped #27 lexical entailment scorer.

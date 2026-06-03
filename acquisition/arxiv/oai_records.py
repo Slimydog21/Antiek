@@ -16,8 +16,8 @@ network.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
-from typing import Iterable, List, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from substrate.schemas.documents import (
     ArxivOaiRecord,
@@ -32,7 +32,7 @@ _OAI_NS = "{http://www.openarchives.org/OAI/2.0/}"
 _ARXIV_NS = "{http://arxiv.org/OAI/arXiv/}"
 
 
-def _text(el: Optional[ET.Element]) -> Optional[str]:
+def _text(el: ET.Element | None) -> str | None:
     """Stripped element text, or ``None`` for a missing/empty element. An
     empty ``<license/>`` therefore reads as ``None`` — the deny-by-default
     input that lands a record in T3-ambiguous, exactly as an absent element
@@ -89,7 +89,7 @@ def parse_record(record_el: ET.Element) -> ArxivOaiRecord:
     )
 
 
-def parse_records(xml_fragment: bytes | str) -> List[ArxivOaiRecord]:
+def parse_records(xml_fragment: bytes | str) -> list[ArxivOaiRecord]:
     """Parse all ``<record>`` elements under a ``<ListRecords>`` (or a bare
     ``<OAI-PMH>`` envelope) into records. Raises ``ValueError`` on malformed
     XML or on an OAI ``<error>`` response so a protocol error never silently
@@ -113,9 +113,9 @@ def build_census(
     records: Iterable[ArxivOaiRecord],
     *,
     metadata_prefix: str = "arXiv",
-    from_date: Optional[str] = None,
-    until_date: Optional[str] = None,
-    harvested_at: Optional[datetime] = None,
+    from_date: str | None = None,
+    until_date: str | None = None,
+    harvested_at: datetime | None = None,
 ) -> RightsCensus:
     """Fold a stream of records into a self-checking ``RightsCensus``.
 
@@ -133,5 +133,5 @@ def build_census(
         metadata_prefix=metadata_prefix,
         from_date=from_date,
         until_date=until_date,
-        harvested_at=harvested_at or datetime.now(timezone.utc),
+        harvested_at=harvested_at or datetime.now(UTC),
     )

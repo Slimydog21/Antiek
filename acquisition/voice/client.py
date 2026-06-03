@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Protocol
 
 import httpx
 
@@ -24,7 +24,7 @@ class Transcript:
     """Whisper response, normalized."""
 
     text: str
-    language: Optional[str]
+    language: str | None
     duration_seconds: float  # 0.0 if not advertised
     model: str
 
@@ -37,7 +37,7 @@ class Transcriber(Protocol):
         audio_bytes: bytes,
         *,
         filename: str,
-        language: Optional[str] = None,
+        language: str | None = None,
     ) -> Transcript:
         ...
 
@@ -48,10 +48,10 @@ class WhisperTranscriber:
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
         model: str = DEFAULT_WHISPER_MODEL,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
     ) -> None:
         self._api_key = api_key or os.environ.get("OPENAI_API_KEY")
         self._base_url = (base_url or os.environ.get(
@@ -65,7 +65,7 @@ class WhisperTranscriber:
         audio_bytes: bytes,
         *,
         filename: str,
-        language: Optional[str] = None,
+        language: str | None = None,
     ) -> Transcript:
         if not self._api_key:
             raise RuntimeError(
@@ -114,8 +114,8 @@ def transcribe_audio(
     audio_bytes: bytes,
     *,
     filename: str,
-    language: Optional[str] = None,
-    transcriber: Optional[Transcriber] = None,
+    language: str | None = None,
+    transcriber: Transcriber | None = None,
 ) -> Transcript:
     """Module-level convenience. In production the default
     ``WhisperTranscriber`` reads ``OPENAI_API_KEY`` from the env;

@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -47,11 +47,19 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from roles.connector import (  # noqa: E402
+    ConnectorResult,
+    ConnectorValidationError,
+    parse_connector_response,
+    render_full_prompt,
+    render_mappings_block,
+    render_paths_block,
+)
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.graph.traverse import (  # noqa: E402
-    bfs_semantic_stop,
     dfs_with_depth,
     shortest_path,
     top_n_paths,
@@ -66,18 +74,8 @@ from substrate.schemas import (  # noqa: E402
     NaturalLanguageRelationship,
     SeedPair,
 )
-from roles.connector import (  # noqa: E402
-    ConnectorResult,
-    ConnectorValidationError,
-    parse_connector_response,
-    render_full_prompt,
-    render_mappings_block,
-    render_paths_block,
-)
-from runtime.db_lock import connect_read  # noqa: E402
 
 from .broadcast import EventBroadcaster
-
 
 # ---------------------------------------------------------------------------
 # Traversal dispatch
@@ -186,7 +184,7 @@ def _traversal_for_request(
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
-) -> tuple[Optional[ConnectorResult], str]:
+) -> tuple[ConnectorResult | None, str]:
     try:
         result = dispatch(
             prompt,
@@ -261,7 +259,7 @@ def _result_to_payload_lists(
 def make_connector_handler(
     broadcaster: EventBroadcaster,
     *,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
 ):
     """Build the connector handler. Closed over a broadcaster + db
     path. Registered against ``ActionType.CONNECTOR_REQUESTED``."""
@@ -348,7 +346,7 @@ async def _emit_delivered(
 
 async def _broadcast_emitted(
     event: Event,
-    emitted_event_id: Optional[str],
+    emitted_event_id: str | None,
     broadcaster: EventBroadcaster,
 ) -> None:
     if emitted_event_id is None:
@@ -371,7 +369,7 @@ async def _broadcast_emitted(
 def register_handlers(
     broadcaster: EventBroadcaster,
     *,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
 ) -> None:
     """Wire the connector handler into the broadcaster. Called once
     at app startup from ``app.create_app``."""

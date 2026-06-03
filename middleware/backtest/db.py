@@ -14,8 +14,8 @@ diff + outcomes queries.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
-from typing import Any, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 from .analysis import (
     project_chunk_tier_changes,
@@ -29,7 +29,7 @@ def _naive_utc(ts: datetime) -> datetime:
     DuckDB TIMESTAMP is tz-naive; tz-aware parameters silently
     miss rows. Single normalization point for every loader here."""
     if ts.tzinfo is not None:
-        return ts.astimezone(timezone.utc).replace(tzinfo=None)
+        return ts.astimezone(UTC).replace(tzinfo=None)
     return ts
 
 
@@ -60,8 +60,8 @@ def count_superseded_edges_since(con: Any, since: datetime) -> int:
 
 
 def load_superseded_cited_edges(
-    con: Any, edge_ids: Tuple[str, ...], since: datetime,
-) -> Tuple[SupersededEdge, ...]:
+    con: Any, edge_ids: tuple[str, ...], since: datetime,
+) -> tuple[SupersededEdge, ...]:
     """For a synthesis's cited edges, return those that have been
     closed since the archive timestamp. The projection enriches each
     row with the source/target node labels + relation, mirroring
@@ -91,8 +91,8 @@ def load_chunk_tier_changes_since(
     con: Any,
     since: datetime,
     *,
-    chunk_ids: Optional[Tuple[str, ...]] = None,
-) -> Tuple[ChunkTierChange, ...]:
+    chunk_ids: tuple[str, ...] | None = None,
+) -> tuple[ChunkTierChange, ...]:
     """Tier overrides recorded after ``since``. When ``chunk_ids`` is
     set, restrict to that subset (the synthesis's cited chunks)."""
     if chunk_ids is not None and not chunk_ids:
@@ -122,7 +122,7 @@ def load_chunk_tier_changes_since(
 
 def load_outcomes_for_synthesis(
     con: Any, synthesis_id: str,
-) -> List[dict]:
+) -> list[dict]:
     """All observer-recorded outcomes for a synthesis, oldest first.
     Returns a list of plain dicts so callers can serialize directly
     into ``BacktestReport.outcomes`` (which expects
@@ -135,7 +135,7 @@ def load_outcomes_for_synthesis(
         [synthesis_id],
     ).fetchall()
 
-    def _maybe_json(raw: Optional[str]) -> Any:
+    def _maybe_json(raw: str | None) -> Any:
         if raw is None:
             return None
         try:
@@ -143,7 +143,7 @@ def load_outcomes_for_synthesis(
         except (json.JSONDecodeError, TypeError):
             return raw
 
-    out: List[dict] = []
+    out: list[dict] = []
     for r in rows:
         out.append({
             "outcome_id": r[0],

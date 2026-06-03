@@ -39,17 +39,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Optional
 
 from substrate.cross_graph.federation import FederationConfig
 from substrate.cross_graph.federation_config_store import (
     load_config as load_federation_config,
+)
+from substrate.cross_graph.federation_config_store import (
     save_config as save_federation_config,
 )
 from substrate.cross_graph.partner_identity import (
     PartnerIdentityError,
     PartnerSubstrate,
-    PartnerTrustState,
     generate_shared_secret,
     load_registry,
     register_partner,
@@ -58,11 +58,10 @@ from substrate.cross_graph.partner_identity import (
     trust_partner,
 )
 
-
 # ── Helpers ────────────────────────────────────────────────────────
 
 
-def _resolve_db_path(override: Optional[str]) -> str:
+def _resolve_db_path(override: str | None) -> str:
     if override:
         return override
     from substrate.graph import default_db_path, ensure_initialized
@@ -336,7 +335,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

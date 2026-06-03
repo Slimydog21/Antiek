@@ -14,7 +14,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.schemas import ActionType, TYPED_PAYLOAD_ACTION_TYPES
+from substrate.schemas import TYPED_PAYLOAD_ACTION_TYPES, ActionType
 
 
 @pytest.fixture
@@ -162,8 +162,8 @@ def test_patch_prose_promote_writes_claim_node_and_event(temp_substrate):
 
 def test_patch_prose_promote_emits_claim_asserted_event(temp_substrate):
     """The CLAIM_ASSERTED_BY_OPERATOR event must land in the event log."""
-    import json
     import glob
+    import json
     client = _client(temp_substrate)
     _, sid = _make_deliverable_with_section(client)
     resp = client.patch(
@@ -181,7 +181,7 @@ def test_patch_prose_promote_emits_claim_asserted_event(temp_substrate):
     )
     found = False
     for ef in event_files:
-        with open(ef, "r") as f:
+        with open(ef) as f:
             for line in f:
                 if not line.strip():
                     continue

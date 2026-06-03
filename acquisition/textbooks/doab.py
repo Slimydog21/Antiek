@@ -23,7 +23,7 @@ Compose, do not reimplement: shared ``ThrottledClient`` (SPR-03 ban-aware),
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from ._common import SourceError, TextbookWork, ThrottledClient, ingest_textbook
 
@@ -34,7 +34,7 @@ logger = logging.getLogger("acquisition.textbooks.doab")
 DOAB_SEARCH_URL = "https://directory.doabooks.org/rest/search"
 
 
-def _field(meta: list[dict] | dict | None, key: str) -> Optional[str]:
+def _field(meta: list[dict] | dict | None, key: str) -> str | None:
     """Pull a Dublin-Core-style field value. DOAB records carry metadata either
     as a list of ``{'key': 'dc.title', 'value': ...}`` dicts (the REST shape) or
     as a flat mapping; handle both."""
@@ -55,7 +55,7 @@ def _field(meta: list[dict] | dict | None, key: str) -> Optional[str]:
     return None
 
 
-def _declared_license(record: dict, meta: Any) -> Optional[str]:
+def _declared_license(record: dict, meta: Any) -> str | None:
     """Read the per-book DECLARED license from the DOAB record.
 
     DOAB carries the license in ``dc.rights.uri`` / ``dc.rights`` (a
@@ -79,7 +79,7 @@ def _declared_license(record: dict, meta: Any) -> Optional[str]:
     return None
 
 
-def _pdf_url(record: dict, meta: Any) -> Optional[str]:
+def _pdf_url(record: dict, meta: Any) -> str | None:
     """The structured OA full-text URL the DOAB record advertises. Prefer an
     explicit bitstream/handle PDF; the extraction gate in ``ingest_textbook``
     catches a link that turns out to be an HTML landing page."""
@@ -98,7 +98,7 @@ def _pdf_url(record: dict, meta: Any) -> Optional[str]:
     return val
 
 
-def _to_work(record: dict) -> Optional[TextbookWork]:
+def _to_work(record: dict) -> TextbookWork | None:
     meta = record.get("metadata", record)
     title = (_field(meta, "dc.title") or record.get("name") or record.get("title") or "").strip()
     if not title:
@@ -135,7 +135,7 @@ def _to_work(record: dict) -> Optional[TextbookWork]:
 
 
 def discover(
-    client: ThrottledClient, *, query: Optional[str] = None, limit: int = 25
+    client: ThrottledClient, *, query: str | None = None, limit: int = 25
 ) -> list[TextbookWork]:
     """Discover DOAB/OAPEN open-access books, each with its per-book declared
     license. Returns up to ``limit`` candidates; a record with no title or no

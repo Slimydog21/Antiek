@@ -60,9 +60,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Callable, Optional
+from datetime import UTC, datetime
 
 from runtime.db_lock import LockedConnection, connect_write
 from substrate.graph import default_db_path, ensure_initialized
@@ -118,9 +118,9 @@ class StoreOutcome:
     tier: RightsTier
     content_class: str
     chunks_written: int = 0
-    sha256: Optional[str] = None
-    page_count: Optional[int] = None
-    word_count: Optional[int] = None
+    sha256: str | None = None
+    page_count: int | None = None
+    word_count: int | None = None
 
 
 def _record_fetch_audit(
@@ -163,7 +163,7 @@ def _record_fetch_audit(
         )
 
 
-def _read_doc_row(con: LockedConnection, document_id: str) -> Optional[dict]:
+def _read_doc_row(con: LockedConnection, document_id: str) -> dict | None:
     """Return ``{license_uri, content_class, metadata}`` for the row, or None
     when the row is absent. Raises ``ValueError`` on malformed metadata JSON —
     we never blind-overwrite a row whose rights metadata we cannot safely read."""
@@ -198,11 +198,11 @@ def _read_doc_row(con: LockedConnection, document_id: str) -> Optional[dict]:
 def store_pdf_for_arxiv_row(
     fetched: FetchedPdf,
     *,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     embedder=None,
-    extract_text: Optional[PdfTextExtractor] = None,
+    extract_text: PdfTextExtractor | None = None,
     min_word_count: int = MIN_BODY_WORD_COUNT,
-    now: Optional[Callable[[], datetime]] = None,
+    now: Callable[[], datetime] | None = None,
 ) -> StoreOutcome:
     """Store + promote + index a fetched PDF for its EXISTING arXiv row, T1 only.
 
@@ -241,7 +241,7 @@ def store_pdf_for_arxiv_row(
         from processing.embedding.embed import default_embedding_provider
 
         embedder = default_embedding_provider()
-    clock = now or (lambda: datetime.now(timezone.utc))
+    clock = now or (lambda: datetime.now(UTC))
 
     with connect_write(resolved_db_path, purpose="acquisition/arxiv_pdf_store") as con:
         row = _read_doc_row(con, document_id)

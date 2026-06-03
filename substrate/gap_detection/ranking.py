@@ -21,14 +21,15 @@ so the order is fully determined by graph state.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 W_DEGREE = 0.50
 W_RECENCY = 0.20
 W_DEPENDENTS = 0.30
 
 
-def node_metrics(con: Any, node_ids: Sequence[str]) -> Dict[str, dict]:
+def node_metrics(con: Any, node_ids: Sequence[str]) -> dict[str, dict]:
     """Fetch degree + in-degree + created_at for a set of nodes, in one pass.
     Returns ``{node_id: {"degree", "dependents", "created_at"}}``."""
     if not node_ids:
@@ -62,7 +63,7 @@ def impact_score(metrics: dict, *, max_degree: int, max_dependents: int, recency
     )
 
 
-def rank_node_ids(con: Any, node_ids: Sequence[str]) -> Dict[str, float]:
+def rank_node_ids(con: Any, node_ids: Sequence[str]) -> dict[str, float]:
     """Return ``{node_id: impact_score}`` for the given nodes, computed from
     graph metrics. Deterministic."""
     metrics = node_metrics(con, node_ids)

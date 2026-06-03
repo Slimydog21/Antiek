@@ -9,13 +9,14 @@ debounces + applies budget backpressure.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import os
 import tempfile
 
 import pytest
 
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
+from roles.challenger import ChallengeUnavailable, make_dispatch_resolver, parse_resolution
 from roles.note_taker import (
     AsyncNoteScheduler,
     Distillation,
@@ -27,14 +28,12 @@ from roles.note_taker import (
     notes_for_step,
     run_document_pass,
 )
-from roles.challenger import ChallengeUnavailable, make_dispatch_resolver, parse_resolution
 from roles.note_taker.parser import ExtractedNote
-from substrate.graph.schema import init_database_at_path
-from substrate.graph.insight_question import insight_node_id, promote_insight
-from runtime.db_lock import connect_read, connect_write
+from runtime.db_lock import connect_read
 from substrate.event_log import trajectory
+from substrate.graph.insight_question import promote_insight
+from substrate.graph.schema import init_database_at_path
 from substrate.schemas.events import ActionType
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:

@@ -18,7 +18,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import duckdb
 import httpx
@@ -258,7 +258,7 @@ def test_parse_authorships_falls_back_to_raw_author_name():
 
 
 def test_build_enrichment_shape_and_provenance():
-    when = datetime(2026, 5, 30, tzinfo=timezone.utc)
+    when = datetime(2026, 5, 30, tzinfo=UTC)
     e = build_enrichment(_OPENALEX_ENRICHED_WORK, fetched_at=when)
     assert e["source"] == "openalex"
     assert e["fetched_at"] == when.isoformat()
@@ -307,7 +307,7 @@ def test_enrich_corpus_matches_and_merges(temp_db):
 
     cov = enrich_corpus(
         db_path=db_path, client=_mock_client(handler), throttle=_no_sleep_throttle(),
-        fetched_at=datetime(2026, 5, 30, tzinfo=timezone.utc),
+        fetched_at=datetime(2026, 5, 30, tzinfo=UTC),
     )
     assert cov.attempted == 1
     assert cov.matched == 1

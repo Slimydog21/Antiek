@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -35,7 +33,6 @@ from orchestration.interview.orchestrator import (  # noqa: E402
     InterviewTurn,
 )
 from processing.embedding.embed import EmbeddingProvider  # noqa: E402
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────
 

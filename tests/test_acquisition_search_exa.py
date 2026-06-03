@@ -21,9 +21,6 @@ files to ``tmp_path``. No tests touch the real ``~/.antiek``.
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
-from typing import List, Optional
 
 import httpx
 import pytest
@@ -53,7 +50,6 @@ from substrate.legal_gate import (
     default_legal_gate,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────
 
 
@@ -76,7 +72,7 @@ def isolated_env(tmp_path, monkeypatch):
 
 
 def _mock_exa_client(
-    responses: List[dict],
+    responses: list[dict],
     *,
     status: int = 200,
 ) -> ExaClient:
@@ -102,10 +98,10 @@ def _mock_exa_client(
 def _exa_result(
     url: str,
     *,
-    title: Optional[str] = None,
-    score: Optional[float] = None,
-    snippet: Optional[str] = None,
-    id_: Optional[str] = None,
+    title: str | None = None,
+    score: float | None = None,
+    snippet: str | None = None,
+    id_: str | None = None,
 ) -> dict:
     return {
         "url": url,
@@ -382,11 +378,11 @@ def test_promote_discovery_ingested(isolated_env, monkeypatch):
         final_url: str = "https://example.com/x"
         chunk_ids: tuple = ()
         node_ids: tuple = ()
-        document_loaded_event_id: Optional[str] = "evt-loaded"
+        document_loaded_event_id: str | None = "evt-loaded"
         chunks_written: int = 5
-        skipped_reason: Optional[str] = None
-        title: Optional[str] = "Test"
-        author: Optional[str] = None
+        skipped_reason: str | None = None
+        title: str | None = "Test"
+        author: str | None = None
 
     calls = {"n": 0, "kwargs": None}
 
@@ -426,11 +422,11 @@ def test_promote_discovery_tier_override(isolated_env, monkeypatch):
         final_url: str = "https://e.com/x"
         chunk_ids: tuple = ()
         node_ids: tuple = ()
-        document_loaded_event_id: Optional[str] = None
+        document_loaded_event_id: str | None = None
         chunks_written: int = 0
-        skipped_reason: Optional[str] = None
-        title: Optional[str] = None
-        author: Optional[str] = None
+        skipped_reason: str | None = None
+        title: str | None = None
+        author: str | None = None
 
     captured = {}
 

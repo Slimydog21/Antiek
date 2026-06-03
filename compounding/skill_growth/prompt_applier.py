@@ -33,13 +33,11 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from .gate import PatchDecision
 from .gepa_bridge import BridgeOutcome
-
 
 # Resolution path for applied prompts. The repo root is the parent of
 # this module's package (``compounding/skill_growth/``).
@@ -90,7 +88,7 @@ def apply_prompt_variant(
     *,
     role: str,
     bridge_outcome: BridgeOutcome,
-    base_dir: Optional[Path] = None,
+    base_dir: Path | None = None,
 ) -> AppliedPromptRecord:
     """Land the accepted variant on disk + update the per-role pointer.
 
@@ -141,7 +139,7 @@ def apply_prompt_variant(
             bridge_outcome.variant_prompt, encoding="utf-8",
         )
 
-    applied_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    applied_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     pointer = {
         "role": role,
         "variant_id": bridge_outcome.variant_id,
@@ -175,8 +173,8 @@ def apply_prompt_variant(
 def load_active_variant(
     role: str,
     *,
-    base_dir: Optional[Path] = None,
-) -> Optional[str]:
+    base_dir: Path | None = None,
+) -> str | None:
     """Read the currently-active variant's prompt text for ``role``.
 
     Returns the prompt text if a pointer exists, or None if no

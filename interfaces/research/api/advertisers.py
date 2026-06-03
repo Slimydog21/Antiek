@@ -30,8 +30,6 @@ typed ``error.code``.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import duckdb
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -39,8 +37,6 @@ from pydantic import BaseModel, Field
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,
     AdvertiserRecord,
-    AdvertiserRegistry,
-    AdvertiserStatus,
     activate_advertiser,
     approve_advertiser,
     churn_advertiser,
@@ -51,7 +47,6 @@ from substrate.ad_inventory.advertiser_onboarding import (
     suspend_advertiser,
 )
 
-
 # ── Pydantic shapes ────────────────────────────────────────────────
 
 
@@ -60,8 +55,8 @@ class SubmitApplicationRequest(BaseModel):
     contact_email: str = Field(min_length=3, max_length=200)
     verticals: tuple[str, ...] = ()
     audience_intents: tuple[str, ...] = ()
-    monthly_budget_usd_cents: Optional[int] = Field(default=None, ge=0)
-    advertiser_id: Optional[str] = Field(default=None, max_length=64)
+    monthly_budget_usd_cents: int | None = Field(default=None, ge=0)
+    advertiser_id: str | None = Field(default=None, max_length=64)
 
 
 class ApproveRequest(BaseModel):
@@ -93,11 +88,11 @@ class AdvertiserResponse(BaseModel):
     submitted_at: str
     last_status_change_at: str
     operator_notes: str
-    rejection_reason: Optional[str]
-    monthly_budget_usd_cents: Optional[int]
+    rejection_reason: str | None
+    monthly_budget_usd_cents: int | None
 
     @classmethod
-    def from_record(cls, rec: AdvertiserRecord) -> "AdvertiserResponse":
+    def from_record(cls, rec: AdvertiserRecord) -> AdvertiserResponse:
         return cls(
             advertiser_id=rec.advertiser_id,
             display_name=rec.display_name,

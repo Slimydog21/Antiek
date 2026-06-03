@@ -17,7 +17,6 @@ import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -27,7 +26,6 @@ from substrate.auth import (
     OutboundEmail,
     get_email_provider,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 

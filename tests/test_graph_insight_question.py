@@ -15,32 +15,30 @@ import tempfile
 
 import pytest
 
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from runtime.db_lock import connect_read, connect_write
-from substrate.graph.schema import init_database, init_database_at_path
-from substrate.graph import ops
-from substrate.graph.insight_question import (
-    canonical_text,
-    insight_node_id,
-    promote_from_note_event,
-    promote_from_question_event,
-    promote_insight,
-    promote_question,
-)
-from substrate.graph import insight_question as iq
-from substrate.graph.migrate_v9_insight_question import (
-    NODE_TYPES_AFTER,
-    migrate,
-    migrate_at_path,
-    _already_has_insight_question,
-)
 from substrate.constants import (
     INSIGHT_QUESTION_RELATION_NAMES,
     validate_insight_question_edge,
 )
 from substrate.event_log import emit_typed
+from substrate.graph import insight_question as iq
+from substrate.graph import ops
+from substrate.graph.insight_question import (
+    canonical_text,
+    insight_node_id,
+    promote_from_note_event,
+    promote_insight,
+    promote_question,
+)
+from substrate.graph.migrate_v9_insight_question import (
+    NODE_TYPES_AFTER,
+    _already_has_insight_question,
+    migrate,
+    migrate_at_path,
+)
+from substrate.graph.schema import init_database, init_database_at_path
 from substrate.schemas.events import NoteEmergedPayload, QuestionIdentifiedPayload
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
-
 
 # --------------------------------------------------------------------------
 # Fixtures

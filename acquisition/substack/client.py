@@ -21,8 +21,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import httpx
 
@@ -83,8 +82,8 @@ class Post:
     title: str
     body_html: str
     body_markdown: str
-    published_at: Optional[datetime]
-    post_url: Optional[str] = None
+    published_at: datetime | None
+    post_url: str | None = None
     author: str = ""
     truncated: bool = False
     truncation_reason: str = TRUNCATION_REASON_NONE
@@ -123,7 +122,7 @@ def substack_doc_id(guid: str) -> str:
     return f"doc-sub-{digest}"
 
 
-def _parse_published(entry) -> Optional[datetime]:
+def _parse_published(entry) -> datetime | None:
     """Extract a UTC datetime from a feed entry, if present.
 
     Mirrors ``podcasts/client.py:_parse_published`` (feedparser converts
@@ -138,7 +137,7 @@ def _parse_published(entry) -> Optional[datetime]:
                 import time as _time
 
                 epoch = _time.mktime(struct)  # type: ignore[arg-type]
-                return datetime.fromtimestamp(epoch, tz=timezone.utc)
+                return datetime.fromtimestamp(epoch, tz=UTC)
             except (TypeError, ValueError, OverflowError):
                 continue
     return None
@@ -180,7 +179,7 @@ def _entry_body_html(entry) -> str:
 
 
 def _render_body_markdown(
-    body_html: str, *, title: str, base_url: Optional[str]
+    body_html: str, *, title: str, base_url: str | None
 ) -> str:
     """Render an RSS body FRAGMENT to chunker-friendly markdown.
 
@@ -239,8 +238,8 @@ def detect_truncation(
 def fetch_feed(
     feed_url: str,
     *,
-    max_posts: Optional[int] = None,
-    client: Optional[httpx.Client] = None,
+    max_posts: int | None = None,
+    client: httpx.Client | None = None,
 ) -> Publication:
     """Download and parse a Substack RSS feed into a ``Publication``.
 

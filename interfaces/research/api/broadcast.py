@@ -25,7 +25,8 @@ import asyncio
 import os
 import sys
 import traceback
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any
 
 from fastapi import WebSocket
 
@@ -35,7 +36,6 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from substrate.schemas import Event  # noqa: E402
-
 
 # A Python-side handler. Returns an awaitable so handlers can fan out
 # work (dispatch calls, DB writes) without blocking the broadcast loop.
@@ -61,7 +61,7 @@ class _Subscriber:
         self,
         ws: WebSocket,
         *,
-        investigation_id: Optional[str],
+        investigation_id: str | None,
         max_queue: int = 256,
     ):
         self.ws = ws
@@ -125,7 +125,7 @@ class EventBroadcaster:
         self,
         ws: WebSocket,
         *,
-        investigation_id: Optional[str] = None,
+        investigation_id: str | None = None,
     ) -> _Subscriber:
         sub = _Subscriber(ws, investigation_id=investigation_id)
         async with self._lock:

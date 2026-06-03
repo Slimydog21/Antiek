@@ -20,7 +20,8 @@ test, easy to call from the constraint-loop machinery (Sprint 5).
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Optional
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from substrate.schemas import Claim
 
@@ -31,7 +32,7 @@ def evaluate_constraints(
     constraints: Iterable[Constraint],
     claims: Iterable[Claim],
     *,
-    extracted_values: Optional[Mapping[str, Any]] = None,
+    extracted_values: Mapping[str, Any] | None = None,
 ) -> list[Violation]:
     """Evaluate every constraint against the claims (and the optional
     extracted_values dict). Returns the full list of violations — the
@@ -74,7 +75,7 @@ def evaluate_constraints(
 def _check_numeric_range(
     c: Constraint,
     extracted_values: Mapping[str, Any],
-) -> Optional[Violation]:
+) -> Violation | None:
     """``config`` shape: ``{"field": str, "min": float, "max": float}``.
     Pulls the extracted value by name; if missing, that's a violation
     (the parameter_extractor was supposed to surface it)."""
@@ -126,7 +127,7 @@ def _check_numeric_range(
 def _check_must_include_term(
     c: Constraint,
     claims: list[Claim],
-) -> Optional[Violation]:
+) -> Violation | None:
     """``config`` shape: ``{"term": str, "case_sensitive": bool}``.
     Searches claim texts for the term. Returns a violation if NO
     claim contains it (the constraint says the synthesis must include

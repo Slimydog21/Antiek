@@ -63,10 +63,12 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Any, List, Optional, Sequence
+from typing import Any
 
 try:
+    from ..graph.search import cosine_similarity_sql
     from .assembler import (
         ContextPack,
         DefaultTokenCounter,
@@ -76,7 +78,6 @@ try:
         assemble_context_pack,
         default_budget_for,
     )
-    from ..graph.search import cosine_similarity_sql
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -301,7 +302,7 @@ def retrieve_prior_units(
     question_text: str,
     limit: int = DEFAULT_RETRIEVE_LIMIT,
     policy_tag: str = "attribution_eligible",
-) -> List[RetrievedUnit]:
+) -> list[RetrievedUnit]:
     """Retrieve prior knowledge units ranked by similarity to ``question_text``.
 
     Signature mirrors ``note_retrieval.retrieve_project_notes`` one layer up: a
@@ -380,7 +381,7 @@ def retrieve_prior_units(
             ).fetchall()
         ]
 
-    out: List[RetrievedUnit] = []
+    out: list[RetrievedUnit] = []
     for node_id, content_class, similarity in rows:
         try:
             # SPR-08: fill the groundedness slot at projection time (Decision B),
@@ -408,7 +409,7 @@ def retrieve_prior_units(
 # ---------------------------------------------------------------------------
 
 
-def reuse_token_budget(role: str, pack_budget: Optional[int] = None) -> int:
+def reuse_token_budget(role: str, pack_budget: int | None = None) -> int:
     """The reuse layer's token ceiling: ``REUSE_BUDGET_FRACTION`` of the role's
     pack budget, capped at ``REUSE_BUDGET_CAP_TOKENS``. Mirrors
     ``note_budget.notes_token_budget``."""
@@ -440,9 +441,9 @@ def select_units_within_budget(
     units: Sequence[RetrievedUnit],
     *,
     budget: int,
-    counter: Optional[TokenCounter] = None,
+    counter: TokenCounter | None = None,
     header_text: str = "",
-) -> tuple[List[RetrievedUnit], List[UnitDecision]]:
+) -> tuple[list[RetrievedUnit], list[UnitDecision]]:
     """Select the highest-scored units that fit ``budget`` tokens.
 
     DETERMINISTIC (M4 acceptance): units are ranked similarity-desc with ties
@@ -460,8 +461,8 @@ def select_units_within_budget(
     counter = counter or DefaultTokenCounter()
     ranked = sorted(units, key=lambda ru: (-ru.similarity, ru.unit_id))
     used = counter.count(header_text) if header_text else 0
-    selected: List[RetrievedUnit] = []
-    decisions: List[UnitDecision] = []
+    selected: list[RetrievedUnit] = []
+    decisions: list[UnitDecision] = []
     for ru in ranked:
         cost = counter.count(render_unit(ru) + "\n")
         if used + cost > budget:
@@ -491,10 +492,10 @@ def partition_units(
     units: Sequence[RetrievedUnit],
     *,
     budget: int,
-    counter: Optional[TokenCounter] = None,
+    counter: TokenCounter | None = None,
     header_text: str = "",
     relevance_floor: float = RELEVANCE_FLOOR,
-) -> tuple[List[RetrievedUnit], List[UnitDecision], ReuseCoverage]:
+) -> tuple[list[RetrievedUnit], list[UnitDecision], ReuseCoverage]:
     """Apply the SPR-06 filters in order and produce the injected set + every
     unit's honest decision.
 
@@ -512,8 +513,8 @@ def partition_units(
 
     Returns ``(injected, decisions, coverage)``. ``decisions`` covers EVERY
     input unit exactly once."""
-    decisions: List[UnitDecision] = []
-    servable_relevant: List[RetrievedUnit] = []
+    decisions: list[UnitDecision] = []
+    servable_relevant: list[RetrievedUnit] = []
     n_not_servable = 0
     n_low_rel = 0
     for ru in units:
@@ -553,9 +554,9 @@ def build_reuse_layer(
     units: Sequence[RetrievedUnit],
     *,
     token_budget: int,
-    counter: Optional[TokenCounter] = None,
+    counter: TokenCounter | None = None,
     relevance_floor: float = RELEVANCE_FLOOR,
-) -> tuple[Optional[LayerSource], List[RetrievedUnit], List[UnitDecision], ReuseCoverage]:
+) -> tuple[LayerSource | None, list[RetrievedUnit], list[UnitDecision], ReuseCoverage]:
     """Filter (§9.0 + relevance + budget) and render the reuse ``LayerSource``.
 
     Returns ``(layer_or_None, injected, decisions, coverage)``; ``layer`` is
@@ -594,12 +595,12 @@ class PackWithReuse:
     removed before SPR-06's budget partition ever ran."""
 
     pack: ContextPack
-    injected: List[RetrievedUnit]
-    decisions: List[UnitDecision]
+    injected: list[RetrievedUnit]
+    decisions: list[UnitDecision]
     coverage: ReuseCoverage
     reuse_injected: bool
-    reuse_event_id: Optional[str]
-    gate_decisions: Optional[List[Any]] = None  # list[GateDecision]; SPR-08 trust partition
+    reuse_event_id: str | None
+    gate_decisions: list[Any] | None = None  # list[GateDecision]; SPR-08 trust partition
 
 
 def assemble_context_pack_with_reuse(
@@ -609,16 +610,16 @@ def assemble_context_pack_with_reuse(
     layers,
     units: Sequence[RetrievedUnit],
     include_reuse: bool = True,
-    target_tokens: Optional[int] = None,
+    target_tokens: int | None = None,
     truncation: TruncationStrategy = "smart",
-    counter: Optional[TokenCounter] = None,
-    parent_event_id: Optional[str] = None,
+    counter: TokenCounter | None = None,
+    parent_event_id: str | None = None,
     relevance_floor: float = RELEVANCE_FLOOR,
-    events_dir: Optional[str] = None,
-    policy_id: Optional[str] = None,
+    events_dir: str | None = None,
+    policy_id: str | None = None,
     apply_trust_gate: bool = True,
-    reuse_threshold: Optional[float] = None,
-    chunk_text_for: Optional[Any] = None,
+    reuse_threshold: float | None = None,
+    chunk_text_for: Any | None = None,
 ) -> PackWithReuse:
     """Assemble a context pack with prior knowledge units injected as a single
     reuse layer, then emit ONE ``knowledge.reused`` event recording the decision.
@@ -656,11 +657,11 @@ def assemble_context_pack_with_reuse(
     layer_list = list(layers)
 
     candidate_units: Sequence[RetrievedUnit] = units
-    gate_decisions: List[Any] = []
-    threshold: Optional[float] = None
+    gate_decisions: list[Any] = []
+    threshold: float | None = None
 
-    injected: List[RetrievedUnit] = []
-    decisions: List[UnitDecision] = []
+    injected: list[RetrievedUnit] = []
+    decisions: list[UnitDecision] = []
     reuse_injected = False
 
     if include_reuse and apply_trust_gate:
@@ -736,7 +737,7 @@ def assemble_context_pack_with_reuse(
                     policy_id=policy_id,
                 )
 
-    reuse_event_id: Optional[str] = None
+    reuse_event_id: str | None = None
     if include_reuse:
         reuse_event_id = _emit_knowledge_reused(
             investigation_id=investigation_id,
@@ -764,11 +765,11 @@ def _emit_knowledge_reused(
     investigation_id: str,
     injected: Sequence[RetrievedUnit],
     decisions: Sequence[UnitDecision],
-    context_pack_event_id: Optional[str],
+    context_pack_event_id: str | None,
     role: str,
-    events_dir: Optional[str],
-    policy_id: Optional[str],
-) -> Optional[str]:
+    events_dir: str | None,
+    policy_id: str | None,
+) -> str | None:
     """Emit exactly one ``knowledge.reused`` event for this investigation start.
 
     ``reused_unit_ids`` + ``scores`` describe the INJECTED set (equal-length, in

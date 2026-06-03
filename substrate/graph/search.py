@@ -32,7 +32,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Optional, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 try:
     from ...runtime.db_lock import connect_read
@@ -170,9 +171,9 @@ def search(
     *,
     model: EmbeddingModel,
     top_k: int = 5,
-    source_tier_max: Optional[int] = None,
-    document_id: Optional[str] = None,
-    document_ids: Optional[Sequence[str]] = None,
+    source_tier_max: int | None = None,
+    document_id: str | None = None,
+    document_ids: Sequence[str] | None = None,
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
 ) -> dict:
@@ -230,7 +231,7 @@ def search(
     # scope" — return nothing rather than silently widening to the whole
     # corpus (the meta-reading owned-corpus scope must never leak past its
     # bound). `document_ids is None` ⇒ no set filter at all.
-    scoped_ids: Optional[list[str]] = None
+    scoped_ids: list[str] | None = None
     if document_ids is not None:
         scoped_ids = list(dict.fromkeys(document_ids))  # de-dup, keep order
         if document_id is not None and document_id not in scoped_ids:

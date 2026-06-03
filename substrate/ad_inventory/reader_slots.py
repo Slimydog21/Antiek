@@ -18,8 +18,8 @@ is the default, fully modeled, not a stub behind a "no fill" branch.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
 
 from substrate.constants import READER_AD_SLOT_POSITIONS, READER_AD_SLOT_POSITIONS_DEFAULT
 
@@ -49,8 +49,8 @@ class HousePromo:
     useful card (not blank/filler). Surfaced when no ad matches."""
 
     promoted_document_id: str
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
 
 
 @dataclass(frozen=True)
@@ -63,8 +63,8 @@ class SlotFill:
 
     slot: ReaderAdSlot
     kind: str  # 'ad' | 'house'
-    ad: Optional[AdInventoryItem] = None
-    house: Optional[HousePromo] = None
+    ad: AdInventoryItem | None = None
+    house: HousePromo | None = None
     revenue_usd_cents: int = 0
 
 
@@ -115,7 +115,7 @@ def fill_slot(
 
 def _pick_house_promo(
     slot: ReaderAdSlot, candidates: Sequence[HousePromo]
-) -> Optional[HousePromo]:
+) -> HousePromo | None:
     """Deterministically pick a house promo for a slot, skipping the book
     currently being read (don't promote the book back to itself). Returns
     None when there's nothing to promote — the frontend renders a neutral

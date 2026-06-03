@@ -21,13 +21,11 @@ import tempfile
 import pytest
 
 from benchmarks.retrieval_bench import HashEmbedding, row_counts, seed_graph
+from substrate.graph import retrieval_substrate as _rs
 from substrate.graph.retrieval_substrate import (
-    BruteForceSubstrate,
-    DuckDbVssSubstrate,
     RetrievalSubstrate,
     make_substrate,
 )
-from substrate.graph import retrieval_substrate as _rs
 from substrate.graph.search import search
 
 # Hang-proof probe (LOAD-only, memoized, NO network install unless the operator
@@ -263,6 +261,7 @@ def test_default_factory_path_imports_no_vendor():
                 "substrate.graph.retrieval_adapters.ducklake"):
         sys.modules.pop(mod, None)
     import importlib
+
     import substrate.graph.retrieval_substrate as rs
     importlib.reload(rs)
     assert "substrate.graph.retrieval_adapters.turbopuffer" not in sys.modules

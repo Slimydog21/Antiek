@@ -44,8 +44,8 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
 
 import httpx
 
@@ -100,12 +100,12 @@ def _request_with_429_sentinel(throttle, fn):
 
 def _discover(
     *,
-    query: Optional[str],
-    category: Optional[str],
-    ids: Optional[Sequence[str]],
+    query: str | None,
+    category: str | None,
+    ids: Sequence[str] | None,
     limit: int,
     throttle: ArxivThrottle,
-) -> List[ArxivPaper]:
+) -> list[ArxivPaper]:
     """Resolve selectors to a candidate list. Every live request passes the
     CLI-owned ``throttle`` into ``search`` / ``fetch_by_id``, which route the
     export-search GET through the host-global rate governor (SPR-09 M1): the
@@ -115,7 +115,7 @@ def _discover(
     window. ``--ids`` fetch one paper at a time (arXiv's id_list could batch, but
     per-id fetch keeps a partial failure from dropping the whole list)."""
     if ids:
-        papers: List[ArxivPaper] = []
+        papers: list[ArxivPaper] = []
         for pid in ids:
             # Pre-flight ban check (raises ArxivBanned early, before any request
             # is built, when a sentinel is already active). The authoritative
@@ -244,7 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
 
@@ -264,7 +264,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             )
             return 2
 
-    ids: Optional[List[str]] = None
+    ids: list[str] | None = None
     if args.ids:
         ids = [x.strip() for x in args.ids.split(",") if x.strip()]
 

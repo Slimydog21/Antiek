@@ -15,6 +15,8 @@ import tempfile
 
 import pytest
 
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
+from runtime.db_lock import connect_read
 from runtime.research_runner import (
     BudgetCap,
     BudgetManager,
@@ -27,16 +29,13 @@ from runtime.research_runner import (
     ResearchPlan,
     ResearchRunner,
     RunState,
-    StepEvent,
     daytona_enabled,
     make_demo_loop,
 )
 from runtime.research_runner.host_local import LoopContext
 from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
-from runtime.db_lock import connect_read
 from substrate.schemas.events import ActionType
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:

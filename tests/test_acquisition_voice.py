@@ -10,9 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 import pytest
 
@@ -21,14 +19,11 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from acquisition.voice import (
-    IngestVoiceNoteResult,
-    Transcriber,
     Transcript,
     ingest_voice_note,
     transcribe_and_ingest,
     voice_note_doc_id,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────
 # Fixtures + helpers
@@ -47,7 +42,7 @@ def temp_substrate(monkeypatch):
 
 
 class _StubEmbedder:
-    def encode(self, text: str) -> List[float]:
+    def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
         v[h % 16] = 1.0
@@ -64,11 +59,11 @@ class StubTranscriber:
         self.text = text
         self.duration_seconds = duration_seconds
         self.language = language
-        self.calls: List[bytes] = []
+        self.calls: list[bytes] = []
 
     def transcribe(
         self, audio_bytes: bytes, *, filename: str,
-        language: Optional[str] = None,
+        language: str | None = None,
     ) -> Transcript:
         self.calls.append(audio_bytes)
         return Transcript(
@@ -93,7 +88,7 @@ _LONG_TRANSCRIPT = (
 
 
 def test_voice_note_doc_id_stable():
-    t = datetime(2026, 5, 18, 14, 30, tzinfo=timezone.utc)
+    t = datetime(2026, 5, 18, 14, 30, tzinfo=UTC)
     a = voice_note_doc_id("__operator__", t)
     b = voice_note_doc_id("__operator__", t)
     assert a == b
@@ -101,13 +96,13 @@ def test_voice_note_doc_id_stable():
 
 
 def test_voice_note_doc_id_distinct_per_timestamp():
-    t1 = datetime(2026, 5, 18, 14, 30, tzinfo=timezone.utc)
-    t2 = datetime(2026, 5, 18, 14, 31, tzinfo=timezone.utc)
+    t1 = datetime(2026, 5, 18, 14, 30, tzinfo=UTC)
+    t2 = datetime(2026, 5, 18, 14, 31, tzinfo=UTC)
     assert voice_note_doc_id("op", t1) != voice_note_doc_id("op", t2)
 
 
 def test_voice_note_doc_id_empty_operator_raises():
-    t = datetime(2026, 5, 18, tzinfo=timezone.utc)
+    t = datetime(2026, 5, 18, tzinfo=UTC)
     with pytest.raises(ValueError):
         voice_note_doc_id("", t)
 
@@ -122,7 +117,7 @@ def test_ingest_writes_document_and_chunks(temp_substrate):
     r = ingest_voice_note(
         _LONG_TRANSCRIPT,
         investigation_id="inv-voice-test",
-        recorded_at=datetime(2026, 5, 18, 14, 30, tzinfo=timezone.utc),
+        recorded_at=datetime(2026, 5, 18, 14, 30, tzinfo=UTC),
         duration_seconds=90.0,
         language="en",
         db_path=temp_substrate["db_path"],
@@ -156,7 +151,7 @@ def test_ingest_low_word_count_skipped(temp_substrate):
     r = ingest_voice_note(
         "Too short.",
         investigation_id="inv-voice-test",
-        recorded_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+        recorded_at=datetime(2026, 5, 18, tzinfo=UTC),
         db_path=temp_substrate["db_path"],
         embedder=_StubEmbedder(),
     )
@@ -166,7 +161,7 @@ def test_ingest_low_word_count_skipped(temp_substrate):
 
 def test_ingest_idempotent_on_same_timestamp(temp_substrate):
     import duckdb
-    when = datetime(2026, 5, 18, 14, 30, tzinfo=timezone.utc)
+    when = datetime(2026, 5, 18, 14, 30, tzinfo=UTC)
     r1 = ingest_voice_note(
         _LONG_TRANSCRIPT,
         investigation_id="inv-voice-test",
@@ -194,7 +189,7 @@ def test_ingest_idempotent_on_same_timestamp(temp_substrate):
 
 
 def test_ingest_default_title_from_timestamp(temp_substrate):
-    when = datetime(2026, 5, 18, 14, 30, tzinfo=timezone.utc)
+    when = datetime(2026, 5, 18, 14, 30, tzinfo=UTC)
     r = ingest_voice_note(
         _LONG_TRANSCRIPT,
         investigation_id="inv-voice-test",
@@ -210,7 +205,7 @@ def test_ingest_explicit_title_used(temp_substrate):
         _LONG_TRANSCRIPT,
         investigation_id="inv-voice-test",
         title="My research thought",
-        recorded_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+        recorded_at=datetime(2026, 5, 18, tzinfo=UTC),
         db_path=temp_substrate["db_path"],
         embedder=_StubEmbedder(),
     )

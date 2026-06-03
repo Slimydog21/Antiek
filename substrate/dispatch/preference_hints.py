@@ -28,12 +28,10 @@ dispatch contract clean and the hint surface composable.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from substrate.dp_shuffler.preference_learning import (
     PreferenceLearningStream,
 )
-
 
 THRESHOLD_PROBABILITY: float = 0.55
 """Minimum debiased rate to recommend the upgrade tier. Above 0.55:
@@ -53,7 +51,7 @@ class TierRecommendation:
     role: str
     recommended_tier: str
     fallback_tier: str
-    upgrade_tier: Optional[str]
+    upgrade_tier: str | None
     debiased_estimate: float
     sample_count: int
     confidence_eps: float  # the per-obs ε used in this aggregate
@@ -72,7 +70,7 @@ def recommend_tier(
     *,
     role: str,
     fallback_tier: str,
-    upgrade_tier: Optional[str],
+    upgrade_tier: str | None,
     stream: PreferenceLearningStream,
     threshold: float = THRESHOLD_PROBABILITY,
     min_samples: int = MIN_SAMPLE_COUNT,

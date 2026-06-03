@@ -30,7 +30,6 @@ from .predicate import (
     url_blocked_reason,
 )
 
-
 # Local import-free re-declarations — defined in __init__.py and
 # imported lazily inside class methods to avoid an import cycle
 # between gate.py and __init__.py.

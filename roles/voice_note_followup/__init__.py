@@ -9,6 +9,12 @@ The output drives the "Follow-up?" card the UI shows after each voice
 note (master spec §12.2).
 """
 
+from .parser import (
+    FollowupPrompt,
+    VoiceNoteFollowupResult,
+    VoiceNoteFollowupValidationError,
+    parse_voice_note_followup_response,
+)
 from .prompt import (
     VOICE_NOTE_FOLLOWUP_PROMPT_VERSION,
     VOICE_NOTE_FOLLOWUP_SYSTEM_PROMPT,
@@ -17,12 +23,6 @@ from .prompt import (
     VoiceNoteFollowupContext,
     render_full_prompt,
     render_user_template,
-)
-from .parser import (
-    FollowupPrompt,
-    VoiceNoteFollowupResult,
-    VoiceNoteFollowupValidationError,
-    parse_voice_note_followup_response,
 )
 
 __all__ = [

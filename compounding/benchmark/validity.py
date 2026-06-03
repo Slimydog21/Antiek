@@ -41,8 +41,8 @@ exists to make impossible.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Optional, Sequence
 
 from .result_schema import ArmComparison
 
@@ -91,7 +91,7 @@ def assess_validity(
     *,
     control_tolerance: float,
     material_floor: float,
-    per_domain_points: Optional[Sequence[float]] = None,
+    per_domain_points: Sequence[float] | None = None,
 ) -> ValidityReport:
     """Run the validity gate on the irrelevant-vs-cold control comparison.
 
@@ -168,7 +168,7 @@ def assess_headline(
     headline: ArmComparison,
     *,
     material_floor: float,
-    partial: Optional[ArmComparison] = None,
+    partial: ArmComparison | None = None,
 ) -> tuple[str, str]:
     """The headline verdict, assuming validity already passed. Returns
     ``(verdict, reason)``."""
@@ -216,7 +216,7 @@ def assess_headline(
 
 def _dose_response_holds(
     headline: ArmComparison,
-    partial: Optional[ArmComparison],
+    partial: ArmComparison | None,
 ) -> tuple[bool, str]:
     """Load-bearing dose-response (§2): high-overlap must save MORE than partial,
     with non-overlapping CIs (relevance produces more savings than partial, which
@@ -246,8 +246,8 @@ def decide(
     control: ArmComparison,
     control_tolerance: float,
     material_floor: float,
-    partial: Optional[ArmComparison] = None,
-    control_per_domain_points: Optional[Sequence[float]] = None,
+    partial: ArmComparison | None = None,
+    control_per_domain_points: Sequence[float] | None = None,
 ) -> Verdict:
     """The full validity-gate-FIRST 5-state decision (§2).
 

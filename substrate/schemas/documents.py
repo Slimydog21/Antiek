@@ -34,7 +34,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 # NOTE: ``resolve_license`` is imported LAZILY inside ``classify_tier`` rather
 # than at module top. ``substrate.schemas`` sits at the BOTTOM of the
@@ -87,7 +86,7 @@ class EnrichedAuthor:
     JSON blob, which the reading UI reads as untyped JSON.
     """
 
-    orcid: Optional[str]
+    orcid: str | None
     author_position: int
     display_name: str
 
@@ -108,8 +107,8 @@ class ArxivOaiRecord:
 
     arxiv_id: str
     datestamp: str  # OAI header datestamp (YYYY-MM-DD), the harvest cursor
-    license_uri: Optional[str] = None
-    title: Optional[str] = None
+    license_uri: str | None = None
+    title: str | None = None
     categories: tuple[str, ...] = ()
     deleted: bool = False
 
@@ -119,7 +118,7 @@ class ArxivOaiRecord:
         return classify_tier(self.license_uri)
 
 
-def classify_tier(license_uri: Optional[str]) -> RightsTier:
+def classify_tier(license_uri: str | None) -> RightsTier:
     """Map a license URI to its census tier. Deny-by-default to T3.
 
     RECONCILED (SPR-02): this is now a thin DELEGATION to the authoritative
@@ -165,8 +164,8 @@ class RightsCensus:
     total: int
     ambiguous: int
     metadata_prefix: str
-    from_date: Optional[str]
-    until_date: Optional[str]
+    from_date: str | None
+    until_date: str | None
     harvested_at: datetime
     deleted: int = 0
 
@@ -226,8 +225,8 @@ class _TierTally:
         self,
         *,
         metadata_prefix: str,
-        from_date: Optional[str],
-        until_date: Optional[str],
+        from_date: str | None,
+        until_date: str | None,
         harvested_at: datetime,
     ) -> RightsCensus:
         return RightsCensus(

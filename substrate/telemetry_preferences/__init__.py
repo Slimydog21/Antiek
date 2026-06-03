@@ -21,14 +21,14 @@ Discipline:
 """
 
 from .preferences import (
-    UserTelemetryPreferences,
-    PreferenceStore,
     InMemoryPreferenceStore,
+    PreferenceStore,
     SqlitePreferenceStore,
-    is_enabled,
-    set_preference,
-    list_preferences,
+    UserTelemetryPreferences,
     apply_defaults_from_registry,
+    is_enabled,
+    list_preferences,
+    set_preference,
 )
 
 __all__ = [

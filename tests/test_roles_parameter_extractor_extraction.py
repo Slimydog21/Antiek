@@ -79,7 +79,6 @@ from substrate.schemas import (  # noqa: E402
     MetricValueType,
 )
 
-
 # ---------------------------------------------------------------------------
 # A. Prompt
 # ---------------------------------------------------------------------------
@@ -420,12 +419,12 @@ def test_converter_mixed_batch_produces_mixed_constraints():
 
 
 def test_metric_value_types_match_schema_literal():
-    assert METRIC_VALUE_TYPES == set(typing.get_args(MetricValueType))
+    assert set(typing.get_args(MetricValueType)) == METRIC_VALUE_TYPES
 
 
 def test_evidence_status_values_match_schema_literal():
-    assert EVIDENCE_STATUS_VALUES == set(typing.get_args(EvidenceStatus))
+    assert set(typing.get_args(EvidenceStatus)) == EVIDENCE_STATUS_VALUES
 
 
 def test_constraint_strictness_match_schema_literal():
-    assert CONSTRAINT_STRICTNESS_VALUES == set(typing.get_args(ConstraintStrictness))
+    assert set(typing.get_args(ConstraintStrictness)) == CONSTRAINT_STRICTNESS_VALUES

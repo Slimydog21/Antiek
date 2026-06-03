@@ -13,8 +13,7 @@ selection is the caller's responsibility.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -65,7 +64,7 @@ _DEFAULT_BUCKETS_CENTS: tuple[tuple[int, int], ...] = (
 def compute_creator_distribution(
     creator_paid_cents: dict[str, int],
     *,
-    bucket_edges: Optional[tuple[tuple[int, int], ...]] = None,
+    bucket_edges: tuple[tuple[int, int], ...] | None = None,
 ) -> CreatorEarningsDistribution:
     """Compute the distribution given per-creator paid-cents.
 

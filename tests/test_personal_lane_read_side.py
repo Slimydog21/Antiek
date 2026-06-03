@@ -47,7 +47,6 @@ from substrate.constants import (
 from substrate.corpus_audit import CHECK_THIRD_PARTY_SERVABLE, run_audit
 from substrate.graph.schema import init_database_at_path
 
-
 _PERSONAL_BODY = (
     "A Paul Graham essay the owner fetched for their own reading, long enough to "
     "be a real body and not a stub, repeated to clear any length floor. " * 6

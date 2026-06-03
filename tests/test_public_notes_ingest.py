@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.public_notes_ingest import (
     IngestEventKind,
     IngestPipeline,

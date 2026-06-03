@@ -52,8 +52,8 @@ import fcntl
 import os
 import threading
 import time
-from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from acquisition.arxiv.throttle import (
@@ -107,7 +107,7 @@ def is_arxiv_url(url: str) -> bool:
 # already safe — but exposing the canonical one lets a caller pass it explicitly
 # and makes the shared-state intent obvious. Lazily constructed; tests that
 # inject a fake clock build their own throttle and pass it through.
-_CANONICAL_THROTTLE: Optional[ArxivThrottle] = None
+_CANONICAL_THROTTLE: ArxivThrottle | None = None
 
 
 def canonical_arxiv_throttle() -> ArxivThrottle:
@@ -162,7 +162,7 @@ def _stale_pid_check(lock_path: str) -> None:
     verbatim in spirit from ``runtime.db_lock._stale_pid_check``.
     """
     try:
-        with open(lock_path, "r") as f:
+        with open(lock_path) as f:
             content = f.read(64)
     except (FileNotFoundError, OSError):
         return
@@ -235,10 +235,10 @@ class _GovernorLock:
         # throttle's fake test clock. Tests that exercise contention drive
         # acquisition order directly rather than through this poll.
         self._sleep = sleep
-        self._fd: Optional[int] = None
+        self._fd: int | None = None
         self._reentered = False
 
-    def __enter__(self) -> "_GovernorLock":
+    def __enter__(self) -> _GovernorLock:
         held = getattr(_REENTRANT, "held", None)
         if held is None:
             held = {}
@@ -337,8 +337,8 @@ class ArxivRateGovernor:
     def __init__(
         self,
         *,
-        throttle: Optional[ArxivThrottle] = None,
-        lock_path: Optional[str] = None,
+        throttle: ArxivThrottle | None = None,
+        lock_path: str | None = None,
         lock_timeout_s: float = DEFAULT_LOCK_TIMEOUT_S,
         lock_poll_interval_s: float = DEFAULT_LOCK_POLL_INTERVAL_S,
         purpose: str = "arxiv",
@@ -361,8 +361,8 @@ class ArxivRateGovernor:
         return self._lock_path
 
     def governed_request(
-        self, send: "Callable[[], _ResponseLike]"
-    ) -> "_ResponseLike":
+        self, send: Callable[[], _ResponseLike]
+    ) -> _ResponseLike:
         """Issue ONE arXiv request with the host-global rate gate held.
 
         Equivalent to ``ArxivThrottle.request`` but with the ENTIRE
@@ -409,11 +409,11 @@ class ArxivRateGovernor:
 
 
 def governed_request(
-    send: "Callable[[], _ResponseLike]",
+    send: Callable[[], _ResponseLike],
     *,
-    governor: Optional[ArxivRateGovernor] = None,
-    throttle: Optional[ArxivThrottle] = None,
-) -> "_ResponseLike":
+    governor: ArxivRateGovernor | None = None,
+    throttle: ArxivThrottle | None = None,
+) -> _ResponseLike:
     """Convenience seam: route one arXiv send through a host-global governor.
 
     Pass an existing ``governor`` to reuse its throttle + lock, or pass a
@@ -427,11 +427,11 @@ def governed_request(
 
 def govern_if_arxiv(
     url: str,
-    send: "Callable[[], _ResponseLike]",
+    send: Callable[[], _ResponseLike],
     *,
-    throttle: Optional[ArxivThrottle] = None,
-    governor: Optional[ArxivRateGovernor] = None,
-) -> "_ResponseLike":
+    throttle: ArxivThrottle | None = None,
+    governor: ArxivRateGovernor | None = None,
+) -> _ResponseLike:
     """THE ROOT host-based runtime gate (SPR-09 round-4).
 
     The FETCH-boundary helper every external-PDF/HTTP fetcher that can resolve
@@ -578,14 +578,14 @@ def _note_response_hop(
 
 
 def install_arxiv_request_hook(
-    client: "httpx.Client",
+    client: httpx.Client,
     *,
-    throttle: Optional[ArxivThrottle] = None,
-    lock_path: Optional[str] = None,
+    throttle: ArxivThrottle | None = None,
+    lock_path: str | None = None,
     lock_timeout_s: float = DEFAULT_LOCK_TIMEOUT_S,
     lock_poll_interval_s: float = DEFAULT_LOCK_POLL_INTERVAL_S,
     lock_sleep: Callable[[float], None] = time.sleep,
-) -> "httpx.Client":
+) -> httpx.Client:
     """Attach the redirect-safe per-hop arXiv governance hooks to ``client``.
 
     Adds a ``request`` event hook that, for EVERY request the client issues whose
@@ -607,7 +607,7 @@ def install_arxiv_request_hook(
     eff_throttle = throttle if throttle is not None else canonical_arxiv_throttle()
     eff_lock = lock_path or default_lock_path()
 
-    def _request_hook(request: "httpx.Request") -> None:
+    def _request_hook(request: httpx.Request) -> None:
         if not is_arxiv_url(str(request.url)):
             return
         if _consume_initial_hop_claim(eff_throttle):
@@ -620,7 +620,7 @@ def install_arxiv_request_hook(
             lock_sleep=lock_sleep,
         )
 
-    def _response_hook(response: "httpx.Response") -> None:
+    def _response_hook(response: httpx.Response) -> None:
         if not is_arxiv_url(str(response.request.url)):
             return
         # note_response acts ONLY on a 429 (and is conservative/idempotent: it
@@ -650,14 +650,14 @@ def install_arxiv_request_hook(
 
 def arxiv_governed_client(
     *,
-    throttle: Optional[ArxivThrottle] = None,
-    lock_path: Optional[str] = None,
+    throttle: ArxivThrottle | None = None,
+    lock_path: str | None = None,
     follow_redirects: bool = True,
     lock_timeout_s: float = DEFAULT_LOCK_TIMEOUT_S,
     lock_poll_interval_s: float = DEFAULT_LOCK_POLL_INTERVAL_S,
     lock_sleep: Callable[[float], None] = time.sleep,
     **client_kwargs,
-) -> "httpx.Client":
+) -> httpx.Client:
     """Build an ``httpx.Client`` whose every request hop is governed by the
     redirect-safe per-hop arXiv gate (see :func:`install_arxiv_request_hook`).
 

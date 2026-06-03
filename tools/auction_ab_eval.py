@@ -47,7 +47,6 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
 
 # Allow `python tools/auction_ab_eval.py` (the verification-gate invocation) to
 # import the substrate package even when CWD is not already on sys.path — a
@@ -121,8 +120,8 @@ class ABReport:
     rule: RankerResult
     learned: RankerResult
     data_source: str
-    in_sample_rule: Optional[RankerResult] = None
-    in_sample_learned: Optional[RankerResult] = None
+    in_sample_rule: RankerResult | None = None
+    in_sample_learned: RankerResult | None = None
 
     @property
     def lift(self) -> float:
@@ -134,7 +133,7 @@ class ABReport:
         return (self.lift / base * 100.0) if base else 0.0
 
     @property
-    def in_sample_lift(self) -> Optional[float]:
+    def in_sample_lift(self) -> float | None:
         if self.in_sample_rule is None or self.in_sample_learned is None:
             return None
         return (
@@ -143,7 +142,7 @@ class ABReport:
         )
 
     @property
-    def in_sample_lift_pct(self) -> Optional[float]:
+    def in_sample_lift_pct(self) -> float | None:
         if self.in_sample_rule is None:
             return None
         lift = self.in_sample_lift
@@ -164,7 +163,7 @@ def _score_ranker(
     name: str,
     sessions: Sequence[EvalSession],
     *,
-    model: Optional[AuctionModel],
+    model: AuctionModel | None,
 ) -> RankerResult:
     """Run one ranker over every session and sum the realized value of its
     picks. ``model=None`` → rule-based core; a model → the learned path (forced
@@ -263,8 +262,8 @@ def evaluate(
     # Contrast: in-sample (model scored on the sessions it trained on). Only
     # meaningful when we actually held data out; otherwise it equals the headline
     # and we leave it None to avoid a misleading duplicate.
-    in_rule: Optional[RankerResult] = None
-    in_learned: Optional[RankerResult] = None
+    in_rule: RankerResult | None = None
+    in_learned: RankerResult | None = None
     if can_split:
         in_rule = _score_ranker("rule-based", train_sessions, model=None)
         in_learned = _score_ranker("learned", train_sessions, model=model)
@@ -396,7 +395,7 @@ def _load_recorded_sessions(db_path: str) -> list[EvalSession]:
         con.close()
 
 
-def load_sessions(db_path: Optional[str]) -> tuple[list[EvalSession], str]:
+def load_sessions(db_path: str | None) -> tuple[list[EvalSession], str]:
     """Return (sessions, data_source_label). Honest about which data it used."""
     if db_path:
         recorded = _load_recorded_sessions(db_path)
@@ -454,7 +453,7 @@ def format_report(report: ABReport) -> str:
     return "\n".join(lines)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description="A/B eval: learned vs rule-based ad ranker (SPR-10 M4)",
     )

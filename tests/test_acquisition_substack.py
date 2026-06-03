@@ -17,7 +17,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import List
 
 import duckdb
 import httpx
@@ -31,7 +30,6 @@ from acquisition import substack  # noqa: E402
 from substrate import constants  # noqa: E402
 from substrate.collective_graph import eligibility  # noqa: E402
 from substrate.graph import ensure_initialized  # noqa: E402
-
 
 # --------------------------------------------------------------------------
 # Fixtures: inline RSS. Substack carries full body in content:encoded.
@@ -125,7 +123,7 @@ NO_GUID_FEED = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 class _StubEmbedder:
-    def encode(self, text: str) -> List[float]:
+    def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
         v[h % 16] = 1.0

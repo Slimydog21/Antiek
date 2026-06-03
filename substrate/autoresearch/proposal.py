@@ -17,12 +17,11 @@ from __future__ import annotations
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -52,11 +51,11 @@ class ConfigProposal:
     proposal_id: str = field(default_factory=lambda: f"prop-{uuid.uuid4().hex[:12]}")
     baseline_config: dict = field(default_factory=dict)
     proposed_delta: dict = field(default_factory=dict)
-    cohort: Optional[CohortWindow] = None
-    axes: Optional[SweepAxes] = None
+    cohort: CohortWindow | None = None
+    axes: SweepAxes | None = None
     score: float = 0.0
     baseline_score: float = 0.0
-    held_out_score: Optional[float] = None  # post-promotion eval, when available
+    held_out_score: float | None = None  # post-promotion eval, when available
     created_at: str = field(default_factory=_now_iso)
 
     @property
@@ -80,7 +79,7 @@ class OperatorVerdict:
     kind: OperatorVerdictKind = OperatorVerdictKind.DEFER
     operator_id: str = "__operator__"
     rationale: str = ""
-    modified_delta: Optional[dict] = None  # populated only when kind=MODIFY
+    modified_delta: dict | None = None  # populated only when kind=MODIFY
     decided_at: str = field(default_factory=_now_iso)
 
 
@@ -101,7 +100,7 @@ class ProposalLedger:
             raise KeyError(f"unknown proposal {verdict.proposal_id!r}")
         self.verdicts[verdict.proposal_id] = verdict
 
-    def verdict_for(self, proposal_id: str) -> Optional[OperatorVerdict]:
+    def verdict_for(self, proposal_id: str) -> OperatorVerdict | None:
         return self.verdicts.get(proposal_id)
 
     def accepted_proposals(self) -> list[ConfigProposal]:

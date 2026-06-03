@@ -7,15 +7,10 @@ closes.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import List, Optional
 
 import httpx
 import pytest
-
 
 # ── Deviation A: §6.5 — discovery_id distinguishes cross-query ───────
 
@@ -209,8 +204,9 @@ class TestDeviationC_BrowserbaseProviderErrorBase:
         ],
     )
     def test_subclass_inherits_from_provider_error_base(self, subclass_path):
-        from acquisition.urls.client_browserbase import BrowserbaseProviderError
         import importlib
+
+        from acquisition.urls.client_browserbase import BrowserbaseProviderError
         mod = importlib.import_module(subclass_path[0])
         cls = getattr(mod, subclass_path[1])
         assert issubclass(cls, BrowserbaseProviderError), \
@@ -222,13 +218,13 @@ class TestDeviationC_BrowserbaseProviderErrorBase:
         """Operator code that wants 'any Browserbase failure' can
         catch the base class cleanly. Spec §14.4: 'Failure is loud:
         BrowserbaseProviderError raises explicitly.'"""
+        from acquisition.urls.budget_browserbase import BrowserbaseBudgetExceeded
         from acquisition.urls.client_browserbase import (
             BrowserbaseFetchError,
             BrowserbaseProviderError,
             BrowserbaseRobotsDisallowed,
             BrowserbaseUnavailable,
         )
-        from acquisition.urls.budget_browserbase import BrowserbaseBudgetExceeded
 
         # All four — caught by the base class.
         for err in (

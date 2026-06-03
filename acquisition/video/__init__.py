@@ -33,7 +33,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Optional, Protocol
 
-
 # Default uniform sampling interval. Most operator-facing videos
 # (lectures, podcasts, interviews) have 30s as a reasonable
 # information-density window; tunable per call.
@@ -58,8 +57,8 @@ class ExtractedFrame:
     page_or_frame_id: str
     timestamp_ms: int
     frame_data_uri: str
-    frame_width_px: Optional[int] = None
-    frame_height_px: Optional[int] = None
+    frame_width_px: int | None = None
+    frame_height_px: int | None = None
 
 
 class FrameExtractor(Protocol):
@@ -98,7 +97,7 @@ class FfmpegFrameExtractor:
     def __init__(
         self,
         *,
-        ffmpeg_path: Optional[str] = None,
+        ffmpeg_path: str | None = None,
         max_width_px: int = 1024,
     ):
         self._ffmpeg_path = ffmpeg_path

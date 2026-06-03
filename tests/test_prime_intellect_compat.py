@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import json
 import os
-import pytest
 
+import pytest
 
 FIXTURE_PATH = os.path.join(
     os.path.dirname(__file__), "fixtures", "parameter_extractor_v0.jsonl"
@@ -25,7 +25,7 @@ FIXTURE_PATH = os.path.join(
 @pytest.fixture
 def fixture_rows():
     rows = []
-    with open(FIXTURE_PATH, "r", encoding="utf-8") as f:
+    with open(FIXTURE_PATH, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -40,7 +40,7 @@ def test_fixture_exists_and_loads():
         "parameter_extractor_v0.jsonl missing from tests/fixtures/. "
         "Without it the `prime eval run` runner has no inputs."
     )
-    with open(FIXTURE_PATH, "r", encoding="utf-8") as f:
+    with open(FIXTURE_PATH, encoding="utf-8") as f:
         rows = [json.loads(l) for l in f if l.strip()]
     assert len(rows) >= 10, (
         f"Sprint 17 ships ≥10 examples; got {len(rows)}. Operator "

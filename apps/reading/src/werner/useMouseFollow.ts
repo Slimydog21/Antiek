@@ -1,28 +1,25 @@
 import { useEffect, useRef } from "react";
 
 /**
- * useMouseFollow (SPR-05) — the ~5-second-LAGGED cursor pursuit.
+ * useMouseFollow (SPR-05) — the ~0.5-second-LAGGED cursor pursuit.
  *
- * The operator's voice note asks Werner to "track the mouse at like a 5
- * second delay." That phrase is ambiguous, so this is the interpretation we
- * implement, stated plainly (rigor #1):
+ * It is a SAMPLE-DELAY pursuit, not an ease-time-constant chase. We record
+ * the pointer into a small ring buffer stamped with the (fake-clock-aware)
+ * time of each sample. The follow TARGET is the pointer position from
+ * ~LAG_MS ago — literally "where the mouse was 0.5 seconds back" — and Werner
+ * eases toward THAT. So he trails the cursor by a real half-second rather
+ * than rubber-banding toward the live cursor with a 0.5s response curve.
+ * The two feel different: the ease-constant version always snaps toward you;
+ * this version is genuinely behind, which reads as a lively, attentive
+ * companion rather than a cursor-locked reticle.
  *
- *   It is a SAMPLE-DELAY pursuit, not an ease-time-constant chase. We record
- *   the pointer into a small ring buffer stamped with the (fake-clock-aware)
- *   time of each sample. The follow TARGET is the pointer position from
- *   ~LAG_MS ago — literally "where the mouse was 5 seconds back" — and Werner
- *   eases toward THAT, lazily. So he trails the cursor by a real five seconds
- *   rather than rubber-banding toward the live cursor with a 5s response
- *   curve. The two feel different: the ease-constant version always points
- *   roughly at you; this version is genuinely behind, which reads as a
- *   sleepy, unbothered companion rather than a cursor-locked reticle.
- *
- *   It is honestly an APPROXIMATION of "5 seconds": the lag is exactly LAG_MS
- *   only while the buffer spans that window. Right after mount (buffer not yet
- *   5s deep) the oldest sample we have is younger than 5s, so the effective
- *   lag ramps from ~0 up to LAG_MS over the first five seconds. We accept that
- *   — a cold start that snaps to a true 5s-old point would require inventing
- *   history. After the ramp it is a faithful 5s sample-delay.
+ * It is honestly an APPROXIMATION of "0.5 seconds": the lag is exactly LAG_MS
+ * only while the buffer spans that window. Right after mount (buffer not yet
+ * deep enough) the oldest sample we have is younger than 0.5s, so the
+ * effective lag ramps from ~0 up to LAG_MS over the first half-second. We
+ * accept that — a cold start that snaps to a true 0.5s-old point would
+ * require inventing history. After the ramp it is a faithful 0.5s
+ * sample-delay.
  *
  * This hook does NOT move anything. It is a pure read seam: it exposes, via a
  * ref the caller polls (no re-render per pointer move — that would thrash the
@@ -36,12 +33,13 @@ import { useEffect, useRef } from "react";
  * hidden (we stop sampling on visibilitychange) — no work between wakeups.
  */
 
-/** ~5 seconds. The lag the voice note asks for; the dominant tunable. */
-export const LAG_MS = 5000;
+/** ~0.5 seconds. A snappy, responsive follow that reads as a lively companion
+ *  rather than a sleepy one. The ring buffer holds ~500ms of 120ms samples. */
+export const LAG_MS = 500;
 
 /**
  * How often we snapshot the pointer into the ring. 120ms ≈ 8 samples/sec —
- * fine enough that the 5s-old point is well-resolved, coarse enough that the
+ * fine enough that the 0.5s-old point is well-resolved, coarse enough that the
  * buffer stays tiny and we don't do per-mousemove work. We sample on a timer,
  * not on every `mousemove`, so a frantic mouse can't flood the buffer.
  */
@@ -49,21 +47,11 @@ export const SAMPLE_INTERVAL_MS = 120;
 
 /**
  * Lazy ease toward the lagged point, applied by the CALLER per roam leg. A
- * low factor (0..1) is what makes the pursuit read as "unbothered": each leg
- * closes only part of the remaining gap. Exposed for the caller to use; the
- * hook itself just hands over the raw lagged target.
- *
- * SPR-06 M3 tune: dropped 0.5 → 0.28. At 0.5 each ~2.6s stroll leg closed HALF
- * the remaining gap, so on a fast cursor sweep Werner lurched in big, snappy
- * hops that read as a reticle chasing the mouse — jittery, not deliberate. At
- * 0.28 he closes just over a quarter of the gap per leg, so consecutive legs
- * compound into a smooth, lazy trail that lands roughly where the cursor was a
- * few seconds back and never darts. This is a feel tune ONLY: the public
- * surface (this export, `read()`, the FollowReading shape) is unchanged, so
- * SPR-07/08 — which consume `read().ease` and `read().target` — keep the exact
- * same contract.
+ * high factor (0..1) closes most of the gap per leg, keeping the penguin
+ * close on the cursor's heels. At 0.75 and a 0.5s lag, Werner reads as a
+ * lively, attentive companion — responsive but still with visible character.
  */
-export const FOLLOW_EASE = 0.28;
+export const FOLLOW_EASE = 0.75;
 
 /**
  * After this long with no pointer movement Werner is considered "idle on the
@@ -71,7 +59,7 @@ export const FOLLOW_EASE = 0.28;
  * wander (so he doesn't freeze staring at a parked cursor). Distinct from the
  * follow path; resumes the moment the pointer moves again.
  */
-export const POINTER_IDLE_MS = 4000;
+export const POINTER_IDLE_MS = 2000;
 
 /** Buffer depth: enough samples to span LAG_MS plus headroom. */
 const RING_CAPACITY = Math.ceil(LAG_MS / SAMPLE_INTERVAL_MS) + 8;
@@ -149,8 +137,8 @@ export function useMouseFollow(
       const now = nowRef.current();
       const cutoff = now - LAG_MS;
       // Walk the ring oldest→newest and take the newest sample at or before
-      // the cutoff (the "where the mouse was 5s ago" point). If every sample
-      // is younger than the cutoff (cold start, < 5s of history), fall back to
+      // the cutoff (the "where the mouse was 0.5s ago" point). If every sample
+      // is younger than the cutoff (cold start, < 0.5s of history), fall back to
       // the OLDEST sample we have — the effective lag ramps up to LAG_MS.
       const cap = buf.length;
       const start = (head.current - count.current + cap) % cap;
@@ -197,7 +185,7 @@ export function useMouseFollow(
     const tick = () => {
       // Snapshot the last known pointer position on each interval. We resample
       // the held position even when the mouse is still so the ring keeps a
-      // dense, evenly-spaced history (the 5s-old lookup stays well-resolved).
+      // dense, evenly-spaced history (the 0.5s-old lookup stays well-resolved).
       const last = lastMove.current;
       if (last) push({ x: last.x, y: last.y, t: nowRef.current() });
     };
