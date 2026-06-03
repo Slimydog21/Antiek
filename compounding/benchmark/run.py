@@ -49,6 +49,18 @@ from .validity import HEADLINE_METRIC, decide
 
 RESULTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "spr09_run.json")
 
+# ACV SPR-06 (sharpen) — the DEFAULT --out for an interactive/dev run. The
+# committed baseline (RESULTS_PATH / spr09_run.json) is a TRACKED file the gate
+# scans + test_run_mock.py reads; defaulting --out to it would mean every dev
+# `run --loop consuming …` overwrites a tracked file and dirties the tree. So a
+# bare run writes a GITIGNORED transient twin instead (results/*.json is ignored
+# except spr09_run.json — see .gitignore), leaving the committed baseline clean.
+# Re-mint the baseline DELIBERATELY with `--out <RESULTS_PATH>` (then
+# `git add -f`), never as a side effect of an exploratory run.
+DEFAULT_RUN_OUT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "results", "spr09_run.local.json"
+)
+
 # ACV SPR-06 — the persisted pilot-report artifact (decision-0.2 §C.2-C.3 + B3).
 # ``--pilot`` writes the observed CV + the propose_parameters() output here so the
 # operator reads a committed report, ratifies the derived n/floor/tolerance, and
@@ -357,7 +369,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--n", type=int, default=MOCK_N,
                     help="runs per question×arm (mock default 20; live n is operator-ratified)")
     ap.add_argument("--resamples", type=int, default=MOCK_RESAMPLES)
-    ap.add_argument("--out", default=RESULTS_PATH)
+    ap.add_argument(
+        "--out", default=DEFAULT_RUN_OUT,
+        help="output path. Default writes a GITIGNORED transient twin "
+        "(results/spr09_run.local.json) so an exploratory run never dirties the "
+        "tracked baseline. To re-mint the committed baseline, pass "
+        "--out compounding/benchmark/results/spr09_run.json explicitly (then git add -f).",
+    )
     ap.add_argument("--material-floor", type=float, default=0.0)
     ap.add_argument("--control-tolerance", type=float, default=0.0)
     ap.add_argument("--pilot", action="store_true",
@@ -444,8 +462,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"\nwrote pilot report {pilot_out}")
         print(f"  pilot_report_id = {pilot_id}")
         print(
-            "  NEXT (operator): ratify the derived n/floor/tolerance, then run a scored "
-            f"loop with --ratified --ratification-ref {pilot_id} (decision-0.2 §A.6/§C.4)."
+            "  NEXT (operator): ratify the derived n/floor/tolerance into "
+            "decision-0.2 §A.6, then — ON THE OPERATOR WINDOW (prod creds + the "
+            "box + a real reuse-consuming loop) — run the PROD path:\n"
+            f"    run --profile prod --ratified --ratification-ref {pilot_id}\n"
+            "  That emits the SCORED (mock_run=false) artifact the ratified gate "
+            "fires on. NOTE: a dev `--loop consuming … --ratified` run records the "
+            "ratification but stays mock_run=true (gate-EXEMPT) — it is NOT the "
+            "scored artifact. (decision-0.2 §A.6/§C.4; "
+            "docs/decisions/ratified-scoring-gate.md.)"
         )
         return 0
 

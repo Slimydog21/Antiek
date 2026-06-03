@@ -79,10 +79,27 @@ boolean.
    and **persists** `results/pilot_report.json` with a `pilot_report_id`.
 2. **(HUMAN step — NOT performed by this sprint)** the operator reads the report
    and ratifies the derived `n`/floor/tolerance into decision-0.2 §A.6.
-3. `python -m compounding.benchmark.run --loop consuming --n <n> --material-floor
-   <floor> --control-tolerance <tolerance> --ratified --ratification-ref
-   <pilot_report_id>` (on the box, with prod creds) → the scored artifact, which
-   the gate then passes.
+3. The **scored (`mock_run=false`) artifact comes from the operator-window PROD
+   path**, not from this CLI's mock. Two honest facts about the current phase
+   split:
+   * `run.py` hardcodes `mock_run=True` on every `--loop consuming`/`--loop demo`
+     dev run (`run.py:470`). So `run --loop consuming … --ratified
+     --ratification-ref <id>` **records** `parameters_ratified=true` +
+     `ratification_ref` for provenance, but emits a `mock_run=true` artifact the
+     gate **exempts** — it does **not** by itself produce a gated scored artifact.
+   * The only `mock_run=false` path is the prod profile
+     (`run --profile prod … --ratified --ratification-ref <id>`), and from THIS
+     build environment `run.py` **refuses** it (`_refuse_prod_run`) because a
+     scored run needs prod model-tier creds, the box, and a real reuse-consuming
+     browse loop. On the operator window — with those three present — that prod
+     path emits the `mock_run=false` artifact, carries the recorded
+     `--ratified`/`--ratification-ref`, and the gate then fires on it (passes iff
+     ratified-with-ref).
+
+   In short: `--ratified --ratification-ref` is the human ratification's machine
+   record, plumbed through both paths; the **gate only fires on the prod-window
+   `mock_run=false` artifact**, which this CLI cannot manufacture here. The dev
+   `--loop consuming` mock is the keystone null, not the scored finding.
 
 ## Reconsider-if
 

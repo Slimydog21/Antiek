@@ -142,13 +142,41 @@ python -m compounding.benchmark.run --pilot
 
 # the mock run → results/spr09_run.json (the Phase-1 path; CI-safe, no creds)
 python -m compounding.benchmark.run --n 20 --out compounding/benchmark/results/spr09_run.json
+
+# the reuse-CONSUMING dev run (warm genuinely does less work → delta < 0). Note:
+# this STILL emits mock_run=true — it is a dev measurement, NOT the scored
+# artifact, and the ratified-scoring gate EXEMPTS it. Writes a transient file
+# (gitignored): pass --out to a scratch path or accept the default results/ name.
+python -m compounding.benchmark.run --loop consuming --n 20
 ```
+
+> Every transient dev/consuming run is **gitignored** — `compounding/benchmark/results/`
+> is ignored except the one intentionally-committed baseline `spr09_run.json`, so
+> a dev run never dirties the tree (run `git status --short` after a run to
+> confirm). The committed baseline is the demo-loop keystone null; re-mint it only
+> deliberately with `git add -f compounding/benchmark/results/spr09_run.json`.
 
 The artifact carries, per metric, `delta` / `ci_low` / `ci_high`, plus the
 top-level `frozen_sha`, `seed`, `n`, `ci_method`, `validity`, `mock_run`, and
 `git_sha`. `git_sha` is the placeholder `PENDING_COMMIT` until the commit that
 lands the artifact re-stamps it (the artifact is written *before* the commit
 exists).
+
+### The scored (`mock_run=false`) artifact — operator-window prod path only
+
+The ratified-scoring gate (`tools/ratified_gate.py`, see
+[`docs/decisions/ratified-scoring-gate.md`](../../docs/decisions/ratified-scoring-gate.md))
+fires only on a **scored** artifact (`mock_run == false`). This CLI does **not**
+produce one from `--loop consuming`: `run.py` hardcodes `mock_run=True` on every
+dev run (`run.py:470`), so a consuming run — even with `--ratified
+--ratification-ref <id>` — emits a `mock_run=true` artifact the gate **exempts**.
+`--ratified`/`--ratification-ref` are still recorded (provenance) for the window
+they become live. The scored `mock_run=false` artifact comes from the **prod
+profile** (`--profile prod`), which needs prod model-tier creds, the box, and a
+real reuse-consuming browse loop — and which `run.py` **refuses** to run from a
+build environment (`_refuse_prod_run`) rather than mock a green curve. On the
+operator window that prod path emits the scored artifact carrying the recorded
+ratification, and the gate then fires on it.
 
 ## Mock vs live
 

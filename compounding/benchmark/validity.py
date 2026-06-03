@@ -60,6 +60,20 @@ VERDICT_NOT_ASSESSED = "not_assessed"  # validity gate failed; headline withheld
 HEADLINE_METRIC = "token_cost_usd"
 CORROBORATING_METRIC = "sources_fetched"
 
+# Dose-response anti-dust floor (ACV SPR-06 sharpen). The load-bearing
+# dose-response ("high-overlap saves MATERIALLY more than partial") must reject a
+# non-existent gradient that only LOOKS ordered because of IEEE-754 residue from
+# summing a different count of identical per-step costs. The smallest REAL saving
+# the cost model can produce is one skipped browse step. SOURCE: the consuming
+# loop charges ``DEFAULT_COST_PER_STEP_USD = 0.01`` per uncovered sub-question
+# (runtime/research_runner/browse_loop.py:104). One fewer covered step therefore
+# moves a delta by ≥0.01; float dust moves it by ~1e-15. A separation floor an
+# order of magnitude below one cost-quantum (0.01) but many orders ABOVE float
+# dust cleanly admits any real one-step gradient while rejecting the residue.
+# When a positive ``material_floor`` is in force we require the STRONGER of the
+# two (the material bar that already defines "material" for the headline).
+_DOSE_RESPONSE_DUST_FLOOR = 1e-9
+
 
 @dataclass(frozen=True)
 class ValidityReport:
@@ -192,7 +206,9 @@ def assess_headline(
     if compounds:
         sources = headline.metric(CORROBORATING_METRIC)
         sources_ok = sources is None or sources.ci_high <= 0.0
-        dose_ok, dose_reason = _dose_response_holds(headline, partial)
+        dose_ok, dose_reason = _dose_response_holds(
+            headline, partial, material_floor=material_floor
+        )
         if sources_ok and dose_ok:
             return VERDICT_COMPOUNDS, (
                 f"headline {HEADLINE_METRIC} CI_high {token.ci_high:.6g} < 0, "
@@ -217,26 +233,53 @@ def assess_headline(
 def _dose_response_holds(
     headline: ArmComparison,
     partial: ArmComparison | None,
+    *,
+    material_floor: float,
 ) -> tuple[bool, str]:
-    """Load-bearing dose-response (§2): high-overlap must save MORE than partial,
-    with non-overlapping CIs (relevance produces more savings than partial, which
-    beats control). When no partial comparison is supplied, dose-response is not
-    assessable and is treated as not-holding with an honest reason."""
+    """Load-bearing dose-response (§2): high-overlap must save MATERIALLY more than
+    partial, with non-overlapping CIs (relevance produces more savings than
+    partial, which beats control). When no partial comparison is supplied,
+    dose-response is not assessable and is treated as not-holding with an honest
+    reason.
+
+    The separation is MATERIAL, not merely ordered: ``partial.delta − high.delta``
+    (how much MORE the high arm saves) must clear ``separation_floor`` =
+    ``max(material_floor, _DOSE_RESPONSE_DUST_FLOOR)``. This is the ACV SPR-06
+    sharpen-round correctness fix: a bare ``high.delta < partial.delta`` on raw
+    floats passed on IEEE-754 dust (e.g. high −0.03 vs partial
+    −0.029999999999999995 — the same number summed a different count of times),
+    falsely certifying a dose-response where BOTH arms covered every sub-question
+    and the gradient was zero. Requiring a separation that clears one cost-quantum
+    (or the operator's material floor) means a non-existent gradient does NOT
+    pass, so the interpretation string becomes honest as a CONSEQUENCE."""
     if partial is None:
         return False, "dose-response not assessable (no partial-overlap comparison supplied)"
     h = headline.metric(HEADLINE_METRIC)
     p = partial.metric(HEADLINE_METRIC)
     if h is None or p is None:
         return False, "dose-response not assessable (missing metric)"
-    # More negative delta = more savings. high-overlap must be more negative AND
-    # its CI must not overlap partial's (non-overlapping CIs).
-    more_savings = h.delta < p.delta
+    # More negative delta = more savings. The high arm must save MATERIALLY more
+    # than partial (separation clears the floor) AND its CI must not overlap
+    # partial's. ``material_floor`` is the operator-ratified material bar; when it
+    # is 0 (the mock default) the dust floor still rejects float residue.
+    separation = p.delta - h.delta  # how much MORE the high arm saves; >0 ⇒ ordered
+    separation_floor = max(material_floor, _DOSE_RESPONSE_DUST_FLOOR)
+    more_savings = separation >= separation_floor
     non_overlapping = h.ci_high < p.ci_low
     if more_savings and non_overlapping:
-        return True, "dose-response holds (high-overlap saves more than partial, non-overlapping CIs)"
+        return True, (
+            f"dose-response holds (high-overlap saves {separation:.6g} more than "
+            f"partial >= floor {separation_floor:.6g}, non-overlapping CIs)"
+        )
+    if not more_savings:
+        return False, (
+            f"dose-response NOT shown (high {h.delta:.6g} vs partial {p.delta:.6g}; "
+            f"separation {separation:.6g} < floor {separation_floor:.6g} — no "
+            f"material gradient, not just float dust)"
+        )
     return False, (
-        f"dose-response not shown (high {h.delta:.6g} vs partial {p.delta:.6g}; "
-        f"CIs {'overlap' if not non_overlapping else 'ordered but equal-mean'})"
+        f"dose-response NOT shown (high {h.delta:.6g} vs partial {p.delta:.6g}; "
+        f"CIs overlap)"
     )
 
 
@@ -278,9 +321,26 @@ def decide(
     verdict, reason = assess_headline(
         headline, material_floor=material_floor, partial=partial,
     )
+    # NULL has two honestly-distinct shapes: (a) the headline cost itself did not
+    # clear the floor (no material saving at all), and (b) the headline cost IS
+    # materially cheaper (warm cheaper, Δ<0 below floor) but the load-bearing
+    # dose-response did NOT hold. Case (b) must NOT read "no material compounding"
+    # — that would understate a real saving; and it must NOT read "dose-response
+    # demonstrated" — that is the float-dust lie this sharpen round kills. The
+    # token metric tells us which shape we are in.
+    token = headline.metric(HEADLINE_METRIC)
+    headline_cheaper_below_floor = (
+        token is not None and token.ci_high < 0.0 and abs(token.delta) >= material_floor
+    )
+    null_label = (
+        "warm cheaper (Δ<0) but compounds bar NOT met — verdict null (the headline "
+        "saving is real; see reason for what was not corroborated)"
+        if headline_cheaper_below_floor
+        else "null — no material compounding shown (reported verbatim)"
+    )
     interp_map = {
         VERDICT_COMPOUNDS: "flywheel demonstrated (warm cheaper, Δ<0)",
-        VERDICT_NULL: "null — no material compounding shown (reported verbatim)",
+        VERDICT_NULL: null_label,
         VERDICT_NEGATIVE: "warm MORE expensive (Δ>0) — flywheel falsified on this loop",
     }
     interpretation = f"VALID; {interp_map.get(verdict, verdict)}: {reason}"

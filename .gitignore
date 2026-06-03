@@ -77,3 +77,13 @@ node_modules/
 # catch interfaces/research/ (the substrate API package).
 /research/
 docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
+
+# ACV SPR-06 — compounding-benchmark run artifacts. The benchmark OVERWRITES
+# results/spr09_run.json (and writes results/pilot_report.json) on every run, so
+# a dev `run --loop consuming …` would otherwise dirty a tracked file and a
+# `git add -A` would sweep a transient run into a commit. Ignore every result
+# JSON EXCEPT the one intentionally-committed baseline (the demo-loop keystone
+# null the ratified-scoring gate scans). The committed baseline is re-minted only
+# deliberately with `git add -f compounding/benchmark/results/spr09_run.json`.
+compounding/benchmark/results/*.json
+!compounding/benchmark/results/spr09_run.json

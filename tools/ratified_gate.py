@@ -89,7 +89,48 @@ def evaluate_artifact(data: dict) -> tuple[bool, str]:
             f"record WHAT it ratified (the pilot_report_id / decision ref) so the "
             f"ratification is reconstructable (decision-0.2 §A.6)."
         )
+    # MINOR-2 (decision-0.2 §A.6): a scored artifact must also be pinned to a REAL
+    # frozen question-set sha — the content-addressed pre-registration anchor. A
+    # missing or placeholder frozen_sha means the verdict is not pinned to the
+    # immutable set it claims to have run against, so the result is not
+    # reconstructable/falsifiable. SOURCE for the shape: question_set.py's
+    # compute_frozen_sha emits ``sha256:<64 hex>`` (mirrors router.py's
+    # _sha256_prefix); anything not matching that is a placeholder.
+    if not _is_real_frozen_sha(data.get("frozen_sha")):
+        return False, (
+            f"mock_run=false (SCORED) but frozen_sha={data.get('frozen_sha')!r} is "
+            f"missing or a placeholder — a scored artifact MUST be pinned to the "
+            f"real content-addressed question-set sha (sha256:<64 hex>) so the "
+            f"verdict is reconstructable against the immutable set (decision-0.2 §A.6)."
+        )
     return True, f"scored + ratified against {ref!r}"
+
+
+_PLACEHOLDER_FROZEN_SHAS = frozenset(
+    {"", "pending", "pending_commit", "placeholder", "todo", "none", "null"}
+)
+
+
+def _is_real_frozen_sha(value: object) -> bool:
+    """A real frozen_sha is the ``sha256:<64 lowercase-hex>`` shape question_set.py
+    emits, and is NOT an all-zero or sentinel digest. Anything else (absent,
+    wrong shape, a placeholder token, an all-zero digest) is a placeholder."""
+    if not isinstance(value, str):
+        return False
+    v = value.strip()
+    if v.lower() in _PLACEHOLDER_FROZEN_SHAS:
+        return False
+    if not v.startswith("sha256:"):
+        return False
+    digest = v[len("sha256:"):]
+    if len(digest) != 64:
+        return False
+    if any(c not in "0123456789abcdef" for c in digest.lower()):
+        return False
+    # An all-zero digest is the canonical "unset" sentinel — reject it.
+    if set(digest) == {"0"}:
+        return False
+    return True
 
 
 def _candidate_paths(extra: Iterable[str]) -> list[Path]:

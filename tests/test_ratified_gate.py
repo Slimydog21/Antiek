@@ -24,9 +24,27 @@ from pathlib import Path
 
 import pytest
 
-from tools.ratified_gate import evaluate_artifact, main, scan
+from tools.ratified_gate import _is_real_frozen_sha, evaluate_artifact, main, scan
 
 _GATE = Path(__file__).resolve().parent.parent / "tools" / "ratified_gate.py"
+
+# A real content-addressed frozen sha (sha256:<64 hex>) — the shape
+# question_set.compute_frozen_sha emits. Scored fixtures must carry one (§A.6).
+_REAL_SHA = "sha256:" + "a1b2c3d4" * 8  # 64 hex chars
+
+
+def _scored(**over) -> dict:
+    """A minimal SCORED (mock_run=false) artifact that PASSES the gate: ratified,
+    referenced, and pinned to a real frozen_sha. Tests override one field to probe
+    a single failure mode."""
+    body = {
+        "mock_run": False,
+        "parameters_ratified": True,
+        "ratification_ref": "pilot:deadbeef",
+        "frozen_sha": _REAL_SHA,
+    }
+    body.update(over)
+    return body
 
 
 def _write(tmp_path: Path, name: str, body: dict) -> Path:
@@ -53,10 +71,36 @@ def test_scored_ratified_without_ref_blocked():
 
 
 def test_scored_ratified_with_ref_ok():
-    ok, _ = evaluate_artifact(
-        {"mock_run": False, "parameters_ratified": True, "ratification_ref": "pilot:abc123"}
-    )
+    ok, _ = evaluate_artifact(_scored(ratification_ref="pilot:abc123"))
     assert ok is True
+
+
+def test_scored_missing_frozen_sha_blocked():
+    """MINOR-2 (§A.6): a scored artifact ratified + referenced but with NO real
+    frozen_sha is BLOCKED — the verdict must be pinned to the immutable set."""
+    ok, reason = evaluate_artifact(_scored(frozen_sha=None))
+    assert ok is False
+    assert "frozen_sha" in reason
+
+
+def test_scored_placeholder_frozen_sha_blocked():
+    """A placeholder/sentinel frozen_sha (not the real content-addressed sha) is
+    BLOCKED even when ratified + referenced."""
+    for bad in ["", "PENDING", "sha256:" + "0" * 64, "deadbeef", "sha256:tooShort"]:
+        ok, reason = evaluate_artifact(_scored(frozen_sha=bad))
+        assert ok is False, f"placeholder frozen_sha {bad!r} must block"
+        assert "frozen_sha" in reason
+
+
+def test_real_frozen_sha_predicate():
+    """The frozen_sha predicate accepts the real shape and rejects placeholders."""
+    assert _is_real_frozen_sha(_REAL_SHA)
+    assert not _is_real_frozen_sha(None)
+    assert not _is_real_frozen_sha("")
+    assert not _is_real_frozen_sha("PENDING_COMMIT")
+    assert not _is_real_frozen_sha("sha256:" + "0" * 64)  # all-zero sentinel
+    assert not _is_real_frozen_sha("sha256:" + "g" * 64)  # non-hex
+    assert not _is_real_frozen_sha("a1b2" * 16)  # missing sha256: prefix
 
 
 def test_mock_run_exempt():
@@ -81,11 +125,7 @@ def test_scan_blocks_scored_unratified_fixture(tmp_path):
 
 
 def test_scan_passes_scored_ratified_fixture(tmp_path):
-    _write(
-        tmp_path,
-        "prod-good.json",
-        {"mock_run": False, "parameters_ratified": True, "ratification_ref": "pilot:deadbeef"},
-    )
+    _write(tmp_path, "prod-good.json", _scored())
     scored, mock_exempt, skipped, failures = scan([tmp_path / "prod-good.json"])
     assert scored == 1
     assert not failures
@@ -114,11 +154,7 @@ def test_cli_exits_1_on_scored_unratified(tmp_path):
 
 
 def test_cli_exits_0_on_scored_ratified(tmp_path):
-    good = _write(
-        tmp_path,
-        "prod-good.json",
-        {"mock_run": False, "parameters_ratified": True, "ratification_ref": "pilot:1"},
-    )
+    good = _write(tmp_path, "prod-good.json", _scored(ratification_ref="pilot:1"))
     assert main([str(good)]) == 0
 
 

@@ -62,15 +62,19 @@ import time
 
 from tools.reachability.probe_runner import Probe, ProbeResult
 
-# How long to let each background fan-out settle before reading the event log.
-# SOURCE: the reuse-consuming loop (cascade_routes._research_loop_factory ->
-# make_reuse_consuming_loop(steps=3)) emits at most 3 dispatch.calls with no
-# delay and completes in well under 1 s in-process; the reuse hook fires
-# synchronously inside ``start`` BEFORE the loop runs. 4.0 s is generous headroom
-# on the shared CI runner; the whole probe stays well inside the runner's
-# DEFAULT_PROBE_TIMEOUT_S (30 s). (Mirrors the flywheel probe's 3.0 s settle + a
-# little more, since this probe runs TWO launches.)
-_FANOUT_SETTLE_S = 4.0
+# Upper bound on how long to wait for a background fan-out to produce a COMPLETED
+# leaf investigation before giving up. SOURCE: the reuse-consuming loop
+# (cascade_routes._research_loop_factory -> make_reuse_consuming_loop(steps=3))
+# emits at most 3 dispatch.calls with no delay and completes in well under 1 s
+# in-process; the reuse hook fires synchronously inside ``start`` BEFORE the loop
+# runs. We POLL (below) rather than sleep a fixed interval, so a fast runner
+# returns immediately and a slow CI runner gets headroom up to this deadline
+# without a spurious RED. 8.0 s is generous headroom for TWO launches; the whole
+# probe stays well inside the runner's DEFAULT_PROBE_TIMEOUT_S (30 s).
+_FANOUT_DEADLINE_S = 8.0
+# How often to poll for the leaf JSONL to appear + complete. Small enough that a
+# sub-second in-process completion is detected promptly.
+_FANOUT_POLL_INTERVAL_S = 0.1
 
 # The material floor the cost reduction must clear to count as a paid saving (not
 # noise). SOURCE: matches the reuse-consuming loop's cost_per_step (0.01 USD,
@@ -150,6 +154,59 @@ def _leaf_cost(events_dir: str, leaf_ids: list[str]) -> tuple[float, list[str]]:
             elif row.get("action_type") == "knowledge.reused":
                 reused += list(row.get("payload", {}).get("reused_unit_ids", []) or [])
     return total, reused
+
+
+# The terminal action_type the runner persists when a leaf investigation finishes
+# (host_local.py `_finish(..., ActionType.INVESTIGATION_COMPLETED, ...)`). SOURCE:
+# substrate/schemas/events.py:83 `INVESTIGATION_COMPLETED = "investigation.completed"`.
+# Once this row is present, every dispatch.call has been written and the leaf's
+# summed cost is final.
+_LEAF_DONE_ACTION = "investigation.completed"
+
+
+def _leaf_is_done(events_dir: str, iid: str) -> bool:
+    """True once the leaf investigation's JSONL carries the runner's terminal
+    ``investigation.completed`` event — i.e. every dispatch.call has been written
+    and cost is fully captured. Reading cost before this can undercount.
+    Best-effort: a read error on a mid-write file is treated as not-yet-done (we
+    poll again)."""
+    from substrate.event_log import trajectory
+
+    try:
+        for row in trajectory(iid, events_dir=events_dir):
+            if row.get("action_type") == _LEAF_DONE_ACTION:
+                return True
+    except Exception:  # noqa: BLE001 — mid-write/partial file → not done yet
+        return False
+    return False
+
+
+def _await_completed_leaves(
+    events_dir: str, before: set[str], *, deadline_s: float
+) -> list[str]:
+    """Poll until at least one NEW ``leaf`` investigation has appeared AND
+    completed (terminal ``done`` event), or the deadline elapses. Returns the new
+    completed leaf ids (possibly empty if the deadline passed with none done).
+
+    Replaces a fixed ``time.sleep``: a fast in-process run returns in one poll; a
+    slow CI runner gets headroom up to ``deadline_s`` without a spurious RED, and
+    we never read a leaf's cost before its trajectory is fully written."""
+    end = time.monotonic() + deadline_s
+    while True:
+        after = {
+            os.path.basename(p)[:-6]
+            for p in glob.glob(os.path.join(events_dir, "*.jsonl"))
+        }
+        new_leaves = [i for i in (after - before) if "leaf" in i]
+        done_leaves = [i for i in new_leaves if _leaf_is_done(events_dir, i)]
+        if done_leaves:
+            return done_leaves
+        if time.monotonic() >= end:
+            # Deadline reached: return whatever new leaves exist (even if not
+            # observed done) so the caller's existing "could not identify a leaf"
+            # diagnostic still fires honestly rather than hanging.
+            return new_leaves
+        time.sleep(_FANOUT_POLL_INTERVAL_S)
 
 
 def _probe() -> ProbeResult:
@@ -241,12 +298,13 @@ def _probe() -> ProbeResult:
                     ok=False, reason=f"launch -> {r.status_code}: {r.text[:160]}",
                     failure_mode="feature_dead" if r.status_code != 404 else "route_404",
                 )
-            time.sleep(_FANOUT_SETTLE_S)
-            after = {
-                os.path.basename(p)[:-6]
-                for p in glob.glob(os.path.join(tmp_events, "*.jsonl"))
-            }
-            return [i for i in (after - before) if "leaf" in i]
+            # Poll until the leaf investigation appears AND completes (terminal
+            # ``done`` event) rather than sleeping a fixed interval — so a slow CI
+            # runner cannot RED spuriously and cost is read only after it is fully
+            # written.
+            return _await_completed_leaves(
+                tmp_events, before, deadline_s=_FANOUT_DEADLINE_S
+            )
 
         # ── COLD launch on the UNRELATED topic (full work) ──
         cold = _launch("compounding probe (cold): " + _COLD_TOPIC, _COLD_TOPIC)
