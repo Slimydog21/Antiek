@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 import re
+import secrets
 from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlencode, urljoin
@@ -220,6 +221,37 @@ def _format_magic_link_email(*, email: str, link: str) -> OutboundEmail:
     )
 
 
+# ── Dev-login (temporary agent / computer-use access) ─────────────────
+# A single env-gated token that lets a browser-driving agent (Codex /
+# Hermes computer-use) acquire an operator session by navigating to ONE
+# URL — no inbox round-trip, no header injection. The magic-link path
+# needs an email click; a Bearer token needs a header the browser can't
+# attach to a page load; this fills the gap for computer-use agents that
+# only know how to visit a URL and click.
+#
+# Disabled by default: the route 404s unless BOTH ``ANTIEK_DEV_LOGIN_TOKEN``
+# and ``ANTIEK_AUTH_SECRET`` are set, so it is invisible (not merely
+# forbidden) on any box that hasn't opted in. Kill it by unsetting the
+# token var — no redeploy needed — or rotate its value to invalidate a
+# leaked link.
+#
+# Scope: this grants FULL operator access. It is a development /
+# verification convenience, NOT the scoped read-only public API (that is
+# the later, separate build). Treat the token like a password; rotate it
+# after a verification session. Rationale + reconsider-if:
+# docs/decisions/agent-dev-login.md.
+
+_DEV_LOGIN_TOKEN_ENV = "ANTIEK_DEV_LOGIN_TOKEN"
+# Shorter-lived than the 30-day magic-link session: a dev grant should
+# age out on its own even if the operator forgets to unset the token.
+_DEV_LOGIN_SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+
+
+def _dev_login_token() -> str:
+    """The configured dev-login token, or ``""`` when the feature is off."""
+    return os.environ.get(_DEV_LOGIN_TOKEN_ENV, "").strip()
+
+
 # ── Registration ─────────────────────────────────────────────────────
 
 
@@ -294,6 +326,37 @@ def register_auth_routes(
             key=SESSION_COOKIE_NAME,
             value=cookie,
             max_age=60 * 60 * 24 * 30,  # 30 days
+            **_cookie_kwargs(),
+        )
+        return response
+
+    @app.get("/auth/dev-login", tags=["auth"])
+    async def auth_dev_login(token: str = "", next: str = "/") -> Response:
+        # Disabled unless the operator opted in by setting both the
+        # dev-login token AND the auth secret (the secret is what makes
+        # the minted cookie verifiable by the middleware). 404 — not
+        # 401/403 — so the route is indistinguishable from "does not
+        # exist" to anyone probing a box that hasn't opted in.
+        configured = _dev_login_token()
+        secret_set = bool(os.environ.get("ANTIEK_AUTH_SECRET", "").strip())
+        if not configured or not secret_set:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Constant-time compare; an empty/incorrect token is also a 404 so
+        # a probe can't distinguish "feature off" from "wrong token".
+        if not token or not secrets.compare_digest(token.strip(), configured):
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Mint under the operator identity so the existing cookie path in
+        # the middleware (which checks cookie-email == ANTIEK_OPERATOR_EMAIL)
+        # accepts the resulting session unchanged. Single-operator
+        # invariant — same assumption the magic-link path already makes.
+        allow = sorted(_resolve_allowlist())
+        email = allow[0] if allow else "__operator__"
+        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=cookie,
+            max_age=_DEV_LOGIN_SESSION_MAX_AGE,
             **_cookie_kwargs(),
         )
         return response

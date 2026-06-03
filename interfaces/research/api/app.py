@@ -1188,6 +1188,12 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        # Temporary agent / computer-use access (Codex + Hermes
+        # computer-use): a logged-out browser must reach the dev-login
+        # bootstrap to acquire its session, same as /auth/callback. The
+        # route itself 404s unless ANTIEK_DEV_LOGIN_TOKEN is set, so this
+        # is inert on any box that hasn't opted in. See auth.py.
+        "/auth/dev-login",
         # MCP rug-pull defense per §13.8 — the well-known manifest is
         # public by design so any MCP client can verify the tool
         # hashes without an account.

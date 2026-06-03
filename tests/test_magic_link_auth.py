@@ -392,3 +392,77 @@ def test_magic_link_url_carries_safe_next(monkeypatch):
     url = urlparse(m.group(0))
     qs = parse_qs(url.query)
     assert qs.get("next") == ["/notebooks"]
+
+
+# ── Dev-login (temporary agent / computer-use access) ─────────────────
+
+
+_DEV_TOKEN = "dev-login-" + "q" * 40
+
+
+def test_dev_login_disabled_returns_404(monkeypatch):
+    """Without ANTIEK_DEV_LOGIN_TOKEN the route is invisible — 404 even
+    for a syntactically valid request. A probe can't tell the feature
+    exists on a box that hasn't opted in."""
+    client = _client(monkeypatch)
+    monkeypatch.delenv("ANTIEK_DEV_LOGIN_TOKEN", raising=False)
+    r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
+    assert r.status_code == 404
+    assert SESSION_COOKIE_NAME not in r.cookies
+
+
+def test_dev_login_wrong_token_returns_404(monkeypatch):
+    """Feature on, wrong token: same 404 as feature-off — no oracle that
+    distinguishes "wrong token" from "feature disabled"."""
+    client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
+    r = client.get("/auth/dev-login?token=not-the-token", follow_redirects=False)
+    assert r.status_code == 404
+    assert SESSION_COOKIE_NAME not in r.cookies
+
+
+def test_dev_login_missing_token_returns_404(monkeypatch):
+    """Feature on, no token query param at all: still 404."""
+    client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
+    r = client.get("/auth/dev-login", follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_dev_login_requires_auth_secret(monkeypatch):
+    """The minted cookie is only verifiable when ANTIEK_AUTH_SECRET is
+    set, so the route 404s without it rather than minting a dead cookie
+    (or 500ing)."""
+    client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
+    monkeypatch.delenv("ANTIEK_AUTH_SECRET", raising=False)
+    r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_dev_login_happy_path_sets_cookie_and_authorizes(monkeypatch):
+    """Correct token: 302 + session cookie, and the cookie carries the
+    operator identity so the middleware-protected /auth/whoami accepts
+    it via the existing antiek_session_cookie path — unchanged."""
+    client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
+    r = client.get(f"/auth/dev-login?token={_DEV_TOKEN}", follow_redirects=False)
+    assert r.status_code == 302
+    assert SESSION_COOKIE_NAME in r.cookies
+
+    r2 = client.get("/auth/whoami")
+    assert r2.status_code == 200
+    assert r2.json()["auth_method"] == "antiek_session_cookie"
+
+
+def test_dev_login_blocks_open_redirect(monkeypatch):
+    """A malicious ``next`` can't bounce the browser off-origin after the
+    cookie is set — same open-redirect guard as /auth/callback."""
+    client = _client(monkeypatch)
+    monkeypatch.setenv("ANTIEK_DEV_LOGIN_TOKEN", _DEV_TOKEN)
+    r = client.get(
+        f"/auth/dev-login?token={_DEV_TOKEN}&next=//evil.example.com/x",
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    assert "evil.example.com" not in r.headers["location"]
