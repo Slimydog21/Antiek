@@ -90,6 +90,14 @@ _PINNED_MODEL = "anthropic/claude-opus-4.7"
 # proves it does NOT, even with the key live.
 _DISPLACED_PROVIDER = "deepseek"
 
+# The tier + role the synthesizer dispatch MUST carry (config.yaml:155
+# ``role_tiers.synthesizer: synthesis``). Asserting these alongside
+# provider/model widens the regression class the probe catches: a future
+# silent remap of the synthesizer role onto a different tier is caught even if
+# that tier happened to resolve to the same provider/model.
+_PINNED_TIER = "synthesis"
+_PINNED_ROLE = "synthesizer"
+
 
 class _RecordingStubProvider:
     """Records the (name, model) it was called as so the probe can assert
@@ -358,6 +366,8 @@ def _probe() -> ProbeResult:
             dc.get("provider") != _PINNED_PROVIDER
             or dc.get("model") != _PINNED_MODEL
             or dc.get("fallback_chain_index") != 0
+            or dc.get("tier") != _PINNED_TIER
+            or dc.get("target_role") != _PINNED_ROLE
         ):
             return ProbeResult(
                 ok=False,
@@ -366,7 +376,9 @@ def _probe() -> ProbeResult:
                     f"dispatch: provider={dc.get('provider')!r} "
                     f"model={dc.get('model')!r} "
                     f"fallback_chain_index={dc.get('fallback_chain_index')!r} "
-                    f"(expected {_PINNED_PROVIDER!r} / {_PINNED_MODEL!r} / 0)."
+                    f"tier={dc.get('tier')!r} target_role={dc.get('target_role')!r} "
+                    f"(expected {_PINNED_PROVIDER!r} / {_PINNED_MODEL!r} / 0 / "
+                    f"{_PINNED_TIER!r} / {_PINNED_ROLE!r})."
                     + (
                         " [displaced to deepseek]"
                         if dc.get("provider") == _DISPLACED_PROVIDER
