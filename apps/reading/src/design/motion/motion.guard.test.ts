@@ -57,6 +57,8 @@ const SANCTIONED = new Set<string>([
   // The reactive Werner mascot's waddle/bump poses (AMS SPR-05/10) — a
   // dedicated motion home, the same kind of slot as animations.css above.
   "src/werner/waddle.css",
+  // Ice-fishing bait bob (Werner reactive mascot) — same motion-home slot as waddle.
+  "src/werner/ice-fishing.css",
   // The living-mountainscape scene's consolidated keyframes (AMS SPR-04):
   // krea crossfade + the scenery penguin's journey/bob. One motion home, not
   // sprawled inline across the layer components.
