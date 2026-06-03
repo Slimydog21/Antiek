@@ -45,6 +45,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
 from .client import Transcriber, Transcript, transcribe_audio
@@ -194,6 +198,11 @@ def ingest_voice_note(
                 "recorded_at": when.isoformat(),
             },
             on_conflict="ignore",
+        )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.USER_CONTENT,
         )
         for i, chunk in enumerate(chunks):
             chunk_id = insert_chunk(

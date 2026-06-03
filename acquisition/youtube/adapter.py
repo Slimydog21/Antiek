@@ -51,6 +51,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
 from .client import (  # noqa: E402
@@ -398,6 +402,12 @@ def ingest_youtube(
                 "caption_kind": getattr(v, "caption_kind", CAPTION_KIND_MISSING),
             },
             on_conflict="ignore",
+        )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.WEB,
+            content_class=resolved_content_class,
         )
         # M3: when (and only when) this transcript was promoted to a servable
         # class on an operator-confirmed CC-BY assertion, record the truthful

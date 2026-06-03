@@ -14,9 +14,18 @@ Chunk search uses a **denylist** (exclude withheld classes on public paths).
 Book public serve uses an **allowlist** (``SERVABLE_CONTENT_CLASSES`` in
 ``substrate/books/serve.py``). Different polarity; the withheld classes must
 not intersect the servable allowlist — see ``tests/test_retrieval_gate_polarity``.
+
+NULL ``content_class`` **fails closed** on the non-privileged path (ASR SR-07):
+an unknown/legacy class is withheld, not served. Deny-by-default on the money
+path — both the SQL clause and ``is_chunk_body_withheld`` enforce it.
 """
 
 from __future__ import annotations
+
+from substrate.constants import (
+    GATED_DEFAULT_CONTENT_CLASS,
+    PERSONAL_READING_CONTENT_CLASS,
+)
 
 # Policy tags privileged to bypass the restricted-content gate.
 # Per master-spec §9.0 retrieval-time gating: restricted content (i.e.
@@ -38,7 +47,7 @@ PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
 # escrow. It is the exact mirror of constants.GATED_DEFAULT_CONTENT_CLASS (the
 # write side names the same gate state) — do NOT add personal_reading here.
 RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "restricted_pending_opt_in",
+    GATED_DEFAULT_CONTENT_CLASS,
 })
 
 # Content classes that are OWNER-ONLY: the owner reads them in full on a
@@ -59,7 +68,7 @@ RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
 # restricted_pending_opt_in (e.g. a tag privileged for one but not the other),
 # the separate set already supports it; folding them together would not.
 PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "personal_reading",
+    PERSONAL_READING_CONTENT_CLASS,
 })
 
 # The full set of content classes withheld from a non-privileged retrieval —
@@ -78,9 +87,10 @@ def non_privileged_chunk_sql_clause(
     """SQL fragment + bind params for the non-privileged chunk gate.
 
     On a non-privileged ``policy_tag``, returns a WHERE clause that excludes
-    every member of ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES`` while still
-    allowing NULL ``content_class`` (legacy/grandfathered rows). On a privileged
-    tag (``private_research`` / ``operator_only``), returns ``("", [])``.
+    every member of ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``. NULL
+    ``content_class`` fails closed (excluded — not in the denylist, so SQL
+    ``NOT IN`` does not match NULL). On a privileged tag
+    (``private_research`` / ``operator_only``), returns ``("", [])``.
 
     Args:
         table_alias: Alias of the ``documents`` row in the query (default ``d``).
@@ -90,10 +100,7 @@ def non_privileged_chunk_sql_clause(
         return "", []
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
     placeholders = ",".join("?" for _ in excluded)
-    sql = (
-        f" AND ({table_alias}.content_class IS NULL OR "
-        f"{table_alias}.content_class NOT IN ({placeholders}))"
-    )
+    sql = f" AND ({table_alias}.content_class NOT IN ({placeholders}))"
     return sql, excluded
 
 
@@ -105,17 +112,23 @@ def is_chunk_body_withheld(
     """Whether a chunk body must be withheld on the non-privileged HTTP path.
 
     Mirrors the chunk-gate frozensets without duplicating SQL. Takedown wins
-    over content_class. NULL / legacy classes are not withheld here (same as
-    search NULL carve-out).
+    over content_class. NULL / unknown classes **fail closed** (withheld) —
+    consistent with the SQL clause's fail-closed flip (ASR SR-07): an unknown
+    class is never served on the money path.
 
     Returns:
-        ``(withheld, label)`` — label is ``"taken_down"``, ``"personal_only"``,
-        ``"restricted"``, or ``None`` when the body may be served.
+        ``(withheld, label)`` — label is ``"taken_down"``, ``"personal_readable"``,
+        ``"restricted"``, ``"unknown"`` (NULL/unrecognised), or ``None`` when the
+        body may be served. (``personal_readable`` is the ASR SR-09 API contract
+        label for the owner-only personal_reading class — pinned by
+        ``tests/test_get_chunk_personal_reading`` + ``test_retrieval_gate_matrix``.)
     """
     if taken_down:
         return True, "taken_down"
     if content_class in PERSONAL_ONLY_CONTENT_CLASSES:
-        return True, "personal_only"
+        return True, "personal_readable"
     if content_class in RESTRICTED_CONTENT_CLASSES:
         return True, "restricted"
+    if content_class is None:
+        return True, "unknown"
     return False, None

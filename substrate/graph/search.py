@@ -122,6 +122,8 @@ def cosine_similarity_sql(
 # ---------------------------------------------------------------------------
 # Public search API
 # ---------------------------------------------------------------------------
+# (Gate constants + helper are imported and re-exported at the top of this
+# module — see the back-compat re-export block after the imports.)
 
 
 def search(

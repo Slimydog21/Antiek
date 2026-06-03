@@ -54,11 +54,16 @@ from substrate.graph import (  # noqa: E402
     default_db_path,
     ensure_initialized,
 )
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.graph.ops import (  # noqa: E402
     _exists,
     insert_chunk,
     insert_document,
     insert_node,
+)
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
@@ -179,6 +184,13 @@ def ingest_post(
             # (personal_reading accrues zero attribution; author→holder
             # resolution is an explicit open question — see README/handoff).
         )
+        if not already_present:
+            register_source_document(
+                con,
+                document_id=document_id,
+                source_kind=SourceKind.WEB,
+                content_class=PERSONAL_READING_CONTENT_CLASS,
+            )
         if already_present:
             return IngestResult(
                 document_id=document_id,

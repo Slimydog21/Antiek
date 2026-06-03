@@ -264,8 +264,9 @@ class ChunkResponse(BaseModel):
     so the reader's "open this source" affordance and the data layer
     cannot disagree. The gate applied here is the SAME one
     ``substrate/graph/search.py`` applies to chunk retrieval on a
-    non-privileged path: content in ``RESTRICTED_CONTENT_CLASSES``
-    (restricted-pending-opt-in) or under a takedown is withheld; a NULL /
+    non-privileged path: content in the canonical non-privileged denylist
+    (``restricted_pending_opt_in`` + ``personal_reading`` via
+    ``retrieval_gate``) or under a takedown is withheld; a NULL /
     legacy research chunk passes (grandfathered) exactly as it does in
     chunk search — this is the operator reading their own research
     chunks, not the public "Spotify for books" full-text serve path
@@ -2144,8 +2145,9 @@ def create_app(
         modal + SPR-04's named-source render to surface the chunk text +
         source document title for any cited chunk_id.
 
-        §9.0 retrieval gate: a chunk whose source is RESTRICTED
-        (content_class in ``RESTRICTED_CONTENT_CLASSES``) or under a
+        §9.0 retrieval gate: a chunk whose source is on the canonical
+        non-privileged denylist (``retrieval_gate`` union:
+        ``restricted_pending_opt_in`` + ``personal_reading``) or under a
         takedown has its body WITHHELD here, at the query layer — the
         same gate ``substrate/graph/search.py`` applies to chunk
         retrieval — so a frontend that calls this directly still cannot
@@ -2203,8 +2205,9 @@ def create_app(
 
         content_class = row[7]
         taken_down = bool(row[8])
-        # Takedown wins over everything; otherwise withhold only the
-        # non-privileged excluded classes (NULL/legacy passes — search).
+        # Takedown wins over everything; otherwise delegate to the single
+        # canonical helper (RG-04 forbids reimplementing the denylist here).
+        # NULL/unknown fails closed (SR-07), consistent with the search path.
         withheld, label = is_chunk_body_withheld(content_class, taken_down=taken_down)
         if withheld:
             servable, label = False, label
