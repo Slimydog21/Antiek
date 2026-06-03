@@ -2222,7 +2222,13 @@ def create_app(
         taken_down = bool(row[8])
         # Takedown wins over everything; otherwise delegate to the single
         # canonical helper (RG-04 forbids reimplementing the denylist here).
-        # NULL/unknown fails closed (SR-07), consistent with the search path.
+        # NULL is grandfathered (served) and an unknown content_class is served
+        # (fail-OPEN) — both consistent with the search path's
+        # `content_class IS NULL OR NOT IN (...)` clause. SR-07's NULL-fail-closed
+        # flip was REJECTED for #65 (it hid legacy content with no backfill). The
+        # fail-open-on-unknown polarity is deliberate-but-load-bearing: a new
+        # restricted class added without updating the denylist union would leak.
+        # See docs/decisions/retrieval-gate-unknown-class-fail-open.md.
         withheld, label = is_chunk_body_withheld(content_class, taken_down=taken_down)
         if withheld:
             servable, label = False, label

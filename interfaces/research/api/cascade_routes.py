@@ -227,11 +227,15 @@ def build_prod_retrieval_substrate() -> object | None:
             )
             return None
 
-        # Point-in-time snapshot so the substrate's read-only connection never
-        # collides in-process with the launch path's read-write connections to
-        # the live file. The snapshot's disk is reclaimed by the two-step cleanup
-        # documented above (early-unlink here + close-on-teardown), so launches
-        # do not accumulate full-DB-copy temp dirs on the single prod VM.
+        # Point-in-time snapshot on a SEPARATE file so the substrate's connection
+        # — read-WRITE on the snapshot under in-place vss indexing
+        # (skip_internal_copy=True) — never collides in-process with the launch
+        # path's read-write connections to the LIVE file (DuckDB refuses RO+RW to
+        # the same file in one process). §16 is preserved: the live graph is only
+        # read-copied, never opened by this connection. The snapshot's disk is
+        # reclaimed by the two-step cleanup documented above (early-unlink here +
+        # close-on-teardown), so launches do not accumulate full-DB-copy temp
+        # dirs on the single prod VM.
         scratch = tempfile.mkdtemp(prefix="antiek-reuse-snapshot-")
         snapshot_path = os.path.join(scratch, "reuse_snapshot.duckdb")
         shutil.copy(live_path, snapshot_path)
