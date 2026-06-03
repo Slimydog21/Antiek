@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FEEL-S4 · Mode card sweep · PostHog Feel</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wordmark">ANTIEK / POSTHOG-FEEL</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint-feel-s1.html">S1</a>
+    <a href="sprint-feel-s2.html">S2</a>
+    <a href="sprint-feel-s3.html">S3</a>
+    <a href="sprint-feel-s4.html">S4</a>
+    <a href="sprint-feel-s5.html">S5</a>
+    <a href="sprint-feel-s6.html">S6</a>
+  </nav>
+</header>
+<div class="shell">
+<h1><span class="sprint-tag">FEEL-S4</span>Mode card sweep + ResearchWorkstation partial</h1>
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~5 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">FEEL-S2</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S5, S6</div></div>
+  <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>Spread <code>press</code> / <code>cardLift</code> to high-traffic cards (Home, Library, StartResearch rows). Apply Feel to floating Chase panel in RW. <strong>Do not</strong> glass-convert the dense <code>/inv/:id</code> IDE.</p>
+
+<h2>2 · Scope matrix</h2>
+<table>
+  <thead><tr><th>Surface</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td><code>StartResearch</code> composer cards</td><td><code>cardLift</code> + sun border</td></tr>
+    <tr><td>Investigation list rows</td><td><code>press</code> on interactive rows</td></tr>
+    <tr><td>Chase floating panel</td><td>Inherits S2 panel rules</td></tr>
+    <tr><td><code>InvestigationCenter</code> dense body</td><td><strong>EXEMPT</strong> — stays <code>GlassSurface variant="solid"</code></td></tr>
+    <tr><td>Home / Library cards</td><td>Audit <code>WorkCard</code>, <code>Home.tsx</code> tiles</td></tr>
+  </tbody>
+</table>
+
+<h2>3 · E2E</h2>
+<p><code>NEW: e2e/feel-rw-ide-exempt.spec.ts</code> — on <code>/</code> authed: dock column lacks <code>shadow-z3</code> on investigation shell; composer control has <code>focus-visible:ring-sun</code>.</p>
+
+<h2>4 · Acceptance criteria</h2>
+<ul class="ac-list">
+  <li><code>ResearchWorkstation.feel.test.tsx</code> (or equivalent): main dock root has no floating shadow tier classes.</li>
+  <li>At least one RW card uses shared motion helper.</li>
+  <li><code>lint:tokens</code> — no new raw box-shadow literals in touched files.</li>
+</ul>
+
+<h2>5 · Rigor</h2>
+<ul>
+  <li><strong>Intellectual honesty:</strong> Handoff must say RW “PostHog stack” is panels + chase float, not transparent IDE over scene.</li>
+  <li><strong>Fairness:</strong> Steelman glassifying RW for visual unity — cite <code>spr-03-occlusion-audit.md</code>.</li>
+  <li><strong>Rigor:</strong> Exempt test fails if someone adds <code>shadow-z3</code> to dock aside.</li>
+  <li><strong>Diligence:</strong> Grep <code>hover:shadow</code> before/after in <code>modes/ResearchWorkstation</code>.</li>
+  <li><strong>Defensibility:</strong> List every file in FEEL_SCOPE appendix in handoff.</li>
+</ul>
+
+<div class="sprint-nav">
+  <a href="sprint-feel-s3.html"><span class="label">←</span>S3</a>
+  <a class="next" href="sprint-feel-s5.html"><span class="label">Next →</span>S5</a>
+</div>
+</div>
+</body>
+</html>

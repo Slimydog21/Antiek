@@ -19,6 +19,7 @@ import {
   type AuthDiagnosticCode,
   type AuthDiagnosticLayer,
 } from "./authDiagnosticCodes";
+import { posthog, posthogEnabled } from "./posthogClient";
 
 /** Layer A transport — never surface raw browser "Failed to fetch" to users. */
 export const AUTH_TRANSPORT_FETCH_MESSAGE = "Cannot reach Antiek API";
@@ -88,6 +89,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Link the PostHog person to the substrate session as auth state resolves.
+  // distinct_id is the substrate user_id (never PII); email + auth_method are
+  // set as person properties on purpose (person-level analysis on a
+  // GDPR-resident, identified_only project), with first-touch auth method as
+  // $set_once. reset() on sign-out. No-op without a token. Lives here rather
+  // than a component mounted in App.tsx so the route tree stays untouched.
+  useEffect(() => {
+    if (!posthogEnabled || state.status === "loading") return;
+    if (state.status === "authenticated") {
+      const { user_id, email, auth_method } = state.identity;
+      posthog.identify(
+        user_id,
+        { email: email ?? undefined, auth_method },
+        { first_seen_auth_method: auth_method },
+      );
+      return;
+    }
+    posthog.reset();
+  }, [state]);
 
   const value = useMemo<AuthContextValue>(
     () => ({ state, refresh, signOut }),

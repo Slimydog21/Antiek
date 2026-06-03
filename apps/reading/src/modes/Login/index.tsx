@@ -11,6 +11,8 @@ import {
 } from "../../lib/auth";
 import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 
+import { track, trackException } from "../../lib/analytics";
+
 /**
  * Login surface — Antiek's owned login page (H6 ship, 2026-05-21
  * PostHog-style auth decision; reskinned to the Werner / Antarctic
@@ -82,15 +84,18 @@ export default function Login() {
     setErrorMsg("");
     setErrorHint(null);
     setDiagnosticCode(null);
+    track("login_requested");
     const result = await requestMagicLink(email, nextPath);
     if (result.kind === "sent") {
       setStatus("sent");
+      track("login_link_sent");
     } else {
       setStatus("error");
       const { message, hint } = authLoginErrorDisplay(result);
       setErrorMsg(message);
       setErrorHint(hint);
       setDiagnosticCode(result.diagnostic_code);
+      trackException(new Error(`Magic link failed: ${message}`));
     }
   }
 

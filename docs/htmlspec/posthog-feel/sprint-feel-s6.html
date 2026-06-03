@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FEEL-S6 · E2E closure · PostHog Feel</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wordmark">ANTIEK / POSTHOG-FEEL</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint-feel-s1.html">S1</a>
+    <a href="sprint-feel-s2.html">S2</a>
+    <a href="sprint-feel-s3.html">S3</a>
+    <a href="sprint-feel-s4.html">S4</a>
+    <a href="sprint-feel-s5.html">S5</a>
+    <a href="sprint-feel-s6.html">S6</a>
+  </nav>
+</header>
+<div class="shell">
+<h1><span class="sprint-tag">FEEL-S6</span>E2E matrix + programme closure</h1>
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~4 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S2–S5</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">—</div></div>
+  <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>Consolidate proof in <code>feel-experience-matrix.spec.ts</code>, add <code>npm run e2e:feel</code>, publish <code>FEEL_VERIFICATION.md</code> + <code>RETRO.md</code>. Programme exit requires AMS non-regression.</p>
+
+<h2>2 · Matrix criteria</h2>
+<table>
+  <thead><tr><th>ID</th><th>Criterion</th><th>Spec</th></tr></thead>
+  <tbody>
+    <tr><td>F1</td><td><code>elevation.ts</code> tested</td><td>unit</td></tr>
+    <tr><td>F2</td><td>Floating panels: cascade + z-shadow</td><td>feel-panels-cascade</td></tr>
+    <tr><td>F3</td><td>Glass windows: cascade + AMS windows</td><td>feel-windows + ams matrix</td></tr>
+    <tr><td>F4</td><td>RW IDE exempt</td><td>feel-rw-ide-exempt</td></tr>
+    <tr><td>F5</td><td>Focus rings</td><td>feel-focus-ring</td></tr>
+    <tr><td>F6</td><td>No PostHog mascot assets</td><td>grep / script</td></tr>
+    <tr><td>F7</td><td>AMS matrix green</td><td>e2e:ams</td></tr>
+    <tr><td>F8</td><td>Spec ref-lint clean</td><td>verify_spec_refs.ts</td></tr>
+  </tbody>
+</table>
+
+<h2>3 · Programme exit commands</h2>
+<pre><code>cd apps/reading
+npm run typecheck && npm run test && npm run build:check
+npm run e2e:ams
+npm run e2e:feel
+tsx tools/specs/verify_spec_refs.ts docs/htmlspec/posthog-feel/sprint-feel-s*.html
+</code></pre>
+
+<h2>4 · Rigor</h2>
+<ul>
+  <li><strong>Intellectual honesty:</strong> FEEL_VERIFICATION.md lists what Playwright did <em>not</em> prove (e.g. Safari manual).</li>
+  <li><strong>Fairness:</strong> Do not replace AMS matrix with Feel matrix in CI — run both.</li>
+  <li><strong>Rigor:</strong> F7 is a hard gate; merge blocked if red.</li>
+  <li><strong>Diligence:</strong> Re-run matrix on integration branch after each sprint merge.</li>
+  <li><strong>Defensibility:</strong> Operator sign-off line: “PostHog feel = physics, not clone.”</li>
+</ul>
+
+<h2>5 · Operator sign-off question</h2>
+<p>“When I open three panels and three windows, can I read the stack depth at a glance without clicking?” If no, S2/S3 reopen — not S6 paperwork.</p>
+
+<div class="sprint-nav">
+  <a href="sprint-feel-s5.html"><span class="label">←</span>S5</a>
+  <a href="index.html"><span class="label">Done →</span>Overview</a>
+</div>
+</div>
+</body>
+</html>
