@@ -21,6 +21,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -325,7 +326,7 @@ def ingest_twitter_thread(
 
 
 def ingest_thread_payload(
-    payload: dict,
+    payload: dict[str, Any],
     *,
     investigation_id: str,
     content_class: str = PERSONAL_READING_CONTENT_CLASS,

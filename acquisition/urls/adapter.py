@@ -129,7 +129,8 @@ def lookup_url_alias(
         con.close()
     if not rows:
         return None
-    return rows[0][0]
+    # DuckDB fetchall() returns Any-typed cells; document_id is a TEXT column.
+    return str(rows[0][0])
 
 
 # ---------------------------------------------------------------------------

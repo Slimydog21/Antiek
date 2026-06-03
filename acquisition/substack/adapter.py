@@ -31,6 +31,10 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import httpx
 
 # Repo root on path for direct invocation (mirrors podcasts/urls adapters).
 _PKG_ROOT = os.path.dirname(
@@ -290,7 +294,7 @@ def ingest_publication_feed(
     max_posts: int | None = None,
     source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER,
     embedder: EmbeddingProvider | None = None,
-    client=None,
+    client: httpx.Client | None = None,
 ) -> PublicationIngestSummary:
     """Fetch one publication feed and ingest every post.
 

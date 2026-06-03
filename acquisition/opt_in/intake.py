@@ -222,8 +222,8 @@ def resolve_publisher_holder(
     between runs. Returns ``(ip_holder_id, was_created)``.
     """
     from runtime.db_lock import connect_write
-    from substrate.books.ingest import resolve_or_create_ip_holder
     from substrate.ip_holders import list_all
+    from substrate.rights.register import resolve_or_create_ip_holder
 
     holder_display = f"opt_in:{publisher.publisher_id}"
     with connect_write(db_path, purpose="opt_in/holder") as con:

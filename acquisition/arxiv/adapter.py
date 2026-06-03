@@ -53,6 +53,10 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger("acquisition.arxiv.adapter")
 
@@ -351,8 +355,6 @@ def _default_fetch_pdf(arxiv_id: str) -> bytes:
     errors propagate so the batch records a per-item failure and continues
     rather than ingesting an empty document.
     """
-    import httpx
-
     from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
     from .rate_governor import (
         arxiv_governed_client,
@@ -378,7 +380,10 @@ def _default_fetch_pdf(arxiv_id: str) -> bytes:
 
         # Host-global rate gate: the send happens inside the governor's flock so
         # this fetch serializes against every other arXiv job on the box.
-        r = governed_request(_send, throttle=throttle)
+        # ``governed_request`` returns the exact object ``_send`` produced (an
+        # ``httpx.Response``); its ``_ResponseLike`` return annotation erases the
+        # concrete type, so narrow it back to read ``.content`` / status.
+        r = cast("httpx.Response", governed_request(_send, throttle=throttle))
     r.raise_for_status()
     return r.content
 
