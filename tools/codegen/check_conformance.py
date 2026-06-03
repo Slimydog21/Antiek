@@ -58,8 +58,6 @@ from pydantic import BaseModel
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent.parent))
 
-from tools.codegen.chunk_provenance import provenance_policy_errors  # noqa: E402
-
 from substrate.contracts import (  # noqa: E402
     CODEGEN_CONTRACTS,
     AccrualContract,
@@ -76,6 +74,7 @@ from substrate.contracts import (  # noqa: E402
     verify_citations_resolve,
     verify_conformance,
 )
+from tools.codegen.chunk_provenance import provenance_policy_errors  # noqa: E402
 
 # ── The conformance registry ─────────────────────────────────────────────────
 # One row per SPR-01 contract. ``conformer`` is the live implementation class

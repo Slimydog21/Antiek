@@ -106,9 +106,9 @@ def register_source_document(
     *,
     document_id: str,
     source_kind: SourceKind,
-    content_class: Optional[str] = None,
-    ip_holder_id: Optional[str] = None,
-    rights_holder_name: Optional[str] = None,
+    content_class: str | None = None,
+    ip_holder_id: str | None = None,
+    rights_holder_name: str | None = None,
     run_self_check: bool = True,
 ) -> str:
     """Register an already-inserted document's rights, deny-by-default. The

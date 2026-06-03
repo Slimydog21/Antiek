@@ -16,9 +16,9 @@ import pytest
 from runtime.db_lock import connect_read, connect_write
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.retrieval_gate import (
+    _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
     PERSONAL_ONLY_CONTENT_CLASSES,
     RESTRICTED_CONTENT_CLASSES,
-    _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
     non_privileged_chunk_sql_clause,
 )
 from substrate.graph.schema import init_database
