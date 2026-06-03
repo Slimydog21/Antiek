@@ -164,7 +164,7 @@ export function PanelLayoutPanel({ id }: Props) {
           "flex flex-col overflow-hidden " +
           shadow +
           (isFocused
-            ? " outline outline-2 outline-offset-[3px] outline-ink dark:outline-bright"
+            ? " outline outline-2 outline-offset-[3px] outline-sun"
             : " opacity-95")
         }
         onMouseDownCapture={onMouseDownRaise}

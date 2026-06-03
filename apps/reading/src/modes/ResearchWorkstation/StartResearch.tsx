@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { cardLift } from "../../design/motion";
 import GlassSurface from "../../shell/GlassSurface";
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
@@ -660,15 +661,21 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           </p>
           <div className="flex flex-col gap-2">
             {EXAMPLE_PROMPTS.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                onClick={() => fillExample(prompt)}
-                disabled={busy}
-                className="text-left text-[13px] font-serif text-ink dark:text-bright px-3 py-2 rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 hover:border-sun dark:hover:border-sun hover:bg-sun/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {prompt}
-              </button>
+              <div key={prompt} className="group">
+                <button
+                  type="button"
+                  onClick={() => fillExample(prompt)}
+                  disabled={busy}
+                  className={
+                    "w-full text-left text-[13px] font-serif text-ink dark:text-bright px-3 py-2 rounded-hog " +
+                    "border-edge border-sun bg-ice-0 dark:bg-charcoal-2 shadow-z1 dark:shadow-z1-night " +
+                    "hover:border-sun dark:hover:border-sun hover:bg-sun/10 disabled:opacity-50 disabled:pointer-events-none " +
+                    cardLift
+                  }
+                >
+                  {prompt}
+                </button>
+              </div>
             ))}
           </div>
         </div>
