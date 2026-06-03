@@ -15,3 +15,6 @@ playwright-report/
 # `node_modules/` pattern above matches a real dir but NOT a symlink to
 # one, so match it bare too (keeps `git add -A` from staging the link).
 node_modules
+
+# Playwright debug screenshot output (page.screenshot path=), not a baseline
+e2e/**/.artifacts/
