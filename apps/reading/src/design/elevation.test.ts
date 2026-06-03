@@ -7,6 +7,7 @@ import {
   CASCADE_WINDOW_WRAP_PX,
   cascadeOffset,
   ELEVATION_EXEMPT_SURFACES,
+  opaquePanelShadowClasses,
   shadowForStackDepth,
 } from "./elevation";
 
@@ -46,6 +47,20 @@ describe("elevation — shadowForStackDepth", () => {
     const deep = shadowForStackDepth(3, "glass-scene");
     expect(shallow).toBe("shadow-z1 dark:shadow-z1-night");
     expect(deep).toBe(shallow);
+  });
+});
+
+describe("elevation — opaquePanelShadowClasses", () => {
+  const tierRank = (cls: string) => {
+    if (cls.includes("shadow-z3")) return 3;
+    if (cls.includes("shadow-z2")) return 2;
+    return 1;
+  };
+
+  it("shadow tier strictly increases from zIndex 3 to 7 when unfocused", () => {
+    const low = opaquePanelShadowClasses(3, false);
+    const high = opaquePanelShadowClasses(7, false);
+    expect(tierRank(high)).toBeGreaterThan(tierRank(low));
   });
 });
 

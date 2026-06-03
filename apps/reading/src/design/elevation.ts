@@ -34,6 +34,9 @@ export const CASCADE_PANEL_WRAP_PX = 200;
 
 export type CascadeStore = "windows" | "panels";
 
+/** First z-index assigned to a floating panel (`WorkspaceStore` / README). */
+export const FLOATING_Z_BASE = 2;
+
 /**
  * Map stack depth (0 = flat/docked or scene) to shadow classes.
  * Depth is clamped to [0, 3]. Focus rings are FEEL-S5; not included here.
@@ -64,6 +67,21 @@ export function cascadeOffset(
 }
 
 /** Surfaces that must never receive opaque-chunky stack chrome (documented exemptions). */
+/**
+ * Shadow classes for a floating opaque panel from stack z-index.
+ * Focus bumps one tier (capped at z3) — outline ring stays on the panel shell.
+ */
+export function opaquePanelShadowClasses(
+  zIndex: number,
+  isFocused: boolean,
+): string {
+  let depth = Math.max(0, zIndex - FLOATING_Z_BASE);
+  if (isFocused) {
+    depth = Math.min(3, depth + 1);
+  }
+  return shadowForStackDepth(depth, "opaque-chunky");
+}
+
 export const ELEVATION_EXEMPT_SURFACES = [
   "ResearchWorkstation dense IDE (/inv/:id center)",
   "GlassSurface scene landings",
