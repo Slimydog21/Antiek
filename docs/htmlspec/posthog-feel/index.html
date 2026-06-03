@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PostHog Feel · corrective programme · Master plan</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wordmark">ANTIEK / POSTHOG-FEEL</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint-feel-s1.html">S1</a>
+    <a href="sprint-feel-s2.html">S2</a>
+    <a href="sprint-feel-s3.html">S3</a>
+    <a href="sprint-feel-s4.html">S4</a>
+    <a href="sprint-feel-s5.html">S5</a>
+    <a href="sprint-feel-s6.html">S6</a>
+    <a href="verified-interfaces.md">Ledger</a>
+  </nav>
+</header>
+
+<div class="shell">
+
+<h1>PostHog Feel<br/><span style="font-size:24px; font-weight:500; color:var(--ink-soft);">finish the tactile stack · Werner brand · frontend only</span></h1>
+
+<div class="meta-strip">
+  <div class="cell"><div class="label">Spec version</div><div class="value">v1.0 — DRAFT</div></div>
+  <div class="cell"><div class="label">Authored</div><div class="value">2026-06-02</div></div>
+  <div class="cell"><div class="label">Sprints</div><div class="value">6 (FEEL-S1–S6)</div></div>
+  <div class="cell"><div class="label">Single-dev est.</div><div class="value">~24–30 days</div></div>
+  <div class="cell"><div class="label">Touches</div><div class="value">apps/reading</div></div>
+  <div class="cell"><div class="label">Substrate impact</div><div class="value">none</div></div>
+</div>
+
+<div class="callout decision">
+  <strong>Decision · “PostHog feel” is interaction physics, not PostHog architecture</strong>
+  PostHog’s MIT <code>frontend/src/layout/panel-layout/</code> is a <em>fixed</em> shell (left nav + one resizable tree panel + right <code>SidePanel</code>) — not the multi-floating z-stack window manager described in <code>docs/ui_redesign_posthog/sprint_03_panel_layout.html</code>. This programme does <strong>not</strong> re-clone their nav. It ships the <em>feel</em> the operator asked for: opaque chunky cards, offset shadows that scale with stack depth, hover-lift on manipulable surfaces, a visible cascade, and crisp focus rings — in Werner’s sun-yellow outline, on top of the existing dual-store layout (panels + glass windows).
+</div>
+
+<div class="callout warn">
+  <strong>Predecessor gates (hard)</strong>
+  Do not start FEEL-S1 until <code>docs/ui_redesign_posthog/RETRO.md</code> is closed on <code>main</code> <strong>and</strong> <code>docs/ams-v2/mountain-shell-v2-verification.md</code> is green (<code>npm run e2e:ams</code>). AMS glass windows must stay glass; this programme strengthens panels and cascade — it does not reverse AMS-v2.
+</div>
+
+<h2>1 · Goal</h2>
+<p>
+  Close the gap between what S3 promised (“shadows that scale with z-depth and a hover-lift micro-interaction”) and what shipped (binary focus shadows only; no hover-lift on floating panels). Make the operator’s daily stack — floating panels inside Research/Wrestle <em>and</em> glass workspace windows over the scene — feel as crisp and legible as PostHog’s product chrome, without importing PostHog’s hedgehog, yellow, or left-nav IA.
+</p>
+
+<h3>Success criteria (programme exit)</h3>
+<ul class="ac-list">
+  <li><code>apps/reading/src/design/elevation.ts</code> maps stack depth → shadow tier; unit-tested.</li>
+  <li>Three floating panels in a real or harness route show ≥20px cascade + monotonic shadows by z.</li>
+  <li>Three glass windows still pass <code>e2e/ams-v2-experience-matrix.spec.ts</code> criterion <code>windows</code>; cascade corners are visibly separated.</li>
+  <li>ResearchWorkstation dense IDE remains opaque; exempt surfaces pass <code>feel-rw-ide-exempt.spec.ts</code>.</li>
+  <li><code>npm run e2e:feel</code> matrix green; <code>npm run e2e:ams</code> still green.</li>
+</ul>
+
+<h3>Failure mode to avoid</h3>
+<p>
+  Claiming “we shipped PostHog’s UI” or converting AMS glass windows to opaque cards to “unify” the stack. That breaks the mountain-shell proof and confuses two intentional stores.
+</p>
+
+<h2>2 · Context</h2>
+<p>
+  <code>ui_redesign_posthog</code> S0–S12 built <code>WorkspaceStore</code> + <code>PanelLayout</code> and motion tokens (<code>press</code>, <code>cardLift</code> in <code>src/design/motion.ts</code>), but floating <code>PanelLayoutPanel</code> never wired hover-lift and never mapped <code>zIndex</code> to shadow tier. AMS-v2 then shipped <code>windowsStore</code> + transparent <code>WorkspaceWindow</code> frames — a different, valid stack over the scene. The operator experiences “windows don’t layer like PostHog” because (a) panel feel was incomplete, (b) windows are glass not chunky opaque, and (c) Research IDE is deliberately dense-opaque, not a floating stack.
+</p>
+
+<h2>3 · Architecture — dual store, one elevation map</h2>
+
+<div class="diagram">
+  z=200  LemonToast
+  z=100  LemonModal / CommandPalette
+  ─────────────────────────────────────────
+  LAYER B  WorkspaceStore  (opaque chunky when floating)
+           z=2…50   PanelLayoutPanel floating
+           z=0      docked panels (flat — dock is the frame)
+  ─────────────────────────────────────────
+  LAYER A  windowsStore  (glass scene companions)
+           z≥40    WorkspaceWindow  (WINDOW_Z_BASE=40)
+           z=0     Scene + GlassSurface landings
+</div>
+
+<table>
+  <thead><tr><th>Store</th><th>File</th><th>Chrome mode</th><th>Feel programme</th></tr></thead>
+  <tbody>
+    <tr><td>Panels</td><td><code>src/workspace/WorkspaceStore.ts</code></td><td>Opaque chunky on <code>floating</code></td><td>FEEL-S2 (full)</td></tr>
+    <tr><td>Windows</td><td><code>src/workspace/windowsStore.ts</code></td><td>Glass + ad border</td><td>FEEL-S3 (cascade + focus only)</td></tr>
+    <tr><td>Research IDE</td><td><code>modes/ResearchWorkstation/index.tsx</code></td><td>Dense opaque center</td><td>EXEMPT (cards only in S4)</td></tr>
+  </tbody>
+</table>
+
+<p>
+  Policy reference: <code>src/components/windows/README.md</code>, <code>docs/ams-v2/spr-03-occlusion-audit.md</code>.
+</p>
+
+<h2>4 · Sprint roster</h2>
+
+<table>
+  <thead><tr><th>Sprint</th><th>Title</th><th>Depends</th><th>Est.</th></tr></thead>
+  <tbody>
+    <tr><td><a href="sprint-feel-s1.html">FEEL-S1</a></td><td>Elevation contract + dual-store map</td><td>G-PRE-*</td><td>~3 d</td></tr>
+    <tr><td><a href="sprint-feel-s2.html">FEEL-S2</a></td><td>WorkspaceStore opaque parity</td><td>S1</td><td>~5 d</td></tr>
+    <tr><td><a href="sprint-feel-s3.html">FEEL-S3</a></td><td>windowsStore cascade (glass-preserving)</td><td>S1</td><td>~4 d</td></tr>
+    <tr><td><a href="sprint-feel-s4.html">FEEL-S4</a></td><td>Mode card sweep + RW partial</td><td>S2</td><td>~5 d</td></tr>
+    <tr><td><a href="sprint-feel-s5.html">FEEL-S5</a></td><td>Focus ring + motion completeness</td><td>S2, S4</td><td>~4 d</td></tr>
+    <tr><td><a href="sprint-feel-s6.html">FEEL-S6</a></td><td>E2E matrix + programme closure</td><td>S3–S5</td><td>~4 d</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Parallelism:</strong> after S1, S2 and S3 may run in parallel; S4 waits on S2; S6 waits on all.</p>
+
+<h2>5 · What we borrow from PostHog OSS (MIT)</h2>
+<ul>
+  <li>Named z-index ladder + inset main canvas (shell reads as card-in-chrome).</li>
+  <li>Hard-edge elevation stamp — Antiek already has <code>--shadow-z1/z2/z3</code>; we tie them to depth.</li>
+  <li>Resize handle quiet until drag (accent ring on interaction).</li>
+  <li>Surface tier vocabulary — Antiek’s ice/charcoal ramp is the analogue.</li>
+</ul>
+
+<h2>6 · Explicit rejections (programme level)</h2>
+<ul>
+  <li><strong>REJECT</strong> merging <code>windowsStore</code> into <code>WorkspaceStore</code>.</li>
+  <li><strong>REJECT</strong> opaque workspace windows (breaks AMS-v2 glass proof).</li>
+  <li><strong>REJECT</strong> glass ResearchWorkstation IDE (readability + PanelHost investment).</li>
+  <li><strong>REJECT</strong> PostHog left nav / Max hedgehog / <code>@posthog/lemon-ui</code> npm import.</li>
+  <li><strong>REJECT</strong> Storybook-only proof for panel stack (AMS lesson: real-app e2e required).</li>
+</ul>
+
+<h2>7 · Verification (programme exit)</h2>
+<pre><code>cd apps/reading
+npm run typecheck
+npm run test
+npm run build:check
+npm run e2e:ams          # non-regression
+npm run e2e:feel         # new — added in FEEL-S6
+tsx tools/specs/verify_spec_refs.ts docs/htmlspec/posthog-feel/sprint-feel-s*.html
+</code></pre>
+
+<h2>8 · Related specs</h2>
+<ul>
+  <li><code>docs/ui_redesign_posthog/index.html</code> — predecessor (S0–S12)</li>
+  <li><code>docs/ams-v2/mountain-shell-v2-verification.md</code> — glass windows + scene</li>
+  <li><code>docs/integration_posthog.md</code> — what does / does not transfer from PostHog</li>
+</ul>
+
+<div class="sprint-nav">
+  <span></span>
+  <a class="next" href="sprint-feel-s1.html"><span class="label">Start →</span>FEEL-S1 · Elevation contract</a>
+</div>
+
+</div>
+</body>
+</html>

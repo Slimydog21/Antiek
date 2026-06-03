@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock postTypedEvent BEFORE importing aiActions so the named-import
-// binding in aiActions.ts picks up the mock. vi.mock factories are
-// hoisted to the top of the module by vitest.
-vi.mock("../../lib/api", () => ({
-  postTypedEvent: vi.fn(),
+/** Hoisted so the mock survives vitest's cross-file lib/api partial mocks. */
+const { postTypedEventMock } = vi.hoisted(() => ({
+  postTypedEventMock: vi.fn(),
 }));
+
+vi.mock("../../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/api")>();
+  return { ...actual, postTypedEvent: postTypedEventMock };
+});
 
 import { dispatchAiAction, type AiActionContext } from "./aiActions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
-import { postTypedEvent } from "../../lib/api";
-
-const postTypedEventMock = postTypedEvent as ReturnType<typeof vi.fn>;
 
 /**
  * Event-log bridging tests for the AISidecar dispatcher.
@@ -37,30 +37,39 @@ const CONTEXT: AiActionContext = {
   investigation_id: "inv-test-bridge",
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   useWorkspace.setState({ ...EMPTY_SNAPSHOT });
   postTypedEventMock.mockReset();
   postTypedEventMock.mockResolvedValue({
     event_id: "evt-fixture",
     action_type: "ai.action.applied",
   });
+  // Drain straggler async from the prior test file's lib/api mocks.
+  await drainAsyncBridge();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await drainAsyncBridge();
   postTypedEventMock.mockReset();
 });
 
-/** Helper: flush pending fire-and-forget Promises before asserting.
- * The bridge chain is: descriptor → sha256Hex (Web Crypto, real async)
- * → postTypedEvent (network mock). A macrotask yield + several
- * microtask rounds drains the whole chain reliably. */
-async function flushMicrotasks(): Promise<void> {
-  // Macrotask yield — lets the Web Crypto promise resolve.
+/** Drain the bridge chain: descriptor → sha256Hex (Web Crypto) → postTypedEvent. */
+async function drainAsyncBridge(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0));
-  // Several microtask rounds for any chained .then() after the digest.
-  for (let i = 0; i < 5; i++) {
-    await Promise.resolve();
-  }
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+}
+
+async function expectEventCalls(times: number): Promise<void> {
+  await vi.waitFor(
+    () => expect(postTypedEventMock).toHaveBeenCalledTimes(times),
+    { timeout: 3000, interval: 20 },
+  );
+}
+
+async function expectNoEvents(): Promise<void> {
+  await drainAsyncBridge();
+  await new Promise((r) => setTimeout(r, 30));
+  expect(postTypedEventMock).not.toHaveBeenCalled();
 }
 
 describe("AISidecar event-log bridge", () => {
@@ -70,8 +79,7 @@ describe("AISidecar event-log bridge", () => {
       panel_kind: "FakeNotebook",
       id: "no-ctx-test",
     });
-    await flushMicrotasks();
-    expect(postTypedEventMock).not.toHaveBeenCalled();
+    await expectNoEvents();
   });
 
   it("open_panel WITH context emits AIActionApplied with target_kind=ui_layout", async () => {
@@ -85,8 +93,7 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    await expectEventCalls(1);
     const call = postTypedEventMock.mock.calls[0][0];
     expect(call.investigation_id).toBe("inv-test-bridge");
     expect(call.role).toBe("ai_sidecar");
@@ -108,8 +115,7 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    await expectEventCalls(1);
     const p = postTypedEventMock.mock.calls[0][0].payload as { target_kind: string; target_id: string; prev_state: Record<string, unknown>; next_state: Record<string, unknown> };
     expect(p.target_kind).toBe("notebook");
     expect(p.target_id).toBe("scratch");
@@ -127,8 +133,7 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    await expectEventCalls(1);
     const p = postTypedEventMock.mock.calls[0][0].payload as { target_kind: string; next_state: Record<string, unknown> };
     expect(p.target_kind).toBe("investigation_chase");
     expect(p.next_state.open).toBe(true);
@@ -143,8 +148,7 @@ describe("AISidecar event-log bridge", () => {
       { kind: "toast", level: "info", message: "Done" },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).not.toHaveBeenCalled();
+    await expectNoEvents();
   });
 
   it("undo wrapper fires AIActionUndone when the underlying undo runs", async () => {
@@ -171,14 +175,11 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    await expectEventCalls(1);
 
     expect(record.undo).toBeTypeOf("function");
     record.undo!();
-    await flushMicrotasks();
-
-    expect(postTypedEventMock).toHaveBeenCalledTimes(2);
+    await expectEventCalls(2);
     const undonePayload = postTypedEventMock.mock.calls[1][0].payload as {
       action_type: string;
       inverted_event_id: string;
