@@ -306,7 +306,13 @@ class DuckDbVssSubstrate:
         self._emb_col = self._VSS_COL if vss_active else "embedding"
 
     @classmethod
-    def open(cls, db_path: str, *, model: EmbeddingModel) -> DuckDbVssSubstrate:
+    def open(
+        cls,
+        db_path: str,
+        *,
+        model: EmbeddingModel,
+        skip_internal_copy: bool = False,
+    ) -> DuckDbVssSubstrate:
         """Open the substrate. Tries to build an HNSW index over a temp copy
         of the graph; falls back to a read-only brute-force connection if vss
         is unavailable or the index cannot be built.
@@ -321,7 +327,31 @@ class DuckDbVssSubstrate:
         ``chunks.embedding`` is an unsized ``FLOAT[]``, so we materialise a
         derived sized column ``embedding_vss FLOAT[dim]`` on the temp copy and
         index that. ``dim`` comes from the model (the contract guarantees
-        ``encode`` returns ``model.dimension`` floats)."""
+        ``encode`` returns ``model.dimension`` floats).
+
+        ``skip_internal_copy`` (ACV SPR-03 double-copy de-dup) — OWNERSHIP
+        CONTRACT. By default (False) the open() makes its OWN throwaway temp copy
+        of ``db_path`` and builds the index there, so it never writes the file it
+        was handed (correct when ``db_path`` is the live graph or any file this
+        substrate must not mutate). When True, the CALLER asserts that ``db_path``
+        is already a private, throwaway, isolated snapshot that the substrate is
+        free to build its HNSW index INTO directly — so we skip the
+        ``shutil.copy`` and connect read-WRITE to ``db_path`` itself, eliminating
+        the second full-DB copy. This drops the double-copy that
+        ``build_prod_retrieval_substrate`` (cascade_routes.py) otherwise pays:
+        that caller already mkdtemp's a per-launch snapshot, so an internal copy
+        is a redundant second ≈86 MB write on the single prod VM.
+
+        Lifecycle ownership under ``skip_internal_copy=True``: the CALLER owns the
+        ``db_path`` snapshot — the caller created it and the caller deletes it.
+        This substrate NEVER unlinks or rmtree's ``db_path`` (or its directory);
+        ``close()`` only closes the connection. On POSIX the caller may unlink the
+        snapshot the instant open() returns (it does): the read-write connection
+        pins the inode, so disk is reclaimed on ``close()`` — exactly the same
+        inode-pinning the vss-absent fallback (``connect_read(db_path)``) already
+        relies on. We index db_path IN PLACE, so by the time open() returns the
+        HNSW build is complete and committed; a subsequent caller-side unlink is
+        safe."""
         import shutil
         import tempfile
 
@@ -330,13 +360,20 @@ class DuckDbVssSubstrate:
             _log.warning("model.dimension is %r; brute-force fallback", dim)
             return cls(connect_read(db_path), model=model, vss_active=False)
 
-        scratch = tempfile.mkdtemp(prefix="antiek-vss-")
-        copy_path = os.path.join(scratch, "vss_index.duckdb")
-        try:
-            shutil.copy(db_path, copy_path)
-        except OSError as exc:  # pragma: no cover
-            _log.warning("could not copy graph for vss index (%s); brute-force fallback", exc)
-            return cls(connect_read(db_path), model=model, vss_active=False)
+        if skip_internal_copy:
+            # Caller owns db_path as a throwaway isolated snapshot — index it in
+            # place, no second copy. No ``scratch`` dir is created (the substrate
+            # makes no temp dir it would have to clean up), and the substrate
+            # never deletes the caller's db_path — that lifecycle is the caller's.
+            copy_path = db_path
+        else:
+            scratch = tempfile.mkdtemp(prefix="antiek-vss-")
+            copy_path = os.path.join(scratch, "vss_index.duckdb")
+            try:
+                shutil.copy(db_path, copy_path)
+            except OSError as exc:  # pragma: no cover
+                _log.warning("could not copy graph for vss index (%s); brute-force fallback", exc)
+                return cls(connect_read(db_path), model=model, vss_active=False)
 
         import duckdb
 
@@ -507,7 +544,13 @@ def make_substrate(
     """
     kind = (kind or _DEFAULT_SUBSTRATE).lower()
     if kind in ("vss", "duckdb-vss", "duckdb_vss", "default"):
-        return DuckDbVssSubstrate.open(db_path, model=model)
+        # ACV SPR-03: forward the optional ``skip_internal_copy`` flag (and only
+        # it — the vss adapter accepts no other adapter_kwargs) so a caller that
+        # already provides a throwaway isolated snapshot can drop the double-copy.
+        vss_kwargs: dict[str, Any] = {}
+        if "skip_internal_copy" in adapter_kwargs:
+            vss_kwargs["skip_internal_copy"] = bool(adapter_kwargs["skip_internal_copy"])
+        return DuckDbVssSubstrate.open(db_path, model=model, **vss_kwargs)
     if kind in ("brute_force", "bruteforce", "reference"):
         return BruteForceSubstrate.open(db_path, model=model)
     if kind == "turbopuffer":

@@ -158,38 +158,46 @@ def build_prod_retrieval_substrate() -> object | None:
       never writes the operator's graph). FRESHNESS (honest): reuse therefore sees
       the graph as of launch time, which is correct — reuse is read-only priming
       of a research that is about to start, not a live subscription.
-      KNOWN COST (SPR-03 owns ``retrieval_substrate.py``): when vss is loadable,
-      ``make_substrate("vss", ...)`` copies the snapshot AGAIN internally (one
-      extra copy held by the substrate's own connection). SPR-03 can add a
-      "caller already provided an isolated copy" flag to the substrate to drop
-      the double-copy; this sprint consumes the seam as-is rather than editing it.
-      DISK RECLAMATION for that internal copy is the substrate-CLOSE half of the
-      cleanup (``close_prod_retrieval_substrate`` on session teardown), below.
+      DOUBLE-COPY DE-DUP (ACV SPR-03 — landed): we pass
+      ``skip_internal_copy=True`` to ``make_substrate("vss", ...)`` because we
+      already own ``snapshot_path`` as a throwaway isolated copy. The substrate
+      therefore indexes our snapshot IN PLACE instead of making a SECOND internal
+      copy — one fewer full-DB (≈86 MB in prod) write per launch. The vss path's
+      read-write connection pins the snapshot's inode on POSIX, so STEP 1's eager
+      unlink still frees the dir entry immediately and DISK RECLAMATION for the
+      in-place index is the substrate-CLOSE half (``close_prod_retrieval_substrate``
+      on session teardown), below — the same close-half as before, now over one
+      copy rather than two.
 
     DISK CLEANUP (ACV SPR-02 round-2 — the leak this sprint must not introduce):
     the factory's own snapshot dir is reclaimed in TWO complementary steps so a
     single Hetzner VM does not accumulate full-DB-copy temp dirs per launch:
 
     1. **The factory's snapshot file is unlinked the instant ``open`` returns.**
-       This is provably safe on Linux/POSIX (VERIFIED on this platform):
-         * vss-active path — ``DuckDbVssSubstrate.open`` has by then COPIED the
-           snapshot into its OWN internal temp file and its connection reads that
-           copy, NOT our snapshot (verified by reading ``retrieval_substrate.py``
-           open(): it ``shutil.copy(db_path → copy_path)`` then
-           ``duckdb.connect(copy_path)`` and indexes the copy; the original
-           ``db_path`` snapshot is never re-read after open). So unlinking our
-           snapshot frees its disk immediately and the substrate keeps working.
+       This is provably safe on Linux/POSIX (VERIFIED on this platform). Under
+       ACV SPR-03's ``skip_internal_copy=True`` BOTH the vss-active and the
+       fallback paths now hold their connection on OUR snapshot directly (the
+       internal second copy is gone), so the inode-pinning argument is the same
+       for both:
+         * vss-active path — ``DuckDbVssSubstrate.open(skip_internal_copy=True)``
+           ``duckdb.connect``s OUR snapshot read-WRITE and builds + commits the
+           HNSW index INTO it before returning. By the time open() returns the
+           build is complete; unlinking the snapshot then removes the directory
+           entry while the open connection pins the inode (POSIX), so disk is
+           reclaimed when that connection closes (the close-half below). No
+           second copy is made or held.
          * fallback path (vss absent) — the substrate holds ``connect_read`` on
            OUR snapshot; unlinking removes the directory entry while the open
            connection pins the inode (POSIX), so disk is reclaimed when that
-           connection closes (the close-half below). VERIFIED: a read-only DuckDB
+           connection closes (the close-half below). VERIFIED: a DuckDB
            connection keeps serving rows after its backing file is unlinked.
        The unlink (and the empty-dir rmdir) are best-effort: a failure is logged
        and swallowed — cleanup failing must NEVER turn a working substrate into a
        failed launch.
     2. **The substrate connection is CLOSED on session completion** (see
-       ``close_prod_retrieval_substrate`` + ``_run_to_completion``), which frees
-       the vss-internal copy (vss-active) or releases the pinned inode (fallback).
+       ``close_prod_retrieval_substrate`` + ``_run_to_completion``), which
+       releases the pinned snapshot inode (now the SAME single copy on both the
+       vss-active and fallback paths).
 
     GRACEFUL DEGRADATION (binding): returns ``None`` on ANY failure (DB missing,
     model unavailable, VSS load fails, snapshot copy fails, AND if cleanup
@@ -231,23 +239,51 @@ def build_prod_retrieval_substrate() -> object | None:
         model = _embedding_provider()
         # Route through the one-factory seam the module docstring advertises
         # (retrieval_substrate.py:493) — make_substrate("vss", ...) dispatches to
-        # the same DuckDbVssSubstrate.open (verified: retrieval_substrate.py:514),
-        # but consuming the seam means SPR-03's planned "caller already provided
-        # an isolated copy" de-dup flag has a clean call site to land against.
-        substrate = make_substrate("vss", snapshot_path, model=model)
+        # the same DuckDbVssSubstrate.open.
+        #
+        # ACV SPR-03 double-copy de-dup: ``skip_internal_copy=True``. We already
+        # own ``snapshot_path`` as a private, throwaway, isolated copy (mkdtemp'd
+        # just above, unlinked just below), so the substrate need NOT make a
+        # SECOND internal copy — it indexes our snapshot in place. This drops the
+        # redundant ≈86 MB second write per launch on the single prod VM.
+        # OWNERSHIP (the contract the flag documents): WE own snapshot_path's
+        # lifecycle — we created it and we delete it (STEP 1 below); the substrate
+        # never unlinks it. The eager unlink stays safe because the substrate's
+        # read-write connection pins the snapshot's inode on POSIX (same inode-
+        # pinning the vss-absent fallback already relies on), so the disk is
+        # reclaimed when the connection closes (STEP 2, close-on-teardown).
+        substrate = make_substrate(
+            "vss", snapshot_path, model=model, skip_internal_copy=True,
+        )
 
-        # STEP 1 of disk cleanup — unlink the factory snapshot now (safe on this
-        # platform per the open() reasoning above). Best-effort: failure here is
-        # logged, not raised, so cleanup never breaks a working substrate.
+        # STEP 1 of disk cleanup — reclaim the WHOLE factory snapshot DIRECTORY
+        # now (safe on this platform per the open() reasoning above; under
+        # skip_internal_copy=True the substrate's read-write connection pins the
+        # snapshot's inode on POSIX, so removing the dir entries frees them and
+        # the disk is reclaimed on close()). We rmtree the entire ``scratch`` dir,
+        # not just unlink the .duckdb file, because the IN-PLACE index build (the
+        # SPR-03 de-dup) writes DuckDB SIDECARS into our dir — a ``.wal`` and a
+        # ``.write.lock`` next to the snapshot. The old "unlink the file then
+        # rmdir" left those sidecars behind, so the rmdir failed ("Directory not
+        # empty") and the empty-ish dir accumulated per launch. rmtree removes the
+        # snapshot + its sidecars + the dir in one step; VERIFIED on POSIX that a
+        # subsequent query on the still-open connection serves rows after the dir
+        # is rmtree'd (the inode is pinned). We keep the explicit ``os.unlink`` of
+        # the snapshot file FIRST so the graceful-degradation contract is exercised
+        # at the same call shape (test_factory_returns_substrate_even_if_eager_
+        # unlink_fails). Best-effort: any failure here is logged, not raised, so
+        # cleanup never breaks a working substrate.
         try:
             os.unlink(snapshot_path)
-            os.rmdir(scratch)
         except OSError as cleanup_exc:
             log.warning(
-                "could not eagerly reclaim reuse-snapshot %r (%s); it will be "
+                "could not eagerly unlink reuse-snapshot %r (%s); it will be "
                 "reclaimed when the substrate connection closes / on restart",
                 snapshot_path, cleanup_exc,
             )
+        # Remove the dir + any DuckDB sidecars (.wal / .write.lock) the in-place
+        # index left. ignore_errors so a partially-removed dir never fails launch.
+        shutil.rmtree(scratch, ignore_errors=True)
         return substrate
     except Exception as exc:  # noqa: BLE001 — reuse must never break a launch
         log.warning(
