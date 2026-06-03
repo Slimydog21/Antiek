@@ -21,8 +21,10 @@ const OPAQUE_SHADOW_BY_DEPTH = [
   "shadow-z3 dark:shadow-z3-night",
 ] as const;
 
-/** Glass windows: title-bar stamp only; depth does not scale body shadow. */
-const GLASS_TITLEBAR_SHADOW = "shadow-z1 dark:shadow-z1-night";
+/**
+ * Glass windows: shadow applies to the title bar only (body stays glass).
+ * Depth maps to the same z1–z3 tiers so stacked title bars read as a ladder.
+ */
 
 /** Window open cascade — must stay in sync with `windowsStore` `cascadeRect`. */
 export const CASCADE_WINDOW_STEP_PX = 28;
@@ -43,7 +45,8 @@ export const FLOATING_Z_BASE = 2;
  */
 export function shadowForStackDepth(depth: number, mode: ChromeMode): string {
   if (mode === "glass-scene") {
-    return GLASS_TITLEBAR_SHADOW;
+    const clamped = Math.max(0, Math.min(3, Math.round(depth)));
+    return OPAQUE_SHADOW_BY_DEPTH[clamped];
   }
   const clamped = Math.max(0, Math.min(3, Math.round(depth)));
   return OPAQUE_SHADOW_BY_DEPTH[clamped];

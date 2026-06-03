@@ -5,7 +5,7 @@
 | Primitive | Definition | Consumer |
 |-----------|------------|----------|
 | Opaque chunky card | `bg-ice-0` / `dark:bg-charcoal-2`, `border-edge border-sun`, depth-mapped `shadow-z*` | Floating `PanelLayoutPanel` |
-| Glass scene window | `bg-glass` + blur when focused; glass border frame | `WorkspaceWindow` |
+| Glass scene window | `bg-glass` + blur when focused; **title-bar** depth shadow only | `WorkspaceWindow` |
 | Hover-lift | `motion.ts` `press` / `cardLift` on handles and cards | FEEL-S2/S4 |
 | Cascade | ≥20px stagger; prior edge visible | Both stores via `cascadeOffset()` |
 | Focus ring | outline on panel/window chrome | FEEL-S5 |
