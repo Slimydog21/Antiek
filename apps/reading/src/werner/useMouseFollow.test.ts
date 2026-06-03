@@ -20,7 +20,6 @@ import {
   LAG_MS,
   POINTER_IDLE_MS,
   SAMPLE_INTERVAL_MS,
-  centerLaggedTarget,
   useMouseFollow,
 } from "./useMouseFollow";
 
@@ -135,36 +134,6 @@ describe("useMouseFollow", () => {
     expect(reading.target).toBeNull();
     expect(reading.pointerIdle).toBe(true);
     addSpy.mockRestore();
-  });
-
-  it("exposes live at B while lagged target remains near A after a jump", () => {
-    const { result } = renderHook(() => useMouseFollow({ now }));
-    movePointer(100, 100);
-    advance(LAG_MS + SAMPLE_INTERVAL_MS);
-    movePointer(900, 700);
-    advance(SAMPLE_INTERVAL_MS * 2);
-    const reading = result.current.read();
-    expect(reading.live).toEqual({ x: 900, y: 700 });
-    expect(reading.target!.x).toBeLessThan(300);
-    expect(reading.tabHidden).toBe(false);
-  });
-
-  it("centerLaggedTarget offsets by half mascot size", () => {
-    expect(centerLaggedTarget({ x: 100, y: 200 }, 64)).toEqual({
-      x: 68,
-      y: 168,
-    });
-    expect(centerLaggedTarget(null, 64)).toBeNull();
-  });
-
-  it("reports tabHidden when the document is hidden", () => {
-    const { result } = renderHook(() => useMouseFollow({ now }));
-    movePointer(10, 10);
-    Object.defineProperty(document, "hidden", { value: true, configurable: true });
-    act(() => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-    expect(result.current.read().tabHidden).toBe(true);
   });
 
   it("pauses sampling when the tab is hidden (no background work)", () => {

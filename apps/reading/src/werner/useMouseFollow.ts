@@ -1,10 +1,7 @@
 import { useEffect, useRef } from "react";
 
 /**
- * useMouseFollow (SPR-05 / WERNER-ICE) — sample-delay lagged hook + live bait read.
- *
- * Lag budget (honest): LAG_MS sample delay in this hook; mascot reel closes the
- * gap in PenguinMascot (REEL_TAU_MS). Idle roam uses ROAM_STROLL_MS / REST_* only.
+ * useMouseFollow (SPR-05) — the ~0.5-second-LAGGED cursor pursuit.
  *
  * It is a SAMPLE-DELAY pursuit, not an ease-time-constant chase. We record
  * the pointer into a small ring buffer stamped with the (fake-clock-aware)
@@ -36,14 +33,17 @@ import { useEffect, useRef } from "react";
  * hidden (we stop sampling on visibilitychange) — no work between wakeups.
  */
 
-/** ~0.5 seconds sample-delay for the lagged hook (WERNER-ICE lag budget). */
+/** ~0.5 seconds. A snappy, responsive follow that reads as a lively companion
+ *  rather than a sleepy one. The ring buffer holds ~500ms of 120ms samples. */
 export const LAG_MS = 500;
 
 /**
- * Pointer ring sampling interval. 60ms ≈ 16.7 samples/sec inside a 500ms window
- * (WERNER-ICE SPR-13) — halves quantization error vs 120ms at the same LAG_MS.
+ * How often we snapshot the pointer into the ring. 120ms ≈ 8 samples/sec —
+ * fine enough that the 0.5s-old point is well-resolved, coarse enough that the
+ * buffer stays tiny and we don't do per-mousemove work. We sample on a timer,
+ * not on every `mousemove`, so a frantic mouse can't flood the buffer.
  */
-export const SAMPLE_INTERVAL_MS = 60;
+export const SAMPLE_INTERVAL_MS = 120;
 
 /**
  * Lazy ease toward the lagged point, applied by the CALLER per roam leg. A
@@ -74,10 +74,6 @@ export interface FollowReading {
   /** Where the mouse was ~LAG_MS ago, or null if we can't/shouldn't follow
    *  (reduced motion, no samples yet, or the pointer never entered). */
   target: { x: number; y: number } | null;
-  /** Live pointer (client coords). Null when disabled or no move yet. */
-  live: { x: number; y: number } | null;
-  /** True when the document is hidden — bait/line should hide. */
-  tabHidden: boolean;
   /** True when the pointer has been still for >= POINTER_IDLE_MS — the
    *  caller should wander rather than follow. */
   pointerIdle: boolean;
@@ -85,20 +81,8 @@ export interface FollowReading {
   ease: number;
 }
 
-/** Mascot top-left from a lagged client point (hook centering). */
-export function centerLaggedTarget(
-  lagged: { x: number; y: number } | null,
-  mascotSize: number,
-): { x: number; y: number } | null {
-  if (!lagged) return null;
-  const half = mascotSize / 2;
-  return { x: lagged.x - half, y: lagged.y - half };
-}
-
 const FROZEN_READING: FollowReading = {
   target: null,
-  live: null,
-  tabHidden: true,
   pointerIdle: true,
   ease: FOLLOW_EASE,
 };
@@ -130,7 +114,6 @@ export function useMouseFollow(
   const head = useRef(0); // next write index (wraps)
   const count = useRef(0); // number of valid samples
   const lastMove = useRef<{ x: number; y: number; t: number } | null>(null);
-  const tabHiddenRef = useRef(false);
 
   // A stable `now` for the lifetime of the hook (tests inject a fake clock).
   const nowRef = useRef<() => number>(
@@ -149,18 +132,7 @@ export function useMouseFollow(
     read: (): FollowReading => {
       if (disabledRef.current) return FROZEN_READING;
       const buf = ring.current;
-      if (count.current === 0) {
-        const live = lastMove.current
-          ? { x: lastMove.current.x, y: lastMove.current.y }
-          : null;
-        return {
-          target: null,
-          live,
-          tabHidden: tabHiddenRef.current,
-          pointerIdle: true,
-          ease: FOLLOW_EASE,
-        };
-      }
+      if (count.current === 0) return { target: null, pointerIdle: true, ease: FOLLOW_EASE };
 
       const now = nowRef.current();
       const cutoff = now - LAG_MS;
@@ -178,29 +150,11 @@ export function useMouseFollow(
         if (s.t <= cutoff) chosen = s; // keep advancing → newest ≤ cutoff
       }
       const point = chosen ?? oldest;
-      if (!point) {
-        const live = lastMove.current
-          ? { x: lastMove.current.x, y: lastMove.current.y }
-          : null;
-        return {
-          target: null,
-          live,
-          tabHidden: tabHiddenRef.current,
-          pointerIdle: true,
-          ease: FOLLOW_EASE,
-        };
-      }
+      if (!point) return { target: null, pointerIdle: true, ease: FOLLOW_EASE };
 
       const last = lastMove.current;
       const pointerIdle = last ? now - last.t >= POINTER_IDLE_MS : true;
-      const live = last ? { x: last.x, y: last.y } : null;
-      return {
-        target: { x: point.x, y: point.y },
-        live,
-        tabHidden: tabHiddenRef.current,
-        pointerIdle,
-        ease: FOLLOW_EASE,
-      };
+      return { target: { x: point.x, y: point.y }, pointerIdle, ease: FOLLOW_EASE };
     },
   });
 
@@ -248,13 +202,11 @@ export function useMouseFollow(
     };
 
     const onVisibility = () => {
-      tabHiddenRef.current = document.hidden;
       // Pause sampling when the tab is hidden — no background work, and on
       // return we don't backfill a bogus straight-line jump.
       if (document.hidden) stopSampling();
       else startSampling();
     };
-    tabHiddenRef.current = document.hidden;
 
     window.addEventListener("pointermove", onPointerMove, { passive: true });
     document.addEventListener("visibilitychange", onVisibility);

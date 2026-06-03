@@ -5,18 +5,12 @@ import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
-  centerLaggedTarget,
   createWernerStage,
   EmoteView,
+  FOLLOW_EASE,
   installChoreography,
   installTargetChoreography,
-  isReelSettled,
-  reelStep,
-  ROAM_REST_MAX_MS,
-  ROAM_REST_MIN_MS,
-  ROAM_STROLL_MS,
   useMouseFollow,
-  wernerIceFishingCursor,
   type EmoteKind,
   type StageHost,
   type WernerStageController,
@@ -210,9 +204,9 @@ export function PenguinMascot() {
   useEffect(() => {
     if (reduceMotion || typeof window === "undefined") return;
 
-    const STROLL_MS = wernerIceFishingCursor ? ROAM_STROLL_MS : 800;
-    const REST_MIN_MS = wernerIceFishingCursor ? ROAM_REST_MIN_MS : 300;
-    const REST_MAX_MS = wernerIceFishingCursor ? ROAM_REST_MAX_MS : 800;
+    const STROLL_MS = 800; // snappy legs for a responsive follow
+    const REST_MIN_MS = 300;
+    const REST_MAX_MS = 800;
 
     roamRearm.current = (delay = REST_MIN_MS) => {
       if (roamTimer.current !== null) window.clearTimeout(roamTimer.current);
@@ -264,20 +258,19 @@ export function PenguinMascot() {
     strollRef.current = strollTo;
     restGaitRef.current = restGait;
 
-    // Bounded random wander when pointer idle or follow off. WERNER-ICE reel
-    // mode handles active follow separately (no hop-biased pursuit).
+    // Pick the next ambient hop target. Biased toward the ~0.5s-lagged cursor
+    // (a snappy eased pursuit — close most of the gap toward where the mouse was
+    // ~0.5s ago) when following + the pointer is moving; otherwise the original
+    // bounded random wander (a short hop, not a teleport). Either way clamped.
     const nextHopTarget = (vw: number, vh: number) => {
       const reach = Math.max(120, Math.min(vw, vh) * 0.22);
       const reading = follow.read();
-      if (
-        !wernerIceFishingCursor &&
-        following.current &&
-        reading.target &&
-        !reading.pointerIdle
-      ) {
+      if (following.current && reading.target && !reading.pointerIdle) {
+        // Eased pursuit: close most of the gap toward the lagged point so
+        // he follows promptly rather than drifting lazily.
         const dx = reading.target.x - pos.current.x;
         const dy = reading.target.y - pos.current.y;
-        const ease = reading.ease ?? 0.75;
+        const ease = reading.ease ?? FOLLOW_EASE;
         return clampRectToViewport(
           {
             x: pos.current.x + dx * ease,
@@ -304,14 +297,7 @@ export function PenguinMascot() {
       const el = buttonRef.current;
       // Don't wander mid-drag (the pointer owns position) or while the stage is
       // driving a directed walk (it owns position then) — just re-check soon.
-      if (
-        !el ||
-        dragStart.current ||
-        roamPaused.current ||
-        (wernerIceFishingCursor &&
-          following.current &&
-          !follow.read().pointerIdle)
-      ) {
+      if (!el || dragStart.current || roamPaused.current) {
         roamTimer.current = window.setTimeout(stepOnce, REST_MIN_MS);
         return;
       }
@@ -347,82 +333,6 @@ export function PenguinMascot() {
         bobRef.current.classList.remove("werner-step");
       }
     };
-  }, [reduceMotion, applyPos, follow]);
-
-  // ── WERNER-ICE SPR-15: reel-mode pursuit toward centered lagged hook. ──
-  useEffect(() => {
-    if (
-      reduceMotion ||
-      !wernerIceFishingCursor ||
-      typeof window === "undefined"
-    ) {
-      return;
-    }
-
-    let raf = 0;
-    let last = performance.now();
-
-    const setReelGait = (walking: boolean) => {
-      const bob = bobRef.current;
-      const el = buttonRef.current;
-      if (!bob || !el) return;
-      if (walking) {
-        bob.classList.remove("penguin-mascot-wander");
-        bob.classList.add("werner-waddle");
-        el.style.transition = "";
-      } else {
-        bob.classList.remove("werner-waddle");
-        bob.classList.remove("werner-step");
-        bob.classList.add("penguin-mascot-wander");
-      }
-    };
-
-    const tick = (now: number) => {
-      const dt = Math.min(48, now - last);
-      last = now;
-      const reading = follow.read();
-      const reelActive =
-        following.current &&
-        !reading.pointerIdle &&
-        !roamPaused.current &&
-        !dragStart.current &&
-        reading.target;
-
-      if (!reelActive) {
-        setReelGait(false);
-        if (roamRearm.current && roamTimer.current === null) {
-          roamRearm.current(ROAM_REST_MIN_MS);
-        }
-        raf = window.requestAnimationFrame(tick);
-        return;
-      }
-
-      if (roamTimer.current !== null) {
-        window.clearTimeout(roamTimer.current);
-        roamTimer.current = null;
-      }
-
-      const hook = centerLaggedTarget(reading.target, MASCOT_SIZE);
-      if (!hook) {
-        raf = window.requestAnimationFrame(tick);
-        return;
-      }
-
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      const clamped = clampRectToViewport(
-        { ...hook, width: MASCOT_SIZE, height: MASCOT_SIZE },
-        { width: vw, height: vh },
-      );
-      const next = reelStep(pos.current, { x: clamped.x, y: clamped.y }, dt);
-      pos.current = next;
-      applyPos();
-      setReelGait(!isReelSettled(pos.current, { x: clamped.x, y: clamped.y }));
-      raf = window.requestAnimationFrame(tick);
-    };
-
-    raf = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(raf);
   }, [reduceMotion, applyPos, follow]);
 
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
