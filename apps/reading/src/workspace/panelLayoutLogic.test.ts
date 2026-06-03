@@ -114,11 +114,13 @@ describe("reorderArray", () => {
 });
 
 describe("initialFloatingRect", () => {
-  it("cascades position based on z (each subsequent panel shifts ~22px)", () => {
+  it("cascades position by stack index (~22px per panel)", () => {
+    const r0 = initialFloatingRect(0);
     const r1 = initialFloatingRect(1);
-    const r2 = initialFloatingRect(2);
-    expect(r2.x).toBeGreaterThan(r1.x);
-    expect(r2.y).toBeGreaterThan(r1.y);
+    expect(r1.x).toBeGreaterThan(r0.x);
+    expect(r1.y).toBeGreaterThan(r0.y);
+    expect(r1.x - r0.x).toBe(22);
+    expect(r1.y - r0.y).toBe(22);
   });
 
   it("returns the same default size", () => {

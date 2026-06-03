@@ -2,6 +2,8 @@ import { motion } from "framer-motion";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
+import { opaquePanelShadowClasses } from "../design/elevation";
+
 import { PanelHandle } from "./PanelHandle";
 import { PanelRegistry } from "./PanelRegistry";
 import { useWorkspace } from "./WorkspaceStore";
@@ -136,6 +138,7 @@ export function PanelLayoutPanel({ id }: Props) {
 
   // floating
   if (panel.mode === "floating") {
+    const shadow = opaquePanelShadowClasses(panel.zIndex, isFocused);
     return (
       <motion.div
         layout={false}
@@ -159,9 +162,10 @@ export function PanelLayoutPanel({ id }: Props) {
           "bg-ice-0 dark:bg-charcoal-2 " +
           "border-edge border-sun rounded-hog " +
           "flex flex-col overflow-hidden " +
+          shadow +
           (isFocused
-            ? "shadow-z3 dark:shadow-z3-night outline outline-2 outline-offset-[3px] outline-ink dark:outline-bright"
-            : "shadow-z2 dark:shadow-z2-night opacity-95")
+            ? " outline outline-2 outline-offset-[3px] outline-ink dark:outline-bright"
+            : " opacity-95")
         }
         onMouseDownCapture={onMouseDownRaise}
         role="region"
