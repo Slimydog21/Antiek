@@ -1,7 +1,9 @@
 """SR-01 — retrieval_gate.py is the single non-privileged chunk-filter SQL emitter.
 
 Pins the canonical denylist (restricted_pending_opt_in + personal_reading),
-NULL fail-closed (no ``IS NULL OR`` carve-out), and search() delegation so a
+the NULL ``IS NULL OR`` grandfather carve-out (legacy rows stay searchable —
+SR-07's fail-closed flip is deferred behind the SR-06 prod backfill,
+GATE-BACKFILL-DONE, and was dropped from #65), and search() delegation so a
 RESTRICTED-only revert cannot slip personal_reading onto the default policy_tag
 path.
 """
@@ -51,7 +53,9 @@ def test_restricted_only_predicate_would_leak_personal_reading():
 
 def test_default_policy_tag_clause_binds_full_denylist():
     sql, params = non_privileged_chunk_sql_clause(policy_tag="attribution_eligible")
-    assert "content_class IS NULL" not in sql
+    # NULL content_class is GRANDFATHERED (legacy rows stay searchable); the
+    # SR-07 fail-closed flip was rejected for #65 (see retrieval_gate docstring).
+    assert "content_class IS NULL" in sql
     assert "content_class NOT IN" in sql
     assert "personal_reading" in params
     assert "restricted_pending_opt_in" in params

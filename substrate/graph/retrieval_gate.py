@@ -15,9 +15,11 @@ Book public serve uses an **allowlist** (``SERVABLE_CONTENT_CLASSES`` in
 ``substrate/books/serve.py``). Different polarity; the withheld classes must
 not intersect the servable allowlist — see ``tests/test_retrieval_gate_polarity``.
 
-NULL ``content_class`` **fails closed** on the non-privileged path (ASR SR-07):
-an unknown/legacy class is withheld, not served. Deny-by-default on the money
-path — both the SQL clause and ``is_chunk_body_withheld`` enforce it.
+NULL ``content_class`` is **grandfathered** (served/searchable) on every path:
+new ingest always writes an explicit class via ``register_source_document``, so
+NULL denotes only legacy pre-migration rows, which the codebase serves by
+contract. ASR SR-07's NULL-fail-closed flip was rejected for #65 (it hid legacy
+content from search with no backfill); reconsider only with a legacy migration.
 """
 
 from __future__ import annotations
@@ -87,10 +89,17 @@ def non_privileged_chunk_sql_clause(
     """SQL fragment + bind params for the non-privileged chunk gate.
 
     On a non-privileged ``policy_tag``, returns a WHERE clause that excludes
-    every member of ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES``. NULL
-    ``content_class`` fails closed (excluded — not in the denylist, so SQL
-    ``NOT IN`` does not match NULL). On a privileged tag
+    every member of ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES`` while
+    GRANDFATHERING NULL ``content_class`` (legacy rows remain searchable). New
+    ingest always writes an explicit class via ``register_source_document``, so
+    NULL denotes only pre-migration legacy content, which the codebase serves by
+    contract (``test_sprint11_api::test_get_chunk_null_content_class_grandfathered``,
+    ``test_graph``, ``test_grounding``). On a privileged tag
     (``private_research`` / ``operator_only``), returns ``("", [])``.
+
+    NOTE: ASR SR-07 proposed flipping NULL fail-closed here; that was rejected for
+    #65 because it hides legacy content from search/grounding with no backfill.
+    Reconsider only paired with a legacy-NULL → explicit-class migration.
 
     Args:
         table_alias: Alias of the ``documents`` row in the query (default ``d``).
@@ -100,7 +109,10 @@ def non_privileged_chunk_sql_clause(
         return "", []
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
     placeholders = ",".join("?" for _ in excluded)
-    sql = f" AND ({table_alias}.content_class NOT IN ({placeholders}))"
+    sql = (
+        f" AND ({table_alias}.content_class IS NULL OR "
+        f"{table_alias}.content_class NOT IN ({placeholders}))"
+    )
     return sql, excluded
 
 

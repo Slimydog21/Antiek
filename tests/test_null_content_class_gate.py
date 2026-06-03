@@ -1,10 +1,17 @@
-"""SR-07 — NULL ``content_class`` fail-closed on non-privileged retrieval.
+"""NULL ``content_class`` is GRANDFATHERED on retrieval (search + VSS + HTTP).
 
-After GATE-BACKFILL-DONE, the canonical gate drops the legacy
-``content_class IS NULL OR`` carve-out. Only the denylist
-(``restricted_pending_opt_in`` + ``personal_reading``) applies; unknown /
-NULL classes are withheld on ``attribution_eligible`` and still visible on
-privileged paths (no gate clause).
+ASR SR-07 proposed dropping the legacy ``content_class IS NULL OR`` carve-out
+(fail-closed on NULL). That was REJECTED for #65: new ingest always writes an
+explicit class via ``register_source_document``, so NULL denotes only legacy
+pre-migration rows, and the codebase serves those by contract
+(``test_sprint11_api::test_get_chunk_null_content_class_grandfathered``,
+``test_graph``, ``test_grounding``). Re-introducing NULL-fail-closed must be
+paired with a legacy-NULL → explicit-class backfill.
+
+This test pins the grandfathered contract: NULL rows surface on the
+non-privileged ``attribution_eligible`` path (and on privileged paths), and the
+canonical SQL fragment keeps the ``IS NULL OR`` carve-out — with VSS /
+brute_force delegating the identical gate.
 """
 
 from __future__ import annotations
@@ -26,7 +33,7 @@ from substrate.graph.search import search
 
 DOC_PUBLIC = "doc-pd-null"
 DOC_LEGACY = "doc-null-legacy"
-QUERY = "quantum optics null gate SR07"
+QUERY = "quantum optics null gate grandfather"
 
 
 class StubEmbedding:
@@ -42,20 +49,20 @@ class StubEmbedding:
         ]
 
 
-def test_non_privileged_sql_has_no_null_carve_out():
-    """Canon fragment is denylist-only — no ``IS NULL OR`` grandfather."""
+def test_non_privileged_sql_grandfathers_null():
+    """Canon fragment keeps the ``IS NULL OR`` grandfather + the denylist."""
     sql, params = non_privileged_chunk_sql_clause(policy_tag="attribution_eligible")
-    assert "content_class IS NULL" not in sql
+    assert "content_class IS NULL" in sql
     assert "content_class NOT IN" in sql
     assert params == sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
 
 
 @pytest.fixture
 def null_gate_db():
-    tmp = tempfile.mkdtemp(prefix="antiek-sr07-null-")
+    tmp = tempfile.mkdtemp(prefix="antiek-null-grandfather-")
     db_path = os.path.join(tmp, "graph.duckdb")
     emb = StubEmbedding()
-    con = connect_write(db_path, purpose="sr07-null-seed")
+    con = connect_write(db_path, purpose="null-grandfather-seed")
     try:
         init_database(con)
         for doc_id, content_class, text in (
@@ -83,8 +90,8 @@ def null_gate_db():
     yield {"db_path": db_path, "model": emb}
 
 
-def test_search_default_policy_excludes_null_content_class(null_gate_db):
-    """NULL ``content_class`` must not surface on ``attribution_eligible``."""
+def test_search_default_policy_grandfathers_null_content_class(null_gate_db):
+    """NULL ``content_class`` (legacy) surfaces on ``attribution_eligible``."""
     con = connect_read(null_gate_db["db_path"])
     try:
         res = search(
@@ -98,8 +105,9 @@ def test_search_default_policy_excludes_null_content_class(null_gate_db):
         con.close()
     doc_ids = {r["document_id"] for r in res["results"]}
     assert DOC_PUBLIC in doc_ids
-    assert DOC_LEGACY not in doc_ids, (
-        "NULL content_class leaked under default policy_tag; gate must fail closed"
+    assert DOC_LEGACY in doc_ids, (
+        "NULL content_class (legacy) must remain searchable — grandfathered "
+        "contract; new ingest writes an explicit class so NULL = legacy only"
     )
 
 
@@ -121,7 +129,7 @@ def test_search_operator_only_includes_null_content_class(null_gate_db):
 
 
 @pytest.mark.parametrize("kind", ["vss", "brute_force"])
-def test_vss_parity_excludes_null_on_attribution_eligible(null_gate_db, kind):
+def test_vss_parity_grandfathers_null_on_attribution_eligible(null_gate_db, kind):
     """VSS / brute_force delegate the same canon gate as ``search()``."""
     sub = make_substrate(kind, null_gate_db["db_path"], model=null_gate_db["model"])
     try:
@@ -130,6 +138,7 @@ def test_vss_parity_excludes_null_on_attribution_eligible(null_gate_db, kind):
         sub.close()
     doc_ids = {r["document_id"] for r in res["results"]}
     assert DOC_PUBLIC in doc_ids
-    assert DOC_LEGACY not in doc_ids, (
-        f"{kind} leaked NULL content_class under attribution_eligible"
+    assert DOC_LEGACY in doc_ids, (
+        f"{kind} dropped NULL content_class under attribution_eligible; the "
+        "grandfather carve-out must apply identically on every retrieval path"
     )
