@@ -1,0 +1,12 @@
+{
+  "_comment": "The known-red escape valve for the reachability gate. A probe listed here is INTENTIONALLY red during a fix window; the runner reports its RED but does NOT fail the build until 'until_date' passes (UTC), after which the valve self-closes and the red fails the run again. An entry MUST carry a tracking link ('until_issue_link') and a hard expiry ('until_date', YYYY-MM-DD) so the valve can never silently become permanent. Shrink this list as fixes land; deleting the last entry returns the gate to strict. See ../README.md and docs/decisions/reachability-gate.md.",
+  "probes": [
+    {
+      "probe_id": "flywheel",
+      "until_issue_link": "specs/antiek-convergence/sprint-02-wire-flywheel.html (SPR-02 — wire retrieval_substrate into cascade_routes.py:367; file a GitHub issue and swap its URL in here when one is opened)",
+      "until_date": "2026-07-03",
+      "_why": "RED on purpose: SPR-01 SHIPS the gate FIRST, before the flywheel is wired, precisely so SPR-02's fix is verified by a probe that is demonstrably red today (cascade_routes.py:367 omits retrieval_substrate -> host_local.py:259 early-returns the reuse hook -> 0 knowledge.reused events). SPR-02 removes this entry when it turns the probe GREEN.",
+      "_expiry_source": "Set 2026-06-03 (SPR-01 ship date) + ~1 month. SPR-02 is the immediately-next sprint in Wave 1, so a one-month window is generous headroom for a single keystone-blocking fix. If SPR-02 slips past 2026-07-03 the valve closes and the gate reds, forcing an explicit operator decision (extend the date with a fresh justification, or land the fix) rather than letting the dead flywheel hide behind an open valve indefinitely."
+    }
+  ]
+}

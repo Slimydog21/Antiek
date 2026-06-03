@@ -452,18 +452,52 @@
         antiek_expected_sha: "{{ git_pull.after | default(deployed_head.stdout | trim) }}"
       tags: [verify]
 
-    # Run from the control node (delegate_to: localhost) so we exercise the
-    # full public Caddy → uvicorn path, exactly like the /health task above.
-    # tools/prod_parity/check.py exits non-zero on a parity failure;
-    # `ansible.builtin.command` fails the play on that. This task has NO
-    # `when:` guard on purpose — the blocking gate must fire on every deploy
-    # shape, never silently skip itself.
-    - name: prod-parity assert — deployed SHA == box HEAD + providers live
+    # ── Flywheel-liveness re-arm toggle (Antiek Convergence SPR-01 / M6) ──
+    # `antiek_require_flywheel` appends `--require-flywheel` to the parity
+    # check, promoting flywheel-liveness back to a BLOCKING post-deploy assert
+    # (a deploy that brings up a dead flywheel FAILS the play). Default is
+    # FALSE — and that is deliberate, NOT a weakening:
+    #
+    #   * #68 (commit 873d95b0, docs/decisions/prod-parity-flywheel-
+    #     informational.md) demoted flywheel-liveness to informational because
+    #     prod is dead for TWO reasons, and only ONE is a code defect:
+    #       (a) the WIRE is dead — cascade_routes.py:367 omits
+    #           retrieval_substrate (Antiek Convergence SPR-02 fixes this), and
+    #       (b) prod is an EMPTY CORPUS — flywheel_ready also needs >=1
+    #           knowledge.reused event from real research activity, which needs
+    #           a corpus ingest (operator-gated; arXiv 429-banned).
+    #   * Forcing --require-flywheel ON now would red EVERY correct deploy on
+    #     the empty box — the exact false-block #68 removed. So we keep it OFF
+    #     by default and gate the flip on BOTH conditions being true.
+    #
+    # FLIP TO TRUE (set `antiek_require_flywheel: true`, e.g. -e on the
+    # command line or in group_vars) ONLY when BOTH hold — see
+    # infrastructure/runbooks/flywheel-prod-cutover.md:
+    #     (1) SPR-02 has landed the wire on the deployed SHA, AND
+    #     (2) an operator corpus ingest has produced >=1 knowledge.reused
+    #         event on prod (`/health` knowledge_reuse_count >= 1).
+    # After the flip, a REGRESSION to a dead flywheel reds the deploy again
+    # (the original SPR-11 intent, correctly sequenced after the wire + corpus
+    # exist). This AGREES with the reachability gate's known-red window
+    # (tools/reachability/known_red.json + docs/decisions/reachability-gate.md):
+    # the flywheel is allowed red only during the SPR-01 -> SPR-02 fix window;
+    # the in-process reachability probe greens on the WIRE alone (no corpus
+    # needed), while this deploy assert additionally requires the prod corpus.
+    - name: prod-parity assert — deployed SHA == box HEAD + providers live (+ flywheel when re-armed)
       ansible.builtin.command:
+        # Run from the control node (delegate_to: localhost) so we exercise the
+        # full public Caddy → uvicorn path, exactly like the /health task above.
+        # tools/prod_parity/check.py exits non-zero on a parity failure;
+        # `ansible.builtin.command` fails the play on that. This task has NO
+        # `when:` guard on purpose — the blocking gate must fire on every deploy
+        # shape, never silently skip itself. SHA + providers always block;
+        # --require-flywheel (appended when antiek_require_flywheel is true)
+        # additionally blocks on flywheel liveness.
         cmd: >-
           python {{ playbook_dir }}/../../../tools/prod_parity/check.py
           --url https://{{ api_domain }}
           --expected-sha {{ antiek_expected_sha }}
+          {{ '--require-flywheel' if (antiek_require_flywheel | default(false) | bool) else '' }}
       delegate_to: localhost
       become: false
       changed_when: false

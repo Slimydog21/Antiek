@@ -329,6 +329,74 @@ jobs:
         run: |
           python -m pytest compounding/benchmark/tests/ -q -m "not slow" -p no:cacheprovider
 
+  reachability:
+    name: reachability
+    runs-on: ubuntu-latest
+    # Antiek Convergence SPR-01 (keystone). The OUTCOME-asserting reachability
+    # gate: boot the app via the production create_app() factory, drive each
+    # feature through its real route, and assert an observable outcome. This is
+    # the gate the dead flywheel slipped past — every prior gate verified a
+    # BRICK (unit/contract/mocked harness), none verified a feature is REACHABLE
+    # FROM PROD. It runs in its OWN job (not a tail step of `pytest`) so a
+    # reachability failure is unmissable and gets a fresh runner — same reasons
+    # as the `keystone` job above. Distinct from the STATIC zero-importer lint
+    # `tools/lint/reachability_gate.py` in the pytest job (that one: "nothing
+    # imports/links this code"; this one: "the feature does not actually work
+    # end-to-end from the factory"). See tools/reachability/README.md and
+    # docs/decisions/reachability-gate.md.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+      - name: Install Antiek + dev deps
+        # Same dependency set the app needs to boot (mirrors the `pytest` and
+        # `keystone` jobs) so the runner's create_app() succeeds.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+      - name: Reachability probe gate (outcome-asserting — BLOCKING)
+        # Runs the per-feature reachability probes. BLOCKING: the step's
+        # pass/fail is EXACTLY the runner's exit code — NO `|| echo` swallow,
+        # NO `continue-on-error`, NO `::warning::`-only (mirrors the `pytest`
+        # step's contract, NOT the informational latency step's). A BLOCKED
+        # probe outside an unexpired known-red window reds the PR.
+        #
+        # During the SPR-01 -> SPR-02 window the flywheel probe is INTENTIONALLY
+        # red (the wire isn't landed yet — that is SPR-02). It is listed in
+        # tools/reachability/known_red.json with a linked SPR-02 reference + a
+        # hard expiry (2026-07-03), so the runner reports its RED but exits 0
+        # WITHOUT faking green and WITHOUT the red being ignored forever: when
+        # SPR-02 lands it deletes the entry (the probe goes green on its own);
+        # if SPR-02 slips past the expiry the valve self-closes and THIS step
+        # reds, forcing an explicit decision. Leave paid-provider keys unset so
+        # the boot uses the credential-empty path (the reuse step is graph-only,
+        # verified SPR-01 M1).
+        env:
+          DEEPSEEK_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          HERMES_API_KEY: ""
+          XAI_API_KEY: ""
+          OPENAI_API_KEY: ""
+          ANTIEK_OPERATOR_TOKEN: ""
+        run: |
+          python -m tools.reachability.probe_runner
+      - name: Reachability runner self-test (non-vacuity)
+        # Proves the runner's exit semantics are real (BLOCKED on a false
+        # outcome, REACHABLE on a true one, the known-red valve opens on an
+        # unexpired entry + self-closes on an expired one). A gate that can
+        # only ever exit 0 is the false-confidence disease this whole gate
+        # exists to cure — this test forbids that.
+        run: |
+          python -m pytest tests/test_reachability_runner.py -q -p no:cacheprovider
+
   tsc:
     name: tsc
     runs-on: ubuntu-latest

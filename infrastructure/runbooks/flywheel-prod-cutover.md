@@ -15,6 +15,23 @@ prod-shaped benchmark run; the cutover deploy itself is the routine
 > prod-shaped benchmark**. The live prod-shaped run and the cutover are
 > operator gates. This document makes the cutover *evidenced*, not *asserted*.
 
+> **2026-06-03 UPDATE — flywheel-liveness is no longer blocking-by-default on
+> deploy.** Commit `873d95b0` (PR #68,
+> `docs/decisions/prod-parity-flywheel-informational.md`) **demoted** the
+> deploy-time flywheel-liveness assert from blocking to **informational**,
+> because prod is dead for TWO reasons and only one is a code defect: (a) the
+> reuse WIRE is dead at the prod entrypoint (`cascade_routes.py:367` omits
+> `retrieval_substrate`; **Antiek Convergence SPR-02** fixes this), and (b)
+> prod is an **empty corpus** (no `knowledge.reused` events from real research
+> activity yet — needs a corpus ingest; arXiv is 429-banned). Forcing the
+> assert on the empty box would red every correct deploy. The deploy task now
+> takes an **`antiek_require_flywheel`** toggle (default `false`); set it
+> `true` only when BOTH the wire (SPR-02) and a prod corpus exist — see the
+> re-arm step below. This AGREES with the new reachability gate's known-red
+> window (`docs/decisions/reachability-gate.md`): the flywheel is allowed red
+> only during SPR-01 → SPR-02; the in-process reachability probe greens on the
+> WIRE alone, this deploy assert additionally needs the corpus.
+
 ---
 
 ## What "the flywheel" means here
@@ -64,20 +81,24 @@ that proves it.
    *Reconsider-if* below. Never swap real dispatch back to mocks or soften the
    tolerance to manufacture a green.
 
-2. **The extended parity assert is green against LIVE prod.** Run exactly as
-   the deploy does:
+2. **The parity assert is green against LIVE prod — including the flywheel,
+   verified with `--require-flywheel`.** Post-#68 the flywheel is informational
+   by default, so to *gate the cutover on it* you must opt in explicitly:
 
    ```bash
    python tools/prod_parity/check.py \
        --url https://api.antiek.ai \
-       --expected-sha $(git rev-parse origin/main)
+       --expected-sha $(git rev-parse origin/main) \
+       --require-flywheel
    echo $?   # 0 = SHA matches main + providers live + flywheel live
    ```
 
-   This now asserts **three** things (`tools/prod_parity/check.py`,
-   `assert_parity`): deployed `build_sha` == main's tip, `registered_providers`
+   With `--require-flywheel`, `tools/prod_parity/check.py` blocks on **three**
+   things: deployed `build_sha` == main's tip, `registered_providers`
    non-empty, AND `flywheel_ready` true. Exit 1 naming the flywheel condition
-   means the box reports a **dead** flywheel — a STOP.
+   means the box reports a **dead** flywheel — a STOP. (Without the flag the
+   flywheel only warns; that is the default the deploy uses until the toggle is
+   flipped.)
 
 3. **`GET /health` reports `flywheel_ready: true`** on the box.
 
@@ -112,12 +133,22 @@ flywheel-enabled `main` to the box, after the preconditions are green.
    ansible-playbook -i inventory.ini playbooks/deploy.yml
    ```
 
-   **The deploy already enforces parity.** `deploy.yml` runs the
-   prod-parity assert as a **blocking** post-deploy task (around line 461:
-   *"prod-parity assert — deployed SHA == box HEAD + providers live"*,
-   `delegate_to: localhost`, no `when:` guard). With the SPR-11 extension, a
-   deploy that brings up a **dead flywheel** now *fails the play* — the box
-   cannot silently ship a non-compounding flywheel.
+   **The deploy enforces SHA + provider parity unconditionally** (`deploy.yml`,
+   the *"prod-parity assert — deployed SHA == box HEAD + providers live (+
+   flywheel when re-armed)"* task, `delegate_to: localhost`, no `when:` guard).
+   **Flywheel-liveness is re-armed by the `antiek_require_flywheel` toggle**
+   (default `false` post-#68). To make a dead flywheel *fail the play* again,
+   run the deploy with the toggle on — **only after** precondition 2 + 3 are
+   green (wire landed + corpus produced >=1 reuse event):
+
+   ```bash
+   ansible-playbook -i inventory.ini playbooks/deploy.yml -e antiek_require_flywheel=true
+   ```
+
+   This appends `--require-flywheel` to the parity check so the box cannot
+   silently ship a non-compounding flywheel **once compounding has been
+   demonstrated on prod**. Leave it off (omit the `-e`) until then, or every
+   correct deploy onto the still-empty box would red.
 
 4. Re-run precondition 2 + 3 against live prod to confirm green post-deploy.
 
@@ -151,10 +182,16 @@ These are the evidence that the flywheel is not ready for prod:
 
 ## Reference artefacts
 
-- `tools/prod_parity/check.py` — the extended 3-assertion parity checker
-  (SHA + providers + flywheel liveness).
-- `infrastructure/ansible/playbooks/deploy.yml` (~line 461) — the **blocking**
-  post-deploy parity task that already fires on every deploy.
+- `tools/prod_parity/check.py` — the parity checker. SHA + providers always
+  block; flywheel liveness blocks only with `--require-flywheel` (post-#68
+  default is informational).
+- `infrastructure/ansible/playbooks/deploy.yml` — the post-deploy parity task
+  (SHA + providers blocking on every deploy; flywheel blocking only when
+  `antiek_require_flywheel=true`).
+- `docs/decisions/prod-parity-flywheel-informational.md` — why the deploy
+  flywheel assert was demoted (#68) and the re-arm RECONSIDER-IF.
+- `docs/decisions/reachability-gate.md` + `tools/reachability/known_red.json` —
+  the pre-merge reachability gate + the agreed SPR-01 → SPR-02 known-red window.
 - `/health` `flywheel_ready` + `knowledge_reuse_count` —
   `interfaces/research/api/app.py` (`HealthResponse`, `_probe_flywheel`).
 - `compounding/benchmark/profiles/prod.toml` + `--profile prod` —

@@ -53,6 +53,41 @@ has demonstrated compounding, so losing it IS a deploy-correctness failure. That
 is the original SPR-11 intent, now correctly sequenced *after* the corpus
 exists rather than before.
 
+### 2026-06-03 amendment (Antiek Convergence SPR-01 / M6) — the re-arm is now wired and sequenced
+
+The re-arm is no longer a manual code edit: `deploy.yml` takes an
+**`antiek_require_flywheel`** toggle (default `false`) that appends
+`--require-flywheel` when set. The flip is gated on BOTH conditions, in order,
+because prod's dead flywheel has TWO causes and #68 only neutralized the
+false-block from the second:
+
+1. **The WIRE lands (Antiek Convergence SPR-02).** Prod's flywheel is dead not
+   only because the corpus is empty but because the prod entrypoint never
+   injects the substrate: `interfaces/research/api/cascade_routes.py:367` builds
+   `HostLocalRunner(...)` with `retrieval_substrate=None`, so
+   `runtime/research_runner/host_local.py:259` early-returns the reuse hook.
+   SPR-02 wires it. Until then, even a fed corpus could not emit
+   `knowledge.reused` from the real launch path.
+2. **The corpus produces ≥ 1 reuse event on prod** (the original #68 condition).
+
+Run `ansible-playbook ... deploy.yml -e antiek_require_flywheel=true` only when
+both hold (see `infrastructure/runbooks/flywheel-prod-cutover.md`).
+
+**Agreement with the pre-merge reachability gate.** Antiek Convergence SPR-01
+also installed a *pre-merge* reachability probe
+(`tools/reachability/probes/flywheel.py`, `docs/decisions/reachability-gate.md`)
+that asserts the same compounding outcome (`knowledge_reuse_count > 0`) but
+**in-process, against a temp DuckDB, with no corpus** — because the reuse
+assembler emits `knowledge.reused` even with zero prior units
+(`substrate/context_pack/knowledge_reuse.py:652`), so the in-process probe
+greens on the **wire alone**. Both gates agree the flywheel is allowed to be red
+**only during the SPR-01 → SPR-02 window** — the reachability gate enforces this
+with a known-red entry carrying a hard expiry
+(`tools/reachability/known_red.json`, `until_date 2026-07-03`), and this deploy
+toggle stays off until the wire **and** the corpus exist. The honest difference
+in scope: the reachability probe gates the WIRE (pre-merge); this deploy assert
+gates LIVE PROD COMPOUNDING (wire + corpus), which is strictly more.
+
 ## Verification
 
 - `tests/test_prod_parity.py`: `assert_parity` gates only SHA + providers;
