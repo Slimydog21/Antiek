@@ -76,3 +76,4 @@ node_modules/
 # be in version control. Anchored to top-level so it doesn't also
 # catch interfaces/research/ (the substrate API package).
 /research/
+docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/

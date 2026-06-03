@@ -1,24 +1,25 @@
 # Hard-to-Vary Agent Execution Protocol
 
 **Status:** Active — ANT-H2V SPR-01 (2026-06-02)  
-**Spec:** `docs/specs/ant-h2v/` (master: cascade auto-decompose closure)  
+**Spec:** `docs/htmlspec/antiek-hard-to-vary-execution/` (platform envelope)  
 **Templates:** `docs/agent-execution/TEMPLATES.md`
 
 Every Antiek agent session that touches code or claims verification **must** follow Phase A→E in order. Skipping a phase or substituting theater for a gate is an automatic fail on adversarial re-read.
 
 ---
 
-## Why this exists (egghead grounding)
+## Historical failures (lineage)
 
-A prior sub-questions session found the **correct root cause** — `DispatchDecomposer` raised `TypeError` before any provider call — then closed with **easy-to-vary** verification:
+Brief anchors. Read the cited paths before claiming closure on the same surface.
 
-1. **Contract bug (real):** `DispatchDecomposer.decompose` called `render_full_prompt(question)` positionally and `dispatch(prompt, role="decomposer")` without `investigation_id`. Both signatures are keyword-only (`roles/decomposer/prompt.py:123`, `substrate/dispatch/router.py:301`). Result: `TypeError` → `_decompose` failure → HTTP 500 → Reading UI “no result.” **LLM contacted: no.**
+| Case | What failed | Load-bearing paths |
+|------|-------------|-------------------|
+| **Egghead** | Correct cascade root cause, then easy-to-vary closure: truncated pytest from wrong cwd/venv, “platform OK” without rows | `docs/specs/ant-h2v/grok-execution-brief.md`, `docs/htmlspec/antiek-hard-to-vary-execution/index.html` |
+| **Cascade** | `DispatchDecomposer` keyword contract: positional `render_full_prompt` / `dispatch` without `investigation_id` → pre-network `TypeError` → HTTP 500 | `roles/cascade_planner/planner.py`, `roles/decomposer/prompt.py`, `substrate/dispatch/router.py`, `interfaces/research/api/cascade_routes.py`, `tests/test_cascade_create_plan_light.py` |
+| **AMS-v1** | Sprint pages cited fictional UI (`#scene-root` fiction, `components/ProductsLauncher.tsx`, `scene/index.ts`) — “green” without verified DOM | `docs/ams-v2/verified-interfaces.md` (anti-fiction ledger), `tools/specs/verify_spec_refs.ts`, `docs/ams-v2/mountain-shell-v2-verification.md` |
+| **Werner** | Mascot / ice-cursor claims without p95 lag artifact or operator acceptance; hop-delay theater (~4.5s class) | `docs/htmlspec/werner-ice-fishing-cursor/index.html`, `docs/htmlspec/werner-ice-fishing-cursor/operator-acceptance.md`, `apps/reading/src/werner/`, postmortem commit `ccb4c66` |
 
-2. **Theater (repeatable, falsifiable):** ~50× `pytest … 2>&1 | tail -N` from the wrong directory or system `python` (3.9), truncated output treated as pass/fail.
-
-3. **Unbounded closure:** “Engine fine across platform” with no entry-point matrix, no test file per path, no `tested | untested | live-LLM-required` row.
-
-Remove the pytest repetition or the platform slogan — the “we’re done” story **does not change**. That pattern is what this protocol forbids.
+**Egghead cascade detail (contract bug, real):** `DispatchDecomposer.decompose` called `render_full_prompt(question)` and `dispatch(prompt, role="decomposer")` against keyword-only signatures (`roles/decomposer/prompt.py`, `substrate/dispatch/router.py:301`). **LLM contacted on failure path: no.**
 
 **Load-bearing path (cascade auto-decompose):**
 
@@ -30,9 +31,11 @@ Reading UI → POST /research/plans (omit sub_questions)
   → parse_decomposer_response → build_plan → persist_tree
 ```
 
-Parallel path (out of ANT-H2V scope unless matrix row says otherwise): Loop1 `POST /investigations` → event bus decomposer handler (already keyword-correct).
+Parallel path (out of ANT-H2V scope unless matrix row says otherwise): Loop1 `POST /investigations` → event bus decomposer handler.
 
 **Invariant:** Pre-network `TypeError` on auto-decompose ⇒ Python contract bug, not “provider down.” `FakeDecomposer` tests prove tree logic only — not `DispatchDecomposer`.
+
+**Collection hazard (cascade tests):** importing `interfaces.research.api.cascade_routes` while `api/__init__.py` eagerly loads `app.py` can hang collection; prefer light router mounts (`tests/test_cascade_create_plan_light.py`).
 
 ---
 
@@ -42,12 +45,12 @@ Parallel path (out of ANT-H2V scope unless matrix row says otherwise): Loop1 `PO
 
 | Step | Action | Done when |
 |------|--------|-----------|
-| A1 | `inspect.signature` on `render_full_prompt`, `dispatch`, `DispatchDecomposer.decompose` | Signatures pasted in Failure Dossier or handoff |
-| A2 | Numbered failure chain for the reported bug | Each hop has file:line + exception type |
-| A3 | No-network repro (SPR-02: `scripts/repro_cascade_decompose_contract.py`) | Exit 0 recorded verbatim in handoff |
-| A4 | State explicitly whether an LLM was contacted on the failure path | `LLM contacted: yes \| no` |
+| A1 | `inspect.signature` on load-bearing callables | Signatures pasted in Failure Dossier |
+| A2 | Numbered failure chain for the reported bug | Each hop has `file:line` + exception type |
+| A3 | No-network repro when sprint provides one (e.g. `scripts/repro_cascade_decompose_contract.py`) | Exit code recorded verbatim in handoff |
+| A4 | State whether an LLM was contacted on the failure path | `LLM contacted: yes \| no` |
 
-**Pass:** Repro script green **and** dossier cites lines that match current tree.  
+**Pass:** Repro (if applicable) green **and** dossier cites lines that match current tree.  
 **Fail:** “Looks fixed in planner” without signature evidence; repro skipped because “we already know.”
 
 Repro passing **does not** prove live decompose or provider health — only that keyword contracts match the fix.
@@ -60,12 +63,12 @@ Repro passing **does not** prove live decompose or provider health — only that
 
 | Step | Action | Done when |
 |------|--------|-----------|
-| B1 | List every decompose entry point (HTTP auto, manual `sub_questions`, event bus, gap/note planners, etc.) | One row per path |
+| B1 | List every entry point for the claimed surface | One row per path |
 | B2 | Per row: `tested \| untested \| live-LLM-required` | No empty status |
 | B3 | Per row: evidence (`test_file:line` or `file:line` + rationale) | No “tested” without file reference |
 | B4 | Mark in-scope vs out-of-scope for **this** sprint | Temptations logged, not silently expanded |
 
-Use the Scope Map template (`TEMPLATES.md`). SPR-08 fills `docs/specs/ant-h2v/PLATFORM_MATRIX.md`; until then, the handoff Scope Map section is mandatory.
+Use the Scope Map template (`TEMPLATES.md`) **or** cite row IDs from [`PLATFORM_EXEC_MATRIX.md`](PLATFORM_EXEC_MATRIX.md). Handoff-only Scope Maps remain valid when the matrix row set is a subset.
 
 **Pass:** Another agent can answer “what did we prove?” from the table alone.  
 **Fail:** “Platform OK,” “all paths work,” or “engine fine” without rows.
@@ -79,12 +82,14 @@ Use the Scope Map template (`TEMPLATES.md`). SPR-08 fills `docs/specs/ant-h2v/PL
 | Step | Action | Done when |
 |------|--------|-----------|
 | C1 | Minimal fix at the correct layer (API boundary vs adapter per merge-bar) | Diff scoped; no drive-by refactors |
-| C2 | Hermetic test imports **production** `DispatchDecomposer` (not only `FakeDecomposer`) | Test stubs `dispatch` / asserts kwargs |
-| C3 | HTTP branch test when the bug is route-visible (omit `sub_questions`) | Branch covered or explicitly deferred with row = `untested` |
-| C4 | Merge-bar: non-test production changes have tests | CI-local pytest named in handoff |
+| C2 | Hermetic test imports **production** adapter (not only fakes) | Test stubs seams / asserts kwargs |
+| C3 | Route-visible branch test when bug is HTTP-visible | Branch covered or deferred with row = `untested` |
+| C4 | Merge-bar: non-test production changes have tests | Named pytest in handoff Gate results |
 
 **Pass:** Removing the new test (or reverting kwargs) reproduces failure mode in principle.  
-**Fail:** Only `FakeDecomposer` tests; fix “verified” by reading `planner.py` once.
+**Fail:** Only fake/stub coverage for a production-adapter bug; fix “verified” by reading source once.
+
+**xfail rule:** Any `xfail` must pair with a regression fixture that fails if the guard is removed (see `docs/decisions/spr-09-boundary-lint-vs-import-linter.md` — `_with_xfail_bite_test`). Bare xfail is F6.
 
 ---
 
@@ -97,9 +102,9 @@ cd /path/to/Antiek   # repo root — must match Env Card pwd
 pwd
 .venv/bin/python -V
 
-.venv/bin/python scripts/repro_cascade_decompose_contract.py
-.venv/bin/python -m pytest tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response tests/test_cascade_create_plan_light.py -q --tb=short
-bash scripts/audit_decomposer_call_sites.sh
+.venv/bin/python scripts/repro_cascade_decompose_contract.py   # when sprint names it
+.venv/bin/python -m pytest tests/test_cascade_planner.py -k dispatch_decomposer tests/test_cascade_create_plan_light.py -q --tb=short
+bash scripts/audit_decomposer_call_sites.sh   # when sprint names it
 ```
 
 Adjust paths/tests when the sprint spec names different gates; **never** replace this block with ad-hoc one-liners only.
@@ -107,10 +112,10 @@ Adjust paths/tests when the sprint spec names different gates; **never** replace
 | Step | Action | Done when |
 |------|--------|-----------|
 | D1 | Env Card filled (pwd, python path, version, commit SHA) | Paste in every handoff |
-| D2 | Each gate: command + exit code + one-line outcome | No gate ommitted as “same as before” |
-| D3 | Full pytest output retained for disputes; `tail` not used as sole artifact | See forbidden list |
+| D2 | Each gate: command + exit + log path | Gate results table complete |
+| D3 | Full pytest output retained for disputes; `tail` not sole artifact | See F1 |
 
-Live provider checks (SPR-07 operator card) are **separate** from D — contract-green ≠ provider-green.
+Live provider checks (`docs/agent-execution/OPERATOR_VERIFY_CASCADE_DECOMPOSE.md`, Werner operator-acceptance) are **separate** from D — contract-green ≠ provider-green.
 
 ---
 
@@ -118,15 +123,17 @@ Live provider checks (SPR-07 operator card) are **separate** from D — contract
 
 **Goal:** Close with claims that **collapse** if any row, test, or gate is removed.
 
+**Case study (required read for cascade / Egghead lineage):** [`cascade-case-study.md`](cascade-case-study.md) — Egghead session, `TypeError` vs provider-down, `FakeDecomposer` vs `DispatchDecomposer`, `repro_cascade_decompose_contract.py`, gate table with real commands, Werner `ccb4c66` / `useMouseFollow` hop parallel.
+
 | Step | Action | Done when |
 |------|--------|-----------|
-| E1 | `PLATFORM_MATRIX.md` (or equivalent) has every row filled | SPR-08 gate |
-| E2 | Closure sentence names what is **not** proved | e.g. bus parity, live LLM on all paths |
-| E3 | Handoff packet complete (all headings; `N/A — reason` if needed) | Matches `TEMPLATES.md` Handoff Packet |
-| E4 | Steelman fastest path (“looks right, ship”) and what it loses | Regression, scope map, operator trust |
+| E1 | Platform matrix (or handoff Scope Map) has every row filled | No empty `tested` without evidence |
+| E2 | Handoff `### Not proved` lists what closure does **not** cover | Before `### Status` |
+| E3 | Handoff packet complete (all headings; `N/A — reason` if needed) | Matches `TEMPLATES.md` |
+| E4 | Steelman fastest path (“looks right, ship”) and what it loses | Regression, scope map, operator trust; cite case study §1 / §9 where Egghead/Werner theater applies |
 
 **Pass:** Adversarial reader can falsify each claim via matrix row or cited test.  
-**Fail:** Superlatives (“fully fixed,” “production ready,” “all platforms”) without matrix backing.
+**Fail:** Superlatives (“fully fixed,” “production ready,” “CI green” for serve/rights) without named blocking jobs and matrix backing.
 
 ---
 
@@ -134,17 +141,18 @@ Live provider checks (SPR-07 operator card) are **separate** from D — contract
 
 An auditor marks **FAIL** if any row is true for the session under review.
 
-| # | Pattern | Why it’s easy-to-vary |
-|---|---------|------------------------|
-| F1 | `pytest … 2>&1 \| tail -N` (or repeated truncated runs) as **sole** sign-off | Hides collection errors, wrong cwd, wrong interpreter |
-| F2 | System `python` / wrong venv (e.g. 3.9) while repo expects `.venv/bin/python` | Tests pass or fail for the wrong environment |
-| F3 | Wrong `cd` — pytest from subdirectory without repo-root `PYTHONPATH`/config | False green or false red |
-| F4 | Importing `interfaces.research.api.cascade_routes` while `api/__init__.py` eagerly loads `app.py` | Collection hangs minutes; kill stale `pytest` first |
-| F4 | **Memory-without-test** — signature or behavior from training weights, not `inspect` + test | Regresses silently on next edit |
-| F5 | **Unbounded platform OK** — “engine fine across platform” without Scope Map / PLATFORM_MATRIX | Claim survives deleting all evidence |
-| F6 | Deleting template headings in handoff instead of `N/A — reason` | Hides skipped diligence |
-| F7 | “Provider down” as first diagnosis when repro shows pre-network `TypeError` | Misroutes operator time |
-| F8 | Declaring sprint done with only `FakeDecomposer` coverage for a `DispatchDecomposer` bug | Production adapter untested |
+| # | Pattern | Why it’s easy-to-vary | Lineage |
+|---|---------|----------------------|---------|
+| F1 | `pytest … 2>&1 \| tail -N` (or repeated truncated runs) as **sole** sign-off | Hides collection errors, wrong cwd, wrong interpreter | Egghead cascade session |
+| F2 | Wrong venv or cwd — system `python` (e.g. 3.9), pytest from subdirectory without repo-root config | Tests pass or fail for the wrong environment | Egghead; `scripts/canonical_verify.sh` (SPR-08) |
+| F3 | **Unbounded platform OK** — “engine fine across platform” without Scope Map / PLATFORM_EXEC_MATRIX | Claim survives deleting all evidence | Egghead; AMS-v2 “green & invisible” (`docs/htmlspec/antiek-hard-to-vary-execution/index.html`) |
+| F4 | Deleting template headings in handoff instead of `N/A — reason` | Hides skipped diligence | `tools/agent/verify_handoff.ts` (SPR-03) |
+| F5 | **Invented metrics** — p95, fps, cost, “CI green” for serve/rights without measured artifact or named blocking job | Remove the number; story unchanged | Werner SPR-07; AMS-v2 `mountain-shell-v2-verification.md` |
+| F6 | `xfail` / skip without regression fixture that bites if guard removed | Guard rots; looks covered | `docs/decisions/spr-09-boundary-lint-vs-import-linter.md` |
+| F7 | **Informational CI as legal proof** — latency, Lost-Pixel, axe warn-only treated as blocking serve/rights/craft closure | `::warning::` survives; product claim does not | `docs/decisions/ci-informational-gates.md` |
+| F8 | **Ambiguous deferral IDs** — bare `D17` without `engineering_deferrals.md:L###` @ commit SHA | Reader cannot find the deferral cluster | `docs/engineering_deferrals.md` (D17 ≈ L475+, Personal-Reading live-ingest) |
+
+**Additional fails (cite in case study; audit as F-equivalent, not optional):** “Provider down” when repro shows pre-network `TypeError`; sprint done with only `FakeDecomposer` for a `DispatchDecomposer` bug (`roles/cascade_planner/planner.py`); **memory-without-test** — closure from training-data recall or “I read the file” without `inspect` signatures, repro exit codes, or a named pytest row in the Scope Map.
 
 ---
 
@@ -153,9 +161,9 @@ An auditor marks **FAIL** if any row is true for the session under review.
 ```
 [ ] A  Contract lock — signatures, dossier, repro exit 0, LLM contacted stated
 [ ] B  Scope map — all entry points rowed; no platform slogans
-[ ] C  Fix + regression — production adapter + HTTP branch as spec requires
-[ ] D  Canonical verify — Env Card + full gate commands + exit codes
-[ ] E  Bounded closure — matrix/handoff; steelman; explicit not-proved
+[ ] C  Fix + regression — production adapter + route branch as spec requires
+[ ] D  Canonical verify — Env Card + Gate results (command, exit, log path)
+[ ] E  Bounded closure — Not proved; matrix/handoff; steelman
 [ ] —  Zero forbidden patterns (F1–F8)
 ```
 
@@ -166,10 +174,13 @@ An auditor marks **FAIL** if any row is true for the session under review.
 | Sprint | Artifact |
 |--------|----------|
 | SPR-01 | This file + `TEMPLATES.md` |
-| SPR-02 | `scripts/repro_cascade_decompose_contract.py`, failure dossier |
-| SPR-03–04 | Hermetic pytest for adapter + HTTP branch |
-| SPR-05–06 | API error boundary + audit script |
-| SPR-07 | `OPERATOR_VERIFY_CASCADE_DECOMPOSE.md` (live LLM once) |
-| SPR-08 | `PLATFORM_MATRIX.md`, `CLOSURE_DOSSIER.md` |
+| SPR-02 | Theater taxonomy + repro scripts |
+| SPR-03–04 | `verify_handoff.ts`, `audit_agent_session.sh` |
+| SPR-05 | `AMS_BRIDGE.md`, `scripts/agent_ams_ref_lint.sh`, `tools/ams-v2/ref-lint.sh` |
+| SPR-06 | [`cascade-case-study.md`](cascade-case-study.md) |
+| SPR-07 | [`WERNER_EXEC_ADAPTER.md`](WERNER_EXEC_ADAPTER.md), `OPERATOR_VERIFY_CASCADE_DECOMPOSE.md` |
+| SPR-08 | [`scripts/canonical_verify.sh`](../../scripts/canonical_verify.sh) |
+| SPR-09 | `.github/workflows/agent_execution_gates.yml` |
+| SPR-10 | [`PLATFORM_EXEC_MATRIX.md`](PLATFORM_EXEC_MATRIX.md) |
 
-Executors cite this file **before** touching cascade code or closing a sub-questions / decompose investigation.
+Executors cite this file **before** touching cascade code, AMS surfaces, Werner mascot paths, or closing any investigation that claims verification.

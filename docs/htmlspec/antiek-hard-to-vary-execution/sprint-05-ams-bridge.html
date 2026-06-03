@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SPR-05 · AMS bridge into agent execution</title>
+</head>
+<body>
+<main>
+  <p><a href="index.html">&larr; ANT-H2V execution</a> · Sprint SPR-05</p>
+  <h1>AMS bridge — ref-lint ↔ Phase E</h1>
+  <p>Bridge AMS-v2 ref-lint into agent-execution docs; wrapper for executors at closure.</p>
+
+  <section>
+    <h2>Goal</h2>
+    <p><strong>Map <code>tools/ams-v2/ref-lint.sh</code> to HARD_TO_VARY Phase E and ship agent wrapper.</strong></p>
+  </section>
+
+  <section>
+    <h2>Milestones</h2>
+    <div class="milestone">
+      <div class="title">M1 — AMS_BRIDGE.md</div>
+      <div class="files"><span class="file">NEW: docs/agent-execution/AMS_BRIDGE.md</span></div>
+    </div>
+    <div class="milestone">
+      <div class="title">M2 — ref-lint shell + agent wrapper</div>
+      <div class="files">
+        <span class="file">NEW: tools/ams-v2/ref-lint.sh</span>
+        <span class="file">tools/specs/verify_spec_refs.ts</span>
+        <span class="file">NEW: scripts/agent_ams_ref_lint.sh</span>
+      </div>
+    </div>
+    <div class="milestone">
+      <div class="title">M3 — H2V verified-interfaces ledger</div>
+      <div class="files">
+        <span class="file">NEW: docs/htmlspec/antiek-hard-to-vary-execution/verified-interfaces.md</span>
+        <span class="file">docs/ams-v2/verified-interfaces.md</span>
+        <span class="file">NEW: docs/agent-execution/HARD_TO_VARY.md</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Verification gates</h2>
+    <table>
+      <tr><th>Gate</th><th>Command</th><th>Expected</th></tr>
+      <tr>
+        <td>AMS ref-lint (this page)</td>
+        <td><code>bash scripts/agent_ams_ref_lint.sh docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html</code></td>
+        <td>exit 0</td>
+      </tr>
+      <tr>
+        <td>Bridge doc exists</td>
+        <td><code>test -f docs/agent-execution/AMS_BRIDGE.md</code></td>
+        <td>exit 0</td>
+      </tr>
+    </table>
+  </section>
+</main>
+</body>
+</html>

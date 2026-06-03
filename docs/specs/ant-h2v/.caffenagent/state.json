@@ -1,27 +1,7 @@
 {
   "spec_dir": "docs/specs/ant-h2v",
-  "target_branch": "main",
-  "worktree": "/Users/slimydog/specs/antiek-ant-h2v-prcrouch",
-  "branch": "prcrouch/ant-h2v",
-  "commit": "3e95bfb",
+  "platform_spec_dir": "docs/htmlspec/antiek-hard-to-vary-execution",
   "pr": 52,
-  "pr_url": "https://github.com/Slimydog21/Antiek/pull/52",
-  "started": "2026-06-02",
-  "completed": "2026-06-02",
-  "sprints": {
-    "SPR-01": {"status": "done", "rounds": 2, "gate_results": {"doc_lint": "pass"}},
-    "SPR-02": {"status": "done", "rounds": 2, "gate_results": {"repro": "pass"}},
-    "SPR-03": {"status": "done", "rounds": 2, "gate_results": {"dispatch_decomposer_test": "pass"}},
-    "SPR-04": {"status": "done", "rounds": 2, "gate_results": {"api_auto_decompose": "pass"}},
-    "SPR-05": {"status": "done", "rounds": 2, "gate_results": {"api_502": "pass"}},
-    "SPR-06": {"status": "done", "rounds": 2, "gate_results": {"audit": "pass"}},
-    "SPR-07": {"status": "done", "rounds": 2, "note": "operator live verify deferred"},
-    "SPR-08": {"status": "done", "rounds": 2}
-  },
-  "critic_round_2_verdict": "MERGE",
-  "deferred": [
-    "SPR-07 live LLM operator verify",
-    "HTTP auto-decompose test stubs _decompose (unit covers DispatchDecomposer)",
-    "audit requires host rg"
-  ]
+  "consolidation_branch": "prcrouch/ant-exec-platform",
+  "status": "ready_for_operator_merge"
 }

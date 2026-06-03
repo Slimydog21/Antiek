@@ -11,13 +11,13 @@ Protocol: `docs/agent-execution/HARD_TO_VARY.md`
 Paste at the top of every handoff and before canonical verify (Phase D).
 
 ```markdown
-## Env Card
+### Env Card
 
 | Field | Value |
 |-------|-------|
 | Date (UTC) | YYYY-MM-DD |
 | Repo root (`pwd`) | `/absolute/path/to/Antiek` |
-| Branch | `caffen/SPR-01` |
+| Branch | `caffen/ant-exec-spr01` |
 | Commit SHA | `abcdef1` |
 | Python | `/absolute/path/to/Antiek/.venv/bin/python` |
 | Python version | `3.12.x` |
@@ -57,10 +57,10 @@ Phase A — contract lock. Ground in source lines; state whether an LLM ran on t
 
 ### Numbered failure chain
 
-1. **Trigger:** `POST /research/plans` without `sub_questions[]` — `file:line`
+1. **Trigger:** `POST /research/plans` without `sub_questions[]` — `interfaces/research/api/cascade_routes.py:line`
 2. **Branch:** `_decompose()` — `file:line`
 3. **Adapter:** `DispatchDecomposer.decompose` — `roles/cascade_planner/planner.py:57-69`
-4. **Exception:** `TypeError` — (paste message: missing keyword `investigation_id` / unexpected positional)
+4. **Exception:** `TypeError` — (paste message)
 5. **HTTP:** `500` — `file:line`
 6. **UI:** empty / error state — (operator-visible)
 
@@ -78,7 +78,8 @@ cd <repo-root>
 .venv/bin/python scripts/repro_cascade_decompose_contract.py
 ```
 
-**Result:** exit `0` | `non-zero` — (paste last line, e.g. `REPRO_OK`)
+**Result:** exit `0` | `non-zero` — (paste last line, e.g. `REPRO_OK`)  
+**Log path:** `reports/repro-cascade.log` or paste inline
 
 ### What repro does NOT prove
 
@@ -95,23 +96,22 @@ Phase B — bounded scope before “platform OK” or sprint closure.
 ```markdown
 ## Scope Map
 
-**Sprint / investigation ID:** ANT-H2V SPR-XX
+**Sprint / investigation ID:** ANT-H2V SPR-XX  
 **In-scope for this session:** (one sentence)
 
-### Decompose entry points
+### Entry points
 
 | ID | Path / trigger | Production hook | Test status | Evidence | Live LLM |
-|----|------------------|-----------------|-------------|----------|----------|
+|----|----------------|-----------------|-------------|----------|----------|
 | E1 | POST `/research/plans` omit `sub_questions` | `DispatchDecomposer` | `untested` | — | `required` for operator card |
-| E2 | POST `/research/plans` with `sub_questions` | fixed decomposer | `tested` | `tests/…:line` | `no` |
+| E2 | POST `/research/plans` with `sub_questions` | fixed decomposer | `tested` | `tests/test_cascade_create_plan_light.py:line` | `no` |
 | E3 | Loop1 investigations bus | `make_decomposer_handler` | `untested` | `file:line` | `yes` |
-| E4 | Gap / note planners | (name module) | `untested` | — | `unknown` |
+| E4 | Mountain shell visibility | `apps/reading/src/scene/Scene.tsx` | `tested` | `docs/ams-v2/mountain-shell-v2-verification.md` | `no` |
 
 **Test status legend:** `tested` | `untested` | `live-LLM-required`
 
 ### Explicitly out of scope (this session)
 
-- (bullet)
 - (bullet)
 
 ### Temptations resisted
@@ -123,29 +123,36 @@ Phase B — bounded scope before “platform OK” or sprint closure.
 
 ## Handoff Packet
 
-Matches ANT-H2V htmlspec sprint footer (`sprint-01-agent-protocol.html`). Fill every `###` heading.
+Superset of `docs/specs/ant-h2v/sprint-01-agent-protocol.html` handoff footer (adds `### Env Card`, `### Not proved`, `### Gate results` with log path). Fill every `###` heading below. **`### Not proved` before `### Status`.**
 
 ```markdown
 ## Sprint SPR-01 — Handoff
+
+### Env Card
+(paste Env Card table here)
+
+### Not proved
+- Live LLM on all decompose paths (operator card not run)
+- Bus parity with HTTP auto-decompose
+- (bullet — each must name why it is out of scope or deferred)
 
 ### Status
 `done` | `in_progress` | `blocked` — (one line)
 
 ### Files touched
-- `docs/agent-execution/HARD_TO_VARY.md` — (one line what changed)
-- `docs/agent-execution/TEMPLATES.md` — (one line)
+- `docs/agent-execution/HARD_TO_VARY.md` — Phase A–E, F1–F8, lineage table
+- `docs/agent-execution/TEMPLATES.md` — Env Card, dossier, scope map, handoff
 
 ### Milestones (checkboxes)
-- [ ] M1: Write HARD_TO_VARY.md — Phase A–E + forbidden F1–F8
-- [ ] M2: Add TEMPLATES.md — Env Card, Failure Dossier, Scope Map, Handoff Packet
+- [x] M1: Write HARD_TO_VARY.md — Phase A–E + forbidden F1–F8
+- [x] M2: Add TEMPLATES.md — ≥8 `###` headings + Gate results log path
 
-### Verification gate results
+### Gate results
 
-| Gate | Command | Exit | Outcome |
-|------|---------|------|---------|
-| Doc lint | `test -f docs/agent-execution/HARD_TO_VARY.md` | 0 | file exists |
-
-(Paste Env Card above this table for code sprints.)
+| gate | command | exit | log path |
+|------|---------|------|----------|
+| Doc exists | `test -f docs/agent-execution/HARD_TO_VARY.md && test -f docs/agent-execution/TEMPLATES.md` | 0 | (inline) |
+| Heading count | `rg -c '^### ' docs/agent-execution/TEMPLATES.md` | 0 | (stdout) |
 
 ### Decisions mid-flight
 - (decision — reverse-if)
@@ -154,14 +161,14 @@ Matches ANT-H2V htmlspec sprint footer (`sprint-01-agent-protocol.html`). Fill e
 - (assumption — how verified or risk accepted)
 
 ### Steelman rejected alternative
-**Fast path:** (e.g. “fix looks right, ship without matrix”)
+**Fast path:** (e.g. “fix looks right, ship without matrix”)  
 **Why it loses:** (regression gate, scope map, operator trust — be specific)
 
 ### Open questions
 - (question → owner / follow-up sprint)
 
 ### Next sprint can start when
-- (e.g. SPR-02 repro script exists; this handoff merged)
+- (e.g. SPR-02 theater taxonomy merged; handoff linter green)
 
 ### Out-of-scope temptations
 - (temptation — did not act / noted only)
@@ -174,8 +181,7 @@ Matches ANT-H2V htmlspec sprint footer (`sprint-01-agent-protocol.html`). Fill e
 For a short chat close, paste in order: **Env Card → Failure Dossier (if debugging) → Scope Map (if multi-path) → Handoff Packet**.
 
 ```markdown
-<!-- 1. Env Card -->
-## Env Card
+### Env Card
 | Field | Value |
 |-------|-------|
 | Date (UTC) | |
@@ -187,23 +193,23 @@ For a short chat close, paste in order: **Env Card → Failure Dossier (if debug
 | LLM contacted this session | |
 | Network required for gates | |
 
-<!-- 2. Failure Dossier (Phase A investigations only) -->
 ## Failure Dossier
 **LLM contacted on failure path:**
 ### Numbered failure chain
 1. …
 
-<!-- 3. Scope Map (Phase B — required before platform claims) -->
 ## Scope Map
+### Entry points
 | ID | Path | Test status | Evidence | Live LLM |
 |----|------|-------------|----------|----------|
 
-<!-- 4. Handoff Packet (every sprint) -->
 ## Sprint SPR-XX — Handoff
+### Env Card
+### Not proved
 ### Status
 ### Files touched
 ### Milestones (checkboxes)
-### Verification gate results
+### Gate results
 ### Decisions mid-flight
 ### Assumptions surfaced
 ### Steelman rejected alternative
@@ -211,3 +217,20 @@ For a short chat close, paste in order: **Env Card → Failure Dossier (if debug
 ### Next sprint can start when
 ### Out-of-scope temptations
 ```
+
+---
+
+## Heading index (≥8 required `###`)
+
+| # | Heading | Phase |
+|---|---------|-------|
+| 1 | `### Env Card` | D |
+| 2 | `### Not proved` | E |
+| 3 | `### Status` | E |
+| 4 | `### Files touched` | E |
+| 5 | `### Milestones (checkboxes)` | E |
+| 6 | `### Gate results` | D |
+| 7 | `### Steelman rejected alternative` | E |
+| 8 | `### Open questions` | E |
+
+Failure Dossier and Scope Map add additional `###` blocks for investigations; the handoff packet alone satisfies the sprint minimum.
