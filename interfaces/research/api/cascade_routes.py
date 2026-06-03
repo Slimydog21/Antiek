@@ -159,19 +159,46 @@ def build_prod_retrieval_substrate() -> object | None:
       the graph as of launch time, which is correct — reuse is read-only priming
       of a research that is about to start, not a live subscription.
       KNOWN COST (SPR-03 owns ``retrieval_substrate.py``): when vss is loadable,
-      ``DuckDbVssSubstrate.open`` copies the snapshot AGAIN internally (one extra
-      copy). SPR-03 can add a "caller already provided an isolated copy" flag to
-      the substrate to drop the double-copy; this sprint consumes the seam as-is
-      rather than editing it.
+      ``make_substrate("vss", ...)`` copies the snapshot AGAIN internally (one
+      extra copy held by the substrate's own connection). SPR-03 can add a
+      "caller already provided an isolated copy" flag to the substrate to drop
+      the double-copy; this sprint consumes the seam as-is rather than editing it.
+      DISK RECLAMATION for that internal copy is the substrate-CLOSE half of the
+      cleanup (``close_prod_retrieval_substrate`` on session teardown), below.
+
+    DISK CLEANUP (ACV SPR-02 round-2 — the leak this sprint must not introduce):
+    the factory's own snapshot dir is reclaimed in TWO complementary steps so a
+    single Hetzner VM does not accumulate full-DB-copy temp dirs per launch:
+
+    1. **The factory's snapshot file is unlinked the instant ``open`` returns.**
+       This is provably safe on Linux/POSIX (VERIFIED on this platform):
+         * vss-active path — ``DuckDbVssSubstrate.open`` has by then COPIED the
+           snapshot into its OWN internal temp file and its connection reads that
+           copy, NOT our snapshot (verified by reading ``retrieval_substrate.py``
+           open(): it ``shutil.copy(db_path → copy_path)`` then
+           ``duckdb.connect(copy_path)`` and indexes the copy; the original
+           ``db_path`` snapshot is never re-read after open). So unlinking our
+           snapshot frees its disk immediately and the substrate keeps working.
+         * fallback path (vss absent) — the substrate holds ``connect_read`` on
+           OUR snapshot; unlinking removes the directory entry while the open
+           connection pins the inode (POSIX), so disk is reclaimed when that
+           connection closes (the close-half below). VERIFIED: a read-only DuckDB
+           connection keeps serving rows after its backing file is unlinked.
+       The unlink (and the empty-dir rmdir) are best-effort: a failure is logged
+       and swallowed — cleanup failing must NEVER turn a working substrate into a
+       failed launch.
+    2. **The substrate connection is CLOSED on session completion** (see
+       ``close_prod_retrieval_substrate`` + ``_run_to_completion``), which frees
+       the vss-internal copy (vss-active) or releases the pinned inode (fallback).
 
     GRACEFUL DEGRADATION (binding): returns ``None`` on ANY failure (DB missing,
-    model unavailable, VSS load fails, snapshot copy fails) and NEVER raises —
-    research must continue reuse-less rather than fail. The failure reason is
-    LOGGED so an operator can distinguish "reuse disabled" (this returned None)
-    from "reuse ran, found nothing" (substrate opened, graph empty → empty
-    ``knowledge.reused`` event). ``host_local.py``'s
-    ``if self._retrieval_substrate is None: return`` already no-ops on None — we
-    rely on it.
+    model unavailable, VSS load fails, snapshot copy fails, AND if cleanup
+    registration fails) and NEVER raises — research must continue reuse-less
+    rather than fail. The failure reason is LOGGED so an operator can distinguish
+    "reuse disabled" (this returned None) from "reuse ran, found nothing"
+    (substrate opened, graph empty → empty ``knowledge.reused`` event).
+    ``host_local.py``'s ``if self._retrieval_substrate is None: return`` already
+    no-ops on None — we rely on it.
     """
     import logging
     import os
@@ -181,7 +208,7 @@ def build_prod_retrieval_substrate() -> object | None:
     log = logging.getLogger("antiek.cascade_routes")
     try:
         from substrate.graph import default_db_path
-        from substrate.graph.retrieval_substrate import DuckDbVssSubstrate
+        from substrate.graph.retrieval_substrate import make_substrate
 
         live_path = default_db_path()
         if not os.path.exists(live_path):
@@ -194,16 +221,34 @@ def build_prod_retrieval_substrate() -> object | None:
 
         # Point-in-time snapshot so the substrate's read-only connection never
         # collides in-process with the launch path's read-write connections to
-        # the live file. The temp file is intentionally NOT cleaned up here: the
-        # substrate holds it open for the runner's lifetime; it lives under the
-        # OS temp dir and is reaped by the OS / a restart. (A future close hook
-        # is SPR-03 territory.)
+        # the live file. The snapshot's disk is reclaimed by the two-step cleanup
+        # documented above (early-unlink here + close-on-teardown), so launches
+        # do not accumulate full-DB-copy temp dirs on the single prod VM.
         scratch = tempfile.mkdtemp(prefix="antiek-reuse-snapshot-")
         snapshot_path = os.path.join(scratch, "reuse_snapshot.duckdb")
         shutil.copy(live_path, snapshot_path)
 
         model = _embedding_provider()
-        return DuckDbVssSubstrate.open(snapshot_path, model=model)
+        # Route through the one-factory seam the module docstring advertises
+        # (retrieval_substrate.py:493) — make_substrate("vss", ...) dispatches to
+        # the same DuckDbVssSubstrate.open (verified: retrieval_substrate.py:514),
+        # but consuming the seam means SPR-03's planned "caller already provided
+        # an isolated copy" de-dup flag has a clean call site to land against.
+        substrate = make_substrate("vss", snapshot_path, model=model)
+
+        # STEP 1 of disk cleanup — unlink the factory snapshot now (safe on this
+        # platform per the open() reasoning above). Best-effort: failure here is
+        # logged, not raised, so cleanup never breaks a working substrate.
+        try:
+            os.unlink(snapshot_path)
+            os.rmdir(scratch)
+        except OSError as cleanup_exc:
+            log.warning(
+                "could not eagerly reclaim reuse-snapshot %r (%s); it will be "
+                "reclaimed when the substrate connection closes / on restart",
+                snapshot_path, cleanup_exc,
+            )
+        return substrate
     except Exception as exc:  # noqa: BLE001 — reuse must never break a launch
         log.warning(
             "reuse disabled: could not open prod retrieval substrate "
@@ -212,6 +257,52 @@ def build_prod_retrieval_substrate() -> object | None:
             type(exc).__name__, exc,
         )
         return None
+
+
+def close_prod_retrieval_substrate(substrate: object | None) -> None:
+    """ACV SPR-02 round-2 — STEP 2 of the per-launch disk cleanup: close the
+    substrate connection on session completion so its held disk is reclaimed.
+
+    Reclaims the COPY the substrate's connection holds open for its lifetime —
+    the vss-internal index copy (vss-active) or the pinned-inode reuse snapshot
+    (fallback). Without this, each launch's substrate connection lives forever in
+    ``_SESSIONS`` and its backing temp DB is never freed → unbounded disk growth
+    on the single prod VM.
+
+    Uses the substrate's OWN ``close()`` when present (``DuckDbVssSubstrate`` /
+    ``BruteForceSubstrate`` already expose one — we only CALL it; we do not add a
+    close hook to ``retrieval_substrate.py``, which SPR-03 owns). A closed DuckDB
+    connection holds no file/disk, so once ``close()`` returns the per-launch temp
+    copy is reclaimed even though the (now-dead) substrate object stays referenced
+    by its still-live session. If a substrate ever lacked ``close()``, the
+    fallback is GC: VERIFIED on this platform that a GC'd DuckDB connection
+    releases its file. Best-effort and total: never raises (a teardown that raised
+    could wedge the completion task), so graceful degradation is preserved through
+    cleanup too."""
+    if substrate is None:
+        return
+    closer = getattr(substrate, "close", None)
+    if callable(closer):
+        try:
+            closer()
+        except Exception:  # noqa: BLE001 — teardown must never raise
+            import logging
+            logging.getLogger("antiek.cascade_routes").warning(
+                "retrieval substrate close() raised during teardown; disk will "
+                "be reclaimed when its connection is GC'd / on restart",
+                exc_info=True,
+            )
+    # If there is no close(), the caller dropping the session ref is sufficient:
+    # DuckDB closes the connection (and frees the file) on GC.
+
+
+def _session_substrate(session: CascadeSession) -> object | None:
+    """The retrieval substrate this session's runner holds, if any. Reaches it
+    through the documented runner field so teardown can close it. Returns None
+    when the runner is reuse-less (the substrate was None) or the field is
+    absent — never raises."""
+    runner = getattr(session, "_runner", None)
+    return getattr(runner, "_retrieval_substrate", None)
 
 
 def _decompose(problem: str, max_depth: int) -> PlanReport:
@@ -493,8 +584,28 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
-    with suppress(Exception):  # pragma: no cover — best-effort
-        await session.join_and_merge()
+    try:
+        with suppress(Exception):  # best-effort: a merge failure is non-fatal
+            await session.join_and_merge()
+    finally:
+        # ACV SPR-02 round-2 — on completion, CLOSE the retrieval substrate. This
+        # is the disk-reclamation half of the leak fix: closing the substrate's
+        # DuckDB connection frees the temp DB copy it held open for the runner's
+        # lifetime (the vss-internal index copy, or the inode pinned by the
+        # fallback's read-only connection). A CLOSED DuckDB connection holds no
+        # disk, so leaving the now-dead substrate object referenced by the
+        # still-live session is harmless — the ~86 MB-per-launch DISK is the
+        # blocker, and it is reclaimed here. Best-effort: never raises.
+        #
+        # We deliberately do NOT evict the session from _SESSIONS/_SESSION_TASKS
+        # on completion: the established contract (test_session_reconstructs_after
+        # _eviction simulates a RESTART by popping _SESSIONS; the /cost + /steer
+        # endpoints are live-only) is that a completed session stays
+        # live-and-steerable until a restart/explicit drop — eviction is the
+        # recovery path's trigger, not a completion side effect. The residual
+        # in-memory _SESSIONS growth is tiny (small dead objects), pre-existing,
+        # and not the disk blocker this sprint must fix.
+        close_prod_retrieval_substrate(_session_substrate(session))
 
 
 @cascade_router.get("/sessions/{session_id}")

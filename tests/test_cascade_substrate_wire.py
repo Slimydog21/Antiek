@@ -183,3 +183,187 @@ def test_factory_returns_none_when_db_missing(monkeypatch):
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", os.path.join(tmpdir, "does-not-exist.duckdb"))
     result = cr.build_prod_retrieval_substrate()
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# ACV SPR-02 round-2 — the BLOCKER regression: per-launch snapshot temp-file
+# leak. Each ``build_prod_retrieval_substrate()`` mkdtemp's a snapshot dir and
+# copies the (≈86 MB in prod) graph into it; on the single Hetzner VM, without
+# cleanup these accumulate continuously until the disk fills. The fix reclaims
+# each launch's snapshot disk in two steps (eager unlink of the factory snapshot
+# at open() time + close on session teardown). These tests FAIL on round-1's
+# leaky factory and PASS after the fix.
+# ---------------------------------------------------------------------------
+
+
+def _count_temp_dirs(base: str, prefix: str) -> int:
+    return len([d for d in os.listdir(base) if d.startswith(prefix)])
+
+
+@pytest.fixture
+def isolated_tmpbase(monkeypatch, tmp_path):
+    """Pin tempfile's base dir to an empty per-test directory so the snapshot/
+    index temp-dir counts are isolated from the rest of the machine. Both the
+    factory's ``antiek-reuse-snapshot-`` dir and the vss path's ``antiek-vss-``
+    dir mkdtemp into this base, so we can count what each launch leaves behind."""
+    import tempfile as _tf
+
+    base = str(tmp_path / "tmpbase")
+    os.makedirs(base, exist_ok=True)
+    monkeypatch.setenv("TMPDIR", base)
+    monkeypatch.setattr(_tf, "tempdir", None)  # bust gettempdir() cache
+    yield base
+
+
+def _init_small_graph(monkeypatch, where: str) -> str:
+    """A real, initialized (empty) graph DB the factory will snapshot — so the
+    snapshot copy actually happens and the leak is exercised, not short-circuited
+    by the missing-DB early return."""
+    db_path = os.path.join(where, "graph.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(db_path)
+    monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
+    return db_path
+
+
+def test_factory_snapshot_dirs_do_not_accumulate(monkeypatch, isolated_tmpbase, tmp_path):
+    """BLOCKER no-leak gate: N≥3 real factory calls must NOT leave N snapshot
+    temp dirs behind. The eager-unlink step reclaims each ``antiek-reuse-snapshot``
+    dir the instant open() returns.
+
+    Round-1 (leaky): mkdtemp'd a snapshot dir per call and NEVER removed it →
+    this asserts 3 accumulated dirs would be present, so it FAILS at
+    ``after == 0``. Round-2: the factory unlinks + rmdir's its snapshot →
+    ``after == 0``."""
+    _init_small_graph(monkeypatch, str(tmp_path))
+
+    before = _count_temp_dirs(isolated_tmpbase, "antiek-reuse-snapshot-")
+    subs = []
+    for _ in range(3):
+        subs.append(cr.build_prod_retrieval_substrate())
+
+    # Every launch must have produced a working (non-None) substrate — the leak
+    # fix must not have quietly degraded reuse to None.
+    assert all(s is not None for s in subs), (
+        "factory returned None on a launch against a real graph — the cleanup "
+        "must reclaim disk WITHOUT breaking the substrate"
+    )
+
+    after = _count_temp_dirs(isolated_tmpbase, "antiek-reuse-snapshot-")
+    assert after == before == 0, (
+        f"factory snapshot dirs accumulated: before={before} after={after} "
+        f"(round-1 leaked one full-DB-copy temp dir per launch — disk exhaustion "
+        f"on the single prod VM). Each launch's snapshot must be reclaimed."
+    )
+
+    # Close-half: closing each substrate must also reclaim the vss-internal index
+    # copies (the ``antiek-vss-`` dirs the substrate's connection held open). After
+    # close, those connections release their backing temp DB.
+    for s in subs:
+        cr.close_prod_retrieval_substrate(s)
+
+
+def test_session_teardown_closes_substrate_freeing_disk():
+    """The teardown half of the disk-reclamation fix: on completion,
+    _run_to_completion must CLOSE the runner's retrieval substrate so the temp DB
+    copy its connection held open (the vss-internal index copy / the pinned-inode
+    fallback snapshot) is freed. A closed DuckDB connection holds no disk.
+
+    Round-1: _run_to_completion only awaited join_and_merge — the substrate
+    connection was never closed and its full-DB-copy temp file leaked for the
+    process lifetime, so this FAILS at the close assertion. Round-2: teardown
+    closes it.
+
+    Deliberately does NOT assert eviction: the established contract
+    (test_session_reconstructs_after_eviction simulates a RESTART; /cost + /steer
+    are live-only) keeps a completed session live-and-steerable until a
+    restart/explicit drop. Closing the substrate's connection (not evicting the
+    session object) is what reclaims the disk."""
+    import asyncio
+
+    closed = {"n": 0}
+
+    class _Sub:
+        def close(self) -> None:
+            closed["n"] += 1
+
+    class _Runner:
+        def __init__(self) -> None:
+            self._retrieval_substrate = _Sub()
+
+    class _Session:
+        session_id = "session-teardown-probe"
+
+        def __init__(self) -> None:
+            self._runner = _Runner()
+
+        async def join_and_merge(self) -> dict:
+            return {"linked_findings": 0}
+
+    sess = _Session()
+    asyncio.run(cr._run_to_completion(sess))  # type: ignore[arg-type]
+
+    assert closed["n"] == 1, (
+        "_run_to_completion did not close the retrieval substrate on completion — "
+        "its DuckDB connection (holding a full-DB-copy temp file) leaks disk for "
+        "the process lifetime"
+    )
+
+
+def test_teardown_never_raises_when_substrate_close_fails():
+    """Graceful degradation through cleanup: if the substrate's close() raises,
+    teardown must swallow it (a teardown that propagated could wedge the
+    completion task / crash the background loop). The disk is then reclaimed on
+    GC instead — never at the cost of an exception."""
+    import asyncio
+
+    class _BadSub:
+        def close(self) -> None:
+            raise RuntimeError("simulated: connection already invalidated")
+
+    class _Runner:
+        def __init__(self) -> None:
+            self._retrieval_substrate = _BadSub()
+
+    class _Session:
+        session_id = "session-bad-close-probe"
+
+        def __init__(self) -> None:
+            self._runner = _Runner()
+
+        async def join_and_merge(self) -> dict:
+            return {}
+
+    # Must not raise.
+    asyncio.run(cr._run_to_completion(_Session()))  # type: ignore[arg-type]
+
+
+def test_factory_returns_substrate_even_if_eager_unlink_fails(monkeypatch, tmp_path):
+    """Graceful degradation: if the eager-unlink cleanup step fails (e.g. the
+    snapshot is already gone or perms deny it), the factory must STILL return the
+    working substrate — cleanup failure must never break a launch. The disk is
+    then reclaimed by the close-on-teardown half instead."""
+    monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
+    db_path = os.path.join(str(tmp_path), "graph.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    from substrate.graph import ensure_initialized
+
+    ensure_initialized(db_path)
+
+    real_unlink = os.unlink
+
+    def _boom_unlink(path, *a, **k):
+        if "antiek-reuse-snapshot-" in str(path):
+            raise OSError("simulated: cannot unlink snapshot")
+        return real_unlink(path, *a, **k)
+
+    monkeypatch.setattr(os, "unlink", _boom_unlink)
+
+    sub = cr.build_prod_retrieval_substrate()
+    assert sub is not None, (
+        "factory returned None because the eager-unlink cleanup raised — cleanup "
+        "failure must degrade to 'snapshot reclaimed later', never a dead substrate"
+    )
+    cr.close_prod_retrieval_substrate(sub)
