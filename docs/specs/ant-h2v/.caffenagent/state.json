@@ -1,0 +1,7 @@
+{
+  "spec_dir": "docs/specs/ant-h2v",
+  "platform_spec_dir": "docs/htmlspec/antiek-hard-to-vary-execution",
+  "pr": 52,
+  "consolidation_branch": "prcrouch/ant-exec-platform",
+  "status": "ready_for_operator_merge"
+}
