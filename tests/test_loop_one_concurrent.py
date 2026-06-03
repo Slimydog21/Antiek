@@ -311,7 +311,9 @@ def _patch_dispatch(monkeypatch, config: DispatchConfig) -> None:
     )
 
 
-def _chunks_block_for_sub_question(sub_question: str, top_k: int = 5) -> str:
+def _chunks_block_for_sub_question(
+    sub_question: str, top_k: int = 5, policy_tag: str = "attribution_eligible",
+) -> str:
     import re as _re
 
     match = _re.search(r"Sub-question [A-D] for (\S+)", sub_question)

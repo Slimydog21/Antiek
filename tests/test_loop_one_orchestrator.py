@@ -454,7 +454,7 @@ async def test_loop_one_happy_path_emits_completed(
     inv = "inv-loop-happy"
     monkeypatch.setattr(
         "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
-        lambda _q, top_k=5: (
+        lambda _q, top_k=5, policy_tag="attribution_eligible": (
             "[chunk-1] Source tier: 1 | Document: PsiQuantum photonic quantum "
             "roadmap | Section: Fixture | Similarity: 1.000\n\n"
             "PsiQuantum photonic quantum roadmap evidence: Quantum X holds "
