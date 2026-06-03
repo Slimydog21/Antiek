@@ -38,7 +38,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 if TYPE_CHECKING:
     from substrate.attribution.compute import AttributionResult
-    from substrate.auth.magic_link import SessionClaims
+    from substrate.auth import SessionClaims
     from substrate.ip_holders import IpHolder
     from substrate.notebooks import Notebook
 
@@ -1206,11 +1206,11 @@ def create_app(
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        expected_email = os.environ.get(_OPERATOR_EMAIL_ENV, "").strip().lower()
+        operator_emails = frozenset(p.strip().lower() for p in os.environ.get(_OPERATOR_EMAIL_ENV, "").split(",") if p.strip())
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
-        if not expected_token and not expected_email and not expected_st_client_id:
+        if not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
@@ -1259,28 +1259,28 @@ def create_app(
         if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
-                session_claims: SessionClaims | None
+                cookie_claims: SessionClaims | None
                 try:
                     from substrate.auth import verify_session_cookie
-                    session_claims = verify_session_cookie(session_value)
+                    cookie_claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
-                    session_claims = None
-                if session_claims is not None:
-                    expected = expected_email.strip().lower()
-                    if not expected or session_claims.email.lower() == expected:
+                    cookie_claims = None
+                if cookie_claims is not None:
+                    cookie_email = cookie_claims.email.strip().lower()
+                    if not operator_emails or cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
-                            email=session_claims.email,
+                            email=cookie_claims.email,
                         )
                         return await call_next(request)
 
         # Path 2: Cloudflare Access — browser SSO (email header)
-        if expected_email:
+        if operator_emails:
             cf_email = request.headers.get(
                 _CF_ACCESS_EMAIL_HEADER, "",
             ).strip().lower()
-            if cf_email and cf_email == expected_email:
+            if cf_email and cf_email in operator_emails:
                 _attach_operator(request, method="cloudflare_access_email")
                 return await call_next(request)
 

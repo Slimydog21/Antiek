@@ -90,7 +90,7 @@
 | Werner barrel | `apps/reading/src/werner/index.ts` | `VERIFIED` | Re-exports `wernerReducer`, `INITIAL_WERNER_STATE`, `isBusy`, `createWernerStage`, `WADDLE_MS`, `useMouseFollow`, the emote vocabulary, the choreography listener. | The steering/emote layer. |
 | Emotes | `apps/reading/src/werner/emotes.tsx` | `VERIFIED` | The emote vocabulary mapped onto animated marks. **The white-background the operator sees is carried by the mark art here**, even though the mascot wrapper is `bg-transparent` — anchor #5. | SPR-06 fixes. |
 | Choreography | `apps/reading/src/werner/choreography.ts` | `VERIFIED` | `PRODUCT_ACTIVATE → waddle-to-control` listener + `data-werner-target` click path. | SPR-06. |
-| Mouse follow | `apps/reading/src/werner/useMouseFollow.ts` | `VERIFIED` | `export function useMouseFollow(...)` — the ~5s-lagged cursor pursuit. | SPR-06. |
+| Mouse follow | `apps/reading/src/werner/useMouseFollow.ts` | `VERIFIED` | `export function useMouseFollow(...)` — sample-delay lag (`LAG_MS=500`) + WERNER-ICE reel pursuit (`REEL_TAU_MS=450`). | SPR-05 / WERNER-ICE. |
 
 ---
 

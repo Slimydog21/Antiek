@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ANT-EXEC-H2V — Hard-to-vary agent execution</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; line-height: 1.5; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }
+    .done { color: #0a0; }
+    .pending { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>ANT-EXEC-H2V</h1>
+  <p>Platform-first agent execution protocol: Phase A→E, forbidden F1–F8, mechanical gates.</p>
+  <p><strong>Canon:</strong> <code>docs/agent-execution/HARD_TO_VARY.md</code></p>
+  <p><strong>Ledger:</strong> <a href="verified-interfaces.md">verified-interfaces.md</a></p>
+
+  <h2>Sprints</h2>
+  <table>
+    <thead><tr><th>ID</th><th>Deliverable</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>SPR-01</td><td>HARD_TO_VARY.md + TEMPLATES.md</td><td class="done">done</td></tr>
+      <tr><td>SPR-02</td><td>THEATER_TAXONOMY.md + ADVERSARIAL_RUBRIC.md</td><td class="done">done</td></tr>
+      <tr><td>SPR-03</td><td>verify_handoff.ts</td><td class="done">done</td></tr>
+      <tr><td>SPR-04</td><td>audit_agent_session.sh</td><td class="done">done</td></tr>
+      <tr><td>SPR-05</td><td><a href="sprint-05-ams-bridge.html">AMS bridge</a></td><td class="done">done</td></tr>
+      <tr><td>SPR-06</td><td>cascade-case-study.md</td><td class="done">done</td></tr>
+      <tr><td>SPR-07</td><td>WERNER_EXEC_ADAPTER.md</td><td class="done">done</td></tr>
+      <tr><td>SPR-08</td><td>canonical_verify.sh</td><td class="done">done</td></tr>
+      <tr><td>SPR-09</td><td>agent_execution_gates.yml</td><td class="done">done</td></tr>
+      <tr><td>SPR-10</td><td>PLATFORM_EXEC_MATRIX.md</td><td class="done">done</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Verify (repo root)</h2>
+  <pre>./scripts/canonical_verify.sh profile
+./scripts/canonical_verify.sh agent-gates
+./scripts/canonical_verify.sh cascade</pre>
+</body>
+</html>

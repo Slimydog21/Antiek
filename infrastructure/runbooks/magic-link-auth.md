@@ -82,7 +82,7 @@ Append to `/etc/antiek/secrets.env`:
 
 ```
 ANTIEK_AUTH_SECRET=<the secret from step 1>
-ANTIEK_OPERATOR_EMAIL=ftn208@nyu.edu
+ANTIEK_OPERATOR_EMAIL=the@faisalnazer.com,ftn208@nyu.edu
 ANTIEK_EMAIL_PROVIDER=resend
 RESEND_API_KEY=<your Resend API key>
 ANTIEK_PUBLIC_BASE_URL=https://antiek.ai
@@ -101,7 +101,31 @@ sudo systemctl restart antiek
 ### 4. Verify the API side directly
 
 Before touching the web app, confirm the API issues + accepts a
-session cookie:
+session cookie.
+
+#### Auth probe (staged Layer A/B check)
+
+One command runs health → CORS preflight → `POST /auth/request`
+(dry-run, non-allowlisted email by default) → `GET /auth/me` without
+cookie. Each stage prints one JSON line (`name`, `layer`, `pass`,
+`http_code`, `detail`). Exit `0` all pass, `1` any fail, `2` bad
+`--base-url`.
+
+```bash
+python tools/auth_probe.py --base-url https://api.antiek.ai
+# Local uvicorn (Vite origin):
+python tools/auth_probe.py --base-url http://127.0.0.1:8000 --origin http://localhost:5173
+```
+
+Composes with `tools/prod_parity/check.py` on deploy (SHA + flywheel);
+run auth stages after parity when `ANTIEK_API_BASE` is set or pass
+`--auth-probe`:
+
+```bash
+python tools/prod_parity/check.py --url https://api.antiek.ai --auth-probe
+```
+
+#### Manual curl (same stages, piecemeal)
 
 ```bash
 # Request a magic link to a non-allowlisted email — should silently no-op
@@ -163,7 +187,7 @@ To exercise the flow locally:
 
 ```bash
 export ANTIEK_AUTH_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
-export ANTIEK_OPERATOR_EMAIL=ftn208@nyu.edu
+export ANTIEK_OPERATOR_EMAIL=the@faisalnazer.com,ftn208@nyu.edu
 export ANTIEK_COOKIE_INSECURE=1  # so cookies work over http://
 uvicorn interfaces.research.api.app:app --workers 1
 ```
