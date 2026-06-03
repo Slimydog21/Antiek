@@ -82,6 +82,16 @@ event log for the investigation you launched), not a process-global counter
 that other runs mutate — a global counter makes the assertion flaky. See
 `probes/flywheel.py` for the worked example.
 
+> The probe's own `finally` runs on the normal and crash paths but **not**
+> when the probe TIMES OUT — the work is in a daemon thread the runner
+> abandons while it is still alive. So the runner (`_run_one`) snapshots
+> `os.environ` before each probe and restores it after the join
+> **unconditionally** (success / crash / timeout). That backstop means a
+> timed-out probe's in-place env mutation cannot leak into the next probe.
+> Keep restoring env in your probe's `finally` anyway — it is the correct
+> normal-path cleanup and it also cleans up your temp dir, which the runner
+> does not touch.
+
 ## The rule: boot via the real factory
 
 > **A probe MUST boot via `create_app()` the production way: no

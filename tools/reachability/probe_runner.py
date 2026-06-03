@@ -231,10 +231,32 @@ def _run_one(probe: Probe) -> ProbeResult:
     """Run a single probe under its wall-clock ceiling. A probe that raises
     is mapped to a BLOCKED ``error`` result (never propagated — one broken
     probe must not crash the whole run). The timeout uses a SIGALRM-free
-    thread join so it works on any platform and inside pytest."""
+    thread join so it works on any platform and inside pytest.
+
+    ENV ISOLATION (SPR-01 sharpen, defect #2). Probes mutate ``os.environ``
+    in place (per README "isolate your writes": each probe sets
+    ``ANTIEK_DUCKDB_PATH`` / ``ANTIEK_RESEARCH_EVENTS_DIR`` to per-PID temp
+    paths and restores them in its own ``finally``). But that probe-local
+    ``finally`` does NOT run when the probe TIMES OUT: the work happens in a
+    daemon thread we ``join(timeout=...)`` and then ABANDON while it is still
+    alive, so its ``finally`` (env restore + temp-dir rmtree) never executes
+    on this turn. The leaked env would then leak into the NEXT probe, which
+    could boot against a stale temp DB path. The runner is the only layer
+    that can guarantee restoration regardless of thread/timeout state, so it
+    snapshots ``os.environ`` HERE, before the probe runs, and restores it
+    after the join UNCONDITIONALLY (success, crash, OR timeout). This is
+    belt-and-braces over the probe's own ``finally``, not a replacement for
+    it — a well-behaved probe still cleans up its own temp dir on the normal
+    path; this only backstops the timeout path the probe cannot reach.
+    One probe ships today so the leak cannot bite yet, but README instructs
+    every future probe to use the same in-place mutate pattern, so we harden
+    the shared runner now."""
     import threading
 
     box: list[ProbeResult] = []
+    # Snapshot env BEFORE the probe runs (full copy: a probe may also mutate
+    # keys we don't enumerate). Restored in the ``finally`` below.
+    _env_snapshot = dict(os.environ)
 
     def _target() -> None:
         try:
@@ -248,22 +270,40 @@ def _run_one(probe: Probe) -> ProbeResult:
                 )
             )
 
-    t = threading.Thread(target=_target, name=f"probe-{probe.id}", daemon=True)
-    t.start()
-    t.join(timeout=probe.timeout_s)
-    if t.is_alive():
-        # The probe thread is daemon, so it is abandoned to the process exit;
-        # the verdict is a hard BLOCKED (a slow feature is a finding).
-        return ProbeResult(
-            ok=False,
-            reason=f"exceeded {probe.timeout_s:.0f}s wall-clock ceiling",
-            failure_mode="timeout",
-        )
-    if not box:  # pragma: no cover — defensive: thread finished but no result
-        return ProbeResult(
-            ok=False, reason="probe produced no result", failure_mode="error"
-        )
-    return box[0]
+    try:
+        t = threading.Thread(target=_target, name=f"probe-{probe.id}", daemon=True)
+        t.start()
+        t.join(timeout=probe.timeout_s)
+        if t.is_alive():
+            # The probe thread is daemon, so it is abandoned to the process
+            # exit; the verdict is a hard BLOCKED (a slow feature is a
+            # finding). Its in-probe ``finally`` will NOT have run — the env
+            # restore below is what keeps the leak from reaching the next
+            # probe.
+            return ProbeResult(
+                ok=False,
+                reason=f"exceeded {probe.timeout_s:.0f}s wall-clock ceiling",
+                failure_mode="timeout",
+            )
+        if not box:  # pragma: no cover — defensive: thread finished, no result
+            return ProbeResult(
+                ok=False, reason="probe produced no result", failure_mode="error"
+            )
+        return box[0]
+    finally:
+        # Restore os.environ to its pre-probe state REGARDLESS of how the
+        # probe exited (normal / crashed / timed-out-and-abandoned). On the
+        # normal path the probe already restored its own keys, so this is a
+        # no-op; on the timeout path it is the only restore that runs.
+        # NOTE: if a probe timed out, its daemon thread is still alive and
+        # could race a write to os.environ after this restore. That is
+        # inherent to abandoning a thread we cannot kill; the timeout is
+        # already a hard BLOCKED finding (the run will not be trusted), and a
+        # timing-out probe is a defect to fix, not a state to recover into.
+        # The common, non-pathological case (next probe after a clean
+        # timeout) is correctly isolated.
+        os.environ.clear()
+        os.environ.update(_env_snapshot)
 
 
 def run_probes(

@@ -503,6 +503,48 @@
       changed_when: false
       tags: [verify]
 
+    # ── Flywheel-liveness REVIEW gate (Antiek Convergence SPR-01 / M6 part a) ──
+    # The re-arm toggle above is CONDITION-gated (wire + corpus), NOT
+    # date-expired — deliberately, because the corpus is operator-gated (arXiv
+    # 429-banned) and a calendar force-red would wrongly red every correct
+    # deploy onto the still-empty box (the exact false-block #68 removed). But
+    # condition-gated-without-a-trigger is also the ONE place a dead-flywheel red
+    # could be suppressed FOREVER with nothing forcing a re-look. This review
+    # gate is that trigger: when today is PAST antiek_flywheel_review_date AND
+    # the flywheel is STILL informational (toggle still false AND prod still
+    # reports 0 reuse events), emit a LOUD warning forcing an explicit
+    # operator re-justify-or-arm decision. It is NOT a hard force-red — see
+    # above for why the literal M6 "date-expiry force-red" criterion would be
+    # WRONG here (it would red correct deploys). The honest deviation from M6 is
+    # stated in docs/decisions/prod-parity-flywheel-informational.md.
+    #
+    # "still informational" = the toggle is off AND prod's /health reports the
+    # flywheel dead (knowledge_reuse_count <= 0 / flywheel_ready false). If
+    # someone has already armed the toggle, OR prod is genuinely emitting reuse
+    # events, the informational window is closed and no review is owed.
+    - name: flywheel review — warn if still informational past the review date
+      ansible.builtin.debug:
+        msg: >-
+          ::warning:: FLYWHEEL STILL INFORMATIONAL PAST REVIEW DATE
+          ({{ antiek_flywheel_review_date }}). The deploy-side flywheel-liveness
+          assert is still NOT blocking (antiek_require_flywheel is false) and
+          prod still reports a dead flywheel
+          (knowledge_reuse_count={{ health.json.knowledge_reuse_count | default('absent') }},
+          flywheel_ready={{ health.json.flywheel_ready | default('absent') }}).
+          This was justified during the SPR-01 -> SPR-02 fix window
+          (docs/decisions/prod-parity-flywheel-informational.md), but that
+          window's review horizon has passed. RE-JUSTIFY OR ARM: either land the
+          SPR-02 wire + run the operator corpus ingest and flip
+          antiek_require_flywheel=true
+          (infrastructure/runbooks/flywheel-prod-cutover.md), or push
+          antiek_flywheel_review_date out with a written reason. Do NOT leave it
+          silently informational.
+      when:
+        - (now().date() | string) > antiek_flywheel_review_date
+        - not (antiek_require_flywheel | default(false) | bool)
+        - (health.json.knowledge_reuse_count | default(0) | int) <= 0
+      tags: [verify]
+
     # ── Frontend smoke check ────────────────────────────────────────────
     # GET the root URL through Caddy. Asserts the SPA is served + the
     # response is text/html (i.e. NOT the JSON 404 a reverse-proxy

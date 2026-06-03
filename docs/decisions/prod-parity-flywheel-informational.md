@@ -73,6 +73,55 @@ false-block from the second:
 Run `ansible-playbook ... deploy.yml -e antiek_require_flywheel=true` only when
 both hold (see `infrastructure/runbooks/flywheel-prod-cutover.md`).
 
+#### The deploy-side window is CONDITION-gated, NOT date-expired — and how the review-date closes the silent-forever gap (M6, stated plainly)
+
+**Honest deviation from the literal M6 criterion.** M6 as written asks for a
+*date-expiry force-red* — past a date, the deploy hard-fails on a dead flywheel,
+mirroring the reachability gate's known-red self-close. **We do NOT implement
+that literal force-red on the deploy side, and that is deliberate, not an
+oversight.** The deploy-side flywheel state is **condition-gated** (it arms only
+when the SPR-02 *wire* lands AND a prod *corpus* has emitted ≥ 1 reuse event),
+**not date-gated**. A pure calendar force-red would be *wrong* here: prod's
+corpus is empty for an operator-uncontrollable reason (arXiv is 429-banned; the
+ingest window is an operator-gated deferral, `engineering_deferrals.md`
+D17/D18), so a code deploy onto the still-empty box **cannot** make the flywheel
+live. Force-redding on a calendar would therefore red **every correct deploy**
+onto the unfed box — re-introducing the exact false-block #68 removed. The
+reachability gate *can* date-expire because it asserts the **wire alone**
+in-process (no corpus needed — the reuse assembler emits `knowledge.reused` even
+with zero prior units), so its red is fully within engineering control. The
+deploy assert additionally requires the prod corpus, which is not.
+
+**But condition-gated-with-no-trigger is itself a hole.** As shipped before this
+amendment, the deploy-side informational state was the ONE place a dead-flywheel
+red could stay suppressed **indefinitely with no self-closing mechanism** — the
+toggle is off, nothing forces a re-look, and "informational forever" is exactly
+the silent-permanent failure mode this whole convergence sprint exists to kill.
+
+**The review-date closes that gap without a wrong force-red.** `deploy.yml`
+takes an `antiek_flywheel_review_date` (default `2026-07-03`, the SAME date as
+the reachability gate's known-red expiry — both windows track the SPR-01 → SPR-02
+fix, so they share one horizon; sourced in `group_vars/all.yml`). On every
+deploy, when **today is past the review date AND the flywheel is still
+informational** (the toggle is still false AND prod's `/health` still reports
+`knowledge_reuse_count <= 0`), the playbook emits a LOUD `::warning::` /
+`debug` line — *"flywheel still informational past review date; re-justify or
+arm"* — forcing an explicit operator decision (land the wire + run the corpus
+ingest and arm `antiek_require_flywheel=true`, or push the review-date out with
+a written reason). It is **not** a hard force-red (for the corpus reason above),
+but it is **no longer silent-forever**: every post-review deploy nags until the
+operator either arms the gate or consciously renews the deferral. If the toggle
+is already armed, or prod is genuinely emitting reuse events, the informational
+window is closed and no warning fires.
+
+So the M6 intent — *the informational state cannot hide a dead flywheel
+forever* — is satisfied; the *mechanism* deviates from the literal date-expiry
+force-red (a loud recurring review-warning instead) because a literal force-red
+would be incorrect against an operator-gated empty corpus. The reachability
+gate's pre-merge probe carries the literal date-expiry self-close (it can,
+because it gates the wire alone); the deploy assert carries the review-warning
+(it must, because it gates wire + corpus).
+
 **Agreement with the pre-merge reachability gate.** Antiek Convergence SPR-01
 also installed a *pre-merge* reachability probe
 (`tools/reachability/probes/flywheel.py`, `docs/decisions/reachability-gate.md`)

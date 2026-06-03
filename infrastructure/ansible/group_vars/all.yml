@@ -64,6 +64,32 @@ antiek_secrets_file: "{{ antiek_secrets_dir }}/secrets.env"
 # a future decision if a 3.13-specific feature becomes load-bearing.
 python_version: "3.12"
 
+# ── Flywheel-liveness deploy gate (Antiek Convergence SPR-01 / M6) ─────────────
+#
+# `antiek_require_flywheel` (default false) promotes flywheel-liveness back to a
+# BLOCKING post-deploy assert (appends --require-flywheel to the prod-parity
+# check). It is CONDITION-gated, not date-gated: flip it to true ONLY when BOTH
+# the SPR-02 wire has landed AND a prod corpus has produced >=1 knowledge.reused
+# event (see infrastructure/runbooks/flywheel-prod-cutover.md and the deploy.yml
+# comment at the prod-parity task). Forcing it true on the current empty box
+# would red every correct deploy — that is the false-block #68 removed.
+antiek_require_flywheel: false
+#
+# `antiek_flywheel_review_date` is the SELF-CLOSING half of that gate. Because
+# the flip above is condition-gated (not date-expired), the informational state
+# is the one place a dead-flywheel red could otherwise be suppressed forever
+# with no trigger. So the deploy emits a LOUD ::warning:: when today is PAST this
+# date AND the flywheel is still informational (toggle still false / prod still
+# reports 0 reuse events) — forcing an explicit operator re-justify-or-arm
+# decision rather than silent-forever suppression. It is deliberately NOT a hard
+# force-red: the corpus is operator-gated (arXiv 429-banned), so a calendar
+# force-red would wrongly red every correct deploy onto the still-empty box.
+# SOURCE: same 2026-07-03 as the reachability gate's known-red expiry
+# (tools/reachability/known_red.json) — both windows track the SPR-01 -> SPR-02
+# fix, so they share the review horizon. Extend with a fresh justification (or
+# arm the toggle) when the warning fires.
+antiek_flywheel_review_date: "2026-07-03"
+
 # ── Network ──────────────────────────────────────────────────────────────────
 
 # uvicorn binds here. Caddy reverse-proxies localhost:{{ uvicorn_port }}.

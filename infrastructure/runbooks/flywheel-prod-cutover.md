@@ -32,6 +32,18 @@ prod-shaped benchmark run; the cutover deploy itself is the routine
 > only during SPR-01 → SPR-02; the in-process reachability probe greens on the
 > WIRE alone, this deploy assert additionally needs the corpus.
 
+> **2026-06-03 UPDATE (M6 sharpen) — the informational state now self-reviews.**
+> Because the re-arm toggle is *condition*-gated (wire + corpus) and not
+> *date*-gated, the deploy emits a LOUD `::warning::` on every deploy run once
+> **today is past `antiek_flywheel_review_date`** (default `2026-07-03`, set in
+> `group_vars/all.yml`) **AND** the flywheel is still informational (toggle off
+> AND prod still reports `knowledge_reuse_count <= 0`). It is **not** a hard
+> force-red — a calendar force-red would wrongly red every correct deploy onto
+> the operator-gated empty corpus — but it ends the silent-forever state: every
+> post-review deploy nags until you either **arm the gate** (the re-arm step
+> below) or **push the review-date out with a written reason**. If you see that
+> warning, that is the decision it is forcing on you.
+
 ---
 
 ## What "the flywheel" means here

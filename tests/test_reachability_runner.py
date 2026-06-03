@@ -146,3 +146,47 @@ def test_probe_that_times_out_is_blocked():
     assert code == 1
     assert "[BLOCKED] self-test slow" in out
     assert "timeout" in out
+
+
+def test_env_is_restored_after_a_timed_out_probe():
+    # SPR-01 sharpen, defect #2: a probe that mutates os.environ in place and
+    # then TIMES OUT never runs its own restore-in-finally (the work is in a
+    # daemon thread we abandon). The RUNNER must still restore os.environ so
+    # the leaked path cannot reach the next probe. Prove it: a probe that sets
+    # a sentinel env var and then hangs past its ceiling must leave os.environ
+    # exactly as it was before the run.
+    import time
+
+    from tools.reachability.probe_runner import _run_one
+
+    sentinel = "_ANTIEK_REACHABILITY_SELFTEST_LEAK"
+    preexisting = "_ANTIEK_REACHABILITY_SELFTEST_PREEXISTING"
+    os.environ.pop(sentinel, None)
+    os.environ[preexisting] = "original-value"
+    try:
+
+        def _leaky_then_hang() -> ProbeResult:
+            # Mutate env the way a real probe does, then hang past the ceiling
+            # WITHOUT reaching any restore (no finally runs on the abandoned
+            # daemon thread).
+            os.environ[sentinel] = "/tmp/stale-temp-db-path"
+            os.environ[preexisting] = "clobbered-by-probe"
+            time.sleep(5.0)
+            return ProbeResult(ok=True)
+
+        leaky = Probe(
+            id="_selftest_env_leak",
+            feature="self-test env leak on timeout",
+            run=_leaky_then_hang,
+            timeout_s=0.2,
+        )
+        result = _run_one(leaky)
+        assert result.failure_mode == "timeout"
+        # The runner restored env: the sentinel the probe ADDED is gone, and a
+        # key the probe CLOBBERED is back to its pre-probe value — even though
+        # the probe's own finally never ran.
+        assert sentinel not in os.environ, "runner leaked an added env var across a timeout"
+        assert os.environ.get(preexisting) == "original-value", "runner did not restore a clobbered env var after a timeout"
+    finally:
+        os.environ.pop(sentinel, None)
+        os.environ.pop(preexisting, None)

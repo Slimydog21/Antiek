@@ -125,6 +125,29 @@ wire-fix **plus** a prod corpus ingest turns the prod-parity check green. See
 the prod-parity decision's RECONSIDER-IF and `infrastructure/runbooks/
 flywheel-prod-cutover.md`.
 
+## Handoff to SPR-02 (when the wire lands and this probe goes GREEN)
+
+SPR-02 wires `retrieval_substrate` into `cascade_routes.py:367`. When it does,
+two follow-ups in the flywheel probe become due:
+
+1. **Delete the `flywheel` known-red entry** in
+   `tools/reachability/known_red.json` (the probe greens on its own once the
+   wire is present — no corpus needed). With the entry gone the gate returns to
+   strict for the flywheel.
+2. **Replace the fixed `time.sleep(_FANOUT_SETTLE_S)` with a bounded poll.**
+   See the `TODO(SPR-02 …)` in `tools/reachability/probes/flywheel.py`. The
+   fixed 3 s sleep is *correct* for the RED assertion today — we expect ZERO
+   `knowledge.reused` rows, so there is nothing to poll for and a flat wait is
+   the simplest honest thing. But once the wire lands and the probe is waiting
+   for a row to APPEAR, the fixed sleep becomes both a flat latency tax (every
+   green run eats the full 3 s) and a flake risk (a slow CI box could read the
+   event log before the background fan-out task writes the row). Poll the
+   per-investigation event log for the `knowledge.reused` row in a short loop
+   until a timeout (reuse the probe's own temp `events` dir; cap at well under
+   `DEFAULT_PROBE_TIMEOUT_S`) so a fast box returns immediately and a slow box
+   still gets its full window. Do **not** make this change in SPR-01 — it would
+   only add machinery to a probe that is asserting absence.
+
 ## RECONSIDER-IF
 
 - A `pytest -m reachability` marker is made **required** in CI **and** a lint

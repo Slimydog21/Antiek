@@ -179,6 +179,14 @@ def _probe() -> ProbeResult:
         # it settle. The reuse hook fires synchronously inside runner.start
         # (before the demo loop), so when the wire is present the event is
         # already written; this settle is headroom, not a race fix.
+        # TODO(SPR-02, when this probe goes GREEN): replace the fixed sleep
+        # with a poll of the event log for the knowledge.reused row until a
+        # timeout, so a fast box returns immediately and a slow box still gets
+        # its full window — the fixed sleep is correct for the RED assertion
+        # today (we expect ZERO reuse rows, so there is nothing to poll for)
+        # but becomes a flat latency tax / flake risk once the wire lands and
+        # we are waiting for a row to appear. See the "Handoff to SPR-02"
+        # section of docs/decisions/reachability-gate.md.
         time.sleep(_FANOUT_SETTLE_S)
 
         # ── assert the OUTCOME on the PER-INVESTIGATION event log ──
