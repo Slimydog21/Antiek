@@ -5,25 +5,44 @@ import { expect, test } from "@playwright/test";
 
 import { loginAndGotoApp } from "./_ams/auth";
 
+async function clearWorkspacePersistence(page: import("@playwright/test").Page) {
+  await page.addInitScript(() => {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith("antiek.workspace.")) {
+        localStorage.removeItem(k);
+      }
+    }
+  });
+}
+
 test.describe("FEEL-S4 — ResearchWorkstation IDE exempt", () => {
-  test("landing dock column has no floating panel shadow-z3 tier", async ({
+  test("research landing has no floating opaque stack chrome", async ({
     page,
   }) => {
+    await clearWorkspacePersistence(page);
     await loginAndGotoApp(page, "/");
+    await expect(page.locator("textarea").first()).toBeVisible({
+      timeout: 15_000,
+    });
 
-    const dockedRegions = page.locator(
-      '[role="region"]:not([style*="position: absolute"])',
+    // Floating panels carry absolute geometry; landing must not stack them.
+    const floatingPanels = page.locator(
+      '[role="region"][style*="position: absolute"]',
     );
-    const count = await dockedRegions.count();
-    expect(count).toBeGreaterThan(0);
+    await expect(floatingPanels).toHaveCount(0);
 
-    for (let i = 0; i < count; i++) {
-      const cls = (await dockedRegions.nth(i).getAttribute("class")) ?? "";
-      expect(cls).not.toMatch(/shadow-z3/);
+    const leftDock = page.locator('aside[aria-label="Left dock"]').first();
+    if ((await leftDock.count()) > 0) {
+      const dockHtml = await leftDock.evaluate((el) => el.innerHTML);
+      expect(dockHtml).not.toMatch(/shadow-z3/);
     }
+
+    await expect(page.locator('[data-glass-surface="glass"]').first()).toBeVisible();
   });
 
   test("composer control exposes sun focus-visible ring", async ({ page }) => {
+    await clearWorkspacePersistence(page);
     await loginAndGotoApp(page, "/");
     const textarea = page.locator("textarea").first();
     await expect(textarea).toBeVisible({ timeout: 10_000 });

@@ -47,5 +47,21 @@ test.describe("FEEL-S2 — floating panel cascade", () => {
         expect(dx + dy).toBeGreaterThanOrEqual(20);
       }
     }
+
+    const shadowRank = (cls: string) => {
+      if (cls.includes("shadow-z3")) return 3;
+      if (cls.includes("shadow-z2")) return 2;
+      if (cls.includes("shadow-z1")) return 1;
+      return 0;
+    };
+
+    const stacks = await regions.evaluateAll((nodes) =>
+      nodes.map((n) => ({
+        z: Number.parseInt(getComputedStyle(n).zIndex, 10) || 0,
+        rank: shadowRank(n.className),
+      })),
+    );
+    stacks.sort((a, b) => a.z - b.z);
+    expect(stacks[0].rank).toBeLessThan(stacks[stacks.length - 1].rank);
   });
 });
