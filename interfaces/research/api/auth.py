@@ -29,10 +29,11 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Sequence
+from typing import Any
 from urllib.parse import urlencode, urljoin
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 from substrate.auth import (
@@ -45,6 +46,8 @@ from substrate.auth import (
     mint_session_cookie,
     verify_magic_link_token,
 )
+
+from .operator_allowlist import operator_allowlist_from_env
 
 SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
@@ -93,16 +96,12 @@ class AuthMeResponse(BaseModel):
 
 
 def _allowlist() -> frozenset[str]:
-    """Comma-separated list in ``ANTIEK_OPERATOR_EMAIL`` (single
-    email today; multi-user later). Falls back to the empty set,
-    which means "deny everything" — the operator must configure the
-    env var before the login flow can succeed."""
-    raw = os.environ.get("ANTIEK_OPERATOR_EMAIL", "").strip()
-    if not raw:
-        return frozenset()
-    return frozenset(
-        part.strip().lower() for part in raw.split(",") if part.strip()
-    )
+    """Comma-separated list in ``ANTIEK_OPERATOR_EMAIL``.
+
+    Empty set means deny magic-link sends until the operator configures
+    the env var.
+    """
+    return operator_allowlist_from_env()
 
 
 def _api_base_url() -> str:
@@ -168,14 +167,28 @@ def _resolve_redirect(next_path: str) -> str:
     return f"{fe}{safe}" if fe else safe
 
 
-def _cookie_kwargs() -> dict:
+def _redirect_login_error(*, error_code: str, next_path: str = "/") -> RedirectResponse:
+    """Send the browser to the frontend Login surface with a closed error enum.
+
+    Email magic links land on the API host; JSON error bodies are hostile
+    to operators. When a frontend base is configured, redirect there.
+    Otherwise fall back to a relative ``/login`` (same-origin dev).
+    """
+    safe_next = next_path if _is_safe_relative(next_path) else "/"
+    qs = urlencode({"error": error_code, "next": safe_next})
+    fe = _frontend_base_url()
+    target = f"{fe}/login?{qs}" if fe else f"/login?{qs}"
+    return RedirectResponse(url=target, status_code=302)
+
+
+def _cookie_kwargs() -> dict[str, Any]:
     """HttpOnly + Secure + SameSite=Lax. ``Secure`` is unconditional
     on production; tests work because the test client doesn't
     enforce the flag. ``Domain`` is set in cross-origin deployments
     so the cookie is visible to both Pages (antiek.ai) and the API
     (api.antiek.ai)."""
     secure = os.environ.get("ANTIEK_COOKIE_INSECURE", "").strip() != "1"
-    kwargs: dict = dict(
+    kwargs: dict[str, Any] = dict(
         httponly=True,
         secure=secure,
         samesite="lax",
@@ -264,38 +277,14 @@ def register_auth_routes(
         try:
             email = verify_magic_link_token(token)
         except TokenExpired:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "code": "magic_link_expired",
-                        "message": "This sign-in link expired. Request a new one.",
-                    }
-                },
-            )
+            return _redirect_login_error(error_code="magic_link_expired", next_path=next)
         except InvalidToken:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "code": "magic_link_invalid",
-                        "message": "This sign-in link is not valid.",
-                    }
-                },
-            )
+            return _redirect_login_error(error_code="magic_link_invalid", next_path=next)
         if email not in _resolve_allowlist():
             # Defensive: token was valid but the allowlist changed
             # between request and click. Reject without leaking which
             # case we're in.
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "error": {
-                        "code": "not_authorized",
-                        "message": "This email is not authorized for Antiek.",
-                    }
-                },
-            )
+            return _redirect_login_error(error_code="not_authorized", next_path=next)
         cookie = mint_session_cookie(
             user_id="__operator__",
             email=email,

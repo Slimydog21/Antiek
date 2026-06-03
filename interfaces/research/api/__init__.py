@@ -1,107 +1,75 @@
 """Antiek substrate API.
 
-FastAPI app exposing:
-- WebSocket /ws/events — live event tail
-- POST /events/typed — typed event ingress from the reading UI
-- GET /trajectory/{investigation_id} — bulk fetch
-- GET /health — version probe
+FastAPI app exposing WebSocket events, typed ingress, trajectory fetch, health.
+
+**Lazy exports:** importing submodules such as ``cascade_routes`` must not
+eager-load ``app.py`` (multi-thousand-line factory). Tests and gates that
+only need the cascade router were hanging at collection when this package
+re-exported ``create_app`` at import time (ANT-H2V).
 
 Run with::
 
     uvicorn interfaces.research.api.app:app --reload
-
-The TS reading surface at ``apps/reading/`` consumes this app via the
-generated types in ``apps/reading/src/generated/types.ts`` (produced by
-``tools/codegen/emit_types.py``).
 """
 
-from .app import (
-    EmittedEventResponse,
-    HealthResponse,
-    TypedEventEnvelope,
-    app,
-    create_app,
-)
-from .broadcast import EventBroadcaster, EventHandler
-from .connector import (
-    make_connector_handler,
-)
-from .connector import (
-    register_handlers as register_connector_handlers,
-)
-from .cross_doc import (
-    make_cross_doc_handler,
-)
-from .cross_doc import (
-    register_handlers as register_cross_doc_handlers,
-)
-from .decomposer import (
-    make_decomposer_handler,
-)
-from .decomposer import (
-    register_handlers as register_decomposer_handlers,
-)
-from .evidence_retriever import (
-    make_evidence_retriever_handler,
-)
-from .evidence_retriever import (
-    register_handlers as register_evidence_retriever_handlers,
-)
-from .grounding import (
-    make_grounding_handler,
-)
-from .grounding import (
-    register_handlers as register_grounding_handlers,
-)
-from .note_taking import (
-    make_note_taker_handler,
-)
-from .note_taking import (
-    register_handlers as register_note_taking_handlers,
-)
-from .parameter_extractor import (
-    make_parameter_extractor_handler,
-)
-from .parameter_extractor import (
-    register_handlers as register_parameter_extractor_handlers,
-)
-from .synthesizer import (
-    make_synthesizer_handler,
-)
-from .synthesizer import (
-    register_handlers as register_synthesizer_handlers,
-)
-from .wrestling import (
-    make_distillation_handler,
-)
-from .wrestling import (
-    register_handlers as register_wrestling_handlers,
-)
+from __future__ import annotations
 
-__all__ = [
-    "create_app",
-    "app",
-    "EventBroadcaster",
-    "EventHandler",
-    "TypedEventEnvelope",
-    "EmittedEventResponse",
-    "HealthResponse",
-    "make_distillation_handler",
-    "register_wrestling_handlers",
-    "make_grounding_handler",
-    "register_grounding_handlers",
-    "make_note_taker_handler",
-    "register_note_taking_handlers",
-    "make_cross_doc_handler",
-    "register_cross_doc_handlers",
-    "make_decomposer_handler",
-    "register_decomposer_handlers",
-    "make_evidence_retriever_handler",
-    "register_evidence_retriever_handlers",
-    "make_parameter_extractor_handler",
-    "register_parameter_extractor_handlers",
-    "make_connector_handler",
-    "register_connector_handlers",
-    "make_synthesizer_handler",
-    "register_synthesizer_handlers",
-]
+import importlib
+from typing import Any
+
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "EmittedEventResponse": (".app", "EmittedEventResponse"),
+    "HealthResponse": (".app", "HealthResponse"),
+    "TypedEventEnvelope": (".app", "TypedEventEnvelope"),
+    "app": (".app", "app"),
+    "create_app": (".app", "create_app"),
+    "EventBroadcaster": (".broadcast", "EventBroadcaster"),
+    "EventHandler": (".broadcast", "EventHandler"),
+    "make_cross_doc_handler": (".cross_doc", "make_cross_doc_handler"),
+    "register_cross_doc_handlers": (".cross_doc", "register_handlers"),
+    "make_decomposer_handler": (".decomposer", "make_decomposer_handler"),
+    "register_decomposer_handlers": (".decomposer", "register_handlers"),
+    "make_evidence_retriever_handler": (
+        ".evidence_retriever",
+        "make_evidence_retriever_handler",
+    ),
+    "register_evidence_retriever_handlers": (
+        ".evidence_retriever",
+        "register_handlers",
+    ),
+    "make_connector_handler": (".connector", "make_connector_handler"),
+    "register_connector_handlers": (".connector", "register_handlers"),
+    "make_parameter_extractor_handler": (
+        ".parameter_extractor",
+        "make_parameter_extractor_handler",
+    ),
+    "register_parameter_extractor_handlers": (
+        ".parameter_extractor",
+        "register_handlers",
+    ),
+    "make_synthesizer_handler": (".synthesizer", "make_synthesizer_handler"),
+    "register_synthesizer_handlers": (".synthesizer", "register_handlers"),
+    "make_grounding_handler": (".grounding", "make_grounding_handler"),
+    "register_grounding_handlers": (".grounding", "register_handlers"),
+    "make_note_taker_handler": (".note_taking", "make_note_taker_handler"),
+    "register_note_taking_handlers": (".note_taking", "register_handlers"),
+    "make_distillation_handler": (".wrestling", "make_distillation_handler"),
+    "register_wrestling_handlers": (".wrestling", "register_handlers"),
+}
+
+__all__ = list(_LAZY_EXPORTS.keys())
+
+
+def __getattr__(name: str) -> Any:
+    spec = _LAZY_EXPORTS.get(name)
+    if spec is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    mod_name, attr = spec
+    mod = importlib.import_module(mod_name, __name__)
+    value = getattr(mod, attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_LAZY_EXPORTS))

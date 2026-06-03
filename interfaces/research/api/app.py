@@ -31,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import (
     Body,
@@ -1194,11 +1194,11 @@ def create_app(
     @app.middleware("http")
     async def _operator_auth_middleware(request, call_next):
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        expected_email = os.environ.get(_OPERATOR_EMAIL_ENV, "").strip().lower()
+        operator_emails = frozenset(p.strip().lower() for p in os.environ.get(_OPERATOR_EMAIL_ENV, "").split(",") if p.strip())
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
-        if not expected_token and not expected_email and not expected_st_client_id:
+        if not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
@@ -1246,26 +1246,26 @@ def create_app(
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
                 try:
-                    from substrate.auth import verify_session_cookie
+                    from substrate.auth import SessionClaims, verify_session_cookie
                     claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
                     claims = None
                 if claims is not None:
-                    expected = expected_email.strip().lower()
-                    if not expected or claims.email.lower() == expected:
+                    cookie_email = cast(SessionClaims, claims).email.strip().lower()
+                    if not operator_emails or cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
-                            email=claims.email,
+                            email=cast(SessionClaims, claims).email,
                         )
                         return await call_next(request)
 
         # Path 2: Cloudflare Access — browser SSO (email header)
-        if expected_email:
+        if operator_emails:
             cf_email = request.headers.get(
                 _CF_ACCESS_EMAIL_HEADER, "",
             ).strip().lower()
-            if cf_email and cf_email == expected_email:
+            if cf_email and cf_email in operator_emails:
                 _attach_operator(request, method="cloudflare_access_email")
                 return await call_next(request)
 

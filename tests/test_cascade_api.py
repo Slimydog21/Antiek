@@ -18,7 +18,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import interfaces.research.api.cascade_routes as cr
-from interfaces.research.api.app import create_app
 
 
 class _StubEmbedding:
@@ -32,6 +31,10 @@ class _StubEmbedding:
 
 @pytest.fixture
 def client(monkeypatch):
+    # Import here so collection of this module does not load all of app.py
+    # (ANT-H2V: wrong ::node_id used to hang 30+ min before SIGTERM).
+    from interfaces.research.api.app import create_app
+
     tmpdir = tempfile.mkdtemp(prefix="cascade-api-test-")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", os.path.join(tmpdir, "t.duckdb"))
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(tmpdir, "events"))

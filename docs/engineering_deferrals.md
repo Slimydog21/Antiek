@@ -533,6 +533,14 @@ window runs, the personal lane holds zero real third-party documents on prod.
 After any ingest, run the lane audit (`substrate/corpus_audit.py`) to confirm
 zero third-party docs on a servable class.
 
+## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
+
+**Status:** ❌ Deferred. The GATE shipped (PR #42 / `abde67e`); its PRODUCER did not.
+**Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run.
+**Spec reference:** `docs/decisions/arxiv-corpus-first-reframe.md`; reframe P3b in `~/specs/antiek-arxiv-ingest/.caffenagent/reframe-run.json`.
+**Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until `reports/source_census.json` exists**, so the gate cannot block any onboarding until a census is produced. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
+**Action when unlocked:** implement `compute_source_census(con, source)` over the real corpus — `dedup_overlap_pct` via the one `substrate.dedup` identity ladder; metadata / linkback / t1 / open via plain `documents` SQL — then emit + commit `reports/source_census.json`, calibrate the PROVISIONAL thresholds against the first real arXiv census, and the wired CI gate enforces automatically.
+
 ---
 
 ## Cross-reference: unlock criterion → deferrals it gates
