@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from roles._json_decode import extract_json_object
-
 
 VALID_SHAPES: frozenset[str] = frozenset({"challenge", "synthesis", "extension"})
 
@@ -25,15 +23,15 @@ class Synthesis:
 @dataclass(frozen=True)
 class Extension:
     sub_question: str
-    tag: Optional[str] = None
-    rationale: Optional[str] = None
+    tag: str | None = None
+    rationale: str | None = None
 
 
 @dataclass(frozen=True)
 class ThoughtPartnerResponse:
     shape: str  # one of VALID_SHAPES
     challenges: list[Challenge] = field(default_factory=list)
-    synthesis: Optional[Synthesis] = None
+    synthesis: Synthesis | None = None
     extensions: list[Extension] = field(default_factory=list)
 
 

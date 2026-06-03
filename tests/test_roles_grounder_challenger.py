@@ -36,11 +36,9 @@ from roles.challenger import (  # noqa: E402
 from roles.grounder import (  # noqa: E402
     GROUNDER_ROLE_PROMPT,
     GROUNDING_FAILURE_REASONS,
-    GroundingFailureReason,
     GroundingVerdict,
     parse_grounder_response,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. roles/_json_decode — shared parser primitive
@@ -88,11 +86,12 @@ def test_grounding_failure_reasons_closed_set():
     drift would let the parser produce a value the payload validator
     would reject."""
     import typing
+
     from substrate.schemas.events import ClaimGroundingCheckFailedPayload
 
     payload_field = ClaimGroundingCheckFailedPayload.model_fields["reason"]
     schema_args = set(typing.get_args(payload_field.annotation))
-    assert GROUNDING_FAILURE_REASONS == schema_args
+    assert schema_args == GROUNDING_FAILURE_REASONS
 
 
 def test_parse_grounder_response_passed():

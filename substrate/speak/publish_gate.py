@@ -31,7 +31,7 @@ safe. G2 counsel is the binding gate.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from . import gate_status
 from . import subject_consent as subject_consent_mod
@@ -110,7 +110,7 @@ def assert_claim_publishable(con: Any, claim_id: str) -> None:
 
 
 def operator_attest_claim(
-    con: Any, claim_id: str, *, project_id: Optional[str] = None
+    con: Any, claim_id: str, *, project_id: str | None = None
 ) -> None:
     """Explicit operator attestation of a third-party claim — the M3
     escape valve for a claim the operator vouches for without
@@ -129,7 +129,7 @@ def operator_attest_claim(
 # ---------------------------------------------------------------------------
 
 
-def _project_subject_ref(con: Any, project_id: str) -> Optional[str]:
+def _project_subject_ref(con: Any, project_id: str) -> str | None:
     row = con.execute(
         "SELECT subject_ref FROM speak_projects WHERE project_id = ?",
         [project_id],
@@ -138,7 +138,7 @@ def _project_subject_ref(con: Any, project_id: str) -> Optional[str]:
 
 
 def check_public_publish(
-    con: Any, *, project_id: str, subject_ref: Optional[str] = None
+    con: Any, *, project_id: str, subject_ref: str | None = None
 ) -> PublishDecision:
     """The full public-publishing gate for a project. Deny-by-default;
     the FIRST failing condition wins so the reason is specific. Audits

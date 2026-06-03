@@ -44,8 +44,9 @@ import os
 import threading
 import time
 import urllib.robotparser
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional, Protocol
+from typing import Protocol
 from urllib.parse import urlparse
 
 from .client import FetchedHtml
@@ -181,13 +182,13 @@ def _default_session_factory() -> Callable[[], _SessionLike]:
 def fetch_via_browserbase(
     url: str,
     *,
-    wait_for: Optional[str] = None,
+    wait_for: str | None = None,
     wait_timeout_s: float = 15.0,
     user_agent: str = DEFAULT_USER_AGENT,
-    session_factory: Optional[Callable[[], _SessionLike]] = None,
-    page_runner: Optional[Callable[..., tuple[bytes, str, int]]] = None,
+    session_factory: Callable[[], _SessionLike] | None = None,
+    page_runner: Callable[..., tuple[bytes, str, int]] | None = None,
     estimated_cost_usd: float = DEFAULT_SESSION_COST_USD,
-    cap_override_usd: Optional[float] = None,
+    cap_override_usd: float | None = None,
     skip_robots_check: bool = False,
 ) -> FetchedHtml:
     """Drive a Browserbase session, fetch the URL, return a
@@ -257,7 +258,7 @@ def fetch_via_browserbase(
         )
 
     started_at = time.monotonic()
-    session: Optional[_SessionLike] = None
+    session: _SessionLike | None = None
     try:
         session = factory()
         try:
@@ -305,7 +306,7 @@ def _default_page_runner(
     *,
     session: _SessionLike,
     url: str,
-    wait_for: Optional[str],
+    wait_for: str | None,
     wait_timeout_s: float,
     user_agent: str,
 ) -> tuple[bytes, str, int]:

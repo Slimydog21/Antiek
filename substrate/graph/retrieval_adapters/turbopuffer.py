@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 try:
     from ..search import EmbeddingModel
@@ -51,13 +52,13 @@ class TurbopufferSubstrate:
 
     name = "turbopuffer"
 
-    def __init__(self, con: Any, *, model: EmbeddingModel, api_key: Optional[str]):
+    def __init__(self, con: Any, *, model: EmbeddingModel, api_key: str | None):
         self._con = con
         self._model = model
         self._api_key = api_key
         # Skipped iff no credentials. We deliberately do NOT import or call the
         # turbopuffer SDK on the skip path — no network, no crash.
-        self.status: Optional[str] = None if api_key else _SKIPPED
+        self.status: str | None = None if api_key else _SKIPPED
 
     @classmethod
     def open(
@@ -65,8 +66,8 @@ class TurbopufferSubstrate:
         db_path: str,
         *,
         model: EmbeddingModel,
-        api_key: Optional[str] = None,
-    ) -> "TurbopufferSubstrate":
+        api_key: str | None = None,
+    ) -> TurbopufferSubstrate:
         # §16: read-only. The adapter is a *reader* of substrate-owned data;
         # the index it would build lives in turbopuffer, never in the graph.
         key = api_key if api_key is not None else os.environ.get("TURBOPUFFER_API_KEY")
@@ -82,8 +83,8 @@ class TurbopufferSubstrate:
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
     ) -> dict:
         if self.skipped:

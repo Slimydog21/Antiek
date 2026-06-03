@@ -7,7 +7,6 @@ from decimal import Decimal
 from tools.prompt_autoresearch.runner import PromptMutationOutcome
 from tools.prompt_autoresearch.score import CompositeScore
 from tools.prompt_autoresearch.verdict import (
-    MIN_ACCEPTANCE_RATE,
     MIN_MEAN_DELTA,
     MIN_MUTATIONS,
     compute_verdict,

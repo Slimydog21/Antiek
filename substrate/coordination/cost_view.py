@@ -50,13 +50,15 @@ accrual); DuckDB single-writer is untouched (read-only over JSONL).
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
-from typing import Iterable, Mapping, Optional
 
 from substrate.event_log.events import (
     default_events_dir,
+)
+from substrate.event_log.events import (
     trajectory as _trajectory,
 )
 from substrate.schemas.events import ActionType
@@ -64,7 +66,6 @@ from substrate.speak.economics_mode import (
     MARGIN_PRIVATE_PUBLISHED,
     MARGIN_PUBLIC,
 )
-
 
 # ── Workflow enum (mirrors the SPR-04 taxonomy's four workflows) ─────────────
 
@@ -127,7 +128,7 @@ _ROLE_WORKFLOW: dict[str, Workflow] = {
 }
 
 
-def workflow_for_role(role: Optional[str]) -> Workflow:
+def workflow_for_role(role: str | None) -> Workflow:
     """Classify a dispatch ``target_role`` to a workflow. An unknown or missing
     role → :attr:`Workflow.UNMAPPED` (counted, not dropped)."""
     if role is None:
@@ -161,8 +162,8 @@ class WorkflowCost:
     call_count: int
     remote_exec_cost_usd: Decimal
     margin_status: MarginStatus
-    margin_rate: Optional[Decimal]       # the applied rate, when APPLIED
-    margined_cost_usd: Optional[Decimal] # raw * (1 + rate), when APPLIED
+    margin_rate: Decimal | None       # the applied rate, when APPLIED
+    margined_cost_usd: Decimal | None # raw * (1 + rate), when APPLIED
     margin_note: str
 
 
@@ -203,7 +204,7 @@ class CostView:
 _REMOTE_EXEC_PROVIDERS: frozenset[str] = frozenset({"remote_exec", "daytona"})
 
 
-def _is_remote_exec(provider: Optional[str]) -> bool:
+def _is_remote_exec(provider: str | None) -> bool:
     return bool(provider) and provider in _REMOTE_EXEC_PROVIDERS
 
 
@@ -212,7 +213,7 @@ def _is_remote_exec(provider: Optional[str]) -> bool:
 def _iter_dispatch_payloads(
     events_dir: str,
     *,
-    investigation_ids: Optional[Iterable[str]] = None,
+    investigation_ids: Iterable[str] | None = None,
 ) -> Iterable[Mapping[str, object]]:
     """Yield the ``payload`` dict of every ``DISPATCH_CALL`` event under
     ``events_dir`` (or the given investigations). Reads via the canonical
@@ -255,7 +256,7 @@ def _to_decimal_usd(value: object) -> Decimal:
     return Decimal(str(value))
 
 
-def _margin_for_workflow(wf: Workflow) -> tuple[MarginStatus, Optional[Decimal], str]:
+def _margin_for_workflow(wf: Workflow) -> tuple[MarginStatus, Decimal | None, str]:
     """The economics-matrix margin for a workflow, honestly stubbed where the
     policy isn't built (honesty #1).
 
@@ -300,8 +301,8 @@ def _margin_for_workflow(wf: Workflow) -> tuple[MarginStatus, Optional[Decimal],
 
 def build_cost_view(
     *,
-    events_dir: Optional[str] = None,
-    investigation_ids: Optional[Iterable[str]] = None,
+    events_dir: str | None = None,
+    investigation_ids: Iterable[str] | None = None,
 ) -> CostView:
     """Aggregate realized ``DispatchCall`` cost per workflow + in aggregate.
 
@@ -329,7 +330,7 @@ def build_cost_view(
     per_workflow: list[WorkflowCost] = []
     for wf in Workflow:
         status, rate, note = _margin_for_workflow(wf)
-        margined: Optional[Decimal] = None
+        margined: Decimal | None = None
         if status is MarginStatus.APPLIED and rate is not None:
             margined = (raw[wf] * (Decimal("1") + rate))
         per_workflow.append(

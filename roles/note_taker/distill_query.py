@@ -26,12 +26,12 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any
 
 try:
-    from ...runtime.db_lock import connect_read
     from ...event_log import trajectory
     from ...graph.insight_question import graph_db_path
+    from ...runtime.db_lock import connect_read
     from ...schemas.events import ActionType
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -49,17 +49,17 @@ class DistilledNode:
     node_id: str
     kind: str                       # "insight" | "question"
     text: str                       # current canonical text (post-challenge)
-    confidence: Optional[str] = None
-    source_document_id: Optional[str] = None
+    confidence: str | None = None
+    source_document_id: str | None = None
     refinement_count: int = 0       # how many times this note has changed
     escalated: bool = False         # a question with a reserved child research
-    reserved_child_investigation_id: Optional[str] = None
+    reserved_child_investigation_id: str | None = None
 
 
 @dataclass(frozen=True)
 class Distillation:
-    insights: List[DistilledNode] = field(default_factory=list)
-    questions: List[DistilledNode] = field(default_factory=list)
+    insights: list[DistilledNode] = field(default_factory=list)
+    questions: list[DistilledNode] = field(default_factory=list)
 
     @property
     def empty(self) -> bool:
@@ -67,7 +67,7 @@ class Distillation:
 
 
 def _node_ids_from_trajectory(
-    investigation_id: str, *, events_dir: Optional[str] = None
+    investigation_id: str, *, events_dir: str | None = None
 ) -> tuple[list[str], dict[str, dict]]:
     """Collect the insight/question node ids this investigation produced,
     in emission order, plus the per-question escalation (reserved child id)
@@ -98,8 +98,8 @@ def _node_ids_from_trajectory(
 def distillation_for(
     investigation_id: str,
     *,
-    db_path: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
 ) -> Distillation:
     """Read the insight + question nodes an investigation distilled, with
     their *current* text + grounding. Read-only. Nodes whose event was
@@ -111,8 +111,8 @@ def distillation_for(
     if not node_ids:
         return Distillation()
 
-    insights: List[DistilledNode] = []
-    questions: List[DistilledNode] = []
+    insights: list[DistilledNode] = []
+    questions: list[DistilledNode] = []
     con = connect_read(db_path or graph_db_path())
     try:
         for nid in node_ids:

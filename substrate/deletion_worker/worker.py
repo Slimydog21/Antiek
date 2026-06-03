@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Callable, Iterable, Optional
-
+from datetime import UTC, datetime, timedelta
 
 CANCELLATION_WINDOW_DAYS = 7
 SLA_DAYS = 30
@@ -50,7 +49,7 @@ class DeletionRequest:
     status: DeletionRequestStatus
     requested_at: datetime
     updated_at: datetime
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class DeletionResultKind(str, enum.Enum):
@@ -70,8 +69,8 @@ class DeletionResult:
     kind: DeletionResultKind
     rows_deleted: dict[str, int] = field(default_factory=dict)
     reason: str = ""
-    sla_remaining_days: Optional[int] = None
-    error: Optional[str] = None
+    sla_remaining_days: int | None = None
+    error: str | None = None
 
 
 # A strategy is a Callable that, given a user_id, performs the
@@ -80,12 +79,12 @@ CascadeDeleteStrategy = Callable[[str], dict[str, int]]
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _normalize(dt: datetime) -> datetime:
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -93,7 +92,7 @@ def process_request(
     req: DeletionRequest,
     *,
     cascade: CascadeDeleteStrategy,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> DeletionResult:
     """Apply the state machine to one request.
 
@@ -158,7 +157,7 @@ def run_one_cycle(
     requests: Iterable[DeletionRequest],
     *,
     cascade: CascadeDeleteStrategy,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> list[DeletionResult]:
     """Process every request once. The caller persists status
     transitions back to the deletion_requests table."""

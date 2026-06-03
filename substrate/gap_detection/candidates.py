@@ -20,9 +20,8 @@ straight into SPR-05's ``plan_from_gap`` seed interface.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Dict, List, Sequence
-
 
 GAP_KINDS = ("unanswered_question", "unsupported_claim", "contradiction")
 
@@ -38,7 +37,7 @@ class GapCandidate:
     question: str                       # the phrased research question (SPR-05 seed)
     backing_node_ids: tuple             # REQUIRED, non-empty — the grounding guard
     impact_score: float = 0.0
-    evidence: Dict[str, object] = field(default_factory=dict)
+    evidence: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.kind not in GAP_KINDS:
@@ -85,10 +84,10 @@ def template_phraser(kind: str, primary_text: str, *, other_text: str = "") -> s
     return primary_text  # pragma: no cover
 
 
-def dedupe_candidates(candidates: Sequence[GapCandidate]) -> List[GapCandidate]:
+def dedupe_candidates(candidates: Sequence[GapCandidate]) -> list[GapCandidate]:
     """Collapse candidates with the same gap_id (same structural fact),
     keeping the highest impact. Deterministic order: impact desc, gap_id asc."""
-    by_id: Dict[str, GapCandidate] = {}
+    by_id: dict[str, GapCandidate] = {}
     for c in candidates:
         existing = by_id.get(c.gap_id)
         if existing is None or c.impact_score > existing.impact_score:

@@ -18,8 +18,9 @@ Time + sleep are injectable so CI is deterministic and never actually sleeps.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional, TypeVar
+from typing import TypeVar
 
 import httpx
 
@@ -70,7 +71,7 @@ class OAThrottle:
     backoff_base_s: float = DEFAULT_BACKOFF_BASE_S
     now: Callable[[], float] = time.monotonic
     sleep: Callable[[float], None] = time.sleep
-    persistent: Optional[SourceThrottle] = None
+    persistent: SourceThrottle | None = None
     source: str = "open_access"
     _last_request_at: float = 0.0
 
@@ -85,7 +86,7 @@ class OAThrottle:
             self.sleep(self.min_spacing_s - elapsed)
         self._last_request_at = self.now()
 
-    def _note_status(self, status_code: int, headers: Optional[dict]) -> None:
+    def _note_status(self, status_code: int, headers: dict | None) -> None:
         if self.persistent is not None:
             self.persistent.note_response(self.source, status_code, headers)
 
@@ -96,7 +97,7 @@ class OAThrottle:
         ones (e.g. a 404) re-raise immediately so the caller can record a
         per-item miss without burning the retry budget. A 429/503 also arms
         the persistent ban sentinel (when configured)."""
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         for attempt in range(self.max_retries + 1):
             self.wait()
             try:

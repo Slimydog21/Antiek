@@ -6,13 +6,12 @@ import pytest
 
 from tools.synquery import (
     MockSynqueryClient,
-    SynqueryAPIError,
     SynqueryAdapter,
+    SynqueryAPIError,
     SynqueryExpert,
     SynqueryRequest,
 )
 from tools.synquery.client import feature_flag_enabled
-
 
 # ── Client tests ────────────────────────────────────────────────────
 

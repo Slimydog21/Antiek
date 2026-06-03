@@ -90,8 +90,6 @@ divergent tier verdicts on the same license.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 from substrate.schemas.documents import RightsTier
 
@@ -106,7 +104,7 @@ from substrate.schemas.documents import RightsTier
 _CC_NON_COMMERCIAL_FRAGMENT: str = "creativecommons.org/licenses/by-nc"
 
 
-def resolve_tier(license_uri: Optional[str]) -> RightsTier:
+def resolve_tier(license_uri: str | None) -> RightsTier:
     """Map an arXiv ``<license>`` URI to its authoritative rights tier.
 
     Pure and deny-by-default: a ``None`` / empty / whitespace / unrecognised
@@ -222,7 +220,7 @@ class T3BodyServeError(RuntimeError):
     continuity; it covers every non-{T1} tier.)"""
 
 
-def guard_servable_body(tier: RightsTier, body: Optional[str]) -> Optional[str]:
+def guard_servable_body(tier: RightsTier, body: str | None) -> str | None:
     """Pass ``body`` through iff ``tier`` may have its body emitted from Antiek
     storage; otherwise raise ``T3BodyServeError``.
 
@@ -260,7 +258,7 @@ def guard_servable_body(tier: RightsTier, body: Optional[str]) -> Optional[str]:
 # subset of the serve allowlist at import time so a future edit that diverges
 # the two fails loudly here rather than silently mis-gating a paper.
 _T1_CONTENT_CLASSES: frozenset[str] = frozenset({"public_domain", "source_declared_open"})
-assert _T1_CONTENT_CLASSES <= set(SERVABLE_CONTENT_CLASSES), (
+assert set(SERVABLE_CONTENT_CLASSES) >= _T1_CONTENT_CLASSES, (
     "T1 redistributable content classes drifted out of SERVABLE_CONTENT_CLASSES: "
     f"{_T1_CONTENT_CLASSES!r} not all in {set(SERVABLE_CONTENT_CLASSES)!r}. "
     "A paper resolve_tier() calls T1 would then be denied at the serve gate. "

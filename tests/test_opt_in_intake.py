@@ -220,8 +220,8 @@ def test_no_other_field_promotes_to_servable(temp_db):
 def test_pre_onboarded_holder_created_then_reused(temp_db):
     """First manifest creates exactly one pre_onboarded holder; a second
     manifest from the SAME publisher_id reuses it (no duplicate holder)."""
-    from substrate import ip_holders
     from runtime.db_lock import connect_write
+    from substrate import ip_holders
 
     r1 = intake_manifest(
         parse_manifest(_manifest_dict(grant=True)),
@@ -267,8 +267,8 @@ def test_every_work_links_to_publisher_holder(temp_db):
 
 
 def test_escrow_accrues_to_linked_holder(temp_db):
-    from substrate import ip_holders
     from runtime.db_lock import connect_write
+    from substrate import ip_holders
 
     result = intake_manifest(
         parse_manifest(_manifest_dict(grant=True)),
@@ -395,8 +395,8 @@ def test_grant_flip_servable_gated_servable_same_work(temp_db):
 def test_resubmission_is_idempotent_no_duplicates(temp_db):
     """Running the same manifest twice yields the same document + holder
     counts (no duplicate documents, no duplicate holder)."""
-    from substrate import ip_holders
     from runtime.db_lock import connect_write
+    from substrate import ip_holders
 
     m = _manifest_dict(grant=True)
     intake_manifest(parse_manifest(m), db_path=temp_db, embedder=_StubEmbedder())

@@ -15,7 +15,7 @@ routes correctly.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -28,8 +28,8 @@ from substrate.schemas.events import (
     Event,
     PreferenceObservationRecordedPayload,
     QualityGateEvaluatedPayload,
-    RLMBridgeDecidedPayload,
     RevShareDecidedPayload,
+    RLMBridgeDecidedPayload,
     SkillRulePromotedPayload,
     TypedPayload,
 )
@@ -311,7 +311,7 @@ def test_event_envelope_round_trips_new_payload():
             reason="deferred_pending_ratification",
         ),
         param_version="test-v0",
-        emitted_at=datetime.now(timezone.utc),
+        emitted_at=datetime.now(UTC),
     )
     serialized = e.model_dump()
     restored = Event.model_validate(serialized)

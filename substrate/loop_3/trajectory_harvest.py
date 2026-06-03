@@ -7,9 +7,7 @@ format. Loop-3-gated; runs only after unlock."""
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 from .unlock_gate import check_unlocked
 
@@ -28,7 +26,7 @@ def harvest_trajectory_for_prime_rl(
     *,
     trajectory_events: list[dict],
     investigation_id: str,
-    role_filter: Optional[str] = None,
+    role_filter: str | None = None,
 ) -> HarvestedTrajectory:
     """Convert Antiek trajectory events into prime-rl format.
 

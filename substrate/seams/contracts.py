@@ -51,7 +51,7 @@ directly off the critical path.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -161,7 +161,7 @@ class ReadToResearchSeam(_SeamBase):
     # hand-off time. This is a result pointer, NOT a successor-handoff field —
     # it names the investigation this seam launched, it does not auto-fire a
     # follow-on seam.
-    launched_investigation_id: Optional[str] = None
+    launched_investigation_id: str | None = None
 
 
 class ReadToWriteSeam(_SeamBase):
@@ -199,8 +199,8 @@ class WriteToReadSeam(_SeamBase):
     to_workflow: Literal["read"] = "read"
     entity_kind: Literal["outline_block"] = "outline_block"
     # The resolved source the trace lands on (None until provenance resolves).
-    source_document_id: Optional[str] = None
-    source_region_id: Optional[str] = None
+    source_document_id: str | None = None
+    source_region_id: str | None = None
 
 
 class SpeakToWriteSeam(_SeamBase):
@@ -285,7 +285,7 @@ class WriteToSpeakSeam(_SeamBase):
     entity_kind: Literal["question_node"] = "question_node"
     # Best-guess: the outline section whose gap commissions the interview.
     # PROVISIONAL — the receiving Speak side is unspecified.
-    outline_section_id: Optional[str] = None
+    outline_section_id: str | None = None
 
 
 PROVISIONAL_SEAMS: tuple[type[_SeamBase], ...] = (WriteToSpeakSeam,)

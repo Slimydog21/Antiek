@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from .catalog import DuckLakeCatalog
 from .routing import HashPrefixSharding, NoSharding, ShardingStrategy
@@ -22,7 +21,7 @@ class MigrationStep:
     user_id: str
     from_path: str
     to_path: str
-    shard_id: Optional[str]
+    shard_id: str | None
     size_bytes: int
 
 

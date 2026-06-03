@@ -473,7 +473,7 @@ def test_support_summary_min_length_documented():
 
 
 def test_confidence_levels_match_schema_literal():
-    assert CONFIDENCE_LEVELS == set(typing.get_args(ConfidenceLevel))
+    assert set(typing.get_args(ConfidenceLevel)) == CONFIDENCE_LEVELS
 
 
 def test_implicit_recommendations_subset_of_schema_recommendation():
@@ -486,4 +486,4 @@ def test_implicit_recommendations_subset_of_schema_recommendation():
 
 
 def test_execution_risk_severities_match_thesis_severity_literal():
-    assert EXECUTION_RISK_SEVERITIES == set(typing.get_args(ThesisRiskSeverity))
+    assert set(typing.get_args(ThesisRiskSeverity)) == EXECUTION_RISK_SEVERITIES

@@ -28,7 +28,6 @@ from __future__ import annotations
 
 from substrate.voice_style.constructions import render_voice_addendum
 
-
 SYNTHESIZER_PROMPT_VERSION = "1.0.0"
 SYNTHESIZER_TARGET_MODEL = "deepseek/deepseek-v4-pro"
 SYNTHESIZER_TEMPERATURE = 0.2

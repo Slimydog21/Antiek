@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
-
+from dataclasses import dataclass
 
 # Default weights (operator-tunable).
 WEIGHT_SECTOR_MATCH = 0.50
@@ -20,7 +18,7 @@ class AdCampaign:
     campaign_id: str
     advertiser_name: str
     sector: str
-    sub_sector: Optional[str]
+    sub_sector: str | None
     intent: str  # one of "trial-signup" | "lead-gen" | "demo" | "newsletter" | etc.
     target_topics: tuple[str, ...]
     creative_headline: str
@@ -35,7 +33,7 @@ class PageTopicVector:
 
     page_id: str
     primary_sector: str
-    sub_sector: Optional[str] = None
+    sub_sector: str | None = None
     intent_signal: str = ""  # may be empty if decomposer didn't infer
     topic_tags: tuple[str, ...] = ()
 
@@ -61,7 +59,7 @@ class AdSlotPlacement:
     score: float
 
 
-def _sector_score(page_sector: str, campaign_sector: str, page_sub: Optional[str], campaign_sub: Optional[str]) -> float:
+def _sector_score(page_sector: str, campaign_sector: str, page_sub: str | None, campaign_sub: str | None) -> float:
     """1.0 if sector+sub_sector match; 0.7 if sector only; 0.0 otherwise."""
     if not page_sector or not campaign_sector:
         return 0.0
@@ -95,7 +93,7 @@ def score_campaign(
     *,
     page: PageTopicVector,
     campaign: AdCampaign,
-    weights: Optional[dict[str, float]] = None,
+    weights: dict[str, float] | None = None,
 ) -> MatchScore:
     """Compute the composite score for one (page, campaign) pair."""
     w = weights or {
@@ -130,7 +128,7 @@ def match_candidates(
     *,
     page: PageTopicVector,
     inventory: list[AdCampaign],
-    weights: Optional[dict[str, float]] = None,
+    weights: dict[str, float] | None = None,
     min_score: float = MIN_SCORE_FOR_INCLUSION,
     statuses_eligible: tuple[str, ...] = ("active",),
 ) -> list[AdSlotPlacement]:

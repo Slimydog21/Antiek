@@ -44,7 +44,7 @@ def test_doc_threshold_constant():
 
 def test_session_cost_cap_constant():
     """Per rlm_integration_spec.md §6 design decision 3: $5 session cap."""
-    assert RLM_SESSION_COST_USD_CAP == Decimal("5.00")
+    assert Decimal("5.00") == RLM_SESSION_COST_USD_CAP
 
 
 def test_iterate_session_records_cost(monkeypatch):

@@ -16,8 +16,8 @@ from decimal import Decimal
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.schema import init_database
 from substrate import ip_holders
+from substrate.graph.schema import init_database
 from substrate.speak import contributor, project, publish_gate
 from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.schema import ensure_speak_schema

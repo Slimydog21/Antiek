@@ -9,12 +9,10 @@ than double-counting in the corroboration + economics layers.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from substrate.graph.ops import content_addressed_id, new_random_id
 
 
-def new_claim_id(project_id: str, text: str, interview_id: Optional[str]) -> str:
+def new_claim_id(project_id: str, text: str, interview_id: str | None) -> str:
     seed = f"{project_id}|{interview_id or '__operator__'}|{text.strip()}"
     return content_addressed_id("clm", seed)
 

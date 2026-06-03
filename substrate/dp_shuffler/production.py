@@ -32,20 +32,15 @@ and ε=0 — the substrate refuses to route it through DP at all per
 
 from __future__ import annotations
 
-import math
-import os
 import random
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from substrate.dp_shuffler.epsilon_registry import (
     EpsilonRegistry,
-    EpsilonRegistryError,
-    SurfaceConfig,
     register_surface,
 )
 from substrate.dp_shuffler.shuffler import LocalRandomizer
-
 
 # ── Singleton registry, pre-populated on import ──────────────────────
 
@@ -131,7 +126,7 @@ def record_telemetry(
     true_value: bool,
     investigation_id: str = "__operator__",
     opt_in_granted: bool = False,
-    emit_event_fn: Optional[Any] = None,
+    emit_event_fn: Any | None = None,
     rng: random.Random | None = None,
 ) -> bool:
     """Route a single telemetry sample through the production
@@ -190,7 +185,7 @@ def daily_epsilon_used(
     *,
     surface_name: str,
     events: list[dict],
-    day_iso: Optional[str] = None,
+    day_iso: str | None = None,
 ) -> float:
     """Sum the per-event ε for one surface on one day.
 
@@ -199,7 +194,7 @@ def daily_epsilon_used(
     """
     target_day = (
         day_iso
-        or datetime.now(timezone.utc).date().isoformat()
+        or datetime.now(UTC).date().isoformat()
     )
     total = 0.0
     for ev in events:

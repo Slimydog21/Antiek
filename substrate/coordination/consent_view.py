@@ -45,21 +45,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
+from substrate.contracts.servable import ServableEntryContract
 from substrate.coordination.gate_ledger import (
     GateLedger,
     GateStatus,
     load_gate_ledger,
 )
-from substrate.ip_holders import IpHolder, list_all as _list_ip_holders
+from substrate.ip_holders import IpHolder
+from substrate.ip_holders import list_all as _list_ip_holders
 from substrate.marketplace_metrics.publisher_escrow import (
     PublisherEscrowReport,
     compute_publisher_escrow,
 )
-from substrate.contracts.servable import ServableEntryContract
 from substrate.seams.servability_gate import serves_full_text
-
 
 # Gates that block ESCROW DISBURSEMENT. Both must be CLOSED before any payout.
 # Read from the SPR-05 ledger — these ids are the lookup keys, not the state.
@@ -107,8 +107,8 @@ class IpHolderConsentRow:
     escrow_balance_usd: Decimal       # live, accruing; $0 is honest
     gate: DisbursementGate
     # servability of this holder's content, when a servable entry is supplied.
-    serves_full_text: Optional[bool] = None
-    servability_note: Optional[str] = None
+    serves_full_text: bool | None = None
+    servability_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -216,9 +216,9 @@ def _servability_for_entry(
 def build_consent_view(
     con: Any,
     *,
-    gate_ledger: Optional[GateLedger] = None,
-    servable_entries: Optional[dict[str, ServableEntryContract]] = None,
-    speak_publish_gate_passed: Optional[dict[str, bool]] = None,
+    gate_ledger: GateLedger | None = None,
+    servable_entries: dict[str, ServableEntryContract] | None = None,
+    speak_publish_gate_passed: dict[str, bool] | None = None,
 ) -> ConsentView:
     """Derive the consent/escrow/servability view on read.
 
@@ -242,8 +242,8 @@ def build_consent_view(
     for h in holders_raw:
         gate = _disbursement_gate_for(open_gate_ids=open_gates, holder_status=h.status)
 
-        serves: Optional[bool] = None
-        note: Optional[str] = None
+        serves: bool | None = None
+        note: str | None = None
         entry = entries.get(h.ip_holder_id)
         if entry is not None:
             serves, note = _servability_for_entry(

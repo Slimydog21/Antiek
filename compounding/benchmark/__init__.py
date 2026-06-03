@@ -11,13 +11,13 @@ the operator-window measurement) and how this differs from
 ``compounding/verification/`` (growth-happened vs cost-got-cheaper).
 """
 
-from .question_set import BenchmarkQuestion, QuestionSet, load_question_set
-from .measure import CostToResolve, METRIC_NAMES, measure_investigation, measure_trajectory
-from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
 from .aggregate import aggregate_comparison, bootstrap_ci, t_interval
+from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
+from .measure import METRIC_NAMES, CostToResolve, measure_investigation, measure_trajectory
+from .pilot import ProposedParameters, propose_parameters, run_pilot
+from .question_set import BenchmarkQuestion, QuestionSet, load_question_set
 from .result_schema import ArmComparison, BenchmarkResult, MetricDelta
 from .validity import Verdict, decide
-from .pilot import ProposedParameters, propose_parameters, run_pilot
 
 __all__ = [
     "BenchmarkQuestion",

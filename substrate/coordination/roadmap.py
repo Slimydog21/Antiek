@@ -27,12 +27,11 @@ real foundation" is visible beside the product sprints.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
 from substrate.contracts import dependency_map, drw_sprint_lock
-
 
 # ── Where the rosters live ───────────────────────────────────────────────────
 #

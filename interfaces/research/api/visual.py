@@ -22,12 +22,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from roles.visual import (
     VISUAL_TEMPERATURE,
-    VISUAL_TIER,
     VisualContext,
     VisualFrame,
     VisualResult,
@@ -48,7 +46,6 @@ from substrate.schemas.events import (
     VisualRoleFailedPayload,
 )
 
-
 _LOG = logging.getLogger(__name__)
 
 
@@ -61,7 +58,7 @@ def _envelope(
     *,
     action_type: ActionType,
     investigation_id: str,
-    document_id: Optional[str] = None,
+    document_id: str | None = None,
     param_version: str = "substrate-v0",
 ) -> Event:
     return Event(
@@ -70,7 +67,7 @@ def _envelope(
         action_type=action_type,
         payload=payload,  # type: ignore[arg-type]
         param_version=param_version,
-        emitted_at=datetime.now(timezone.utc),
+        emitted_at=datetime.now(UTC),
         document_id=document_id,
     )
 
@@ -83,7 +80,7 @@ def dispatch_visual_role(
     provider: VisionProvider,
     model: str = DEFAULT_VISION_MODEL,
     max_output_tokens: int = 4096,
-) -> tuple[Optional[VisualResult], Optional[Event]]:
+) -> tuple[VisualResult | None, Event | None]:
     """Run the role end-to-end for one frame.
 
     Returns ``(result, failure_event)``:

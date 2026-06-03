@@ -49,7 +49,8 @@ without the decomposer.
 from __future__ import annotations
 
 import os
-from typing import Any, Iterable, Optional, Protocol, runtime_checkable
+from collections.abc import Iterable
+from typing import Any, Protocol, runtime_checkable
 
 try:
     from .assembler import DEFAULT_KIND_PRIORITY, LayerSource
@@ -93,7 +94,7 @@ def style_extractor_enabled() -> bool:
     )
 
 
-def _evidence_type_of(sub_question: Any) -> Optional[str]:
+def _evidence_type_of(sub_question: Any) -> str | None:
     """Extract the ``evidence_type_required`` from a duck-typed
     sub-question. Accepts:
 
@@ -152,7 +153,7 @@ def maybe_style_guide_layer(
     *,
     style_guide: Any,
     sub_questions: Iterable[Any],
-) -> Optional[LayerSource]:
+) -> LayerSource | None:
     """Return the ``style_guide`` ``LayerSource`` to inject into the
     synthesizer's context pack, or ``None`` to inject nothing.
 
@@ -193,7 +194,7 @@ def maybe_style_guide_layer(
     )
 
 
-def _render_guide_content(style_guide: Any) -> Optional[str]:
+def _render_guide_content(style_guide: Any) -> str | None:
     """Render the guide body, defending against a malformed object.
 
     Prefers ``style_guide.as_layer_content()`` (the ``StyleGuide``

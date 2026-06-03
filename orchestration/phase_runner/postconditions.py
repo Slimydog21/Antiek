@@ -39,9 +39,9 @@ from __future__ import annotations
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 try:
     from ...event_log import trajectory
@@ -65,7 +65,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 from ..phase_log import PhaseAssertionError, PhaseLog
-
 
 # ---------------------------------------------------------------------------
 # Thresholds (matches upstream Researchmaxx values)
@@ -151,8 +150,8 @@ def _events_of_type(investigation_id: str, action_type: ActionType) -> list[Even
 def check_phase_1(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-) -> Tuple[bool, str]:
+    research_dir: str | None = None,
+) -> tuple[bool, str]:
     """``orientation.md`` exists, is ≥ ``_ORIENTATION_MIN_CHARS``, and
     contains a ``## Prior Graph Knowledge`` section with at least one
     chunk_/node_ regex citation."""
@@ -161,7 +160,7 @@ def check_phase_1(
     if not os.path.exists(path):
         return False, f"{path} not found"
     try:
-        text = open(path, "r", encoding="utf-8").read()
+        text = open(path, encoding="utf-8").read()
     except OSError as e:
         return False, f"{path} unreadable: {e}"
 
@@ -197,8 +196,8 @@ def check_phase_1(
 def check_phase_2(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-) -> Tuple[bool, str]:
+    research_dir: str | None = None,
+) -> tuple[bool, str]:
     """Three round-1 dimension files exist and are non-trivially sized."""
     research_dir = research_dir or default_research_dir(investigation_id)
     required = (
@@ -228,15 +227,15 @@ def check_phase_2(
 def check_phase_3(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-) -> Tuple[bool, str]:
+    research_dir: str | None = None,
+) -> tuple[bool, str]:
     """``round1-critique.md`` exists + references each dimension."""
     research_dir = research_dir or default_research_dir(investigation_id)
     path = os.path.join(research_dir, "round1-critique.md")
     if not os.path.exists(path):
         return False, f"{path} not found"
     try:
-        text = open(path, "r", encoding="utf-8").read().lower()
+        text = open(path, encoding="utf-8").read().lower()
     except OSError as e:
         return False, f"{path} unreadable: {e}"
     missing = [
@@ -257,8 +256,8 @@ def check_phase_3(
 def check_phase_4(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-) -> Tuple[bool, str]:
+    research_dir: str | None = None,
+) -> tuple[bool, str]:
     """At least one ``round2-*.md`` (≠ critique) exists with > floor."""
     research_dir = research_dir or default_research_dir(investigation_id)
     if not os.path.isdir(research_dir):
@@ -293,8 +292,8 @@ def check_phase_4(
 def check_phase_5(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-) -> Tuple[bool, str]:
+    research_dir: str | None = None,
+) -> tuple[bool, str]:
     """``round2-critique.md`` exists > floor."""
     research_dir = research_dir or default_research_dir(investigation_id)
     path = os.path.join(research_dir, "round2-critique.md")
@@ -314,8 +313,8 @@ def check_phase_5(
 
 
 def _falsifications_are_vacuous(
-    falsifications: Optional[list[Any]],
-) -> Tuple[bool, str]:
+    falsifications: list[Any] | None,
+) -> tuple[bool, str]:
     """Mirror the upstream heuristic: a falsification list is vacuous
     if empty, all single-word, or all matching dry-run stub strings.
     Returns ``(is_vacuous, reason)``."""
@@ -347,7 +346,7 @@ def _falsifications_are_vacuous(
 
 def check_phase_6(
     investigation_id: str,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """A ``SYNTHESIZE_DELIVERED`` event is in the trajectory with a
     converged ``constraint_loop_status`` AND non-vacuous
     falsification conditions. Replaces upstream's DuckDB syntheses-row
@@ -424,8 +423,8 @@ def check_phase_6(
 def check_phase_7(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-) -> Tuple[bool, str]:
+    research_dir: str | None = None,
+) -> tuple[bool, str]:
     """A ``MASTER_MD_WRITTEN`` event for this investigation OR a
     ``MASTER.md`` file on disk with > floor bytes. Either suffices —
     delivery is fundamentally hard to verify mechanically, so we
@@ -461,9 +460,9 @@ def check_phase_7(
 def check_phase_8(
     investigation_id: str,
     *,
-    knowledge_skills_dir: Optional[str] = None,
-    investigation_started_at: Optional[datetime] = None,
-) -> Tuple[bool, str]:
+    knowledge_skills_dir: str | None = None,
+    investigation_started_at: datetime | None = None,
+) -> tuple[bool, str]:
     """The keystone. Two checks (either suffices in Antiek — the dual
     requirement of the upstream's DB-edge + skill-growth check
     collapses to the trajectory event in the typed substrate):
@@ -543,14 +542,14 @@ def check_phase_8(
         except Exception:
             pass
     if cutoff is None:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
     if cutoff.tzinfo is None:
         # Backstop: any naive cutoff is interpreted as UTC, not
         # local time. The operator-supplied
         # ``investigation_started_at`` kwarg is documented as UTC
         # per the docstring; defensive-cast here so a stray naive
         # value doesn't reintroduce the local-time-shift bug.
-        cutoff = cutoff.replace(tzinfo=timezone.utc)
+        cutoff = cutoff.replace(tzinfo=UTC)
     cutoff_ts = cutoff.timestamp()
 
     for entry in sorted(os.listdir(knowledge_skills_dir)):
@@ -583,7 +582,7 @@ def check_phase_8(
 # ---------------------------------------------------------------------------
 
 
-def check_phase_9(investigation_id: str) -> Tuple[bool, str]:
+def check_phase_9(investigation_id: str) -> tuple[bool, str]:
     """Delegate to ``PhaseLog.assert_ready_for_completion``."""
     try:
         plog = PhaseLog.open(investigation_id)
@@ -600,7 +599,7 @@ def check_phase_9(investigation_id: str) -> Tuple[bool, str]:
 # ---------------------------------------------------------------------------
 
 
-CHECKS: Dict[int, Callable[..., Tuple[bool, str]]] = {
+CHECKS: dict[int, Callable[..., tuple[bool, str]]] = {
     1: check_phase_1,
     2: check_phase_2,
     3: check_phase_3,
@@ -613,7 +612,7 @@ CHECKS: Dict[int, Callable[..., Tuple[bool, str]]] = {
 }
 
 
-_CHECK_KWARGS: Dict[int, Tuple[str, ...]] = {
+_CHECK_KWARGS: dict[int, tuple[str, ...]] = {
     1: ("research_dir",),
     2: ("research_dir",),
     3: ("research_dir",),
@@ -630,9 +629,9 @@ def run_check(
     phase: int,
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-    knowledge_skills_dir: Optional[str] = None,
-) -> Tuple[bool, str]:
+    research_dir: str | None = None,
+    knowledge_skills_dir: str | None = None,
+) -> tuple[bool, str]:
     """Universal dispatcher — the phase_runner CLI's preferred entry
     point. Accepts every kwarg; forwards only the ones the target
     check accepts."""

@@ -66,10 +66,9 @@ from substrate.seams import (
     SpeakToReadSeam,
     SpeakToWriteSeam,
     WriteToReadSeam,
+    servability_gate,
 )
-from substrate.seams import servability_gate
 from substrate.seams.thread import (
-    Thread,
     assert_single_canonical_entity,
     reconstruct_thread,
 )
@@ -77,7 +76,6 @@ from substrate.seams.thread import (
 # We reuse the SPR-03 per-seam no-copy assertion DIRECTLY (diligence #4): the
 # e2e same-node-id check IS that per-seam guard applied across every hop.
 from tests.test_seam_no_copy import _assert_no_copy
-
 
 # The ONE canonical entity the whole flywheel is about. Content-addressed shape
 # (what ``promote_insight`` would mint); fixed here so the test is hermetic.

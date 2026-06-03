@@ -33,13 +33,21 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Literal, Optional
 
 # Direct import — interfaces/research/api/ depends on substrate.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from processing.embedding import (  # noqa: E402
+    EmbeddingProvider,
+    default_embedding_provider,
+)
+from roles.grounder import (  # noqa: E402
+    GROUNDER_ROLE_PROMPT,
+    parse_grounder_response,
+)
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
@@ -52,19 +60,8 @@ from substrate.schemas import (  # noqa: E402
     ClaimGroundingCheckPassedPayload,
     Event,
 )
-from processing.embedding import (  # noqa: E402
-    EmbeddingProvider,
-    default_embedding_provider,
-)
-from roles.grounder import (  # noqa: E402
-    GROUNDER_ROLE_PROMPT,
-    GROUNDING_FAILURE_REASONS,
-    parse_grounder_response,
-)
-from runtime.db_lock import connect_read  # noqa: E402
 
 from .broadcast import EventBroadcaster
-
 
 # Top-K chunks to surface to the grounder. 5 is enough for a tight
 # decision; more dilutes the prompt and increases cost.
@@ -92,7 +89,7 @@ def _chunk_to_region_id(chunk_id: str) -> str:
 def _search_chunks_for_claim(
     db_path: str,
     *,
-    document_id: Optional[str],
+    document_id: str | None,
     claim_text: str,
     embedder: EmbeddingProvider,
     top_k: int = GROUNDING_SEARCH_TOP_K,
@@ -131,7 +128,7 @@ def _render_chunks_for_prompt(chunks: list[dict]) -> str:
 
 def _parse_grounder_response(
     text: str,
-) -> tuple[bool, Optional[str], float, Optional[str]]:
+) -> tuple[bool, str | None, float, str | None]:
     """Back-compat shim. The real parser lives at
     ``roles.grounder.parse_grounder_response`` (Sprint 4 day 4-5
     extraction). Existing tests import this name + the tuple shape;
@@ -149,8 +146,8 @@ def _parse_grounder_response(
 def make_grounding_handler(
     broadcaster: EventBroadcaster,
     *,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ):
     """Build the handler closed over a broadcaster + db path +
     embedder. Registered against ``ActionType.CLAIM_CHALLENGE_RAISED``;
@@ -324,7 +321,7 @@ def _emit_grounding_failed(
     searched_region_ids: list[str],
     policy_id: str,
     broadcaster: EventBroadcaster,
-) -> Optional[str]:
+) -> str | None:
     """Synchronous variant — used by the provider-failure branch which
     needs to bail without awaiting the broadcast (handler still runs
     inside an async function, but the caller has already decided to
@@ -375,7 +372,7 @@ async def _emit_grounding_failed_async(
 
 async def _broadcast_emitted(
     event: Event,
-    emitted_event_id: Optional[str],
+    emitted_event_id: str | None,
     broadcaster: EventBroadcaster,
 ) -> None:
     """Look up the just-emitted event in the trajectory and broadcast
@@ -396,8 +393,8 @@ async def _broadcast_emitted(
 def register_handlers(
     broadcaster: EventBroadcaster,
     *,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> None:
     """Wire every grounding handler into the broadcaster. Called once
     at app startup from ``app.create_app``."""

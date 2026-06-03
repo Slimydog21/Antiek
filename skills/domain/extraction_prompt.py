@@ -19,8 +19,7 @@ messages, prefix-and-concatenate for legacy clients).
 
 from __future__ import annotations
 
-from typing import Any, Tuple
-
+from typing import Any
 
 # The closed section vocabulary. Drift between this and the prompt
 # body or ``patch.py``'s section-pattern matcher is caught by tests.
@@ -115,7 +114,7 @@ def make_extraction_prompt(
     question: str,
     thesis: Any,
     domain: str,
-) -> Tuple[str, str]:
+) -> tuple[str, str]:
     """Build (system, user) prompts. Pure function — no I/O, no LLM
     call. The components + falsification lines are formatted from
     the thesis dict if present, ``(none)`` otherwise."""

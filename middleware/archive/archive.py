@@ -38,9 +38,10 @@ import json
 import os
 import sys
 import uuid
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Iterable, Mapping, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 def _to_naive_utc(ts: datetime) -> datetime:
@@ -49,7 +50,7 @@ def _to_naive_utc(ts: datetime) -> datetime:
     (a footgun). Convention: every persistence boundary normalizes
     to naive UTC so comparisons across read/write stay consistent."""
     if ts.tzinfo is not None:
-        return ts.astimezone(timezone.utc).replace(tzinfo=None)
+        return ts.astimezone(UTC).replace(tzinfo=None)
     return ts
 
 try:
@@ -89,7 +90,7 @@ def new_synthesis_id() -> str:
     return str(uuid.uuid4())
 
 
-def serialize_json_field(obj: Any) -> Optional[str]:
+def serialize_json_field(obj: Any) -> str | None:
     """Render an object to its on-disk JSON column form. Validates
     pre-existing strings (raises if they're not valid JSON) so a bug
     upstream surfaces here rather than at SELECT time.
@@ -146,17 +147,17 @@ class ArchiveInputs:
     # serialized into its own column by the DB writer. ``Any`` rather
     # than typed Pydantic for now — the role-output schemas land in
     # Sprint 3-4 during the orchestrate.py extraction.
-    decomposition: Optional[Any] = None
-    evidence: Optional[Any] = None
-    parameters: Optional[Any] = None
-    substrate: Optional[Any] = None
-    thesis: Optional[Any] = None
-    thesis_text: Optional[str] = None
+    decomposition: Any | None = None
+    evidence: Any | None = None
+    parameters: Any | None = None
+    substrate: Any | None = None
+    thesis: Any | None = None
+    thesis_text: str | None = None
 
     # Trajectory + audit metadata.
-    agent_trace: Optional[Any] = None
-    constraint_history: Optional[Any] = None
-    constraint_check_result: Optional[Any] = None
+    agent_trace: Any | None = None
+    constraint_history: Any | None = None
+    constraint_check_result: Any | None = None
 
     # Model version stamp per role — feeds the typed payload's
     # model_versions field.
@@ -183,8 +184,8 @@ def emit_synthesis_archived(
     investigation_id: str,
     synthesis_id: str,
     inputs: ArchiveInputs,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit a SYNTHESIS_ARCHIVED event. Returns the event_id.
 
     Call this AFTER the syntheses row is committed (so we never
@@ -217,8 +218,8 @@ def emit_substrate_manifest_written(
     synthesis_id: str,
     synthesis_timestamp: datetime,
     counts_by_kind: Mapping[str, int],
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit SUBSTRATE_MANIFEST_WRITTEN. ``counts_by_kind`` is the
     input-cardinality breakdown from ``compute_manifest_counts``."""
     total = sum(counts_by_kind.values())
@@ -255,7 +256,7 @@ def archive_synthesis_via_db(
     inputs: ArchiveInputs,
     *,
     investigation_id: str,
-    synthesis_id: Optional[str] = None,
+    synthesis_id: str | None = None,
 ) -> str:
     """Write a syntheses row + its substrate manifest, then emit
     ``SYNTHESIS_ARCHIVED`` and ``SUBSTRATE_MANIFEST_WRITTEN``.
@@ -355,7 +356,7 @@ def archive_synthesis_via_db(
 
 def load_synthesis(
     con: Any, synthesis_id: str,
-) -> Optional["ArchivedSynthesisRow"]:
+) -> ArchivedSynthesisRow | None:
     """Read one syntheses row. Returns the full hydrated record (or
     ``None`` when the id is unknown). ``con`` may be a read-only
     duckdb connection or a ``LockedConnection`` — reads don't need
@@ -383,7 +384,7 @@ def load_synthesis(
         manifest.setdefault(kind, []).append(eid)
     counts = {k: len(v) for k, v in manifest.items()}
 
-    def _maybe_json(raw: Optional[str]) -> Any:
+    def _maybe_json(raw: str | None) -> Any:
         if raw is None:
             return None
         try:
@@ -426,8 +427,8 @@ class ArchivedSynthesisRow:
     synthesis_timestamp: str
     target_question: str
     status: str
-    implicit_recommendation: Optional[str]
-    thesis_text: Optional[str]
+    implicit_recommendation: str | None
+    thesis_text: str | None
     model_versions: dict[str, str]
     decomposition: Any
     evidence: Any
@@ -437,6 +438,6 @@ class ArchivedSynthesisRow:
     agent_trace: Any
     constraint_history: Any
     constraint_check_result: Any
-    investigation_id: Optional[str]
+    investigation_id: str | None
     substrate_manifest: dict[str, list[str]] = field(default_factory=dict)
     substrate_manifest_counts: dict[str, int] = field(default_factory=dict)

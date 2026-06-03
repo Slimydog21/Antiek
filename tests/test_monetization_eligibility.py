@@ -15,15 +15,15 @@ import tempfile
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.books.servability import ServabilityStatus, servability_of
-from substrate.graph.ops import insert_document
-from substrate.graph.schema import init_database_at_path
 from substrate.ad_inventory.attribution import (
     PRIVATE_GRAPH_CONTENT_CLASS,
     eligibility_decision,
     eligible_shares,
     monetization_eligible,
 )
+from substrate.books.servability import ServabilityStatus, servability_of
+from substrate.graph.ops import insert_document
+from substrate.graph.schema import init_database_at_path
 
 
 @pytest.fixture

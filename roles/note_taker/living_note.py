@@ -34,29 +34,34 @@ import json
 import os
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 try:
-    from ...runtime.db_lock import connect_write
     from ...event_log import emit_typed
-    from ...schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
     from ...graph.insight_question import graph_db_path, promote_question
+    from ...runtime.db_lock import connect_write
+    from ...schemas.events import NoteRefinedPayload, QuestionEscalatedToResearchPayload
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import connect_write  # type: ignore[no-redef]
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas.events import (  # type: ignore[no-redef]
-        NoteRefinedPayload, QuestionEscalatedToResearchPayload,
+    from substrate.graph.insight_question import (  # type: ignore[no-redef]
+        graph_db_path,
+        promote_question,
     )
-    from substrate.graph.insight_question import graph_db_path, promote_question  # type: ignore[no-redef]
+    from substrate.schemas.events import (  # type: ignore[no-redef]
+        NoteRefinedPayload,
+        QuestionEscalatedToResearchPayload,
+    )
 
 
 # A resolver decides whether a challenge can be answered from what's known.
 # It returns the refined note text (resolved) or None (escalate). Production
 # wires an LLM; tests inject a deterministic function.
-Resolver = Callable[[str, str], Optional[str]]
+Resolver = Callable[[str, str], str | None]
 
 
 @dataclass
@@ -64,17 +69,17 @@ class ChallengeResult:
     note_node_id: str
     applied: bool                       # did the node text change?
     superseded: bool = False            # lost the seq race (older seq)?
-    new_text: Optional[str] = None
+    new_text: str | None = None
     escalated: bool = False
-    escalated_question_id: Optional[str] = None
-    reserved_child_investigation_id: Optional[str] = None
+    escalated_question_id: str | None = None
+    reserved_child_investigation_id: str | None = None
 
 
 def _open(con):
     return con if con is not None else connect_write(graph_db_path(), purpose="living_note")
 
 
-def _read_node(con, node_id: str) -> tuple[Optional[str], dict]:
+def _read_node(con, node_id: str) -> tuple[str | None, dict]:
     row = con.execute(
         "SELECT canonical_label, metadata FROM nodes WHERE node_id = ?", [node_id]
     ).fetchone()
@@ -96,8 +101,8 @@ def apply_refinement(
     seq: int,
     investigation_id: str,
     reason: str = "challenge",
-    document_id: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    document_id: str | None = None,
+    events_dir: str | None = None,
     con: Any = None,
 ) -> ChallengeResult:
     """Apply a refinement to a note node under the seq rule. Always writes a
@@ -145,9 +150,9 @@ def challenge_note(
     resolver: Resolver,
     seq: int,
     investigation_id: str,
-    document_id: Optional[str] = None,
+    document_id: str | None = None,
     embedding_provider: Any = None,
-    events_dir: Optional[str] = None,
+    events_dir: str | None = None,
     con: Any = None,
 ) -> ChallengeResult:
     """Resolve a challenge against a note. If the resolver produces refined

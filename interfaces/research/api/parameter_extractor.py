@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -40,6 +39,13 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from roles.parameter_extractor import (  # noqa: E402
+    ParameterExtractResult,
+    ParameterValidationError,
+    parameters_to_constraints,
+    parse_parameter_extractor_response,
+    render_full_prompt,
+)
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
@@ -50,16 +56,8 @@ from substrate.schemas import (  # noqa: E402
     ParameterExtractDeliveredPayload,
     ParameterExtractRequestedPayload,
 )
-from roles.parameter_extractor import (  # noqa: E402
-    ParameterExtractResult,
-    ParameterValidationError,
-    parameters_to_constraints,
-    parse_parameter_extractor_response,
-    render_full_prompt,
-)
 
 from .broadcast import EventBroadcaster
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -107,7 +105,7 @@ def _empty_delivered_payload() -> ParameterExtractDeliveredPayload:
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
-) -> tuple[Optional[ParameterExtractResult], str]:
+) -> tuple[ParameterExtractResult | None, str]:
     """Run one parameter_extractor dispatch + parse. Returns
     ``(result, policy_id)`` on success, ``(None, fallback_id)`` on
     failure."""
@@ -205,7 +203,7 @@ async def _emit_delivered(
 
 async def _broadcast_emitted(
     event: Event,
-    emitted_event_id: Optional[str],
+    emitted_event_id: str | None,
     broadcaster: EventBroadcaster,
 ) -> None:
     """Look up the just-emitted event and broadcast so subscribed WS

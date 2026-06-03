@@ -16,10 +16,9 @@ keep working without churn.
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 
-def extract_json_object(text: str) -> Optional[dict]:
+def extract_json_object(text: str) -> dict | None:
     """Best-effort JSON extraction. Handles the common LLM failure
     modes: extra prose before/after, ```json fences, trailing
     commentary. Returns the first balanced ``{...}`` that decodes

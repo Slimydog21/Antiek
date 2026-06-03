@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from typing import Final, NamedTuple
 
-
 # ============================================================
 # Section A — Five role pipeline
 # ============================================================
@@ -610,9 +609,9 @@ assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES, (
     "class (public_domain / source_declared_open / opt_in_licensed), not "
     "personal_reading."
 )
-assert PERSONAL_READABLE_CONTENT_CLASSES == (
+assert (
     SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
-) and len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 1, (
+) == PERSONAL_READABLE_CONTENT_CLASSES and len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 1, (
     "PERSONAL_READABLE_CONTENT_CLASSES must be SERVABLE_CONTENT_CLASSES plus "
     "exactly personal_reading (a strict superset by one element)."
 )

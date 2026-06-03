@@ -40,7 +40,7 @@ _FORBIDDEN_SUCCESSOR_FIELDS = frozenset(
 def test_six_committed_one_provisional():
     assert len(COMMITTED_SEAMS) == 6
     assert len(PROVISIONAL_SEAMS) == 1
-    assert PROVISIONAL_SEAMS == (WriteToSpeakSeam,)
+    assert (WriteToSpeakSeam,) == PROVISIONAL_SEAMS
     assert set(ALL_SEAMS) == set(COMMITTED_SEAMS) | set(PROVISIONAL_SEAMS)
 
 

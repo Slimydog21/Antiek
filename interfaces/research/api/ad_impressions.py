@@ -19,28 +19,19 @@ Live activation gates per master-spec §9.0 + §9.4:
 
 from __future__ import annotations
 
-import json
-from decimal import Decimal
-from typing import Optional
-
 import duckdb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from substrate.ad_inventory import (
-    AdImpression,
     AdInventoryItem,
-    BiddingPolicy,
-    LeadGenAdInventory,
     PageContext,
     PayoutRouter,
-    RevShareDecision,
     TargetedInventoryItem,
     distribute_session_ad_revenue,
     select_targeted_ad,
 )
 from substrate.ad_inventory.payout import RevShareKind
-
 
 # ── Pydantic shapes ────────────────────────────────────────────────
 
@@ -49,8 +40,8 @@ class AdSelectRequest(BaseModel):
     """Page-side request for an ad. The reading surface passes
     page-level signals; substrate picks the best-targeted ad."""
 
-    sector: Optional[str] = None
-    sub_sector: Optional[str] = None
+    sector: str | None = None
+    sub_sector: str | None = None
     audience_intents: tuple[str, ...] = ()
     flat_topics: tuple[str, ...] = ()
 
@@ -58,11 +49,11 @@ class AdSelectRequest(BaseModel):
 class AdSelectResponse(BaseModel):
     """Picked inventory item — None-equivalent shape if no match."""
 
-    inventory_id: Optional[str]
-    advertiser_display_name: Optional[str]
-    cpm_usd: Optional[str]
-    creative_url: Optional[str]
-    landing_url: Optional[str]
+    inventory_id: str | None
+    advertiser_display_name: str | None
+    cpm_usd: str | None
+    creative_url: str | None
+    landing_url: str | None
 
 
 class AdImpressionRequest(BaseModel):
@@ -71,7 +62,7 @@ class AdImpressionRequest(BaseModel):
     impression_id: str = Field(min_length=1, max_length=64)
     inventory_id: str = Field(min_length=1, max_length=64)
     page_id: str = Field(min_length=1, max_length=64)
-    investigation_id: Optional[str] = None
+    investigation_id: str | None = None
     revenue_usd_cents: int = Field(ge=0)
     # document_id → share map (decimal in [0, 1], sum ≤ 1)
     attribution_shares: dict[str, float]
@@ -87,7 +78,7 @@ class RevShareDecisionResponse(BaseModel):
     kind: str
     recipient_ref: str
     amount_usd_cents: int
-    document_id: Optional[str]
+    document_id: str | None
     requires_escrow: bool
     capped_to_daily_limit: bool
 

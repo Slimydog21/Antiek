@@ -13,6 +13,7 @@ import tempfile
 
 import pytest
 
+from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_write
 from substrate.graph.ops import insert_interview_project
 from substrate.graph.schema import init_database
@@ -20,7 +21,6 @@ from substrate.speak import async_interview as ai
 from substrate.speak.async_interview import AsrError, PendingTranscript
 from substrate.speak.consent import ConsentScope, record_consent
 from substrate.speak.schema import ensure_speak_schema
-from orchestration.interview.orchestrator import ConsentRequired
 
 
 class StubEmbedding:

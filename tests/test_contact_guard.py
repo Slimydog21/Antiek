@@ -31,7 +31,6 @@ from substrate.payouts.contact_guard import (
 )
 from tools.lint import contact_guard_check
 
-
 # ── 1. Runtime guard: unclaimed author is blocked, provider never called ────
 
 

@@ -24,12 +24,12 @@ connector is :mod:`acquisition.papers.core`.
 from __future__ import annotations
 
 from ._pipeline import (
-    PaperRecord,
     PaperClassification,
     PaperIngestResult,
+    PaperRecord,
     classify_paper,
-    paper_candidate_ref,
     ingest_servable_paper,
+    paper_candidate_ref,
 )
 
 __all__ = [

@@ -13,34 +13,25 @@ identical state.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
-
-import pytest
 
 _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from substrate.multi_user.crdt_scaffold import (  # noqa: E402
-    AccessControlOp,
     ConvergenceTrace,
     CRDTBackend,
     Document,
-    EditOp,
     EditOutcome,
-    GrantOp,
     OpInMemoryBackend,
-    RevokeOp,
-    fresh_actor_id,
     is_edit_authorized,
 )
 from substrate.multi_user.crdt_scaffold.interfaces import (  # noqa: E402
-    causally_precedes,
     are_concurrent,
+    causally_precedes,
 )
-
 
 # ---------------------------------------------------------------------------
 # Vector-clock primitives (the bedrock — bugs here are fatal)
@@ -288,7 +279,8 @@ def test_backdated_edit_attack_rejected() -> None:
     # local clock, 2 for the legitimate edit). Suppose u1 forges an
     # op with counter=0 trying to pretend it happened before grant.
     from substrate.multi_user.crdt_scaffold.interfaces import (
-        EditOp, OpId,
+        EditOp,
+        OpId,
     )
     forged = EditOp(
         op_id=OpId(actor="u1", counter=0),
@@ -315,12 +307,12 @@ def test_scaffold_is_inert_when_not_imported() -> None:
     multi_user module test elsewhere — here we just verify the
     scaffold imports without instantiating anything global).
     """
-    from substrate.multi_user import crdt_scaffold  # noqa: F401
-
     # No global state, no side effects on import.
     # If a future change adds module-level state that's NOT inert,
     # this test should fail.
     import importlib
+
+    from substrate.multi_user import crdt_scaffold  # noqa: F401
 
     importlib.reload(crdt_scaffold)
 

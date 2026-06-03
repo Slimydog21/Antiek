@@ -68,7 +68,6 @@ from interfaces.research.rlm_dag import (
 )
 from skills.verification.types import VerificationResult
 
-
 # ---------------------------------------------------------------------------
 # A. DagNode / Dag round-trip
 # ---------------------------------------------------------------------------

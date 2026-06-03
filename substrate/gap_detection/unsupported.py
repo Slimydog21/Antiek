@@ -15,7 +15,7 @@ enough to not be a gap; zero is the hole. Read-only; deterministic.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 MIN_SUPPORT_EDGES = 1
 
@@ -27,7 +27,7 @@ class UnsupportedClaim:
     support_edges: int
 
 
-def find_unsupported_claims(con: Any, *, min_support: int = MIN_SUPPORT_EDGES) -> List[UnsupportedClaim]:
+def find_unsupported_claims(con: Any, *, min_support: int = MIN_SUPPORT_EDGES) -> list[UnsupportedClaim]:
     """Return claim nodes whose evidence-edge count is below ``min_support``.
     Ordered by node_id for determinism."""
     rows = con.execute(

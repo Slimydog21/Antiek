@@ -2,24 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from substrate.deletion_worker import (
-    CASCADE_TARGETS,
     CANCELLATION_WINDOW_DAYS,
+    CASCADE_TARGETS,
+    SLA_DAYS,
     DeletionRequest,
     DeletionRequestStatus,
     DeletionResultKind,
-    SLA_DAYS,
     process_request,
     run_one_cycle,
 )
 
 
 def _request_at(days_ago: float, *, status=DeletionRequestStatus.PENDING) -> DeletionRequest:
-    requested = datetime.now(timezone.utc) - timedelta(days=days_ago)
+    requested = datetime.now(UTC) - timedelta(days=days_ago)
     return DeletionRequest(
         request_id=f"del-{days_ago}",
         user_id=f"u-{days_ago}",
@@ -170,13 +168,13 @@ def test_cascade_targets_cover_personal_graph_dependents():
 
 
 def test_clock_injection_controls_age():
-    fixed_now = datetime(2026, 6, 1, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 6, 1, tzinfo=UTC)
     req = DeletionRequest(
         request_id="del-clock",
         user_id="u-1",
         status=DeletionRequestStatus.PENDING,
-        requested_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
-        updated_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        requested_at=datetime(2026, 5, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 5, 1, tzinfo=UTC),
     )
     captured: list[str] = []
     result = process_request(req, cascade=_record_cascade(captured), now=fixed_now)

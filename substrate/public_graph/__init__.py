@@ -45,7 +45,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-
 # Master-spec §5.4 — at most 2 em-dashes per thesis-shaped artifact.
 # Note-level threshold is more permissive (4) since notes can chain.
 MAX_EM_DASHES_PER_NOTE: int = 4
@@ -122,7 +121,7 @@ class NoteQualityInput:
 
     note_text: str
     cited_chunk_ids: tuple[str, ...]
-    declared_sector: Optional[str] = None
+    declared_sector: str | None = None
     hard_claim: bool = True
 
 
@@ -142,7 +141,7 @@ def _word_count(text: str) -> int:
     return len([w for w in text.split() if w.strip()])
 
 
-def _has_padding_phrase(text: str) -> Optional[str]:
+def _has_padding_phrase(text: str) -> str | None:
     """Return the first padding phrase found, or None."""
     lowered = text.lower()
     for phrase in _PADDING_PHRASES:
@@ -153,7 +152,7 @@ def _has_padding_phrase(text: str) -> Optional[str]:
 
 def _lookup_source_tiers(
     con: Any, chunk_ids: tuple[str, ...],
-) -> dict[str, Optional[int]]:
+) -> dict[str, int | None]:
     """Return chunk_id → source_tier of its document. Missing
     chunks resolve to None (treated as ungrounded)."""
     if not chunk_ids:
@@ -168,7 +167,7 @@ def _lookup_source_tiers(
         """,
         list(chunk_ids),
     ).fetchall()
-    found: dict[str, Optional[int]] = {
+    found: dict[str, int | None] = {
         cid: int(tier) if tier is not None else None
         for cid, tier in rows
     }

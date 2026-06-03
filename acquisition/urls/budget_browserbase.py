@@ -20,9 +20,8 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 DEFAULT_DAILY_BUDGET_USD: float = 5.0
 
@@ -42,7 +41,7 @@ class BrowserbaseBudgetExceeded(BrowserbaseProviderError):
 
 
 def _utc_date_stamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _budget_dir() -> Path:
@@ -55,11 +54,11 @@ def _budget_dir() -> Path:
     return p
 
 
-def _budget_path(date_stamp: Optional[str] = None) -> Path:
+def _budget_path(date_stamp: str | None = None) -> Path:
     return _budget_dir() / f"browserbase_{date_stamp or _utc_date_stamp()}.json"
 
 
-def _resolve_cap_usd(cap_override: Optional[float]) -> float:
+def _resolve_cap_usd(cap_override: float | None) -> float:
     if cap_override is not None:
         return float(cap_override)
     v = os.environ.get("BROWSERBASE_DAILY_BUDGET_USD")
@@ -84,7 +83,7 @@ class BudgetState:
     cap_usd: float
 
 
-def read_state(date_stamp: Optional[str] = None) -> BudgetState:
+def read_state(date_stamp: str | None = None) -> BudgetState:
     p = _budget_path(date_stamp)
     if not p.exists():
         return BudgetState(
@@ -120,7 +119,7 @@ def write_state(state: BudgetState) -> None:
 def check_and_reserve(
     cost_estimate_usd: float,
     *,
-    cap_override: Optional[float] = None,
+    cap_override: float | None = None,
     skip_combined_cap: bool = False,
 ) -> BudgetState:
     """Pre-session check. Raises `BrowserbaseBudgetExceeded` if the

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.collective_graph import (
     CollectiveGraphDocument,
     compute_eligibility,

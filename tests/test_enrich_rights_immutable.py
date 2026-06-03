@@ -17,7 +17,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import duckdb
 import httpx
@@ -129,7 +129,7 @@ def test_enrichment_does_not_change_license_or_tier(temp_db):
 
     cov = enrich_corpus(
         db_path=db_path, client=_mock_client(handler), throttle=_no_sleep_throttle(),
-        fetched_at=datetime(2026, 5, 30, tzinfo=timezone.utc),
+        fetched_at=datetime(2026, 5, 30, tzinfo=UTC),
     )
     assert cov.matched == 1  # the enrichment genuinely ran (not a no-op)
 

@@ -21,20 +21,20 @@ import tempfile
 
 import pytest
 
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from runtime.db_lock import connect_read, connect_write
-from substrate.graph.schema import init_database_at_path
-from substrate.graph.ops import insert_document, insert_chunk
+from substrate.event_log import emit_typed
 from substrate.graph import insight_question as iq
+from substrate.graph.backfill_insight_question import backfill
 from substrate.graph.insight_question import (
     insight_node_id,
     promote_from_marginalia_event,
     promote_from_note_event,
 )
-from substrate.graph.backfill_insight_question import backfill
-from substrate.write.block_search import search_blocks
-from substrate.event_log import emit_typed
+from substrate.graph.ops import insert_chunk, insert_document
+from substrate.graph.schema import init_database_at_path
 from substrate.schemas.events import MarginaliaNotedPayload
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
+from substrate.write.block_search import search_blocks
 
 
 class _FakeEmbedding:

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -226,7 +226,7 @@ def test_nd_without_nc_is_t3():
 
 
 def _fixed_now() -> datetime:
-    return datetime(2026, 5, 29, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 5, 29, 12, 0, 0, tzinfo=UTC)
 
 
 def test_census_counts_each_tier_and_partition_is_exhaustive():

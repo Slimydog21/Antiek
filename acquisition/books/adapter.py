@@ -16,11 +16,10 @@ Caller can override per-call.
 from __future__ import annotations
 
 import hashlib
-import io
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from typing import Union
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -92,15 +91,15 @@ class IngestBookResult:
     """What ``ingest_pdf`` returns."""
 
     document_id: str
-    chunk_ids: List[str] = field(default_factory=list)
-    node_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    node_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
     page_count: int = 0
     word_count: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
-    author: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
+    author: str | None = None
     # Flattened bookmark outline from the PDF (Read SPR-01). Carried on
     # the result so the servable-book orchestrator doesn't re-read the PDF
     # just to recover the TOC.
@@ -126,9 +125,9 @@ def ingest_pdf(
     *,
     investigation_id: str,
     source_tier: int = DEFAULT_BOOK_SOURCE_TIER,
-    source_uri: Optional[str] = None,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    source_uri: str | None = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
     promote_headings: bool = True,
 ) -> IngestBookResult:
@@ -180,9 +179,9 @@ def ingest_pdf(
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
 
-    chunks: List[Chunk] = chunk_markdown(text)
-    chunk_ids: List[str] = []
-    node_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(text)
+    chunk_ids: list[str] = []
+    node_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -281,15 +280,15 @@ def ingest_servable_book(
     source: PdfSource,
     *,
     investigation_id: str,
-    content_class: Optional[str] = None,
-    rights_holder_name: Optional[str] = None,
-    ip_holder_id: Optional[str] = None,
-    provenance: Optional[str] = None,
-    license_basis: Optional[str] = None,
+    content_class: str | None = None,
+    rights_holder_name: str | None = None,
+    ip_holder_id: str | None = None,
+    provenance: str | None = None,
+    license_basis: str | None = None,
     source_tier: int = DEFAULT_BOOK_SOURCE_TIER,
-    source_uri: Optional[str] = None,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    source_uri: str | None = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> IngestServableBookResult:
     """Read a PDF, ingest it as a document, and register it as a

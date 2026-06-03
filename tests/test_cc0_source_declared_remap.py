@@ -48,7 +48,6 @@ from substrate.quality_gate import (  # noqa: E402
     QualityGateVerdict,
 )
 
-
 # ---------------------------------------------------------------------------
 # (a) CC0 -> public_domain  (URI + short code, arXiv + OA resolvers)
 # ---------------------------------------------------------------------------

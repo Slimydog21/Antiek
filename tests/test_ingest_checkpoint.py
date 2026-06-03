@@ -27,10 +27,8 @@ if _REPO not in sys.path:
 from acquisition.corpus_quality import CandidateRef  # noqa: E402
 from substrate.dedup import identity_basis  # noqa: E402
 from substrate.ingest_budget import BudgetGovernor, BudgetReading  # noqa: E402
-from substrate.ingest_checkpoint import CheckpointStore, SourceCheckpoint  # noqa: E402
-
+from substrate.ingest_checkpoint import CheckpointStore  # noqa: E402
 from tools import run_corpus_ingest as rci  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Fixtures — temp state files, deterministic faked discovery, OK governor.
@@ -246,11 +244,12 @@ def test_rotation_fair_round_robin_via_next_available_source():
     """SPR-03's next_available_source picks the first NON-banned source in
     priority order and records the skipped (banned) ones — the fair round-robin
     primitive the orchestrator schedules through (not a reimplemented one)."""
+    import tempfile
+
     from substrate.source_throttle import (
         SourceThrottle,
         next_available_source,
     )
-    import tempfile
 
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "t.json")

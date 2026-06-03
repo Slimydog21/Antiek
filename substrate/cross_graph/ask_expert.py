@@ -8,13 +8,12 @@ surfaces User A as a candidate interview subject for User B.
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class OptInRequired(Exception):
@@ -29,7 +28,7 @@ class ExpertCandidate:
     graph contributions overlapping the requesting user's topic."""
 
     candidate_user_id: str
-    display_name: Optional[str]
+    display_name: str | None
     public_note_count: int  # how many of their public notes overlap the topic
     opt_in_status: str  # 'opted_in' | 'opted_out' | 'not_set'
     estimated_topic_authority: float  # 0..1 substrate-side heuristic
@@ -41,7 +40,7 @@ class AskExpertRequest:
 
     requesting_user_id: str
     topic_query: str
-    investigation_id: Optional[str]
+    investigation_id: str | None
     limit: int = 5
 
 
@@ -61,7 +60,7 @@ def find_user_experts(
     public_graph_contributions: dict[str, list[str]],
     opt_in_status_by_user: dict[str, str],
     authority_by_user: dict[str, float],
-    display_names: Optional[dict[str, Optional[str]]] = None,
+    display_names: dict[str, str | None] | None = None,
 ) -> AskExpertResponse:
     """Surface ExpertCandidates whose public-graph contributions
     overlap the topic. Respects opt-in: users with status='opted_out'
@@ -116,7 +115,7 @@ def request_user_interview(
     expert_user_id: str,
     expert_opt_in_status: str,
     topic: str,
-    investigation_id: Optional[str] = None,
+    investigation_id: str | None = None,
 ) -> dict:
     """Create an interview-request handle. Refuses unless expert has
     affirmatively opted in (opt_in_status='opted_in')."""

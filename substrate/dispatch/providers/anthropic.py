@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -93,11 +93,11 @@ class AnthropicProvider:
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         api_key_env: str = "ANTHROPIC_API_KEY",
         base_url: str = "https://api.anthropic.com",
         timeout_s: float = _DEFAULT_TIMEOUT_S,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
         anthropic_version: str = _ANTHROPIC_VERSION,
         enable_prompt_caching: bool = False,
     ):

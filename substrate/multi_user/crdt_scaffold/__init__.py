@@ -41,15 +41,6 @@ What's deferred to the eventual real implementation:
 The scaffold's job is to make the eventual flip a one-config-line change.
 """
 
-from .interfaces import (
-    AccessControlOp,
-    CRDTBackend,
-    ConvergenceTrace,
-    EditOp,
-    GrantOp,
-    OpId,
-    RevokeOp,
-)
 from .access_control import (
     Document,
     EditOutcome,
@@ -58,6 +49,15 @@ from .access_control import (
 from .fakes import (
     OpInMemoryBackend,
     fresh_actor_id,
+)
+from .interfaces import (
+    AccessControlOp,
+    ConvergenceTrace,
+    CRDTBackend,
+    EditOp,
+    GrantOp,
+    OpId,
+    RevokeOp,
 )
 
 __all__ = [

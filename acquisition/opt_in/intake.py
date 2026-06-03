@@ -49,7 +49,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional
 
 from acquisition.licenses_core import classify
 from substrate.dedup import IdentityRecord, identity_basis
@@ -83,15 +82,15 @@ class WorkOutcome:
     SERVABLE_CONTENT_CLASSES); ``gated_reason`` explains a gated work."""
 
     title: str
-    document_id: Optional[str]
+    document_id: str | None
     content_class: str
     license_basis: str
     servable: bool
-    ip_holder_id: Optional[str]
+    ip_holder_id: str | None
     identity_basis: str
-    gated_reason: Optional[str] = None
+    gated_reason: str | None = None
     accrued: bool = False
-    skipped_reason: Optional[str] = None
+    skipped_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -143,11 +142,11 @@ def _render_body_bytes(entry: ManifestEntry) -> bytes:
     """
     from acquisition.books.public_domain import text_to_pdf
 
-    text: Optional[str] = None
+    text: str | None = None
     if entry.body_text is not None:
         text = entry.body_text
     elif entry.body_path:
-        with open(entry.body_path, "r", encoding="utf-8") as f:
+        with open(entry.body_path, encoding="utf-8") as f:
             text = f.read()
     if text is None or not text.strip():
         raise ValueError(
@@ -156,7 +155,7 @@ def _render_body_bytes(entry: ManifestEntry) -> bytes:
     return text_to_pdf(text, title=entry.title)
 
 
-def _identity_record(entry: ManifestEntry, body_text: Optional[str]) -> IdentityRecord:
+def _identity_record(entry: ManifestEntry, body_text: str | None) -> IdentityRecord:
     """Project a manifest entry into the single substrate.dedup identity record
     so identity keys through the ONE ladder (DOI > ISBN > content-hash >
     title+author LOW). ISBN/DOI win; title+author is only the LOW fallback the
@@ -327,7 +326,7 @@ def intake_manifest(
     manifest: Manifest,
     *,
     investigation_id: str = "inv-opt-in",
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     embedder=None,
     accrual_usd: Decimal = OPT_IN_INTAKE_ACCRUAL_USD,
 ) -> IntakeResult:
@@ -387,7 +386,7 @@ def intake_manifest_file(
     path: str,
     *,
     investigation_id: str = "inv-opt-in",
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     embedder=None,
 ) -> IntakeResult:
     """Load a manifest JSON file from ``path`` and ingest it."""

@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from .consent import ConsentScope
 from .events import SPEAK_INTERVIEW_INVITED, record_speak_event
@@ -47,7 +47,7 @@ class Invite:
     project_id: str
     token: str
     required_consent_scopes: tuple[ConsentScope, ...]
-    informant_email: Optional[str]
+    informant_email: str | None
     status: str
 
     @property
@@ -77,9 +77,9 @@ def invite_stakeholder(
     con: Any,
     *,
     project_id: str,
-    informant_email: Optional[str] = None,
-    informant_handle: Optional[str] = None,
-    required_scopes: Optional[tuple[ConsentScope, ...]] = None,
+    informant_email: str | None = None,
+    informant_handle: str | None = None,
+    required_scopes: tuple[ConsentScope, ...] | None = None,
 ) -> Invite:
     """Invite one stakeholder by link. Idempotent per (project, email):
     inviting the same email twice returns the existing invite rather
@@ -137,7 +137,7 @@ def get_invite(con: Any, invite_id: str) -> Invite:
     return _row_to_invite(con, _invite_row(con, "invite_id", invite_id))
 
 
-def resolve_token(con: Any, token: str) -> Optional[Invite]:
+def resolve_token(con: Any, token: str) -> Invite | None:
     """Resolve an invite link's token to its invite (the landing flow).
     Returns None for an unknown/expired token."""
     row = _invite_row(con, "token", token, optional=True)

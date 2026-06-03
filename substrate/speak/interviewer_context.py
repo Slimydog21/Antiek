@@ -26,14 +26,13 @@ in the next person's mouth.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from . import corroboration
 from .consent import ConsentScope, has_consent
 from .contracts import GapSource, OpenQuestion
 from .project import project_claims
-from .third_party import ClaimRecord, get_claim
-
+from .third_party import get_claim
 
 # ---------------------------------------------------------------------------
 # Default GapSource — until DRW SPR-07 (substrate/gap_detection/) lands
@@ -125,7 +124,7 @@ class ConditioningContext:
     withheld_for_privacy: int = 0
 
 
-def _source_may_inform_others(con: Any, source_interview_id: Optional[str]) -> bool:
+def _source_may_inform_others(con: Any, source_interview_id: str | None) -> bool:
     """A source's claim may inform ANOTHER interviewee only if the source
     granted ``attribute`` consent. Operator-authored claims (no source
     interview) are always shareable."""
@@ -139,7 +138,7 @@ def build_conditioning_context(
     *,
     project_id: str,
     for_interview_id: str,
-    gap_source: Optional[GapSource] = None,
+    gap_source: GapSource | None = None,
     max_items: int = 12,
 ) -> ConditioningContext:
     """Assemble the accumulated context to condition ``for_interview_id``'s

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -32,7 +31,7 @@ class PersonalGraphHandle:
 
     user_id: str
     db_path: str
-    encryption_key_ref: Optional[str] = None
+    encryption_key_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -85,7 +84,7 @@ def resolve_personal_graph(
     router: GraphRouter,
     *,
     user_id: str,
-    encryption_key_ref: Optional[str] = None,
+    encryption_key_ref: str | None = None,
 ) -> PersonalGraphHandle:
     """Build a PersonalGraphHandle for the given user. The caller
     holds the handle for the duration of their critical section;

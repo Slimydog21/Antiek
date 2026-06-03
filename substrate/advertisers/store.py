@@ -8,12 +8,12 @@ import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, Protocol
+from datetime import UTC, datetime
+from typing import Protocol
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class CampaignStatus(str, enum.Enum):
@@ -31,7 +31,7 @@ class Advertiser:
     display_name: str
     sector: str  # broad category — vertical-saas | consulting | recruiting | other
     contact_email: str
-    stripe_customer_id: Optional[str]  # populated once first invoice settles
+    stripe_customer_id: str | None  # populated once first invoice settles
     created_at: str = field(default_factory=_now_iso)
 
 
@@ -42,7 +42,7 @@ class AdvertiserCampaign:
     campaign_id: str
     advertiser_id: str
     sector: str
-    sub_sector: Optional[str]
+    sub_sector: str | None
     intent: str
     target_topics: tuple[str, ...]
     creative_headline: str
@@ -57,10 +57,10 @@ class AdvertiserCampaign:
 
 class AdvertiserStore(Protocol):
     def upsert_advertiser(self, advertiser: Advertiser) -> None: ...
-    def get_advertiser(self, advertiser_id: str) -> Optional[Advertiser]: ...
+    def get_advertiser(self, advertiser_id: str) -> Advertiser | None: ...
     def list_advertisers(self) -> list[Advertiser]: ...
     def upsert_campaign(self, campaign: AdvertiserCampaign) -> None: ...
-    def get_campaign(self, campaign_id: str) -> Optional[AdvertiserCampaign]: ...
+    def get_campaign(self, campaign_id: str) -> AdvertiserCampaign | None: ...
     def list_campaigns(self) -> list[AdvertiserCampaign]: ...
 
 
@@ -74,7 +74,7 @@ class InMemoryAdvertiserStore:
         with self._lock:
             self.advertisers[advertiser.advertiser_id] = advertiser
 
-    def get_advertiser(self, advertiser_id: str) -> Optional[Advertiser]:
+    def get_advertiser(self, advertiser_id: str) -> Advertiser | None:
         with self._lock:
             return self.advertisers.get(advertiser_id)
 
@@ -86,7 +86,7 @@ class InMemoryAdvertiserStore:
         with self._lock:
             self.campaigns[campaign.campaign_id] = campaign
 
-    def get_campaign(self, campaign_id: str) -> Optional[AdvertiserCampaign]:
+    def get_campaign(self, campaign_id: str) -> AdvertiserCampaign | None:
         with self._lock:
             return self.campaigns.get(campaign_id)
 
@@ -98,7 +98,7 @@ class InMemoryAdvertiserStore:
 @dataclass
 class SqliteAdvertiserStore:
     db_path: str
-    _conn: Optional[sqlite3.Connection] = None
+    _conn: sqlite3.Connection | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -160,7 +160,7 @@ class SqliteAdvertiserStore:
             ))
             self._conn.commit()
 
-    def get_advertiser(self, advertiser_id: str) -> Optional[Advertiser]:
+    def get_advertiser(self, advertiser_id: str) -> Advertiser | None:
         assert self._conn is not None
         with self._lock:
             row = self._conn.execute(
@@ -223,7 +223,7 @@ class SqliteAdvertiserStore:
             ))
             self._conn.commit()
 
-    def get_campaign(self, campaign_id: str) -> Optional[AdvertiserCampaign]:
+    def get_campaign(self, campaign_id: str) -> AdvertiserCampaign | None:
         assert self._conn is not None
         with self._lock:
             row = self._conn.execute(
@@ -295,7 +295,7 @@ def create_campaign(
     creative_headline: str,
     creative_url: str,
     daily_budget_cents: int,
-    sub_sector: Optional[str] = None,
+    sub_sector: str | None = None,
     target_topics: tuple[str, ...] = (),
     status: CampaignStatus = CampaignStatus.DRAFT,
 ) -> AdvertiserCampaign:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from tools.gepa import (
     GEPAOptimizer,
     ParetoFront,
@@ -12,7 +10,6 @@ from tools.gepa import (
     non_dominated_sort,
     optimize_role_prompt,
 )
-
 
 # ── Score-vector dominance ──────────────────────────────────────────
 

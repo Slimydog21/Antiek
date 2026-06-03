@@ -37,14 +37,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
 from substrate.event_log.events import default_events_dir, trajectory
 
 from .daemon import DaemonConfig, _list_investigation_ids, scan_gaps
-from .scoring import MAX_CHASE_COUNT, normalize_gap_description, score_gap
-
+from .scoring import normalize_gap_description, score_gap
 
 #: The policy_id a daemon-spawned chase carries on its start event. Mirrors
 #: ``DaemonConfig.spawn_policy_id`` — kept here as the public, importable
@@ -77,14 +75,14 @@ class Suggestion:
     question: str
     #: Optional retrieval hint the gap carried ("check §14.4"), surfaced as
     #: context. None when the gap carried no hint.
-    suggested_retrieval: Optional[str]
+    suggested_retrieval: str | None
     #: How many distinct researches surfaced this gap (the "many runs flagged
     #: this" signal), for an honest "seen across N researches" line.
     seen_in_research_count: int
     #: A representative source research id the gap came from, so the surface
     #: can link back to where the thread originated. None only if the registry
     #: somehow has no investigation_ids (defensive).
-    source_investigation_id: Optional[str]
+    source_investigation_id: str | None
     #: The daemon's own composite score (recency × co-occurrence ×
     #: interaction). Used only for ranking; never rendered.
     score: float
@@ -122,10 +120,10 @@ def _chased_question_keys(events_dir: str) -> set[str]:
 
 def build_suggestions(
     *,
-    events_dir: Optional[str] = None,
+    events_dir: str | None = None,
     max_suggestions: int = DEFAULT_MAX_SUGGESTIONS,
     min_score: float = 0.0,
-    now: Optional[datetime] = None,
+    now: datetime | None = None,
 ) -> list[Suggestion]:
     """Read the daemon's scored gaps and return ranked plain-language
     suggestions. Read-only: scans the event log, scores with the daemon's own
@@ -183,7 +181,7 @@ def build_suggestions(
     return scored
 
 
-def policy_is_daemon(policy_id: Optional[str]) -> bool:
+def policy_is_daemon(policy_id: str | None) -> bool:
     """Whether a research's ``policy_id`` marks it as daemon-spawned — the
     seam the surface translates into the "found by the loop" badge. Kept here
     (not inlined in the API) so the one string lives next to the daemon's own

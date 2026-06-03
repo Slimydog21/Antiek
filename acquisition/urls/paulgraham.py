@@ -38,9 +38,9 @@ import re
 import sys
 import time
 import urllib.robotparser
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urldefrag, urljoin, urlparse
 
 # Repo root on path for direct invocation (mirrors adapter.py).
@@ -51,8 +51,8 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from acquisition.urls.adapter import (  # noqa: E402
-    IngestUrlResult,
     MIN_INGEST_WORD_COUNT,
+    IngestUrlResult,
     ingest_url,
     url_doc_id,
 )
@@ -107,9 +107,9 @@ class _ArticleListParser(HTMLParser):
 
     def __init__(self) -> None:
         super().__init__()
-        self.hrefs: List[str] = []
+        self.hrefs: list[str] = []
 
-    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag.lower() != "a":
             return
         for name, value in attrs:
@@ -138,7 +138,7 @@ def _is_essay_url(url: str) -> bool:
     return True
 
 
-def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> List[str]:
+def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> list[str]:
     """Parse articles.html into a deduplicated, order-preserving list of
     absolute essay URLs. Fragments/anchors are stripped; off-host, non-essay,
     and index links are dropped. No network — pure string in, list out."""
@@ -148,7 +148,7 @@ def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> Lis
     parser.feed(html)
 
     seen: set[str] = set()
-    out: List[str] = []
+    out: list[str] = []
     for href in parser.hrefs:
         absolute, _frag = urldefrag(urljoin(base_url, href))
         # Canonicalize www. -> bare host so the same essay under both forms
@@ -167,8 +167,8 @@ def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> Lis
 
 def load_robots(
     *,
-    robots_txt: Optional[str] = None,
-    fetch_text: Optional[Callable[[str], str]] = None,
+    robots_txt: str | None = None,
+    fetch_text: Callable[[str], str] | None = None,
 ) -> urllib.robotparser.RobotFileParser:
     """Build a parsed RobotFileParser for paulgraham.com.
 
@@ -231,7 +231,7 @@ class PoliteThrottle:
         self._min_spacing = float(min_spacing_s)
         self._now = now
         self._sleep = sleep
-        self._last_request_at: Optional[float] = None
+        self._last_request_at: float | None = None
 
     def wait_if_needed(self) -> None:
         now = self._now()
@@ -256,9 +256,9 @@ class EssayQuality:
     document_id: str
     word_count: int
     verdict: str
-    reason: Optional[str]
+    reason: str | None
     ingested: bool
-    skipped_reason: Optional[str] = None
+    skipped_reason: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -278,7 +278,7 @@ def assess_extraction_quality(
     document_id: str,
     word_count: int,
     markdown: str,
-    skipped_reason: Optional[str],
+    skipped_reason: str | None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> EssayQuality:
     """Compute an honest quality verdict for one extracted essay.
@@ -296,7 +296,7 @@ def assess_extraction_quality(
     up to success.
     """
     ingested = skipped_reason is None
-    reasons: List[str] = []
+    reasons: list[str] = []
     if skipped_reason == "low_word_count" or skipped_reason == "low_word_count_after_fallback":
         reasons.append(f"connector skipped graph writes ({skipped_reason})")
     if word_count < min_word_count:
@@ -343,12 +343,12 @@ class RunSummary:
     changed_reingested: int = 0
     robots_disallowed: int = 0
     errored: int = 0
-    qualities: List[EssayQuality] = field(default_factory=list)
-    robots_disallowed_urls: List[str] = field(default_factory=list)
-    errors: List[Tuple[str, str]] = field(default_factory=list)
+    qualities: list[EssayQuality] = field(default_factory=list)
+    robots_disallowed_urls: list[str] = field(default_factory=list)
+    errors: list[tuple[str, str]] = field(default_factory=list)
     # Visible operator warnings (e.g. robots.txt fail-open) — surfaced rather
     # than silently degrading the lawful-acquisition posture.
-    warnings: List[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -376,7 +376,7 @@ def default_report_path() -> str:
     return os.path.join(_PKG_ROOT, "artifacts", "paulgraham", "extraction_quality.json")
 
 
-def write_quality_report(summary: RunSummary, *, path: Optional[str] = None) -> str:
+def write_quality_report(summary: RunSummary, *, path: str | None = None) -> str:
     """Write the per-essay extraction-quality report as JSON. Returns the path."""
     out_path = path or default_report_path()
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -387,9 +387,9 @@ def write_quality_report(summary: RunSummary, *, path: Optional[str] = None) -> 
 
 def discover(
     *,
-    articles_html: Optional[bytes | str] = None,
-    fetch_html: Optional[Callable[[str], FetchedHtml]] = None,
-) -> List[str]:
+    articles_html: bytes | str | None = None,
+    fetch_html: Callable[[str], FetchedHtml] | None = None,
+) -> list[str]:
     """Return the deduplicated absolute essay-URL list.
 
     ``articles_html`` injects the page body directly (tests/offline). Else
@@ -405,19 +405,19 @@ def discover(
 def run(
     *,
     investigation_id: str,
-    db_path: Optional[str] = None,
-    embedder: Optional[object] = None,
+    db_path: str | None = None,
+    embedder: object | None = None,
     # M1 injection seams (tests/offline):
-    articles_html: Optional[bytes | str] = None,
-    robots_txt: Optional[str] = None,
-    robots_fetch_text: Optional[Callable[[str], str]] = None,
+    articles_html: bytes | str | None = None,
+    robots_txt: str | None = None,
+    robots_fetch_text: Callable[[str], str] | None = None,
     # Map URL -> FetchedHtml so the run never touches the live network in tests.
-    fetched_by_url: Optional[Dict[str, FetchedHtml]] = None,
-    http_client: Optional[object] = None,
-    throttle: Optional[PoliteThrottle] = None,
-    report_path: Optional[str] = None,
+    fetched_by_url: dict[str, FetchedHtml] | None = None,
+    http_client: object | None = None,
+    throttle: PoliteThrottle | None = None,
+    report_path: str | None = None,
     write_report: bool = True,
-    limit: Optional[int] = None,
+    limit: int | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> RunSummary:
     """Discover + ingest the PG essays into the personal_reading lane.
@@ -556,11 +556,11 @@ def _content_hash_of(page: FetchedHtml) -> str:
 
 def _extracted_md(
     url: str,
-    injected: Optional[FetchedHtml],
+    injected: FetchedHtml | None,
     result: IngestUrlResult,
     *,
-    db_path: Optional[str] = None,
-) -> Tuple[int, str]:
+    db_path: str | None = None,
+) -> tuple[int, str]:
     """Recover the extracted markdown + word count for the quality verdict.
 
     Injected (test) path: re-extract from the body we hold.
@@ -585,7 +585,7 @@ def _extracted_md(
     return 0, ""
 
 
-def _stored_raw_text(url: str, *, db_path: Optional[str]) -> Optional[str]:
+def _stored_raw_text(url: str, *, db_path: str | None) -> str | None:
     """Read back the persisted ``documents.raw_text`` (the extracted markdown)
     for this URL's document so the live-path quality verdict inspects the real
     extracted body. Returns None when the doc/DB is absent."""
@@ -616,7 +616,7 @@ def _quality_for_injected(
     url: str,
     injected: FetchedHtml,
     *,
-    skipped_reason: Optional[str],
+    skipped_reason: str | None,
     min_word_count: int,
 ) -> EssayQuality:
     md = html_to_markdown(injected.body, base_url=injected.final_url)
@@ -640,7 +640,7 @@ def _quality_for_injected(
     )
 
 
-def _stored_content_hash(url: str, *, db_path: Optional[str]) -> Optional[str]:
+def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
     """The content hash of this URL's already-stored document body, if any.
 
     The hash the connector emits lives only on the ``document.loaded`` EVENT
@@ -686,7 +686,7 @@ def _stored_content_hash(url: str, *, db_path: Optional[str]) -> Optional[str]:
 # --- CLI -------------------------------------------------------------------
 
 
-def _main(argv: Optional[Sequence[str]] = None) -> int:
+def _main(argv: Sequence[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -711,7 +711,7 @@ def _main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "discover":
-        body: Optional[bytes] = None
+        body: bytes | None = None
         if args.articles_file:
             with open(args.articles_file, "rb") as fh:
                 body = fh.read()

@@ -18,15 +18,15 @@ from __future__ import annotations
 
 import enum
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Iterable
+from datetime import UTC, datetime
 
 from .rubric import score_voice_style_detailed
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)

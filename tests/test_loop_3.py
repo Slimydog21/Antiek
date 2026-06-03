@@ -12,13 +12,11 @@ from substrate.loop_3 import (
     SFTConfig,
     SFTRunner,
     UnlockChecklist,
-    VerifierEnvScaffold,
     build_env_from_trajectory,
     check_unlocked,
     harvest_trajectory_for_prime_rl,
     run_sft_iteration,
 )
-
 
 # ── Unlock gate ──────────────────────────────────────────────────────
 

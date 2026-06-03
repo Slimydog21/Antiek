@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -27,6 +27,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from acquisition.arxiv.oai_records import parse_records  # noqa: E402
 from tools.arxiv_census import (  # noqa: E402
     ABSENT_LICENSE_KEY,
     CensusResult,
@@ -36,8 +37,6 @@ from tools.arxiv_census import (  # noqa: E402
     render_report,
     seeded_census,
 )
-from acquisition.arxiv.oai_records import parse_records  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Recorded OAI XML (real export.arxiv.org/oai2 shape, trimmed) — local copy so
@@ -83,7 +82,7 @@ def _envelope(*records: str) -> str:
 
 
 def _fixed_now() -> datetime:
-    return datetime(2026, 5, 29, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 5, 29, 12, 0, 0, tzinfo=UTC)
 
 
 def _result_from(*records: str) -> CensusResult:
@@ -242,7 +241,7 @@ def test_seeded_census_stamps_the_reproducing_query():
     assert c.metadata_prefix == "arXiv"
     assert c.from_date == "2024-01-01"
     assert c.until_date == "2024-01-31"
-    assert c.harvested_at == datetime(2026, 5, 29, 0, 0, 0, tzinfo=timezone.utc)
+    assert c.harvested_at == datetime(2026, 5, 29, 0, 0, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------

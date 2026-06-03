@@ -27,10 +27,9 @@ middleware's job is verify-on-every-request.
 from __future__ import annotations
 
 import os
-from typing import Optional, Sequence
-from urllib.parse import urlencode, urljoin
-
 import re
+from collections.abc import Sequence
+from urllib.parse import urlencode, urljoin
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -46,7 +45,6 @@ from substrate.auth import (
     mint_session_cookie,
     verify_magic_link_token,
 )
-
 
 SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
@@ -87,7 +85,7 @@ class AuthMeResponse(BaseModel):
     """``GET /auth/me`` response."""
 
     user_id: str
-    email: Optional[str]
+    email: str | None
     auth_method: str
 
 
@@ -215,7 +213,7 @@ def _format_magic_link_email(*, email: str, link: str) -> OutboundEmail:
 def register_auth_routes(
     app: FastAPI,
     *,
-    extra_allowlist: Optional[Sequence[str]] = None,
+    extra_allowlist: Sequence[str] | None = None,
 ) -> None:
     """Mount the four auth routes onto ``app``.
 

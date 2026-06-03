@@ -25,7 +25,6 @@ go through ``acquisition/books/`` after rendering to PDF instead.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 try:
     from bs4 import BeautifulSoup, Tag  # type: ignore[import-not-found]
@@ -51,11 +50,11 @@ class MarkdownDoc:
     body's whitespace-split count — a coarse sanity check before
     chunking (very low → extractor likely missed the article)."""
 
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
     markdown: str
     word_count: int
-    final_url: Optional[str] = None
+    final_url: str | None = None
 
 
 # Tags to strip wholesale — UI chrome that pollutes the article body.
@@ -107,7 +106,7 @@ def _pick_main(soup: BeautifulSoup) -> Tag:
     return body
 
 
-def _resolve_title(soup: BeautifulSoup) -> Optional[str]:
+def _resolve_title(soup: BeautifulSoup) -> str | None:
     og = soup.find("meta", attrs={"property": "og:title"})
     if og and og.get("content"):
         return og["content"].strip()
@@ -120,7 +119,7 @@ def _resolve_title(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 
-def _resolve_author(soup: BeautifulSoup) -> Optional[str]:
+def _resolve_author(soup: BeautifulSoup) -> str | None:
     for sel in [
         {"name": "author"},
         {"property": "article:author"},
@@ -140,7 +139,7 @@ def _resolve_author(soup: BeautifulSoup) -> Optional[str]:
     return None
 
 
-def _make_markdown_writer(base_url: Optional[str]) -> html2text.HTML2Text:
+def _make_markdown_writer(base_url: str | None) -> html2text.HTML2Text:
     h = html2text.HTML2Text(baseurl=base_url or "")
     h.body_width = 0  # no hard-wrap; chunker prefers long lines
     h.ignore_images = True
@@ -154,7 +153,7 @@ def _make_markdown_writer(base_url: Optional[str]) -> html2text.HTML2Text:
 def html_to_markdown(
     html: bytes | str,
     *,
-    base_url: Optional[str] = None,
+    base_url: str | None = None,
 ) -> MarkdownDoc:
     """Extract main content + render to markdown. ``html`` may be
     raw bytes (assumed utf-8) or a string."""
@@ -180,7 +179,7 @@ def html_to_markdown(
     # Prepend a leading title line so the chunker has the heading
     # anchor (it splits on # / ## / etc.). Authors ride along when
     # known — keeps provenance in the chunk text.
-    header_lines: List[str] = []
+    header_lines: list[str] = []
     if title:
         header_lines.append(f"# {title}")
         header_lines.append("")

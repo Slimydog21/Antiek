@@ -13,18 +13,18 @@ import tempfile
 
 import pytest
 
-from substrate.graph.schema import init_database_at_path
-from substrate.graph.insight_question import promote_insight, promote_question
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from runtime.db_lock import connect_read, connect_write
 from substrate.context_pack.assembler import LayerSource
-from substrate.context_pack.note_retrieval import RetrievedNote, retrieve_project_notes
-from substrate.context_pack.note_budget import NoteCoverage, select_within_budget, score_note
+from substrate.context_pack.note_budget import score_note, select_within_budget
 from substrate.context_pack.note_injection import (
     NOTES_LAYER_SOURCE,
     assemble_context_pack_with_notes,
     build_project_notes_layer,
 )
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
+from substrate.context_pack.note_retrieval import RetrievedNote, retrieve_project_notes
+from substrate.graph.insight_question import promote_insight, promote_question
+from substrate.graph.schema import init_database_at_path
 
 
 class _FakeEmbedding:

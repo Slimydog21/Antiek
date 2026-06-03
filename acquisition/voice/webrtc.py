@@ -15,12 +15,11 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -29,7 +28,7 @@ class WebRTCSessionHandle:
 
     session_id: str
     interview_id: str
-    informant_handle: Optional[str]
+    informant_handle: str | None
     started_at: str
     sdp_offer_received: bool = False
     sdp_answer_sent: bool = False
@@ -48,7 +47,7 @@ class WebRTCSessionRegistry:
         self,
         *,
         interview_id: str,
-        informant_handle: Optional[str] = None,
+        informant_handle: str | None = None,
     ) -> WebRTCSessionHandle:
         session = WebRTCSessionHandle(
             session_id=f"webrtc-{uuid.uuid4().hex[:12]}",

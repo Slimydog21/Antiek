@@ -24,7 +24,6 @@ import os
 import sys
 import threading
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 try:
     from ...constants import TOTAL_ACQUISITION_BUDGET_USD
@@ -32,8 +31,8 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD  # type: ignore[no-redef]
     from runtime.research_runner.protocol import BudgetExceeded  # type: ignore[no-redef]
+    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD  # type: ignore[no-redef]
 
 
 @dataclass
@@ -49,12 +48,12 @@ class BudgetManager:
     (a lock guards the shared totals) so it is safe to charge from multiple
     asyncio tasks running on the loop's executor or from sync callbacks."""
 
-    def __init__(self, *, aggregate_cap_usd: Optional[float] = None):
+    def __init__(self, *, aggregate_cap_usd: float | None = None):
         self.aggregate_cap_usd = (
             aggregate_cap_usd if aggregate_cap_usd is not None
             else float(TOTAL_ACQUISITION_BUDGET_USD)
         )
-        self._ledgers: Dict[str, _ResearchLedger] = {}
+        self._ledgers: dict[str, _ResearchLedger] = {}
         self._aggregate_spent = 0.0
         self._lock = threading.Lock()
 

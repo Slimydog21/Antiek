@@ -57,13 +57,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     # Defer heavy imports so --help is cheap.
-    from runtime.db_lock import connect_read
     from orchestration.monitoring.monitor import (
         DEFAULT_TOP_K,
         list_monitors,
         refresh_monitor,
         resolve_db_path,
     )
+    from runtime.db_lock import connect_read
 
     db_path = resolve_db_path(None)
 

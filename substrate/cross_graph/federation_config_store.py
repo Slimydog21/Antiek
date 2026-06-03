@@ -17,7 +17,6 @@ from typing import Any
 
 from .federation import FederationConfig
 
-
 SINGLETON_KEY: str = "default"
 """All federation config rows live under a single row keyed by this
 sentinel. The store is intentionally a singleton — the master spec

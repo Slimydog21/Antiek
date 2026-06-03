@@ -49,10 +49,10 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator, Optional, Sequence
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -99,8 +99,8 @@ class SyncCheckpoint:
     high-water mark exists.
     """
 
-    last_successful_datestamp: Optional[str] = None
-    last_harvested_at: Optional[str] = None
+    last_successful_datestamp: str | None = None
+    last_harvested_at: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -109,7 +109,7 @@ class SyncCheckpoint:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "SyncCheckpoint":
+    def from_dict(cls, d: dict) -> SyncCheckpoint:
         return cls(
             last_successful_datestamp=d.get("last_successful_datestamp"),
             last_harvested_at=d.get("last_harvested_at"),
@@ -201,10 +201,10 @@ class SyncResult:
     """
 
     census: RightsCensus
-    from_date: Optional[str]
-    until_date: Optional[str]
-    previous_datestamp: Optional[str]
-    new_datestamp: Optional[str]
+    from_date: str | None
+    until_date: str | None
+    previous_datestamp: str | None
+    new_datestamp: str | None
     advanced: bool
     persist: OaiPersistResult
 
@@ -215,10 +215,10 @@ def run_sync(
     mode: str,
     sync_state_path: str,
     metadata_prefix: str = "arXiv",
-    until_date: Optional[str] = None,
+    until_date: str | None = None,
     resume: bool = True,
-    harvested_at: Optional[datetime] = None,
-    db_path: Optional[str] = None,
+    harvested_at: datetime | None = None,
+    db_path: str | None = None,
 ) -> SyncResult:
     """Run one harvest, PERSIST it to the documents store, fold it into a census,
     then advance the high-water mark on clean completion.
@@ -258,7 +258,7 @@ def run_sync(
     else:
         raise ValueError(f"unknown sync mode {mode!r} (want 'incremental'/'backfill')")
 
-    at = harvested_at or datetime.now(timezone.utc)
+    at = harvested_at or datetime.now(UTC)
     # Seed the high-water tracker from any INTERRUPTED harvest's persisted max
     # datestamp. On a post-crash resume the harvester re-streams only the
     # remaining (often older) pages, so without this seed the mark could be set
@@ -415,7 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
 

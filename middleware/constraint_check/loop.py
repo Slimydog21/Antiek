@@ -47,8 +47,9 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, List, Optional
+from typing import Any
 
 try:
     from ...constants import CONSTRAINT_MAX_ITERATIONS
@@ -67,8 +68,7 @@ from .events import (
     emit_constraint_violation_found,
 )
 
-
-SynthesizerCallable = Callable[[List[Violation], int], List[Claim]]
+SynthesizerCallable = Callable[[list[Violation], int], list[Claim]]
 
 
 @dataclass
@@ -80,9 +80,9 @@ class ConstraintLoopResult:
 
     final_status: str               # one of ConstraintLoopStatus
     total_iterations: int
-    final_claims: List[Claim]
-    final_violations: List[Violation]
-    iteration_history: List[dict] = field(default_factory=list)
+    final_claims: list[Claim]
+    final_violations: list[Violation]
+    iteration_history: list[dict] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -133,7 +133,7 @@ def spec_to_constraint(spec: ConstraintSpec) -> Constraint:
     )
 
 
-def specs_to_constraints(specs: Iterable[ConstraintSpec]) -> List[Constraint]:
+def specs_to_constraints(specs: Iterable[ConstraintSpec]) -> list[Constraint]:
     """Bulk reverse converter."""
     return [spec_to_constraint(s) for s in specs]
 
@@ -197,12 +197,12 @@ def _violations_to_history_dicts(violations: Iterable[Violation]) -> list[dict]:
 def run_constraint_loop(
     *,
     investigation_id: str,
-    initial_claims: List[Claim],
-    constraints: List[ConstraintSpec],
+    initial_claims: list[Claim],
+    constraints: list[ConstraintSpec],
     synthesizer_callable: SynthesizerCallable,
-    parameters: Optional[List[Parameter]] = None,
+    parameters: list[Parameter] | None = None,
     max_iterations: int = CONSTRAINT_MAX_ITERATIONS,
-    parent_event_id: Optional[str] = None,
+    parent_event_id: str | None = None,
 ) -> ConstraintLoopResult:
     """Run the iterate → revise → terminate constraint loop.
 
@@ -246,9 +246,9 @@ def run_constraint_loop(
         parameters_to_extracted_values(parameters) if parameters else {}
     )
 
-    claims: List[Claim] = list(initial_claims)
+    claims: list[Claim] = list(initial_claims)
     iteration_history: list[dict] = []
-    last_hard_count: Optional[int] = None
+    last_hard_count: int | None = None
     total_iterations = 0
 
     # The ``max_iterations`` ceiling counts revision attempts. The

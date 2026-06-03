@@ -21,14 +21,13 @@ import os
 import tempfile
 
 import pytest
-
 from fastapi.testclient import TestClient
 
-from interfaces.research.api.app import create_app
 import interfaces.research.api.distill_routes as dr
+from interfaces.research.api.app import create_app
+from substrate.event_log import trajectory
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight, promote_question
-from substrate.event_log import trajectory
 from substrate.schemas.events import ActionType
 
 

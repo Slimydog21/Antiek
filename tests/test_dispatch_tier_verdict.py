@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from tools.dispatch_tier_verdict.analyzer import (
     PASS_RATE_GAP_THRESHOLD_PP,
@@ -177,7 +177,7 @@ def test_unverified_synthesis_counts_as_unpassed():
 def test_window_filters_out_old_events():
     early = _dispatch_synthesis("openrouter-opus", "claude-opus-4-7", inv="i-1", ts="2026-04-01T00:00:00Z")
     late = _dispatch_synthesis("openrouter-opus", "claude-opus-4-7", inv="i-2", ts="2026-05-20T00:00:00Z")
-    since = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    since = datetime(2026, 5, 1, tzinfo=UTC)
     v = analyse_events(events=[early, late], since=since)
     assert v.opus_score is not None
     assert v.opus_score.synthesis_count == 1  # only the late one

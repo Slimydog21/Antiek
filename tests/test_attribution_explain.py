@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 
 from substrate.ad_inventory.attribution import (
-    AttributionAlgorithm,
     PRIVATE_GRAPH_CONTENT_CLASS,
+    AttributionAlgorithm,
     compute_attribution_option_a,
     compute_attribution_option_b,
     compute_attribution_option_c,

@@ -12,8 +12,9 @@ audio context)."""
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 # A poster turns (url, headers, json_body) into the raw audio bytes the
 # API returns. Injected so tests synthesize without a network call or a
@@ -44,7 +45,7 @@ class OpenAITTSProvider:
     """
 
     name: str = "openai"
-    api_key: Optional[str] = None
+    api_key: str | None = None
     base_url: str = "https://api.openai.com/v1"
     voice: str = "alloy"  # OpenAI's six pre-defined voices; operator can override
 
@@ -92,8 +93,8 @@ class OpenAITTSProvider:
         text: str,
         *,
         model: str = "gpt-4o-mini-tts",
-        voice: Optional[str] = None,
-        poster: Optional[SpeechPoster] = None,
+        voice: str | None = None,
+        poster: SpeechPoster | None = None,
     ) -> bytes:
         """Synthesize ``text`` to mp3 bytes via OpenAI's /v1/audio/speech.
 

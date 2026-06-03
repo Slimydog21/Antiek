@@ -32,7 +32,6 @@ from middleware.outcomes import (  # noqa: E402
     THESIS_OUTCOME_STATUSES,
     DecisionAlignmentInput,
     ExecutionRiskOutcomeInput,
-    FalsificationOutcomeInput,
     OutcomeRecord,
     ThesisOutcomeInput,
     build_outcome_record,
@@ -278,20 +277,20 @@ def test_emit_rubric_scored_rejects_out_of_range_score():
 
 
 def test_thesis_outcome_statuses_match_schema_literal():
-    assert THESIS_OUTCOME_STATUSES == set(typing.get_args(ThesisOutcomeStatus))
+    assert set(typing.get_args(ThesisOutcomeStatus)) == THESIS_OUTCOME_STATUSES
 
 
 def test_execution_risk_severities_match_schema_literal():
-    assert EXECUTION_RISK_SEVERITIES == set(typing.get_args(ExecutionRiskSeverity))
+    assert set(typing.get_args(ExecutionRiskSeverity)) == EXECUTION_RISK_SEVERITIES
 
 
 def test_decision_recommendations_match_schema_literal():
-    assert DECISION_RECOMMENDATIONS == set(typing.get_args(DecisionRecommendation))
+    assert set(typing.get_args(DecisionRecommendation)) == DECISION_RECOMMENDATIONS
 
 
 def test_actual_decisions_match_schema_literal():
-    assert ACTUAL_DECISIONS == set(typing.get_args(ActualDecision))
+    assert set(typing.get_args(ActualDecision)) == ACTUAL_DECISIONS
 
 
 def test_proceed_outcomes_match_schema_literal():
-    assert PROCEED_OUTCOMES == set(typing.get_args(ProceedOutcome))
+    assert set(typing.get_args(ProceedOutcome)) == PROCEED_OUTCOMES

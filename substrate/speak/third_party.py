@@ -24,7 +24,7 @@ is third-party.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from .events import SPEAK_THIRD_PARTY_TAGGED, record_speak_event
 from .ids import new_claim_id
@@ -35,11 +35,11 @@ from .schema import ensure_speak_schema
 class ClaimRecord:
     claim_id: str
     project_id: str
-    interview_id: Optional[str]
+    interview_id: str | None
     text: str
     about_subject: bool
     is_third_party: bool
-    subject_ref: Optional[str]
+    subject_ref: str | None
     verification: str  # 'unverified' | 'multiply_attested' | 'operator_attested' | 'contradicted'
     confidence: float
 
@@ -49,12 +49,12 @@ def record_claim(
     *,
     project_id: str,
     text: str,
-    interview_id: Optional[str] = None,
+    interview_id: str | None = None,
     about_subject: bool = False,
-    subject_ref: Optional[str] = None,
+    subject_ref: str | None = None,
     speaker_is_subject: bool = False,
     confidence: float = 0.5,
-    claim_id: Optional[str] = None,
+    claim_id: str | None = None,
 ) -> ClaimRecord:
     """Record one claim, tagging it third-party when warranted.
 
@@ -87,7 +87,7 @@ def record_claim(
     return get_claim(con, cid)
 
 
-def tag_third_party(con: Any, claim_id: str, *, subject_ref: Optional[str] = None) -> None:
+def tag_third_party(con: Any, claim_id: str, *, subject_ref: str | None = None) -> None:
     """Mark an existing claim as a third-party claim (requires
     verification before publish). Idempotent."""
     ensure_speak_schema(con)

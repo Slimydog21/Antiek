@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-
 # Substrate-wide pass threshold; documented in
 # architecture_notes §3.2 and matched by
 # tools/dispatch_tier_verdict/analyzer.py PASS_THRESHOLD.

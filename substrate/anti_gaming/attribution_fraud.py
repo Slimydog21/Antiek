@@ -14,11 +14,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from decimal import Decimal
-from typing import Optional
 
 from .verdict import FraudSignal, FraudVerdict, verdict_from_signals
-
 
 SINGLE_USER_DOMINANCE_THRESHOLD = 0.55  # > 55% from one consumer is suspicious
 DEEP_CHAIN_THRESHOLD = 8
@@ -47,7 +44,7 @@ def score_attribution_payout(
     creator_id: str,
     consumer_share: dict[str, float],
     chain_depth: int,
-    subject_ref: Optional[str] = None,
+    subject_ref: str | None = None,
 ) -> FraudVerdict:
     """Score a payout decision against the creator's accrual history."""
     signals: list[FraudSignal] = []

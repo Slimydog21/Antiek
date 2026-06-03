@@ -30,7 +30,6 @@ from substrate.schemas.events import (
     TypedPayload,
 )
 
-
 # ── Schema-level guarantees ─────────────────────────────────────────
 
 

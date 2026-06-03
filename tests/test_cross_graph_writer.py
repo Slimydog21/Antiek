@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import hashlib
 
-import pytest
-
 from substrate.cross_graph_writer import (
     CrossGraphWriterQueue,
     DiscoveredRule,

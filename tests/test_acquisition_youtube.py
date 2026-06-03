@@ -11,8 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import pytest
 
@@ -31,7 +30,6 @@ from acquisition.youtube.adapter import (
     _format_timestamp,
     _group_transcript_into_chunks,
 )
-
 
 # ── 1. parse_video_id ──────────────────────────────────────────────
 
@@ -152,7 +150,7 @@ def temp_substrate(monkeypatch):
 
 
 class _StubEmbedder:
-    def encode(self, text: str) -> List[float]:
+    def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
         v[h % 16] = 1.0
@@ -173,7 +171,7 @@ def _fake_video(transcript_segments: int = 30) -> YouTubeVideo:
         title="Test Video on Phased Array Radar",
         channel="Test Channel",
         duration_seconds=transcript_segments * 5,
-        upload_date=datetime(2024, 1, 15, tzinfo=timezone.utc),
+        upload_date=datetime(2024, 1, 15, tzinfo=UTC),
         description="A test video about radar concepts.",
         transcript=segs,
         transcript_source="youtube",

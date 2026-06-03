@@ -9,8 +9,8 @@ manual path. Sprint 4 day 4-5 promotion per the operator's
 
 from .prompt import AUTONOMOUS_CHALLENGER_ROLE_PROMPT, DEFAULT_CHALLENGE_PROMPT
 from .resolver import (
-    ChallengeUnavailable,
     RESOLVE_OR_DECLINE_PROMPT,
+    ChallengeUnavailable,
     make_dispatch_resolver,
     parse_resolution,
 )

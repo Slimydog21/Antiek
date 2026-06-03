@@ -20,8 +20,8 @@ review tests.
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional
 
 from .signing import (
     SignatureError,
@@ -34,7 +34,6 @@ from .signing import (
 from .slice import (
     FederationSlice,
     SliceItem,
-    SliceManifest,
     build_manifest,
 )
 
@@ -65,7 +64,7 @@ class FederationRegistry:
     def pin(self, peer: FederationPeer) -> None:
         self.peers[peer.substrate_id] = peer
 
-    def lookup(self, substrate_id: str) -> Optional[FederationPeer]:
+    def lookup(self, substrate_id: str) -> FederationPeer | None:
         return self.peers.get(substrate_id)
 
 
@@ -126,7 +125,7 @@ def ingest_slice(
     *,
     registry: FederationRegistry,
     quality_gate: QualityGateCallable,
-    writer: Optional[Callable[[SliceItem], None]] = None,
+    writer: Callable[[SliceItem], None] | None = None,
 ) -> IngestionReport:
     """Receiver-side: verify signature, run quality gate, write items.
 

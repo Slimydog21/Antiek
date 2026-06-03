@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.dispatch.preference_hints import (
     MIN_SAMPLE_COUNT,
     THRESHOLD_PROBABILITY,

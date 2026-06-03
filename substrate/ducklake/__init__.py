@@ -24,16 +24,16 @@ from .catalog import (
     InMemoryCatalogBackend,
     SqliteCatalogBackend,
 )
-from .routing import (
-    ShardingStrategy,
-    HashPrefixSharding,
-    NoSharding,
-    resolve_db_path,
-)
 from .migration import (
     MigrationPlan,
-    plan_stage1_to_stage2,
     execute_migration_plan,
+    plan_stage1_to_stage2,
+)
+from .routing import (
+    HashPrefixSharding,
+    NoSharding,
+    ShardingStrategy,
+    resolve_db_path,
 )
 from .stage import SubstrateStage
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from . import economics_mode
 from .events import SPEAK_BOOK_ORDER_QUOTED, record_speak_event
@@ -76,8 +76,8 @@ def order_physical_book(
     project_id: str,
     book_format: str,
     page_count: int,
-    publication_id: Optional[str] = None,
-    provider: Optional[PhysicalBookProvider] = None,
+    publication_id: str | None = None,
+    provider: PhysicalBookProvider | None = None,
 ) -> BookOrderQuote:
     """Shape + cost-quote a physical-book order against the provider
     interface. Allocates the payer per the matrix. Records a 'quoted'

@@ -3,24 +3,25 @@
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
 
-from substrate.ducklake import DuckLakeCatalog, HashPrefixSharding, InMemoryCatalogBackend, NoSharding
+from substrate.ducklake import (
+    DuckLakeCatalog,
+    HashPrefixSharding,
+    InMemoryCatalogBackend,
+    NoSharding,
+)
 from substrate.graph_per_user import (
     InMemoryKeyProvider,
-    KMSStubKeyProvider,
-    KeyMaterial,
     KeyProviderError,
-    PerUserStorageEvent,
+    KMSStubKeyProvider,
     close_user_graph,
     create_user_graph,
     delete_user_graph,
     open_user_graph,
 )
 from substrate.graph_per_user.lifecycle import PerUserStorageEventKind
-
 
 # ── KeyProvider ─────────────────────────────────────────────────
 

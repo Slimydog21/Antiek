@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from substrate.quality_gate import QualityGateResult, QualityGateVerdict
 
@@ -17,7 +16,7 @@ class CollectiveGraphDocument:
     note_id: str
     owner_user_id: str
     content_class: str  # "user_public_contribution" | "opt_in_licensed" | "source_declared_open" | "public_domain"
-    quality_gate_result: Optional[QualityGateResult]
+    quality_gate_result: QualityGateResult | None
     # The claim state of the rights holder. Relevant for classes that HAVE a
     # rights holder with attribution rights but require a claim before payout:
     # "opt_in_licensed" (§9.10 publisher claim) and "source_declared_open"

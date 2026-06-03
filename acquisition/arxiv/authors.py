@@ -34,7 +34,7 @@ Edge cases handled (named per the rigor bar):
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any
 
 from substrate.schemas.documents import EnrichedAuthor
 
@@ -53,7 +53,7 @@ def _orcid_or_none(author: dict) -> str | None:
     return orcid or None
 
 
-def parse_authorships(raw_work: dict) -> List[EnrichedAuthor]:
+def parse_authorships(raw_work: dict) -> list[EnrichedAuthor]:
     """Map an OpenAlex work's ``authorships`` -> ordered ``EnrichedAuthor`` rows.
 
     ``raw_work`` is the FULL raw OpenAlex work dict (as returned by
@@ -69,7 +69,7 @@ def parse_authorships(raw_work: dict) -> List[EnrichedAuthor]:
     if not isinstance(authorships, list):
         return []
 
-    authors: List[EnrichedAuthor] = []
+    authors: list[EnrichedAuthor] = []
     position = 0
     for entry in authorships:
         if not isinstance(entry, dict):

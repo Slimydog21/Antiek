@@ -31,7 +31,6 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 # Repo root on path for direct invocation (mirrors podcasts/urls adapters).
 _PKG_ROOT = os.path.dirname(
@@ -83,12 +82,12 @@ class IngestResult:
     document_id: str
     guid: str
     status: str  # "ingested" | "skipped"
-    chunk_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
     truncated: bool = False
     truncation_reason: str = "none"
-    title: Optional[str] = None
+    title: str | None = None
 
 
 def ingest_post(
@@ -96,9 +95,9 @@ def ingest_post(
     *,
     publication: Publication,
     investigation_id: str,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER,
-    embedder: Optional[EmbeddingProvider] = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> IngestResult:
     """Ingest a single Substack post into documents + chunks + nodes.
 
@@ -131,8 +130,8 @@ def ingest_post(
     )
 
     ensure_initialized(resolved_db_path)
-    chunks: List[Chunk] = chunk_markdown(full_text)
-    chunk_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(full_text)
+    chunk_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -270,10 +269,10 @@ def ingest_publication_feed(
     feed_url: str,
     *,
     investigation_id: str,
-    db_path: Optional[str] = None,
-    max_posts: Optional[int] = None,
+    db_path: str | None = None,
+    max_posts: int | None = None,
     source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER,
-    embedder: Optional[EmbeddingProvider] = None,
+    embedder: EmbeddingProvider | None = None,
     client=None,
 ) -> PublicationIngestSummary:
     """Fetch one publication feed and ingest every post.

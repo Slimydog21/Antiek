@@ -19,17 +19,17 @@ The pattern:
   variants for the next generation
 """
 
+from .optimizer import (
+    GEPAOptimizer,
+    GEPAResult,
+    optimize_role_prompt,
+)
 from .pareto_front import (
     NSGAIIError,
     ParetoFront,
     ScoreVector,
     Variant,
     non_dominated_sort,
-)
-from .optimizer import (
-    GEPAOptimizer,
-    GEPAResult,
-    optimize_role_prompt,
 )
 
 __all__ = [

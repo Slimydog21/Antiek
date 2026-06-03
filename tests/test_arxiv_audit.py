@@ -415,13 +415,13 @@ def test_refused_t3_store_emits_no_fetch_leg(db_path):
     """A T3 (arXiv-default) row is REFUSED by the store path (no body written), so
     NO fetch leg is emitted — the fetch leg tracks a genuinely-stored T1 body, not
     an attempt. This guards against the audit over-firing on a non-store."""
+    import hashlib
+
     from acquisition.arxiv.oai_persist import persist_oai_records
     from acquisition.arxiv.pdf_fetch import FetchedPdf
     from acquisition.arxiv.store import store_pdf_for_arxiv_row
     from acquisition.books.public_domain import text_to_pdf
     from substrate.schemas.documents import ArxivOaiRecord
-
-    import hashlib
 
     arxiv_id = "2402.30001"
     arxiv_default = "http://arxiv.org/licenses/nonexclusive-distrib/1.0/"
@@ -468,7 +468,7 @@ def _arxiv_feed(arxiv_id: str, license_uri: str) -> bytes:
         f"    {lic}\n"
         "  </entry>\n"
         "</feed>\n"
-    ).encode("utf-8")
+    ).encode()
 
 
 def test_fetch_leg_fires_in_the_real_ingest_paper_with_rights_path(db_path):

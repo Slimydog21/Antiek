@@ -29,8 +29,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
-from typing import Optional, Protocol
-
+from typing import Protocol
 
 # Default dimension when nothing else is configured. Matches MiniLM-L6-v2
 # (the Researchmaxx default in tier_rules + embeddings_meta).
@@ -136,7 +135,7 @@ class SentenceTransformerEmbedding:
 # ---------------------------------------------------------------------------
 
 
-_DEFAULT_PROVIDER: Optional[EmbeddingProvider] = None
+_DEFAULT_PROVIDER: EmbeddingProvider | None = None
 
 
 def default_embedding_provider() -> EmbeddingProvider:

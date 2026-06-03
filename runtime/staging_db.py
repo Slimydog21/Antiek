@@ -32,7 +32,6 @@ ever touches the live writer.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
@@ -66,7 +65,7 @@ def prepare_staging_db(staging_path: str) -> str:
 
 
 def resolve_ingest_target(
-    *, db_path: Optional[str], staging_db: Optional[str]
+    *, db_path: str | None, staging_db: str | None
 ) -> str:
     """Resolve the path the ingest should write to.
 
@@ -90,7 +89,7 @@ def resolve_ingest_target(
     return db_path
 
 
-def is_staging_mode(staging_db: Optional[str]) -> bool:
+def is_staging_mode(staging_db: str | None) -> bool:
     """True iff the run is in staging mode. Trivial, but named so call sites
     read as intent rather than a truthiness check on a flag."""
     return bool(staging_db)

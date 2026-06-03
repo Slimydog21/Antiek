@@ -15,8 +15,6 @@ distinct observation; uncertain observations land in
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
-
 
 # Bump when the prompt itself changes. Reads by the substrate's
 # event log so old + new outputs are distinguishable in trajectories.
@@ -82,9 +80,9 @@ class VisualFrame:
 
     image_url: str
     page_or_frame_id: str
-    frame_timestamp_ms: Optional[int] = None
-    frame_width_px: Optional[int] = None
-    frame_height_px: Optional[int] = None
+    frame_timestamp_ms: int | None = None
+    frame_width_px: int | None = None
+    frame_height_px: int | None = None
 
 
 @dataclass(frozen=True)
@@ -95,7 +93,7 @@ class VisualContext:
 
     document_id: str
     frame: VisualFrame
-    surrounding_text: Optional[str] = None
+    surrounding_text: str | None = None
 
 
 VISUAL_USER_TEMPLATE = """Document: {document_id}
@@ -106,7 +104,7 @@ Frame URL: {image_url}
 Produce the JSON object specified in the system prompt."""
 
 
-def _hint_or_blank(value: Optional[object], label: str) -> str:
+def _hint_or_blank(value: object | None, label: str) -> str:
     if value is None:
         return ""
     return f"\n{label}: {value}"

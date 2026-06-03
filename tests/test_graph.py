@@ -19,11 +19,8 @@ a real path for its sidecar flock). Each test gets a fresh
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-from datetime import datetime
-from typing import Sequence
 
 import duckdb
 import pytest
@@ -35,7 +32,6 @@ from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.graph import (  # noqa: E402
     SCHEMA_TABLES,
-    EmbeddingModel,
     bfs_semantic_stop,
     content_addressed_id,
     cosine_similarity_sql,

@@ -19,9 +19,10 @@ from __future__ import annotations
 import os
 import urllib.parse
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -62,10 +63,10 @@ class ArxivPaper:
     arxiv_id: str
     version: str
     title: str
-    authors: List[str]
+    authors: list[str]
     abstract: str
-    categories: List[str]
-    primary_category: Optional[str]
+    categories: list[str]
+    primary_category: str | None
     published_at: datetime
     updated_at: datetime
     abs_url: str
@@ -76,7 +77,7 @@ class ArxivPaper:
     # license — not the fact that arXiv is free to read — is what decides
     # whether Antiek may redistribute the full text. See
     # ``acquisition.arxiv.licenses`` for the URI → servable-class mapping.
-    license_uri: Optional[str] = None
+    license_uri: str | None = None
     raw_id: str = ""  # the full <id> URI as returned by arXiv
     metadata: dict = field(default_factory=dict)
 
@@ -88,13 +89,13 @@ class ArxivPaper:
 
 def _build_search_url(
     *,
-    query: Optional[str] = None,
-    author: Optional[str] = None,
-    category: Optional[str] = None,
-    ids: Optional[Iterable[str]] = None,
+    query: str | None = None,
+    author: str | None = None,
+    category: str | None = None,
+    ids: Iterable[str] | None = None,
     max_results: int = 5,
     sort: str = "relevance",
-    base_url: Optional[str] = None,
+    base_url: str | None = None,
 ) -> str:
     """Compose the query URL. Mirrors upstream ``search_arxiv.py``
     semantics: ``ids`` short-circuits to ``id_list``; otherwise
@@ -138,7 +139,7 @@ def _parse_iso(ts: str) -> datetime:
         ts = ts[:-1] + "+00:00"
     dt = datetime.fromisoformat(ts)
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -202,7 +203,7 @@ def _parse_entry(entry: ET.Element) -> ArxivPaper:
     )
 
 
-def _parse_response(xml_bytes: bytes) -> List[ArxivPaper]:
+def _parse_response(xml_bytes: bytes) -> list[ArxivPaper]:
     """Atom feed → list of papers. Returns [] when the feed is empty
     (zero results); raises ``ValueError`` on malformed XML."""
     try:
@@ -220,8 +221,8 @@ def _parse_response(xml_bytes: bytes) -> List[ArxivPaper]:
 def _http_get(
     url: str,
     *,
-    client: Optional[httpx.Client] = None,
-    throttle: Optional["ArxivThrottle"] = None,
+    client: httpx.Client | None = None,
+    throttle: ArxivThrottle | None = None,
 ) -> bytes:
     """One GET to the export SEARCH API, host-rate-governed (SPR-09 M1).
 
@@ -270,15 +271,15 @@ def _http_get(
 
 def search(
     *,
-    query: Optional[str] = None,
-    author: Optional[str] = None,
-    category: Optional[str] = None,
+    query: str | None = None,
+    author: str | None = None,
+    category: str | None = None,
     max_results: int = 5,
     sort: str = "relevance",
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
-    throttle: Optional["ArxivThrottle"] = None,
-) -> List[ArxivPaper]:
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
+    throttle: ArxivThrottle | None = None,
+) -> list[ArxivPaper]:
     """Query arXiv. At least one of query/author/category must be set.
 
     ``sort`` is one of ``relevance`` / ``date`` / ``updated``.
@@ -301,10 +302,10 @@ def search(
 def fetch_by_id(
     arxiv_id: str,
     *,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
-    throttle: Optional["ArxivThrottle"] = None,
-) -> Optional[ArxivPaper]:
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
+    throttle: ArxivThrottle | None = None,
+) -> ArxivPaper | None:
     """Fetch a single paper by id. Returns ``None`` when arXiv
     returns no entries (id unknown).
 

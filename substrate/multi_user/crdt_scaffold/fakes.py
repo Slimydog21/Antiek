@@ -11,7 +11,7 @@ satisfies is the same one a real Automerge-backed implementation will.
 from __future__ import annotations
 
 import secrets
-from typing import Sequence
+from collections.abc import Sequence
 
 from .interfaces import (
     AccessControlOp,
@@ -67,7 +67,7 @@ class OpInMemoryBackend:
             self._clock.get(op.op_id.actor, 0), op.op_id.counter
         )
 
-    def merge(self, other: "OpInMemoryBackend") -> None:
+    def merge(self, other: OpInMemoryBackend) -> None:
         for op in other._ops.values():
             self.apply(op)
 

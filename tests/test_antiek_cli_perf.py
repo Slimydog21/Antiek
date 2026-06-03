@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from tools.antiek_cli.check import StageResult, run_perf
+from tools.antiek_cli.check import run_perf
 
 
 def test_run_perf_skip_when_harness_main_missing(tmp_path: Path) -> None:

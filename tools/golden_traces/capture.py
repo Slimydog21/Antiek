@@ -40,10 +40,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -117,7 +116,7 @@ def capture_from_researchmaxx_trajectory(
 
     return GoldenTrace(
         trace_id=f"gt-{uuid.uuid4().hex[:12]}",
-        captured_at=datetime.now(timezone.utc),
+        captured_at=datetime.now(UTC),
         researchmaxx_commit=researchmaxx_commit,
         investigation_id=investigation_id,
         target_question=target_question,

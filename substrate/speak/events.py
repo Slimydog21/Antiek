@@ -28,7 +28,7 @@ refactors. Add new ones; never repurpose an existing string.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 # ── The stable Speak action_type vocabulary ────────────────────────────
 # Namespaced ``speak.*`` so they never collide with the central enum.
@@ -89,9 +89,9 @@ def record_speak_event(
     action_type: str,
     payload: dict[str, Any],
     *,
-    project_id: Optional[str] = None,
-    role: Optional[str] = None,
-) -> Optional[str]:
+    project_id: str | None = None,
+    role: str | None = None,
+) -> str | None:
     """Append one Speak audit event to the trajectory log.
 
     ``project_id`` becomes the ``investigation_id`` so a project's whole

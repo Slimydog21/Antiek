@@ -25,8 +25,8 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 def _new_local_id() -> str:
@@ -34,7 +34,7 @@ def _new_local_id() -> str:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -45,11 +45,11 @@ class PlanNode:
     question: str
     rationale: str = ""
     focus_boundary: str = ""
-    budget_usd: Optional[float] = None
-    max_depth: Optional[int] = None
-    children: List["PlanNode"] = field(default_factory=list)
+    budget_usd: float | None = None
+    max_depth: int | None = None
+    children: list[PlanNode] = field(default_factory=list)
     local_id: str = field(default_factory=_new_local_id)
-    graph_node_id: Optional[str] = None
+    graph_node_id: str | None = None
 
     @property
     def is_leaf(self) -> bool:
@@ -66,13 +66,13 @@ class PlanNode:
         for c in self.children:
             yield from c.iter_all()
 
-    def find(self, local_id: str) -> Optional["PlanNode"]:
+    def find(self, local_id: str) -> PlanNode | None:
         for n in self.iter_all():
             if n.local_id == local_id:
                 return n
         return None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "local_id": self.local_id,
             "question": self.question,
@@ -85,7 +85,7 @@ class PlanNode:
         }
 
     @staticmethod
-    def from_dict(d: Dict[str, Any]) -> "PlanNode":
+    def from_dict(d: dict[str, Any]) -> PlanNode:
         return PlanNode(
             question=d["question"], rationale=d.get("rationale", ""),
             focus_boundary=d.get("focus_boundary", ""),
@@ -99,20 +99,20 @@ class PlanNode:
 @dataclass
 class ApprovalState:
     state: str = "draft"           # "draft" | "approved"
-    approved_at: Optional[str] = None
-    approved_by: Optional[str] = None
+    approved_at: str | None = None
+    approved_by: str | None = None
     plan_version: int = 1          # bumps on every edit; approval pins a version
 
     @property
     def is_launchable(self) -> bool:
         return self.state == "approved"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {"state": self.state, "approved_at": self.approved_at,
                 "approved_by": self.approved_by, "plan_version": self.plan_version}
 
     @staticmethod
-    def from_dict(d: Dict[str, Any]) -> "ApprovalState":
+    def from_dict(d: dict[str, Any]) -> ApprovalState:
         return ApprovalState(state=d.get("state", "draft"),
                              approved_at=d.get("approved_at"),
                              approved_by=d.get("approved_by"),
@@ -127,9 +127,9 @@ class PlanTree:
 
     root: PlanNode
     seed_kind: str = "problem"     # "problem" | "gap" | "note_challenge"
-    seed_provenance: Dict[str, Any] = field(default_factory=dict)
+    seed_provenance: dict[str, Any] = field(default_factory=dict)
     approval: ApprovalState = field(default_factory=ApprovalState)
-    root_investigation_id: Optional[str] = None
+    root_investigation_id: str | None = None
 
     # -- edit operations (each re-opens the approval gate) --------------
 
@@ -141,7 +141,7 @@ class PlanTree:
             self.approval.approved_at = None
             self.approval.approved_by = None
 
-    def add_child(self, parent_local_id: str, question: str, **kw) -> Optional[PlanNode]:
+    def add_child(self, parent_local_id: str, question: str, **kw) -> PlanNode | None:
         parent = self.root.find(parent_local_id)
         if parent is None:
             return None
@@ -169,8 +169,8 @@ class PlanTree:
         self._touch()
         return True
 
-    def set_budget(self, local_id: str, *, budget_usd: Optional[float] = None,
-                   max_depth: Optional[int] = None) -> bool:
+    def set_budget(self, local_id: str, *, budget_usd: float | None = None,
+                   max_depth: int | None = None) -> bool:
         n = self.root.find(local_id)
         if n is None:
             return False
@@ -181,7 +181,7 @@ class PlanTree:
         self._touch()
         return True
 
-    def split(self, local_id: str, into: List[str]) -> bool:
+    def split(self, local_id: str, into: list[str]) -> bool:
         """Replace one over-broad node with N focused children under it."""
         n = self.root.find(local_id)
         if n is None or not into:
@@ -190,7 +190,7 @@ class PlanTree:
         self._touch()
         return True
 
-    def merge(self, local_ids: List[str], merged_question: str) -> bool:
+    def merge(self, local_ids: list[str], merged_question: str) -> bool:
         """Merge sibling nodes into one. They must share a parent."""
         parent = None
         for cand in self.root.iter_all():
@@ -201,8 +201,8 @@ class PlanTree:
         if parent is None:
             return False
         ids = set(local_ids)
-        merged_children: List[PlanNode] = []
-        kept: List[PlanNode] = []
+        merged_children: list[PlanNode] = []
+        kept: list[PlanNode] = []
         for c in parent.children:
             if c.local_id in ids:
                 merged_children.extend(c.children)  # absorb the merged nodes' children
@@ -215,7 +215,7 @@ class PlanTree:
 
     # -- serialization --------------------------------------------------
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "root": self.root.to_dict(),
             "seed_kind": self.seed_kind,
@@ -225,7 +225,7 @@ class PlanTree:
         }
 
     @staticmethod
-    def from_dict(d: Dict[str, Any]) -> "PlanTree":
+    def from_dict(d: dict[str, Any]) -> PlanTree:
         return PlanTree(
             root=PlanNode.from_dict(d["root"]),
             seed_kind=d.get("seed_kind", "problem"),
@@ -235,5 +235,5 @@ class PlanTree:
         )
 
     @property
-    def leaves(self) -> List[PlanNode]:
+    def leaves(self) -> list[PlanNode]:
         return list(self.root.iter_leaves())

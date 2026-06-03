@@ -59,7 +59,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -68,24 +68,7 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from substrate.schemas import (  # noqa: E402
-    ActionType,
-    ConnectorRequestedPayload,
-    DecomposeQuestionDeliveredPayload,
-    DecomposeQuestionRequestedPayload,
-    EvidenceRetrieveDeliveredPayload,
-    EvidenceRetrieveRequestedPayload,
-    Event,
-    InvestigationChaseHaltedPayload,
-    InvestigationCompletedPayload,
-    InvestigationFailedPayload,
-    InvestigationSpawnedFromPayload,
-    InvestigationStartRequestedPayload,
-    ParameterExtractDeliveredPayload,
-    ParameterExtractRequestedPayload,
-    SynthesizeDeliveredPayload,
-    SynthesizeRequestedPayload,
-)
+from datetime import UTC
 
 from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from orchestration.audit import audit_phase_log  # noqa: E402
@@ -98,6 +81,24 @@ from orchestration.phase_runner import (  # noqa: E402
 from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
+)
+from substrate.schemas import (  # noqa: E402
+    ActionType,
+    ConnectorRequestedPayload,
+    DecomposeQuestionDeliveredPayload,
+    DecomposeQuestionRequestedPayload,
+    Event,
+    EvidenceRetrieveDeliveredPayload,
+    EvidenceRetrieveRequestedPayload,
+    InvestigationChaseHaltedPayload,
+    InvestigationCompletedPayload,
+    InvestigationFailedPayload,
+    InvestigationSpawnedFromPayload,
+    InvestigationStartRequestedPayload,
+    ParameterExtractDeliveredPayload,
+    ParameterExtractRequestedPayload,
+    SynthesizeDeliveredPayload,
+    SynthesizeRequestedPayload,
 )
 
 from .coordinator import InvestigationCoordinator, broadcast_emit
@@ -153,7 +154,7 @@ def _keyword_search_chunks(con, keywords: list[str], top_k: int) -> list[dict]:
     where = " OR ".join(["LOWER(c.text) LIKE ?" for _ in keywords])
     params = [f"%{k}%" for k in keywords]
     score_expr = " + ".join([
-        f"(CASE WHEN LOWER(c.text) LIKE ? THEN 1 ELSE 0 END)" for _ in keywords
+        "(CASE WHEN LOWER(c.text) LIKE ? THEN 1 ELSE 0 END)" for _ in keywords
     ])
     params_full = params + params + [top_k]
     rows = con.execute(
@@ -188,9 +189,10 @@ def _render_chunks_block_for_sub_question(
     locality is too weak to drive useful retrieval on its own)."""
     try:
         import duckdb
+
+        from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
         from substrate.graph.search import search as graph_search
-        from processing.embedding.embed import default_embedding_provider
 
         db_path = default_db_path()
         embedder = default_embedding_provider()
@@ -273,17 +275,17 @@ class InvestigationContext:
     investigation_id: str
     question: str
     context: str = ""
-    topic_slug: Optional[str] = None
+    topic_slug: str | None = None
     max_sub_questions: int = 8
-    decomposition: Optional[DecomposeQuestionDeliveredPayload] = None
+    decomposition: DecomposeQuestionDeliveredPayload | None = None
     evidence: list[EvidenceRetrieveDeliveredPayload] = field(default_factory=list)
-    parameters: Optional[ParameterExtractDeliveredPayload] = None
-    connector_result: Optional[Any] = None  # ConnectorDeliveredPayload
-    synthesis: Optional[SynthesizeDeliveredPayload] = None
-    master_md_path: Optional[str] = None
+    parameters: ParameterExtractDeliveredPayload | None = None
+    connector_result: Any | None = None  # ConnectorDeliveredPayload
+    synthesis: SynthesizeDeliveredPayload | None = None
+    master_md_path: str | None = None
     patched_domains: list[str] = field(default_factory=list)
     last_completed_phase: int = 0
-    failed_phase: Optional[int] = None
+    failed_phase: int | None = None
     fail_reason: str = ""
     # Sprint 12: continuous-chase parameters threaded from the start
     # payload. When chase_mode != "off", the orchestrator hooks
@@ -291,7 +293,7 @@ class InvestigationContext:
     chase_mode: str = "off"
     chase_value: int = 0
     chase_budget_usd: float = 2.0
-    parent_investigation_id: Optional[str] = None
+    parent_investigation_id: str | None = None
     # SPR-01 M3: the curated fast/deep research tier the operator chose at
     # the research entry, threaded from the start payload. "fast" → MiMo
     # V2.5 Pro, "deep" → DeepSeek V4 Pro (see
@@ -335,7 +337,7 @@ async def _drive_phase(
 
     try:
         await work
-    except asyncio.TimeoutError:
+    except TimeoutError:
         ctx.failed_phase = phase
         ctx.fail_reason = f"phase {phase} timed out waiting for role delivery"
         return False
@@ -1049,7 +1051,7 @@ def _walk_chase_chain(investigation_id: str) -> tuple[int, str]:
     seen: set[str] = {current}
     for _ in range(32):
         rows = trajectory(current)
-        parent: Optional[str] = None
+        parent: str | None = None
         for r in rows:
             if r.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value:
                 p = (r.get("payload") or {}).get("parent_investigation_id")
@@ -1073,14 +1075,14 @@ def _accumulated_chase_cost_usd(investigation_id: str) -> float:
     from substrate.event_log import trajectory
 
     total = 0.0
-    current: Optional[str] = investigation_id
+    current: str | None = investigation_id
     seen: set[str] = set()
     for _ in range(32):
         if not current or current in seen:
             break
         seen.add(current)
         rows = trajectory(current)
-        parent: Optional[str] = None
+        parent: str | None = None
         for r in rows:
             at = r.get("action_type")
             if at == ActionType.DISPATCH_CALL.value:
@@ -1094,7 +1096,7 @@ def _accumulated_chase_cost_usd(investigation_id: str) -> float:
     return total
 
 
-def _select_chase_question(ctx: InvestigationContext) -> Optional[str]:
+def _select_chase_question(ctx: InvestigationContext) -> str | None:
     """Pick the strongest open question from this investigation's
     accumulated evidentiary_gaps. v0: first non-empty gap from the
     first evidence_retrieve.delivered that has any gaps. Later
@@ -1106,9 +1108,9 @@ def _select_chase_question(ctx: InvestigationContext) -> Optional[str]:
             # Pydantic EvidentiaryGap carries gap_description; dict
             # fallback for parser-produced records that haven't been
             # validated yet.
-            text: Optional[str] = None
+            text: str | None = None
             if hasattr(gap, "gap_description"):
-                text = getattr(gap, "gap_description")
+                text = gap.gap_description
             elif isinstance(gap, dict):
                 text = (
                     gap.get("gap_description")
@@ -1135,15 +1137,16 @@ async def _maybe_spawn_chase_child(
     depth, root_id = _walk_chase_chain(ctx.investigation_id)
     cost_total = _accumulated_chase_cost_usd(ctx.investigation_id)
 
-    halt_reason: Optional[str] = None
+    halt_reason: str | None = None
     if ctx.chase_mode == "depth":
         if depth + 1 > ctx.chase_value:
             halt_reason = "depth_reached"
     elif ctx.chase_mode == "duration":
         # Estimate elapsed via the root start event timestamp.
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from substrate.event_log import trajectory
-        root_started_at: Optional[str] = None
+        root_started_at: str | None = None
         for r in trajectory(root_id):
             if r.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value:
                 root_started_at = r.get("emitted_at")
@@ -1153,7 +1156,7 @@ async def _maybe_spawn_chase_child(
                 t0 = datetime.fromisoformat(
                     root_started_at.replace("Z", "+00:00")
                 )
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 elapsed_hours = (now - t0).total_seconds() / 3600.0
                 if elapsed_hours >= ctx.chase_value:
                     halt_reason = "duration_reached"
@@ -1163,7 +1166,7 @@ async def _maybe_spawn_chase_child(
     if halt_reason is None and cost_total >= ctx.chase_budget_usd:
         halt_reason = "budget_exceeded"
 
-    next_question: Optional[str] = None
+    next_question: str | None = None
     if halt_reason is None:
         next_question = _select_chase_question(ctx)
         if next_question is None:
@@ -1225,7 +1228,7 @@ async def _maybe_spawn_chase_child(
 
 def register_handlers(
     broadcaster: EventBroadcaster,
-    coordinator: Optional[InvestigationCoordinator] = None,
+    coordinator: InvestigationCoordinator | None = None,
 ) -> InvestigationCoordinator:
     """Wire the Loop 1 orchestrator into the broadcaster. Returns the
     coordinator (created if not supplied) so the caller can hold a

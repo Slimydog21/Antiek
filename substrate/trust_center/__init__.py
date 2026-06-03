@@ -18,8 +18,8 @@ Exports:
 """
 
 from .default_registry import (
-    DEFAULT_DELETION_SLA_DAYS,
     DEFAULT_CANCELLATION_WINDOW_DAYS,
+    DEFAULT_DELETION_SLA_DAYS,
     default_registry,
     reset_default_registry,
 )

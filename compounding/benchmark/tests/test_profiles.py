@@ -39,7 +39,6 @@ from compounding.benchmark.profiles import (  # noqa: E402
     load_profile,
 )
 
-
 # ── M1 acceptance: --profile prod flips to real dispatch (mock_run=False) ─
 
 

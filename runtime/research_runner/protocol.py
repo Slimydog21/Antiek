@@ -29,15 +29,10 @@ invariant.
 from __future__ import annotations
 
 import enum
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import (
     Any,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Optional,
     Protocol,
     runtime_checkable,
 )
@@ -86,9 +81,9 @@ class ResearchPlan:
 
     investigation_id: str
     sub_question: str
-    parent_investigation_id: Optional[str] = None
+    parent_investigation_id: str | None = None
     budget: BudgetCap = field(default_factory=BudgetCap)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -122,8 +117,8 @@ class StepEvent:
     text: str = ""
     cost_usd: float = 0.0
     tokens: int = 0
-    state: Optional[RunState] = None
-    data: Dict[str, Any] = field(default_factory=dict)
+    state: RunState | None = None
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -133,7 +128,7 @@ class Command:
     "follow_up": str|None}``."""
 
     kind: CommandKind
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -143,8 +138,8 @@ class Status:
     sub_question: str
     cost: CostState
     started: bool
-    follow_ups: List[str] = field(default_factory=list)
-    error: Optional[str] = None
+    follow_ups: list[str] = field(default_factory=list)
+    error: str | None = None
 
 
 @dataclass(frozen=True)

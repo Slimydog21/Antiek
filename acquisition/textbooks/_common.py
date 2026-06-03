@@ -41,8 +41,9 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Mapping, Optional, Sequence
+from typing import TYPE_CHECKING, Any
 
 import requests
 
@@ -92,11 +93,11 @@ class TextbookWork:
     source: str  # "openstax" | "libretexts" | "doab" | "mit_ocw"
     source_id: str  # source-local stable id (catalog slug / book id / course id)
     title: str
-    author: Optional[str]
+    author: str | None
     source_uri: str  # canonical landing/record URL
     download_url: str  # direct URL to the body we ingest (a PDF)
-    declared_license: Optional[str]  # the license string read from source metadata
-    isbn: Optional[str] = None
+    declared_license: str | None  # the license string read from source metadata
+    isbn: str | None = None
     subjects: Sequence[str] = field(default_factory=tuple)
     source_declaration: Mapping[str, Any] = field(default_factory=dict)
 
@@ -137,8 +138,8 @@ class ThrottledClient:
         min_interval_s: float = DEFAULT_MIN_INTERVAL_S,
         max_retries: int = DEFAULT_MAX_RETRIES,
         timeout_s: float = DEFAULT_TIMEOUT_S,
-        session: Optional[requests.Session] = None,
-        persistent: Optional["SourceThrottleT"] = None,
+        session: requests.Session | None = None,
+        persistent: SourceThrottleT | None = None,
         source: str = "textbooks",
     ) -> None:
         self._min_interval_s = min_interval_s
@@ -162,15 +163,15 @@ class ThrottledClient:
                 time.sleep(wait)
             self._last_request_at = time.monotonic()
 
-    def get_json(self, url: str, *, params: Optional[dict] = None) -> dict:
+    def get_json(self, url: str, *, params: dict | None = None) -> dict:
         resp = self._request(url, params=params)
         return resp.json()
 
     def get_bytes(self, url: str) -> bytes:
         return self._request(url).content
 
-    def _request(self, url: str, *, params: Optional[dict] = None) -> requests.Response:
-        last_exc: Optional[Exception] = None
+    def _request(self, url: str, *, params: dict | None = None) -> requests.Response:
+        last_exc: Exception | None = None
         for attempt in range(self._max_retries):
             self._throttle()
             try:
@@ -220,11 +221,11 @@ class IngestOutcome:
     content_class: str
     license_basis: str
     servable: bool
-    document_id: Optional[str] = None
-    servability: Optional[str] = None
+    document_id: str | None = None
+    servability: str | None = None
     servable_full_text: bool = False
     word_count: int = 0
-    skipped_reason: Optional[str] = None
+    skipped_reason: str | None = None
 
 
 def ingest_textbook(
@@ -232,7 +233,7 @@ def ingest_textbook(
     client: ThrottledClient,
     *,
     investigation_id: str = "inv-textbooks",
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     embedder: Any = None,
 ) -> IngestOutcome:
     """Resolve a textbook's rights via classify(), fetch + gate its body, and
@@ -363,7 +364,7 @@ def ingest_textbook(
     )
 
 
-def _rights_holder_name(work: TextbookWork) -> Optional[str]:
+def _rights_holder_name(work: TextbookWork) -> str | None:
     """The rights-holder name to thread onto a GATED work's escrow seam, when
     the source declared one. Public-domain / source-declared-open works carry
     no rights holder to onboard; an NC/ND gated work may name one so escrow

@@ -15,8 +15,8 @@ broadcaster so callers can:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 from substrate.schemas.events import (
     ActionType,
@@ -59,7 +59,7 @@ def revshare_to_event(
         action_type=ActionType.REV_SHARE_DECIDED,
         payload=revshare_to_payload(decision),
         param_version=param_version,
-        emitted_at=datetime.now(timezone.utc),
+        emitted_at=datetime.now(UTC),
     )
 
 

@@ -25,7 +25,7 @@ verification-*before*-publish (M3), not removal-after-harm.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from .events import (
     SPEAK_TAKEDOWN_REQUESTED,
@@ -45,7 +45,7 @@ class Takedown:
     target_kind: str
     target_id: str
     status: str  # 'active' | 'reversed'
-    reason: Optional[str]
+    reason: str | None
 
 
 def request_takedown(
@@ -54,8 +54,8 @@ def request_takedown(
     project_id: str,
     target_kind: str,
     target_id: str,
-    requested_by: Optional[str] = None,
-    reason: Optional[str] = None,
+    requested_by: str | None = None,
+    reason: str | None = None,
 ) -> str:
     """Record + enact a takedown. Returns the ``takedown_id``.
 
@@ -91,7 +91,7 @@ def request_takedown(
     return tid
 
 
-def reverse_takedown(con: Any, *, takedown_id: str, project_id: Optional[str] = None) -> None:
+def reverse_takedown(con: Any, *, takedown_id: str, project_id: str | None = None) -> None:
     """Reverse a takedown — only legitimate after re-consent. Audited.
     Does NOT auto-re-serve a publication; re-publishing goes back through
     the publish gate."""

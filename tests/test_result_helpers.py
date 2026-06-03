@@ -14,7 +14,6 @@ from substrate.result_helpers import (
 )
 from substrate.results import Err, Ok
 
-
 # ---------------------------------------------------------------------- #
 # try_decode_json                                                        #
 # ---------------------------------------------------------------------- #

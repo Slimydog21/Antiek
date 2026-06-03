@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 
 try:
     from ...event_log import emit_typed
@@ -55,8 +54,8 @@ def emit_outcome_recorded(
     *,
     investigation_id: str,
     record: OutcomeRecord,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit exactly one OUTCOME_RECORDED event for the given observation.
 
     The four list/object fields are projected to their Pydantic shapes
@@ -123,12 +122,12 @@ def emit_rubric_scored(
     synthesis_id: str,
     rubric_id: str,
     final_score: float,
-    deterministic_score: Optional[float] = None,
-    judged_score: Optional[float] = None,
-    target_claim_id: Optional[str] = None,
+    deterministic_score: float | None = None,
+    judged_score: float | None = None,
+    target_claim_id: str | None = None,
     notes: str = "",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit one RUBRIC_SCORED event for an archived synthesis.
 
     ``final_score`` is always required; ``deterministic_score`` and
@@ -161,10 +160,10 @@ def emit_groundedness_scored(
     scored_claims: int,
     total_claims: int,
     supported_threshold: float,
-    per_claim: Optional[list] = None,
+    per_claim: list | None = None,
     notes: str = "",
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit one GROUNDEDNESS_SCORED event (Foundation v2 SPR-02) — the
     NON-blocking truth-axis signal emitted alongside the SECONDARY
     form-axis ``rubric.scored``. ``per_claim`` is a list of
@@ -202,8 +201,8 @@ def emit_groundedness_failed(
     stage: str,
     error_type: str,
     error: str,
-    parent_event_id: Optional[str] = None,
-) -> Optional[str]:
+    parent_event_id: str | None = None,
+) -> str | None:
     """Emit one GROUNDEDNESS_FAILED event (Foundation v2 SPR-02) — the
     event that REPLACES the Phase-6 ``except Exception: pass`` swallow. A
     scorer crash must SURFACE here (never a silent pass) while the phase

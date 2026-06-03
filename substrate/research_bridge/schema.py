@@ -190,7 +190,7 @@ def init_research_bridge_at_path(db_path: str) -> None:
         con.close()
 
 
-def list_research_bridge_tables(con: "duckdb.DuckDBPyConnection") -> list[str]:
+def list_research_bridge_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
     rows = con.execute(
         "SELECT table_name FROM information_schema.tables "
         "WHERE table_schema='main' "

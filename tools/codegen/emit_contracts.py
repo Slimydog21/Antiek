@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -114,7 +113,7 @@ def render() -> str:
     return "\n".join(lines) + "\n"
 
 
-def write(output_path: Optional[Path] = None) -> Path:
+def write(output_path: Path | None = None) -> Path:
     out = output_path or DEFAULT_OUTPUT
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render(), encoding="utf-8")

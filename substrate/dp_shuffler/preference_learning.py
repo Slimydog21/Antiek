@@ -29,8 +29,8 @@ that:
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Optional
 
 from .epsilon_registry import EpsilonRegistry, EpsilonRegistryError
 from .shuffler import (
@@ -38,7 +38,6 @@ from .shuffler import (
     aggregate_with_dp,
     randomized_response,
 )
-
 
 ObservationEmitHook = Callable[[
     str,    # category
@@ -105,7 +104,7 @@ class PreferenceLearningStream:
 
     registry: EpsilonRegistry
     per_obs_epsilon: float = PREFERENCE_PER_OBS_EPSILON
-    on_observation: Optional[ObservationEmitHook] = None
+    on_observation: ObservationEmitHook | None = None
     _noisy_by_category: dict[str, list[bool]] = field(default_factory=dict)
     _users_by_category: dict[str, set[str]] = field(default_factory=dict)
     _spent_by_category: dict[str, float] = field(default_factory=dict)

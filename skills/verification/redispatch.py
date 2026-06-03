@@ -33,7 +33,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 try:
     from ...constants import (
@@ -82,13 +83,13 @@ _TIEBREAKER_FRAMING = (
 
 
 def verify_with_redispatch(
-    role_runner: Callable[..., Dict],
+    role_runner: Callable[..., dict],
     role: str,
-    placeholders: Dict[str, str],
-    original_parsed: Dict,
+    placeholders: dict[str, str],
+    original_parsed: dict,
     *,
-    framings: Optional[List[str]] = None,
-    agreement_fn: Callable[[Dict, Dict], bool] = default_agreement_strict,
+    framings: list[str] | None = None,
+    agreement_fn: Callable[[dict, dict], bool] = default_agreement_strict,
     agreement_min: int = RLM_VERIFY_AGREEMENT_MIN,
     redispatch_count: int = RLM_VERIFY_REDISPATCH_COUNT,
     enable_tiebreaker: bool = True,
@@ -110,10 +111,10 @@ def verify_with_redispatch(
             framings = ["Re-derive independently with fresh framing."]
     framings = framings[:redispatch_count] if redispatch_count > 0 else framings
 
-    votes: List[Dict[str, Any]] = [
+    votes: list[dict[str, Any]] = [
         {"source": "original", "framing": None, "agrees_with_original": True}
     ]
-    dispatched_responses: List[Dict[str, Any]] = []
+    dispatched_responses: list[dict[str, Any]] = []
     agreement_count = 1  # original counts toward agreement
 
     for i, framing in enumerate(framings):

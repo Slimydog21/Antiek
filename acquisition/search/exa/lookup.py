@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import List, Optional
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -64,7 +63,6 @@ from substrate.schemas.events import (  # noqa: E402
 from .budget import check_and_reserve  # noqa: E402
 from .client import COST_PER_SEARCH_USD, ExaClient  # noqa: E402
 
-
 MAX_K = 20
 
 
@@ -73,11 +71,11 @@ def exa_lookup_claim(
     claim_text: str,
     investigation_id: str,
     k: int = 3,
-    require_published_after: Optional[str] = None,
-    client: Optional[ExaClient] = None,
-    daily_budget_usd: Optional[float] = None,
-    events_dir: Optional[str] = None,
-) -> List[ExaLookupResult]:
+    require_published_after: str | None = None,
+    client: ExaClient | None = None,
+    daily_budget_usd: float | None = None,
+    events_dir: str | None = None,
+) -> list[ExaLookupResult]:
     """Search Exa for ≤k pages whose text appears to support or
     refute ``claim_text``. Returns the typed ``ExaLookupResult``
     list. Emits exactly one ``VerifierLookupPayload`` event
@@ -126,7 +124,7 @@ def exa_lookup_claim(
         start_published_date=require_published_after,
     )
 
-    results: List[ExaLookupResult] = []
+    results: list[ExaLookupResult] = []
     for r in response.results:
         # The Exa client already truncated snippets at 300 chars
         # for `discover()` output. For verifier lookup the

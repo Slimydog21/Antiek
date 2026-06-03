@@ -137,9 +137,8 @@ def test_biography_requires_an_investigation(env):
     composition refuses an empty investigation_id rather than minting a
     second, orphan identity."""
     db, _ = env
-    with _con(db) as con:
-        with pytest.raises(ValueError):
-            bc.create_biography(con, investigation_id="", subject_name="X")
+    with _con(db) as con, pytest.raises(ValueError):
+        bc.create_biography(con, investigation_id="", subject_name="X")
 
 
 # ── rigor #3 — edge cases ────────────────────────────────────────────────────

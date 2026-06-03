@@ -3,13 +3,8 @@
 from __future__ import annotations
 
 import os
-import tempfile
-
-import pytest
 
 from tools.migration.stage0_to_stage1 import (
-    MigrationPlan,
-    MigrationStep,
     execute_plan,
     format_plan_markdown,
     plan_migration,

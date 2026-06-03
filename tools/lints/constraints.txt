@@ -1,0 +1,150 @@
+# tools/lints/constraints.txt — pinned dependency lock for the
+# enforce-declared-bar gate (SPR-03, Antiek Foundation v2).
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The mypy --strict gate resolves the REAL import graph, so its findings
+# depend on the EXACT installed dependency set, not just on the pinned
+# ruff/mypy versions. A dated baseline (tools/lints/baselines/*.json) is
+# only reproducible if CI installs the same resolved set it was captured
+# against. Two ways the gate can red SPURIOUSLY on clean code without this
+# lock:
+#   1. A MISSING extra (e.g. installing only `.[dev]`) drops an import, so
+#      mypy can't see a third-party symbol's types and a baselined key
+#      flips into a NEW error. Verified locally: `.[dev]`-only produced 11
+#      spurious NEW mypy violations in acquisition/urls/extract.py,
+#      acquisition/books/reader.py, substrate/graph/rlm_tools.py and
+#      substrate/research_bridge/extractors.py — NONE a real regression.
+#   2. TRANSITIVE-PIN DRIFT: a future `pip install` resolving a different
+#      transitive version (numpy, torch, pydantic, …) could shadow a
+#      different error at a baselined site, flipping a baselined key NEW.
+#
+# This `-c` constraints file removes (2): it pins the FULL resolved set the
+# committed baselines were captured against, so the gate's import graph is
+# reproducible. The workflow installs the full extras superset
+# `.[dev,arxiv,pdf,urls,embedding,youtube,rss]` UNDER this constraint.
+#
+# PROVENANCE
+# ----------
+# Captured 2026-05-29 (origin/main @ 5413fdc) from a clean venv:
+#     python3.14 -m venv .venv && . .venv/bin/activate
+#     pip install -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+#     pip install ruff==0.15.15 mypy==2.1.0
+#     pip freeze --exclude-editable   # -> this file
+# In that exact environment BOTH gates were observed rc=0 / 0 NEW against
+# the committed baselines (the G2 "green on HEAD" contract). Platform:
+# macOS arm64 / CPython 3.14.5 (the runner is ubuntu-latest / 3.14 — see
+# the residual note in tools/lints/README.md; the PR's own runner is the
+# binding G2 evidence).
+#
+# `-c` SEMANTICS: a constraint pins the version of a package ONLY IF that
+# package gets installed. Platform-conditional deps that resolve only on
+# one OS (e.g. uvloop/httptools wheels) are simply not constrained where
+# they are not pulled — so this file is safe to apply on ubuntu even though
+# it was frozen on macOS. Version strings here exist on PyPI for both.
+#
+# REGENERATION (rare, deliberate): only when a pin is bumped or an extra is
+# added — and ONLY together with re-capturing the matching baseline in the
+# SAME PR, which (per tools/lints/README.md) may only ever SHRINK the
+# baseline. Re-freeze with the command block above. Do NOT hand-edit a
+# single line to chase a red: that desyncs the lock from the baseline.
+#
+# ---- pinned set (pip freeze --exclude-editable, sorted) ----
+annotated-doc==0.0.4
+annotated-types==0.7.0
+anyio==4.13.0
+arxiv==4.0.0
+ast_serialize==0.5.0
+beautifulsoup4==4.14.3
+certifi==2026.5.20
+cffi==2.0.0
+charset-normalizer==3.4.7
+click==8.4.1
+coverage==7.14.1
+cryptography==48.0.0
+defusedxml==0.7.1
+duckdb==1.5.3
+execnet==2.1.2
+fastapi==0.136.3
+feedparser==6.0.12
+filelock==3.29.0
+fsspec==2026.4.0
+h11==0.16.0
+hf-xet==1.5.0
+html2text==2025.4.15
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+huggingface_hub==1.17.0
+hypothesis==6.155.0
+idna==3.17
+iniconfig==2.3.0
+Jinja2==3.1.6
+joblib==1.5.3
+librt==0.11.0
+lxml==6.1.1
+markdown-it-py==4.2.0
+MarkupSafe==3.0.3
+mdurl==0.1.2
+mpmath==1.3.0
+mypy_extensions==1.1.0
+mypy==2.1.0
+networkx==3.6.1
+numpy==2.4.6
+orjson==3.11.9
+packaging==26.2
+pathspec==1.1.1
+pdfminer.six==20251230
+pdfplumber==0.11.9
+pillow==12.2.0
+pluggy==1.6.0
+pycparser==3.0
+pydantic_core==2.46.4
+pydantic-settings==2.14.1
+pydantic==2.13.4
+Pygments==2.20.0
+pypdf==6.12.2
+pypdfium2==5.8.0
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+pytest-xdist==3.8.0
+pytest==9.0.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
+PyYAML==6.0.3
+regex==2026.5.9
+reportlab==4.5.1
+requests==2.33.1
+rich==15.0.0
+ruff==0.15.15
+safetensors==0.7.0
+scikit-learn==1.8.0
+scipy==1.17.1
+sentence-transformers==5.5.1
+setuptools==81.0.0
+sgmllib3k==1.0.0
+shellingham==1.5.4
+six==1.17.0
+sortedcontainers==2.4.0
+soupsieve==2.8.4
+starlette==1.2.0
+structlog==25.5.0
+sympy==1.14.0
+tenacity==9.1.4
+threadpoolctl==3.6.0
+tokenizers==0.22.2
+torch==2.12.0
+tqdm==4.67.3
+transformers==5.9.0
+typer==0.25.1
+types-python-dateutil==2.9.0.20260518
+types-PyYAML==6.0.12.20260518
+typing_extensions==4.15.0
+typing-inspection==0.4.2
+urllib3==2.7.0
+uvicorn==0.48.0
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==16.0
+youtube-transcript-api==1.2.4
+yt-dlp==2026.3.17

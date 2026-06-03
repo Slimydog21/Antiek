@@ -32,8 +32,6 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from processing.embedding import _reset_default_provider  # noqa: E402
 from processing.extraction import (  # noqa: E402
     ANTIEK_NODE_TYPES,
-    ExtractedEdge,
-    ExtractedNode,
     extract_from_chunk,
     parse_extraction_response,
 )
@@ -50,7 +48,6 @@ from substrate.dispatch import (  # noqa: E402
 )
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.graph import ensure_initialized, insert_chunk, insert_document  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -392,9 +389,10 @@ def test_antiek_node_types_is_subset_of_schema_literal():
     DRW SPR-01 added 'insight' + 'question' as node types that are promoted
     from the note-taker path, never produced by chunk extraction."""
     import typing as _t
+
     from substrate.schemas.events import NodeType
     schema_values = set(_t.get_args(NodeType))
-    assert ANTIEK_NODE_TYPES <= schema_values
+    assert schema_values >= ANTIEK_NODE_TYPES
     # The only members of NodeType not produced by extraction are the two
     # promotion-only types; guard against accidental drift the other way.
     assert schema_values - ANTIEK_NODE_TYPES == {"insight", "question"}

@@ -29,10 +29,8 @@ The signed_token + shared_secret are NEVER reflected in API responses
 
 from __future__ import annotations
 
-from typing import Optional
-
 import duckdb
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from substrate.cross_graph.federation import (
@@ -42,21 +40,19 @@ from substrate.cross_graph.federation import (
 )
 from substrate.cross_graph.federation_config_store import (
     load_config as load_federation_config,
+)
+from substrate.cross_graph.federation_config_store import (
     save_config as save_federation_config,
 )
 from substrate.cross_graph.inbound import (
     InboundCitationOutcome,
-    NonceLedger,
     accept_inbound_citation,
     load_active_nonces,
     remember_nonce_persistent,
 )
 from substrate.cross_graph.partner_identity import (
     PartnerIdentityError,
-    PartnerRegistry,
     PartnerSubstrate,
-    PartnerTrustState,
-    ensure_table as ensure_partner_table,
     generate_shared_secret,
     load_registry,
     register_partner,
@@ -64,7 +60,9 @@ from substrate.cross_graph.partner_identity import (
     save_record,
     trust_partner,
 )
-
+from substrate.cross_graph.partner_identity import (
+    ensure_table as ensure_partner_table,
+)
 
 # ── Pydantic shapes ────────────────────────────────────────────────
 
@@ -76,9 +74,9 @@ class RegisterPartnerRequest(BaseModel):
     # to have the substrate generate one. The response always carries
     # the secret EXACTLY ONCE so the operator can hand it to the
     # partner; subsequent reads NEVER carry the secret.
-    shared_secret_hex: Optional[str] = Field(default=None, min_length=64, max_length=64)
+    shared_secret_hex: str | None = Field(default=None, min_length=64, max_length=64)
     operator_notes: str = ""
-    partner_id: Optional[str] = Field(default=None, max_length=64)
+    partner_id: str | None = Field(default=None, max_length=64)
 
 
 class TrustRequest(BaseModel):
@@ -101,10 +99,10 @@ class PartnerPublicResponse(BaseModel):
     registered_at: str
     last_state_change_at: str
     operator_notes: str
-    revocation_reason: Optional[str]
+    revocation_reason: str | None
 
     @classmethod
-    def from_record(cls, rec: PartnerSubstrate) -> "PartnerPublicResponse":
+    def from_record(cls, rec: PartnerSubstrate) -> PartnerPublicResponse:
         return cls(
             partner_id=rec.partner_id,
             display_name=rec.display_name,
@@ -151,7 +149,7 @@ class OutboundCitationRequest(BaseModel):
     revenue_routing_handle: str = Field(min_length=1, max_length=200)
     referenced_user_opted_in: bool
     referenced_user_attribution_consented: bool
-    nonce: Optional[str] = Field(default=None, max_length=64)
+    nonce: str | None = Field(default=None, max_length=64)
 
 
 class OutboundCitationResponse(BaseModel):
@@ -173,19 +171,19 @@ class InboundCitationRequest(BaseModel):
 
 class InboundCitationResult(BaseModel):
     accepted: bool
-    rejection: Optional[str]
+    rejection: str | None
     detail: str
     # Set only on accept.
-    receiver_reference_id: Optional[str]
-    referencing_user_id: Optional[str]
-    referenced_user_id: Optional[str]
-    revenue_routing_handle: Optional[str]
+    receiver_reference_id: str | None
+    referencing_user_id: str | None
+    referenced_user_id: str | None
+    revenue_routing_handle: str | None
     received_at: str
 
     @classmethod
     def from_outcome(
         cls, outcome: InboundCitationOutcome,
-    ) -> "InboundCitationResult":
+    ) -> InboundCitationResult:
         ref = outcome.reference
         return cls(
             accepted=outcome.accepted,

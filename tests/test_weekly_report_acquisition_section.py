@@ -5,7 +5,7 @@ the weekly report. Spec: `docs/integration_exa_browserbase.md` §6.7.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -16,7 +16,6 @@ from runtime.weekly_report import (
     collect_acquisition_cost,
     report_to_markdown,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -43,8 +42,8 @@ def _write_budget(budget_dir: Path, date_iso: str, spent: float, calls: int, cap
 def test_collect_with_no_budget_dir(tmp_path):
     missing = tmp_path / "no-budgets"
     A = collect_acquisition_cost(
-        datetime.now(timezone.utc) - timedelta(days=7),
-        datetime.now(timezone.utc),
+        datetime.now(UTC) - timedelta(days=7),
+        datetime.now(UTC),
         budget_dir=str(missing),
     )
     assert A["budget_dir_exists"] is False
@@ -53,7 +52,7 @@ def test_collect_with_no_budget_dir(tmp_path):
 
 
 def test_collect_sums_within_window(budget_dir):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.strftime("%Y-%m-%d")
     yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     week_ago_plus_2 = (now - timedelta(days=9)).strftime("%Y-%m-%d")
@@ -75,7 +74,7 @@ def test_collect_sums_within_window(budget_dir):
 
 
 def test_collect_top_day_identifies_highest_spend(budget_dir):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     _write_budget(budget_dir, now.strftime("%Y-%m-%d"), 0.05, 10)
     _write_budget(budget_dir, (now - timedelta(days=1)).strftime("%Y-%m-%d"), 2.50, 500)
     _write_budget(budget_dir, (now - timedelta(days=2)).strftime("%Y-%m-%d"), 0.30, 60)
@@ -87,7 +86,7 @@ def test_collect_top_day_identifies_highest_spend(budget_dir):
 
 
 def test_collect_skips_malformed_sidecar(budget_dir):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today = now.strftime("%Y-%m-%d")
     _write_budget(budget_dir, today, 0.10, 20)
     # Malformed file — non-JSON.
@@ -99,7 +98,7 @@ def test_collect_skips_malformed_sidecar(budget_dir):
 
 
 def test_collect_skips_unparseable_date(budget_dir):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     _write_budget(budget_dir, now.strftime("%Y-%m-%d"), 0.05, 10)
     (budget_dir / "exa_not-a-date.json").write_text("{}")
     A = collect_acquisition_cost(
@@ -152,7 +151,7 @@ def test_md_section_renders_window_with_rows():
 def test_full_report_markdown_includes_acquisition_section(budget_dir):
     """End-to-end check: report_to_markdown includes the new
     §7 section."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     _write_budget(budget_dir, now.strftime("%Y-%m-%d"), 0.05, 10)
     A = collect_acquisition_cost(
         now - timedelta(days=7), now, budget_dir=str(budget_dir),
@@ -192,7 +191,7 @@ def test_collect_honors_antiek_home_env(tmp_path, monkeypatch):
     home = tmp_path / "antiek-home"
     budgets = home / "budgets"
     budgets.mkdir(parents=True)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     _write_budget(budgets, now.strftime("%Y-%m-%d"), 0.10, 20)
     monkeypatch.setenv("ANTIEK_HOME", str(home))
     A = collect_acquisition_cost(

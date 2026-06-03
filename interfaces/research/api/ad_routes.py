@@ -28,7 +28,7 @@ are not imported here.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -36,7 +36,6 @@ from pydantic import BaseModel, Field
 from substrate.ad_inventory.frame_attention import FRAME_TELEMETRY_SCHEMA_VERSION
 
 from .books import _resolve_db_path
-
 
 # ── Wire shapes (pydantic mirrors of the frozen dataclass contract) ──
 #
@@ -55,8 +54,8 @@ class FrameAttentionSampleIn(BaseModel):
     # The client MAY echo a content_class hint, but the backend NEVER trusts it
     # (the authoritative value is resolved server-side from the documents gate
     # columns). Accepted for wire-compatibility; overwritten on resolution.
-    content_class: Optional[str] = None
-    chunk_id: Optional[str] = None
+    content_class: str | None = None
+    chunk_id: str | None = None
 
 
 class FrameSecondIn(BaseModel):
@@ -90,8 +89,8 @@ class FrameTelemetryResponse(BaseModel):
 
 class HousePromoResponse(BaseModel):
     promoted_document_id: str
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
 
 
 class AdCreativeResponse(BaseModel):
@@ -110,13 +109,13 @@ class AdFillResponse(BaseModel):
     position: str
     kind: Literal["ad", "house"]
     revenue_usd_cents: int
-    ad: Optional[AdCreativeResponse] = None
-    house: Optional[HousePromoResponse] = None
+    ad: AdCreativeResponse | None = None
+    house: HousePromoResponse | None = None
 
 
 def _resolve_asset_gate(
     con: object, asset_ids: set[str]
-) -> dict[str, tuple[Optional[str], Optional[str]]]:
+) -> dict[str, tuple[str | None, str | None]]:
     """Resolve each asset's AUTHORITATIVE (content_class, ip_holder_id) from the
     documents gate columns — server-side, never from the client hint. An asset
     with no documents row resolves to (None, None): NULL content_class is
@@ -192,7 +191,7 @@ def register_ad_routes(app: FastAPI) -> None:
             gate = _resolve_asset_gate(con_r, asset_ids)
         finally:
             con_r.close()
-        asset_to_ip_holder: dict[str, Optional[str]] = {
+        asset_to_ip_holder: dict[str, str | None] = {
             aid: gate.get(aid, (None, None))[1] for aid in asset_ids
         }
 
@@ -312,7 +311,7 @@ def register_ad_routes(app: FastAPI) -> None:
             house_candidates=house_candidates,
         )
 
-        ad_resp: Optional[AdCreativeResponse] = None
+        ad_resp: AdCreativeResponse | None = None
         if fill.ad is not None:
             ad_resp = AdCreativeResponse(
                 inventory_id=fill.ad.inventory_id,
@@ -320,7 +319,7 @@ def register_ad_routes(app: FastAPI) -> None:
                 creative_url=fill.ad.creative_url,
                 landing_url=fill.ad.landing_url,
             )
-        house_resp: Optional[HousePromoResponse] = None
+        house_resp: HousePromoResponse | None = None
         if fill.house is not None:
             house_resp = HousePromoResponse(
                 promoted_document_id=fill.house.promoted_document_id,

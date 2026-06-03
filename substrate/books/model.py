@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from runtime.db_lock import LockedConnection
 
@@ -41,14 +41,14 @@ class TocItem:
     layer carries no upward dependency on acquisition."""
 
     title: str
-    page_index: Optional[int]
+    page_index: int | None
     level: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {"title": self.title, "page_index": self.page_index, "level": self.level}
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "TocItem":
+    def from_dict(cls, d: dict[str, Any]) -> TocItem:
         return cls(
             title=str(d.get("title", "")),
             page_index=d.get("page_index"),
@@ -65,20 +65,20 @@ class BookAsset:
     and the UI cannot disagree about whether a book may be served."""
 
     document_id: str
-    title: Optional[str]
-    author: Optional[str]
-    content_class: Optional[str]
-    ip_holder_id: Optional[str]
+    title: str | None
+    author: str | None
+    content_class: str | None
+    ip_holder_id: str | None
     page_count: int
     pagination_scheme: str
-    cover_uri: Optional[str]
+    cover_uri: str | None
     toc: list[TocItem]
-    provenance: Optional[str]
-    license_basis: Optional[str]
+    provenance: str | None
+    license_basis: str | None
     taken_down: bool
-    taken_down_at: Optional[str]
-    takedown_reason: Optional[str]
-    pre_takedown_content_class: Optional[str]
+    taken_down_at: str | None
+    takedown_reason: str | None
+    pre_takedown_content_class: str | None
     # Derived — resolved once at read time from (content_class, taken_down).
     servability: ServabilityStatus = field(init=False)
     servable_full_text: bool = field(init=False)
@@ -106,12 +106,12 @@ def upsert_book_asset(
     con: LockedConnection,
     *,
     document_id: str,
-    toc: Optional[list[TocItem]] = None,
+    toc: list[TocItem] | None = None,
     page_count: int = 0,
     pagination_scheme: str = "pdf_page",
-    cover_uri: Optional[str] = None,
-    provenance: Optional[str] = None,
-    license_basis: Optional[str] = None,
+    cover_uri: str | None = None,
+    provenance: str | None = None,
+    license_basis: str | None = None,
 ) -> str:
     """Create or update the ``book_assets`` row for ``document_id``.
 
@@ -202,7 +202,7 @@ def _row_to_asset(row: tuple) -> BookAsset:
     )
 
 
-def get_book_asset(con: Any, document_id: str) -> Optional[BookAsset]:
+def get_book_asset(con: Any, document_id: str) -> BookAsset | None:
     """Read one book joined to its license + derived servability. None if
     the document_id has no ``book_assets`` row (not a registered book)."""
     row = con.execute(

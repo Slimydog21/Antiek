@@ -29,7 +29,6 @@ import os
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 PIPELINE_KINDS: frozenset[str] = frozenset({"general_feed", "thread_specific"})
 
@@ -62,8 +61,8 @@ class BYOKPipeline:
     account_handle: str
     cred_id: str
     pipeline_kind: str
-    seed: Optional[str] = None
-    investigation_id: Optional[str] = None
+    seed: str | None = None
+    investigation_id: str | None = None
 
 
 def _read_config(config_path: str) -> dict:
@@ -88,9 +87,9 @@ def register_pipeline(
     cred_id: str,
     pipeline_kind: str,
     *,
-    seed: Optional[str] = None,
-    investigation_id: Optional[str] = None,
-    config_path: Optional[str] = None,
+    seed: str | None = None,
+    investigation_id: str | None = None,
+    config_path: str | None = None,
 ) -> BYOKPipeline:
     """Register a pipeline and persist it. Returns the stored :class:`BYOKPipeline`.
 
@@ -122,8 +121,8 @@ def register_pipeline(
 
 def list_pipelines(
     *,
-    account_handle: Optional[str] = None,
-    config_path: Optional[str] = None,
+    account_handle: str | None = None,
+    config_path: str | None = None,
 ) -> list[BYOKPipeline]:
     """List registered pipelines (optionally filtered by ``account_handle``).
 
@@ -152,7 +151,7 @@ def list_pipelines(
 def get_pipeline(
     pipeline_id: str,
     *,
-    config_path: Optional[str] = None,
+    config_path: str | None = None,
 ) -> BYOKPipeline:
     """Fetch a single pipeline by id. Raises ``KeyError`` if unknown."""
     config = config_path or _default_config_path()

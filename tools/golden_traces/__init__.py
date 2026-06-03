@@ -16,8 +16,8 @@ Sprint 5 will import ``replay_trace_strict`` into per-role extraction
 tests.
 """
 
-from .schema import GOLDEN_TRACE_SCHEMA_VERSION, GoldenTrace, RoleCall, stable_json_hash
 from .replay import CallMatch, MatchReport, load_trace, replay_trace_strict
+from .schema import GOLDEN_TRACE_SCHEMA_VERSION, GoldenTrace, RoleCall, stable_json_hash
 
 __all__ = [
     "GOLDEN_TRACE_SCHEMA_VERSION",

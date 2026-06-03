@@ -23,7 +23,6 @@ NO raw ``requests``/``httpx``: every fetch is via the SPR-03 throttle.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -50,7 +49,7 @@ _PD_RIGHTS_CODES = frozenset({"pd", "pdus", "pdus-land"})
 _NON_PD_RIGHTS_CODES = frozenset({"ic", "icus", "und"})
 
 
-def hathi_rights_input(rights_code: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+def hathi_rights_input(rights_code: str | None) -> tuple[str | None, str | None]:
     """THE one rights-code → classify-input mapping. Returns (license_uri,
     pd_signal). ``pd``/``pdus``/``pdus-land`` → a positive pd_signal (classify
     resolves public_domain); everything else (including UNRECOGNIZED codes) →
@@ -63,7 +62,7 @@ def hathi_rights_input(rights_code: Optional[str]) -> tuple[Optional[str], Optio
     return None, None
 
 
-def _normalize_bib_item(item: dict) -> Optional[dict]:
+def _normalize_bib_item(item: dict) -> dict | None:
     """Pull (htid, rights_code) out of a HathiTrust bib 'items' entry."""
     htid = item.get("htid") or item.get("fromRecord")
     rights = item.get("rightsCode") or item.get("rights")
@@ -72,7 +71,7 @@ def _normalize_bib_item(item: dict) -> Optional[dict]:
     return {"htid": str(htid), "rights": rights}
 
 
-def candidate_from_bib(record: dict, *, record_id: str) -> Optional[BookCandidate]:
+def candidate_from_bib(record: dict, *, record_id: str) -> BookCandidate | None:
     """Build a candidate from one HathiTrust bib record. The record's first
     item's rights code drives :func:`hathi_rights_input`; OCLC/ISBN from the bib
     record drive dedup. A non-PD record still becomes a candidate (gated by
@@ -115,7 +114,7 @@ def candidate_from_bib(record: dict, *, record_id: str) -> Optional[BookCandidat
 def discover(
     fetcher: ThrottledFetcher,
     *,
-    record_ids: Optional[list[str]] = None,
+    record_ids: list[str] | None = None,
     limit: int = 25,
 ) -> list[BookCandidate]:
     """Discover candidates from the HathiTrust Bibliographic API by record id.

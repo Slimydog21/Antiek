@@ -39,8 +39,9 @@ sprint's decision, recorded against ``substrate/eval/groundedness/PROMOTE_TO_GAT
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any
 
 from substrate.eval.groundedness import (
     DEFAULT_SCORER_ID,
@@ -53,7 +54,7 @@ from substrate.schemas.events import ReuseGateReason
 # ``substrate.eval.groundedness.provenance.ChunkTextResolver`` so the gate can
 # lazily re-score a unit whose slot is unset WITHOUT opening its own DB
 # connection — the caller (which already holds the read connection) injects it.
-ChunkTextResolver = Callable[[str], Optional[str]]
+ChunkTextResolver = Callable[[str], str | None]
 
 
 def _threshold_from_env(default: float) -> float:
@@ -97,15 +98,15 @@ class GateDecision:
 
     unit: Any                       # the RetrievedUnit
     reusable: bool
-    score: Optional[float]
+    score: float | None
     reasons: tuple[ReuseGateReason, ...]
 
 
 def groundedness_of(
     retrieved_unit: Any,
     *,
-    chunk_text_for: Optional[ChunkTextResolver] = None,
-) -> Optional[float]:
+    chunk_text_for: ChunkTextResolver | None = None,
+) -> float | None:
     """The unit's groundedness score.
 
     Prefers the value already on the unit's ``groundedness_score`` slot (filled
@@ -134,7 +135,7 @@ def evaluate_unit(
     retrieved_unit: Any,
     *,
     threshold: float = REUSE_GROUNDEDNESS_THRESHOLD,
-    chunk_text_for: Optional[ChunkTextResolver] = None,
+    chunk_text_for: ChunkTextResolver | None = None,
 ) -> GateDecision:
     """Apply the two INDEPENDENT trust conditions to one candidate unit.
 
@@ -143,7 +144,7 @@ def evaluate_unit(
     grounded) or strictly below ``threshold``; ``non-servable`` fires when the
     unit's §9.0 tag does not serve full text. A unit can fail BOTH."""
     score = groundedness_of(retrieved_unit, chunk_text_for=chunk_text_for)
-    reasons: List[ReuseGateReason] = []
+    reasons: list[ReuseGateReason] = []
     if score is None or score < threshold:
         reasons.append(REASON_BELOW_THRESHOLD)
     if not retrieved_unit.serves_full_text:
@@ -161,13 +162,13 @@ def filter_reusable(
     *,
     investigation_id: str,
     threshold: float = REUSE_GROUNDEDNESS_THRESHOLD,
-    chunk_text_for: Optional[ChunkTextResolver] = None,
+    chunk_text_for: ChunkTextResolver | None = None,
     context_pack_event_id: str = "",
-    role: Optional[str] = None,
-    events_dir: Optional[str] = None,
-    policy_id: Optional[str] = None,
+    role: str | None = None,
+    events_dir: str | None = None,
+    policy_id: str | None = None,
     emit: bool = True,
-) -> tuple[List[Any], List[GateDecision]]:
+) -> tuple[list[Any], list[GateDecision]]:
     """The gate. Partition candidate ``RetrievedUnit``s into the reusable set
     and emit one ``reuse.gated`` event per EXCLUDED unit.
 
@@ -180,8 +181,8 @@ def filter_reusable(
     before any of its text reaches the pack — partition_units' own §9.0 check
     then becomes defense-in-depth that no longer fires for these units (one
     exclusion, one event, never two conflicting decisions for the same unit)."""
-    reusable: List[Any] = []
-    decisions: List[GateDecision] = []
+    reusable: list[Any] = []
+    decisions: list[GateDecision] = []
     for ru in units:
         decision = evaluate_unit(
             ru, threshold=threshold, chunk_text_for=chunk_text_for
@@ -208,10 +209,10 @@ def _emit_reuse_gated(
     investigation_id: str,
     threshold: float,
     context_pack_event_id: str,
-    role: Optional[str],
-    events_dir: Optional[str],
-    policy_id: Optional[str],
-) -> Optional[str]:
+    role: str | None,
+    events_dir: str | None,
+    policy_id: str | None,
+) -> str | None:
     """Emit one ``reuse.gated`` event for an EXCLUDED unit. The score, threshold,
     and reasons are carried on the event so an audit reads the exact bar in
     force, not today's constant. Parented to the assembled pack so the exclusion

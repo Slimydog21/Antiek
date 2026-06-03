@@ -15,13 +15,14 @@ get replaced with real queries — the call sites do not change.
 
 from __future__ import annotations
 
-from typing import Mapping, Optional, Protocol
+from collections.abc import Mapping
+from typing import Protocol
 
 
 class _DBConn(Protocol):
     """Minimal DuckDB-shaped read-only connection contract."""
 
-    def execute(self, sql: str, params: Optional[list] = None) -> "_DBConn": ...
+    def execute(self, sql: str, params: list | None = None) -> _DBConn: ...
     def fetchall(self) -> list[tuple]: ...
 
 
@@ -91,9 +92,9 @@ def fetch_creator_paid_cents(con: _DBConn) -> dict[str, int]:
 def collect_snapshot_inputs(
     con: _DBConn,
     *,
-    creator_paid_cents_override: Optional[Mapping[str, int]] = None,
-    current_advertiser_spend_override: Optional[Mapping[str, int]] = None,
-    prior_advertiser_spend_override: Optional[Mapping[str, int]] = None,
+    creator_paid_cents_override: Mapping[str, int] | None = None,
+    current_advertiser_spend_override: Mapping[str, int] | None = None,
+    prior_advertiser_spend_override: Mapping[str, int] | None = None,
 ) -> dict:
     """Assemble the input dict for assemble_snapshot from a DB conn.
 

@@ -36,7 +36,6 @@ from acquisition.books.public_domain import text_to_pdf  # noqa: E402
 from substrate.constants import GATED_DEFAULT_CONTENT_CLASS  # noqa: E402
 from tools import ingest_arxiv  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Fixtures: feeds with explicit licenses + a tiny real PDF
 # ---------------------------------------------------------------------------
@@ -62,7 +61,7 @@ def _feed(arxiv_id: str, license_uri: str) -> bytes:
   </entry>
 </feed>
 """
-    ).encode("utf-8")
+    ).encode()
 
 
 _CC_BY = "http://creativecommons.org/licenses/by/4.0/"

@@ -75,8 +75,8 @@ from __future__ import annotations
 import enum
 import os
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 # ---------------------------------------------------------------------------
 # Empirical ceiling defaults (see the module docstring for the full derivation).
@@ -198,7 +198,7 @@ def _read_rss_bytes() -> int:
         return -1
 
 
-def read_box(db_path: str, *, staging_dir: Optional[str] = None) -> BudgetReading:
+def read_box(db_path: str, *, staging_dir: str | None = None) -> BudgetReading:
     """Read the live box state for the governor.
 
     ``db_path`` is the LIVE DuckDB whose size + filesystem free space we read.
@@ -230,7 +230,7 @@ class BudgetGovernor:
         self,
         *,
         db_path: str = "",
-        staging_dir: Optional[str] = None,
+        staging_dir: str | None = None,
         hard_min_free_disk_bytes: int = DEFAULT_HARD_MIN_FREE_DISK_BYTES,
         soft_min_free_disk_bytes: int = DEFAULT_SOFT_MIN_FREE_DISK_BYTES,
         hard_db_size_bytes: int = DEFAULT_HARD_DB_SIZE_BYTES,
@@ -238,7 +238,7 @@ class BudgetGovernor:
         hard_rss_bytes: int = DEFAULT_HARD_RSS_BYTES,
         soft_rss_bytes: int = DEFAULT_SOFT_RSS_BYTES,
         est_bytes_per_doc: int = EST_BYTES_PER_DOC,
-        reader: Optional[Callable[[], BudgetReading]] = None,
+        reader: Callable[[], BudgetReading] | None = None,
     ) -> None:
         self._db_path = db_path
         self._staging_dir = staging_dir
@@ -256,7 +256,7 @@ class BudgetGovernor:
 
     # -- the check -----------------------------------------------------------
 
-    def check(self, reading: Optional[BudgetReading] = None) -> BudgetVerdict:
+    def check(self, reading: BudgetReading | None = None) -> BudgetVerdict:
         """Return the governor verdict. Each dimension votes independently; the
         verdict is the MOST RESTRICTIVE vote (HALT > PACE > OK) so any single
         endangered dimension halts the run, and every contributing dimension is
@@ -314,7 +314,7 @@ class BudgetGovernor:
         )
 
     def would_cross_hard_floor(
-        self, n_docs: int, reading: Optional[BudgetReading] = None
+        self, n_docs: int, reading: BudgetReading | None = None
     ) -> bool:
         """Forecast whether ingesting ``n_docs`` more would push free disk at or
         below the hard floor, using the EST_BYTES_PER_DOC extrapolation. Used to

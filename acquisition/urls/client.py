@@ -14,7 +14,6 @@ canonical slug.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -53,7 +52,7 @@ def _detect_charset(content_type: str) -> str:
 def fetch(
     url: str,
     *,
-    client: Optional[httpx.Client] = None,
+    client: httpx.Client | None = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     follow_redirects: bool = True,
 ) -> FetchedHtml:

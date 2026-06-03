@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.marketplace_metrics import build_snapshot_from_inputs
 from tools.marketplace.programmatic_gate import (
     ProgrammaticVerdictKind,

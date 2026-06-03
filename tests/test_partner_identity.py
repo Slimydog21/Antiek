@@ -19,7 +19,6 @@ from substrate.cross_graph.partner_identity import (
     verify_partner_token,
 )
 
-
 # ── Registry state machine ─────────────────────────────────────────
 
 

@@ -34,7 +34,6 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from substrate.books.personal_space import (  # noqa: E402
-    CLUSTER_SIMILARITY_THRESHOLD,
     MATCH_SUGGESTION_THRESHOLD,
     MIN_ASSETS_FOR_CLUSTERING,
     PersonalAsset,
@@ -42,7 +41,6 @@ from substrate.books.personal_space import (  # noqa: E402
     list_personal_assets,
     match_document_to_investigations,
 )
-
 
 # ── A keyword-semantic embedding stub ─────────────────────────────────
 # Fixed term axis: a text's vector is the (normalized) count of each axis term

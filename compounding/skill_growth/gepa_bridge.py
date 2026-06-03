@@ -23,18 +23,17 @@ variant. This matches the existing ``apply_patch_with_gate`` contract.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Sequence
 
-from tools.gepa.pareto_front import ScoreVector, Variant
 from tools.gepa.optimizer import GEPAResult
+from tools.gepa.pareto_front import ScoreVector, Variant
 
 from .gate import (
     PatchDecision,
     PatchOutcome,
     SkillPatchGate,
 )
-
 
 CompositeKeyFn = Callable[[ScoreVector], float]
 """Optional caller-supplied scoring key for ordering Pareto-front
@@ -93,7 +92,7 @@ class GepaToPhase8Bridge:
         baseline_score: float,
         cohort_size: int,
         backtest_fn: Callable[[Variant], float],
-        baseline_variant_id: Optional[str] = None,
+        baseline_variant_id: str | None = None,
     ) -> list[BridgeOutcome]:
         """Walk the Pareto front variants in preference order and
         run each through the Phase 8 gate.
@@ -156,8 +155,8 @@ def bridge_gepa_result_to_phase8(
     baseline_score: float,
     cohort_size: int,
     backtest_fn: Callable[[Variant], float],
-    baseline_variant_id: Optional[str] = None,
-    composite_key: Optional[CompositeKeyFn] = None,
+    baseline_variant_id: str | None = None,
+    composite_key: CompositeKeyFn | None = None,
 ) -> list[BridgeOutcome]:
     """One-shot convenience wrapper. Builds the bridge with the
     supplied gate + composite key and runs ``bridge()``."""

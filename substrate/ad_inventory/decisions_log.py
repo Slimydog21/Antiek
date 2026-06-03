@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
-from .payout import RevShareDecision, RevShareKind
+from .payout import RevShareDecision
 
 
 class DecisionGate(str, enum.Enum):
@@ -62,7 +62,7 @@ class PersistedDecisionRow:
     kind: str
     recipient_ref: str
     amount_usd_cents: int
-    document_id: Optional[str]
+    document_id: str | None
     requires_escrow: bool
     capped_to_daily_limit: bool
     gate_result: str
@@ -138,7 +138,7 @@ def persist_decisions(
     con: Any,
     decisions: list[RevShareDecision],
     *,
-    gate_by_decision: Optional[dict[str, DecisionGate]] = None,
+    gate_by_decision: dict[str, DecisionGate] | None = None,
 ) -> int:
     """Bulk persist. Returns the count of newly-inserted rows
     (existing rows count as 0 — idempotent semantics).

@@ -11,15 +11,15 @@ from __future__ import annotations
 import hashlib
 import os
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Protocol
 
-from .catalog import CatalogEntry, DuckLakeCatalog
+from .catalog import DuckLakeCatalog
 
 
 class ShardingStrategy(Protocol):
     """Resolves user_id → (shard_id, db_path) for a configured root."""
 
-    def shard_id_for(self, user_id: str) -> Optional[str]: ...
+    def shard_id_for(self, user_id: str) -> str | None: ...
     def db_path_for(self, user_id: str, *, root_dir: str) -> str: ...
 
 
@@ -27,7 +27,7 @@ class ShardingStrategy(Protocol):
 class NoSharding:
     """Stage 1 default — flat layout under root_dir."""
 
-    def shard_id_for(self, user_id: str) -> Optional[str]:
+    def shard_id_for(self, user_id: str) -> str | None:
         return None
 
     def db_path_for(self, user_id: str, *, root_dir: str) -> str:
@@ -58,7 +58,7 @@ class HashPrefixSharding:
 def resolve_db_path(
     user_id: str,
     *,
-    catalog: Optional[DuckLakeCatalog] = None,
+    catalog: DuckLakeCatalog | None = None,
     strategy: ShardingStrategy,
     root_dir: str,
 ) -> str:

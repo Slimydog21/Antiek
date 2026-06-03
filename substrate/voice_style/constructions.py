@@ -59,7 +59,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-
 # ── Canonical forbidden constructions (master-spec §5.1) ─────────────
 #
 # One item per slop construction. ``examples`` are the verbatim forbidden

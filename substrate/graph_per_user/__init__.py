@@ -17,19 +17,19 @@ Per master-spec §13.2 + §13.6 + §13.10:
 """
 
 from .key_provider import (
+    InMemoryKeyProvider,
     KeyMaterial,
     KeyProvider,
-    InMemoryKeyProvider,
-    KMSStubKeyProvider,
     KeyProviderError,
+    KMSStubKeyProvider,
 )
 from .lifecycle import (
     PerUserStorage,
     PerUserStorageEvent,
-    create_user_graph,
-    open_user_graph,
     close_user_graph,
+    create_user_graph,
     delete_user_graph,
+    open_user_graph,
 )
 
 __all__ = [

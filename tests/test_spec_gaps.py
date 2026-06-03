@@ -9,14 +9,11 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
 
 import httpx
 import pytest
-
 
 # ── Gap 1: §6.6 — _CURATED_NEWS_TIER_3 lives in substrate.constants ──
 
@@ -37,8 +34,8 @@ class TestGap1_TierAllowlistInSubstrate:
         """The adapter's tier heuristic MUST consult the substrate-level
         allowlist, not a local copy. This test fails if a future edit
         re-introduces a private allowlist in the adapter module."""
-        from substrate.constants import CURATED_NEWS_TIER_3 as substrate_set
         from acquisition.search.exa.adapter import _CURATED_NEWS_TIER_3 as adapter_ref
+        from substrate.constants import CURATED_NEWS_TIER_3 as substrate_set
         assert adapter_ref is substrate_set
 
 
@@ -60,6 +57,7 @@ class TestGap2_EscalationReasonCasing:
 
     def test_old_js_detect_lowercase_rejected(self):
         from pydantic import ValidationError
+
         from substrate.schemas.events import FetchFallbackEscalatedPayload
         with pytest.raises(ValidationError):
             FetchFallbackEscalatedPayload(
@@ -120,6 +118,7 @@ class TestGap4_ProviderSpecificDict:
 
     def test_payload_roundtrips_through_typed_union(self):
         from pydantic import TypeAdapter
+
         from substrate.schemas.events import DiscoveryProposedPayload, TypedPayload
         p = DiscoveryProposedPayload(
             discovery_id="d", provider="exa", query="q", url="u",
@@ -144,7 +143,7 @@ class TestGap5_CombinedAcquisitionBudget:
 
     @staticmethod
     def _write_budget(d: Path, prov: str, spent: float):
-        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        stamp = datetime.now(UTC).strftime("%Y-%m-%d")
         (d / f"{prov}_{stamp}.json").write_text(json.dumps({
             "date_stamp": stamp, "spent_usd": spent,
         }))
@@ -387,7 +386,7 @@ class TestGap8_RetentionAndRollup:
     @staticmethod
     def _write_old_events(events_dir: Path, *, days_ago: int = 45, n: int = 3,
                           provider: str = "exa", query: str = "old query"):
-        ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).replace(tzinfo=None).isoformat() + "Z"
+        ts = (datetime.now(UTC) - timedelta(days=days_ago)).replace(tzinfo=None).isoformat() + "Z"
         path = events_dir / f"inv-{days_ago}d.jsonl"
         lines = []
         for i in range(n):
@@ -432,8 +431,8 @@ class TestGap8_RetentionAndRollup:
         from acquisition.search.retention import rollup_expired
         # Mostly-old file but one event is recent — must skip the whole file
         # so we don't lose data on a future re-rollup.
-        recent_ts = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() + "Z"
-        old_ts = (datetime.now(timezone.utc) - timedelta(days=45)).replace(tzinfo=None).isoformat() + "Z"
+        recent_ts = datetime.now(UTC).replace(tzinfo=None).isoformat() + "Z"
+        old_ts = (datetime.now(UTC) - timedelta(days=45)).replace(tzinfo=None).isoformat() + "Z"
         f = isolated["events_dir"] / "mixed.jsonl"
         f.write_text(
             json.dumps({"action_type": "discovery.proposed", "emitted_at": old_ts,
@@ -466,7 +465,7 @@ class TestGap8_RetentionAndRollup:
 
     def test_rollup_handles_selected_events(self, isolated):
         from acquisition.search.retention import recent_summary, rollup_expired
-        old_ts = (datetime.now(timezone.utc) - timedelta(days=45)).replace(tzinfo=None).isoformat() + "Z"
+        old_ts = (datetime.now(UTC) - timedelta(days=45)).replace(tzinfo=None).isoformat() + "Z"
         f = isolated["events_dir"] / "selected.jsonl"
         f.write_text(
             json.dumps({"action_type": "discovery.proposed", "emitted_at": old_ts,

@@ -11,7 +11,7 @@ proceed in parallel.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class ArchivedSynthesis:
     synthesis_timestamp: str
     target_question: str
     status: str
-    implicit_recommendation: Optional[str]
+    implicit_recommendation: str | None
     substrate_manifest: dict[str, Any] = field(default_factory=dict)
     substrate_manifest_counts: dict[str, int] = field(default_factory=dict)
 
@@ -35,7 +35,7 @@ class SupersededEdge:
     """One cited edge that has since been superseded."""
 
     edge_id: str
-    superseded_by: Optional[str]
+    superseded_by: str | None
     valid_until: str
     source: str
     target: str
@@ -62,7 +62,7 @@ class BacktestReport:
     synthesis_timestamp: str
     target_question: str
     status: str
-    implicit_recommendation: Optional[str]
+    implicit_recommendation: str | None
     substrate_manifest_counts: dict[str, int]
     added_edges_since: int
     superseded_edges_since: int

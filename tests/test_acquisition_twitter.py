@@ -5,8 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
 
 import pytest
 
@@ -24,7 +23,7 @@ from acquisition.twitter import (
 
 
 class _StubEmbedder:
-    def encode(self, text: str) -> List[float]:
+    def encode(self, text: str) -> list[float]:
         h = abs(hash(text)) % 64
         v = [0.0] * 16
         v[h % 16] = 1.0
@@ -53,14 +52,14 @@ def _two_tweet_thread() -> TwitterThread:
                 text="This is the first substantive tweet about substrate compounding.",
                 author_handle="foo",
                 author_verified=True,
-                posted_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+                posted_at=datetime(2026, 5, 18, tzinfo=UTC),
             ),
             Tweet(
                 tweet_id="1235",
                 text="And here is the reply explaining the multiplicative dynamics.",
                 author_handle="foo",
                 reply_to="1234",
-                posted_at=datetime(2026, 5, 18, 0, 1, tzinfo=timezone.utc),
+                posted_at=datetime(2026, 5, 18, 0, 1, tzinfo=UTC),
             ),
         ],
     )
