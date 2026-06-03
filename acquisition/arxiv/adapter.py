@@ -53,6 +53,10 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    import httpx
 
 logger = logging.getLogger("acquisition.arxiv.adapter")
 
@@ -82,10 +86,17 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import ArxivPaper
-from .licenses import license_basis_string, resolve_license
+from .client import ArxivPaper  # noqa: E402  # sys.path bootstrap
+from .licenses import (  # noqa: E402  # sys.path bootstrap
+    license_basis_string,
+    resolve_license,
+)
 
 # Tier policy: arXiv preprints are academic but unrefereed → tier 3.
 # Tier 1 = peer-reviewed primary; Tier 5 = uncited social. The
@@ -247,6 +258,11 @@ def ingest_paper(
             },
             on_conflict="ignore",
         )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.ACADEMIC_PREPRINT,
+        )
 
         for i, chunk in enumerate(chunks):
             chunk_id = insert_chunk(
@@ -339,8 +355,6 @@ def _default_fetch_pdf(arxiv_id: str) -> bytes:
     errors propagate so the batch records a per-item failure and continues
     rather than ingesting an empty document.
     """
-    import httpx
-
     from .client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT
     from .rate_governor import (
         arxiv_governed_client,
@@ -366,7 +380,10 @@ def _default_fetch_pdf(arxiv_id: str) -> bytes:
 
         # Host-global rate gate: the send happens inside the governor's flock so
         # this fetch serializes against every other arXiv job on the box.
-        r = governed_request(_send, throttle=throttle)
+        # ``governed_request`` returns the exact object ``_send`` produced (an
+        # ``httpx.Response``); its ``_ResponseLike`` return annotation erases the
+        # concrete type, so narrow it back to read ``.content`` / status.
+        r = cast("httpx.Response", governed_request(_send, throttle=throttle))
     r.raise_for_status()
     return r.content
 

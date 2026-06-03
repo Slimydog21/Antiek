@@ -97,7 +97,9 @@ def test_default_policy_excludes_restricted(db_with_chunks):
     assert "doc-restricted" not in doc_ids, (
         "default policy_tag exposed restricted content; legal gate broken"
     )
-    # Legacy null-content_class is grandfathered (passes the gate).
+    # NULL content_class is grandfathered (legacy rows stay searchable); the
+    # SR-07 fail-closed flip was rejected for #65 — new ingest writes an explicit
+    # class via register_source_document, so NULL denotes only legacy content.
     assert "doc-legacy" in doc_ids
     # Public + licensed both pass.
     assert "doc-public" in doc_ids

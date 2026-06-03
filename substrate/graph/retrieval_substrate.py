@@ -29,11 +29,11 @@ What's here:
   spike modules referenced by the SPR-05 decision record.
 
 §9.0 gate (CRITICAL — composed, never re-implemented): every impl delegates
-the non-privileged chunk gate to the *same* canonical helper as ``search()`` —
-``retrieval_gate.non_privileged_chunk_sql_clause`` (BruteForce via ``search()``;
-VSS via the same helper in ``_vss_query``). Never hand-roll
-``RESTRICTED_CONTENT_CLASSES`` alone; owner-only ``personal_reading`` is
-excluded on the same branch as gated-but-public ``restricted_pending_opt_in``.
+the restricted-content gate to the *same* ``search()`` call (or, for VSS, the
+*same* ``retrieval_gate.non_privileged_chunk_sql_clause`` helper that
+``search()`` applies). On non-privileged paths the gate is a fail-closed DENYLIST
+(``content_class NOT IN (...)``; NULL excluded). This seam composes the
+canonical ``retrieval_gate`` helper; it does not re-implement gate SQL.
 
 §16 single-writer (CRITICAL): no substrate is a writer. Every impl reads
 through a read-only connection (``runtime.db_lock.connect_read``); the
@@ -42,6 +42,7 @@ non-default adapters MUST open read-only and change no row count.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
@@ -58,7 +59,9 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+    from substrate.graph.retrieval_gate import (
+        non_privileged_chunk_sql_clause,
+    )
     from substrate.graph.search import (
         EmbeddingModel,
         search,
@@ -66,11 +69,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 try:
-    from ...runtime.db_lock import connect_read  # type: ignore[import-not-found]
+    from ...runtime.db_lock import connect_read
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read
+    from runtime.db_lock import connect_read  # type: ignore[no-redef]
 
 
 _log = logging.getLogger("antiek.retrieval_substrate")
@@ -106,7 +109,7 @@ class RetrievalSubstrate(Protocol):
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict[str, Any]: ...
+    ) -> dict: ...
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +144,7 @@ class BruteForceSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict[str, Any]:
+    ) -> dict:
         return search(
             self._con,
             text,
@@ -153,8 +156,6 @@ class BruteForceSubstrate:
         )
 
     def close(self) -> None:
-        import contextlib
-
         with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
 
@@ -433,7 +434,7 @@ class DuckDbVssSubstrate:
         if source_tier_max is not None:
             sql += " AND d.source_tier <= ?"
             params.append(int(source_tier_max))
-        # §9.0 gate — same canonical helper as search(); never RESTRICTED-only.
+        # §9.0 gate — composed from retrieval_gate (same helper as search()).
         gate_sql, gate_params = non_privileged_chunk_sql_clause(
             table_alias="d",
             policy_tag=policy_tag,
@@ -469,8 +470,6 @@ class DuckDbVssSubstrate:
         }
 
     def close(self) -> None:
-        import contextlib
-
         with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
 

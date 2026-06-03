@@ -32,6 +32,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -42,9 +43,13 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import (
+from .client import (  # noqa: E402  # sys.path bootstrap
     Episode,
     Podcast,
     fetch_episode_transcript,
@@ -205,6 +210,12 @@ def ingest_podcast_episode(
                 "duration_seconds": episode.duration_seconds,
             },
             on_conflict="ignore",
+        )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.WEB,
+            content_class=PERSONAL_READING_CONTENT_CLASS,
         )
         for i, chunk in enumerate(chunks):
             chunk_id = insert_chunk(

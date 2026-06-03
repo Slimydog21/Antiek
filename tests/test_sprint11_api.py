@@ -219,7 +219,8 @@ def test_get_chunk_personal_reading_withholds_body(temp_substrate):
     client = _client(temp_substrate)
     body = client.get(f"/chunks/{chunk_id}").json()
     assert body["servable"] is False
-    assert body["servability"] == "personal_only"
+    # Canonical ASR SR-09 label (consolidation unified #53's "personal_only").
+    assert body["servability"] == "personal_readable"
     assert body["text"] == ""
     assert "SECRET" not in body["text"]
     assert body["document_title"] == "Title of doc-personal"

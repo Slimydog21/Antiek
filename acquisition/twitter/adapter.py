@@ -21,6 +21,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,6 +47,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_chunk,
     insert_document,
     insert_node,
+)
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
@@ -267,7 +272,13 @@ def ingest_twitter_thread(
             },
             on_conflict="ignore",
         )
-        for i, (chunk, tw) in enumerate(zip(chunks, thread.tweets)):
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.USER_CONTENT,
+            content_class=content_class,
+        )
+        for i, (chunk, tw) in enumerate(zip(chunks, thread.tweets, strict=True)):
             chunk_id = insert_chunk(
                 con,
                 document_id=document_id,
@@ -315,7 +326,7 @@ def ingest_twitter_thread(
 
 
 def ingest_thread_payload(
-    payload: dict,
+    payload: dict[str, Any],
     *,
     investigation_id: str,
     content_class: str = PERSONAL_READING_CONTENT_CLASS,

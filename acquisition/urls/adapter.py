@@ -52,13 +52,20 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 from substrate.schemas.events import (  # noqa: E402
     FetchFallbackEscalatedPayload,
 )
 
-from .client import FetchedHtml, fetch
-from .extract import MarkdownDoc, html_to_markdown
+from .client import FetchedHtml, fetch  # noqa: E402  # sys.path bootstrap
+from .extract import (  # noqa: E402  # sys.path bootstrap
+    MarkdownDoc,
+    html_to_markdown,
+)
 
 DEFAULT_URL_SOURCE_TIER = 4
 _NODE_LABEL_MAX = 160
@@ -122,7 +129,8 @@ def lookup_url_alias(
         con.close()
     if not rows:
         return None
-    return rows[0][0]
+    # DuckDB fetchall() returns Any-typed cells; document_id is a TEXT column.
+    return str(rows[0][0])
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +391,12 @@ def ingest_url(
                 "fetched_at": datetime.now(UTC).isoformat(),
             },
             on_conflict=insert_on_conflict,
+        )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.WEB,
+            content_class=PERSONAL_READING_CONTENT_CLASS,
         )
         # Spec §14.2 — record the requested_url→document_id alias so
         # future fetches that resolve to a different final_url for

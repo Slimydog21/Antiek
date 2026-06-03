@@ -182,7 +182,9 @@ def test_get_chunk_withholds_personal_reading_body(gate_closure_db, monkeypatch)
     client = TestClient(app)
     body = client.get(f"/chunks/{gate_closure_db['personal_chunk_id']}").json()
     assert body["servable"] is False
-    assert body["servability"] == "personal_only"
+    # Canonical ASR SR-09 label (consolidation: #53's "personal_only" unified to
+    # the ASR contract, pinned by test_get_chunk_personal_reading + the matrix).
+    assert body["servability"] == "personal_readable"
     assert body["text"] == ""
     assert TEXT_PERSONAL not in body["text"]
     assert body["document_id"] == DOC_PERSONAL

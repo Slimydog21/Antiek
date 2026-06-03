@@ -225,7 +225,7 @@ class LockedConnection:
         self.close()
         return False
 
-    def close(self):
+    def close(self) -> None:
         if self._closed:
             return
         self._closed = True

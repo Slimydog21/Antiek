@@ -20,10 +20,12 @@ Wire into CI as::
 
 Exit codes:
     0 — every contract conforms (real impl or stub) AND the sprint-lock
-        resolves every downstream citation (clean).
+        resolves every downstream citation AND chunk provenance policy is
+        aligned (``personal_reading`` non-citable; clean).
     1 — a contract divergence (a product forked a contract) OR a sprint-lock
-        drift (a cited DRW sprint no longer resolves). The owning sprint fixes
-        it; this gate just makes it loud.
+        drift (a cited DRW sprint no longer resolves) OR a chunk-provenance
+        policy drift (e.g. ``personal_reading`` marked citable). The owning
+        sprint fixes it; this gate just makes it loud.
     2 — the conformance registry itself is malformed (a programming error in
         this gate — fix before trusting it).
 
@@ -72,6 +74,7 @@ from substrate.contracts import (  # noqa: E402
     verify_citations_resolve,
     verify_conformance,
 )
+from tools.codegen.chunk_provenance import provenance_policy_errors  # noqa: E402
 
 # ── The conformance registry ─────────────────────────────────────────────────
 # One row per SPR-01 contract. ``conformer`` is the live implementation class
@@ -241,6 +244,12 @@ def sprint_lock_errors() -> list[str]:
     return list(verify_citations_resolve())
 
 
+def chunk_provenance_errors() -> list[str]:
+    """ASR SR-09 P5: ``personal_reading`` chunks/documents stay non-citable and
+    aligned with retrieval / attribution / public-graph vocabularies."""
+    return provenance_policy_errors()
+
+
 def run_gate() -> int:
     """Run the whole conformance gate. Returns the process exit code."""
     coverage = registry_coverage_errors()
@@ -253,6 +262,7 @@ def run_gate() -> int:
 
     conform = conformance_errors()
     lock = sprint_lock_errors()
+    provenance = chunk_provenance_errors()
 
     if conform:
         print("FAIL [conformance]: a product forked a contract:", file=sys.stderr)
@@ -263,8 +273,16 @@ def run_gate() -> int:
               file=sys.stderr)
         for e in lock:
             print(f"  - {e}", file=sys.stderr)
+    if provenance:
+        print(
+            "FAIL [provenance]: chunk citation policy drift "
+            "(personal_reading must stay non-citable):",
+            file=sys.stderr,
+        )
+        for e in provenance:
+            print(f"  - {e}", file=sys.stderr)
 
-    if conform or lock:
+    if conform or lock or provenance:
         return 1
 
     real = sum(1 for r in _CONFORMANCE_REGISTRY if r.is_real)
@@ -272,7 +290,8 @@ def run_gate() -> int:
     print(
         f"OK: {len(_CONFORMANCE_REGISTRY)} contracts conform "
         f"({real} real impl, {stub} stub); DRW sprint-lock resolves every "
-        f"downstream citation."
+        f"downstream citation; chunk provenance policy aligned "
+        f"(personal_reading non-citable)."
     )
     return 0
 

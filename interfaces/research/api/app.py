@@ -29,9 +29,18 @@ generated types in ``apps/reading/src/generated/types.ts`` (produced by
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
-from typing import Annotated, Literal, cast
+from collections.abc import Awaitable, Callable
+from datetime import UTC
+from typing import TYPE_CHECKING, Annotated, Any, Literal
+
+if TYPE_CHECKING:
+    from substrate.attribution.compute import AttributionResult
+    from substrate.auth import SessionClaims
+    from substrate.ip_holders import IpHolder
+    from substrate.notebooks import Notebook
 
 from fastapi import (
     Body,
@@ -39,6 +48,7 @@ from fastapi import (
     HTTPException,
     Query,
     Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -49,8 +59,6 @@ from pydantic import BaseModel, Field
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
-
-from datetime import UTC
 
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -264,8 +272,9 @@ class ChunkResponse(BaseModel):
     so the reader's "open this source" affordance and the data layer
     cannot disagree. The gate applied here is the SAME one
     ``substrate/graph/search.py`` applies to chunk retrieval on a
-    non-privileged path: content in ``RESTRICTED_CONTENT_CLASSES``
-    (restricted-pending-opt-in) or under a takedown is withheld; a NULL /
+    non-privileged path: content in the canonical non-privileged denylist
+    (``restricted_pending_opt_in`` + ``personal_reading`` via
+    ``retrieval_gate``) or under a takedown is withheld; a NULL /
     legacy research chunk passes (grandfathered) exactly as it does in
     chunk search — this is the operator reading their own research
     chunks, not the public "Spotify for books" full-text serve path
@@ -422,7 +431,7 @@ class InvestigationStatusResponse(BaseModel):
     status: str
     current_phase: int | None = None
     last_delivered_action_type: str | None = None
-    terminal_payload: dict | None = None
+    terminal_payload: dict[str, Any] | None = None
     rubric_score: RubricScore | None = None
     # SPR-01 M3: the curated fast/deep research tier recorded on this
     # investigation's start event ("fast" → MiMo V2.5 Pro, "deep" →
@@ -482,7 +491,7 @@ class SectionResponse(BaseModel):
     section_index: int
     title: str | None
     prose_text: str | None
-    prose_provenance: dict | None
+    prose_provenance: dict[str, Any] | None
     block_count: int = 0
 
 
@@ -787,7 +796,7 @@ def _detect_source_kind(
     return "url"
 
 
-def _rubric_score_from_trajectory(rows: list[dict]) -> RubricScore | None:
+def _rubric_score_from_trajectory(rows: list[dict[str, Any]]) -> RubricScore | None:
     """READ the §14.4 inline-rubric verdict from a trajectory (SPR-11 M3).
 
     Walks newest-first for the most recent ``rubric.scored`` event and
@@ -822,7 +831,7 @@ def _rubric_score_from_trajectory(rows: list[dict]) -> RubricScore | None:
         notes = payload.get("notes")
         notes_str = notes if isinstance(notes, str) else ""
 
-        def _sub(key: str) -> float | None:
+        def _sub(key: str, notes_str: str = notes_str) -> float | None:
             m = re.search(rf"\b{re.escape(key)}=([01](?:\.\d+)?)", notes_str)
             if not m:
                 return None
@@ -874,7 +883,7 @@ def _extract_arxiv_id(url: str) -> str | None:
 class PublisherCreateRequest(BaseModel):
     display_name: str
     legal_contact_email: str | None = None
-    metadata: dict = {}
+    metadata: dict[str, Any] = {}
 
 
 class NotebookCreateRequest(BaseModel):
@@ -886,7 +895,7 @@ class NotebookCreateRequest(BaseModel):
 
 class NotebookAppendBlockRequest(BaseModel):
     block_type: str
-    content: dict
+    content: dict[str, Any]
     ref_id: str | None = None
 
 
@@ -906,7 +915,7 @@ class NotebookPutContentRequest(BaseModel):
     localStorage-only persistence.
     """
 
-    doc: dict
+    doc: dict[str, Any]
 
 
 class AIUndoRequest(BaseModel):
@@ -929,7 +938,7 @@ class NotebookUpdateBlockRequest(BaseModel):
       - ``clear_ref_id=True`` → NULL the column
     """
 
-    content: dict | None = None
+    content: dict[str, Any] | None = None
     ref_id: str | None = None
     clear_ref_id: bool = False
 
@@ -1027,10 +1036,10 @@ class OutcomeRecordRequest(BaseModel):
 
     synthesis_id: str
     observer: str = "__operator__"
-    thesis_outcomes: list[dict] = []
-    falsification_outcomes: list[dict] = []
-    execution_risk_outcomes: list[dict] = []
-    decision_alignment: dict | None = None
+    thesis_outcomes: list[dict[str, Any]] = []
+    falsification_outcomes: list[dict[str, Any]] = []
+    execution_risk_outcomes: list[dict[str, Any]] = []
+    decision_alignment: dict[str, Any] | None = None
     notes: str | None = None
 
 
@@ -1192,7 +1201,10 @@ def create_app(
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
     @app.middleware("http")
-    async def _operator_auth_middleware(request, call_next):
+    async def _operator_auth_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
         operator_emails = frozenset(p.strip().lower() for p in os.environ.get(_OPERATOR_EMAIL_ENV, "").split(",") if p.strip())
         expected_st_client_id = os.environ.get(
@@ -1229,7 +1241,9 @@ def create_app(
         # request.state. (Endpoint-side calls back into operator_claims()
         # are still safe; they fall through to the static operator
         # identity when state is absent.)
-        def _attach_operator(req, *, method: str, email: str | None = None):
+        def _attach_operator(
+            req: Request, *, method: str, email: str | None = None
+        ) -> None:
             from substrate.multi_user.auth import operator_claims as _oc
             claims = _oc()
             req.state.user_id = claims.user_id
@@ -1245,18 +1259,19 @@ def create_app(
         if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
+                cookie_claims: SessionClaims | None
                 try:
-                    from substrate.auth import SessionClaims, verify_session_cookie
-                    claims = verify_session_cookie(session_value)
+                    from substrate.auth import verify_session_cookie
+                    cookie_claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
-                    claims = None
-                if claims is not None:
-                    cookie_email = cast(SessionClaims, claims).email.strip().lower()
+                    cookie_claims = None
+                if cookie_claims is not None:
+                    cookie_email = cookie_claims.email.strip().lower()
                     if not operator_emails or cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
-                            email=cast(SessionClaims, claims).email,
+                            email=cookie_claims.email,
                         )
                         return await call_next(request)
 
@@ -1714,7 +1729,7 @@ def create_app(
         )
 
     @app.get("/.well-known/mcp-tools.json", tags=["mcp"])
-    async def mcp_well_known_manifest() -> dict:
+    async def mcp_well_known_manifest() -> dict[str, Any]:
         """Antiek Memory MCP server tool manifest (§13.8 rug-pull
         defense). Clients fetch this from
         ``https://api.antiek.ai/.well-known/mcp-tools.json`` and
@@ -1731,7 +1746,7 @@ def create_app(
     async def get_trajectory(
         investigation_id: str,
         limit: Annotated[int | None, Query(ge=1, le=10_000)] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         rows = trajectory(investigation_id)
         if limit is not None:
             rows = rows[-limit:]
@@ -1807,7 +1822,7 @@ def create_app(
         # Non-fatal if it fails; the start event already encodes the
         # lineage in its own payload.
         if req.parent_investigation_id:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
                 emit_typed(
                     investigation_id,
                     InvestigationSpawnedFromPayload(
@@ -1818,8 +1833,6 @@ def create_app(
                     policy_id="operator-cli",
                     parent_event_id=event_id,
                 )
-            except Exception:  # pragma: no cover — diagnostic
-                pass
 
         # Broadcast the start event so the orchestrator handler
         # subscribed to it spawns the per-investigation coroutine.
@@ -1864,7 +1877,7 @@ def create_app(
         # and any terminal verdict.
         last_phase: int | None = None
         last_delivered: str | None = None
-        terminal_row: dict | None = None
+        terminal_row: dict[str, Any] | None = None
 
         for r in reversed(rows):
             at = r.get("action_type")
@@ -2031,9 +2044,8 @@ def create_app(
             for r in rows:
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
-                if at in (start_action, spawned_action):
-                    if policy_is_daemon(r.get("policy_id")):
-                        spawned_by_daemon = True
+                if at in (start_action, spawned_action) and policy_is_daemon(r.get("policy_id")):
+                    spawned_by_daemon = True
                 if at in (start_action, spawned_action, completed_action,
                           failed_action, halted_action):
                     saw_own_lifecycle = True
@@ -2078,10 +2090,8 @@ def create_app(
                     terminal_status = "stopped"
                     completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
-                    except (TypeError, ValueError):
-                        pass
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -2144,8 +2154,9 @@ def create_app(
         modal + SPR-04's named-source render to surface the chunk text +
         source document title for any cited chunk_id.
 
-        §9.0 retrieval gate: a chunk whose source is RESTRICTED
-        (content_class in ``RESTRICTED_CONTENT_CLASSES``) or under a
+        §9.0 retrieval gate: a chunk whose source is on the canonical
+        non-privileged denylist (``retrieval_gate`` union:
+        ``restricted_pending_opt_in`` + ``personal_reading``) or under a
         takedown has its body WITHHELD here, at the query layer — the
         same gate ``substrate/graph/search.py`` applies to chunk
         retrieval — so a frontend that calls this directly still cannot
@@ -2203,8 +2214,9 @@ def create_app(
 
         content_class = row[7]
         taken_down = bool(row[8])
-        # Takedown wins over everything; otherwise withhold only the
-        # non-privileged excluded classes (NULL/legacy passes — search).
+        # Takedown wins over everything; otherwise delegate to the single
+        # canonical helper (RG-04 forbids reimplementing the denylist here).
+        # NULL/unknown fails closed (SR-07), consistent with the search path.
         withheld, label = is_chunk_body_withheld(content_class, taken_down=taken_down)
         if withheld:
             servable, label = False, label
@@ -2267,45 +2279,51 @@ def create_app(
                     raise ValueError(
                         f"arXiv paper {arxiv_id!r} not found"
                     )
-                kwargs = {"investigation_id": req.investigation_id}
+                arxiv_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id
+                }
                 if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                r = _ip(paper, **kwargs)
+                    arxiv_kwargs["source_tier"] = req.source_tier
+                arxiv_r = _ip(paper, **arxiv_kwargs)
                 return IngestSourceResponse(
-                    status="ingested" if r.chunks_written > 0 else "skipped",
+                    status=(
+                        "ingested" if arxiv_r.chunks_written > 0 else "skipped"
+                    ),
                     detected_kind="arxiv",
-                    document_id=r.document_id,
-                    document_loaded_event_id=r.document_loaded_event_id,
-                    chunks_written=r.chunks_written,
+                    document_id=arxiv_r.document_id,
+                    document_loaded_event_id=arxiv_r.document_loaded_event_id,
+                    chunks_written=arxiv_r.chunks_written,
                     title=paper.title,
                 )
             if detected == "youtube":
                 from acquisition.youtube import ingest_youtube
-                kwargs = {"investigation_id": req.investigation_id}
+                yt_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id
+                }
                 if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                r = ingest_youtube(req.url, **kwargs)
+                    yt_kwargs["source_tier"] = req.source_tier
+                yt_r = ingest_youtube(req.url, **yt_kwargs)
                 return IngestSourceResponse(
                     status=(
-                        "ingested" if r.chunks_written > 0
+                        "ingested" if yt_r.chunks_written > 0
                         else "skipped"
                     ),
                     detected_kind="youtube",
-                    document_id=r.document_id,
-                    document_loaded_event_id=r.document_loaded_event_id,
-                    chunks_written=r.chunks_written,
-                    skipped_reason=r.skipped_reason,
-                    title=r.title,
+                    document_id=yt_r.document_id,
+                    document_loaded_event_id=yt_r.document_loaded_event_id,
+                    chunks_written=yt_r.chunks_written,
+                    skipped_reason=yt_r.skipped_reason,
+                    title=yt_r.title,
                 )
             if detected == "podcast":
                 from acquisition.podcasts import ingest_feed
-                kwargs = {
+                podcast_kwargs: dict[str, Any] = {
                     "investigation_id": req.investigation_id,
                     "max_episodes": req.max_episodes,
                 }
                 if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                results = ingest_feed(req.url, **kwargs)
+                    podcast_kwargs["source_tier"] = req.source_tier
+                results = ingest_feed(req.url, **podcast_kwargs)
                 ingested = sum(1 for r in results if r.chunks_written > 0)
                 total_chunks = sum(r.chunks_written for r in results)
                 # Report the most recent ingested episode's title as
@@ -2343,21 +2361,23 @@ def create_app(
                 )
             if detected == "url":
                 from acquisition.urls import ingest_url
-                kwargs = {"investigation_id": req.investigation_id}
+                url_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id
+                }
                 if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                r = ingest_url(req.url, **kwargs)
+                    url_kwargs["source_tier"] = req.source_tier
+                url_r = ingest_url(req.url, **url_kwargs)
                 return IngestSourceResponse(
                     status=(
-                        "ingested" if r.chunks_written > 0
+                        "ingested" if url_r.chunks_written > 0
                         else "skipped"
                     ),
                     detected_kind="url",
-                    document_id=r.document_id,
-                    document_loaded_event_id=r.document_loaded_event_id,
-                    chunks_written=r.chunks_written,
-                    skipped_reason=r.skipped_reason,
-                    title=r.title,
+                    document_id=url_r.document_id,
+                    document_loaded_event_id=url_r.document_loaded_event_id,
+                    chunks_written=url_r.chunks_written,
+                    skipped_reason=url_r.skipped_reason,
+                    title=url_r.title,
                 )
             raise ValueError(f"unsupported source kind: {detected!r}")
         except Exception as exc:
@@ -2505,7 +2525,7 @@ def create_app(
         )
 
     @app.post("/sections/attach-block", status_code=202)
-    async def post_attach_block(req: AttachBlockRequest) -> dict:
+    async def post_attach_block(req: AttachBlockRequest) -> dict[str, Any]:
         from runtime.db_lock import connect_write
         from substrate.graph.ops import attach_block_to_section
 
@@ -2573,7 +2593,7 @@ def create_app(
         return BlockSearchResponse(count=len(hits), hits=hits)
 
     @app.post("/sections/reorder-block", status_code=202)
-    async def post_reorder_block(req: ReorderBlockRequest) -> dict:
+    async def post_reorder_block(req: ReorderBlockRequest) -> dict[str, Any]:
         """Move a block within a section, or to a new section.
 
         Implementation note: section_blocks has a composite PK
@@ -2792,7 +2812,7 @@ def create_app(
             # verbatim (Substack's editor renders them correctly) and
             # use ``> `` blockquote for the deliverable kind label so
             # Substack's reader UI distinguishes metadata from prose.
-            lines: list[str] = [f"> _{kind}_", ""]
+            lines = [f"> _{kind}_", ""]
             for idx, sec_title, prose in secs:
                 lines.append(f"## {sec_title or f'Section {idx + 1}'}")
                 lines.append("")
@@ -2804,7 +2824,8 @@ def create_app(
                 filename=f"{deliverable_id}.substack.md",
             )
         if format == "html":
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s: str | None) -> str:
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             parts = [
                 "<!doctype html>",
                 f"<html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>",
@@ -2835,7 +2856,8 @@ def create_app(
             # rather than crashing on import — operator installs via
             # ``pip install -e '.[export]'`` and retries.
             try:
-                from xhtml2pdf import pisa  # type: ignore[import-untyped]
+                # optional 'export' extra; not installed in the lint env
+                from xhtml2pdf import pisa  # type: ignore[import-not-found]
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -2846,7 +2868,8 @@ def create_app(
                 ) from e
             import base64
             import io
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s: str | None) -> str:
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             # Researcher's-notebook print stylesheet per master-spec §5.
             # Serif body font; generous line-height; no SaaS-dashboard
             # primary blues; @page margins set for A4 with title block.
@@ -2895,7 +2918,8 @@ def create_app(
             # nav.xhtml. Base64-encoded bytes follow the same pattern
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
-                from ebooklib import epub  # type: ignore[import-untyped]
+                # optional 'export' extra; not installed in the lint env
+                from ebooklib import epub  # type: ignore[import-not-found]
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -2906,7 +2930,8 @@ def create_app(
                 ) from e
             import base64
             import tempfile
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s: str | None) -> str:
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             book = epub.EpubBook()
             book.set_identifier(deliverable_id)
             book.set_title(title)
@@ -2947,10 +2972,8 @@ def create_app(
                     epub_bytes = fh.read()
             finally:
                 import os
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
             return ExportFormat(
                 format="epub",
                 content=base64.b64encode(epub_bytes).decode("ascii"),
@@ -3127,9 +3150,11 @@ def create_app(
                 synthesis_id, emit_event=emit_event,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc))
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-        def _to_resp(algo, result) -> AttributionAlgorithmShares:
+        def _to_resp(
+            algo: Literal["A", "B", "C"], result: AttributionResult
+        ) -> AttributionAlgorithmShares:
             return AttributionAlgorithmShares(
                 algorithm=algo,
                 shares=dict(result.shares),
@@ -3330,10 +3355,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="interview not found")
         guide = {}
         if row[7]:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 guide = _json.loads(row[7])
-            except (ValueError, TypeError):
-                pass
         turns = []
         if row[4]:
             try:
@@ -3374,7 +3397,7 @@ def create_app(
                     text=req.text,
                 )
             except ValueError as exc:
-                raise HTTPException(status_code=404, detail=str(exc))
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
             (status,) = con.execute(
                 "SELECT status FROM interviews WHERE interview_id = ?",
                 [interview_id],
@@ -3645,7 +3668,7 @@ def create_app(
 
         # Emit the escalation event into the SOURCE investigation so
         # subsequent /watch-for-later calls correctly hide this question.
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
             emit_typed(
                 found_source_inv,
                 QuestionEscalatedToResearchPayload(
@@ -3655,8 +3678,6 @@ def create_app(
                 role="operator",
                 policy_id="operator/brainstorm",
             )
-        except Exception:  # pragma: no cover — diagnostic
-            pass
 
         # Broadcast the start event so the Loop 1 orchestrator picks it up.
         for row in reversed(trajectory(child_inv_id)):
@@ -3696,7 +3717,7 @@ def create_app(
         count: int
         publishers: list[PublisherResponse]
 
-    def _holder_to_response(h) -> PublisherResponse:  # noqa: ANN001 (internal)
+    def _holder_to_response(h: IpHolder) -> PublisherResponse:
         return PublisherResponse(
             ip_holder_id=h.ip_holder_id,
             display_name=h.display_name,
@@ -3836,7 +3857,7 @@ def create_app(
         block_index: int
         block_type: str
         ref_id: str | None
-        content_json: dict
+        content_json: dict[str, Any]
         created_at: str
 
     class NotebookResponse(BaseModel):
@@ -3853,7 +3874,7 @@ def create_app(
         count: int
         notebooks: list[NotebookResponse]
 
-    def _notebook_to_response(nb) -> NotebookResponse:  # noqa: ANN001
+    def _notebook_to_response(nb: Notebook) -> NotebookResponse:
         return NotebookResponse(
             notebook_id=nb.notebook_id,
             title=nb.title,
@@ -4511,7 +4532,7 @@ def create_app(
 
     class OutcomeListResponse(BaseModel):
         synthesis_id: str
-        outcomes: list[dict]
+        outcomes: list[dict[str, Any]]
 
     @app.post(
         "/outcomes",
@@ -4588,34 +4609,34 @@ def create_app(
                 ThesisOutcome as _TO,
             )
 
-            def _coerce_thesis(items):
-                out: list = []
+            def _coerce_thesis(
+                items: list[dict[str, Any]] | None,
+            ) -> list[Any]:
+                out: list[Any] = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_TO(**item))
-                        except Exception:
-                            pass
                 return out
 
-            def _coerce_falsification(items):
-                out: list = []
+            def _coerce_falsification(
+                items: list[dict[str, Any]] | None,
+            ) -> list[Any]:
+                out: list[Any] = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_FO(**item))
-                        except Exception:
-                            pass
                 return out
 
-            def _coerce_risk(items):
-                out: list = []
+            def _coerce_risk(
+                items: list[dict[str, Any]] | None,
+            ) -> list[Any]:
+                out: list[Any] = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_ERO(**item))
-                        except Exception:
-                            pass
                 return out
 
             decision_alignment_obj: _DA | None = None
@@ -4684,7 +4705,7 @@ def create_app(
         from substrate.graph import default_db_path
 
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if observer is not None:
             clauses.append("observer = ?")
             params.append(observer)
@@ -5016,7 +5037,7 @@ def create_app(
                     "message": str(exc),
                     "valid": [c.value for c in Loop3UnlockCriterion],
                 },
-            )
+            ) from exc
 
         with connect_write(
             default_db_path(), purpose="loop_3:set_criterion",
@@ -5064,7 +5085,7 @@ def create_app(
         from substrate.graph import default_db_path
 
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
@@ -5207,9 +5228,9 @@ def create_app(
         chunks_retired_downward_count: int
         outcomes_recorded: int
         # Detail rows for the UI; clipped to reasonable bounds.
-        cited_edges_now_superseded: list[dict]
-        chunks_retired_downward: list[dict]
-        outcomes: list[dict]
+        cited_edges_now_superseded: list[dict[str, Any]]
+        chunks_retired_downward: list[dict[str, Any]]
+        outcomes: list[dict[str, Any]]
 
     @app.get(
         "/backtest/{synthesis_id}",
@@ -5232,7 +5253,7 @@ def create_app(
             raise HTTPException(
                 status_code=503,
                 detail=f"backtest module unavailable: {exc!r}",
-            )
+            ) from exc
 
         try:
             with connect_read(default_db_path()) as con:
@@ -5241,13 +5262,13 @@ def create_app(
             raise HTTPException(
                 status_code=404,
                 detail=f"synthesis not archived: {exc!r}",
-            )
+            ) from exc
         except Exception as exc:
             # Most likely: synthesis_id doesn't exist in archives.
             raise HTTPException(
                 status_code=404,
                 detail=f"backtest unavailable for {synthesis_id!r}: {exc!r}",
-            )
+            ) from exc
 
         return BacktestReportResponse(
             synthesis_id=report.synthesis_id,
@@ -5284,7 +5305,9 @@ def create_app(
     class DeletionRequestListResponse(BaseModel):
         requests: list[DeletionRequestResponse]
 
-    def _deletion_request_row_to_response(row) -> DeletionRequestResponse:
+    def _deletion_request_row_to_response(
+        row: Any,
+    ) -> DeletionRequestResponse:
         return DeletionRequestResponse(
             request_id=row[0],
             user_id=row[1],
@@ -5516,7 +5539,7 @@ def create_app(
         from substrate.graph import default_db_path
 
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if source_tier is not None:
             clauses.append("source_tier = ?")
             params.append(source_tier)
@@ -5623,7 +5646,7 @@ def create_app(
 
         # Build the WHERE clause from optional filters.
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if domain is not None:
             clauses.append("domain = ?")
             params.append(domain)

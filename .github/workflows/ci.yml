@@ -186,9 +186,11 @@ jobs:
           python tools/lint/serve_invariants_check.py
 
       - name: Retrieval gate drift check
-        # RG-04: forbid RESTRICTED-only chunk-gate reimplementation on the VSS
-        # substrate and GET /chunks — must delegate to retrieval_gate helpers
-        # (non_privileged_chunk_sql_clause / is_chunk_body_withheld).
+        # RG-04 + ASR SR-03: forbid RESTRICTED-only chunk-gate reimplementation
+        # on the VSS substrate and GET /chunks — must delegate to retrieval_gate
+        # helpers (non_privileged_chunk_sql_clause / is_chunk_body_withheld).
+        # Catches VSS + HTTP regressions that omit personal_reading from the
+        # non-privileged denylist.
         run: |
           python tools/lint/retrieval_gate_check.py
 
