@@ -24,28 +24,21 @@ export interface EmittedEventResponse {
 // same-origin (dev-server proxy behavior).
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
 
-// Auth (H4.5): the web app does NOT carry a bearer token. The
-// substrate is gated by Cloudflare Access (configured on
-// app.antiek.ai + api.antiek.ai in the same Access application).
-// When the operator visits app.antiek.ai, Cloudflare prompts for
-// authentication, sets a signed JWT cookie, and AUTOMATICALLY
-// injects ``Cf-Access-Authenticated-User-Email`` into requests
-// from the authenticated browser to any host in the same Access
-// application.
+// Auth: the reading app uses Antiek-issued magic-link sessions, not a
+// bearer token in the JS bundle.
 //
-// The substrate's middleware reads that header and matches against
-// ``ANTIEK_OPERATOR_EMAIL``. No build-time secret; no token in
-// the JS bundle.
+//   POST /auth/request   → email with sign-in link (Resend / AgentMail)
+//   GET  /auth/callback  → 302 + Set-Cookie ANTIEK_SESSION on api host
+//   GET  /auth/me        → session identity when cookie is valid
 //
-// ``credentials: "include"`` is load-bearing: without it,
-// Cloudflare's session cookie does NOT travel cross-origin
-// (app.antiek.ai → api.antiek.ai) and every request 401s.
+// ``credentials: "include"`` is load-bearing: without it, the session
+// cookie does NOT travel cross-origin (antiek.ai → api.antiek.ai) and
+// authenticated API calls 401.
 //
-// Bearer tokens (``ANTIEK_OPERATOR_TOKEN``) still exist server-side
-// for machine callers (smoke runs, probes, CI). Those carry the
-// bearer directly. The web app uses neither.
+// Bearer tokens (``ANTIEK_OPERATOR_TOKEN``) still exist server-side for
+// machine callers (smoke runs, probes, CI). The web app uses neither.
 
-/** Merge caller-supplied headers; auth comes via Cloudflare cookie. */
+/** Merge caller-supplied headers; session auth is cookie-based. */
 function authHeaders(extra?: HeadersInit): Record<string, string> {
   const merged: Record<string, string> = {};
   if (extra) {
@@ -60,7 +53,7 @@ function authHeaders(extra?: HeadersInit): Record<string, string> {
   return merged;
 }
 
-/** ``fetch`` wrapper that sends Cloudflare Access cookies.
+/** ``fetch`` wrapper that sends session cookies (``credentials: include``).
  * Exported for new mode components that need direct API access
  * outside the typed helper functions (e.g. OperatorDashboard,
  * PrivacyDashboard, Notebook). */

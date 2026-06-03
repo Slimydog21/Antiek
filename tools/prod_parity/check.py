@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import urllib.error
@@ -151,7 +152,33 @@ def assert_parity(health: dict, expected_sha: str) -> list[str]:
     return failures
 
 
-def run(url: str, expected_sha: str) -> int:
+def _auth_probe_base_url(cli_url: str) -> str | None:
+    env_base = os.environ.get("ANTIEK_API_BASE", "").strip()
+    if env_base:
+        return env_base.rstrip("/")
+    return cli_url.rstrip("/") if cli_url else None
+
+
+def run_auth_probe(base_url: str, *, origin: str = "https://antiek.ai") -> int:
+    from tools.auth_probe import _DEFAULT_PROBE_EMAIL, run_stages
+
+    results = run_stages(base_url, origin, _DEFAULT_PROBE_EMAIL)
+    for stage in results:
+        print(json.dumps(stage.to_json()))
+    if all(s.pass_ for s in results):
+        print("prod-parity: auth-probe OK — all stages passed")
+        return 0
+    print("prod-parity: auth-probe FAIL — one or more stages failed", file=sys.stderr)
+    return 1
+
+
+def run(
+    url: str,
+    expected_sha: str,
+    *,
+    auth_probe: bool = False,
+    auth_origin: str = "https://antiek.ai",
+) -> int:
     """Fetch + assert; return the process exit code. Pure-enough to call
     from tests (they pass a fake ``url`` or monkeypatch ``fetch_health``)."""
     try:
@@ -170,6 +197,12 @@ def run(url: str, expected_sha: str) -> int:
         f"and the flywheel is live "
         f"(knowledge_reuse_count={health.get('knowledge_reuse_count', 0)})",
     )
+    if auth_probe or os.environ.get("ANTIEK_API_BASE", "").strip():
+        probe_base = _auth_probe_base_url(url)
+        if not probe_base:
+            print("prod-parity: auth-probe skipped — no base URL", file=sys.stderr)
+            return 2
+        return run_auth_probe(probe_base, origin=auth_origin)
     return 0
 
 
@@ -190,6 +223,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Commit SHA the deployed process should report. "
         "Defaults to `git rev-parse origin/main` when omitted.",
     )
+    parser.add_argument(
+        "--auth-probe",
+        action="store_true",
+        help="After parity passes, run tools/auth_probe staged checks.",
+    )
+    parser.add_argument(
+        "--auth-origin",
+        default="https://antiek.ai",
+        help="Origin for auth-probe CORS stage.",
+    )
     args = parser.parse_args(argv)
 
     expected = args.expected_sha
@@ -200,7 +243,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"prod-parity: could not compute expected SHA: {exc}", file=sys.stderr)
             return 2
 
-    return run(args.url, expected)
+    return run(
+        args.url,
+        expected,
+        auth_probe=args.auth_probe,
+        auth_origin=args.auth_origin.strip(),
+    )
 
 
 if __name__ == "__main__":

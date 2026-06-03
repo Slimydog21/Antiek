@@ -37,8 +37,11 @@ from substrate.auth import (
     verify_magic_link_token,
     verify_session_cookie,
 )
+from substrate.auth.magic_link import MAGIC_LINK_TTL_SECONDS
 
 _OPERATOR = "ftn208@nyu.edu"
+_OPERATOR_SECOND = "the@faisalnazer.com"
+_MULTI_OPERATOR_ENV = f"{_OPERATOR},{_OPERATOR_SECOND}"
 _SECRET = "test-secret-" + "x" * 48
 
 
@@ -166,8 +169,39 @@ def test_auth_callback_blocks_open_redirect(monkeypatch):
 def test_auth_callback_rejects_bad_token(monkeypatch):
     client = _client(monkeypatch)
     r = client.get("/auth/callback?token=garbage", follow_redirects=False)
-    assert r.status_code == 400
-    assert r.json()["error"]["code"] == "magic_link_invalid"
+    assert r.status_code == 302
+    assert "login" in r.headers["location"]
+    assert "error=magic_link_invalid" in r.headers["location"]
+
+
+def test_auth_callback_expired_redirects_to_login(monkeypatch):
+    """Expired magic links redirect to Login with magic_link_expired, not JSON 400."""
+    client = _client(monkeypatch)
+    now = int(time.time())
+    expired_at = now - MAGIC_LINK_TTL_SECONDS - 60
+    monkeypatch.setattr("substrate.auth.magic_link.time.time", lambda: expired_at)
+    tok = mint_magic_link_token(_OPERATOR)
+    monkeypatch.setattr("substrate.auth.magic_link.time.time", lambda: now)
+    r = client.get(f"/auth/callback?token={tok}&next=/inv/abc", follow_redirects=False)
+    assert r.status_code == 302
+    loc = r.headers["location"]
+    assert "login" in loc
+    assert "error=magic_link_expired" in loc
+
+
+def test_auth_callback_error_redirect_blocks_open_redirect_next(monkeypatch):
+    """Error redirects sanitize ``next`` — external URLs cannot ride on bad tokens."""
+    client = _client(monkeypatch)
+    r = client.get(
+        "/auth/callback?token=garbage&next=https://evil.com",
+        follow_redirects=False,
+    )
+    assert r.status_code == 302
+    loc = r.headers["location"]
+    assert "login" in loc
+    assert "error=magic_link_invalid" in loc
+    assert "evil.com" not in loc
+    assert "next=%2F" in loc or "next=/" in loc
 
 
 def test_auth_callback_rejects_non_allowlisted_email(monkeypatch):
@@ -177,8 +211,8 @@ def test_auth_callback_rejects_non_allowlisted_email(monkeypatch):
     client = _client(monkeypatch)
     tok = mint_magic_link_token("former-user@example.com")
     r = client.get(f"/auth/callback?token={tok}", follow_redirects=False)
-    assert r.status_code == 403
-    assert r.json()["error"]["code"] == "not_authorized"
+    assert r.status_code == 302
+    assert "error=not_authorized" in r.headers["location"]
 
 
 def test_session_cookie_authorizes_middleware(monkeypatch):
@@ -192,6 +226,27 @@ def test_session_cookie_authorizes_middleware(monkeypatch):
     r2 = client.get("/auth/whoami")
     assert r2.status_code == 200
     assert r2.json()["auth_method"] == "antiek_session_cookie"
+
+
+def test_multi_email_allowlist_middleware_accepts_both_operators(monkeypatch):
+    """Comma-separated ANTIEK_OPERATOR_EMAIL: callback + middleware must
+    accept each listed address (SPR-06 OPS-MIDDLEWARE-COMMA)."""
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _MULTI_OPERATOR_ENV)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    client = TestClient(create_app(register_wrestling=False, register_providers=False))
+
+    for email in (_OPERATOR, _OPERATOR_SECOND):
+        tok = mint_magic_link_token(email)
+        r = client.get(f"/auth/callback?token={tok}", follow_redirects=False)
+        assert r.status_code == 302, email
+        assert SESSION_COOKIE_NAME in r.cookies, email
+
+        r2 = client.get("/auth/whoami")
+        assert r2.status_code == 200, email
+        assert r2.json()["auth_method"] == "antiek_session_cookie"
 
 
 def test_logout_clears_cookie(monkeypatch):

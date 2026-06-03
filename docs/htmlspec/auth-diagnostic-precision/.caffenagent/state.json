@@ -1,0 +1,15 @@
+{
+  "spec_dir": "docs/htmlspec/auth-diagnostic-precision",
+  "target_branch": "main",
+  "branch": "caffen/ant-auth-diag-clean",
+  "started": "2026-06-02T14:10:00Z",
+  "completed": "2026-06-02T17:05:00Z",
+  "sprints": {
+    "SPR-01": { "status": "done", "round": 2, "merge_sha": "87abe65", "gate_results": { "matrix_wc": "pass" } },
+    "SPR-02": { "status": "done", "round": 2, "merge_sha": "87abe65", "gate_results": { "vitest_auth": "pass" } },
+    "SPR-03": { "status": "done", "round": 2, "merge_sha": "d691133", "gate_results": { "pytest_callback": "26 passed" } },
+    "SPR-04": { "status": "done", "round": 2, "merge_sha": "d691133", "gate_results": { "auth_probe": "exit 0", "prod_parity_compose": "pass" } },
+    "SPR-05": { "status": "done", "round": 2, "merge_sha": "2a3612c", "gate_results": { "login_e2e": "3 passed (hermetic)" }, "deferred_nits": ["full mock-link→callback→cookie e2e per master spec"] },
+    "SPR-06": { "status": "blocked", "round": 2, "gate_results": { "pytest_multi_email": "pass" }, "blocker": "SPR-06 M3 prod SSH allowlist for the@faisalnazer.com — operator approval required" }
+  }
+}
