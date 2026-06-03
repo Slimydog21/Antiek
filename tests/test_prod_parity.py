@@ -83,16 +83,18 @@ def test_assert_parity_empty_providers_reports_failure():
     assert any("provider registry" in f for f in failures)
 
 
-# ── SPR-11: the THIRD assertion — flywheel liveness ─────────────────────
+# ── SPR-11: flywheel liveness — INFORMATIONAL by default ────────────────
 #
-# These prove the extension is non-vacuous at the assert_parity level: a
-# dead flywheel (flywheel_ready false, or the field absent) reds with a
-# flywheel-NAMED message, while an otherwise-in-parity body with a LIVE
-# flywheel is clean.
+# Flywheel liveness is NOT a deploy-correctness invariant (it is gated on a
+# corpus + real research activity, not on the shipped code), so it lives in
+# flywheel_warnings — NOT assert_parity — and only blocks the run when
+# require_flywheel=True. These prove: assert_parity ignores the flywheel,
+# flywheel_warnings names a dead one, and the run-level default is
+# warn-but-pass. See docs/decisions/prod-parity-flywheel-informational.md.
 
 
-def test_assert_parity_dead_flywheel_reports_failure():
-    # SHA matches + providers present, but the flywheel is DEAD.
+def test_assert_parity_ignores_flywheel():
+    # A dead flywheel is NOT an assert_parity failure — SHA + providers only.
     failures = parity.assert_parity(
         _fake_health(
             build_sha=_GOOD_SHA,
@@ -102,40 +104,51 @@ def test_assert_parity_dead_flywheel_reports_failure():
         ),
         expected_sha=_GOOD_SHA,
     )
-    assert failures, "a dead flywheel must produce a failure message"
-    assert any("flywheel" in f.lower() for f in failures), (
-        "the failure message must NAME the flywheel condition, not just SHA/providers"
+    assert failures == [], "assert_parity must gate only SHA + providers, not the flywheel"
+
+
+def test_flywheel_warnings_dead_flywheel_names_it():
+    warnings = parity.flywheel_warnings(
+        _fake_health(
+            build_sha=_GOOD_SHA,
+            providers=["openrouter"],
+            flywheel_ready=False,
+            knowledge_reuse_count=0,
+        )
+    )
+    assert warnings, "a dead flywheel must produce a warning message"
+    assert any("flywheel" in w.lower() for w in warnings), (
+        "the warning must NAME the flywheel condition, not just SHA/providers"
     )
 
 
-def test_assert_parity_absent_flywheel_field_reports_failure():
+def test_flywheel_warnings_absent_field_warns():
     # An older build that predates the SPR-11 /health field: flywheel_ready
-    # is ABSENT. The safe red — we cannot prove the flywheel is live.
+    # is ABSENT. The safe warn — we cannot prove the flywheel is live.
     body = _fake_health(build_sha=_GOOD_SHA, providers=["openrouter"])
     del body["flywheel_ready"]
     del body["knowledge_reuse_count"]
-    failures = parity.assert_parity(body, expected_sha=_GOOD_SHA)
-    assert failures, "an absent flywheel_ready field must red (cannot prove liveness)"
-    assert any("flywheel" in f.lower() for f in failures)
+    warnings = parity.flywheel_warnings(body)
+    assert warnings, "an absent flywheel_ready field must warn (cannot prove liveness)"
+    assert any("flywheel" in w.lower() for w in warnings)
 
 
-def test_assert_parity_live_flywheel_and_all_clean_is_clean():
-    # SHA match + providers present + flywheel LIVE → no failures.
-    failures = parity.assert_parity(
+def test_flywheel_warnings_live_flywheel_is_clean():
+    warnings = parity.flywheel_warnings(
         _fake_health(
             build_sha=_GOOD_SHA,
-            providers=["openrouter", "deepseek"],
+            providers=["openrouter"],
             flywheel_ready=True,
             knowledge_reuse_count=3,
-        ),
-        expected_sha=_GOOD_SHA,
+        )
     )
-    assert failures == [], "in-parity input with a live flywheel must produce no failures"
+    assert warnings == [], "a live flywheel must produce no warnings"
 
 
-def test_run_dead_flywheel_exits_one(monkeypatch):
-    # The load-bearing exit-code case: a dead flywheel must exit 1, not
-    # log-and-pass. SHA + providers are fine; only the flywheel is dead.
+def test_run_dead_flywheel_informational_exits_zero(monkeypatch):
+    # The behaviour fix: a dead flywheel is INFORMATIONAL by default. SHA +
+    # providers are fine, so a correct code deploy onto an unfed box passes
+    # (exit 0) and only emits a warning — it does not red the deploy.
     monkeypatch.setattr(
         parity,
         "fetch_health",
@@ -147,7 +160,24 @@ def test_run_dead_flywheel_exits_one(monkeypatch):
         ),
     )
     rc = parity.run("http://fake.invalid", expected_sha=_GOOD_SHA)
-    assert rc == 1, "a dead flywheel must exit 1 (a parity failure), not 0"
+    assert rc == 0, "a dead flywheel must be informational by default (exit 0), not block"
+
+
+def test_run_require_flywheel_dead_exits_one(monkeypatch):
+    # Opt-in (post-corpus): with require_flywheel=True a dead flywheel is a
+    # blocking failure again — the original SPR-11 intent, correctly sequenced.
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(
+            build_sha=_GOOD_SHA,
+            providers=["openrouter"],
+            flywheel_ready=False,
+            knowledge_reuse_count=0,
+        ),
+    )
+    rc = parity.run("http://fake.invalid", expected_sha=_GOOD_SHA, require_flywheel=True)
+    assert rc == 1, "--require-flywheel must promote a dead flywheel back to a blocking failure"
 
 
 def test_run_live_flywheel_all_clean_exits_zero(monkeypatch):
@@ -227,11 +257,19 @@ def test_main_defaults_expected_sha_to_origin_main(monkeypatch):
     monkeypatch.setattr(parity, "default_expected_sha", lambda: _GOOD_SHA)
     seen = {}
 
-    def _capture(url, expected_sha, *, auth_probe=False, auth_origin="https://antiek.ai"):
+    def _capture(
+        url,
+        expected_sha,
+        *,
+        auth_probe=False,
+        auth_origin="https://antiek.ai",
+        require_flywheel=False,
+    ):
         seen["url"] = url
         seen["expected_sha"] = expected_sha
         seen["auth_probe"] = auth_probe
         seen["auth_origin"] = auth_origin
+        seen["require_flywheel"] = require_flywheel
         return 0
 
     monkeypatch.setattr(parity, "run", _capture)
