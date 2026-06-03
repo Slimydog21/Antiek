@@ -1,0 +1,81 @@
+name: Agent execution gates
+
+# ANT-EXEC-H2V SPR-09 — fast hermetic gates for handoff/cascade theater (F1–F3).
+# Does not replace full pytest CI; blocks merge on agent-execution regressions only.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/agent-execution/**'
+      - 'tools/agent/**'
+      - 'scripts/canonical_verify.sh'
+      - 'scripts/audit_agent_session.sh'
+      - 'scripts/agent_ams_ref_lint.sh'
+      - 'tests/fixtures/agent_execution/**'
+      - 'tests/test_audit_agent_session.py'
+      - 'tests/test_canonical_verify.py'
+      - 'tests/test_agent_ams_ref_lint.py'
+      - '.github/workflows/agent_execution_gates.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/agent-execution/**'
+      - 'tools/agent/**'
+      - 'scripts/canonical_verify.sh'
+      - 'scripts/audit_agent_session.sh'
+      - 'scripts/agent_ams_ref_lint.sh'
+      - 'tests/fixtures/agent_execution/**'
+      - 'tests/test_audit_agent_session.py'
+      - 'tests/test_canonical_verify.py'
+      - 'tests/test_agent_ams_ref_lint.py'
+      - '.github/workflows/agent_execution_gates.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: agent-exec-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  agent-execution-gates:
+    name: agent-execution-gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ripgrep (audit scripts use rg; not on ubuntu-latest by default)
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install Antiek + dev deps
+        run: |
+          python -m pip install -U pip
+          pip install -e ".[dev]"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/reading/package-lock.json
+
+      - name: Install reading app deps (vitest handoff)
+        working-directory: apps/reading
+        run: npm ci
+
+      - name: Canonical verify — agent-gates
+        run: ./scripts/canonical_verify.sh agent-gates
+
+      - name: Canonical verify — cascade (hermetic)
+        run: ./scripts/canonical_verify.sh cascade
+
+      - name: Handoff fixture — pass path
+        run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

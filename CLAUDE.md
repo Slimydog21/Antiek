@@ -15,12 +15,16 @@ mechanism (§9) is the strategically consequential layer.
 1. **`docs/operator_gate_actions.md`** — current status of the 8 binding
    gates blocking activation. Updated 2026-05-23. The "Operator Activities"
    section at the bottom is the cross-session breadcrumb.
-2. **`docs/master-product-spec.md`** — the spec. §14 is the sprint
+2. **`docs/agent-execution/HARD_TO_VARY.md`** + **`docs/agent-execution/TEMPLATES.md`**
+   — mandatory for all agent sessions before diagnosing Research/cascade bugs or
+   claiming verification. Phase A→E protocol; forbidden patterns F1–F8; handoff
+   paste from templates.
+3. **`docs/master-product-spec.md`** — the spec. §14 is the sprint
    sequence; §14.3 is the binding ordering discipline; §16 is the explicit
    REJECT list.
-3. **`docs/sprint_track_reconciliation.md`** — explains the two parallel
+4. **`docs/sprint_track_reconciliation.md`** — explains the two parallel
    sprint sequences (master-spec 11→22 + UI-redesign 0→12).
-4. **`docs/decisions/`** — one markdown per closed gate or binding
+5. **`docs/decisions/`** — one markdown per closed gate or binding
    decision. Quick browse here tells you what's been settled.
 
 ## Don't propose engineering until you read this

@@ -22,16 +22,13 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 try:
-    from .focus import MAX_BRANCHES, focus_check, is_over_broad
+    from .focus import MAX_BRANCHES, is_over_broad
     from .tree_contract import PlanNode, PlanTree
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles.cascade_planner.focus import (  # type: ignore[no-redef]
-        MAX_BRANCHES,
-        is_over_broad,
-    )
-    from roles.cascade_planner.tree_contract import PlanNode, PlanTree  # type: ignore[no-redef]
+    from roles.cascade_planner.focus import MAX_BRANCHES, is_over_broad
+    from roles.cascade_planner.tree_contract import PlanNode, PlanTree
 
 
 DEFAULT_MAX_DEPTH = 3
@@ -58,12 +55,22 @@ class DispatchDecomposer:
     """Production decomposer: dispatch the decomposer role and parse."""
 
     def decompose(self, question: str, *, context: str = "") -> list[SubQuestion]:
+        import uuid
+
         from roles.decomposer import parse_decomposer_response, render_full_prompt
         from substrate.dispatch import dispatch
-        prompt = render_full_prompt(question) if callable(render_full_prompt) else question
-        result = dispatch(prompt, role="decomposer")
+
+        investigation_id = f"decomp-{uuid.uuid4().hex[:12]}"
+        prompt = render_full_prompt(
+            investigation_id=investigation_id,
+            question=question,
+            context=context,
+        )
+        result = dispatch(prompt, role="decomposer", investigation_id=investigation_id)
         text = getattr(result, "text", None) or str(result)
-        parsed = parse_decomposer_response(text)
+        parsed = parse_decomposer_response(
+            text, expected_investigation_id=investigation_id,
+        )
         return [SubQuestion(question=sq.sub_question, rationale=sq.rationale,
                             focus_boundary=sq.category)
                 for sq in parsed.decomposition]
@@ -83,7 +90,7 @@ def build_plan(
     context: str = "",
     max_depth: int = DEFAULT_MAX_DEPTH,
     seed_kind: str = "problem",
-    seed_provenance: dict | None = None,
+    seed_provenance: dict[str, Any] | None = None,
 ) -> PlanReport:
     """Decompose ``problem`` into a focus-checked, editable tree."""
     capped: list[str] = []
