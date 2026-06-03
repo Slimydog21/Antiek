@@ -194,18 +194,31 @@ jobs:
         run: |
           python tools/lint/retrieval_gate_check.py
 
-      - name: Retrieval gate uniqueness check
-        # ACV SPR-03 (convergence guard): assert each §9.0 gate symbol
-        # (non_privileged_chunk_sql_clause / is_chunk_body_withheld) has EXACTLY
-        # ONE definition. #65 (b27b9df) consolidated #53's two parallel gates into
-        # the single canonical substrate/graph/retrieval_gate.py; this reds if a
-        # future sprint re-forks the gate by adding a second definition. Distinct
-        # from the drift check above (which forbids inline RE-IMPLEMENTATION of the
-        # gate LOGIC under a different name) — this counts DEFINITION sites of the
-        # canonical symbols, catching the re-fork the drift check cannot see.
-        # BLOCKING: the step's exit code is the gate's exit code (no || echo).
+      - name: Substrate-concern uniqueness registry (anti-fork meta-check — BLOCKING)
+        # ACV SPR-07 (convergence-owner discipline). GENERALISES SPR-03's
+        # per-concern retrieval-gate uniqueness guard into ONE declarative
+        # registry (tools/lint/uniqueness_registry.py) covering THREE concerns —
+        # retrieval_gate (REUSES SPR-03's symbol counter), reading_shell (the #54
+        # Werner ice-fishing shell, TS scan), dispatch_router (the one §16
+        # router). Reds any PR that FORKS a registered concern (a second impl) or
+        # deletes its canonical (zero impls). Exit 0 iff every concern has exactly
+        # one impl; on violation it prints `[FORK] <concern>: <offender
+        # path:line>` and points at the convergence-owner runbook.
+        #
+        # This REPLACES the standalone "Retrieval gate uniqueness check" step
+        # (SPR-03): retrieval-gate uniqueness is now asserted in ONE place — the
+        # registry's retrieval_gate row, which IMPORTS SPR-03's find_violations —
+        # so no two CI steps independently assert it. The drift check above
+        # (retrieval_gate_check.py — inline RE-IMPLEMENTATION of the gate LOGIC) is
+        # a DIFFERENT failure mode and stays.
+        #
+        # BLOCKING: the step's pass/fail is EXACTLY the registry's exit code — NO
+        # `|| echo` swallow, NO continue-on-error, NO `::warning::`-only (mirrors
+        # the boundary/owner/serve gates' contract, NOT the informational latency
+        # step's). Self-test: tests/test_uniqueness_registry.py. Runbook +
+        # add-a-concern procedure: docs/decisions/convergence-owner.md.
         run: |
-          python tools/lint/retrieval_gate_uniqueness.py
+          python tools/lint/uniqueness_registry.py
 
       - name: arXiv contact-guard check
         # SPR-09 M3: forbid a NEW provider.send( / OutboundEmail( site outside

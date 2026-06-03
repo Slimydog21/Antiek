@@ -106,3 +106,16 @@ answer a section, that itself is a finding — say so and propose a fix.
 
 - [ ] Re-ran `./.venv/bin/python -m substrate.invariants` — 6/6 pass, 0 violations.
 - [ ] No pyproject.toml `dependencies` array changes (or: dep change is documented + invariant I-003 re-verified).
+
+## Reachability declaration (ACV SPR-07)
+
+<!-- The reachable-from-prod meta-rule (docs/decisions/reachable-from-prod-declaration.md):
+     a PR/sprint touching a USER-FACING feature MUST either register a reachability
+     probe under tools/reachability/probes/ OR carry written internal-only
+     justification here. This is the in-repo carrier of the declaration; the
+     skill-level amendments (htmlspec sprint template + caffenagent 5th done-bar)
+     are operator-apply (see that decision doc). Pick ONE: -->
+
+- [ ] This PR touches a user-facing feature and registers/updates a reachability probe under `tools/reachability/probes/` (named here: …), green under `python -m tools.reachability.probe_runner`.
+- [ ] This PR is INTERNAL-ONLY (lint / migration / refactor / process-as-code — no new user-facing route or surface). Justification: …
+- [ ] If this PR adds or converges a substrate concern that must be unique, the registry row exists in `tools/lint/uniqueness_registry.py` and `python tools/lint/uniqueness_registry.py` is green.

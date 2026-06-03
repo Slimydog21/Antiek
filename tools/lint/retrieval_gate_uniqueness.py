@@ -67,6 +67,15 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent.parent
 
+# Ensure the package root is importable when invoked as a BARE SCRIPT
+# (``python tools/lint/retrieval_gate_uniqueness.py``, the CI idiom) as well as
+# a module. SPR-07: ``main`` now delegates to ``tools.lint.uniqueness_registry``,
+# a cross-``tools`` import that needs the repo root on ``sys.path`` in the
+# bare-script case (a ``python -m`` invocation already has it). Mirrors the
+# bootstrap in tools/reachability/probe_runner.py.
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
 # The canonical gate symbols #65 consolidated to exactly one definition each.
 _WATCHED_SYMBOLS: frozenset[str] = frozenset({
     "non_privileged_chunk_sql_clause",
@@ -160,28 +169,55 @@ def find_violations(root: Path = _REPO) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """RETARGETED by SPR-07: the CLI now DELEGATES to the uniqueness REGISTRY so
+    retrieval-gate uniqueness is ASSERTED in exactly ONE place (the registry's
+    ``retrieval_gate`` row), not independently here AND there.
+
+    The detection functions above (``find_definitions`` / ``find_violations``)
+    remain the reusable SPR-03 library — the registry's ``retrieval_gate`` row
+    IMPORTS ``find_violations`` from this module — so SPR-03's tested symbol
+    counter is preserved (and its self-test
+    ``tests/test_retrieval_gate_uniqueness_lint.py`` still exercises it
+    directly). What changed is the ENFORCEMENT path: running this module's CLI,
+    or the registry's, exercises the SAME single ``retrieval_gate`` assertion.
+    The standalone CI step was removed (SPR-07); the registry meta-check is the
+    one CI enforcement of every concern's uniqueness, retrieval_gate included.
+
+    To REVERSE the retarget (make this a fully independent standalone again),
+    restore the inline ``find_violations()`` summary/print block from git
+    history and re-add its own CI step — but then two places assert
+    retrieval-gate uniqueness, the drift the SPR-07 registry exists to remove.
+    """
     parser = argparse.ArgumentParser(
         prog="tools.lint.retrieval_gate_uniqueness",
         description=(
             "Assert each §9.0 retrieval-gate symbol "
             "(non_privileged_chunk_sql_clause / is_chunk_body_withheld) has "
             "EXACTLY ONE definition — the never-re-fork guard for #65's "
-            "consolidation. Exit 1 if either count != 1."
+            "consolidation. Delegates to the SPR-07 uniqueness registry "
+            "(retrieval_gate row). Exit 1 if either count != 1."
         ),
     )
     parser.parse_args(argv)
 
-    violations = find_violations()
-    if violations:
+    # Delegate to the registry's retrieval_gate row (the single assertion
+    # authority). Imported lazily to avoid a hard import cycle at module load
+    # (the registry imports find_violations from THIS module at its top level).
+    from tools.lint.uniqueness_registry import REGISTRY
+
+    row = next(c for c in REGISTRY if c.name == "retrieval_gate")
+    ok, offenders = row.run()
+    if not ok:
         print("Retrieval-gate uniqueness violations:")
-        for line in violations:
+        for line in offenders:
             print(f"  {line}")
         print(
             "\nEach §9.0 retrieval-gate symbol must have EXACTLY ONE definition. "
             f"#65 consolidated #53's parallel gates into the single canonical "
             f"{_CANONICAL_HOME}; a second definition re-forks the gate (callers "
             f"split across two homes that drift apart). Delete the duplicate and "
-            f"import from {_CANONICAL_HOME}. (The complementary "
+            f"import from {_CANONICAL_HOME}. Converge per "
+            f"docs/decisions/convergence-owner.md. (The complementary "
             f"retrieval_gate_check.py forbids inline RE-IMPLEMENTATION of the gate "
             f"logic under a different name — a different failure mode.)"
         )
@@ -192,7 +228,8 @@ def main(argv: list[str] | None = None) -> int:
         f"{sym}@{defs[sym][0]}" for sym in sorted(_WATCHED_SYMBOLS)
     )
     print(
-        f"OK: each retrieval-gate symbol has exactly one definition ({summary})."
+        f"OK: each retrieval-gate symbol has exactly one definition ({summary}) "
+        f"[asserted via the SPR-07 uniqueness registry]."
     )
     return 0
 
