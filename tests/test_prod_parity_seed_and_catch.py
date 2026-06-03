@@ -6,13 +6,18 @@ NON-VACUOUS end-to-end: it stands up a real local HTTP stub serving
 ``/health`` and points the SHIPPED checker (``tools/prod_parity/check.py``)
 at it through its real ``fetch_health`` GET (no monkeypatch of the fetch) —
 
-  * stub ``flywheel_ready: false`` → ``run`` exits 1 with a flywheel-NAMED
-    failure message (fail-BEFORE), and
-  * stub ``flywheel_ready: true``  → ``run`` exits 0 (pass-AFTER),
+  * stub ``flywheel_ready: false`` → ``run(..., require_flywheel=True)`` exits
+    1 with a flywheel-NAMED message (fail-BEFORE), and
+  * stub ``flywheel_ready: true``  → ``run(..., require_flywheel=True)`` exits
+    0 (pass-AFTER),
 
 with SHA + providers held in parity in BOTH cases so the ONLY thing that
-flips the exit code is the flywheel signal. This is the proof the spec's
-"Parity non-vacuity (seed-and-catch)" gate demands.
+flips the exit code is the flywheel signal. The non-vacuity proof is scoped to
+the opt-in ``--require-flywheel`` mode because the flywheel check is
+INFORMATIONAL by default (a code deploy onto an unfed box must not red on a
+dead flywheel it cannot fix — see
+``docs/decisions/prod-parity-flywheel-informational.md``); the default-mode
+exit-0 is asserted first so the informational behaviour is itself covered.
 
 No live prod, no operator credentials: the stub is a local
 ``http.server`` on 127.0.0.1. (The LIVE probe vs https://api.antiek.ai is
@@ -84,26 +89,41 @@ def _stub_health_server(*, flywheel_ready: bool):
 
 
 def test_seed_and_catch_dead_flywheel_then_live():
-    # FAIL-BEFORE: stub flywheel_ready=false → exit 1 with a flywheel message.
+    # The flywheel signal is INFORMATIONAL by default (see
+    # docs/decisions/prod-parity-flywheel-informational.md): a code deploy
+    # onto an unfed box must not red on a dead flywheel it cannot fix. The
+    # NON-VACUITY proof is therefore scoped to the opt-in --require-flywheel
+    # mode — where the flywheel signal IS load-bearing and flips the exit code.
+
+    # DEFAULT (informational): flywheel_ready=false still exits 0 — SHA +
+    # providers are in parity, and the flywheel only warns.
     with _stub_health_server(flywheel_ready=False) as url:
-        rc_dead = parity.run(url, expected_sha=_SHA)
+        rc_dead_default = parity.run(url, expected_sha=_SHA)
+    assert rc_dead_default == 0, (
+        "a dead flywheel must be informational by default (exit 0), not block"
+    )
+
+    # FAIL-BEFORE (require_flywheel): flywheel_ready=false → exit 1.
+    with _stub_health_server(flywheel_ready=False) as url:
+        rc_dead = parity.run(url, expected_sha=_SHA, require_flywheel=True)
     assert rc_dead == 1, (
-        "a stub /health with flywheel_ready=false must exit 1 (SHA + providers "
-        "are in parity, so the ONLY failing condition is the flywheel)"
+        "with require_flywheel=True a stub /health with flywheel_ready=false "
+        "must exit 1 (SHA + providers in parity, so the ONLY failing "
+        "condition is the flywheel)"
     )
 
-    # The failure message NAMES the flywheel condition (not just SHA/providers).
-    failures = parity.assert_parity(
-        _health_body(flywheel_ready=False), expected_sha=_SHA
-    )
-    assert any("flywheel" in f.lower() for f in failures), (
-        "the red must name the flywheel condition"
+    # The warning message NAMES the flywheel condition (not just SHA/providers).
+    warnings = parity.flywheel_warnings(_health_body(flywheel_ready=False))
+    assert any("flywheel" in w.lower() for w in warnings), (
+        "the flywheel signal must name the flywheel condition"
     )
 
-    # PASS-AFTER: flip the stub to flywheel_ready=true → exit 0.
+    # PASS-AFTER: flip the stub to flywheel_ready=true → exit 0 even under
+    # require_flywheel — proving the gate is NOT a no-op.
     with _stub_health_server(flywheel_ready=True) as url:
-        rc_live = parity.run(url, expected_sha=_SHA)
+        rc_live = parity.run(url, expected_sha=_SHA, require_flywheel=True)
     assert rc_live == 0, (
         "flipping the stub to flywheel_ready=true (SHA + providers still in "
-        "parity) must exit 0 — proving the new assert is NOT a no-op"
+        "parity) must exit 0 even under require_flywheel — proving the gate "
+        "is NOT a no-op"
     )
