@@ -112,15 +112,16 @@ def is_chunk_body_withheld(
     """Whether a chunk body must be withheld on the non-privileged HTTP path.
 
     Mirrors the chunk-gate frozensets without duplicating SQL. Takedown wins
-    over content_class. NULL / unknown classes **fail closed** (withheld) —
-    consistent with the SQL clause's fail-closed flip (ASR SR-07): an unknown
-    class is never served on the money path.
+    over content_class. NULL / legacy classes are GRANDFATHERED (not withheld
+    here) — the explicit contract pinned by
+    ``tests/test_sprint11_api::test_get_chunk_null_content_class_grandfathered``;
+    both #53 and ASR serve NULL bodies on the HTTP path.
 
     Returns:
         ``(withheld, label)`` — label is ``"taken_down"``, ``"personal_readable"``,
-        ``"restricted"``, ``"unknown"`` (NULL/unrecognised), or ``None`` when the
-        body may be served. (``personal_readable`` is the ASR SR-09 API contract
-        label for the owner-only personal_reading class — pinned by
+        ``"restricted"``, or ``None`` when the body may be served.
+        (``personal_readable`` is the ASR SR-09 API contract label for the
+        owner-only personal_reading class — pinned by
         ``tests/test_get_chunk_personal_reading`` + ``test_retrieval_gate_matrix``.)
     """
     if taken_down:
@@ -129,6 +130,4 @@ def is_chunk_body_withheld(
         return True, "personal_readable"
     if content_class in RESTRICTED_CONTENT_CLASSES:
         return True, "restricted"
-    if content_class is None:
-        return True, "unknown"
     return False, None
