@@ -16,10 +16,13 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from runtime.db_lock import connect_write
-from substrate.graph.ops import insert_chunk, insert_document
-from substrate.graph.retrieval_substrate import make_substrate
-from substrate.graph.schema import init_database
+from runtime.db_lock import connect_write  # noqa: E402  # sys.path bootstrap
+from substrate.graph.ops import (  # noqa: E402  # sys.path bootstrap
+    insert_chunk,
+    insert_document,
+)
+from substrate.graph.retrieval_substrate import make_substrate  # noqa: E402  # sys.path bootstrap
+from substrate.graph.schema import init_database  # noqa: E402  # sys.path bootstrap
 
 
 class StubEmbedding:

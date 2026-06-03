@@ -24,14 +24,14 @@ _REPO = Path(__file__).resolve().parents[1]
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
-from substrate.contracts import (
+import tools.codegen.chunk_provenance as chunk_provenance  # noqa: E402  # sys.path bootstrap
+from substrate.contracts import (  # noqa: E402  # sys.path bootstrap
     CODEGEN_CONTRACTS,
     NoteTakerOutputContract,
     drw_sprint_lock,
     verify_conformance,
 )
-from tools.codegen import check_conformance
-import tools.codegen.chunk_provenance as chunk_provenance
+from tools.codegen import check_conformance  # noqa: E402  # sys.path bootstrap
 
 # ── M2 positive — the gate is clean on the current trunk ──────────────────────
 

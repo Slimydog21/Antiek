@@ -27,8 +27,8 @@ substrate.books cycle (``substrate.books.ingest`` imports this module).
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
 from runtime.db_lock import LockedConnection
 from substrate import ip_holders
@@ -39,7 +39,7 @@ from substrate.constants import (
 from substrate.graph.ops import update_document_gate_columns
 
 
-class SourceKind(str, Enum):
+class SourceKind(StrEnum):
     """What kind of source a document came from.
 
     Drives escrow eligibility: a ``user_content`` document has no external

@@ -49,12 +49,12 @@ from processing.embedding.embed import (  # noqa: E402
     default_embedding_provider,
 )
 from runtime.db_lock import connect_write  # noqa: E402
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
     ensure_initialized,
 )
-from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.graph.ops import (  # noqa: E402
     _exists,
     insert_chunk,
@@ -67,7 +67,12 @@ from substrate.rights.register import (  # noqa: E402
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import Post, Publication, fetch_feed, substack_doc_id
+from .client import (  # noqa: E402  # sys.path bootstrap
+    Post,
+    Publication,
+    fetch_feed,
+    substack_doc_id,
+)
 
 # General-web tier (4), consistent with acquisition/urls' DEFAULT_URL_SOURCE_TIER
 # for unranked web — a subscribed newsletter is general-web trust, not a curated

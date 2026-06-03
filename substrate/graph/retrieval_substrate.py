@@ -42,6 +42,7 @@ non-default adapters MUST open read-only and change no row count.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
@@ -155,10 +156,8 @@ class BruteForceSubstrate:
         )
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -471,10 +470,8 @@ class DuckDbVssSubstrate:
         }
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 def _exists(path: str) -> bool:

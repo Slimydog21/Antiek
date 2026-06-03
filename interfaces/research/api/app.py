@@ -29,8 +29,10 @@ generated types in ``apps/reading/src/generated/types.ts`` (produced by
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
+from datetime import UTC
 from typing import Annotated, Any, Literal
 
 from fastapi import (
@@ -49,8 +51,6 @@ from pydantic import BaseModel, Field
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
-
-from datetime import UTC
 
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -823,7 +823,7 @@ def _rubric_score_from_trajectory(rows: list[dict]) -> RubricScore | None:
         notes = payload.get("notes")
         notes_str = notes if isinstance(notes, str) else ""
 
-        def _sub(key: str) -> float | None:
+        def _sub(key: str, notes_str: str = notes_str) -> float | None:
             m = re.search(rf"\b{re.escape(key)}=([01](?:\.\d+)?)", notes_str)
             if not m:
                 return None
@@ -1808,7 +1808,7 @@ def create_app(
         # Non-fatal if it fails; the start event already encodes the
         # lineage in its own payload.
         if req.parent_investigation_id:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
                 emit_typed(
                     investigation_id,
                     InvestigationSpawnedFromPayload(
@@ -1819,8 +1819,6 @@ def create_app(
                     policy_id="operator-cli",
                     parent_event_id=event_id,
                 )
-            except Exception:  # pragma: no cover — diagnostic
-                pass
 
         # Broadcast the start event so the orchestrator handler
         # subscribed to it spawns the per-investigation coroutine.
@@ -2032,9 +2030,8 @@ def create_app(
             for r in rows:
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
-                if at in (start_action, spawned_action):
-                    if policy_is_daemon(r.get("policy_id")):
-                        spawned_by_daemon = True
+                if at in (start_action, spawned_action) and policy_is_daemon(r.get("policy_id")):
+                    spawned_by_daemon = True
                 if at in (start_action, spawned_action, completed_action,
                           failed_action, halted_action):
                     saw_own_lifecycle = True
@@ -2079,10 +2076,8 @@ def create_app(
                     terminal_status = "stopped"
                     completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
-                    except (TypeError, ValueError):
-                        pass
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -2807,7 +2802,8 @@ def create_app(
                 filename=f"{deliverable_id}.substack.md",
             )
         if format == "html":
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s):
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             parts = [
                 "<!doctype html>",
                 f"<html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>",
@@ -2849,7 +2845,8 @@ def create_app(
                 ) from e
             import base64
             import io
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s):
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             # Researcher's-notebook print stylesheet per master-spec §5.
             # Serif body font; generous line-height; no SaaS-dashboard
             # primary blues; @page margins set for A4 with title block.
@@ -2909,7 +2906,8 @@ def create_app(
                 ) from e
             import base64
             import tempfile
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s):
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             book = epub.EpubBook()
             book.set_identifier(deliverable_id)
             book.set_title(title)
@@ -2950,10 +2948,8 @@ def create_app(
                     epub_bytes = fh.read()
             finally:
                 import os
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
             return ExportFormat(
                 format="epub",
                 content=base64.b64encode(epub_bytes).decode("ascii"),
@@ -3130,7 +3126,7 @@ def create_app(
                 synthesis_id, emit_event=emit_event,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc))
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         def _to_resp(algo, result) -> AttributionAlgorithmShares:
             return AttributionAlgorithmShares(
@@ -3333,10 +3329,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="interview not found")
         guide = {}
         if row[7]:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 guide = _json.loads(row[7])
-            except (ValueError, TypeError):
-                pass
         turns = []
         if row[4]:
             try:
@@ -3377,7 +3371,7 @@ def create_app(
                     text=req.text,
                 )
             except ValueError as exc:
-                raise HTTPException(status_code=404, detail=str(exc))
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
             (status,) = con.execute(
                 "SELECT status FROM interviews WHERE interview_id = ?",
                 [interview_id],
@@ -3648,7 +3642,7 @@ def create_app(
 
         # Emit the escalation event into the SOURCE investigation so
         # subsequent /watch-for-later calls correctly hide this question.
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
             emit_typed(
                 found_source_inv,
                 QuestionEscalatedToResearchPayload(
@@ -3658,8 +3652,6 @@ def create_app(
                 role="operator",
                 policy_id="operator/brainstorm",
             )
-        except Exception:  # pragma: no cover — diagnostic
-            pass
 
         # Broadcast the start event so the Loop 1 orchestrator picks it up.
         for row in reversed(trajectory(child_inv_id)):
@@ -4595,30 +4587,24 @@ def create_app(
                 out: list = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_TO(**item))
-                        except Exception:
-                            pass
                 return out
 
             def _coerce_falsification(items):
                 out: list = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_FO(**item))
-                        except Exception:
-                            pass
                 return out
 
             def _coerce_risk(items):
                 out: list = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_ERO(**item))
-                        except Exception:
-                            pass
                 return out
 
             decision_alignment_obj: _DA | None = None
@@ -5019,7 +5005,7 @@ def create_app(
                     "message": str(exc),
                     "valid": [c.value for c in Loop3UnlockCriterion],
                 },
-            )
+            ) from exc
 
         with connect_write(
             default_db_path(), purpose="loop_3:set_criterion",
@@ -5235,7 +5221,7 @@ def create_app(
             raise HTTPException(
                 status_code=503,
                 detail=f"backtest module unavailable: {exc!r}",
-            )
+            ) from exc
 
         try:
             with connect_read(default_db_path()) as con:
@@ -5244,13 +5230,13 @@ def create_app(
             raise HTTPException(
                 status_code=404,
                 detail=f"synthesis not archived: {exc!r}",
-            )
+            ) from exc
         except Exception as exc:
             # Most likely: synthesis_id doesn't exist in archives.
             raise HTTPException(
                 status_code=404,
                 detail=f"backtest unavailable for {synthesis_id!r}: {exc!r}",
-            )
+            ) from exc
 
         return BacktestReportResponse(
             synthesis_id=report.synthesis_id,
