@@ -207,6 +207,15 @@ def _isolate_registry_and_env(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     monkeypatch.setenv("ANTIEK_EVENTS_DISABLED", "1")
     monkeypatch.setenv("ANTIEK_LEGAL_GATE_PLACEHOLDER_ACKED", "1")
+    # ISOLATE the Exa daily-budget + discovery-event sidecars (D1/D2): the loop
+    # now routes the web fan-out through ``adapter.discover``, which reads/writes
+    # the Exa budget sidecar under ``ANTIEK_HOME/budgets`` and emits discovery
+    # events under a discovery dir. Point both at the per-test tmp dir so (a) the
+    # dev box's real ~/.antiek spend file is NEVER touched, and (b) every test
+    # starts from a $0 budget — no cross-contamination from the operator's live
+    # Exa spend. Tests that assert exact budget numbers override ANTIEK_HOME.
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "antiek_home"))
+    monkeypatch.setenv("ANTIEK_DISCOVERY_EVENTS_DIR", str(tmp_path / "discovery_events"))
     yield
     reset_provider_registry()
 
@@ -420,7 +429,7 @@ def test_retrieval_uses_existing_graph_search_no_parallel_module():
 
 
 # ===========================================================================
-# M3 — Exa web fan-out + §9.0 gate + rate governor
+# M3 — Exa web fan-out (budget-bounded via discover) + §9.0 gate
 # ===========================================================================
 
 
@@ -470,23 +479,120 @@ def test_exa_client_now_imported_by_research_path():
     assert "s16-research-fanout-exemption" in src or "research-fanout" in src
 
 
-def test_exa_egress_routes_through_existing_rate_governor():
-    """M3: the fan-out is throttled through the EXISTING host rate governor —
-    no second fetcher / second governor is coined. The Exa client's _post
-    already routes through acquisition.arxiv.rate_governor.govern_if_arxiv; the
-    loop reuses that client, it does not bypass it."""
+def test_exa_egress_routes_through_budget_reserved_discover():
+    """M3 (D1/D2): the web fan-out routes through the SANCTIONED budget-reserved
+    ``acquisition/search/exa/adapter.discover`` surface — NOT a direct
+    ``ExaClient.search``. ``discover`` calls ``check_and_reserve`` against the
+    §6.7 daily ceiling + the §6.5 cache BEFORE any HTTP spend, so the egress is
+    BUDGET-bounded, not the no-ceiling/no-cache runaway the direct call was.
+
+    This is a STRUCTURAL guard (the behavioral budget proof is the two tests
+    below). Exa egress is NOT rate-governed: ``govern_if_arxiv`` is a passthrough
+    for the ``api.exa.ai`` host (it governs arXiv hosts only), so we do NOT claim
+    a rate governor here — the daily-budget hard-stop is the bound."""
     import inspect
 
-    import acquisition.search.exa.client as exa_client
-
-    post_src = inspect.getsource(exa_client.ExaClient._post)
-    assert "govern_if_arxiv" in post_src, "Exa egress must route through the shared rate governor"
-    # The loop uses ExaClient.search (which calls _post) — it never opens a raw socket.
     import runtime.research_runner.real_loop as rl
 
     loop_src = inspect.getsource(rl._web_search)
-    assert "client.search(" in loop_src
+    # The loop calls the discovery route, NOT ExaClient.search directly.
+    assert "discover(" in loop_src
+    assert "client.search(" not in loop_src, (
+        "the loop must NOT call ExaClient.search directly — that bypasses the "
+        "§6.7 daily-budget ceiling + the §6.5 cache"
+    )
     assert "httpx" not in loop_src  # no second fetcher in the loop
+    # And ``discover`` itself reserves budget before spending (the route's
+    # contract this loop now leans on).
+    import acquisition.search.exa.adapter as adapter
+
+    discover_src = inspect.getsource(adapter.discover)
+    assert "check_and_reserve(" in discover_src
+    assert "COST_PER_SEARCH_USD" in discover_src
+
+
+async def test_each_web_search_reserves_budget_via_discover(seeded_graph, tmp_path, monkeypatch):
+    """M3 (D2): a real web search RESERVES budget via the adapter route — after
+    one loop run the isolated Exa daily-budget sidecar records exactly one
+    ``COST_PER_SEARCH_USD`` reservation, proving ``check_and_reserve`` ran
+    through ``discover`` (a direct ``ExaClient.search`` would have reserved
+    NOTHING — that was the defect)."""
+    from acquisition.search.exa.budget import read_state
+    from acquisition.search.exa.client import COST_PER_SEARCH_USD
+
+    # Isolate the budget sidecar dir (ANTIEK_HOME) so the dev box's real spend
+    # file is untouched and the assertion is exact.
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("EXA_DAILY_BUDGET_USD", "5.0")
+
+    before = read_state().spent_usd
+    register_provider(_CassetteProvider())
+    # use_cache is on; pass the seeded graph as db_path so the cache write is
+    # serialized through db_lock (single-writer-preserving).
+    loop_fn = real_research_loop(_deps(seeded_graph))
+    events, _r, _h = await _drive(loop_fn, "photosynthesis chloroplast light reaction")
+
+    after = read_state()
+    # Exactly one search → exactly one COST_PER_SEARCH_USD reservation.
+    assert after.spent_usd == pytest.approx(before + COST_PER_SEARCH_USD)
+    assert after.call_count >= 1
+    # The web step still produced servable refs (the reservation did not block a
+    # within-budget call).
+    web = _phase(events, "web_fanout")[0]
+    assert web.data["servable_count"] == 2
+    assert web.data["web_budget_halted"] is False
+
+
+async def test_budget_exhausted_halts_fanout_no_spend_past_ceiling(seeded_graph, tmp_path, monkeypatch):
+    """M3 (D2): a budget-EXHAUSTED state HALTS the web fan-out BEFORE issuing the
+    search — ``discover``'s ``check_and_reserve`` refuses past the §6.7 daily
+    ceiling, so NO HTTP call is made and NO spend happens past the cap.
+
+    We pre-fill the isolated sidecar to the cap, then drive a run: the web step
+    surfaces the budget halt, is charged $0, the Exa client's ``search`` is NEVER
+    invoked, and the recorded spend does NOT increase past the ceiling."""
+    from acquisition.search.exa.budget import BudgetState, read_state, write_state
+
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("EXA_DAILY_BUDGET_USD", "0.01")
+
+    # Pre-fill spend to the cap so the next reservation would exceed it.
+    import acquisition.search.exa.budget as budget
+    today = budget._utc_date_stamp()
+    write_state(BudgetState(date_stamp=today, spent_usd=0.01, call_count=2, cap_usd=0.01))
+    before = read_state().spent_usd
+
+    # A cassette client whose ``search`` records whether it was ever called —
+    # the proof that NO HTTP call is issued once the budget is exhausted.
+    client = _exa_client_from_cassette()
+    search_calls: list[dict] = []
+    orig_search = client.search
+
+    def recording_search(**kw):
+        search_calls.append(kw)
+        return orig_search(**kw)
+
+    client.search = recording_search  # type: ignore[method-assign]
+
+    register_provider(_CassetteProvider())
+    loop_fn = real_research_loop(_deps(seeded_graph, exa_client=client))
+    events, runner, handle = await _drive(loop_fn, "photosynthesis chloroplast light reaction")
+
+    web = _phase(events, "web_fanout")[0]
+    # The halt is surfaced honestly on the glass-box stream.
+    assert web.data["web_budget_halted"] is True
+    assert web.data["web_error"] and web.data["web_error"].startswith("exa_budget_exhausted")
+    assert web.data["web_result_count"] == 0
+    # NO HTTP search was issued — the reservation refused BEFORE the call.
+    assert search_calls == [], "budget-exhausted must halt BEFORE issuing the Exa search"
+    # NO spend past the ceiling: the web step costs $0 and the sidecar is unchanged.
+    assert web.cost_usd == 0.0
+    assert read_state().spent_usd == pytest.approx(before)
+    # The run still completes (degrades to local-only evidence), never crashes.
+    assert events[-1].state == RunState.DONE
+    # Local evidence carried the insight through despite the web halt.
+    insights = [n for n in _notes(events) if n.data.get("phase") != "quality_score"]
+    assert insights and insights[0].data["source_kind"] == "local_chunk"
 
 
 # ===========================================================================
