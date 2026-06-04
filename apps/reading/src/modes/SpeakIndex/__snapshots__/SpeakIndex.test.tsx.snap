@@ -382,6 +382,11 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
               >
                 Will be shared publicly
               </p>
+              <p
+                class="mt-1 font-serif text-[12px] italic text-ink-soft dark:text-moonlight"
+              >
+                Their story is coming together — 2 voices have added a memory.
+              </p>
             </a>
           </li>
         </ul>

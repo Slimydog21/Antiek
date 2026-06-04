@@ -110,6 +110,55 @@ export const GATE_PHRASES = {
 export type GatePhraseKey = keyof typeof GATE_PHRASES;
 
 /**
+ * PAYOUT_COPY — the canonical, honest explanation of HOW a contributor's share
+ * is decided (SPR-04 M3). This is the one place both payout surfaces — the
+ * public-lane explainer (PublicLane, owns the basis line) and the operator's
+ * SpeakSettings payout section — read the §9.3 Option-B basis, the slop-earns-$0
+ * rule, and the verifier-not-requester rule, so the two cannot drift.
+ *
+ * These are STATE / EXPLANATION sentences, not gate phrases: each describes how
+ * the *already-shipped* grading works, grants the user NO action over a gate,
+ * and names NO env flag — so they live OUTSIDE `gatePhraseStrings()` (not held
+ * to the future-tense "what opens it" discipline) but INSIDE
+ * `allRenderedPhrases()`, so the env-flag-leak scan still covers them.
+ *
+ * Grounded in the shipped backend, NOT invented:
+ *   - `basis`            ↔ §9.3 Option-B `claim_confidence × (6 − source_tier)`
+ *                          (contributor.py:14-15) — stated in human words,
+ *                          never the formula and never a per-second/airtime
+ *                          model (the rejected alternative, decision doc §"Payout
+ *                          basis"). Shared verbatim with the public lane via
+ *                          `PUBLIC_LANE_LABELS.explainerPayoutBasis` below.
+ *   - `slopEarnsZero`    ↔ the slop gate: a contribution scoring below
+ *                          `DEFAULT_SLOP_THRESHOLD` (0.4) earns $0
+ *                          (contributor.py:191 / payout_verifier.py PASSING_SCORE).
+ *   - `verifierNotRequester` ↔ the grade is the verifier's score, never the
+ *                          requester's choice; the requester supplies only the
+ *                          goal + budget, never a pass/deny (payout_verifier.py
+ *                          header + :54). It is a heuristic/prompt-rubric grader,
+ *                          NOT a trained model — phrased so as not to overclaim.
+ */
+export const PAYOUT_COPY = {
+  /** §9.3 Option-B basis, in human words. Shared with the public lane so the
+   *  two payout surfaces say it identically (see PUBLIC_LANE_LABELS below). */
+  basis:
+    "A contribution's share is weighted by how well-corroborated and " +
+    "well-sourced it is — by the quality of what's remembered, nothing else.",
+  /** The slop gate: below the quality threshold, a contribution earns $0. */
+  slopEarnsZero:
+    "A low-effort answer earns nothing — only substance is paid.",
+  /** The grade comes from the system's verifier checking the answer against the
+   *  information goal, not from the requester. A heuristic check, not a trained
+   *  model — so it is not overclaimed. */
+  verifierNotRequester:
+    "Each contribution is graded by the system — a verifier checking the " +
+    "answer against the goal — not by the person who asked. A requester can't " +
+    "withhold pay from a good answer.",
+} as const;
+
+export type PayoutCopyKey = keyof typeof PAYOUT_COPY;
+
+/**
  * Public-lane copy (SPR-03) — plain, honest, NON-gate sentences the public
  * lane says around the feed and the gate phrases above. These grant the user
  * NO agency over a gate and name NO env flag, so — like VOICE_STATE_LABELS —
@@ -142,12 +191,12 @@ export const PUBLIC_LANE_LABELS = {
   /** M4 — step 1, the only present-ish framing, still about the future flow. */
   explainerStepFind:
     "Anyone will be able to find an open remembrance and add what they remember.",
-  /** M4 — payout basis, §9.3 Option-B. Phrased to avoid the very strings the
-   *  §9.3 guard forbids in rendered copy (an airtime/ad-duration framing): a
-   *  share is earned by corroboration + sourcing quality only. */
-  explainerPayoutBasis:
-    "A contribution's share is weighted by how well-corroborated and " +
-    "well-sourced it is — by the quality of what's remembered, nothing else.",
+  /** M4 — payout basis, §9.3 Option-B. Promoted to the shared `PAYOUT_COPY.basis`
+   *  (SPR-04 M3) so the public lane and the operator's SpeakSettings payout
+   *  section say the basis identically and cannot drift. Phrased to avoid the
+   *  very strings the §9.3 guard forbids in rendered copy (an airtime/ad-duration
+   *  framing): a share is earned by corroboration + sourcing quality only. */
+  explainerPayoutBasis: PAYOUT_COPY.basis,
   /**
    * M4 — the OPEN-state copy for the G2/G3 explainer lines, rendered when a
    * LIVE `getEconomics` read reports the gate has cleared. Each describes a
@@ -231,6 +280,7 @@ export function allRenderedPhrases(): string[] {
     ...Object.values(AGREEMENT_WORDS),
     ...Object.values(VOICE_STATE_LABELS),
     ...Object.values(PUBLIC_LANE_LABELS),
+    ...Object.values(PAYOUT_COPY),
   ];
   for (const gate of Object.values(GATE_PHRASES)) {
     out.push(gate.label, gate.whenGated);
