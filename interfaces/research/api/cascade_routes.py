@@ -37,7 +37,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager, suppress
-from typing import Any, cast
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -370,10 +370,7 @@ def _research_loop_factory() -> Callable[[LoopContext], AsyncIterator[StepEvent]
     so its dispatch.call lands where the measurement reads. The real
     Exa→Browserbase loop drops in here later with no route change; the demo loop
     stays the deterministic loop for unit CI (``make_demo_loop``)."""
-    return cast(
-        Callable[[LoopContext], AsyncIterator[StepEvent]],
-        make_reuse_consuming_loop(steps=3, cost_per_step=0.01, emit_note=True),
-    )
+    return make_reuse_consuming_loop(steps=3, cost_per_step=0.01, emit_note=True)
 
 
 def _command(kind: str, payload: dict[str, Any] | None) -> Command:

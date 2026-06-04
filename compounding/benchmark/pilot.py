@@ -28,7 +28,7 @@ import statistics
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 
-from .harness import ArmResult, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
+from .harness import ArmResult, ArmSeed, ColdSeed, IrrelevantSeed, WarmSeed, run_arm
 from .question_set import BenchmarkQuestion
 
 # CV metrics the pilot reports + the proposal keys off. Cost is the headline;
@@ -180,7 +180,7 @@ def run_pilot(
         "warm": {m: [] for m in PILOT_CV_METRICS},
         "irrelevant": {m: [] for m in PILOT_CV_METRICS},
     }
-    seeds = {"cold": ColdSeed(), "warm": WarmSeed(), "irrelevant": IrrelevantSeed()}
+    seeds: dict[str, ArmSeed] = {"cold": ColdSeed(), "warm": WarmSeed(), "irrelevant": IrrelevantSeed()}
 
     # run_arm already namespaces user_id by question_id + arm, so run_index need
     # only be unique within a (question, arm) cell — range(runs_per_cell) is that.
