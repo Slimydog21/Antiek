@@ -29,7 +29,7 @@ The report stamps the boundaries hash instead of a wall-clock timestamp, so two 
 ## What this report contains
 
 - **Theater claims cited below: 0** (each is one mock of a CORE symbol at a `file:line`).
-- **Indeterminate files cited below: 1** (the classifier could not decide; surfaced rather than dropped).
+- **Indeterminate files cited below: 1** (the classifier could not decide; surfaced rather than dropped) — accounting for the 4 indeterminate (file, subsystem) claim(s) in the TOTAL row above, since one file can claim several subsystems.
 
 > **`theater` is 0 under the current contract — this is NOT a clean bill of health.** It means no test *statically resolves* to a mock of a CORE symbol of the subsystem it covers. It does NOT mean the suite is real: provider/LLM mocks are BOUNDARY by design and the dominant fake-the-LLM pattern in this codebase is dependency injection, which is invisible to the static classifier (~56 files counted `reality` despite a stubbed synthesis). Read the **Known blind spots** section below before reading 0 theater as "all good." The honest evidence in this report is the indeterminate forensics and the blind-spot caveat, not a victory lap.
 

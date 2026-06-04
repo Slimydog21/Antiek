@@ -224,7 +224,10 @@ def _summary_lines(
     )
     lines.append(
         f"- **Indeterminate files cited below: {len(indet_files)}** "
-        "(the classifier could not decide; surfaced rather than dropped)."
+        "(the classifier could not decide; surfaced rather than dropped) — "
+        f"accounting for the {metric.total_indeterminate} indeterminate (file, "
+        "subsystem) claim(s) in the TOTAL row above, since one file can claim "
+        "several subsystems."
     )
     lines.append("")
 
