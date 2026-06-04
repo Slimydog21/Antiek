@@ -68,6 +68,7 @@ discovered URL (``LegalGate.check_url``) — it does NOT ingest (that is
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -305,10 +306,8 @@ def _retrieve_local(
     except Exception:
         return []
     finally:
-        try:
+        with contextlib.suppress(Exception):
             con.close()
-        except Exception:
-            pass
 
 
 def _web_search(deps: RealLoopDeps, sub_question: str) -> tuple[list[Any], str | None]:
