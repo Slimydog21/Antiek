@@ -1,0 +1,37 @@
+# Fixture mutants for the fake-gate-detector's own tests. Two mutants flip the
+# SAME load-bearing line (the members-only guard in product.discount_price):
+#   - fixture-real  is run against the REAL behavior test  -> expected KILLED
+#   - fixture-fake  is run against the FAKE mock-only test  -> expected SURVIVED
+# A third, fixture-stale, points at a qualname that does not exist -> anchor-stale.
+# These prove BOTH halves of the detector on a controlled mini-repo, and the
+# anchor-stale path, without touching real product source.
+
+[[mutant]]
+id = "fixture-fake"
+target = "product.py"
+op = "invert_guard"
+anchor = { qualname = "discount_price", match = "if is_member:" }
+test_selector = ["test_fake.py"]
+rationale = "Members-only guard; the fake mock-only test asserts call shape only, so it lets the inversion survive — the canonical fake gate."
+added = "2026-06-04"
+added_by = "abt-02 fixture"
+
+[[mutant]]
+id = "fixture-real"
+target = "product.py"
+op = "invert_guard"
+anchor = { qualname = "discount_price", match = "if is_member:" }
+test_selector = ["test_real.py"]
+rationale = "Members-only guard; the real behavior test asserts the returned price, so it kills the inversion — the positive control."
+added = "2026-06-04"
+added_by = "abt-02 fixture"
+
+[[mutant]]
+id = "fixture-stale"
+target = "product.py"
+op = "noop"
+anchor = { qualname = "no_such_function", match = "if is_member:" }
+test_selector = ["test_real.py"]
+rationale = "Anchors a qualname that does not exist — the detector must report anchor-stale (NOT a false pass), proving a drifted anchor is surfaced loudly."
+added = "2026-06-04"
+added_by = "abt-02 fixture"
