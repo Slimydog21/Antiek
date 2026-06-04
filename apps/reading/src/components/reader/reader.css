@@ -1,0 +1,42 @@
+/* Reader render styles (SPR-03). Loaded by Reader.tsx alongside KaTeX's CSS.
+   Keeps the Charter-serif body register; adds only what the model renderer
+   needs that Tailwind utilities don't cover cleanly (KaTeX overflow + the
+   visible math-degrade fallback). */
+
+/* Display math can be wider than the measure (a long aligned equation). Let it
+   scroll WITHIN its block rather than push the reading column wider. */
+.reader-math--display .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+  margin: 0;
+}
+
+/* The VISIBLE degrade fallback (rigor #1): when KaTeX cannot typeset a macro,
+   renderMath emits this labelled element with the raw TeX. It must be obvious —
+   never blank — so a maintainer (and the operator) sees the equation failed and
+   what it was. A dashed amber box with the TeX source. */
+.reader-math-fallback {
+  display: inline-block;
+}
+.reader-math-fallback--display {
+  display: block;
+  margin: 0.75rem 0;
+}
+.reader-math-fallback code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: rgba(249, 189, 43, 0.12); /* sun-yellow wash */
+  border: 1px dashed var(--sun, #d99e10);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+  color: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* KaTeX renders an in-string parse error in errorColor when throwOnError is
+   false; keep that visible too (no override that would hide it). */
+.reader-body .katex-error {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
