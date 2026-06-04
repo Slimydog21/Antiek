@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager, suppress
 from typing import Any, cast
@@ -123,11 +124,45 @@ def _decompose(problem: str, max_depth: int) -> PlanReport:
 
 
 def _research_loop_factory() -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
-    """The browse loop each investigation runs. Default = SPR-02 demo loop;
-    the real Exa→Browserbase loop drops in here with no route change."""
+    """The browse loop each investigation runs.
+
+    RDR SPR-04 — the PRODUCTION path now returns ``real_research_loop``: a real
+    role-chain loop (local-corpus retrieval → Exa web fan-out under the §16
+    research-fanout exemption + §9.0 servability gate → grounded insight with a
+    concrete ``source_document_id`` ref). It returns the SAME callable shape the
+    old demo stub returned, so ``HostLocalRunner`` (the injection at the launch
+    endpoint) is byte-unchanged.
+
+    INERT-AI caveat (load-bearing): the real loop's Exa search + synthesis
+    dispatch BOTH need provider keys that **activation SPR-03 owns**
+    (``EXA_API_KEY`` + dispatch creds). Until those land, the loop is
+    FUNCTIONALLY INERT — it degrades to local-only / no-synthesis rather than
+    failing, and lights up the moment the keys are set. A wired loop is NOT
+    "research works".
+
+    DEMO-LOOP ESCAPE HATCH — flag-only, NEVER the production default.
+    ``make_demo_loop`` is the deterministic offline/demo + benchmark loop (the
+    compounding benchmark harness + the runner tests depend on it). It is the
+    STRONGEST case for keeping a demo loop: deterministic, offline, no key. But
+    it bills budget for FAKE steps (a fixed ``cost_per_step`` over a fixed
+    ``range(steps)`` regardless of whether work ran), which is a correctness +
+    honesty defect in the PRODUCTION path. Resolution: it is reachable here ONLY
+    when ``ANTIEK_RESEARCH_DEMO_LOOP=1`` is explicitly set (dev/test escape
+    hatch), and is NEVER returned by the default production factory.
+    What would reverse this: a sanctioned offline-demo MODE that the production
+    factory still never reaches on its own — i.e. the flag stays opt-in; the
+    default must always be the real loop.
+    """
+    if os.environ.get("ANTIEK_RESEARCH_DEMO_LOOP") == "1":  # explicit dev/test escape hatch
+        return cast(
+            Callable[[LoopContext], AsyncIterator[StepEvent]],
+            make_demo_loop(steps=3, cost_per_step=0.01, emit_note=True),
+        )
+    from runtime.research_runner.real_loop import real_research_loop
+
     return cast(
         Callable[[LoopContext], AsyncIterator[StepEvent]],
-        make_demo_loop(steps=3, cost_per_step=0.01, emit_note=True),
+        real_research_loop(),
     )
 
 
