@@ -217,6 +217,9 @@ def assess_headline(
             )
         # Below-the-bar-but-cheaper falls through to NULL with the honest reason.
         if not sources_ok:
+            # ``sources_ok`` is False ONLY when sources is present AND ci_high > 0
+            # (see its definition above), so ``sources`` is non-None here.
+            assert sources is not None
             return VERDICT_NULL, (
                 f"headline cost cheaper but {CORROBORATING_METRIC} CI_high "
                 f"{sources.ci_high:.6g} > 0 — savings not corroborated"

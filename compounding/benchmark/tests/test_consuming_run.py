@@ -17,27 +17,28 @@ consuming loop's saving is real — and neither is faked.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
 from compounding.benchmark.aggregate import aggregate_comparison
 from compounding.benchmark.measure import CostToResolve
 from compounding.benchmark.question_set import load_question_set
+from compounding.benchmark.result_schema import ArmComparison
 from compounding.benchmark.run import run_benchmark
 from compounding.benchmark.validity import (
     HEADLINE_METRIC,
     VALIDITY_VALID,
-    VERDICT_COMPOUNDS,
     _dose_response_holds,
 )
 
 
 @pytest.fixture
-def dirs(tmp_path):
+def dirs(tmp_path: Path) -> tuple[str, str]:
     return os.path.join(tmp_path, "events"), os.path.join(tmp_path, "graphs")
 
 
-def test_consuming_run_reports_strictly_negative_delta(dirs):
+def test_consuming_run_reports_strictly_negative_delta(dirs: tuple[str, str]) -> None:
     """The reuse-consuming benchmark's headline token_cost_usd delta is strictly
     negative AND its bootstrap CI upper bound is below zero — a real saving beyond
     the floor, not noise and not a clamp."""
@@ -49,6 +50,7 @@ def test_consuming_run_reports_strictly_negative_delta(dirs):
     )
     assert result.loop_kind == "consuming"
     token = result.headline.metric(HEADLINE_METRIC)
+    assert token is not None
     assert token.delta < 0.0, f"warm must be cheaper on the consuming loop, got {token.delta}"
     assert token.ci_high < 0.0, (
         f"the CI upper bound must be below 0 (saving beyond the floor), got "
@@ -56,7 +58,7 @@ def test_consuming_run_reports_strictly_negative_delta(dirs):
     )
 
 
-def test_consuming_run_control_stays_flat(dirs):
+def test_consuming_run_control_stays_flat(dirs: tuple[str, str]) -> None:
     """The irrelevant-vs-cold control stays flat on the consuming loop (off-topic
     units share no salient tokens with the questions → cover nothing → no
     saving), so the validity gate still passes — the saving is RELEVANCE, not
@@ -69,11 +71,12 @@ def test_consuming_run_control_stays_flat(dirs):
     )
     control = next(c for c in result.comparisons if c.label == "irrelevant_vs_cold_control")
     ctrl = control.metric(HEADLINE_METRIC)
+    assert ctrl is not None
     assert ctrl.delta == 0.0, f"the irrelevant control must stay flat, got {ctrl.delta}"
     assert result.validity == VALIDITY_VALID
 
 
-def test_consuming_run_is_not_the_demo_null(dirs):
+def test_consuming_run_is_not_the_demo_null(dirs: tuple[str, str]) -> None:
     """Sanity that the consuming loop is doing something the demo loop is NOT: the
     same run on the demo loop reports a 0 delta, the consuming loop reports < 0.
     The demo loop's null and the consuming loop's saving are BOTH true."""
@@ -87,14 +90,17 @@ def test_consuming_run_is_not_the_demo_null(dirs):
         qs, events_dir=os.path.join(events_dir, "cons"),
         graphs_dir=os.path.join(graphs_dir, "cons"), n=3, resamples=300, loop_kind="consuming",
     )
-    assert demo.headline.metric(HEADLINE_METRIC).delta == 0.0
-    assert consuming.headline.metric(HEADLINE_METRIC).delta < 0.0
+    demo_token = demo.headline.metric(HEADLINE_METRIC)
+    consuming_token = consuming.headline.metric(HEADLINE_METRIC)
+    assert demo_token is not None and consuming_token is not None
+    assert demo_token.delta == 0.0
+    assert consuming_token.delta < 0.0
 
 
 # ── ACV SPR-06 sharpen: the dose-response claim must be HONEST (no float dust) ──
 
 
-def test_consuming_interpretation_does_not_falsely_claim_dose_response(dirs):
+def test_consuming_interpretation_does_not_falsely_claim_dose_response(dirs: tuple[str, str]) -> None:
     """REGRESSION (cardinal-sin perimeter). On a consuming-MOCK run BOTH the high
     and partial arms tautologically cover every sub-question (the warm seed embeds
     the whole question), so their deltas are equal up to IEEE-754 residue — there
@@ -115,11 +121,15 @@ def test_consuming_interpretation_does_not_falsely_claim_dose_response(dirs):
     interp = result.headline_interpretation
     # M2's bar still met: the headline saving is real (strictly negative, CI_high<0).
     token = result.headline.metric(HEADLINE_METRIC)
+    assert token is not None
     assert token.delta < 0.0 and token.ci_high < 0.0, interp
 
     # The verdict must NOT be COMPOUNDS (which would require a real dose-response),
-    # and the string must NOT assert a demonstrated dose-response / flywheel.
-    assert result.headline != VERDICT_COMPOUNDS, (
+    # and the string must NOT assert a demonstrated dose-response / flywheel. The
+    # COMPOUNDS verdict is the ONLY one whose interpretation carries the
+    # "flywheel demonstrated (warm cheaper" reading (validity.py interp_map), so a
+    # consuming-mock that correctly withholds COMPOUNDS must not surface it.
+    assert "flywheel demonstrated (warm cheaper" not in interp.lower(), (
         f"a tautological consuming-mock has no dose-response gradient; it must not "
         f"verdict COMPOUNDS. interp={interp!r}"
     )
@@ -130,7 +140,7 @@ def test_consuming_interpretation_does_not_falsely_claim_dose_response(dirs):
     assert "dose-response not shown" in lowered, interp
 
 
-def _delta_only(delta: float, *, ci_low: float, ci_high: float):
+def _delta_only(delta: float, *, ci_low: float, ci_high: float) -> ArmComparison:
     """A single-point ArmComparison carrying a chosen token_cost_usd delta+CI, so
     we can exercise ``_dose_response_holds`` on the exact float-dust values the
     consuming mock produces without re-running the whole harness."""
@@ -151,7 +161,7 @@ def _delta_only(delta: float, *, ci_low: float, ci_high: float):
     return cmp
 
 
-def test_dose_response_holds_rejects_float_dust():
+def test_dose_response_holds_rejects_float_dust() -> None:
     """UNIT: the exact float-dust pair the consuming mock produces — high −0.03
     vs partial −0.029999999999999995 — must NOT register as a dose-response. The
     separation (~3e-18) is below the dust floor (1e-9), so it is NOT material.
@@ -166,7 +176,7 @@ def test_dose_response_holds_rejects_float_dust():
     assert "not shown" in reason.lower(), reason
 
 
-def test_dose_response_holds_admits_real_gradient():
+def test_dose_response_holds_admits_real_gradient() -> None:
     """UNIT: a MATERIAL gradient (high saves a full cost-quantum more than partial)
     still passes — the fix rejects dust without weakening the genuine gate."""
     high = -0.03   # high arm saves 0.03

@@ -62,7 +62,7 @@ from runtime.research_runner.host_local import make_demo_loop
 from runtime.research_runner.protocol import BudgetCap, ResearchPlan
 from substrate.graph.insight_question import promote_insight
 from substrate.graph.ops import insert_node
-from substrate.graph.retrieval_substrate import make_substrate
+from substrate.graph.retrieval_substrate import BruteForceSubstrate, make_substrate
 from substrate.graph.schema import init_database
 from substrate.multi_user.graph_router import GraphRouter, resolve_personal_graph
 
@@ -75,7 +75,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     import sys
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    from processing.embedding.embed import HashEmbedding  # type: ignore[no-redef]
+    from processing.embedding.embed import HashEmbedding
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ class IrrelevantSeed:
     name: str = "irrelevant"
 
 
-ArmSeed = "ColdSeed | WarmSeed | IrrelevantSeed"
+type ArmSeed = ColdSeed | WarmSeed | IrrelevantSeed
 
 
 # Off-topic unit texts for the irrelevant arm. Drawn from the zero-overlap
@@ -333,7 +333,10 @@ def run_arm(
             )
         )
     finally:
-        if reuse_substrate is not None:
+        # The reuse arms always build the brute-force substrate (the only kind
+        # requested above); narrow to it so ``close`` (not on the Protocol seam)
+        # is reached honestly rather than cast-silenced.
+        if isinstance(reuse_substrate, BruteForceSubstrate):
             reuse_substrate.close()
 
     return ArmResult(

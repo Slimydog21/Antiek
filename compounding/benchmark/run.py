@@ -36,15 +36,21 @@ from .harness import (
     LOOP_CONSUMING,
     LOOP_DEMO,
     ArmResult,
+    ArmSeed,
     ColdSeed,
     IrrelevantSeed,
     WarmSeed,
     run_arm,
 )
 from .measure import CostToResolve
-from .pilot import propose_parameters, run_pilot
+from .pilot import PilotReport, ProposedParameters, propose_parameters, run_pilot
 from .profiles import BenchmarkProfile, load_profile
-from .question_set import QUESTION_SET_PATH, QuestionSet, load_question_set
+from .question_set import (
+    QUESTION_SET_PATH,
+    BenchmarkQuestion,
+    QuestionSet,
+    load_question_set,
+)
 from .result_schema import ArmComparison, BenchmarkResult
 from .validity import HEADLINE_METRIC, decide
 
@@ -113,7 +119,14 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def write_pilot_report(report, proposal, *, path: str, frozen_sha: str, git_sha: str) -> str:
+def write_pilot_report(
+    report: PilotReport,
+    proposal: ProposedParameters,
+    *,
+    path: str,
+    frozen_sha: str,
+    git_sha: str,
+) -> str:
     """Persist the pilot-report artifact (ACV SPR-06 / decision-0.2 §C.2-C.4 + B3).
 
     Records the observed per-metric CV, the cold means, the DERIVED proposal
@@ -160,18 +173,19 @@ def write_pilot_report(report, proposal, *, path: str, frozen_sha: str, git_sha:
             sort_keys=True,
         ).encode("utf-8")
     ).hexdigest()[:16]
-    body["pilot_report_id"] = f"pilot:{digest}"
+    pilot_report_id = f"pilot:{digest}"
+    body["pilot_report_id"] = pilot_report_id
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(body, f, indent=2)
         f.write("\n")
-    return body["pilot_report_id"]
+    return pilot_report_id
 
 
 def _run_cell(
-    questions: Sequence,
-    arm_seed,
+    questions: Sequence[BenchmarkQuestion],
+    arm_seed: ArmSeed,
     *,
     events_dir: str,
     graphs_dir: str,
@@ -245,7 +259,12 @@ def run_benchmark(
     warm = _run_cell(all_qs, WarmSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n, loop_kind=loop_kind)
     irrelevant = _run_cell(all_qs, IrrelevantSeed(), events_dir=events_dir, graphs_dir=graphs_dir, n=n, loop_kind=loop_kind)
 
-    def compare(label, exp_qids, base_cell, exp_cell) -> ArmComparison:
+    def compare(
+        label: str,
+        exp_qids: Sequence[str],
+        base_cell: dict[str, list[CostToResolve]],
+        exp_cell: dict[str, list[CostToResolve]],
+    ) -> ArmComparison:
         return aggregate_comparison(
             label,
             _pool(exp_cell, exp_qids),
@@ -507,9 +526,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"  frozen_sha = {result.frozen_sha}")
     print(f"  n          = {result.n}  mock_run = {result.mock_run}")
     print(f"  validity   = {result.validity}")
-    print(f"  verdict    = {result.headline.metric(HEADLINE_METRIC).delta:+.6g} "
-          f"[{result.headline.metric(HEADLINE_METRIC).ci_low:+.6g}, "
-          f"{result.headline.metric(HEADLINE_METRIC).ci_high:+.6g}] {HEADLINE_METRIC}")
+    headline_metric = result.headline.metric(HEADLINE_METRIC)
+    assert headline_metric is not None, f"headline comparison must carry {HEADLINE_METRIC}"
+    print(f"  verdict    = {headline_metric.delta:+.6g} "
+          f"[{headline_metric.ci_low:+.6g}, "
+          f"{headline_metric.ci_high:+.6g}] {HEADLINE_METRIC}")
     print(f"  interpretation = {result.headline_interpretation}")
     return 0
 

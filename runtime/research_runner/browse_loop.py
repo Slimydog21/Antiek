@@ -68,22 +68,22 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 try:
-    from ..event_log import emit_typed
-    from ..schemas.events import DispatchCallPayload
+    from ..event_log import emit_typed  # type: ignore[import-untyped]
+    from ..schemas.events import DispatchCallPayload  # type: ignore[import-untyped]
     from .host_local import LoopContext
     from .protocol import StepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.host_local import LoopContext  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import StepEvent  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas.events import DispatchCallPayload  # type: ignore[no-redef]
+    from runtime.research_runner.host_local import LoopContext
+    from runtime.research_runner.protocol import StepEvent
+    from substrate.event_log import emit_typed
+    from substrate.schemas.events import DispatchCallPayload
 
 
 # --- defensible numbers (rigor #5: every constant cites its source) ---------
@@ -369,7 +369,7 @@ def make_reuse_consuming_loop(
     output_tokens: int = DEFAULT_OUTPUT_TOKENS,
     events_dir: str | None = None,
     emit_note: bool = True,
-):
+) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
     """Build a reuse-CONSUMING browse loop.
 
     For each planned sub-question:
