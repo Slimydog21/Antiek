@@ -79,12 +79,81 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
           Public remembrances
         </button>
       </div>
-      <section>
+      <section
+        class="space-y-4"
+      >
+        <div>
+          <label
+            class="inline-flex items-center gap-2 px-3 bg-ice-0 dark:bg-charcoal-2 border-edge border-sun rounded-hog transition-shadow shadow-none focus-within:shadow-z1 dark:focus-within:shadow-z1-night h-9 w-full"
+          >
+            <input
+              aria-label="Search public remembrances"
+              class="flex-1 bg-transparent outline-none font-sans text-[13px] text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight "
+              placeholder="Search public remembrances by name…"
+              type="search"
+              value=""
+            />
+          </label>
+        </div>
         <p
           class="font-serif text-sm italic text-ink-mute dark:text-moonlight"
         >
           No public remembrances yet. When someone shares a story publicly, it'll appear here — and you'll be able to add what you remember.
         </p>
+        <div
+          aria-label="Open public contributions"
+          class="rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+          role="note"
+        >
+          <h3
+            class="font-serif text-[15px] font-semibold text-ink dark:text-bright"
+          >
+            Open public contributions
+          </h3>
+          <p
+            class="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight"
+          >
+            Open public contributions arrive after the ecosystem review (G7); for now, contributions come through your invites.
+          </p>
+        </div>
+        <div
+          class="rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+        >
+          <h3
+            class="font-serif text-[15px] font-semibold text-ink dark:text-bright"
+          >
+            How public remembrances will work
+          </h3>
+          <ol
+            class="mt-2 space-y-2"
+          >
+            <li
+              class="font-serif text-[13px] text-ink dark:text-bright"
+            >
+              Anyone will be able to find an open remembrance and add what they remember.
+            </li>
+            <li
+              class="font-serif text-[13px] text-ink dark:text-bright"
+            >
+              Open contribution by anyone arrives after the ecosystem review — see the note above; for now, contributions come through your invites.
+            </li>
+            <li
+              class="font-serif text-[13px] text-ink dark:text-bright"
+            >
+              Public sharing opens after a legal review (G2/G3). Until then a remembrance stays private to you and the people you invite.
+            </li>
+            <li
+              class="font-serif text-[13px] text-ink dark:text-bright"
+            >
+              Contributor shares accrue to escrow now; money begins routing once the legal review clears (G2/G3).
+            </li>
+          </ol>
+          <p
+            class="mt-2 font-serif text-[12px] italic text-ink-mute dark:text-moonlight"
+          >
+            A contribution's share is weighted by how well-corroborated and well-sourced it is — by the quality of what's remembered, nothing else.
+          </p>
+        </div>
       </section>
     </div>
   </div>

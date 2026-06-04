@@ -30,10 +30,12 @@
  *      ANTIEK_STRIPE_PROVIDER) appears in any string meant for rendering.
  */
 import type { VoiceState, AgreementPoint } from "./speakApi";
-import { toAgreementKind } from "./speakApi";
 
 // Re-export the enum→word machinery rather than redefine it: speakApi is the
 // single owner of the mappings; speakVocab is the single owner of the labels.
+// (The re-export below pulls `toAgreementKind` straight from speakApi — no
+// local import is needed, and a local one would be flagged unused under the
+// app's noUnusedLocals.)
 export type { VoiceState } from "./speakApi";
 export { toAgreementKind } from "./speakApi";
 
@@ -108,6 +110,68 @@ export const GATE_PHRASES = {
 export type GatePhraseKey = keyof typeof GATE_PHRASES;
 
 /**
+ * Public-lane copy (SPR-03) — plain, honest, NON-gate sentences the public
+ * lane says around the feed and the gate phrases above. These grant the user
+ * NO agency over a gate and name NO env flag, so — like VOICE_STATE_LABELS —
+ * they live OUTSIDE `gatePhraseStrings()` (they are not gate phrases held to
+ * the future-tense / no-user-action discipline) but INSIDE
+ * `allRenderedPhrases()` so the env-flag-leak scan still covers them.
+ *
+ * Two honesty rules they encode (SPR-03 M3 + M5):
+ *   - M5 lifecycle: the feed lists public-INTENT projects, and `FeedItem`
+ *     carries NO "published" flag, so the lane MUST NOT claim "published".
+ *     `intendedPublic` says "intended public", never "published".
+ *   - M3 CTA: open public contribution by strangers is not live (G7), so the
+ *     CTA copy is honest that the working "Add your memory" action is the
+ *     operator opening their OWN public-intent project — not a live open
+ *     marketplace others can join today.
+ *
+ * The §9.3 Option-B payout basis is stated WITHOUT any airtime/ad-duration
+ * fiction (mirrors the guard at speakApi.ts releasePayout).
+ */
+export const PUBLIC_LANE_LABELS = {
+  /** M5 — a feed item is public-INTENT, never confirmed published. */
+  intendedPublic:
+    "A public remembrance — open to the people invited to add what they remember.",
+  /** M3 — honest framing of who the working CTA serves today. */
+  ctaOperatorOnly:
+    "This opens your own public-intent remembrance. Open contribution by " +
+    "anyone is described below — it isn't live yet.",
+  /** M4 — explainer heading. */
+  explainerHeading: "How public remembrances will work",
+  /** M4 — step 1, the only present-ish framing, still about the future flow. */
+  explainerStepFind:
+    "Anyone will be able to find an open remembrance and add what they remember.",
+  /** M4 — payout basis, §9.3 Option-B. Phrased to avoid the very strings the
+   *  §9.3 guard forbids in rendered copy (an airtime/ad-duration framing): a
+   *  share is earned by corroboration + sourcing quality only. */
+  explainerPayoutBasis:
+    "A contribution's share is weighted by how well-corroborated and " +
+    "well-sourced it is — by the quality of what's remembered, nothing else.",
+  /**
+   * M4 — the OPEN-state copy for the G2/G3 explainer lines, rendered when a
+   * LIVE `getEconomics` read reports the gate has cleared. Each describes a
+   * STATE the system has reached — NO user-action verb (no enable/unlock/
+   * activate), NO env-flag name — so the gate-honesty contract stays green
+   * even though these live outside `gatePhraseStrings()` (they are not gate
+   * phrases: a gate phrase is the FUTURE-tense "what opens it" sentence; these
+   * are the present-tense "it is open" counterpart, read live from G2/G3).
+   */
+  publishingOpen:
+    "Public sharing is open — remembrances can now be shared publicly.",
+  payoutsOpen:
+    "Contributor payouts are open — money can now route to contributors.",
+  /** M4 — explainer step 2, distinct from the M2 lock panel's sentence so the
+   *  same G7 sentence is not printed twice on screen. Points at the panel above
+   *  rather than repeating it verbatim. */
+  explainerStepOpenContribution:
+    "Open contribution by anyone arrives after the ecosystem review — see the " +
+    "note above; for now, contributions come through your invites.",
+} as const;
+
+export type PublicLaneLabelKey = keyof typeof PUBLIC_LANE_LABELS;
+
+/**
  * Display labels for an invitee's lifecycle state — the ONE place the console
  * (modes/Speak/index.tsx) and the invite list (modes/Speak/Invites.tsx) read
  * the human word for a voice's status, so the two surfaces cannot drift.
@@ -166,6 +230,7 @@ export function allRenderedPhrases(): string[] {
     ...Object.values(LANE_LABELS),
     ...Object.values(AGREEMENT_WORDS),
     ...Object.values(VOICE_STATE_LABELS),
+    ...Object.values(PUBLIC_LANE_LABELS),
   ];
   for (const gate of Object.values(GATE_PHRASES)) {
     out.push(gate.label, gate.whenGated);
