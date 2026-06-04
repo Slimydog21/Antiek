@@ -582,6 +582,62 @@ async def test_no_charge_for_empty_result_subquestion(empty_graph):
     assert questions
 
 
+async def test_promotion_funnel_receives_source_bearing_insight(seeded_graph, tmp_path):
+    """M4: promotion_funnel receives the source-bearing insight in its existing
+    shape and persists the source_document_id into the promoted insight node's
+    metadata — the exact data SPR-07 turns into edges. We do NOT write edges
+    here (that is SPR-07); we prove the funnel gets the ref through its existing
+    note→promote_insight path.
+
+    This drives the loop through the REAL HostLocalRunner(on_emit=funnel.submit)
+    + REAL PromotionFunnel + a real graph — the production wiring."""
+    import json
+
+    from runtime.research_runner import PromotionFunnel
+
+    register_provider(_CassetteProvider())
+    db_path, emb = seeded_graph  # reuse the seeded graph as the promotion target
+    loop_fn = real_research_loop(_deps(seeded_graph))
+
+    funnel = PromotionFunnel(db_path=db_path, embedding_provider=emb)
+    await funnel.start()
+    budget = BudgetManager()
+    runner = HostLocalRunner(loop_fn, budget=budget, seal_on_complete=False,
+                             on_emit=funnel.submit)
+    plan = ResearchPlan(investigation_id="inv-funnel", sub_question="photosynthesis chloroplast light reaction",
+                        budget=BudgetCap(cost_usd=0.50))
+    handle = await runner.start("inv-funnel", plan)
+    _ = [ev async for ev in runner.stream(handle)]
+    await runner.join()
+    await funnel.drain_and_stop()
+
+    assert funnel.promoted_insights >= 1, "the source-bearing insight must reach the funnel"
+    assert not funnel.errors, funnel.errors
+    # The promoted insight node carries source_document_id in its metadata.
+    con = connect_read(db_path)
+    try:
+        rows = con.execute(
+            "SELECT metadata FROM nodes WHERE node_type = 'insight'"
+        ).fetchall()
+    finally:
+        con.close()
+    metas = []
+    for (m,) in rows:
+        if not m:
+            continue
+        try:
+            metas.append(json.loads(m))
+        except (json.JSONDecodeError, TypeError):
+            continue  # a pre-existing node with non-JSON metadata — not ours
+    assert any(meta.get("source_document_id") == "doc-spr04-1" for meta in metas), (
+        "the funnel must persist the loop's source_document_id into node metadata"
+    )
+    # And the source_kind + supported_by ride along — the SPR-07 edge inputs.
+    ours = next(m for m in metas if m.get("source_document_id") == "doc-spr04-1")
+    assert ours.get("source_kind") == "local_chunk"
+    assert ours.get("supported_by") == "doc-spr04-1"
+
+
 # ===========================================================================
 # M5 — cassette harness, liveness, oracle quality gate, failure modes
 # ===========================================================================
