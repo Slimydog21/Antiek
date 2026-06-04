@@ -362,6 +362,12 @@ def test_ingest_emits_document_loaded(temp_db_and_events):
         paper, investigation_id="inv-test",
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
+        # Legacy abstract-only path: this test does not exercise the
+        # structured-block column, so keep the at-ingest ar5iv/PDF fetch OFF.
+        # The default flipped to True in round 2, which silently dialed
+        # ar5iv.labs.arxiv.org live (~4s/call) from CI — the exact arxiv.org-
+        # family egress the 429-ban history forbids. (DN1 sweep.)
+        emit_structured_blocks=False,
     )
     assert res.document_id == "doc-arxiv-2402.03300"
     assert res.document_loaded_event_id is not None
@@ -376,6 +382,7 @@ def test_ingest_writes_documents_chunks_nodes(temp_db_and_events):
         paper, investigation_id="inv-test",
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
+        emit_structured_blocks=False,  # legacy path; no ar5iv/PDF egress (DN1)
     )
     con = duckdb.connect(temp_db_and_events["db_path"])
     try:
@@ -407,6 +414,7 @@ def test_ingest_chunk_text_round_trip(temp_db_and_events):
         paper, investigation_id="inv-test",
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
+        emit_structured_blocks=False,  # legacy path; no ar5iv/PDF egress (DN1)
     )
     con = duckdb.connect(temp_db_and_events["db_path"])
     try:
@@ -429,11 +437,13 @@ def test_ingest_is_idempotent_on_rows(temp_db_and_events):
         paper, investigation_id="inv-test",
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
+        emit_structured_blocks=False,  # legacy path; no ar5iv/PDF egress (DN1)
     )
     r2 = ingest_paper(
         paper, investigation_id="inv-test",
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
+        emit_structured_blocks=False,  # legacy path; no ar5iv/PDF egress (DN1)
     )
     assert r1.document_id == r2.document_id
     assert r1.chunk_ids == r2.chunk_ids
@@ -465,6 +475,7 @@ def test_ingest_nodes_carry_provenance_metadata(temp_db_and_events):
         paper, investigation_id="inv-test",
         db_path=temp_db_and_events["db_path"],
         embedder=_StubEmbedder(),
+        emit_structured_blocks=False,  # legacy path; no ar5iv/PDF egress (DN1)
     )
     con = duckdb.connect(temp_db_and_events["db_path"])
     try:
@@ -478,3 +489,71 @@ def test_ingest_nodes_carry_provenance_metadata(temp_db_and_events):
     assert all(m.get("source") == "arxiv" for m in metas)
     assert all(m.get("arxiv_id") == "2402.03300" for m in metas)
     assert all("chunk_id" in m for m in metas)
+
+
+# ---------------------------------------------------------------------------
+# F. CI socket guard — proves the SPR-02 (DN1) guard catches a deliberate
+#    arXiv-family egress instead of silently dialing the (once-429-banned) host.
+# ---------------------------------------------------------------------------
+
+
+def test_socket_guard_blocks_real_ar5iv_connect():
+    """The repo-root conftest socket guard must RAISE on a real outbound connect
+    to the arXiv family (ar5iv) — the exact egress whose silent recurrence is the
+    429-ban risk. We attempt a raw ``socket.create_connection`` to ar5iv's host;
+    the guard turns it into ``BlockedNetworkAccess`` BEFORE any byte leaves the
+    box (DNS may still resolve, but no TCP connect is made)."""
+    import socket as _socket
+
+    from conftest import BlockedNetworkAccess
+
+    with pytest.raises(BlockedNetworkAccess):
+        # ar5iv.org:443 — a non-loopback target. The guard intercepts at connect.
+        _socket.create_connection(("ar5iv.org", 443), timeout=1.0)
+
+
+def test_socket_guard_allows_loopback():
+    """The guard must NOT be a blanket no-sockets ban: loopback (127.0.0.1) stays
+    allowed so FastAPI TestClient / localhost servers / xdist IPC keep working.
+    Connecting to a closed loopback port raises ConnectionRefusedError (the OS),
+    NOT BlockedNetworkAccess (the guard) — proving loopback passes the guard."""
+    import socket as _socket
+
+    from conftest import BlockedNetworkAccess
+
+    s = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    s.settimeout(0.5)
+    try:
+        # Port 1 on loopback is reliably closed → OS refuses, guard does not fire.
+        with pytest.raises((ConnectionRefusedError, OSError)) as exc_info:
+            s.connect(("127.0.0.1", 1))
+        assert not isinstance(exc_info.value, BlockedNetworkAccess)
+    finally:
+        s.close()
+
+
+def test_default_structured_fetcher_raises_under_guard():
+    """A deliberately-UNGUARDED (no injected stub) structured fetch — the exact
+    default the round-2 ``emit_structured_blocks=True`` path invokes at ingest —
+    now hits the guard and RAISES instead of completing a live arXiv GET.
+
+    This is the regression proof: before the guard, this dialed ar5iv (~4s, GET
+    logged) and silently succeeded; now the outbound socket is blocked, so the
+    leak surfaces as a loud failure (here ``BlockedNetworkAccess`` propagates out
+    of the governed PDF fallback — ar5iv's failure is swallowed internally, but
+    the PDF fetcher re-attempts egress and the guard fires there too).
+
+    NOTE: ``ingest_paper(..., emit_structured_blocks=True)`` itself is BEST-EFFORT
+    and would SWALLOW this into NULL blocks (the abstract still lands) — that is
+    by design. We assert at the fetcher boundary, which is where the leak lived
+    and where the guard must bite."""
+    from acquisition.arxiv import adapter as arxiv_adapter
+    from conftest import BlockedNetworkAccess
+
+    with pytest.raises(BlockedNetworkAccess):
+        # No fetch_html / fetch_pdf injection → the real governed fetchers run,
+        # both of which the guard blocks. A 2400.x id keeps the governor's path
+        # honest without depending on any fixture.
+        arxiv_adapter._default_fetch_structured_blocks(
+            "2400.00001", "doc-arxiv-2400.00001", "Guard Probe",
+        )

@@ -96,7 +96,7 @@ doesn't undo your manual fix.
 | Symptom | Most likely cause | Fix |
 |---|---|---|
 | `git pull` reports merge conflict | someone edited code on the VM directly | `ssh ... && cd /opt/antiek && git stash` then re-run deploy.yml |
-| `pip install` fails on a new dep | new optional extra added but not in `[pdf,urls,embedding]` | edit `deploy.yml`'s pip task to add the new extra |
+| `pip install` fails on a new dep | new optional extra added but not in `[pdf,urls,embedding,extraction]` | edit `deploy.yml`'s pip task to add the new extra |
 | systemd reports `failed` after restart | a Python import error in the new code | `ssh ... journalctl -u antiek -n 100` to see the traceback |
 | health check times out | Caddy refusing to talk to uvicorn (probably port 8001 already bound by an old uvicorn) | `ssh ... && pkill -f uvicorn && systemctl restart antiek` |
 | `registered_providers: []` after deploy | secrets file got blanked (rare — only if you re-ran setup.yml with `force: yes`) | re-run secret-rotation.md to repopulate |

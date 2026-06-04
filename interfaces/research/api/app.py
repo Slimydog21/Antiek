@@ -2286,7 +2286,20 @@ def create_app(
                         f"arXiv paper {arxiv_id!r} not found"
                     )
                 arxiv_kwargs: dict[str, Any] = {
-                    "investigation_id": req.investigation_id
+                    "investigation_id": req.investigation_id,
+                    # SPR-02 (DN2): the at-ingest structured-block fetch is up to
+                    # TWO blocking governed egress hops (ar5iv + PDF fallback,
+                    # each <=15s + the host-global >=3s spacing). This is an
+                    # ``async def`` handler that contracts "202 immediately" — a
+                    # synchronous governed fetch here would block the event loop
+                    # for the whole arXiv round-trip. So this latency-sensitive
+                    # public path lands the abstract WITHOUT the structured fetch
+                    # and lets the out-of-band M5 backfill
+                    # (``substrate.graph.backfill_structured_blocks``) upgrade the
+                    # row from stored text — preserving 202 while the corpus still
+                    # gets typed blocks. The non-latency batch/CLI ingestion path
+                    # keeps ``emit_structured_blocks=True`` (emits at ingest).
+                    "emit_structured_blocks": False,
                 }
                 if req.source_tier is not None:
                     arxiv_kwargs["source_tier"] = req.source_tier
