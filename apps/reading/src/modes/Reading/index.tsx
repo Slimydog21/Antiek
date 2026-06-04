@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse, TocItem } from "../../api/books";
@@ -18,7 +18,7 @@ import { allBlockTypesKnown } from "../../components/reader/knownBlockTypes";
 import { openDocumentStub } from "../../components/reader/openDocumentStub";
 import PdfViewer from "../../components/PdfViewer";
 import type { Block, Document, InlineSpan, TocEntry } from "../../types/document_model.gen";
-import { decodeRegion } from "../../lib/openDocument";
+import { decodeRegion, useOpenDocument } from "../../lib/openDocument";
 import { paginateBlocks, windowForBlockIndex } from "./paginateBlocks";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
@@ -48,7 +48,6 @@ import { emitSourceRead, isRead } from "./sourceRead";
 
 export default function BookReader() {
   const { documentId = "" } = useParams<{ documentId: string }>();
-  const navigate = useNavigate();
   // ── openDocument opts (SPR-05) ────────────────────────────────────────────
   // openDocument navigates here with the opts the door passed, encoded as query
   // params (lib/openDocument.ts::buildReaderTarget). We read them back so a door
@@ -371,9 +370,14 @@ export default function BookReader() {
     };
   }, [housePool, documentId]);
 
+  // The in-reader recommended-next affordance opens through the ONE door
+  // (SPR-05 sharpen — was a direct navigate('/read/:id'), the correct gated
+  // route but skipping the single resolver; now routes through openDocument
+  // like every other door so the resolver stays the only open seam).
+  const openDocument = useOpenDocument();
   const openHouse = useCallback(
-    (docId: string) => navigate(`/read/${encodeURIComponent(docId)}`),
-    [navigate],
+    (docId: string) => openDocument(docId),
+    [openDocument],
   );
 
   // Tell the impression tracker which slots are showing on this page. It
