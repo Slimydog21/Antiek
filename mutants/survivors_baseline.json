@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-06-04",
+  "lint": "fake_gate_detector",
+  "schema_version": 1,
+  "survivors": [
+    {
+      "captured_at": "2026-06-04",
+      "id": "db_lock.stale_pid_liveness_noop",
+      "kind": "survived",
+      "path_line": "runtime/db_lock.py:89",
+      "rationale": "_stale_pid_check is the acquire()-side STALE-LOCK-FILE HYGIENE helper. Before\nopening the lock, connect_write calls it to read the sidecar's stamped PID and,\nif that process is DEAD (``os.kill(pid, 0)`` raises ProcessLookupError /\nPermissionError), unlink the ORPHANED LOCK FILE the dead holder left behind \u2014\nthe file plus its stamped PID/purpose/timestamp (runtime/db_lock.py:68-94). Its\nown docstring is explicit: \"The OS releases the flock on process death, but the\nlock file and its PID stamp persist. This is a best-effort hygiene helper ... the\nreal serialization still happens via flock.\" No-op-ing the ``os.kill(pid, 0)``\nprobe makes the dead-holder branch never fire, so the orphaned lock file + its\nstale stamp are NEVER cleaned up. The OBSERVABLE EFFECT is exactly that: a stale\n``<db>.write.lock`` (still naming the crashed PID/purpose) lingers on disk and\n``cat``-ing it for diagnosis points at a dead process. It is NOT a deadlock \u2014 the\nOS auto-released the flock on death and connect_write re-creates the file via\n``os.open(lock_path, O_CREAT | O_WRONLY)`` at line 280, so a NEW writer acquires\nthe flock on the persisted file whether or not the stale one was unlinked. The\nselector points at tests/test_retrieval_time_gate.py, a clean, collectable suite\nthat exercises connect_write (so it imports + uses db_lock for real, not via\nmocks) \u2014 but NO test in the tree drives a DEAD-PID stale-file cleanup (grep for\n_stale_pid_check / orphan-lock found none). EXPECTED: this SURVIVES \u2014 the finding\nis an under-tested HYGIENE path, NOT a tool bug. The worklist item is a real\nstale-lock-FILE-cleanup behavior test: stamp the sidecar lock file with a DEAD\npid, call connect_write, and assert the orphaned lock file is RECLAIMED/cleaned\n(unlinked then re-created with this writer's stamp) \u2014 NOT \"assert the pipeline\ndoesn't deadlock\" (it never would). Do NOT write it here (out of scope \u2014 it is a\nproduct-test owner's call)."
+    }
+  ]
+}
