@@ -24,11 +24,18 @@ Lifecycle model (honest, the make-or-break part):
   closes. The client keys on ``(investigation_id, seq)`` (SPR-09 M4). We do
   NOT claim exactly-once.
 
-The browse loop is injected (``_research_loop_factory``) — it defaults to the
-SPR-02 demo loop; the real Exa→Browserbase loop drops into the same seam with
-zero route changes (mirrors the contract-first design that let DRW's gap
-detector drop into Speak). §16 honored: no Daytona; the host-local cap is what
-bounds "launch 20 at once", surfaced via the aggregate budget.
+The browse loop is injected (``_research_loop_factory``). As of RDR SPR-04 the
+PRODUCTION factory returns the real role-chain loop
+(``runtime/research_runner/real_loop.real_research_loop``: local-corpus
+retrieval → Exa web fan-out under the §16 research-fanout exemption + §9.0
+servability gate → grounded insight with a concrete source ref). It dropped
+into the same seam with zero ``HostLocalRunner`` change (the contract-first
+design that let DRW's gap detector drop into Speak). The SPR-02 demo loop stays
+reachable only behind ``ANTIEK_RESEARCH_DEMO_LOOP=1`` (deterministic offline
+test/dev), never the production default. The real loop is INERT until
+activation SPR-03 flips provider keys — keyless it degrades to local-only /
+no-synthesis. §16 honored: no Daytona; the host-local cap is what bounds
+"launch 20 at once", surfaced via the aggregate budget.
 """
 
 from __future__ import annotations
