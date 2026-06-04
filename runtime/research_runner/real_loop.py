@@ -614,10 +614,13 @@ def real_research_loop(
             # ``source_document_id`` field name reuses the existing vocabulary,
             # NOT a synonym. cost is the dispatch result's OWN computed cost.
             primary = all_refs[0]
+            # The note carries the FINDING + its source refs (no cost — the
+            # funnel promotes notes into graph insights, so the note stays a
+            # clean promotion payload). The synthesis CHARGE rides on the
+            # separate cost-bearing ``step`` emitted just below, so the runner
+            # bills the real dispatch cost without the funnel ever seeing it.
             yield ctx.note(
                 synth.text or f"insight for: {sub_q}",
-                # cost rides on the note so the runner charges it (host_local
-                # charges any StepEvent carrying cost). Real dispatch cost only.
                 source_document_id=primary.source_document_id,
                 source_kind=primary.kind,
                 source_chunk_id=primary.chunk_id,
