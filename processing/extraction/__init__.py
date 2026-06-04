@@ -20,6 +20,20 @@ from .extract import (
     parse_extraction_response,
 )
 
+# Reader SPR-02 — the document-model extractors. The text/markdown path
+# (text_to_document / markdown_to_blocks) is dependency-light (markdown-it-py,
+# the [extraction] extra); the PDF and arXiv paths are imported lazily by their
+# own modules so a caller that only needs the text path does not require the
+# [pdf] extra. Re-exported here so callers have one import surface alongside the
+# legacy LLM chunk-extraction functions above (a different concern — chunks →
+# graph nodes — kept distinct, not merged).
+from .to_document_model import (
+    ar5iv_html_to_blocks,
+    arxiv_to_document,
+    markdown_to_blocks,
+    text_to_document,
+)
+
 __all__ = [
     "ANTIEK_NODE_TYPES",
     "DEFAULT_GRAPH_SCOPE",
@@ -30,4 +44,9 @@ __all__ = [
     "ExtractionResult",
     "parse_extraction_response",
     "extract_from_chunk",
+    # Reader SPR-02 — document-model extractors
+    "text_to_document",
+    "markdown_to_blocks",
+    "ar5iv_html_to_blocks",
+    "arxiv_to_document",
 ]

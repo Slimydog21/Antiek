@@ -1093,6 +1093,38 @@ CREATE INDEX IF NOT EXISTS idx_monitors_investigation
 """
 
 
+# Reader SPR-02 (The Unified Reader) — documents.structured_blocks. The
+# STORE-BOTH column: the SPR-01 typed-block Document model (serialized JSON),
+# persisted ALONGSIDE the existing raw_text. raw_text stays the "view original"
+# source (cleaned text / the markdown that produced the blocks); structured_blocks
+# is what the one <Reader> renders so the body reads as a document, not a flat
+# <p whitespace-pre-wrap> dump.
+#
+# STORE-BOTH rationale (logged in code per rigor #5): "view original" REQUIRES
+# keeping the source — the structured model is a LOSSY projection (PDF figures
+# lose their image src, two-column reading order can interleave, ar5iv flattens
+# some inline markup), so it cannot reconstruct the original byte-for-byte. The
+# cost is one extra TEXT column per document (the serialized Document JSON, a
+# few KB for a typical article — bounded by the body size, not multiplied).
+# That cost buys: (1) a faithful "view original" from raw_text, AND (2) a
+# structured render from structured_blocks, WITHOUT re-parsing on every page
+# view (the parse-on-read alternative — steelmanned in the handoff — pushes CPU
+# to every render and persists no extraction provenance). Parse-once-at-ingest
+# arrives dedup-/provenance-ready for SPR-07.
+#
+# TEXT (JSON string), matching the metadata column convention (every JSON read
+# goes through application code that json.loads it; the VARIANT upgrade is
+# deferred tree-wide). NULL is valid + meaningful: a document with NULL
+# structured_blocks has not been upgraded to the model yet (the M5 backfill
+# target) — the read side falls back to flattening raw_text exactly as today, so
+# this column is purely ADDITIVE and changes no existing behavior. Idempotent
+# ALTER ... ADD COLUMN IF NOT EXISTS (the same shape as the content_class /
+# ip_holder_id gate-column migration above).
+ANTIEK_GRAPH_SCHEMA_V14_STRUCTURED_BLOCKS_SQL = """
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS structured_blocks TEXT;
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1160,6 +1192,11 @@ def init_database(con: LockedConnection) -> None:
     # box-bounded resumable refresh advances). Pure idempotent CREATE IF NOT
     # EXISTS; FK-references nothing.
     con.execute(ANTIEK_GRAPH_SCHEMA_V13_MONITORS_SQL)
+    # Reader SPR-02 — documents.structured_blocks (the store-both column: the
+    # SPR-01 typed-block Document JSON persisted alongside raw_text). Pure
+    # idempotent ALTER ... ADD COLUMN IF NOT EXISTS; ADDITIVE — a NULL column
+    # means "not yet upgraded to the model", read-side falls back to raw_text.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V14_STRUCTURED_BLOCKS_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:
