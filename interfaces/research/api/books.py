@@ -25,12 +25,13 @@ with the single writer.
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from typing import Literal, cast
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
+from substrate.books.serve import ServeResult
 
 from .serve_guard import serve_full_text_guarded
 
@@ -122,7 +123,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _record_arxiv_serve_audit(db_path: str, document_id: str, result) -> None:
+def _record_arxiv_serve_audit(db_path: str, document_id: str, result: ServeResult) -> None:
     """SPR-09 M4 — record an ``arxiv.serve`` leg for an arXiv full-text serve.
 
     Defensively isolated: a failure here must NEVER break the serve, so the whole
@@ -720,7 +721,7 @@ def register_book_routes(app: FastAPI) -> None:
         """
         from runtime.db_lock import connect_read
         from substrate.books.book_qa import Turn, answer_book_question
-        from substrate.dispatch.router import ProviderError
+        from substrate.dispatch.base import ProviderError
         from substrate.graph.search import SentenceTransformerEmbedding
 
         # Confirm the book exists (honest 404 rather than an empty answer).
@@ -858,7 +859,7 @@ def register_book_routes(app: FastAPI) -> None:
 
         from runtime.db_lock import connect_read
         from substrate.books.meta_reading import MetaReadingError, generate_meta_reading
-        from substrate.dispatch.router import ProviderError
+        from substrate.dispatch.base import ProviderError
         from substrate.event_log import emit_typed
         from substrate.graph.search import SentenceTransformerEmbedding
         from substrate.schemas.events import (
@@ -1052,11 +1053,11 @@ def register_book_routes(app: FastAPI) -> None:
                     category_id=c.category_id,
                     label=c.label,
                     asset_ids=c.asset_ids,
-                    ordering=c.ordering,
+                    ordering=cast(Literal["theme", "recency"], c.ordering),
                 )
                 for c in space.categories
             ],
-            ordering=space.ordering,
+            ordering=cast(Literal["theme", "recency"], space.ordering),
             stability_bound=space.stability_bound,
         )
 

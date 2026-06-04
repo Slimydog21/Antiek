@@ -108,7 +108,7 @@ def _build_prompt(
     book_title: str | None,
     question: str,
     history: Sequence[Turn],
-    context_chunks: Sequence[dict],
+    context_chunks: Sequence[dict[str, Any]],
 ) -> str:
     """Assemble the dispatch prompt: the running conversation (bounded) + the
     gated book context + the new question. The model is instructed to answer
@@ -136,7 +136,7 @@ def _build_prompt(
     return "\n".join(parts)
 
 
-def _citations_from_chunks(context_chunks: Sequence[dict]) -> list[Citation]:
+def _citations_from_chunks(context_chunks: Sequence[dict[str, Any]]) -> list[Citation]:
     """Turn the retrieved (gate-served) chunks into page-level citations. Each
     chunk that survived the §9.0 gate is a legitimate, citable source; the page
     is resolved best-effort and labelled approximate when it does not pin."""
