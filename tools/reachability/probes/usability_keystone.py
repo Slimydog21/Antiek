@@ -44,17 +44,34 @@ at the first failure — never collapse to a bare "failed"):
                ``budget_halted``), and red a non-``done`` terminal. A research that
                never reaches terminal within the bounded deadline is reported as the
                ``launch`` leg (a FINDING), never a silent pass — IN BOTH MODES.
+               SCOPE (disclosed up front): prod's research loop is TODAY the SYNTHETIC
+               ``make_reuse_consuming_loop`` placeholder (``cost_per_step=0.01``,
+               ``model="reuse_consuming_demo"`` — cascade_routes.py
+               ``_research_loop_factory``), NOT a real LLM/Exa/Browserbase loop.
+               "Usable" here means the wired core journey is reachable end-to-end and
+               reuse is real at the GRAPH level (prior knowledge units are retrieved,
+               injected, and reused) — NOT that the research produces real-quality
+               answers; the real loop drops in later (out of this keystone's scope).
+               See docs/decisions/usability-keystone.md.
 
-  compound     Assert ``knowledge_reuse_count > 0`` from THIS investigation's
-               PER-INVESTIGATION ``knowledge.reused`` event, NOT a process-global
-               /health counter. In-process: ``action_counts`` scoped to the leaf iid
-               on the temp events dir. LIVE: fetch ``GET /trajectory/{leaf}``
-               (app.py:1751) over HTTP and count THIS leaf's ``knowledge.reused``
-               events — the SAME per-investigation signal, read over the prod HTTP
-               surface (NOT the frozen-at-boot /health global snapshot). A global
-               count can be true while THIS user's research compounded nothing — the
-               keystone asserts the user's own journey, IN BOTH MODES, so a dead
-               flywheel on live prod REDS the live keystone.
+  compound     Assert PRIOR KNOWLEDGE was genuinely REUSED by THIS investigation —
+               the sum of ``len(reused_unit_ids)`` across its PER-INVESTIGATION
+               ``knowledge.reused`` events is ≥ 1, NOT merely that the event fired.
+               (``knowledge.reused`` fires UNCONDITIONALLY once per start whenever a
+               retrieval substrate is wired — even an empty graph emits it with
+               ``reused_unit_ids: []`` — so counting events would green-pass a
+               zero-reuse run, proving only "the hook fired". The keystone seeds a
+               grounded covering unit on ``_KEYSTONE_TOPIC`` and launches on that same
+               topic, so a healthy flywheel retrieves + injects it and
+               ``reused_unit_ids`` is non-empty.) In-process: read each event's
+               ``reused_unit_ids`` via ``trajectory`` scoped to the leaf iid on the
+               temp events dir. LIVE: fetch ``GET /trajectory/{leaf}`` (app.py:1751)
+               over HTTP and sum the SAME ``reused_unit_ids`` field — the SAME
+               per-investigation OUTCOME, read over the prod HTTP surface (NOT the
+               frozen-at-boot /health global snapshot, NOT a bare event count). A
+               global count can be true while THIS user's research compounded nothing
+               — the keystone asserts the user's own journey actually reused units,
+               IN BOTH MODES, so a dead flywheel on live prod REDS the live keystone.
 
   read         Fetch a real artifact through the real backend read/chunk HTTP
                surface — GET /chunks/{id}, a REAL authenticated HTTP fetch through
@@ -112,7 +129,8 @@ docs/decisions/usability-keystone.md):
     (``ANTIEK_PROBE_BASE_URL``) runs the SAME probe against live prod post-deploy;
     the in-process mode is the pre-merge gate. Live mode does NOT skip or weaken any
     leg: login (bearer 401→200), launch (poll GET /research/sessions to terminal),
-    compound (count GET /trajectory knowledge.reused > 0 for THIS leaf), read +
+    compound (sum GET /trajectory knowledge.reused reused_unit_ids ≥ 1 for THIS
+    leaf — prior units actually reused, not just the event fired), read +
     attribution (GET /chunks against a real prod chunk id). The live run writes a
     research to the prod graph + needs prod creds + prod is HELD pending §9.0, so the
     operator runs it as the documented post-deploy step (infrastructure/runbooks/
@@ -182,11 +200,32 @@ _TERMINAL_ACTION = "investigation.completed"
 _LIVE_TERMINAL_STATES = frozenset({"done", "stopped", "failed", "budget_halted"})
 _LIVE_SUCCESS_STATE = "done"
 
-# The per-investigation reuse event the compound leg asserts on. SOURCE:
+# The per-investigation reuse event the compound leg reads. SOURCE:
 # substrate/schemas/events.py:180 KNOWLEDGE_REUSED = "knowledge.reused". Emitted
 # once per investigation start inside runner.start (host_local.py) when the
-# retrieval substrate is wired — the dead-flywheel defect was its absence.
+# retrieval substrate is wired. CRITICAL: this event fires UNCONDITIONALLY whenever
+# a retrieval substrate is wired — even with an EMPTY graph it is emitted with
+# ``reused_unit_ids: []`` (knowledge_reuse.py:_emit_knowledge_reused, "reuse-of-
+# nothing is recorded"). The compound leg therefore asserts on the OUTCOME — the
+# sum of ``len(reused_unit_ids)`` across this leaf's events, i.e. prior UNITS
+# genuinely reused — NOT the count of these events (which would green-pass a
+# zero-reuse empty-graph run, proving only "the hook fired").
 _REUSE_ACTION = "knowledge.reused"
+
+# The topic the keystone's launched research covers AND the topic of the grounded
+# prior-knowledge unit seeded before the launch. They MUST match (mirrors
+# compounding.py's _WARM_TOPIC used for both seed + warm launch) so the seeded unit
+# is retrieved (retrieve_prior_units), injected (assemble_context_pack_with_reuse),
+# and carried into the launched research's ``knowledge.reused`` event with a
+# NON-EMPTY ``reused_unit_ids`` — i.e. so REAL reuse of prior knowledge happens, not
+# merely the hook firing. Drawn from the benchmark's control domain like compounding.
+_KEYSTONE_TOPIC = "neutral atom qubit gate error rates fidelity scaling threshold"
+
+# Ids for the grounded prior-knowledge unit seeded before the launch (in-process
+# only; live mode cannot write the prod graph — §16 single-writer).
+_PRIOR_DOC_ID = "acv-spr08-keystone-prior-doc"
+_PRIOR_CHUNK_ID = "acv-spr08-keystone-prior-chunk"
+_PRIOR_INVESTIGATION_ID = "prior-keystone-seed"
 
 # The seed for the read+attribution leg: a SERVABLE public-domain document with a
 # real IP-holder row, so GET /chunks/{id} returns a body AND populated attribution
@@ -208,7 +247,7 @@ _READ_CHUNK_TEXT = "Usability-keystone read artifact: a servable public-domain c
 
 def _blocked(leg: str, reason: str, failure_mode: str = "feature_dead") -> ProbeResult:
     """A BLOCKED result that NAMES the failing leg (M2): the runner prints e.g.
-    ``[BLOCKED] usability_keystone: compound — knowledge_reuse_count == 0 ...``.
+    ``[BLOCKED] usability_keystone: compound — 0 prior units reused ...``.
     ``failure_mode`` distinguishes boot_fail (app could not boot) from a
     feature-dead leg (booted, route responded, OUTCOME did not hold) so the two —
     which need different fixes — are never ambiguous."""
@@ -258,6 +297,56 @@ def _seed_read_artifact(db_path: str) -> str:
         )
 
 
+def _seed_prior_knowledge_unit(db_path: str) -> str:
+    """Deposit ONE GROUNDED prior-knowledge unit (claim→chunk→doc→insight) on the
+    keystone topic through the REAL deposit surface, so the launched research can
+    RETRIEVE + REUSE it — turning the compound leg from "the reuse hook fired" into
+    "a prior unit was genuinely reused". Returns the deposited insight node id.
+
+    This mirrors ``compounding.py::_seed_grounded_corpus`` exactly: the unit is
+    grounded (a real claim→chunk→doc chain) because ``retrieve_prior_units``
+    CORRECTLY refuses an ungrounded node (``knowledge_unit_of`` raises), so an
+    ungrounded deposit would never be reused. Single-writer-safe: one
+    ``connect_write`` under the host lock, one transaction (§16)."""
+    from processing.embedding.embed import default_embedding_provider
+    from runtime.db_lock import connect_write
+    from substrate.graph.insight_question import promote_insight
+    from substrate.graph.ops import insert_node
+    from substrate.graph.schema import init_database
+
+    emb = default_embedding_provider()
+    text = _KEYSTONE_TOPIC + " established prior result with measured values"
+    con = connect_write(db_path, purpose="acv-spr08-keystone-prior-seed")
+    try:
+        init_database(con)
+        con.execute("BEGIN")
+        con.execute(
+            "INSERT INTO documents (document_id, title, source_tier, document_type, "
+            "content_class) VALUES (?, ?, 1, 'paper', 'public_domain') "
+            "ON CONFLICT DO NOTHING",
+            [_PRIOR_DOC_ID, "keystone probe prior-knowledge seed"],
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text, embedding, "
+            "token_count) VALUES (?, ?, 0, ?, ?, ?) ON CONFLICT DO NOTHING",
+            [_PRIOR_CHUNK_ID, _PRIOR_DOC_ID, text, emb.encode(text), 20],
+        )
+        claim = insert_node(
+            con, canonical_label="claim: " + text, node_type="claim",
+            graph_scope="depth", investigation_id=_PRIOR_INVESTIGATION_ID,
+            embedding=emb.encode(text), on_conflict="ignore",
+        )
+        nid = promote_insight(
+            text=text, investigation_id=_PRIOR_INVESTIGATION_ID, confidence="high",
+            supported_by=[claim], source_document_id=_PRIOR_DOC_ID,
+            chunk_id=_PRIOR_CHUNK_ID, embedding_provider=emb, con=con,
+        )
+        con.execute("COMMIT")
+    finally:
+        con.close()
+    return nid
+
+
 def _await_terminal_leaf(
     events_dir: str, leaf_ids: list[str], *, deadline_s: float
 ) -> str | None:
@@ -279,14 +368,27 @@ def _await_terminal_leaf(
         time.sleep(_TERMINAL_POLL_INTERVAL_S)
 
 
-def _reuse_count(events_dir: str, leaf_id: str) -> int:
-    """Count this leaf investigation's ``knowledge.reused`` events (the
-    per-investigation compound signal — NOT a global /health counter)."""
-    from substrate.event_log import action_counts
+def _reused_unit_count(events_dir: str, leaf_id: str) -> int:
+    """Count the PRIOR UNITS this leaf investigation actually reused — the sum of
+    ``len(reused_unit_ids)`` across its ``knowledge.reused`` events.
+
+    This is the OUTCOME the compound leg must prove, NOT the number of
+    ``knowledge.reused`` events. ``knowledge.reused`` fires UNCONDITIONALLY once
+    per investigation start whenever a retrieval substrate is wired (see
+    substrate/context_pack/knowledge_reuse.py:_emit_knowledge_reused — even a novel
+    question / empty graph emits the event with ``reused_unit_ids: []``,
+    "reuse-of-nothing is recorded"). Counting events therefore green-passes on an
+    EMPTY graph where ZERO knowledge was reused — proving "the hook fired", not the
+    spec's criterion "demonstrably reuse PRIOR KNOWLEDGE". Summing the injected unit
+    ids proves a unit was genuinely retrieved, injected, and carried into the pack.
+
+    Reads via ``trajectory`` (the same path the compounding probe uses to read
+    ``reused_unit_ids``) scoped to THIS leaf id — never a process-global counter."""
+    from substrate.event_log import trajectory
 
     return sum(
-        int(row.get("count", 0) or 0)
-        for row in action_counts(leaf_id, events_dir=events_dir)
+        len(row.get("payload", {}).get("reused_unit_ids", []) or [])
+        for row in trajectory(leaf_id, events_dir=events_dir)
         if row.get("action_type") == _REUSE_ACTION
     )
 
@@ -336,18 +438,20 @@ def _live_await_terminal_session(
         time.sleep(_TERMINAL_POLL_INTERVAL_S)
 
 
-def _live_reuse_count(client: object, leaf_id: str) -> int:
-    """LIVE compound signal (the analogue of ``_reuse_count``, over HTTP).
+def _live_reused_unit_count(client: object, leaf_id: str) -> int:
+    """LIVE compound signal (the analogue of ``_reused_unit_count``, over HTTP).
 
     Fetches ``GET /trajectory/{leaf_id}`` — the production per-investigation event
-    log surface (``app.py:1751``) — and counts THIS leaf's ``knowledge.reused``
-    events. This is the SAME per-investigation assertion the in-process mode makes
-    (``action_counts`` scoped to the leaf), just read over HTTP instead of off the
-    temp events dir. It is NOT the process-global ``/health knowledge_reuse_count``
-    snapshot (which is frozen at boot and cannot move during a probe run) — it is
-    this user's own research's reuse, the only signal that means "the journey
-    compounded." Returns 0 on any non-200 / malformed body (the caller reds
-    compound on 0)."""
+    log surface (``app.py:1751``) — and sums ``len(reused_unit_ids)`` across THIS
+    leaf's ``knowledge.reused`` events. This is the SAME per-investigation OUTCOME
+    the in-process mode asserts (prior UNITS actually reused, read off each event's
+    ``reused_unit_ids`` payload), just over HTTP instead of off the temp events dir.
+    It is NOT the count of ``knowledge.reused`` events (which fires unconditionally
+    even on an empty graph), and NOT the process-global ``/health
+    knowledge_reuse_count`` snapshot (frozen at boot, cannot move during a run) — it
+    is this user's own research's reused units, the only signal that means "the
+    journey compounded by reusing prior knowledge." Returns 0 on any non-200 /
+    malformed body (the caller reds compound on 0)."""
     resp = client.get(f"/trajectory/{leaf_id}")
     if resp.status_code != 200:
         return 0
@@ -356,7 +460,7 @@ def _live_reuse_count(client: object, leaf_id: str) -> int:
     except Exception:  # noqa: BLE001
         return 0
     return sum(
-        1
+        len((ev.get("payload") or {}).get("reused_unit_ids", []) or [])
         for ev in (body.get("events") or [])
         if ev.get("action_type") == _REUSE_ACTION
     )
@@ -376,12 +480,17 @@ def _probe(base_url: str | None = None) -> ProbeResult:
     Live mode asserts the SAME five legs, over the prod HTTP surface — no leg is
     skipped or weakened:
       * launch  → poll GET /research/sessions/{id} to a terminal RunState.
-      * compound→ count GET /trajectory/{leaf} knowledge.reused > 0 for THIS leaf.
-    The only live difference is the READ-LEG SEED: the temp-DB seed is skipped (we
-    cannot write the prod graph, and §16 forbids a second writer), so the operator
-    supplies a real prod chunk id via ANTIEK_PROBE_READ_CHUNK_ID and the read leg
-    GETs it — see the runbook. The in-process mode (the merge gate this sprint
-    proves RED-capable) seeds its own artifact so it is hermetic. Note (read-leg
+      * compound→ sum GET /trajectory/{leaf} knowledge.reused reused_unit_ids ≥ 1
+                  for THIS leaf (prior units actually reused, not just event-fired).
+    Two live differences, both §16-forced (the probe cannot write the prod graph):
+      * the PRIOR-KNOWLEDGE seed is skipped in-process — live prod already carries
+        accumulated prior knowledge in its own graph, and the operator points the
+        launch at a topic the prod graph covers (the runbook), so the compound leg
+        still asserts a real reused-units OUTCOME over GET /trajectory.
+      * the READ-LEG seed is skipped — the operator supplies a real prod chunk id
+        via ANTIEK_PROBE_READ_CHUNK_ID and the read leg GETs it (see the runbook).
+    The in-process mode (the merge gate this sprint proves RED-capable) seeds its own
+    grounded prior unit + read artifact so it is hermetic. Note (read-leg
     caveat above): the read leg reads a SEEDED §9-attributed source document, not
     this journey's own research output, because the cascade deposits insights, not a
     §9-readable chunk."""
@@ -458,6 +567,27 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                 failure_mode="boot_fail",
             )
 
+        # ── seed a GROUNDED, covering prior-knowledge unit BEFORE the launch ──
+        # In-process only (§16: the probe never writes the prod graph; the live API
+        # owns its own graph + already-deposited prior knowledge). This makes the
+        # compound leg prove REAL reuse: the launched research (driven on the SAME
+        # _KEYSTONE_TOPIC) retrieves + injects this seeded unit, so its
+        # knowledge.reused event carries a NON-EMPTY reused_unit_ids. Without this
+        # seed the launch runs against an EMPTY graph and the event fires with
+        # reused_unit_ids: [] — which is exactly the "hook fired, nothing reused"
+        # green-pass the new OUTCOME assertion (and its self-test) now rejects.
+        if not live:
+            try:
+                _seed_prior_knowledge_unit(tmp_db)
+            except Exception as exc:  # noqa: BLE001
+                return _blocked(
+                    "compound",
+                    f"could not seed the grounded prior-knowledge unit: "
+                    f"{type(exc).__name__}: {exc} — the compound leg cannot prove "
+                    f"real reuse without a covering prior unit to reuse.",
+                    failure_mode="error",
+                )
+
         try:
             # ════════════════════════ LEG 1: login ════════════════════════
             # The protected route returns 401 WITHOUT the bearer header and a
@@ -486,10 +616,16 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                     f"{r_unauth.text[:160]}",
                 )
             # WITH the bearer header: the request must reach the route (NOT 401).
+            # This authenticated plan is ALSO the plan the launch leg drives, so its
+            # problem + sub-question are pinned to _KEYSTONE_TOPIC — the SAME topic
+            # the prior-knowledge unit was seeded on (mirrors compounding.py picking
+            # _WARM_TOPIC for both seed + launch) — so the launched research genuinely
+            # COVERS the seeded unit and reuses it (non-empty reused_unit_ids), the
+            # OUTCOME the compound leg asserts.
             r_auth = client.post(
                 _PROTECTED_ROUTE,
-                json={"problem": "keystone login probe (authenticated)",
-                      "sub_questions": ["a single minimal sub-question"], "max_depth": 1},
+                json={"problem": f"keystone journey: {_KEYSTONE_TOPIC}",
+                      "sub_questions": [_KEYSTONE_TOPIC], "max_depth": 1},
                 headers=auth_headers,
             )
             if r_auth.status_code == 401:
@@ -598,25 +734,35 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                     )
 
             # ═══════════════════════ LEG 3: compound ══════════════════════
-            # Assert reuse FIRED for THIS investigation, from its per-investigation
-            # knowledge.reused event — NOT a global /health counter. BOTH modes
-            # assert the SAME per-investigation signal: in-process reads the temp
-            # event log; live fetches GET /trajectory/{leaf} over HTTP and counts the
-            # leaf's knowledge.reused events. A live dead flywheel (the cascade
-            # launch omitting retrieval_substrate) therefore REDS the live keystone —
-            # the prod gate genuinely catches the dead-flywheel incident.
+            # Assert PRIOR KNOWLEDGE was genuinely REUSED for THIS investigation —
+            # the sum of len(reused_unit_ids) across its per-investigation
+            # knowledge.reused events is ≥ 1. NOT the count of knowledge.reused
+            # events: that event fires UNCONDITIONALLY once per start whenever a
+            # retrieval substrate is wired (empty graph ⇒ reused_unit_ids: []), so
+            # counting events green-passes a zero-reuse run ("the hook fired"). We
+            # seeded a grounded covering unit on _KEYSTONE_TOPIC and launched on the
+            # same topic, so a healthy flywheel injects it and reused_unit_ids is
+            # non-empty. BOTH modes assert the SAME per-investigation OUTCOME:
+            # in-process reads each event's reused_unit_ids off the temp event log;
+            # live fetches GET /trajectory/{leaf} over HTTP and sums the same field.
+            # A live dead flywheel (the cascade launch omitting retrieval_substrate,
+            # OR firing the event with an empty reused_unit_ids) therefore REDS the
+            # live keystone — the prod gate genuinely catches the dead-flywheel
+            # incident.
             if live:
-                reused = _live_reuse_count(client, terminal_leaf)
+                reused = _live_reused_unit_count(client, terminal_leaf)
             else:
-                reused = _reuse_count(tmp_events, terminal_leaf)
+                reused = _reused_unit_count(tmp_events, terminal_leaf)
             if reused <= 0:
                 return _blocked(
                     "compound",
-                    f"knowledge_reuse_count == 0 for investigation "
-                    f"{terminal_leaf!r} — the research ran but emitted NO "
-                    f"knowledge.reused event. The flywheel is dead at the prod "
-                    f"entrypoint (cascade_routes.py launch omitted "
-                    f"retrieval_substrate). This is THE dead-flywheel defect.",
+                    f"0 prior units reused for investigation {terminal_leaf!r} — "
+                    f"the research ran and the knowledge.reused hook fired, but its "
+                    f"reused_unit_ids was EMPTY: ZERO prior knowledge was actually "
+                    f"reused. Either the flywheel is dead at the prod entrypoint "
+                    f"(cascade_routes.py launch omitted retrieval_substrate) or the "
+                    f"seeded covering unit was not retrieved/injected. This is THE "
+                    f"dead-flywheel defect — the journey did not compound.",
                 )
 
             # ════════════════ LEG 4 + 5: read + attribution ════════════════

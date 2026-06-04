@@ -179,15 +179,53 @@ def test_launch_leg_named_when_research_never_reaches_terminal(monkeypatch):
     assert result.failure_mode == "timeout", result
 
 
-def test_compound_leg_named_when_reuse_count_zero(monkeypatch):
-    """Break the per-investigation reuse count to 0 → the probe names the
+def test_compound_leg_named_when_reused_unit_count_zero(monkeypatch):
+    """Break the per-investigation REUSED-UNIT count to 0 → the probe names the
     'compound' leg with the dead-flywheel reason (THE defect this spec exists to
     catch). Launch genuinely passed (reached terminal); only compound fails."""
-    monkeypatch.setattr(ks, "_reuse_count", lambda *a, **k: 0)
+    monkeypatch.setattr(ks, "_reused_unit_count", lambda *a, **k: 0)
     result = _run_probe_named()
     assert result.ok is False
     assert result.reason.startswith("compound —"), result
-    assert "knowledge_reuse_count == 0" in result.reason, result
+    assert "0 prior units reused" in result.reason, result
+
+
+def test_compound_leg_REDS_when_event_fired_but_zero_units_reused(monkeypatch):
+    """TEETH (the MAJOR fix): the compound leg must RED when a knowledge.reused
+    event DID fire but its reused_unit_ids is EMPTY — i.e. the exact case that was
+    OLD-GREEN (the leg counted events) and is NOW-RED (the leg counts units reused).
+
+    We reproduce it WITHOUT stubbing the count helper: skip the prior-knowledge
+    seed so the launch runs against an EMPTY graph. On an empty graph the real
+    knowledge.reused hook STILL fires (unconditional once a retrieval substrate is
+    wired) with reused_unit_ids: [] — so the OLD event-counting leg would have
+    green-passed here. The NEW units-reused leg reds. This proves the new assertion
+    has teeth the old one lacked (the honesty guard: a real outcome, on the real
+    factory — only the seed is removed)."""
+    # No-op the prior-knowledge seed → the launch covers nothing → real reuse hook
+    # fires with an EMPTY reused_unit_ids (verified: the empty-graph case).
+    monkeypatch.setattr(ks, "_seed_prior_knowledge_unit", lambda db_path: "")
+    result = _run_probe_named()
+    assert result.ok is False, (
+        "compound MUST red when knowledge.reused fired but reused_unit_ids is empty "
+        "(the old event-counting leg green-passed this exact case)"
+    )
+    assert result.reason.startswith("compound —"), result
+    assert "0 prior units reused" in result.reason, result
+
+
+def test_compound_leg_GREEN_when_a_unit_is_genuinely_reused():
+    """Companion to the teeth test: with the prior-knowledge unit seeded (the
+    DEFAULT probe behaviour), real reuse happens — the launched research retrieves +
+    injects the seeded covering unit, so reused_unit_ids is NON-EMPTY and the whole
+    journey is REACHABLE. This is the positive control proving the keystone is green
+    because a unit was actually reused, NOT merely because the hook fired."""
+    result = _run_probe_named()
+    assert result.ok is True, (
+        f"the in-process keystone must be REACHABLE — a grounded covering unit is "
+        f"seeded on the launch topic, so real reuse happens. Got: {result}"
+    )
+    assert result.failure_mode == "reachable", result
 
 
 def test_read_leg_named_when_artifact_absent(monkeypatch):
@@ -309,23 +347,42 @@ def test_live_await_terminal_session_waits_for_ALL_leaves():
     assert states == {"leaf-0": "done", "leaf-1": "running"}
 
 
-def test_live_reuse_count_counts_this_leafs_reused_events():
-    """The live compound signal counts THIS leaf's knowledge.reused events from
-    GET /trajectory/{leaf} — the SAME per-investigation assertion as in-process,
-    over HTTP (NOT the frozen /health global snapshot)."""
+def test_live_reused_unit_count_sums_this_leafs_reused_unit_ids():
+    """The live compound signal SUMS len(reused_unit_ids) across THIS leaf's
+    knowledge.reused events from GET /trajectory/{leaf} — the SAME per-investigation
+    OUTCOME (prior UNITS reused) as in-process, over HTTP (NOT the frozen /health
+    global snapshot, NOT a bare event count)."""
     class _Traj:
         def get(self, path):
             assert path == "/trajectory/leaf-0", path
             return _FakeResponse(200, {"events": [
                 {"action_type": "investigation.start_requested"},
-                {"action_type": "knowledge.reused"},
-                {"action_type": "knowledge.reused"},
+                {"action_type": "knowledge.reused",
+                 "payload": {"reused_unit_ids": ["insight-a", "insight-b"]}},
+                {"action_type": "knowledge.reused",
+                 "payload": {"reused_unit_ids": ["insight-c"]}},
                 {"action_type": "investigation.completed"},
             ]})
-    assert ks._live_reuse_count(_Traj(), "leaf-0") == 2
+    # 2 + 1 = 3 prior units reused across this leaf's two events.
+    assert ks._live_reused_unit_count(_Traj(), "leaf-0") == 3
 
 
-def test_live_reuse_count_zero_on_dead_flywheel():
+def test_live_reused_unit_count_zero_when_event_fired_but_no_units():
+    """TEETH (live analogue): a live research whose knowledge.reused event FIRED but
+    carries an EMPTY reused_unit_ids yields 0 — the dead-flywheel signal that REDS
+    the live compound leg. The OLD event-counting live signal would have returned
+    1 (the event count) and green-passed; the NEW units-reused signal reds."""
+    class _EventNoUnits:
+        def get(self, path):
+            return _FakeResponse(200, {"events": [
+                {"action_type": "investigation.start_requested"},
+                {"action_type": "knowledge.reused", "payload": {"reused_unit_ids": []}},
+                {"action_type": "investigation.completed"},
+            ]})
+    assert ks._live_reused_unit_count(_EventNoUnits(), "leaf-0") == 0
+
+
+def test_live_reused_unit_count_zero_on_dead_flywheel():
     """A live research whose trajectory carries NO knowledge.reused event yields 0
     — the dead-flywheel signal that REDS the live compound leg (the whole point:
     a dead flywheel on prod cannot green-pass the live keystone)."""
@@ -335,27 +392,31 @@ def test_live_reuse_count_zero_on_dead_flywheel():
                 {"action_type": "investigation.start_requested"},
                 {"action_type": "investigation.completed"},
             ]})
-    assert ks._live_reuse_count(_NoReuse(), "leaf-0") == 0
+    assert ks._live_reused_unit_count(_NoReuse(), "leaf-0") == 0
 
 
-def test_live_reuse_count_zero_on_non_200():
+def test_live_reused_unit_count_zero_on_non_200():
     """A non-200 trajectory fetch yields 0 (reds compound) rather than raising."""
     class _Err:
         def get(self, path):
             return _FakeResponse(404, {})
-    assert ks._live_reuse_count(_Err(), "leaf-0") == 0
+    assert ks._live_reused_unit_count(_Err(), "leaf-0") == 0
 
 
 def test_live_mode_compound_reds_on_dead_flywheel(monkeypatch):
     """END-TO-END live path (mocked HTTP, no network): drive _probe(base_url=...)
-    with a fake httpx client whose trajectory shows ZERO reuse → the live keystone
-    names the 'compound' leg. Proves the runbook's live 'compound — reuse == 0' RED
-    example is genuinely reproducible (it was a dead `pass` before this sprint)."""
+    with a fake httpx client whose trajectory FIRED a knowledge.reused event but with
+    an EMPTY reused_unit_ids → the live keystone names the 'compound' leg. This is
+    the live analogue of the MAJOR fix's teeth: the OLD event-counting live signal
+    would have GREEN-PASSED (one event present), the NEW units-reused signal REDS.
+    Proves the runbook's live 'compound — 0 prior units reused' RED example is
+    genuinely reproducible (it was a dead `pass` before this sprint)."""
 
     class _LiveClient:
         """Minimal live API double: login 401→200, plan/approve/launch ok, the
-        session poll reaches 'done', the trajectory shows NO knowledge.reused, and
-        /chunks would return a body — but compound reds first."""
+        session poll reaches 'done', the trajectory FIRES knowledge.reused but with
+        an EMPTY reused_unit_ids (the dead-flywheel-as-zero-reuse case), and /chunks
+        would return a body — but compound reds first."""
         def __init__(self):
             self.closed = False
 
@@ -376,8 +437,10 @@ def test_live_mode_compound_reds_on_dead_flywheel(monkeypatch):
                 return _FakeResponse(200, {"researches": [
                     {"investigation_id": "session-root-1-leaf-0", "state": "done"}]})
             if path.startswith("/trajectory/"):
-                # dead flywheel: NO knowledge.reused event
+                # dead flywheel: knowledge.reused FIRED but reused_unit_ids is EMPTY
+                # — the hook fired, zero prior units were reused.
                 return _FakeResponse(200, {"events": [
+                    {"action_type": "knowledge.reused", "payload": {"reused_unit_ids": []}},
                     {"action_type": "investigation.completed"}]})
             return _FakeResponse(200, {})
 
@@ -391,7 +454,7 @@ def test_live_mode_compound_reds_on_dead_flywheel(monkeypatch):
     result = ks._probe(base_url="https://example.invalid")
     assert result.ok is False, result
     assert result.reason.startswith("compound —"), result
-    assert "knowledge_reuse_count == 0" in result.reason, result
+    assert "0 prior units reused" in result.reason, result
     assert fake.closed is True, "the live client must be closed in finally"
 
 

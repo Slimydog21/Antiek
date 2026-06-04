@@ -164,8 +164,8 @@ two follow-ups in the flywheel probe become due:
   interfaces.research.api.app import create_app; create_app()"` + TestClient
   `GET /health` → 200, `registered_providers: []` (credential-empty). ✅
 - Runner self-test: `python -m pytest tests/test_reachability_runner.py -q`
-  → 8 passed (BLOCKED on a false outcome, REACHABLE on a true one, valve opens
-  on unexpired / self-closes on expired). ✅
+  → 9 passed (BLOCKED on a false outcome, REACHABLE on a true one, valve opens
+  on unexpired / self-closes on expired, env restored after a run). ✅
 - Flywheel probe RED on main: the probe with an empty known-red exits 1,
   `[BLOCKED] flywheel: knowledge_reuse_count == 0 (feature_dead)`. ✅
 - No injection: `grep -n "retrieval_substrate\|register_providers=False\|stub"

@@ -25,7 +25,7 @@ probe asserts only in isolation — driven as ONE journey:
 |---|---|
 | **login** | A protected route returns **401 without** a bearer token and **200 with** it — the real `_operator_auth_middleware` bearer path (`app.py:1315-1340`, `secrets.compare_digest`). |
 | **launch** | A research started via the canonical entrypoint (`POST /research/plans` → `/approve` → `/launch`) is **polled** via `GET /research/sessions/{session_id}` until every research reaches a **terminal** RunState (`done`/`stopped`/`failed`/`budget_halted`); a non-`done` terminal reds. A research that never reaches terminal within the bounded deadline is a `launch` **finding** — not a silent pass. This is a **real live poll**, not accept-on-launch. |
-| **compound** | `knowledge_reuse_count > 0` for **this** investigation, counted from `GET /trajectory/{leaf}` `knowledge.reused` events — the **per-investigation** signal over HTTP, **not** the process-global `/health knowledge_reuse_count` snapshot (which is frozen at boot and would not move during a run). |
+| **compound** | **≥ 1 prior unit actually reused** for **this** investigation — the sum of `len(reused_unit_ids)` across `GET /trajectory/{leaf}`'s `knowledge.reused` events, **not** the count of those events (the event fires unconditionally once a retrieval substrate is wired, so an empty graph emits `reused_unit_ids: []`) and **not** the process-global `/health knowledge_reuse_count` snapshot (frozen at boot). Point the launch at a topic the prod graph already covers so a healthy flywheel injects a prior unit (non-empty `reused_unit_ids`). |
 | **read** | A real artifact comes back through `GET /chunks/{id}` (a real HTTP fetch through the production read surface). **The chunk read is a SEEDED §9-attributed source document you supply (`ANTIEK_PROBE_READ_CHUNK_ID`), NOT this journey's own research output** — see "What the read leg does and does NOT cover" below. |
 | **attribution** | The artifact carries well-formed §9 attribution: `document_id` + `ip_holder_name`/`ip_holder_status` present, `servable`/`servability` a well-formed pair. **Metadata presence only — no serving / payout is activated (G2/G3 stay closed).** |
 
@@ -140,12 +140,14 @@ The probe stops at the **first** failing leg and names it. Examples:
   on prod (a runner/dispatch problem). This is a bounded-poll **finding** from the
   live status route, not a silent pass. (A terminal-but-`failed`/`budget_halted`
   state reds with `reached terminal state '<state>' (not 'done')`.)
-* `compound — knowledge_reuse_count == 0 for investigation <id>` → **THE
-  dead-flywheel defect on the live box**: the research ran but emitted **no**
-  `knowledge.reused` event (counted from `GET /trajectory/<leaf>`). This is the
-  exact prod failure the whole convergence spec exists to catch — and it is a REAL
-  live RED, reproducible against prod (no longer a documented-but-unreachable
-  example).
+* `compound — 0 prior units reused for investigation <id>` → **THE
+  dead-flywheel defect on the live box**: the research ran and the
+  `knowledge.reused` hook fired, but its `reused_unit_ids` was **empty** — **zero**
+  prior knowledge was actually reused (summed from `GET /trajectory/<leaf>`). Either
+  the flywheel is dead (the launch omitted the retrieval substrate) or the launch
+  topic was not covered by the prod graph. This is the exact prod failure the whole
+  convergence spec exists to catch — and it is a REAL live RED, reproducible against
+  prod (no longer a documented-but-unreachable example).
 * `read — GET /chunks/<id> 404'd` → the chunk id you supplied is absent; pick a
   real servable one.
 * `attribution — servable artifact has NO ip_holder_name` → §9 attribution is

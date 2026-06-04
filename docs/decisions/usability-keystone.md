@@ -28,9 +28,20 @@ checklist + credentials + rollback).
 ## The operational definition (VERBATIM — this is the Jobs-bar)
 
 > **The product is usable iff a fresh test operator completes login → start a
-> research → the research compounds (knowledge_reuse_count > 0) → read the result
-> with §9 attribution intact, exercised end-to-end through the real `create_app()`
-> factory and again post-deploy against real prod.**
+> research → the research compounds (≥ 1 prior knowledge unit actually reused —
+> the sum of `len(reused_unit_ids)` across this investigation's `knowledge.reused`
+> events, NOT merely that the event fired) → read the result with §9 attribution
+> intact, exercised end-to-end through the real `create_app()` factory and again
+> post-deploy against real prod.**
+
+> **One scope sentence on what "usable" does and does not mean here:** "Usable"
+> means the wired core journey is reachable end-to-end and reuse is *real at the
+> graph level* (prior knowledge units are retrieved, injected, and reused) — **NOT**
+> that the research produces real-quality answers: prod's research loop today is the
+> synthetic `make_reuse_consuming_loop` placeholder (`cost_per_step=0.01`,
+> `model="reuse_consuming_demo"`, `cascade_routes.py::_research_loop_factory`), and
+> the real LLM/Exa/Browserbase loop drops in later (out of this keystone's scope).
+> This bounds the claim honestly; it does not weaken the probe.
 
 `tools/reachability/probes/usability_keystone.py` **is** the executable embodiment
 of that sentence. It is not a description of the bar — it is the bar, runnable. A
@@ -50,13 +61,14 @@ maintainer who wants to know what "usable" means runs the probe.
 The keystone is the **CONJUNCTION** of five legs, each a distinct observable
 OUTCOME, driven as ONE journey through the bare production factory. Stages run **in
 order** and stop at the first failure; the runner prints exactly which leg failed
-(e.g. `[BLOCKED] usability_keystone: compound — knowledge_reuse_count == 0 …`).
+(e.g. `[BLOCKED] usability_keystone: compound — 0 prior units reused for
+investigation … …`).
 
 | # | Leg | Assertion (an OUTCOME, never a parameter/mock) | Source |
 |---|---|---|---|
 | 1 | **login** | A protected route returns **401 without** the bearer header and **200 with** it; the 401 carries `operator_auth_required`. The authenticated client is carried through every later leg. | `app.py:1315-1340` (bearer path, `secrets.compare_digest`) |
 | 2 | **launch** | A research started via the canonical entrypoint (`POST /research/plans` → `/approve` → `/launch`), **authenticated**, polled to a **terminal** state within a bounded poll (reported as a `launch` finding if not — never a silent pass). **In-process:** poll the per-leaf event log to `investigation.completed`. **Live:** poll `GET /research/sessions/{session_id}` until every research's RunState is terminal (`done`/`stopped`/`failed`/`budget_halted`), and red a non-`done` terminal. | `cascade_routes.py:577-583, 591-638, 666` (status route); `events.py:83`; `protocol.py:55-56` (terminal RunStates) |
-| 3 | **compound** | `knowledge_reuse_count > 0` from **this** investigation's per-investigation `knowledge.reused` event, **not** a global `/health` counter. **In-process:** `action_counts` scoped to the leaf iid on the temp events dir. **Live:** count `knowledge.reused` events from `GET /trajectory/{leaf}` for **this** leaf (the same per-investigation signal, over HTTP — **not** the frozen-at-boot `/health` global snapshot). | `events.py:180` `KNOWLEDGE_REUSED`; `host_local.py` (emit site); `app.py:1751` (`/trajectory`) |
+| 3 | **compound** | **≥ 1 prior unit actually reused** — the sum of `len(reused_unit_ids)` across **this** investigation's per-investigation `knowledge.reused` events, **not** the count of those events (which fire unconditionally once a retrieval substrate is wired — an empty graph emits `reused_unit_ids: []`) and **not** a global `/health` counter. The probe **seeds a grounded covering unit** on the launch topic and drives the launch on that same topic, so a healthy flywheel retrieves + injects it (non-empty `reused_unit_ids`). **In-process:** read each event's `reused_unit_ids` via `trajectory` scoped to the leaf iid on the temp events dir. **Live:** sum `reused_unit_ids` from `GET /trajectory/{leaf}`'s `knowledge.reused` events for **this** leaf (the same per-investigation OUTCOME, over HTTP — **not** the frozen-at-boot `/health` global snapshot, **not** an event count). | `events.py:180` `KNOWLEDGE_REUSED`; `knowledge_reuse.py:_emit_knowledge_reused`; `host_local.py` (emit site); `app.py:1751` (`/trajectory`) |
 | 4 | **read** | A real artifact comes back through `GET /chunks/{id}` — a real authenticated HTTP fetch through the production read surface; `document_id` + `chunk_id` resolve. **The artifact read is a SEEDED §9-attributed source document, NOT this journey's own research output** (see caveat 4 below). | `app.py:2155-2257` |
 | 5 | **attribution** | On that same artifact: well-formed §9 attribution — `ip_holder_name`/`ip_holder_status` present on a servable source; `servable`/`servability` a well-formed pair (servable ⇒ servability null; withheld ⇒ a known label AND owner withheld with the body). **Metadata PRESENCE only — graph-only; no serving / payout is activated.** | `app.py:266-312, 2238-2257`; `schema.py:376-396, 415-416` |
 
@@ -74,7 +86,10 @@ never injects) and is the disease this whole gate exists to kill.
 The strongest version of the objection: *prod already has a post-deploy `/health`
 assertion (`deploy.yml`) that checks the service is up, providers are registered,
 and (when re-armed) the flywheel is live. `/health` is one cheap GET; the keystone
-is five legs and a real research launch. Why pay for the keystone when a richer
+is five legs and a real research launch (a real launch through the prod cascade —
+though that launch today runs the synthetic `make_reuse_consuming_loop` placeholder,
+not a real LLM/Exa/Browserbase loop; see the scope sentence above). Why pay for the
+keystone when a richer
 `/health` field — say, `journey_ok: true` — would carry the same signal at a
 fraction of the cost? Smoke tests that boot the whole journey are flaky, slow, and
 duplicate coverage the per-brick probes already give.*
@@ -179,7 +194,8 @@ caveat here. None of these is a faked outcome.
    unmerged branch. So SPR-08 BUILDS the live capability, WIRES it into `deploy.yml`
    as a REQUIRED (never-silently-skipped) task, and PROVES the probe can go RED
    **in-process** (forcing the compound leg's real surface to 0 → `[BLOCKED]
-   usability_keystone: compound — knowledge_reuse_count == 0 …`, runner exit 1;
+   usability_keystone: compound — 0 prior units reused for investigation … …`,
+   runner exit 1;
    the live launch + compound legs are additionally proven RED-capable by mocked-
    HTTP self-tests, no network) — but does **not** hit `api.antiek.ai`, mint a prod
    credential, or POST a research to prod. The live run is the operator's step

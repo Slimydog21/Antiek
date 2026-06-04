@@ -39,7 +39,8 @@ the operator-window measurement that would move the number off 0.
 
 The instrument's *falsifiability* — that the scale responds to a real signal in
 either direction — is proven independently of the loop by
-`tests/test_falsifiability.py`, which injects synthetic measurements into the
+`compounding/benchmark/tests/test_falsifiability.py`, which injects synthetic
+measurements into the
 aggregator + validity layer:
 
 - warm > cold → a strictly **positive** delta is reported (never clamped);

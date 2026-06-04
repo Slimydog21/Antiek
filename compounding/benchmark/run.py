@@ -9,7 +9,8 @@ THE HONEST EXPECTATION (intellectual honesty #1): the demo loop is reuse-blind
 (it charges a fixed cost per step and makes no provider calls), so the mock run
 reports delta ≈ 0 across the board — there is no dispatch.call cost to differ.
 That is the keystone finding, not a defect: the instrument can measure
-compounding (proven by the seed-and-catch tests in tests/test_falsifiability.py),
+compounding (proven by the seed-and-catch tests in
+compounding/benchmark/tests/test_falsifiability.py),
 but the current host-local demo loop does not consume the reuse pack, so a live
 ``--mock-run false`` run with a reuse-consuming browse loop + provider creds is
 required to measure REAL compounding. This module emits the null verbatim; it
@@ -301,7 +302,8 @@ def run_benchmark(
             "reuse-blind and makes no provider dispatch.call — so token_cost_usd "
             "is 0 for every arm and every delta is ~0. This is the keystone "
             "finding: the instrument measures compounding (proven by "
-            "tests/test_falsifiability.py), but the demo loop does NOT consume "
+            "compounding/benchmark/tests/test_falsifiability.py), but the demo loop "
+            "does NOT consume "
             "reuse, so compounding is UNPROVEN on the real loop. A live "
             "mock_run=false run with a reuse-consuming browse loop + provider "
             "creds is the operator-window measurement. validity_reason: "

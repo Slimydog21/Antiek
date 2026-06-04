@@ -40,7 +40,8 @@ retrieves prior units and emits ``knowledge.reused`` for the warm arm — but th
 demo loop's cost is reuse-blind, so a mock run honestly shows warm ≈ cold
 (delta ≈ 0). This harness does NOT modify the demo loop to consume reuse; doing
 so would rig the mock. The instrument's falsifiability is proven independently by
-``tests/test_falsifiability.py`` injecting synthetic measurements into the
+``compounding/benchmark/tests/test_falsifiability.py`` injecting synthetic
+measurements into the
 aggregator/validity layer. Real compounding is an operator-window measurement: a
 ``mock_run=false`` run with a reuse-CONSUMING browse loop + provider creds.
 """
