@@ -24,9 +24,9 @@
  *   - test_reader_conformance.py  EXPECTED_OPEN_DOORS  FORBIDDEN_PROD_RENDERERS
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, relative, sep } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -314,5 +314,141 @@ describe("oneReader conformance — door (b): no second document renderer reacha
     const reading = readSrc("modes/Reading/index.tsx");
     expect(reading).toMatch(/<Reader\b/);
     expect(reading).toMatch(/<ReadingColumn\b/); // the fallback, behind the same gate
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Door (b) — TREE-WIDE no-second-open-seam guard (SPR-05 sharpen r2).
+//
+// The guards above are FILE-SCOPED (they assert MasterMdViewer, MetaReading,
+// DRW, etc. one file at a time). That is exactly how a live open-a-document fork
+// slipped through green: `RegionEmbedBlock.tsx` (the notebook "Open at page"
+// block, registered at Editor.tsx and slash-creatable at SlashMenu.tsx) still
+// called `openPdfPanel({ documentId })` — a bespoke pdf.js floating panel, a
+// SECOND open-a-document renderer — and no file-scoped guard looked at it.
+//
+// This block walks the WHOLE tree and asserts ZERO non-ingest source file opens
+// a document by id through the bespoke `openPdfPanel(` action or the raw
+// `open("PdfViewer", …)` store seam. It is DURABLE: a re-introduced caller
+// anywhere outside the sanctioned ingest surface turns this red (proven by the
+// catch-test below), so the guard is real, not decorative.
+// ───────────────────────────────────────────────────────────────────────────
+
+describe("oneReader conformance — TREE-WIDE: no second open-a-document seam survives (SPR-05 sharpen r2)", () => {
+  // Recursively list every .ts/.tsx source file under apps/reading/src, as paths
+  // relative to SRC with forward slashes (stable across platforms).
+  function listSrcFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = resolve(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules") continue;
+        out.push(...listSrcFiles(full));
+      } else if (/\.tsx?$/.test(entry.name)) {
+        out.push(relative(SRC, full).split(sep).join("/"));
+      }
+    }
+    return out;
+  }
+
+  // The ONLY sanctioned homes of `openPdfPanel` / a `PdfViewer` document-open
+  // seam — the ingest surface (migration-map §3) + the action's own definition +
+  // the panel registry/typedef/story scaffold that merely NAME the kind. A file
+  // here is allowed to reference the seam; nothing else may.
+  //   • workspace/actions.ts        — DEFINES openPdfPanel (the seam itself).
+  //   • modes/WrestleApp/**         — the bare-/wrestle ingest host (PdfViewer
+  //                                   survives here as the annotate/region surface).
+  //   • components/PdfViewer.tsx     — the renderer module (survives as ingest).
+  //   • components/PdfViewer.stories.tsx — Storybook scaffold for that module.
+  //   • workspace/PanelRegistry.tsx  — maps the "PdfViewer" panel kind → component.
+  //   • workspace/panel.types.ts     — the "PdfViewer" union member (a typedef).
+  //   • components/ai/aiActions.ts   — a JSON SCHEMA doc-comment naming the kind.
+  // Test files are excluded wholesale (they assert ON the seam by name).
+  const INGEST_EXEMPT = new Set<string>([
+    "workspace/actions.ts",
+    "components/PdfViewer.tsx",
+    "components/PdfViewer.stories.tsx",
+    "workspace/PanelRegistry.tsx",
+    "workspace/panel.types.ts",
+    "components/ai/aiActions.ts",
+  ]);
+  const isExemptFile = (rel: string): boolean =>
+    INGEST_EXEMPT.has(rel) ||
+    rel.startsWith("modes/WrestleApp/") ||
+    /\.test\.tsx?$/.test(rel) ||
+    rel.includes("/__tests__/");
+
+  // The two document-OPEN-by-id seams the convergence forbids outside ingest:
+  //   1. openPdfPanel(…)            — the bespoke action that opens a pdf.js panel.
+  //   2. open("PdfViewer", …)       — the raw store seam openPdfPanel wraps.
+  // (A `<PdfViewer pdfBytes=…>` mount of ALREADY-RESOLVED bytes inside a
+  //  sanctioned host — WrestleApp ingest, or the Reader's own "view original"
+  //  secondary view of the document it already opened — is NOT a by-id open and
+  //  is intentionally not matched here.)
+  const OPEN_BY_ID_SEAMS: readonly { name: string; re: RegExp }[] = [
+    { name: "openPdfPanel(", re: /openPdfPanel\(/ },
+    { name: 'open("PdfViewer"', re: /\.open\(\s*["']PdfViewer["']/ },
+  ];
+
+  const ALL_SRC_FILES = listSrcFiles(SRC);
+
+  function scanForOpenSeams(): { file: string; seam: string }[] {
+    const hits: { file: string; seam: string }[] = [];
+    for (const rel of ALL_SRC_FILES) {
+      if (isExemptFile(rel)) continue;
+      const src = readSrc(rel); // comment-stripped → matches LIVE code only
+      for (const seam of OPEN_BY_ID_SEAMS) {
+        if (seam.re.test(src)) hits.push({ file: rel, seam: seam.name });
+      }
+    }
+    return hits;
+  }
+
+  it("the tree walker actually finds the production source (sanity: it sees many files)", () => {
+    // If the walk returned ~nothing the ZERO assertion below would pass
+    // vacuously. Pin a floor so a broken walk is a red test, not a fake green.
+    expect(ALL_SRC_FILES.length).toBeGreaterThan(50);
+    expect(ALL_SRC_FILES).toContain("modes/Notebook/blocks/RegionEmbedBlock.tsx");
+    expect(ALL_SRC_FILES).toContain("modes/Reading/index.tsx");
+  });
+
+  it("NO non-ingest source file opens a document by id via openPdfPanel( or open(\"PdfViewer\") — ZERO matches tree-wide", () => {
+    const hits = scanForOpenSeams();
+    // A readable failure: list every offending file:seam so a re-introduced fork
+    // names itself.
+    expect(
+      hits,
+      `open-a-document fork(s) survive outside the ingest surface:\n${hits
+        .map((h) => `  ${h.file} → ${h.seam}`)
+        .join("\n")}\nRoute each through useOpenDocument() → openDocument(documentId, { page }).`,
+    ).toEqual([]);
+  });
+
+  it("the tree-wide guard CATCHES a re-introduced openPdfPanel( document-open caller (proves it's real, not decorative)", () => {
+    // Simulate a future regression: a notebook block (a NON-ingest, non-exempt
+    // file) re-introduces the killed seam. The same scan logic the guard above
+    // runs must flag it. We re-run the scan against a SYNTHETIC source map so the
+    // test is hermetic (no temp files), exercising the identical predicate.
+    const reintroduced: Record<string, string> = {
+      "modes/Notebook/blocks/RegionEmbedBlock.tsx":
+        'onClick={() => openPdfPanel({ documentId, page })}',
+      // An exempt ingest file with the seam must NOT count (proves the carve-out).
+      "modes/WrestleApp/index.tsx": "openPdfPanel({ documentId })",
+      "workspace/actions.ts": "export function openPdfPanel(opts) { … }",
+      // A clean non-ingest file must NOT count (proves no false positive).
+      "modes/Library/index.tsx": "openDocument(documentId)",
+    };
+    const caught: { file: string; seam: string }[] = [];
+    for (const [rel, src] of Object.entries(reintroduced)) {
+      if (isExemptFile(rel)) continue;
+      for (const seam of OPEN_BY_ID_SEAMS) {
+        if (seam.re.test(src)) caught.push({ file: rel, seam: seam.name });
+      }
+    }
+    // Exactly the one re-introduced non-ingest caller is caught; the WrestleApp +
+    // actions.ts references are exempt, the clean Library file is not flagged.
+    expect(caught).toEqual([
+      { file: "modes/Notebook/blocks/RegionEmbedBlock.tsx", seam: "openPdfPanel(" },
+    ]);
   });
 });

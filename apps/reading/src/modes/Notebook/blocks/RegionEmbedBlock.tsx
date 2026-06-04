@@ -4,17 +4,27 @@ import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr, intAttr } from "./attrHelpers";
 
 import LemonCard from "../../../components/lemon/LemonCard";
-import { openPdfPanel } from "../../../workspace/actions";
+import { useOpenDocument } from "../../../lib/openDocument";
 
 /**
  * Region-embed block — references a PDF region by document_id + page.
- * Renders a placeholder card with an "Open at page" affordance that
- * opens the PdfViewer as a floating panel jumped to the page.
+ * Renders a placeholder card with an "Open at page" affordance that opens
+ * the referenced document in the ONE Reader (SPR-05 — was a bespoke
+ * `openPdfPanel` floating pdf.js panel, a second open-a-document fork; now
+ * routes through `openDocument` → the gated /read/:id route like every other
+ * door). The `page` attr is a 1-based page LABEL; the reader's `page` opt is a
+ * 0-based index, so we convert it the same way ChunkModal does
+ * (`Math.max(0, n-1)`).
  */
 function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
+  const openDocument = useOpenDocument();
   const documentId = (node.attrs.document_id as string | null) ?? null;
   const page = (node.attrs.page as number | null) ?? null;
   const caption = (node.attrs.caption as string | null) ?? null;
+  // The `page` attr is a 1-based page label (the "p.N" the card shows);
+  // openDocument's `page` opt is a 0-based reader index. Convert honestly
+  // (N → N-1, clamped at 0) — the SAME conversion ChunkModal applies.
+  const readerPage = page !== null ? Math.max(0, page - 1) : undefined;
 
   return (
     <NodeViewWrapper className="my-3" data-block="region-embed">
@@ -31,7 +41,7 @@ function RegionEmbedNodeView({ node, deleteNode }: NodeViewProps) {
               {documentId && (
                 <button
                   type="button"
-                  onClick={() => openPdfPanel({ documentId, page: page ?? undefined })}
+                  onClick={() => openDocument(documentId, { page: readerPage })}
                   className="text-[11px] text-sun-deep dark:text-sun hover:underline"
                 >
                   Open at page
