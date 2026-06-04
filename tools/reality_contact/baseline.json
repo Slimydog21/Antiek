@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "gate": "reality_contact_ratchet",
+  "generated_at": "2026-06-04T00:00:00+00:00",
+  "provenance": {
+    "boundaries_hash": "sha256:e6a2271d638db2bd849059a13c609d6546e420566f99f474c304b51307478555",
+    "ledger_content_hash": "sha256:2a383f575af0a9fdbb153d1349a40f27d2a0c6ffa478eea1d94eef79441b883f",
+    "ledger_schema_version": 1,
+    "note": "Frozen from `python -m tools.reality_contact.ledger` at the SPR-03-merged head of caffen-rc/SPR-04. The per-subsystem floors below equal SPR-02's scoreboard output exactly (164 reality / 168 claiming = 97.62% headline). ledger_content_hash is sha256 over the canonical JSON of {core_modules, files[].{path,subsystem_labels,core_mock_evidence}} — the metric-relevant slice only, so a cosmetic ledger change (a reordered blind-spot string) does not invalidate the floor while any change to the measured numbers does."
+  },
+  "subsystems": {
+    "orchestration.loop_one.orchestrator": {"claiming": 2, "reality": 2, "theater": 0, "indeterminate": 0},
+    "substrate.attribution.compute": {"claiming": 3, "reality": 3, "theater": 0, "indeterminate": 0},
+    "substrate.dispatch.router": {"claiming": 18, "reality": 17, "theater": 0, "indeterminate": 1},
+    "substrate.graph.ops": {"claiming": 49, "reality": 48, "theater": 0, "indeterminate": 1},
+    "substrate.graph.schema": {"claiming": 85, "reality": 84, "theater": 0, "indeterminate": 1},
+    "substrate.graph.search": {"claiming": 11, "reality": 10, "theater": 0, "indeterminate": 1}
+  },
+  "theater": [],
+  "exemptions": []
+}
