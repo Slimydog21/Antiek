@@ -101,10 +101,12 @@ dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.24",
   "pytest-cov>=5.0",
-  # ``pytest-xdist`` is required by ``addopts = "-n auto"`` in
-  # pyproject's [tool.pytest.ini_options]. Without it pytest fails
-  # with "unrecognized arguments: -n auto" before any test runs.
-  # H5 (2026-05-18) surfaced this — it was breaking CI cleanly.
+  # ``pytest-xdist`` provides the ``-n`` parallel-worker flag. The default
+  # ``addopts`` (``-ra --strict-markers`` in [tool.pytest.ini_options]) does
+  # NOT pass ``-n``, so it is no longer load-bearing for the default run; it
+  # is kept so an operator/CI invocation can opt into ``-n auto`` parallelism
+  # without re-installing. (H5, 2026-05-18, originally added it when addopts
+  # DID carry ``-n auto``.)
   "pytest-xdist>=3.6",
   # SPR-04's attribution golden/property suite (tests/test_attribution_golden.py)
   # hard-imports `hypothesis` for its property tests. It was present in the

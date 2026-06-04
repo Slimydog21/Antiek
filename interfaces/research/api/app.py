@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from substrate.notebooks import Notebook
 
 from fastapi import (
+    BackgroundTasks,
     Body,
     FastAPI,
     HTTPException,
@@ -1051,6 +1052,87 @@ class AttributionComputeRequest(BaseModel):
     algorithm: str = "option_b"
     chunk_to_claim_id: dict[str, str] = {}
     claim_load_bearing_scores: dict[str, float] = {}
+
+
+# ---------------------------------------------------------------------------
+# SPR-02 (DA) — background full-document structured-block upgrade
+# ---------------------------------------------------------------------------
+
+
+def _upgrade_arxiv_structured_blocks(
+    document_id: str,
+    arxiv_id: str,
+    title: str | None,
+) -> None:
+    """Reader SPR-02 (DA) — fetch the FULL arXiv document (governed ar5iv → tex
+    math, PDF fallback) and persist its typed blocks onto an EXISTING ``documents``
+    row, OUT-OF-BAND of the request/response cycle.
+
+    This is what ``POST /sources/ingest`` ``add_task``s after returning 202: a
+    plain SYNC callable that FastAPI runs in its threadpool (so it never blocks
+    the async event loop). It closes the goal gap the abstract-only inline insert
+    leaves — the M5 backfill can only reconstruct blocks from ``raw_text``, which
+    for arXiv is the ABSTRACT ONLY, so it could never produce the full ar5iv/PDF
+    document. This task calls the SAME governed full-document fetcher the inline
+    ``emit_structured_blocks=True`` (batch/CLI) path uses — exactly one governed
+    seam, no second fetcher (rigor #4).
+
+    BEST-EFFORT: any failure (ban, network, parse) logs and leaves
+    ``structured_blocks`` NULL so the M5 backfill stays a safety-net; it NEVER
+    raises (a raised background task would surface nowhere useful and a fetch
+    failure must not poison an already-202'd ingest).
+
+    The full-document fetcher is injected via the module-level
+    ``_fetch_arxiv_document`` indirection so tests populate blocks through a stub
+    WITHOUT live network (the SPR-02 CI socket guard blocks real arXiv egress)."""
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        extraction = _fetch_arxiv_document(
+            arxiv_id, document_id=document_id, title=title,
+        )
+        blocks_json = extraction.document.model_dump_json()
+    except Exception:  # noqa: BLE001 — full-doc upgrade is additive; abstract is the floor
+        log.warning(
+            "background structured-block upgrade failed for %s (arxiv %s); "
+            "leaving NULL for the M5 backfill safety-net",
+            document_id,
+            arxiv_id,
+            exc_info=True,
+        )
+        return
+
+    try:
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path, set_structured_blocks
+
+        with connect_write(
+            default_db_path(), purpose="api:arxiv_structured_upgrade"
+        ) as con:
+            set_structured_blocks(con, document_id, blocks_json)
+    except Exception:  # noqa: BLE001 — persistence failure must not raise from a bg task
+        log.warning(
+            "background structured-block persist failed for %s; leaving NULL "
+            "for the M5 backfill safety-net",
+            document_id,
+            exc_info=True,
+        )
+
+
+def _fetch_arxiv_document(
+    arxiv_id: str,
+    *,
+    document_id: str,
+    title: str | None = None,
+) -> Any:
+    """Indirection over ``acquisition.arxiv.source_document.fetch_arxiv_document``
+    so the background upgrade is INJECTABLE in tests (monkeypatch this name to a
+    stub that returns an extraction without opening a socket). Prod resolves the
+    governed default — the SAME fetcher the inline ``emit=True`` path uses."""
+    from acquisition.arxiv.source_document import fetch_arxiv_document
+
+    return fetch_arxiv_document(arxiv_id, document_id=document_id, title=title)
 
 
 # ---------------------------------------------------------------------------
@@ -2259,6 +2341,7 @@ def create_app(
     )
     async def post_ingest_source(
         req: IngestSourceRequest,
+        background_tasks: BackgroundTasks,
     ) -> IngestSourceResponse:
         """Ingest a URL into the substrate graph. Auto-detects source
         kind unless ``req.kind`` is set. Routes to the appropriate
@@ -2287,23 +2370,39 @@ def create_app(
                     )
                 arxiv_kwargs: dict[str, Any] = {
                     "investigation_id": req.investigation_id,
-                    # SPR-02 (DN2): the at-ingest structured-block fetch is up to
-                    # TWO blocking governed egress hops (ar5iv + PDF fallback,
+                    # SPR-02 (DN2 + DA): the at-ingest structured-block fetch is up
+                    # to TWO blocking governed egress hops (ar5iv + PDF fallback,
                     # each <=15s + the host-global >=3s spacing). This is an
                     # ``async def`` handler that contracts "202 immediately" — a
                     # synchronous governed fetch here would block the event loop
-                    # for the whole arXiv round-trip. So this latency-sensitive
-                    # public path lands the abstract WITHOUT the structured fetch
-                    # and lets the out-of-band M5 backfill
-                    # (``substrate.graph.backfill_structured_blocks``) upgrade the
-                    # row from stored text — preserving 202 while the corpus still
-                    # gets typed blocks. The non-latency batch/CLI ingestion path
-                    # keeps ``emit_structured_blocks=True`` (emits at ingest).
+                    # for the whole arXiv round-trip. So the INLINE insert lands the
+                    # abstract row WITHOUT the structured fetch (``emit=False``) and
+                    # returns 202 at once. The FULL ar5iv/PDF document is then
+                    # fetched OUT-OF-BAND by a ``BackgroundTasks`` job
+                    # (``_upgrade_arxiv_structured_blocks`` below), which FastAPI
+                    # runs AFTER the response in its threadpool — so the public path
+                    # genuinely gets the SAME full typed-block document as the
+                    # batch/CLI ``emit_structured_blocks=True`` path, without ever
+                    # blocking the event loop. (M5 ``backfill_structured_blocks`` can
+                    # only reconstruct from ``raw_text`` = the abstract, so it could
+                    # never produce the full document; it remains the best-effort
+                    # safety-net for the case where the background fetch fails.)
                     "emit_structured_blocks": False,
                 }
                 if req.source_tier is not None:
                     arxiv_kwargs["source_tier"] = req.source_tier
                 arxiv_r = _ip(paper, **arxiv_kwargs)
+                # DA: offload the FULL-document structured fetch so the public
+                # endpoint's corpus rows reach the SAME typed-block document as the
+                # batch path — without blocking the 202. Only schedule it when the
+                # abstract row actually landed (a real document_id).
+                if arxiv_r.document_id:
+                    background_tasks.add_task(
+                        _upgrade_arxiv_structured_blocks,
+                        arxiv_r.document_id,
+                        arxiv_id,
+                        paper.title,
+                    )
                 return IngestSourceResponse(
                     status=(
                         "ingested" if arxiv_r.chunks_written > 0 else "skipped"
