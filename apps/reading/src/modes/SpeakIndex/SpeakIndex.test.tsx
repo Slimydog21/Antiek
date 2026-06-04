@@ -74,6 +74,34 @@ describe("SpeakIndex — the warm door", () => {
     expect(screen.queryByText("PROJECT PAGE")).toBeNull();
   });
 
+  // ── SPR-01 M2 — frozen-shell snapshots ──
+  // These pin the shipped UI so SPR-02/SPR-03 cannot drift the shell or
+  // either lane's body unnoticed. Pure extraction: behavior-preserving.
+  describe("frozen-shell snapshots (SPR-01 M2)", () => {
+    it("matches the yours-empty snapshot", async () => {
+      const { container } = mount();
+      expect(await screen.findByText(/no one yet/i)).toBeTruthy();
+      expect(container).toMatchSnapshot();
+    });
+
+    it("matches the yours-populated snapshot", async () => {
+      listPeopleMock.mockResolvedValue([
+        { id: "y1", name: "Grandma Rosa", willBePublic: false, voiceCount: 0 },
+        { id: "y2", name: "Dad", willBePublic: true, voiceCount: 2 },
+      ]);
+      const { container } = mount();
+      expect(await screen.findByText("Grandma Rosa")).toBeTruthy();
+      expect(container).toMatchSnapshot();
+    });
+
+    it("matches the public-empty snapshot", async () => {
+      const { container } = mount();
+      fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
+      expect(await screen.findByText(/no public remembrances yet/i)).toBeTruthy();
+      expect(container).toMatchSnapshot();
+    });
+  });
+
   // ── M1 — the public/private split ──
   it("has a public-feed tab with an honest empty state and an 'add your memory' entry", async () => {
     mount();

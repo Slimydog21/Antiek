@@ -293,6 +293,7 @@ export interface PayoutReleaseView {
  * honest accrued figure (which is $0 with no ad buyers) and whether the
  * requester's budget was exhausted.
  */
+// PAYOUT-BASIS GUARD: payout basis is §9.3 Option-B (claim_confidence × (6 − source_tier)); the per-second ad model is rejected. See docs/decisions/speak-private-public-spine.md.
 export async function releasePayout(
   projectId: string,
   args: { informationGoal: string; budgetUsd: string; perInterviewCapUsd: string; adRevenueUsd: string },
