@@ -127,14 +127,29 @@ def _check_retrieval_gate(repo: Path) -> CheckResult:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# dispatch_router — single ``def dispatch`` in substrate/dispatch/router.py.
-#   canonical: substrate/dispatch/router.py (the one router; §16 single
-#              dispatcher — there is no second dispatcher by design).
+# dispatch_router — RE-FORK TRIPWIRE on the canonical named entry point.
+#   canonical: substrate/dispatch/router.py (the one router; SPR-05 fidelity).
 #   converged by: born single; fidelity ruled in
 #                 docs/decisions/acv-spr05-dispatch-fidelity.md (SPR-05).
-# A SECOND module-level ``def dispatch`` anywhere under substrate/dispatch/
-# would be a parallel router — the §16 violation this row guards. AST count of
-# the ``def`` named ``dispatch`` (not a call ``dispatch(...)`` or an import).
+#
+# WHAT THIS ROW ACTUALLY CATCHES — and what it does NOT (SPR-07 honesty rule:
+# a gate must not claim more than it proves). This check ASTs for a SECOND
+# module-level ``def dispatch`` under substrate/dispatch/. That is a precise,
+# useful tripwire for ONE concrete re-fork: someone re-declaring the canonical
+# named entry point (``def dispatch``) a second time under the dispatch package.
+# It is NOT a proof of "the §16 single-dispatcher invariant" in general. It does
+# NOT catch a differently-NAMED parallel router (``def dispatch_v2``, ``def
+# route``) nor a differently-LOCATED one (a ``def dispatch`` placed under
+# ``runtime/remote_exec/`` or ``interfaces/``): all three evade this AST check
+# (it returns ok=True). The broader "is there a SECOND dispatcher ANYWHERE?"
+# question is semantic — a name/location-agnostic scan would false-positive on
+# the many legitimate ``def dispatch`` methods elsewhere (provider adapters,
+# event buses) — so it is the HUMAN convergence-owner's Procedure-A cross-PR
+# job (docs/decisions/convergence-owner.md), not this mechanical check's. The
+# narrow signature is the right engineering choice; this row guards the
+# named-entry-point re-fork, and the human pass guards the rest.
+# Count is the module-level ``def dispatch`` only (not a call ``dispatch(...)``,
+# not an import, not a method ``def dispatch`` on a provider class).
 # ──────────────────────────────────────────────────────────────────────────────
 _DISPATCH_CANONICAL = "substrate/dispatch/router.py"
 _DISPATCH_SYMBOL = "dispatch"
@@ -181,9 +196,10 @@ def _check_dispatch_router(repo: Path) -> CheckResult:
     return (
         False,
         [
-            f"{s}: a SECOND module-level 'def {_DISPATCH_SYMBOL}' — the dispatch "
-            f"router has FORKED (§16 forbids a second dispatcher; the one router "
-            f"is {_DISPATCH_CANONICAL}). Other definition(s): {others(s)}"
+            f"{s}: a SECOND module-level 'def {_DISPATCH_SYMBOL}' under "
+            f"substrate/dispatch/ — the canonical named entry point has been "
+            f"RE-FORKED (the one router is {_DISPATCH_CANONICAL}; SPR-05 ruled it "
+            f"canonical). Converge it. Other definition(s): {others(s)}"
             for s in sites
         ],
     )
@@ -238,6 +254,13 @@ def _is_ts_test_file(name: str) -> bool:
 
 
 def _check_reading_shell(repo: Path) -> CheckResult:
+    # INTENTIONAL BOUNDARY (not an oversight): the def-regex matches a
+    # `function`/`const|let|var`/`class WernerIceCursorShell` declaration only.
+    # A bare property re-bind (`shells.WernerIceCursorShell = () => {}`) or a
+    # same-named `interface`/`enum WernerIceCursorShell` is NOT matched — neither
+    # is a plausible SECOND *component* definition, which is the only thing a
+    # reading-shell fork would be. Matching them would invite false positives for
+    # no convergence gain; the named-component re-definition is the real tripwire.
     root_dir = repo / _READING_SHELL_ROOT
     sites: list[str] = []
     if root_dir.is_dir():
@@ -339,6 +362,12 @@ REGISTRY: tuple[Concern, ...] = (
         canonical="substrate/dispatch/router.py",
         check=_check_dispatch_router,
         # Born single (one router by §16 design); fidelity ruled by SPR-05.
+        # This row's mechanical check is a RE-FORK TRIPWIRE on the canonical
+        # NAMED entry point — it catches a second module-level ``def dispatch``
+        # under substrate/dispatch/, NOT a renamed (dispatch_v2/route) or
+        # relocated (runtime/, interfaces/) parallel router. The general
+        # "second dispatcher anywhere?" question is the human convergence-owner's
+        # Procedure-A job, not this AST check's (see _check_dispatch_router).
         converged_by="born single (§16) / SPR-05 fidelity",
         ruled_by="docs/decisions/acv-spr05-dispatch-fidelity.md",
     ),

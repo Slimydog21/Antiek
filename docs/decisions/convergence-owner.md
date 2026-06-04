@@ -34,6 +34,22 @@ is **mechanically backed**:
 | Dead-in-prod | reachability probe runner | `tools/reachability/probe_runner.py` (CI `reachability` job) |
 | Both, one command | combined sweep | `tools/reachability/sweep.py` (operator entrypoint) |
 
+**What each registry row's mechanical check actually proves (honesty: a gate
+must not claim more than it proves).** Each row catches a re-DEFINITION of a
+NAMED canonical symbol; that is a precise, useful tripwire, but it is not a proof
+of the broader invariant in every case. In particular the `dispatch_router` row
+catches a second module-level `def dispatch` under `substrate/dispatch/` — a
+re-fork of the canonical **named entry point**. It does NOT catch a
+differently-named (`dispatch_v2`, `route`) or differently-located (`runtime/`,
+`interfaces/`) parallel router; that broader "is there a second dispatcher
+anywhere?" question is semantic, would false-positive on the many legitimate
+`dispatch` methods elsewhere (provider adapters, event buses), and is the
+**human convergence-owner's Procedure-A cross-PR job (step 2), not this
+mechanical AST check's.** Read each row this way: the registry catches the
+named-symbol re-fork mechanically; the human pass catches the renamed/relocated
+parallel implementation that no single AST signature can name without
+false-positives.
+
 ---
 
 ## Procedure A — the post-wave convergence pass
@@ -46,7 +62,13 @@ Run this **after every wave, before the wave's sprints are declared merged.**
    in the registry, take its `canonical` path + its check's search roots
    (`substrate/graph/`, `substrate/dispatch/`, `apps/reading/src/werner/`); if
    two open PRs both touch one of those, treat it as a candidate fork and read
-   both diffs before merging either.
+   both diffs before merging either. **This step is also where the
+   renamed/relocated parallel router is caught** — the `dispatch_router`
+   mechanical check (step 3) only reds on a literal second `def dispatch` under
+   `substrate/dispatch/`, so a PR that adds a `def dispatch_v2`, a `def route`,
+   or a `def dispatch` under `runtime/`/`interfaces/` will pass CI individually;
+   the human cross-PR read here is the guard for that semantic re-fork that no
+   false-positive-free AST signature can name.
 3. **Run the uniqueness sweep.**
    `python tools/lint/uniqueness_registry.py` → expect exit 0 and one
    `[UNIQUE] <concern>` per row. A `[FORK] <concern>: <path:line>` means a

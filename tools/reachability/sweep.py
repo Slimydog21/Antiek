@@ -157,10 +157,19 @@ def main(argv: list[str] | None = None) -> int:
             "merged."
         )
     else:
-        print(
-            "OK: every registered concern is UNIQUE and every probed feature "
-            "is REACHABLE from the production factory."
-        )
+        # Only claim the half that actually RAN. A scoped run must not assert
+        # the skipped half was verified (SPR-07 honesty rule: a gate must not
+        # claim more than it proves).
+        ran_uniqueness = not args.only_reachability
+        ran_reachability = not args.only_uniqueness
+        clauses = []
+        if ran_uniqueness:
+            clauses.append("every registered concern is UNIQUE")
+        if ran_reachability:
+            clauses.append(
+                "every probed feature is REACHABLE from the production factory"
+            )
+        print("OK: " + " and ".join(clauses) + ".")
     return 1 if exit_code else 0
 
 
