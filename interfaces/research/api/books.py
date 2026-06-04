@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from substrate.books.serve import ServeResult
 
+from .operator_allowlist import operator_allowlist_from_env
 from .serve_guard import serve_full_text_guarded
 
 logger = logging.getLogger("antiek.interfaces.books")
@@ -63,18 +64,21 @@ _PUBLIC_READ_POLICY_TAG = "attribution_eligible"
 # local dev convenience; the §9.0 retrieval bypass is held to the stricter
 # bar deliberately — see the handoff steelman.)
 #
-# ── SINGLE-OPERATOR DEPENDENCY (CLAUDE.md invariant #5) ──────────────────────
-# ``authenticated ⇒ owner`` holds here ONLY under the single-operator invariant:
-# ``ANTIEK_OPERATOR_EMAIL`` is today exactly ONE operator. The middleware
-# (app.py:1215) actually parses it as a COMMA-SEPARATED allowlist, and this
-# helper keys solely on ``auth_method`` — it never consults ``request.state``'s
-# ``user_id`` / ``user_email``, and ``search()`` applies no ``owner_user_id``
-# filter (the column exists, schema.py:81). So the day the operator sets TWO
-# emails, BOTH authenticate, BOTH get ``operator_only`` here, and either tenant's
-# session could read the OTHER's ``personal_reading`` corpus — a §9.0
-# cross-tenant leak. When Sprint-22 multi-user lands (CLAUDE.md #5 gates it),
-# this privilege MUST additionally scope retrieval by ``request.state.user_id``
-# against ``owner_user_id``; ``operator_only`` alone is no longer sufficient.
+# ── SINGLE-OPERATOR ENFORCEMENT (CLAUDE.md invariant #5) ─────────────────────
+# ``authenticated ⇒ owner`` holds ONLY under the single-operator invariant.
+# ``ANTIEK_OPERATOR_EMAIL`` is parsed as a COMMA-SEPARATED allowlist
+# (app.py:1215), and this helper keys on ``auth_method`` — it never consults
+# ``request.state``'s ``user_id`` / ``user_email``, and ``search()`` applies no
+# ``owner_user_id`` filter (the column exists, schema.py:81). So with TWO+
+# operator emails, two distinct tenants would both authenticate and a shared
+# ``operator_only`` could read each other's ``personal_reading`` corpus.
+# ``_owner_read_policy_tag`` therefore grants the privilege ONLY when the
+# deployment is provably single-operator (``operator_allowlist_from_env``
+# resolves ≤ 1 operator); a multi-operator config FAILS CLOSED to the
+# non-privileged tag, so the cross-tenant path is STRUCTURALLY IMPOSSIBLE, not
+# merely documented. When Sprint-22 multi-user lands, restoring multi-operator
+# owner-read requires scoping retrieval by ``request.state.user_id`` against
+# ``owner_user_id``; ``operator_only`` alone is not sufficient.
 _OWNER_AUTH_METHODS: frozenset[str] = frozenset({
     "antiek_session_cookie",
     "cloudflare_access_email",
@@ -101,11 +105,18 @@ def _owner_read_policy_tag(request: Request) -> str:
     spoof it via a header/param. When enforcement is on, a non-owner caller is
     rejected with 401 BEFORE this runs, so it can only ever see owner requests.
 
-    PRIVILEGE == OWNER here only under the single-operator invariant — see the
-    SINGLE-OPERATOR DEPENDENCY note above ``_OWNER_AUTH_METHODS``.
+    PRIVILEGE == OWNER is ENFORCED, not merely assumed: the bypass is granted
+    only when the deployment is single-operator (``operator_allowlist_from_env``
+    resolves ≤ 1 operator); a multi-operator config FAILS CLOSED to the
+    non-privileged tag. See the SINGLE-OPERATOR ENFORCEMENT note above
+    ``_OWNER_AUTH_METHODS``.
     """
     auth_method = getattr(getattr(request, "state", None), "auth_method", None)
-    if auth_method in _OWNER_AUTH_METHODS:
+    # SINGLE-OPERATOR ENFORCEMENT: the privilege is owner-scoped only when the
+    # deployment has ≤ 1 operator. With 2+ operator emails the bypass would be
+    # cross-tenant (this helper keys on auth_method, not user_id), so it FAILS
+    # CLOSED to the non-privileged tag.
+    if auth_method in _OWNER_AUTH_METHODS and len(operator_allowlist_from_env()) <= 1:
         return _OWNER_READ_POLICY_TAG
     return _PUBLIC_READ_POLICY_TAG
 

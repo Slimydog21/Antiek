@@ -354,3 +354,41 @@ def test_public_serve_path_still_excludes_gated_body_for_owner(
         f"{content_class} must never be publicly servable via /full-text"
     )
     assert body["full_text"] is None, "the gated body must not be served inline"
+
+
+# ---------------------------------------------------------------------------
+# SINGLE-OPERATOR ENFORCEMENT — the verifier-critic + Strix "cross-tenant in
+# multi-operator" High, closed STRUCTURALLY (not just documented).
+# ---------------------------------------------------------------------------
+
+
+def test_multi_operator_config_fails_closed_to_non_privileged(monkeypatch):
+    """With 2+ operator emails the owner-read privilege FAILS CLOSED to the
+    non-privileged tag, so an authenticated owner's session cannot
+    cross-tenant-read another operator's ``personal_reading`` corpus.
+    ``_owner_read_policy_tag`` gates the privilege on
+    ``operator_allowlist_from_env()`` resolving <= 1 operator."""
+    from types import SimpleNamespace
+
+    from interfaces.research.api.books import (
+        _OWNER_READ_POLICY_TAG,
+        _PUBLIC_READ_POLICY_TAG,
+        _owner_read_policy_tag,
+    )
+
+    def _req(auth_method: str) -> object:
+        return SimpleNamespace(state=SimpleNamespace(auth_method=auth_method))
+
+    # Single operator (<= 1 email): an authenticated owner gets the privilege.
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "solo@example.com")
+    assert _owner_read_policy_tag(_req("antiek_session_cookie")) == _OWNER_READ_POLICY_TAG  # type: ignore[arg-type]
+    assert _owner_read_policy_tag(_req("bearer_token")) == _OWNER_READ_POLICY_TAG  # type: ignore[arg-type]
+
+    # Multi-operator (2 emails): the SAME authenticated methods now FAIL CLOSED.
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "alice@example.com,bob@example.com")
+    assert _owner_read_policy_tag(_req("antiek_session_cookie")) == _PUBLIC_READ_POLICY_TAG  # type: ignore[arg-type]
+    assert _owner_read_policy_tag(_req("cloudflare_access_email")) == _PUBLIC_READ_POLICY_TAG  # type: ignore[arg-type]
+    assert _owner_read_policy_tag(_req("bearer_token")) == _PUBLIC_READ_POLICY_TAG  # type: ignore[arg-type]
+
+    # A non-owner is non-privileged regardless of operator count.
+    assert _owner_read_policy_tag(_req("unauthenticated_local")) == _PUBLIC_READ_POLICY_TAG  # type: ignore[arg-type]
