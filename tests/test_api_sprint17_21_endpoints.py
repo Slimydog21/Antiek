@@ -19,19 +19,36 @@ def _client():
     return TestClient(create_app(register_wrestling=False))
 
 
-# ── Thought partner ─────────────────────────────────────────────────
+# ── Thought partner (antiek-reader SPR-06 — REAL dispatch, no canned reply) ──
+#
+# The old contract asserted a canned ``shape`` + ``text`` reply that NEVER
+# called a model — the one AI action that lied. SPR-06 replaced it with the real
+# Hermes-routed dispatch tier + an honest no-key 503. These tests now assert the
+# honest contract; the real-dispatch (cassette-backed) proof lives in
+# ``tests/test_passage_dialogue.py``.
 
 
-def test_thought_partner_returns_shape_and_text():
-    client = _client()
-    resp = client.post(
-        "/thought-partner",
-        json={"prompt": "Is liquid democracy compatible with multi-camera attention?"},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["shape"] in {"challenge", "synthesis", "extension"}
-    assert isinstance(body["text"], str) and body["text"].strip()
+def test_thought_partner_no_key_is_honest_503_not_a_canned_reply():
+    # ``register_providers=False`` wires NO real provider — the deterministic,
+    # key-free "no provider configured" state. (We do NOT rely on the ambient
+    # CI env being key-free: this environment DOES have an OpenRouter key, so a
+    # default app would attempt a real dispatch and the socket guard would block
+    # it. Pinning register_providers=False keeps the test honest AND offline.)
+    # Also reset the registry so a provider another test registered can't leak in.
+    from substrate.dispatch.router import reset_provider_registry
+
+    reset_provider_registry()
+    try:
+        app = create_app(register_wrestling=False, register_providers=False)
+        client = TestClient(app)
+        resp = client.post(
+            "/thought-partner",
+            json={"prompt": "Is liquid democracy compatible with multi-camera attention?"},
+        )
+        assert resp.status_code == 503
+        assert "dispatch_unavailable" in resp.json()["detail"]
+    finally:
+        reset_provider_registry()
 
 
 def test_thought_partner_rejects_empty_prompt():

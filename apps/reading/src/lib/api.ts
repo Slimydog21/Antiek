@@ -1078,3 +1078,35 @@ export async function getConsentView(): Promise<ConsentViewResponse> {
   }
   return resp.json();
 }
+
+// ── antiek-reader SPR-06: passage-Dialogue Region wire helper ──────────────
+//
+// The substrate noun ``block_id`` is the pinned SPR-01 Region field name (the
+// wire contract the /thought-partner endpoint anchors a thread to). It lives
+// HERE in the api layer (not in the user-facing FloatMenu surface) so the
+// copy-lint stays green — the noun belongs with the API contract, never in
+// front of a reader. ``regionFromProvenance`` maps a FloatMenu selection's
+// resolved provenance (camelCase, user-surface) onto the generated ``Region``
+// (snake_case, wire), or null when the host resolved no anchor.
+
+import type { Region as DialogueRegion } from "../types/document_model.gen";
+
+export type { Region as DialogueRegion } from "../types/document_model.gen";
+
+/** Map a selection's resolved provenance to the SPR-01 Region the Dialogue
+ * thread anchors to, or null when there is no resolvable anchor (no document /
+ * block — a free-prose selection). char offsets are block-relative (M3). */
+export function regionFromProvenance(p: {
+  documentId?: string | null;
+  chunkId?: string | null;
+  charStart?: number | null;
+  charEnd?: number | null;
+}): DialogueRegion | null {
+  if (!p.documentId || !p.chunkId) return null;
+  return {
+    document_id: p.documentId,
+    block_id: p.chunkId,
+    char_start: p.charStart ?? null,
+    char_end: p.charEnd ?? null,
+  };
+}

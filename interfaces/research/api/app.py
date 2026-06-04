@@ -996,24 +996,40 @@ class Loop3ChecklistUpdateRequest(BaseModel):
 
 
 class ThoughtPartnerRequest(BaseModel):
-    """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
+    """A passage-Dialogue turn (antiek-reader SPR-06; was the master-spec §4.5
+    one-shot thought-partner scaffold).
 
-    AISidecar posts a free-form prompt; the substrate runs the
-    ``thought_partner`` role parser over a deterministic response
-    until a real dispatch tier wires through. Returns the shape +
-    text the parser produced.
+    The reader highlighted a ``passage`` and is talking to it. The substrate
+    dispatches a REAL model through the ONE Hermes-routed dispatch tier
+    (``role="user_agent"``) and returns the reply — or an honest 503 when no
+    provider key is configured (activation SPR-03). There is no longer a canned,
+    passage-independent reply.
 
-    `system_context` (UI-redesign S8 WP-8.4) is the serialised
-    workspace state the operator's client ships so the model can
-    reference what panels are currently visible + emit structured
-    actions back. The substrate threads this verbatim into the
-    model's system message when dispatch tier wiring lands; the
-    Sprint 21 deterministic scaffold below simply accepts the field
-    so the client contract is stable before the model wiring."""
+    Fields:
+      * ``passage`` — the highlighted span (the reader's own quoted text). When
+        omitted the (legacy) ``prompt`` carries the whole message.
+      * ``follow_up`` — the reader's question/comment about the passage.
+      * ``prompt`` — LEGACY: a pre-assembled prompt (the SPR-04 client built
+        ``About this passage I selected: "…"`` here). Still accepted so the
+        client contract does not break; when ``passage`` is absent the prompt is
+        treated as both passage and message.
+      * ``region`` — the SPR-01 ``Region`` (document_id + block_id + char range)
+        the thread anchors to, so the thread persists to the graph (M3 + M4).
+        Optional: a selection over un-anchored prose (no resolved block) has no
+        region and the turn still answers, just not persisted.
+      * ``history`` — prior turns of the running conversation (multi-turn).
 
-    prompt: str
+    `system_context` is retained for client back-compat (the workspace-state
+    field the AISidecar shipped) — accepted but no longer used to fabricate a
+    canned ``@@actions`` block."""
+
+    prompt: str | None = None
+    passage: str | None = None
+    follow_up: str | None = None
     investigation_id: str | None = None
     system_context: str | None = None
+    region: dict[str, Any] | None = None
+    history: list[dict[str, str]] = []
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -4951,10 +4967,101 @@ def create_app(
             cited_at=ref.cited_at,
         )
 
-    # ── Sprint 21 thought-partner endpoint (§4.5 + §11.7) ──
+    # ── Passage-Dialogue endpoint (antiek-reader SPR-06) ──
+    #
+    # Replaces the Sprint 21 canned scaffold: the reader highlights a passage
+    # and talks to it; the reply comes from a REAL model via the ONE Hermes-
+    # routed dispatch tier (``role="user_agent"``), or an HONEST 503 when no
+    # provider key is configured (activation SPR-03). The thread is anchored to
+    # the SPR-01 ``Region`` and persisted to the graph through the single
+    # sanctioned writer so it survives reload. INERT-without-keys: a green
+    # cassette-backed test means "the gesture is real and lights up with keys,"
+    # NOT "the operator can talk to a passage."
+
     class ThoughtPartnerResponseBody(BaseModel):
-        shape: str  # "challenge" | "synthesis" | "extension"
+        # MODEL-sourced reply — never a passage-independent canned line.
         text: str
+        # The graph node the thread was anchored to (null when the turn carried
+        # no resolvable Region, e.g. a free-prose selection); the client re-opens
+        # the same thread by re-deriving this from the same Region.
+        thread_node_id: str | None = None
+
+    def _dialogue_inputs(req: ThoughtPartnerRequest) -> tuple[str, str, list]:
+        """Normalise the request into (passage, follow_up, history). Back-compat:
+        when ``passage`` is absent the legacy ``prompt`` is BOTH the passage and
+        the message (the SPR-04 client pre-assembled the quote into ``prompt``)."""
+        from substrate.reading.passage_dialogue import DialogueTurn
+
+        passage = (req.passage or req.prompt or "").strip()
+        follow_up = (req.follow_up or "").strip()
+        # Legacy single-field clients put everything in ``prompt`` — treat it as
+        # the message too so the model still gets the reader's actual words.
+        if not req.passage and not follow_up and req.prompt:
+            follow_up = ""
+        history = [
+            DialogueTurn(question=str(h.get("question", "")), answer=str(h.get("answer", "")))
+            for h in (req.history or [])
+            if h.get("answer")
+        ]
+        if not passage:
+            raise HTTPException(
+                status_code=400,
+                detail="passage (or legacy prompt) must not be empty",
+            )
+        return passage, follow_up, history
+
+    def _region_of(req: ThoughtPartnerRequest):
+        """Build the SPR-01 ``Region`` from the request, or None when the client
+        sent no resolvable anchor (a free-prose selection). A malformed region
+        (e.g. reversed char range) raises 422 rather than persisting a bad
+        anchor."""
+        if not req.region:
+            return None
+        from substrate.contracts.reading_surface import Region
+
+        r = req.region
+        doc = r.get("document_id")
+        block = r.get("block_id")
+        if not doc or not block:
+            return None  # no anchor — answer the turn, just don't persist
+        try:
+            return Region(
+                document_id=str(doc),
+                block_id=str(block),
+                char_start=r.get("char_start"),
+                char_end=r.get("char_end"),
+            )
+        except Exception as exc:  # noqa: BLE001 — surface a bad anchor honestly
+            raise HTTPException(status_code=422, detail=f"invalid region: {exc}") from exc
+
+    def _persist_thread(region, passage: str, investigation_id: str) -> str | None:
+        """Anchor the thread to the Region + persist to the graph through the
+        SINGLE writer (M3 + M4). Best-effort: a persistence failure must not
+        sink the reader's reply (they still got their answer), so it logs and
+        returns None rather than raising. Returns the thread node id."""
+        if region is None:
+            return None
+        import logging
+
+        from runtime.db_lock import connect_write
+        from substrate.reading.thread_anchor import anchor_thread
+
+        try:
+            db = _resolve_db_path()
+            with connect_write(db, purpose="dialogue/anchor-thread") as con:
+                anchored = anchor_thread(
+                    region=region,
+                    excerpt=passage,
+                    investigation_id=investigation_id,
+                    con=con,
+                )
+            return anchored.node_id
+        except Exception:  # noqa: BLE001 — persistence is additive to the reply
+            logging.getLogger(__name__).warning(
+                "dialogue thread persistence failed; reply still served",
+                exc_info=True,
+            )
+            return None
 
     @app.post(
         "/thought-partner",
@@ -4963,77 +5070,95 @@ def create_app(
     async def post_thought_partner(
         req: ThoughtPartnerRequest = Body(...),
     ) -> ThoughtPartnerResponseBody:
-        """Run a single thought-partner turn. Sprint 21 scaffold:
-        until the dispatch tier wires through, this returns a
-        deterministic CHALLENGE-shaped reply so the AISidecar surface
-        is unblocked. The parser at ``roles/thought_partner/parser.py``
-        owns the shape vocabulary; this endpoint stays a thin shim.
+        """One passage-Dialogue turn (non-streamed). Dispatches a REAL model;
+        returns 503 when no provider key is configured (honest no-key state).
+        The thread is anchored + persisted to the graph when a Region is sent."""
+        from substrate.dispatch.router import ProviderError
+        from substrate.reading.passage_dialogue import answer_passage_dialogue
 
-        When the dispatch tier lands, ``req.system_context`` (the
-        operator's serialised workspace state from
-        ``aiActions.workspaceContextPrompt``) is threaded into the
-        model's system message and the model's reply is returned
-        unchanged (the @@actions block parses + dispatches client-
-        side, never on the substrate)."""
-        if not req.prompt.strip():
-            raise HTTPException(
-                status_code=400, detail="prompt must not be empty",
+        passage, follow_up, history = _dialogue_inputs(req)
+        region = _region_of(req)
+        investigation_id = req.investigation_id or "read-dialogue"
+        try:
+            result = answer_passage_dialogue(
+                passage=passage,
+                follow_up=follow_up,
+                investigation_id=investigation_id,
+                history=history,
             )
-        # Deterministic CHALLENGE reply per the parser shape set.
-        # ``req.system_context`` is accepted + reserved for when the
-        # dispatch tier wires through; the scaffold acknowledges
-        # receipt by including a tiny @@actions sentinel so the UI's
-        # tool-call protocol can be smoke-tested end-to-end without
-        # a real model.
-        #
-        # Prompt-keyword routing for richer smoke coverage: the
-        # scaffold inspects the operator's prompt and chooses an
-        # @@actions mix that exercises the part of the protocol they
-        # implicitly asked about. This is NOT intelligence — it's a
-        # canned dispatcher whose only purpose is letting the
-        # operator's e2e suite hit every action kind without a real
-        # model. The dispatch tier replaces this whole branch.
-        scaffold_text = (
-            "What's the one observation that, if false, would "
-            "make this whole question moot? Start there."
+        except ProviderError as exc:
+            # No keyed provider — honest 503, never a fabricated reply.
+            raise HTTPException(
+                status_code=503, detail=f"dispatch_unavailable: {exc}"
+            ) from exc
+        node_id = _persist_thread(region, passage, investigation_id)
+        return ThoughtPartnerResponseBody(text=result.text, thread_node_id=node_id)
+
+    @app.post("/thought-partner/stream")
+    async def post_thought_partner_stream(
+        req: ThoughtPartnerRequest = Body(...),
+    ):
+        """SSE stream of a passage-Dialogue turn (M2). Frames:
+
+          * ``{"kind":"token","text":"…"}`` — incremental pieces of the reply
+            (the client concatenates them to render progressively);
+          * ``{"kind":"thread","node_id":"…"}`` — the anchored thread (after the
+            reply is persisted);
+          * ``{"kind":"done"}`` — the stream completed cleanly;
+          * ``{"kind":"error","status":503|500,"detail":"…"}`` — a recoverable
+            failure (no key / model error). The client distinguishes ``done``
+            from ``error`` and shows a retry, never a frozen UI.
+
+        Streaming is incremental delivery of a COMPLETED reply (the provider
+        protocol is synchronous), labelled honestly. A no-key call yields a
+        single ``error`` frame with status 503 — the same honest no-key state
+        the non-streamed endpoint returns."""
+        import json as _json
+
+        from fastapi.responses import StreamingResponse
+
+        from substrate.dispatch.router import ProviderError
+        from substrate.reading.passage_dialogue import (
+            answer_passage_dialogue,
+            stream_reply_chunks,
         )
-        if req.system_context:
-            prompt_lower = req.prompt.lower()
-            actions_json: str
-            if "note" in prompt_lower or "notebook" in prompt_lower:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "add_to_notebook", '
-                    '"notebook_id": "scratch", '
-                    '"block": {"kind": "note", "text": "Scaffold note: real dispatch tier pending."}}\n'
-                    ']\n'
+
+        passage, follow_up, history = _dialogue_inputs(req)
+        region = _region_of(req)
+        investigation_id = req.investigation_id or "read-dialogue"
+
+        def _sse(obj: dict[str, Any]) -> str:
+            return f"data: {_json.dumps(obj, default=str)}\n\n"
+
+        async def _gen():
+            # The model call is synchronous; run it up front. A ProviderError (no
+            # key) or any model error becomes a single ``error`` frame — the
+            # stream stays well-formed and the client recovers (retry), never a
+            # frozen UI or a silent partial.
+            try:
+                result = answer_passage_dialogue(
+                    passage=passage,
+                    follow_up=follow_up,
+                    investigation_id=investigation_id,
+                    history=history,
                 )
-            elif "open" in prompt_lower and "pdf" in prompt_lower:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "toast", "level": "info", '
-                    '"message": "Scaffold: would open PdfViewer; dispatch tier pending."}\n'
-                    ']\n'
-                )
-            elif "chase" in prompt_lower or "question" in prompt_lower:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "chase_question", '
-                    '"text": "What would falsify this claim?"}\n'
-                    ']\n'
-                )
-            else:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "toast", "level": "info", '
-                    '"message": "Thought-partner scaffold: real dispatch tier pending."}\n'
-                    ']\n'
-                )
-            scaffold_text += "\n\n@@actions\n" + actions_json + "@@end"
-        return ThoughtPartnerResponseBody(
-            shape="challenge",
-            text=scaffold_text,
-        )
+            except ProviderError as exc:
+                yield _sse({"kind": "error", "status": 503, "detail": f"dispatch_unavailable: {exc}"})
+                return
+            except Exception as exc:  # noqa: BLE001 — model error → recoverable frame
+                yield _sse({"kind": "error", "status": 500, "detail": str(exc)})
+                return
+            # Progressive delivery: one frame per word-sized chunk.
+            for chunk in stream_reply_chunks(result.text):
+                yield _sse({"kind": "token", "text": chunk})
+            # Persist + announce the anchored thread (best-effort; never blocks
+            # the reply the reader already received above).
+            node_id = _persist_thread(region, passage, investigation_id)
+            if node_id is not None:
+                yield _sse({"kind": "thread", "node_id": node_id})
+            yield _sse({"kind": "done"})
+
+        return StreamingResponse(_gen(), media_type="text/event-stream")
 
     # ── Sprint 17 voice upload endpoint (§11.5) ──
     class VoiceSessionUploadResponse(BaseModel):

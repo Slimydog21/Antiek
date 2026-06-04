@@ -14,6 +14,25 @@ import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelecti
  * EXISTING chase path (`onChaseThis` → ChaseThread + startInvestigation),
  * non-breaking against `ResearchWorkstation/index.tsx`.
  *
+ * ════════════════════════════════════════════════════════════════════════
+ * SPR-06 CONVERGENCE (M5) — this is NOT a second highlight system
+ * ════════════════════════════════════════════════════════════════════════
+ * The SPR-06 spec asks for ONE highlight system + ONE Dialogue implementation
+ * across Read/Research/Write. This file is already that convergence: it renders
+ * the SHARED {@link FloatMenu} (it does NOT listen to its own selectionchange,
+ * does NOT position its own toolbar, and does NOT implement its own Dialogue).
+ * Every surface that highlights — Read (`Reading/index.tsx`), Research (here),
+ * the DRW block detail (`DeepResearchWorkspace/BlockDetail.tsx`), and Write —
+ * mounts the SAME FloatMenu, whose Dialogue is the SAME streamed + anchored +
+ * graph-persisted path (`floatMenuActions.streamDialogueOverSelection`). So a
+ * grep for highlight UIs finds ONE gesture and ONE Dialogue. The decision to
+ * fold the toolbar into the spine (rather than keep a per-surface Dialogue) is
+ * recorded here so a future maintainer finds the "why one gesture" answer in the
+ * code: consistency-across-surfaces + a single honest model path beats
+ * per-surface forks (see HYBRID_DECISION.md / the SPR-04 + SPR-06 handoffs).
+ * (`TalkToBook` is a DISTINCT book-LEVEL QA bookmark — not a highlight gesture —
+ * so it stays its own surface; see its file header for that separate decision.)
+ *
  * Why a host adapter and not FloatMenu directly in the page: FloatMenu is
  * host-agnostic (it takes a rect prop, reads no DOM, imports nothing from
  * reading-physics) so Read/Write/Speak can mount it too. The DOM↔graph

@@ -2,15 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../../components/lemon/LemonButton";
 import AIActionFailure from "../../../shared/AIActionFailure";
-import { ApiError } from "../../../lib/api";
 import { useVoiceCapture } from "../../../hooks/useVoiceCapture";
 import {
-  dialogueOverSelection,
+  streamDialogueOverSelection,
   saveFloatMenuNote,
   searchFloatMenuSelection,
   outboundText,
+  regionOfSelection,
   WITHHELD_OUTBOUND_REASON,
-  type DialogueReply,
+  type DialogueHistoryTurn,
   type RewriteActions,
   type SearchResult,
 } from "./floatMenuActions";
@@ -385,6 +385,14 @@ function NotePanel({
 
 // ─── DIALOGUE panel (text + voice) ──────────────────────────────────────────
 
+/** A completed multi-turn exchange the panel renders + carries as context. */
+interface DialogueTurn {
+  /** USER-sourced (the reader's typed/spoken message). */
+  question: string;
+  /** MODEL-sourced reply — never relabelled as user content (§9). */
+  answer: string;
+}
+
 function DialoguePanel({
   selection,
   investigationId,
@@ -395,37 +403,93 @@ function DialoguePanel({
   onClose: () => void;
 }) {
   const [followUp, setFollowUp] = useState("");
-  const [pending, setPending] = useState(false);
-  const [reply, setReply] = useState<DialogueReply | null>(null);
+  // Multi-turn: completed turns (the running conversation) + the live streaming
+  // answer being assembled token-by-token.
+  const [turns, setTurns] = useState<DialogueTurn[]>([]);
+  const [streaming, setStreaming] = useState(false);
+  const [liveAnswer, setLiveAnswer] = useState("");
+  // A mid-stream interruption (network drop / abort / missing terminal frame)
+  // is RECOVERABLE — we surface a retry, never a frozen UI or a silent partial.
+  const [interrupted, setInterrupted] = useState<{ partial: string } | null>(null);
   const [failure, setFailure] = useState<{ reason: string | null } | null>(null);
+  // The graph node the thread anchored to (M4) — shown honestly so the reader
+  // knows it persisted (survives reload) vs. an un-anchored free-prose turn.
+  const [threadNodeId, setThreadNodeId] = useState<string | null>(null);
   const voice = useVoiceCapture();
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Whether this selection resolves a Region (and so persists). Honest label.
+  const anchored = regionOfSelection(selection) !== null;
 
   const send = useCallback(
     async (extra: string) => {
-      setPending(true);
-      setReply(null);
+      const question = extra.trim();
+      // Cancel any in-flight stream before starting a new turn.
+      abortRef.current?.abort();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+      setStreaming(true);
+      setLiveAnswer("");
+      setInterrupted(null);
       setFailure(null);
+
+      const history: DialogueHistoryTurn[] = turns.map((t) => ({
+        question: t.question,
+        answer: t.answer,
+      }));
+      let acc = "";
+      let sawTerminal = false;
+      let errored: { reason: string | null } | null = null;
       try {
-        // DIALOGUE → /thought-partner (the reply is MODEL-sourced; the prompt
-        // incl. any voice transcript is USER-sourced — kept distinct).
-        const r = await dialogueOverSelection({
-          investigationId,
-          selection,
-          followUp: extra,
-        });
-        setReply(r);
+        await streamDialogueOverSelection(
+          { investigationId, selection, followUp: extra, history, signal: ctrl.signal },
+          (ev) => {
+            if (ev.kind === "token") {
+              acc += ev.text;
+              setLiveAnswer(acc); // progressive render as tokens arrive
+            } else if (ev.kind === "thread") {
+              setThreadNodeId(ev.node_id); // persisted to the graph (M4)
+            } else if (ev.kind === "done") {
+              sawTerminal = true;
+            } else if (ev.kind === "error") {
+              sawTerminal = true;
+              // No-key 503 → null reason → AIActionFailure's honest "provider
+              // isn't configured" sentence. A model 500 shows its detail.
+              errored = { reason: ev.status === 503 ? null : ev.detail };
+            }
+          },
+        );
       } catch (e) {
-        // No-key 503 → null reason → AIActionFailure's "provider isn't
-        // configured" sentence (VoiceChaseButton.tsx:56 pattern). Honest, not
-        // a fabricated reply.
-        const status = e instanceof ApiError ? e.status : 0;
-        setFailure({ reason: status === 503 ? null : e instanceof Error ? e.message : String(e) });
+        errored = { reason: e instanceof Error ? e.message : String(e) };
+        sawTerminal = true;
       } finally {
-        setPending(false);
+        setStreaming(false);
       }
+
+      if (errored) {
+        setFailure(errored);
+        return;
+      }
+      // A stream that ended WITHOUT a terminal done/error frame was interrupted
+      // (the body closed early). Recoverable — keep the partial + offer retry.
+      if (!sawTerminal) {
+        setInterrupted({ partial: acc });
+        return;
+      }
+      // Clean completion: commit the turn into the running conversation.
+      setTurns((prev) => [...prev, { question, answer: acc }]);
+      setLiveAnswer("");
+      setFollowUp("");
     },
-    [investigationId, selection],
+    [investigationId, selection, turns],
   );
+
+  // Stop the live stream and surface the partial as a recoverable interruption.
+  const stopStream = useCallback(() => {
+    abortRef.current?.abort();
+    setStreaming(false);
+    setInterrupted({ partial: liveAnswer });
+  }, [liveAnswer]);
 
   // Voice feeds the user prompt (speak the follow-up instead of typing).
   const captureVoice = useCallback(async () => {
@@ -456,19 +520,61 @@ function DialoguePanel({
       <blockquote className="text-moonlight italic border-l-edge border-sun pl-2 mb-1.5 line-clamp-3">
         "{selection.text}"
       </blockquote>
-      {reply && (
-        // The MODEL reply — labelled, never conflated with the user's words.
-        <div className="bg-shadow-2 rounded p-1.5 mb-1.5">
+
+      {/* The running conversation — each MODEL reply labelled, never conflated
+          with the reader's words (§9). */}
+      {turns.map((t, i) => (
+        <div key={i} className="mb-1.5">
+          <p className="text-moonlight text-[11px] mb-0.5">
+            <span className="uppercase tracking-wider text-[10px]">you</span> {t.question || "(opened the passage)"}
+          </p>
+          <div className="bg-shadow-2 rounded p-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-moonlight block mb-0.5">
+              AI reply
+            </span>
+            <p className="text-bright whitespace-pre-wrap leading-relaxed">{t.answer}</p>
+          </div>
+        </div>
+      ))}
+
+      {/* The live, streaming answer — rendered progressively as tokens arrive. */}
+      {(streaming || liveAnswer) && !interrupted && (
+        <div className="bg-shadow-2 rounded p-1.5 mb-1.5" data-dialogue-live>
           <span className="text-[10px] uppercase tracking-wider text-moonlight block mb-0.5">
-            AI reply
+            AI reply{streaming ? " · streaming…" : ""}
           </span>
-          <p className="text-bright whitespace-pre-wrap leading-relaxed">{reply.reply}</p>
+          <p className="text-bright whitespace-pre-wrap leading-relaxed">
+            {liveAnswer}
+            {streaming && <span className="text-moonlight">▋</span>}
+          </p>
         </div>
       )}
+
+      {/* Recoverable interruption — the partial is kept + a retry offered. Never
+          a frozen UI, never a silent truncation (M2 + rigor #3). */}
+      {interrupted && (
+        <div className="mb-1.5" role="alert" data-dialogue-interrupted>
+          {interrupted.partial && (
+            <div className="bg-shadow-2 rounded p-1.5 mb-1 opacity-80">
+              <span className="text-[10px] uppercase tracking-wider text-moonlight block mb-0.5">
+                AI reply · interrupted
+              </span>
+              <p className="text-bright whitespace-pre-wrap leading-relaxed">{interrupted.partial}</p>
+            </div>
+          )}
+          <p className="text-sun-deep text-[12px] mb-1">
+            The reply was interrupted before it finished.
+          </p>
+          <LemonButton variant="secondary" size="sm" onClick={() => void send(followUp)}>
+            Retry
+          </LemonButton>
+        </div>
+      )}
+
       <textarea
         value={followUp}
         onChange={(e) => setFollowUp(e.target.value)}
-        placeholder="Ask about this passage (one-shot)…"
+        placeholder="Ask about this passage…"
         rows={2}
         className="w-full bg-shadow-2 text-bright rounded p-1.5 resize-none outline-none"
         autoFocus
@@ -484,9 +590,15 @@ function DialoguePanel({
         </p>
       )}
       <div className="flex items-center gap-2 mt-2">
-        <LemonButton variant="primary" size="sm" disabled={pending} onClick={() => void send(followUp)}>
-          {pending ? "Asking…" : reply ? "Ask again" : "Ask"}
-        </LemonButton>
+        {streaming ? (
+          <LemonButton variant="secondary" size="sm" onClick={stopStream}>
+            ■ Stop
+          </LemonButton>
+        ) : (
+          <LemonButton variant="primary" size="sm" onClick={() => void send(followUp)}>
+            {turns.length > 0 ? "Ask again" : "Ask"}
+          </LemonButton>
+        )}
         <LemonButton
           variant="tertiary"
           size="sm"
@@ -496,7 +608,15 @@ function DialoguePanel({
           {voice.phase === "recording" ? "■ Stop" : "● Speak it"}
         </LemonButton>
       </div>
-      <p className="text-[10px] text-moonlight mt-1.5">One-shot reply (not a full chat) this sprint.</p>
+      {/* Honest persistence label: anchored + persisted to the graph (survives
+          reload), or an un-anchored free-prose turn (answers, not persisted). */}
+      <p className="text-[10px] text-moonlight mt-1.5">
+        {threadNodeId
+          ? "Saved — this thread is anchored to the passage and survives reload."
+          : anchored
+            ? "This thread anchors to the passage and is saved to your graph."
+            : "This selection has no anchor, so the conversation isn’t saved."}
+      </p>
     </Panel>
   );
 }

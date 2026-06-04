@@ -2,8 +2,10 @@ import {
   apiFetch,
   postTypedEvent,
   searchBlocks,
+  regionFromProvenance,
   ApiError,
   type BlockSearchHit,
+  type DialogueRegion,
 } from "../../../lib/api";
 import type { MarginaliaNotedPayload } from "../../../generated/types";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
@@ -137,19 +139,24 @@ export async function searchFloatMenuSelection(
 
 // ─── DIALOGUE ──────────────────────────────────────────────────────────────
 //
-// DESTINATION: the substrate's `/thought-partner` endpoint — the SAME
-//   provider-agnostic dispatch AISidecar.tsx:164 posts to (Hermes-primary,
-//   §16; no self-hosted model). REUSED, not re-implemented.
-// PROVENANCE: the user's prompt is USER-sourced (it is what the reader typed
-//   or spoke — a voice transcript is human speech, source_kind "user"); the
+// DESTINATION: the substrate's `/thought-partner` (one-shot) and
+//   `/thought-partner/stream` (SSE) endpoints — the REAL model via the ONE
+//   Hermes-routed dispatch tier (§16; role `user_agent`). SPR-06 replaced the
+//   canned, passage-independent scaffold: the reply is now MODEL-sourced and
+//   passage-DEPENDENT, or an honest 503 when no provider key is configured.
+// PROVENANCE: the user's prompt is USER-sourced (the reader's selection +
+//   typed/spoken follow-up — voice is human speech, source_kind "user"); the
 //   model's reply is MODEL-sourced. The two are kept distinct in the return
 //   shape (`prompt` vs `reply`) and NEVER conflated — relabelling a reply as
 //   user content (or vice versa) is a §9 violation.
-// LIVE vs STUBBED: this is a REAL one-shot round-trip — when a model provider
-//   is configured the endpoint returns a real reply. When it is NOT configured
-//   the endpoint 503s; the caller surfaces the shared AIActionFailure no-key
-//   state (honest), not a fabricated reply. It is one-shot (not a multi-turn
-//   chat) this sprint — labelled as such in the UI and the handoff.
+// ANCHOR + PERSIST (M3 + M4): when the selection resolves a Region (documentId
+//   + chunkId [+ char range]) the thread is anchored to the exact span and
+//   persisted to the graph through the single sanctioned writer, so it survives
+//   reload. A selection over un-anchored prose still answers, just un-persisted.
+// INERT-without-keys: when no provider key is configured the endpoint 503s; the
+//   caller surfaces the shared AIActionFailure no-key state (honest), never a
+//   fabricated reply. A green test means "the gesture is real and lights up with
+//   keys," NOT "the operator can talk to a passage."
 
 export interface DialogueReply {
   /** The user's prompt (selection ± a follow-up / voice transcript). Kept so
@@ -157,11 +164,23 @@ export interface DialogueReply {
   prompt: string;
   /** The model's reply — MODEL-sourced, never relabelled as user content. */
   reply: string;
+  /** The graph node the thread was anchored to (null when the selection carried
+   * no resolvable Region). The client re-opens the same thread by re-selecting
+   * the same span (the node is content-addressed on the Region). */
+  threadNodeId?: string | null;
+}
+
+/** One prior turn carried into the next request (multi-turn). `question` is
+ * user-sourced; `answer` is model-sourced — kept distinct (§9). */
+export interface DialogueHistoryTurn {
+  question: string;
+  answer: string;
 }
 
 /** Build the user-sourced prompt for a dialogue over a selection. The
  * selection is the reader's own quoted text (user-sourced); an optional
- * follow-up (typed or a voice transcript) is also user-sourced. */
+ * follow-up (typed or a voice transcript) is also user-sourced. Kept for the
+ * legacy single-field contract + as a UI label of what the reader asked. */
 export function buildDialoguePrompt(
   selection: FloatMenuSelection,
   followUp?: string,
@@ -169,6 +188,21 @@ export function buildDialoguePrompt(
   const quote = `About this passage I selected:\n"${selection.text}"`;
   const tail = followUp && followUp.trim() ? `\n\n${followUp.trim()}` : "";
   return quote + tail;
+}
+
+/** Resolve the SPR-01 Region from a selection's provenance, or null when the
+ * host resolved no anchor (no document / block — a free-prose selection). The
+ * snake_case wire mapping lives in `lib/api.regionFromProvenance` (the substrate
+ * field names belong with the API contract, never on the user-facing surface).
+ * The §9.0 guard is separate: a WITHHELD selection still anchors a thread (the
+ * thread is the reader's own conversation about their own selection), but its
+ * body is never sent OUTBOUND to search / a child investigation — that guard is
+ * `outboundText`, not this. */
+export function regionOfSelection(
+  selection: FloatMenuSelection,
+): DialogueRegion | null {
+  const { documentId, chunkId, charStart, charEnd } = selection.provenance;
+  return regionFromProvenance({ documentId, chunkId, charStart, charEnd });
 }
 
 // ─── REWRITE (Write SPR-09 M4) ─────────────────────────────────────────────
@@ -200,22 +234,44 @@ export interface RewriteActions {
   onRewrite: (intent: RewriteIntent, selection: FloatMenuSelection) => void;
 }
 
-/** One-shot dialogue over the selection via /thought-partner. Throws
- * `ApiError` (status carried) on failure so the caller can branch the no-key
- * 503 case onto AIActionFailure, exactly as VoiceChaseButton.tsx:56 does. */
+/** The request body shared by the one-shot + streamed Dialogue endpoints: the
+ * passage (the reader's own selection), an optional follow-up, the Region to
+ * anchor to, and the prior turns (multi-turn). `prompt` is kept for the legacy
+ * single-field contract. */
+function dialogueBody(args: {
+  investigationId: string;
+  selection: FloatMenuSelection;
+  followUp?: string;
+  history?: DialogueHistoryTurn[];
+}): string {
+  return JSON.stringify({
+    investigation_id: args.investigationId,
+    // Passage = the reader's own quoted selection (user-sourced).
+    passage: args.selection.text,
+    follow_up: args.followUp ?? "",
+    // Legacy field — the assembled quote, so a single-field client still works.
+    prompt: buildDialoguePrompt(args.selection, args.followUp),
+    region: regionOfSelection(args.selection),
+    history: args.history ?? [],
+  });
+}
+
+/** One-shot (non-streamed) dialogue over the selection via /thought-partner.
+ * Throws `ApiError` (status carried) on failure so the caller can branch the
+ * no-key 503 case onto AIActionFailure, exactly as VoiceChaseButton.tsx:56
+ * does. Prefer {@link streamDialogueOverSelection} for the streamed panel; this
+ * one-shot remains for non-streaming callers + as the test-simple path. */
 export async function dialogueOverSelection(args: {
   investigationId: string;
   selection: FloatMenuSelection;
   followUp?: string;
+  history?: DialogueHistoryTurn[];
 }): Promise<DialogueReply> {
   const prompt = buildDialoguePrompt(args.selection, args.followUp);
   const resp = await apiFetch("/thought-partner", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      investigation_id: args.investigationId,
-      prompt,
-    }),
+    body: dialogueBody(args),
   });
   if (!resp.ok) {
     throw new ApiError(
@@ -226,5 +282,79 @@ export async function dialogueOverSelection(args: {
   }
   const data = await resp.json();
   const reply: string = data.text ?? data.body ?? "";
-  return { prompt, reply };
+  return { prompt, reply, threadNodeId: data.thread_node_id ?? null };
+}
+
+/** One SSE frame from the streamed Dialogue endpoint. */
+export type DialogueStreamEvent =
+  | { kind: "token"; text: string }
+  | { kind: "thread"; node_id: string }
+  | { kind: "done" }
+  | { kind: "error"; status: number; detail: string };
+
+/** Stream a dialogue turn over the selection via /thought-partner/stream (M2).
+ * Calls `onEvent` for each SSE frame as it arrives — `token` frames render
+ * progressively; a single `error` frame (no-key 503 / model 500) is the
+ * recoverable failure the caller surfaces as AIActionFailure (NOT a frozen UI);
+ * `done` marks a clean close, distinguishable from `error`.
+ *
+ * Robust to a mid-stream interruption: if the network drops, the reader's
+ * `AbortSignal` fires, or the body ends WITHOUT a terminal `done`/`error`
+ * frame, this resolves having delivered whatever arrived and the caller treats
+ * a missing terminal frame as "interrupted" (recoverable), never a hang. */
+export async function streamDialogueOverSelection(
+  args: {
+    investigationId: string;
+    selection: FloatMenuSelection;
+    followUp?: string;
+    history?: DialogueHistoryTurn[];
+    signal?: AbortSignal;
+  },
+  onEvent: (ev: DialogueStreamEvent) => void,
+): Promise<void> {
+  const resp = await apiFetch("/thought-partner/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: dialogueBody(args),
+    signal: args.signal,
+  });
+  // A non-200 on the channel itself (rare — the endpoint puts errors in-band) is
+  // still surfaced as a recoverable error frame, never a thrown frozen UI.
+  if (!resp.ok || !resp.body) {
+    onEvent({
+      kind: "error",
+      status: resp.status,
+      detail: `stream channel HTTP ${resp.status}`,
+    });
+    return;
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch {
+      // Mid-stream interruption (network drop / abort) — recoverable, not a hang.
+      onEvent({ kind: "error", status: 0, detail: "stream interrupted" });
+      return;
+    }
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    // SSE frames are separated by a blank line; each carries a `data: …` line.
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      for (const line of frame.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          onEvent(JSON.parse(line.slice("data: ".length)) as DialogueStreamEvent);
+        } catch {
+          // A malformed frame is dropped (defensive) — never crashes the stream.
+        }
+      }
+    }
+  }
 }

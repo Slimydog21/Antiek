@@ -6,6 +6,7 @@ import type { BookDetail, BookSummary, FullTextResponse, TocItem } from "../../a
 import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import { resolveCharRange } from "../shared/FloatMenu/selectionCharRange";
 import type {
   FloatMenuSelection,
   SelectionProvenance,
@@ -320,12 +321,21 @@ export default function BookReader() {
   // research over a non-servable book (defence in depth — the body can't even
   // reach the DOM, but the outbound guard holds regardless).
   const resolveProvenance = useCallback(
-    (_range: Range, _text: string): SelectionProvenance => ({
-      documentId,
-      chunkId: representativeChunkId,
-      servable: book?.servable_full_text ?? false,
-    }),
-    [documentId, book?.servable_full_text],
+    (range: Range, _text: string): SelectionProvenance => {
+      // SPR-06 (M3): resolve the block-relative char range so a Dialogue thread
+      // anchors to the EXACT span (not just the chunk). Best-effort — a span
+      // crossing block boundaries degrades to whole-chunk (both offsets null),
+      // which still anchors honestly.
+      const { charStart, charEnd } = resolveCharRange(range, articleRef.current);
+      return {
+        documentId,
+        chunkId: representativeChunkId,
+        servable: book?.servable_full_text ?? false,
+        charStart,
+        charEnd,
+      };
+    },
+    [documentId, representativeChunkId, book?.servable_full_text],
   );
 
   const selection = useFloatMenuSelection({
