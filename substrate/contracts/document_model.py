@@ -46,10 +46,16 @@ not in a chat).
   ``emit_types.py`` both guard against with derive-don't-duplicate). ``toc()``
   walks the blocks; there is no ``toc`` field. *Rejected:* ``toc: list[...]``.
 
-* **``schema_version`` is carried on the Document, not inferred.** A document
-  persisted under v1 must be readable after the model evolves; the version is
-  the migration handle. Mirrors ``EVENT_SCHEMA_VERSION`` /
-  ``CONTRACT_SCHEMA_VERSION``.
+* **``schema_version`` is carried on the Document, not inferred.** It is the
+  handle a FUTURE loader uses to BRANCH a migration — not a promise of
+  forward-readability. Because every model is ``extra="forbid"``, a document
+  written under a future version that ADDS a field is *rejected* on load here,
+  not silently accepted: tolerating unknown fields would need a migration shim
+  that does not exist yet (a future sprint adds one, keyed on this version).
+  What the version buys today: a loader that sees ``schema_version < CURRENT``
+  knows it must up-convert before validating, and one that sees
+  ``schema_version > CURRENT`` knows to refuse rather than mis-parse. Mirrors
+  ``EVENT_SCHEMA_VERSION`` / ``CONTRACT_SCHEMA_VERSION``.
 
 ────────────────────────────────────────────────────────────────────────────
 REUSE, NOT SYNONYMS (rigor #4; diligence done against the live tree).
@@ -341,16 +347,17 @@ class DocumentAttribution(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    ip_holder: str | None = None
+    ip_holder_id: str | None = None
     source_url: str | None = None
     content_class: ContentClass | None = None
 
 
 class TocEntry(BaseModel):
     """One derived table-of-contents entry. ``text`` is the heading's plain-text
-    rendering; ``index`` is the heading block's position in ``Document.blocks``
-    so the Reader can scroll to it. DERIVED by ``Document.toc()`` — never stored
-    on the Document (derive-don't-duplicate; see module docstring)."""
+    rendering; ``block_index`` is the heading block's position in
+    ``Document.blocks`` so the Reader can scroll to it. DERIVED by
+    ``Document.toc()`` — never stored on the Document (derive-don't-duplicate;
+    see module docstring)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -392,8 +399,11 @@ class Document(BaseModel):
     title: str
     attribution: DocumentAttribution = Field(default_factory=DocumentAttribution)
     blocks: list[Block] = Field(default_factory=list)
-    # The migration handle. Defaults to the current version; a document loaded
-    # from storage carries the version it was written under.
+    # The migration BRANCH handle, not a forward-compat guarantee: a document
+    # loaded from storage carries the version it was written under, and a future
+    # loader branches on it (up-convert an older doc; refuse a newer one). It is
+    # NOT a promise that a future doc with extra fields loads here — ``extra=
+    # "forbid"`` rejects that until a migration shim exists. Defaults to current.
     schema_version: int = DOCUMENT_MODEL_SCHEMA_VERSION
 
     def toc(self) -> list[TocEntry]:
