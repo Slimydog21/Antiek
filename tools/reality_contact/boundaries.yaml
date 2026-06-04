@@ -1,0 +1,195 @@
+# Reality-Contact boundary contract (SPR-01, M1).
+#
+# Two explicit lists drive the entire ledger:
+#
+#   core      — never-mock. A test that patches/mocks one of THESE modules (or
+#               any symbol under it) for a subsystem it CLAIMS to cover is
+#               theater for that subsystem: its assertion is satisfied by the
+#               mock, not by the real core code. These are the real engine
+#               modules whose execution IS the thing a test of that subsystem
+#               must prove. Each was confirmed importable on this branch
+#               (origin/main@4d43000) by the M1 importability check / the
+#               boundary unit test.
+#
+#   boundary  — legit-to-mock. External seams (network, clock, payments,
+#               third-party endpoints, object storage, email, browser). A
+#               hermetic test SHOULD stub these; doing so is NOT theater. They
+#               are listed so the classifier never counts a boundary-stub as a
+#               core-mock, and so the contract is auditable rather than implicit.
+#
+# Matching rule (classifier.py): a mock target's dotted path P matches a list
+# entry E iff  P == E  OR  P startswith (E + ".")  — i.e. patching the module
+# itself or any attribute/submodule under it. This is deliberately
+# module-prefix-scoped (not symbol-enumerated): enumerating every public
+# function of every core module would rot the instant a function is renamed,
+# and the honest claim is "this test stubbed the orchestrator subsystem", which
+# the module prefix captures exactly.
+#
+# Invariants asserted by tests/tools/test_reality_contact_classifier.py:
+#   * every `core` entry imports cleanly (a typo silently reclassifies a whole
+#     subsystem's tests as `reality` — the worst failure this sprint can make);
+#   * core ∩ boundary = ∅;
+#   * no entry lacks a justification (this file is the audit record).
+
+schema_version: 1
+
+# --------------------------------------------------------------------------- #
+# CORE — never-mock. The real engine of each subsystem. Seeded from the
+# orchestrator-corrected list (the spec's guessed `graph.*` does NOT exist; the
+# real package is `substrate.graph.*`). Every entry below was import-verified.
+# --------------------------------------------------------------------------- #
+core:
+  - module: orchestration.loop_one.orchestrator
+    justification: >-
+      Loop-1 research orchestrator — the phase-1..8 investigation driver. A test
+      that claims to cover the research loop but patches this module is asserting
+      against a stub of the loop itself, not running it.
+
+  - module: substrate.dispatch.router
+    justification: >-
+      The dispatch ROUTING/selection + cost-normalization logic (dispatch(),
+      tier selection, _compute_cost_usd). This is the core decision code, NOT
+      the provider HTTP clients (those are a boundary — see
+      substrate.dispatch.providers below). Patching the router stubs the routing
+      decision a dispatch test exists to prove.
+
+  - module: substrate.attribution.compute
+    justification: >-
+      The IP-attribution computation (compute_attribution_for_synthesis) — the
+      §9 economically-consequential layer. A test that mocks this is not
+      computing attribution, only echoing a fixture.
+
+  - module: substrate.graph.ops
+    justification: >-
+      Graph write operations (insert_document/chunk/node/edge/section, gate-
+      column updates). The real DuckDB-backed mutations are the substrate's
+      source of truth; stubbing them means no node was actually written.
+
+  - module: substrate.graph.search
+    justification: >-
+      Graph retrieval (search(), cosine_similarity_sql, search_nodes_by_label).
+      Retrieval is load-bearing for every provenance claim; a mocked search
+      returns canned hits instead of exercising the real index.
+
+  - module: substrate.graph.schema
+    justification: >-
+      Graph/synthesis schema + database initialization (init_database,
+      init_database_at_path, list_tables). The schema IS the substrate's shape;
+      a test that stubs it is not exercising the real tables.
+
+# --------------------------------------------------------------------------- #
+# BOUNDARY_SYMBOLS — surgical per-symbol carve-outs INSIDE a core module that are
+# themselves I/O boundary seams, not the subsystem's decision logic. A mock that
+# lands EXACTLY on one of these symbols is a boundary-stub, not theater; the rest
+# of the core module remains never-mock. This is preferred over demoting a whole
+# module to boundary (which would let a test stub the real decision code and
+# still read `reality`).
+#
+# Matching rule: a mock target matches a boundary_symbol entry iff the dotted
+# path EQUALS the symbol OR is a strict child of it (path == symbol or startswith
+# symbol + "."). It is checked BEFORE the core-module prefix match, so a hit here
+# is classed boundary even though it sits under a core module.
+#
+# ⚠️ OPERATOR-RATIFICATION ITEM. Each carve-out below widens what "reality" means
+# for a subsystem. They were added from EVIDENCE (the M4 ledger surfaced 12 tests
+# — 2.8% of the tree — all stubbing exactly DispatchConfig.from_yaml), not by
+# guess. If a later sprint freezes the baseline, this list freezes with it, so
+# the operator should confirm each entry is genuinely a loader/seam and not the
+# subsystem's core decision.
+boundary_symbols:
+  - symbol: substrate.dispatch.router.DispatchConfig.from_yaml
+    justification: >-
+      `from_yaml(path)` is the config-FILE LOADER: it open()s a YAML file off
+      disk and delegates to `_from_dict`. It is filesystem config-I/O, not the
+      routing DECISION. The 12 tests that stub it substitute an in-memory
+      `DispatchConfig(...)` so the scenario's tier→provider map is fixed, then
+      exercise the REAL `dispatch()` / provider-selection / cost logic — none of
+      them patch `dispatch`, `_compute_cost_usd`, or `_from_dict`. Stubbing the
+      loader is hermetic-test hygiene (don't depend on the on-disk config.yaml);
+      the routing core still runs. `_from_dict` (the actual parse) and `dispatch`
+      (the actual route) are NOT carved out and remain never-mock.
+
+# --------------------------------------------------------------------------- #
+# BOUNDARY — legit-to-mock external seams. Stubbing these in a hermetic test is
+# correct engineering, not theater. Listed for auditability and so the
+# classifier never miscounts a boundary-stub as a core-mock.
+# --------------------------------------------------------------------------- #
+boundary:
+  # --- network transports ---------------------------------------------------
+  - module: httpx
+    justification: >-
+      HTTP client transport. Network egress is a boundary; tests stub it with
+      httpx.MockTransport / fake responses to stay hermetic and offline.
+  - module: requests
+    justification: >-
+      HTTP client transport (requests). Same boundary class as httpx — a test
+      MUST NOT hit the live network.
+  - module: urllib
+    justification: >-
+      stdlib URL transport (urllib / urllib.request.urlopen). Network egress
+      boundary.
+
+  # --- provider HTTP clients / third-party LLM & TTS endpoints ---------------
+  - module: substrate.dispatch.providers
+    justification: >-
+      The provider HTTP CLIENTS (anthropic, openai_compat, openai_tts, vision_*)
+      that call out to third-party LLM/TTS endpoints. These wrap network egress
+      to an external API — a boundary, NOT the router's routing core. Stubbing a
+      provider's HTTP call is legitimate; a dispatch-ROUTING test mocking the
+      router (above) is not.
+
+  # --- clock ----------------------------------------------------------------
+  - module: time
+    justification: >-
+      Wall-clock (time.sleep / time.time). Tests stub sleeps to run fast and
+      pin time.time to make expiry/deterministic — a clock boundary, not domain
+      logic.
+  - module: datetime
+    justification: >-
+      Wall-clock date/time. Same clock-boundary rationale as `time`: pinning
+      "now" is hermetic-test hygiene, not theater.
+
+  # --- object storage -------------------------------------------------------
+  - module: boto3
+    justification: >-
+      AWS/S3/R2 object-storage SDK. Backups and blob storage are an external
+      boundary; tests stub boto3 rather than writing to a live bucket.
+
+  # --- email ----------------------------------------------------------------
+  - module: substrate.auth.email_provider
+    justification: >-
+      The email-provider seam (AgentMail / MockEmailProvider) for magic-link
+      auth. Sending real email is an external boundary; tests use
+      MockEmailProvider. NOTE: this is the provider SEAM, not auth domain logic
+      (magic_link token issuance/verification is not on this list and remains
+      reality-bearing).
+
+  # --- payments -------------------------------------------------------------
+  - module: tools.stripe_connect
+    justification: >-
+      Stripe Connect payouts/accounts/pricing. Money movement to a third-party
+      payment processor is an external boundary; tests use MockStripeProvider.
+
+  # --- browser automation ---------------------------------------------------
+  - module: browserbase
+    justification: >-
+      Browserbase remote-browser automation — a third-party browser endpoint
+      used as an ingestion-escalation fallback. External boundary.
+
+  # --- third-party search / ingest endpoints --------------------------------
+  - module: acquisition.search.exa
+    justification: >-
+      Exa discovery API client — a third-party search endpoint. Network egress
+      to an external service; a discovery boundary, not substrate core.
+  - module: serpapi
+    justification: >-
+      SerpAPI third-party search endpoint. External network boundary.
+  - module: acquisition.arxiv.client
+    justification: >-
+      arXiv / OAI-PMH HTTP client (the actual export.arxiv.org fetcher). A
+      third-party ingest endpoint behind the host-global rate governor; network
+      egress boundary, not substrate core.
+  - module: arxiv
+    justification: >-
+      The third-party `arxiv` PyPI client (where used). External ingest
+      endpoint boundary.
