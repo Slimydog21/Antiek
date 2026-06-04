@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
-import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
+import type { BookDetail, BookSummary, FullTextResponse, TocItem } from "../../api/books";
 import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
@@ -12,6 +12,11 @@ import type {
 } from "../shared/FloatMenu/useFloatMenuSelection";
 import ChaseThread from "../ResearchWorkstation/ChaseThread";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import Reader, { deriveToc } from "../../components/reader/Reader";
+import { openDocumentStub } from "../../components/reader/openDocumentStub";
+import PdfViewer from "../../components/PdfViewer";
+import type { Block, Document, InlineSpan, TocEntry } from "../../types/document_model.gen";
+import { paginateBlocks, windowForBlockIndex } from "./paginateBlocks";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
@@ -21,7 +26,7 @@ import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
-import { paginate, windowForTocPage } from "./paginate";
+import { paginate } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
@@ -79,20 +84,73 @@ export default function BookReader() {
     };
   }, [documentId]);
 
-  const pages = useMemo(
+  // ── The ONE rich-render gate (Reader SPR-03 M4), §9.0-DEFENDED ────────────
+  // Deserialize the SPR-02 `structured_blocks` into the SPR-01 typed `Document`
+  // the one <Reader> renders — but ONLY for a SERVABLE book. Defense-in-depth:
+  //   • `book.servable_full_text` must be true (the §9.0 serve verdict) — we
+  //     NEVER rich-render a gated/taken-down book, even if a stale/poisoned
+  //     `structured_blocks` somehow rode along (the backend serves it null for a
+  //     withheld body, but the client refuses regardless);
+  //   • the JSON must parse AND carry a `blocks` array — a bad/wrong-shape blob
+  //     degrades to null, which falls back to the legacy text flattener (never a
+  //     blank, never a throw).
+  // A null result ⇒ the legacy `ReadingColumn` text path, byte-identical to
+  // before. So the rich path is reachable for a servable, well-formed doc ONLY.
+  const structuredDoc = useMemo<Document | null>(() => {
+    if (!book?.servable_full_text || !body?.structured_blocks) return null;
+    try {
+      const d = JSON.parse(body.structured_blocks);
+      return d && Array.isArray(d.blocks) ? (d as Document) : null;
+    } catch {
+      return null;
+    }
+  }, [book?.servable_full_text, body?.structured_blocks]);
+
+  // ── ONE active pagination both paths reconcile to (M4) ───────────────────
+  // The RISK this closes: the page COUNT the pager / usePosition / ad-impression
+  // slots key off MUST equal the rendered page count, or impressions misfire.
+  // We compute BOTH paginations but expose a SINGLE normalized `pages` array of
+  // `{pageNumber}` — its `.length` IS the rendered page count on whichever path
+  // is active, so every consumer (usePosition, the observePage effect, the
+  // pager, ad slots) reads the SAME count. The body-render branch below selects
+  // which content each page shows; this array selects HOW MANY pages exist.
+  //   • structuredDoc present → block windows (paginateBlocks): one window per
+  //     ≤12-block page; an empty doc → exactly one window (chrome still renders).
+  //   • structuredDoc null    → text windows (paginate over full_text/snippet).
+  // Both honour the "always ≥1 window for any served body, 0 for none" contract
+  // the ad-impression effect already relies on.
+  const blockWindows = useMemo(
+    () => (structuredDoc ? paginateBlocks(structuredDoc.blocks ?? []) : []),
+    [structuredDoc],
+  );
+  const textPages = useMemo(
     () => paginate(body?.full_text ?? body?.snippet ?? ""),
     [body],
+  );
+  // The ONE active pagination. On the rich path the block windows drive the
+  // count; on the legacy path the text windows do. `pageNumber` is the only
+  // field every consumer needs from the normalized array.
+  const pages = useMemo<{ pageNumber: number }[]>(
+    () =>
+      structuredDoc
+        ? blockWindows.map((w) => ({ pageNumber: w.pageNumber }))
+        : textPages.map((p) => ({ pageNumber: p.pageNumber })),
+    [structuredDoc, blockWindows, textPages],
   );
   const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
   // resolved 0-based page; map it to the window index and move the reader.
   // REUSES the EXISTING reader navigation (windowForTocPage + setPageIndex) —
-  // the SAME path TOC jumps use, not a parallel one.
+  // the SAME path TOC jumps use, not a parallel one. The citation's page index
+  // is a position over the SAME active pagination, so clamping over `pages`
+  // (whichever path is active) is correct for both.
   const jumpToPage = useCallback(
     (page: number) => {
-      const window = windowForTocPage(pages, page);
-      if (window !== null) setPageIndex(window);
+      // `windowForTocPage` clamps a 0-based page into [0, length-1] using only
+      // `pages.length` — identical semantics on both active paginations.
+      if (pages.length === 0) return;
+      setPageIndex(Math.max(0, Math.min(page, pages.length - 1)));
     },
     [pages, setPageIndex],
   );
@@ -155,6 +213,15 @@ export default function BookReader() {
   );
   const { observePage } = useReaderImpressions(documentId, sessionId, onDwell);
   const [showVoice, setShowVoice] = useState(false);
+  // ── M5 view-original toggle ───────────────────────────────────────────────
+  // The structured model is the DEFAULT view. When a preserved original (a PDF
+  // blob) exists, a toggle reveals it via PdfViewer as a SECONDARY view; with no
+  // original the toggle is hidden entirely (no dead control). Reset to the
+  // structured default whenever the open document changes.
+  const [showOriginal, setShowOriginal] = useState(false);
+  useEffect(() => {
+    setShowOriginal(false);
+  }, [documentId]);
 
   // ── In-book SPR-04 float-menu host (SPR-07 M2) ───────────────────────────
   // The reader is the HOST for the SAME shared FloatMenu Research uses — it is
@@ -278,7 +345,27 @@ export default function BookReader() {
   }
 
   const { label, colour } = servabilityLabel(book.servability);
+  // The active page over the NORMALIZED pagination (carries `pageNumber` for the
+  // pager). On the rich path `activeWindow` carries the page's blocks; on the
+  // legacy path `textPage` carries the page's markdown — exactly one is used by
+  // the body branch below, but both index into a pagination of the SAME length
+  // as `pages`, so the pager/ad-slot count never disagrees with what renders.
   const page = pages[pageIndex];
+  const activeWindow = structuredDoc ? blockWindows[pageIndex] : undefined;
+  const textPage = structuredDoc ? undefined : textPages[pageIndex];
+  // The current page's plain passage text — the seed for ResearchThis / spin-
+  // research. On the rich path it is flattened from the window's blocks; on the
+  // legacy path it is the page markdown. Either way it is the SAME gate-served
+  // body for this page (a gated book never reaches the body branch with text).
+  const activePassageText = structuredDoc
+    ? blocksToPlainText(activeWindow?.blocks ?? [])
+    : (textPage?.text ?? "");
+  // M5: the preserved-original PDF bytes, or null when no original exists. Books
+  // persist raw_text as the "view original" source (SPR-02 store-both), NOT a
+  // PDF blob, and no endpoint serves PDF bytes for a book — so this is null for
+  // every current book and the toggle stays hidden. The seam is wired for a
+  // future PDF-bytes source without fabricating bytes that don't exist.
+  const originalPdfBytes: Uint8Array | null = null;
   const slotBase = `slot:${documentId}:p${pageIndex}`;
 
   // ── Rights-tiered reader branch (Read SPR-05) ────────────────────────────
@@ -310,6 +397,23 @@ export default function BookReader() {
   // (never a local flag); `pages.length > 0` is the body-present condition.
   const adEligible = body.ad_eligible && pages.length > 0;
 
+  // ── ToC reconciliation (M4) ──────────────────────────────────────────────
+  // On the RICH path the ToC is DERIVED from the document's heading blocks
+  // (deriveToc) and each entry's jump target is the BLOCK window that contains
+  // it (windowForBlockIndex) — so a heading scrolls to its actual page over the
+  // SAME block pagination the body renders. On the LEGACY path it stays the
+  // backend `book.toc` (TocItem with a resolved page_index over the text
+  // pagination), unchanged. Both feed the ONE TocPanel as TocItem[] whose
+  // `page_index` is a window index over the ACTIVE pagination, so a TOC jump and
+  // the rendered page never disagree on either path.
+  const activeToc: TocItem[] = structuredDoc
+    ? (deriveToc(structuredDoc.blocks ?? []) as TocEntry[]).map((e) => ({
+        title: e.text,
+        page_index: windowForBlockIndex(blockWindows, e.block_index),
+        level: Math.max(0, e.level - 1),
+      }))
+    : book.toc;
+
   return (
     <div className="flex h-screen bg-ice-0 dark:bg-charcoal-2">
       {/* TOC sidebar */}
@@ -320,7 +424,7 @@ export default function BookReader() {
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
           {book.author ?? "Unknown author"}
         </p>
-        <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
+        <TocPanel toc={activeToc} currentPageIndex={pageIndex} onJump={setPageIndex} />
       </aside>
 
       {/* In-book SPR-04 float-menu (SPR-07 M2). Highlighting any passage in the
@@ -428,14 +532,73 @@ export default function BookReader() {
                   T1 the gate served extracted hosted TEXT (no PDF blob exists —
                   see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
                   through this SAME markdown column, no PDF.js. */}
-              <ReadingColumn
-                ref={articleRef}
-                assetId={book.servable_full_text ? documentId : null}
-                text={page?.text ?? ""}
-              />
+              {/* M5 view-original toggle — only when a preserved ORIGINAL exists.
+                  The structured model is the DEFAULT; the original is a SECONDARY
+                  view. No original (originalPdfBytes null) ⇒ no toggle (no dead
+                  control). Per the SPR-02 store-both decision, a book's preserved
+                  original is its raw_text markdown — no PDF blob is persisted for
+                  books and no endpoint serves one — so originalPdfBytes is null
+                  for every current book and the toggle is hidden. The seam is
+                  here, correctly wired, for when a PDF-bytes source lands. */}
+              {originalPdfBytes && (
+                <div className="flex items-center justify-end">
+                  <LemonButton
+                    type="button"
+                    variant="tertiary"
+                    size="sm"
+                    aria-pressed={showOriginal}
+                    onClick={() => setShowOriginal((v) => !v)}
+                  >
+                    {showOriginal ? "Back to reading view" : "View original"}
+                  </LemonButton>
+                </div>
+              )}
 
-              {/* Per-page actions: voice note + spin a deep research. */}
-              {page && (
+              {originalPdfBytes && showOriginal ? (
+                /* SECONDARY view: the preserved original via the ONE PdfViewer.
+                    The structured model stays the default; this is only reached
+                    when an original exists AND the reader explicitly toggled. */
+                <div className="h-[70vh] overflow-hidden border border-rule dark:border-charcoal-1 rounded-md">
+                  <PdfViewer
+                    pdfBytes={originalPdfBytes}
+                    investigationId={readingThreadId}
+                    documentId={documentId}
+                  />
+                </div>
+              ) : structuredDoc ? (
+                /* RICH path (DEFAULT): the one <Reader> renders the typed-block
+                    Document for the current page window. PRESERVES verbatim: the
+                    articleRef (FloatMenu selection scope), the SPR-07 attribution
+                    markers (Reader stamps data-akb-asset-id from a truthy assetId
+                    — present here ONLY for a servable book, §9.0), and no
+                    fabricated chunkId. openDocument is the SPR-03 stub (SPR-05
+                    wires the real gated resolver). */
+                <Reader
+                  ref={articleRef}
+                  document={structuredDoc}
+                  blocks={activeWindow?.blocks ?? []}
+                  assetId={book.servable_full_text ? documentId : null}
+                  chunkId={null}
+                  openDocument={openDocumentStub}
+                />
+              ) : (
+                /* LEGACY path: a null structuredDoc (un-backfilled / bad-JSON /
+                    gated snippet) renders the markdown ReadingColumn flattener —
+                    byte-identical to before. Same articleRef + same §9.0 assetId
+                    gate. Additive, never a blank. */
+                <ReadingColumn
+                  ref={articleRef}
+                  assetId={book.servable_full_text ? documentId : null}
+                  text={textPage?.text ?? ""}
+                />
+              )}
+
+              {/* Per-page actions: voice note + spin a deep research. Hidden in
+                  the view-original secondary view (the original owns the column).
+                  passageText comes from the ACTIVE page on whichever path: the
+                  rich path lifts the window's plain text, the legacy path the
+                  markdown — both are the gate-served body for this page. */}
+              {page && !(originalPdfBytes && showOriginal) && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-end gap-2">
                     <LemonButton
@@ -447,7 +610,7 @@ export default function BookReader() {
                     >
                       {showVoice ? "Close voice note" : "＋ Voice note"}
                     </LemonButton>
-                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={page.text} />
+                    <ResearchThis documentId={documentId} pageIndex={pageIndex} passageText={activePassageText} />
                   </div>
                   {showVoice && (
                     <VoiceNote
@@ -555,6 +718,69 @@ export default function BookReader() {
       <TalkToBook documentId={documentId} title={book.title} onJumpToPage={jumpToPage} />
     </div>
   );
+}
+
+/**
+ * Flatten a page window's blocks to plain text — the spin-research / ResearchThis
+ * seed for the rich path. Mirrors the Reader's `_spans_to_plain_text` register
+ * (a citation contributes its marker, math its tex), so the seed reads as the
+ * passage the reader sees. Only the block kinds that carry readable inline text
+ * contribute; structural-only kinds (figure src, code fence language) are
+ * skipped. The whole window is joined with newlines so multi-paragraph pages
+ * seed coherently.
+ */
+function blocksToPlainText(blocks: Block[]): string {
+  const out: string[] = [];
+  const spanText = (spans: InlineSpan[] | undefined): string => {
+    if (!spans) return "";
+    const parts: string[] = [];
+    for (const span of spans) {
+      switch (span.type) {
+        case "text":
+        case "code":
+          parts.push(span.text);
+          break;
+        case "math":
+          parts.push(span.tex);
+          break;
+        case "citation":
+          parts.push(span.marker);
+          break;
+        case "strong":
+        case "emphasis":
+        case "link":
+          parts.push(spanText(span.children));
+          break;
+      }
+    }
+    return parts.join("");
+  };
+  const walk = (bs: Block[]): void => {
+    for (const b of bs) {
+      switch (b.type) {
+        case "heading":
+        case "paragraph":
+          out.push(spanText(b.spans));
+          break;
+        case "code":
+          out.push(b.text);
+          break;
+        case "list":
+          for (const item of b.items) walk(item.blocks);
+          break;
+        case "blockquote":
+        case "footnote":
+          walk(b.blocks);
+          break;
+        case "figure":
+          if (b.caption) out.push(spanText(b.caption));
+          break;
+        // math (display) / table contribute no linear passage text for the seed.
+      }
+    }
+  };
+  walk(blocks);
+  return out.filter(Boolean).join("\n").trim();
 }
 
 function CenterNote({ children, tone }: { children: React.ReactNode; tone?: "error" }) {

@@ -209,6 +209,15 @@ class FullTextResponse(BaseModel):
     servability: str | None
     full_text: str | None
     snippet: str | None
+    # The serialized SPR-01 typed-block ``Document`` (Reader SPR-02 persists it;
+    # SPR-03's one ``<Reader>`` deserializes + renders it for rich typography).
+    # §9.0: gated IDENTICALLY to ``full_text`` — present iff a full body is
+    # served (``serve.py`` populates it on exactly the servable / owner-personal-
+    # reading branches and leaves it ``None`` for a gated snippet / taken-down /
+    # not-found book), so a withheld book's structured blocks never reach the
+    # client. Defaulted ``None`` so a legacy/un-backfilled servable doc (null
+    # column) cleanly falls the frontend back to the ``full_text`` flattener.
+    structured_blocks: str | None = None
     title: str | None
     author: str | None
     reason: str
@@ -491,6 +500,10 @@ def register_book_routes(app: FastAPI) -> None:
             servability=result.servability.value if result.servability else None,
             full_text=result.full_text,
             snippet=result.snippet,
+            # §9.0: rides the SAME serve gate as full_text — None whenever the
+            # body is withheld (serve.py only populates it on the body-serving
+            # branches), so withheld structured blocks never cross the wire.
+            structured_blocks=result.structured_blocks,
             title=result.title,
             author=result.author,
             reason=result.reason,
