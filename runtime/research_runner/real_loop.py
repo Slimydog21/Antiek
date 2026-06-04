@@ -14,14 +14,26 @@ sub-question research):
      graph's chunks via ``substrate.graph.search.search`` — the *existing*
      retrieval path, no parallel module. Local evidence is preferred over
      web evidence; retrieval ALWAYS precedes any web call.
-  2. **Exa web fan-out** (milestone 3). One ``ExaClient.search`` per
-     sub-question via the existing ``acquisition/search/exa`` adapter
-     surface, under the §16 research-fanout exemption
-     (``docs/decisions/s16-research-fanout-exemption.md``). Each web
-     candidate passes the §9.0 servability/legal gate
-     (``substrate.legal_gate``, the SAME gate ``adapter.promote_discovery``
-     consults) BEFORE it can become a usable source ref — a non-servable
-     source is dropped, never silently turned into a reference.
+  2. **Exa web fan-out** (milestone 3). One web search per sub-question
+     routed through ``acquisition/search/exa/adapter.discover`` — the
+     sanctioned discovery surface, NOT a direct ``ExaClient.search``. This
+     is load-bearing: ``discover`` checks the §6.5 dedup cache (a hit costs
+     $0) and calls ``check_and_reserve(COST_PER_SEARCH_USD)`` against the
+     §6.7 daily ceiling (``EXA_DAILY_BUDGET_USD`` ≈ $5) BEFORE any HTTP
+     spend — so a 20-sub-question cascade cannot fan out 20 uncached,
+     budgetless live searches the instant activation SPR-03 flips the key.
+     The egress is BUDGET-bounded (the daily ceiling), NOT rate-governed:
+     ``govern_if_arxiv`` is a passthrough for the ``api.exa.ai`` host
+     (rate_governor.py:460 governs arXiv hosts only). All under the §16
+     research-fanout exemption (``docs/decisions/s16-research-fanout-exemption.md``).
+     ``discover`` is budget-reserved + cached but does NOT consult the legal
+     gate (the gate sits on the promotion path per the adapter's §3
+     contract), so each ``DiscoveryProposed`` it returns then passes the
+     ONE fail-closed §9.0 servability/legal gate here
+     (``LegalGate.check_url``, the SAME gate ``promote_discovery`` consults)
+     BEFORE it can become a usable source ref — a non-servable source is
+     dropped, never silently turned into a reference. No double-gating:
+     discover does not gate servability, so this is the sole §9.0 gate.
   3. **Synthesis dispatch** (milestone 4). One model call via
      ``substrate.dispatch.dispatch`` as the ``evidence_retriever`` role,
      producing the insight text. The insight carries a concrete
@@ -58,31 +70,28 @@ emitting cost only on real calls.
 Single-writer invariant (untouched)
 ------------------------------------
 This loop NEVER opens a graph write connection. It reads the graph
-(read-only retrieval), calls Exa/the model, and yields ``StepEvent``s. Graph
-promotion stays the ``promotion_funnel``'s job, serialized through
-``runtime/db_lock``. The §9.0 gate here is a READ-only servability check on a
-discovered URL (``LegalGate.check_url``) — it does NOT ingest (that is
-``promote_discovery``, which is SPR-07's territory, deliberately not called).
+(read-only retrieval), calls the web/model via sanctioned surfaces, and yields
+``StepEvent``s. Graph promotion stays the ``promotion_funnel``'s job,
+serialized through ``runtime/db_lock``. The §9.0 gate here is a READ-only
+servability check on a discovered URL (``LegalGate.check_url``) — it does NOT
+ingest (that is ``promote_discovery``, which is SPR-07's territory,
+deliberately not called). The ``discover`` route's §6.5 dedup-cache write is
+the only write reachable from this path, and it goes through the SAME
+``runtime/db_lock`` ``connect_write`` (acquisition/search/exa/cache.store) —
+serialized, never a parallel graph writer — so the single-writer invariant
+holds.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
-import sys
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-try:
-    from .host_local import LoopContext
-    from .protocol import StepEvent
-except ImportError:  # pragma: no cover — direct-script fallback
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.host_local import LoopContext  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import StepEvent  # type: ignore[no-redef]
+from .host_local import LoopContext
+from .protocol import StepEvent
 
 
 # ---------------------------------------------------------------------------
@@ -96,13 +105,17 @@ except ImportError:  # pragma: no cover — direct-script fallback
 #     ``top_k`` default (search.py:135) — the retrieval layer already chose
 #     5 as the in-corpus evidence width; we do not second-guess it.
 #   * WEB_NUM_RESULTS = 5 is HALF the Exa client's ``num_results`` default of
-#     10 (client.py:158). Origin: the Exa daily-budget ceiling is
-#     ``EXA_DAILY_BUDGET_USD`` default $5 (acquisition/search/exa/budget.py),
-#     ≈ $0.005/search ⇒ ~1000 searches/day. A DRW cascade of up to 20
-#     sub-questions (``DEFAULT_MAX_CONCURRENCY = 20``, host_local.py:85) at 1
-#     search each is 20 searches/cascade — trivially under cap. The width is
-#     bounded NOT by quota but by signal: 5 high-relevance results per
-#     sub-question is enough evidence for one synthesis without flooding the
+#     10 (client.py:158). The web fan-out routes through ``adapter.discover``,
+#     which enforces the Exa daily-budget ceiling (``EXA_DAILY_BUDGET_USD``
+#     default $5, acquisition/search/exa/budget.py) via
+#     ``check_and_reserve(COST_PER_SEARCH_USD)`` BEFORE every search. At
+#     ≈ $0.005/search that ceiling is ~1000 searches/day; a DRW cascade of up to
+#     20 sub-questions (``DEFAULT_MAX_CONCURRENCY = 20``, host_local.py:85) at 1
+#     search each is 20 searches/cascade — trivially under cap, and once the cap
+#     IS hit ``discover`` refuses further searches (the §6.7 hard-stop), so the
+#     fan-out is bounded by the daily ceiling regardless of width. The width
+#     itself (5) is chosen NOT by quota but by signal: 5 high-relevance results
+#     per sub-question is enough evidence for one synthesis without flooding the
 #     model's context. Raise it only with a profiling note, exactly as the
 #     concurrency cap docstring says.
 LOCAL_TOP_K = 5
@@ -201,6 +214,16 @@ class RealLoopDeps:
 
     # -- web fan-out (Exa) --
     exa_client: Any | None = None
+    # The sanctioned discovery route. Production default is
+    # ``acquisition.search.exa.adapter.discover`` (budget-reserved + cached +
+    # event-emitting); tests inject a fake to assert the route without spend.
+    discover_fn: Callable[..., Any] | None = None
+    # Exa daily-budget cap override (passed to ``discover``'s
+    # ``daily_budget_usd``). None → the §6.7 default ``EXA_DAILY_BUDGET_USD``.
+    exa_daily_budget_usd: float | None = None
+    # Where discovery-proposal events land (passed to ``discover``). None → the
+    # adapter resolves ``default_discovery_events_dir()``.
+    discovery_events_dir: str | None = None
     # -- synthesis (model) --
     dispatch_fn: Callable[..., Any] | None = None
     dispatch_config: Any | None = None
@@ -266,6 +289,17 @@ def _resolve_exa_client(deps: RealLoopDeps) -> Any:
     return ExaClient()
 
 
+def _resolve_discover(deps: RealLoopDeps) -> Callable[..., Any]:
+    if deps.discover_fn is not None:
+        return deps.discover_fn
+    # The sanctioned discovery route — budget-reserved (``check_and_reserve``
+    # on the §6.7 daily cap) + cache-checked BEFORE any spend. Imported here so
+    # module load pulls in no Exa client / no substrate DB.
+    from acquisition.search.exa.adapter import discover
+
+    return discover
+
+
 def _resolve_dispatch(deps: RealLoopDeps) -> tuple[Callable[..., Any], Any]:
     dispatch_fn = deps.dispatch_fn
     if dispatch_fn is None:
@@ -310,44 +344,97 @@ def _retrieve_local(
             con.close()
 
 
-def _web_search(deps: RealLoopDeps, sub_question: str) -> tuple[list[Any], str | None]:
-    """Milestone 3 — one Exa web search for the sub-question, under the §16
+def _web_search(
+    deps: RealLoopDeps, sub_question: str, investigation_id: str,
+) -> tuple[list[Any], str | None]:
+    """Milestone 3 — one Exa web search for the sub-question, routed through the
+    sanctioned ``acquisition/search/exa/adapter.discover`` surface under the §16
     research-fanout exemption (docs/decisions/s16-research-fanout-exemption.md).
 
-    Returns ``(results, error)``. ``error`` is a short failure-mode label when
-    the search could not run (no key / down / rate-limited) so the caller can
-    surface it honestly rather than pretending the web returned nothing. A
-    rate-limit/transport failure is NOT fatal — the loop degrades to "no web
-    evidence" and synthesizes from local only.
+    ``discover`` is the ONE budget-bounded egress route: before any HTTP spend it
+    (1) checks the §6.5 dedup cache (a cache hit costs $0) and (2) calls
+    ``check_and_reserve(COST_PER_SEARCH_USD)`` against the §6.7 daily ceiling
+    (``EXA_DAILY_BUDGET_USD`` ≈ $5), raising ``DiscoveryBudgetExceeded`` BEFORE
+    issuing the call once the cap is reached. The loop NEVER calls
+    ``ExaClient.search`` directly — that bypassed the cache + the daily ceiling,
+    shipping a budgetless runaway the instant activation SPR-03 flips the key.
 
-    NOTE: Exa egress already routes through the shared host rate governor
-    (``acquisition/arxiv/rate_governor.govern_if_arxiv`` inside
-    ``ExaClient._post``) — we do NOT add a second fetcher or a second governor.
+    Returns ``(proposals, error)`` where ``proposals`` is the list of
+    ``DiscoveryProposed`` objects (each carries url/title/score/cost). ``error``
+    is a short failure-mode label when the search could not run:
+
+      * ``exa_unavailable`` — no key / client construction failed (the INERT
+        state). Not billable.
+      * ``exa_budget_exhausted`` — the §6.7 daily cap is reached; ``discover``
+        refused BEFORE spending. The caller HALTS the per-question web fan-out;
+        no spend happens past the ceiling. Not billable.
+      * ``exa_error`` — Exa down / rate-limited (429 after retries) / empty-query
+        error. Not fatal — the loop degrades to "no web evidence" and
+        synthesizes from local only.
+
+    Exa egress is BUDGET-bounded (the daily ceiling above), NOT rate-governed:
+    ``govern_if_arxiv`` is a passthrough for the ``api.exa.ai`` host
+    (rate_governor.py:460 — it governs arXiv hosts only). The throttle/governor
+    framing does not apply to Exa; the daily-budget hard-stop is the bound.
     """
     try:
+        # Resolve the client so a no-key construction is the INERT signal
+        # (``ExaClientError`` when ``EXA_API_KEY`` is unset) — discover's own
+        # default would construct it too, but resolving here lets the loop
+        # distinguish "no key" from "budget exhausted" / "Exa down".
         client = _resolve_exa_client(deps)
     except Exception as exc:  # ExaClientError when EXA_API_KEY unset → INERT
         return [], f"exa_unavailable: {type(exc).__name__}"
+
+    discover = _resolve_discover(deps)
     try:
-        # ``acquisition.search.exa.client.ExaClient.search`` is THE web call.
-        # This import + use is what makes the orphaned client now imported by
-        # the research path (milestone 3 acceptance).
-        response = client.search(query=sub_question, num_results=deps.web_num_results)
-        return list(response.results), None
+        # THE web call — through the budget-reserved, cached discovery route.
+        # ``discover`` calls ``check_and_reserve(COST_PER_SEARCH_USD)`` (§6.7
+        # daily ceiling) + the §6.5 cache BEFORE ``client.search``. We pass our
+        # resolved cassette/real client through so the same client is exercised.
+        proposals = discover(
+            query=sub_question,
+            investigation_id=investigation_id,
+            num_results=deps.web_num_results,
+            client=client,
+            daily_budget_usd=deps.exa_daily_budget_usd,
+            events_dir=deps.discovery_events_dir,
+            db_path=deps.db_path,
+        )
+        return list(proposals), None
     except Exception as exc:
+        name = type(exc).__name__
+        # The §6.7 budget hard-stop fires BEFORE the HTTP call — surface it as a
+        # distinct halt signal (no spend happened past the ceiling) so the
+        # caller halts the fan-out instead of treating it like a transient Exa
+        # error. ``DiscoveryBudgetExceeded`` / ``DailyAcquisitionBudgetExceeded``
+        # are the two budget exceptions ``discover`` → ``check_and_reserve`` /
+        # ``assert_total_budget_ok`` raise.
+        if name in ("DiscoveryBudgetExceeded", "DailyAcquisitionBudgetExceeded"):
+            return [], f"exa_budget_exhausted: {name}"
         # Exa down / rate-limited (429 after retries) / empty-query error —
         # surface the class, never crash the fan-out.
-        return [], f"exa_error: {type(exc).__name__}"
+        return [], f"exa_error: {name}"
 
 
 def _servable_web_refs(
     deps: RealLoopDeps, web_results: Sequence[Any],
 ) -> list[SourceRef]:
-    """Milestone 3 §9.0 gate — each web candidate passes the servability/legal
-    gate (the SAME ``LegalGate.check_url`` ``adapter.promote_discovery`` uses)
-    BEFORE it can become a usable source ref. A non-servable (denylisted) source
-    is DROPPED, never silently turned into a reference. Read-only — we check
-    servability, we do NOT ingest (ingestion is SPR-07)."""
+    """Milestone 3 §9.0 gate — each web candidate (a ``DiscoveryProposed`` from
+    the ``discover`` route) passes the servability/legal gate (the SAME
+    ``LegalGate.check_url`` ``adapter.promote_discovery`` uses) BEFORE it can
+    become a usable source ref. A non-servable (denylisted) source is DROPPED,
+    never silently turned into a reference. Read-only — we check servability, we
+    do NOT ingest (ingestion is SPR-07).
+
+    §9.0 RECONCILIATION (D1): ``discover`` is budget-reserved + cached but does
+    NOT consult the legal gate — per the adapter's own contract the legal gate
+    sits on the PROMOTION path (``promote_discovery``), not on discovery
+    (adapter.py module docstring §3). So this is the ONE AND ONLY fail-closed
+    §9.0 servability gate on the loop's final web refs; there is NO double-gating
+    (discover does not gate, so dropping this would re-open the §9.0 leak). The
+    gate reads ``url`` (+ title/score/response_id) off the ``DiscoveryProposed``
+    objects exactly as it read them off the raw Exa results before."""
     gate = _resolve_legal_gate(deps)
     refs: list[SourceRef] = []
     for r in web_results:
@@ -561,14 +648,25 @@ def real_research_loop(
 
         await ctx.checkpoint()
 
-        # --- M3: Exa web fan-out, then §9.0 servability gate -------------
-        web_results, web_err = await asyncio.to_thread(_web_search, deps, sub_q)
+        # --- M3: Exa web fan-out via the budget-reserved discover route,
+        #         then §9.0 servability gate over its proposals ------------
+        web_results, web_err = await asyncio.to_thread(
+            _web_search, deps, sub_q, ctx.investigation_id,
+        )
         servable_refs = _servable_web_refs(deps, web_results)
         dropped = len(web_results) - len(servable_refs)
-        # Charge the web step ONLY when a real Exa call ran (results present
-        # OR an error class that is NOT "unavailable"/INERT). The per-search
-        # cost comes from Exa's own estimate on the first result; an empty
-        # servable list after a real call still ran the call, so it is charged.
+        # The §6.7 daily-budget ceiling halts the web fan-out: ``discover``
+        # refuses BEFORE the HTTP call once the cap is reached, so a
+        # budget-exhausted question issues NO further searches and spends
+        # nothing past the ceiling. Surface it on the step so the halt is
+        # observable on the glass-box stream.
+        web_budget_halted = bool(web_err) and web_err.startswith("exa_budget_exhausted")
+        # Charge the web step ONLY when a real Exa call ran (results present OR a
+        # generic ``exa_error`` after the call). INERT (``exa_unavailable``) and
+        # budget-halted (``exa_budget_exhausted``, refused BEFORE the call) are
+        # NOT billable — no HTTP spend happened. The per-search cost comes from
+        # the proposals' own Exa estimate; an empty servable list after a real
+        # call still ran the call, so it is charged.
         web_cost = 0.0
         web_ran = web_err is None or web_err.startswith("exa_error")
         if web_results:
@@ -593,6 +691,9 @@ def real_research_loop(
             servable_count=len(servable_refs),
             dropped_non_servable=dropped,
             web_error=web_err,
+            # §6.7 daily-budget halt: discover refused BEFORE spending — the
+            # fan-out is bounded by the daily ceiling, not by a rate governor.
+            web_budget_halted=web_budget_halted,
             # Exa's request id — the WEB-side liveness marker.
             exa_request_ids=[
                 r.provider_response_id for r in servable_refs if r.provider_response_id
