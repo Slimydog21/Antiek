@@ -101,16 +101,35 @@ def test_expected_open_door_set_is_pinned_and_nonempty():
 # ───────────────────────────────────────────────────────────────────────────
 
 
-# The renderers SPR-05 deletes / folds into the one Reader. SPR-09 asserts NONE
-# of these is importable in the production bundle (a forbidden-import check).
-# ``WrestleApp``/``PdfViewer`` survive ONLY behind the ingest entry point, never
-# as an open-a-document renderer — SPR-09 encodes that nuance.
+# The DOCUMENT-OPENING renderers/seams SPR-05 deletes / folds into the one
+# Reader. SPR-09 asserts NONE is reachable as a second document renderer in the
+# production bundle (a forbidden-import check). ``WrestleApp``/``PdfViewer``
+# survive ONLY behind the ingest entry point, never as an open-a-document
+# renderer.
+#
+# SPR-05 RECONCILIATION (kept in lockstep with the TS set + migration-map §5;
+# the set is SHARPENED to the verified tree, never weakened): the SPR-01 set
+# named ``ReadingColumn.tsx::renderBlocks``. SPR-05 verified ``ReadingColumn`` is
+# the SANCTIONED legacy fallback — the body renderer the one ``/read/:id`` Reader
+# degrades to when ``structured_blocks`` is NULL (a legacy/un-backfilled doc),
+# reachable ONLY behind that one gated route, never as a second OPEN-a-document
+# renderer. So it is EXCLUDED (deleting it breaks the legacy read path it
+# defends). What is forbidden is a second document renderer reachable from an
+# OPEN door; every such seam is now routed to ``openDocument``:
+#   - MasterMdViewer's by-id OPEN seam (the cmd-click PDF panel) -> openDocument;
+#     MasterMdViewer SURVIVES as a synthesis-summary that never opens a doc by id.
+#   - MetaReading's bespoke ``<article>`` body -> converged to ReadingColumn.
+#   - DRW's ad-hoc node-text div (BlockDetail.tsx) -> its open-source capability
+#     is now openDocument (the wired onCiteSource); the div renders a GRAPH NODE,
+#     not a document by id.
+#   - PdfViewer mounted AS AN OPEN target (the /wrestle/:documentId route) -> gone
+#     (PdfViewer survives as the ingest/annotation surface only).
 FORBIDDEN_PROD_RENDERERS: frozenset[str] = frozenset(
     {
-        "components/reader/ReadingColumn.tsx::renderBlocks",  # the 24-line flattener
-        "modes/ResearchWorkstation/MasterMdViewer.tsx",  # cannot open by id
-        "modes/Reading/MetaReading/index.tsx::article",  # bespoke <article>
-        "modes/DeepResearchWorkspace/index.tsx::canvasTextDiv",  # ad-hoc text div
+        "modes/ResearchWorkstation/MasterMdViewer.tsx::openByIdSeam",  # cmd-click PDF panel -> openDocument
+        "modes/Reading/MetaReading/index.tsx::article",  # bespoke <article> -> ReadingColumn
+        "modes/DeepResearchWorkspace/index.tsx::canvasTextDiv",  # open-source seam -> openDocument (div: BlockDetail.tsx:87)
+        "components/PdfViewer.tsx::asOpenTarget",  # PdfViewer-as-open-target -> gone (ingest only)
     }
 )
 
@@ -128,11 +147,24 @@ def test_no_second_document_renderer_in_prod_bundle():
 
 
 def test_forbidden_renderer_set_is_pinned():
-    """NON-xfail guard: the renderer-deletion set is pinned so SPR-09 cannot
-    quietly omit one and let a fork survive."""
-    assert "components/reader/ReadingColumn.tsx::renderBlocks" in FORBIDDEN_PROD_RENDERERS
-    assert "modes/ResearchWorkstation/MasterMdViewer.tsx" in FORBIDDEN_PROD_RENDERERS
+    """NON-xfail guard: the forbidden DOCUMENT-OPEN seam set is pinned so SPR-09
+    cannot quietly omit one and let a fork survive. SPR-05 reconciliation: the
+    set names the open-a-document SEAMS (now routed/converged), not the sanctioned
+    ReadingColumn fallback — see the set's docstring + migration-map §5."""
+    assert (
+        "modes/ResearchWorkstation/MasterMdViewer.tsx::openByIdSeam"
+        in FORBIDDEN_PROD_RENDERERS
+    )
+    assert "modes/Reading/MetaReading/index.tsx::article" in FORBIDDEN_PROD_RENDERERS
     assert len(FORBIDDEN_PROD_RENDERERS) >= 4
+    # ReadingColumn is the SANCTIONED legacy fallback (reachable only behind the
+    # one /read/:id route), NOT a forbidden second renderer — it must NOT be in
+    # the set as a whole renderer, or SPR-09 would wrongly delete the legacy path.
+    assert "components/reader/ReadingColumn.tsx" not in FORBIDDEN_PROD_RENDERERS
+    assert (
+        "components/reader/ReadingColumn.tsx::renderBlocks"
+        not in FORBIDDEN_PROD_RENDERERS
+    )
 
 
 # ───────────────────────────────────────────────────────────────────────────

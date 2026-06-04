@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
+import { useOpenDocument } from "../../lib/openDocument";
 import { LemonButton, LemonInput } from "../lemon";
 import { useLibrary, type LibraryFilter } from "./useLibrary";
 import WorkCard from "./WorkCard";
@@ -39,7 +39,7 @@ export default function LibraryView({
   initialFilter = "servable",
   pageSize = 24,
 }: LibraryViewProps) {
-  const navigate = useNavigate();
+  const openDocument = useOpenDocument();
   const [filter, setFilter] = useState<LibraryFilter>(initialFilter);
   // Debounced search: the input updates `draft` immediately (responsive field)
   // and `search` after a short pause (the actual query), so a fast typer does
@@ -67,8 +67,8 @@ export default function LibraryView({
   });
 
   const lastPage = Math.max(1, Math.ceil(total / pageSize));
-  const open = (documentId: string) =>
-    navigate(`/read/${encodeURIComponent(documentId)}`);
+  // SPR-05 one door: open through `openDocument` (→ the gated /read/:id Reader).
+  const open = (documentId: string) => openDocument(documentId);
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";

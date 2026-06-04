@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
 import { apiFetch } from "../../lib/api";
+import { useOpenDocument } from "../../lib/openDocument";
 
 /**
  * Documents listing UI (master-spec §4.1).
  *
  * Operator-facing list of substrate-attached documents with
- * source-tier + investigation filters. Each row links to
- * /wrestle/:documentId where the existing PDF + region-selection
- * surface lives.
+ * source-tier + investigation filters. Each row opens the document in the ONE
+ * Reader via `openDocument` (SPR-05 — was a `/wrestle/:id` mis-route, the pdf.js
+ * page-1 surface that can't fetch by id; now the one door → the gated Reader).
  */
 
 interface DocumentRow {
@@ -29,7 +29,7 @@ const TIER_FILTERS = ["all", 1, 2, 3, 4, 5] as const;
 type TierFilter = (typeof TIER_FILTERS)[number];
 
 export default function DocumentsIndex() {
-  const navigate = useNavigate();
+  const openDocument = useOpenDocument();
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,9 +154,7 @@ export default function DocumentsIndex() {
             <LemonTable
               rows={rows}
               rowKey={(r) => r.document_id}
-              onRowClick={(r) =>
-                navigate(`/wrestle/${encodeURIComponent(r.document_id)}`)
-              }
+              onRowClick={(r) => openDocument(r.document_id)}
               columns={[
                 {
                   key: "title",

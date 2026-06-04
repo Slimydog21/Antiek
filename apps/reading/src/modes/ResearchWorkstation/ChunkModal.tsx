@@ -2,14 +2,18 @@ import { useEffect, useState } from "react";
 
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
+import { useOpenDocument } from "../../lib/openDocument";
 
 /**
  * Modal showing the actual text of a chunk cited by a claim.
  *
  * Fetches /chunks/{id} on open. Shows chunk text + source document
- * title + section_path + tier badge. "Open in document viewer" button
- * deep-links into /wrestle/<doc>?page=N when section_path encodes a
- * page number (PDF source).
+ * title + section_path + tier badge. "Open in document" opens the ONE Reader
+ * via `openDocument(documentId, { page, chunkId })` (SPR-05 — was a
+ * `/wrestle/<doc>?page=N` mis-route; now the one door → the gated Reader). The
+ * chunk id is forwarded so the Reader can resolve chunk→region; the parsed page
+ * (a 0-based reader index derived from the "Page N" section label) lands the
+ * cited page.
  */
 export default function ChunkModal({
   chunkId,
@@ -159,6 +163,7 @@ function TierChip({ tier }: { tier: number }) {
 }
 
 function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
+  const openDocument = useOpenDocument();
   // Parse "Page N" out of section_path. Section path examples that
   // encode a page:
   //   "Page 17"
@@ -166,22 +171,25 @@ function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
   // When the substrate is extended to YouTube/podcast sources, the
   // section_path uses a different shape (Timestamp: ...) and we
   // disable the cross-mode link.
-  let page: number | null = null;
+  let sourcePage: number | null = null;
   if (chunk.section_path) {
     const m = chunk.section_path.match(/Page\s+(\d+)/i);
-    if (m) page = parseInt(m[1], 10);
+    if (m) sourcePage = parseInt(m[1], 10);
   }
-  const href =
-    page !== null
-      ? `/wrestle/${encodeURIComponent(chunk.document_id)}?page=${page}`
-      : `/wrestle/${encodeURIComponent(chunk.document_id)}`;
-  const label = page !== null ? `Open at page ${page}` : "Open in document viewer";
+  // The "Page N" label is a 1-based SOURCE page; the reader's `page` opt is a
+  // 0-based reader index. Convert honestly (N → N-1, clamped at 0); the chunk id
+  // is the precise locator the Reader resolves to a region.
+  const readerPage = sourcePage !== null ? Math.max(0, sourcePage - 1) : undefined;
+  const label = sourcePage !== null ? `Open at page ${sourcePage}` : "Open in document";
   return (
-    <a
-      href={href}
+    <button
+      type="button"
+      onClick={() =>
+        openDocument(chunk.document_id, { page: readerPage, chunkId: chunk.chunk_id })
+      }
       className="text-xs font-mono text-ink dark:text-bright hover:text-ink dark:text-bright px-2 py-1 bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 rounded transition-colors"
     >
       {label} →
-    </a>
+    </button>
   );
 }

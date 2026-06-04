@@ -97,19 +97,22 @@ describe("MetaReading (M4)", () => {
     expect(banner.textContent?.toLowerCase()).toContain("owned");
   });
 
-  it("a cited passage opens the SPR-07 reader at the resolved page", async () => {
+  it("a cited passage opens the SPR-07 reader at the resolved page (via openDocument)", async () => {
     await generate();
     fireEvent.click(screen.getByRole("button", { name: "open at p.12" }));
-    // Seeds the usePosition locator + routes to the reader (no parallel nav).
+    // SPR-05 one door: openDocument seeds the usePosition locator + navigates to
+    // the ONE Reader route with the page (and the cited chunk) on the URL.
     expect(window.sessionStorage.getItem("antiek.read.pos.doc-mr")).toBe("11");
-    expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr");
+    expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr?page=11&chunk=c1");
   });
 
-  it("an unresolved cite opens the book without a fabricated page", async () => {
+  it("an unresolved cite opens the book without a fabricated page (via openDocument)", async () => {
     await generate({ citations: [cite({ page_index: null, page_resolved: false })] });
     fireEvent.click(screen.getByRole("button", { name: "open the book" }));
+    // No page seeded (honest — no fabricated page); still routes through the one
+    // door, carrying the cited chunk so the Reader can resolve its region.
     expect(window.sessionStorage.getItem("antiek.read.pos.doc-mr")).toBeNull();
-    expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr");
+    expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr?chunk=c1");
   });
 
   it("the deliverable is generated + saved (the endpoint persists it); the surface shows it read-only", async () => {

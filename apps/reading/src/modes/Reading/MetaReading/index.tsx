@@ -5,6 +5,8 @@ import { LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import ReadAloud from "../../../components/voice/ReadAloud";
+import ReadingColumn from "../../../components/reader/ReadingColumn";
+import { useOpenDocument } from "../../../lib/openDocument";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
 
 /**
@@ -37,6 +39,7 @@ type LengthUnit = "pages" | "minutes";
 
 export default function MetaReading() {
   const navigate = useNavigate();
+  const openDocument = useOpenDocument();
   // SPR-13 M1 — when an assetId is in the route, this surface RE-OPENS a saved
   // meta-reading asset (read-only) rather than acting as the generator. The
   // saved asset is loaded from the event log via the substrate read-path.
@@ -90,20 +93,21 @@ export default function MetaReading() {
     };
   }, [assetId]);
 
-  // Open a cited book at a resolved page — seeds the SAME sessionStorage locator
-  // usePosition owns, then routes to the reader (no parallel navigation).
+  // Open a cited book at a resolved page through the ONE door (SPR-05). The
+  // `page` opt seeds the SAME usePosition sessionStorage locator + carries the
+  // chunk so the Reader can resolve the cited region. An unresolved page opens
+  // at the saved position (honest — no fake page jump).
   const openCitation = useCallback(
     (c: BookCitation) => {
-      if (c.page_resolved && c.page_index !== null && c.page_index >= 0) {
-        try {
-          window.sessionStorage.setItem(`antiek.read.pos.${c.document_id}`, String(c.page_index));
-        } catch {
-          /* private mode — opens at the saved page */
-        }
-      }
-      navigate(`/read/${encodeURIComponent(c.document_id)}`);
+      openDocument(c.document_id, {
+        page:
+          c.page_resolved && c.page_index !== null && c.page_index >= 0
+            ? c.page_index
+            : undefined,
+        chunkId: c.chunk_id,
+      });
     },
-    [navigate],
+    [openDocument],
   );
 
   const generate = useCallback(async () => {
@@ -247,10 +251,17 @@ export default function MetaReading() {
                 </p>
               )}
 
-              {/* READ-ONLY report (not an editable document — operator decision). */}
-              <article className="font-serif text-[15px] leading-[1.7] text-ink dark:text-bright whitespace-pre-wrap rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
-                {deliverable.report}
-              </article>
+              {/* READ-ONLY report (not an editable document — operator decision).
+                  SPR-05: was a bespoke `<article whitespace-pre-wrap>` (the
+                  forbidden MetaReading::article renderer). Converged to the ONE
+                  sanctioned legacy text body (`ReadingColumn`) so there is no
+                  second bespoke document `<article>`. The report is a generated
+                  SYNTHESIS, not a served document by id — so it carries NO
+                  asset id (assetId=null: never attributed as a monetized asset,
+                  §9.0). The card chrome (border/bg) wraps the shared body. */}
+              <div className="rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
+                <ReadingColumn assetId={null} text={deliverable.report} />
+              </div>
 
               {/* Page-cited links back into the SPR-07 reader. */}
               {deliverable.citations.length > 0 && (

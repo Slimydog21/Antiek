@@ -47,8 +47,12 @@ export default function AppLegacy() {
             path="/inv/:investigationId"
             element={<ResearchWorkstation />}
           />
+          {/* SPR-05 one door: /wrestle survives ONLY as the PDF upload / ingest
+              surface (no documentId). The by-id OPEN route /wrestle/:documentId
+              is REMOVED here too — the v1 rollback shell must not keep a second
+              by-id reader alive. A stale /wrestle/:id deep-link falls to the
+              LegacyMissingRoute (honest), not a fork. */}
           <Route path="/wrestle" element={<WrestleApp />} />
-          <Route path="/wrestle/:documentId" element={<WrestleApp />} />
           <Route path="*" element={<LegacyMissingRoute />} />
         </Routes>
       </main>
