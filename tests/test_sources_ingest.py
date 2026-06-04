@@ -291,3 +291,142 @@ def test_ingest_short_url_validation_error(temp_substrate):
     client = _client(temp_substrate)
     resp = client.post("/sources/ingest", json={"url": "x"})
     assert resp.status_code == 422
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 4. SPR-02 (DN2) — the arXiv branch must NOT block the event loop on a
+#    synchronous governed structured-block fetch. The latency-sensitive
+#    public endpoint lands the abstract with ``emit_structured_blocks=False``;
+#    the out-of-band M5 backfill upgrades the row to typed blocks.
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_ingest_arxiv_endpoint_does_not_emit_structured_blocks_inline(
+    monkeypatch, temp_substrate
+):
+    """The arXiv ingest endpoint must call ``ingest_paper`` with
+    ``emit_structured_blocks=False`` so it performs NO synchronous governed
+    arXiv egress (no ar5iv + PDF round-trip) inside the async handler — the
+    "202 immediately" contract holds. We capture the kwargs the endpoint passes
+    to the adapter and assert the structured fetch is OFF at this boundary."""
+    from dataclasses import dataclass
+
+    captured_kwargs: dict = {}
+
+    @dataclass
+    class _Paper:
+        arxiv_id: str = "2402.03300"
+        title: str = "A Real arXiv Paper"
+
+    @dataclass
+    class _R:
+        document_id: str = "doc-arxiv-2402.03300"
+        document_loaded_event_id: str = "evt-arxiv"
+        chunks_written: int = 4
+        skipped_reason: str | None = None
+        title: str = "A Real arXiv Paper"
+        chunk_ids: list = None
+        node_ids: list = None
+
+    import acquisition.arxiv as _arxiv
+
+    # ``fetch_by_id`` must not hit the network — return a synthetic paper.
+    monkeypatch.setattr(_arxiv, "fetch_by_id", lambda *a, **kw: _Paper())
+
+    def _fake_ingest_paper(paper, **kwargs):
+        captured_kwargs.update(kwargs)
+        return _R()
+
+    monkeypatch.setattr(_arxiv, "ingest_paper", _fake_ingest_paper)
+
+    client = _client(temp_substrate)
+    resp = client.post(
+        "/sources/ingest",
+        json={"url": "https://arxiv.org/abs/2402.03300"},
+    )
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["status"] == "ingested"
+    assert body["detected_kind"] == "arxiv"
+    assert body["document_id"] == "doc-arxiv-2402.03300"
+    # The load-bearing assertion: NO synchronous structured egress at this
+    # latency-sensitive endpoint (DN2).
+    assert captured_kwargs.get("emit_structured_blocks") is False
+
+
+def test_arxiv_endpoint_row_gets_blocks_via_out_of_band_backfill(
+    monkeypatch, temp_substrate
+):
+    """The corpus still receives ``structured_blocks`` even though the endpoint
+    skips the inline fetch: a real arXiv ingest lands the abstract (NULL blocks),
+    then the out-of-band M5 backfill upgrades the row to the typed-block model
+    from its STORED text — no network, no event-loop block. This proves the
+    SPR-02 goal ("a real arXiv paper lands as typed blocks") still holds via the
+    chosen out-of-band path."""
+    import duckdb
+
+    from acquisition.arxiv.client import ArxivPaper
+    from datetime import UTC, datetime
+
+    now = datetime(2024, 2, 15, 12, 0, 0, tzinfo=UTC)
+    paper = ArxivPaper(
+        arxiv_id="2402.03300",
+        version="v1",
+        title="A Real arXiv Paper on Bounds",
+        authors=["Jane Doe"],
+        abstract="We derive a bound and prove convergence in the limit. " * 6,
+        categories=["cs.AI"],
+        primary_category="cs.AI",
+        published_at=now,
+        updated_at=now,
+        abs_url="https://arxiv.org/abs/2402.03300",
+        pdf_url="https://arxiv.org/pdf/2402.03300",
+    )
+
+    import acquisition.arxiv as _arxiv
+
+    # No network: hand the endpoint the already-parsed paper.
+    monkeypatch.setattr(_arxiv, "fetch_by_id", lambda *a, **kw: paper)
+
+    client = _client(temp_substrate)
+    resp = client.post(
+        "/sources/ingest",
+        json={"url": "https://arxiv.org/abs/2402.03300"},
+    )
+    assert resp.status_code == 202
+    document_id = resp.json()["document_id"]
+
+    db_path = temp_substrate["db_path"]
+
+    # After the endpoint: the abstract landed but structured_blocks is NULL (the
+    # endpoint skipped the inline structured fetch — DN2).
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        (raw_text, blocks) = con.execute(
+            "SELECT raw_text, structured_blocks FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert raw_text is not None and "Bounds" in raw_text
+    assert blocks is None  # not fetched inline → NULL, awaiting backfill
+
+    # Out-of-band M5 backfill upgrades the row from STORED text (no network).
+    from substrate.graph.backfill_structured_blocks import backfill_structured_blocks
+    from substrate.contracts.document_model import Document
+
+    report = backfill_structured_blocks(db_path)
+    assert report.upgraded >= 1
+
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        (blocks_after,) = con.execute(
+            "SELECT structured_blocks FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert blocks_after is not None, "M5 backfill must populate structured_blocks"
+    doc = Document.model_validate_json(blocks_after)
+    assert doc.id == document_id
+    assert doc.blocks  # real typed blocks recovered from stored text
