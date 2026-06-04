@@ -18,7 +18,6 @@ from pathlib import Path
 
 from tools.lint.owner_privilege_check import find_violations, main
 
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Pass-on-current-tree: the real owner-read sites resolve the tag via the helper.
 # ──────────────────────────────────────────────────────────────────────────────
