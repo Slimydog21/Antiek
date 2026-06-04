@@ -24,12 +24,13 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE.parent.parent))
 
-from tools.codegen import emit_contracts, emit_types  # noqa: E402
+from tools.codegen import emit_contracts, emit_document_model, emit_types  # noqa: E402
 
 # Each codegen target: a label, the pure render function, the on-disk file,
 # the source it's generated from, and the regen command. The events target
 # (emit_types) and the contracts target (emit_contracts, antiek-unified SPR-01)
-# are checked the same way.
+# are checked the same way; the document-model target (emit_document_model,
+# antiek-reader SPR-01) joins them — same gate, no second drift mechanism.
 _TARGETS = (
     (
         "events",
@@ -44,6 +45,13 @@ _TARGETS = (
         emit_contracts.DEFAULT_OUTPUT,
         "substrate/contracts/",
         "python tools/codegen/emit_contracts.py",
+    ),
+    (
+        "document_model",
+        emit_document_model.render,
+        emit_document_model.DEFAULT_OUTPUT,
+        "substrate/contracts/document_model.py + reading_surface.py",
+        "python tools/codegen/emit_document_model.py",
     ),
 )
 

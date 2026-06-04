@@ -317,6 +317,14 @@ LITERAL_ALIASES: dict[str, tuple[str, ...]] = {
 # Used by the field-type renderer to know what's emitted vs unknown.
 _KNOWN_NESTED_NAMES: set[str] = set()
 
+# Named discriminated-union aliases (antiek-reader SPR-01). Generalizes the
+# hard-coded ``TypedPayload`` special-case below: a sibling emitter (e.g.
+# ``emit_document_model.py``) registers ``frozenset({"TextSpan", ...}) ->
+# "InlineSpan"`` so a field typed ``list[InlineSpan]`` emits ``InlineSpan[]``
+# referencing the named alias, not an inlined 7-variant union. Empty for the
+# events emitter, so its output is byte-identical to before.
+_UNION_ALIASES: dict[frozenset[str], str] = {}
+
 
 class UnsupportedType(TypeError):
     """Raised when ``_python_to_ts`` encounters a type it cannot translate.
@@ -370,6 +378,13 @@ def _payload_model_names() -> set[str]:
 
 
 def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
+    # ``Annotated[T, ...]`` (antiek-reader SPR-01 — discriminated unions are
+    # written ``Annotated[Union[...], Field(discriminator='type')]``): the TS
+    # type is that of the inner ``T``; the runtime metadata (the Field) is
+    # Python-side only. Strip it and recurse.
+    if get_origin(tp) is typing.Annotated:
+        inner = get_args(tp)[0]
+        return _python_to_ts_inner(inner, field_name=field_name, model_name=model_name)
     if tp is str:
         return "string"
     if tp is int or tp is float:
@@ -458,6 +473,12 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
                      if isinstance(a, type) and issubclass(a, BaseModel)}
         if arg_names == _payload_model_names():
             return "TypedPayload"
+        # Registered named discriminated-union aliases (antiek-reader SPR-01):
+        # a union whose member-name set matches a registered alias emits the
+        # alias name (e.g. InlineSpan / Block) rather than the inlined union.
+        alias = _UNION_ALIASES.get(frozenset(arg_names))
+        if alias is not None:
+            return alias
         return " | ".join(
             _python_to_ts(a, field_name=field_name, model_name=model_name)
             for a in non_none_args
@@ -492,8 +513,12 @@ def _emit_interface(model: type[BaseModel], lines: list[str]) -> None:
         # with the `| null` we emit for Optional, the field both accepts
         # null AND can be omitted entirely on the JSON wire.
         suffix = "?" if (is_opt or field.default is not None and not field.is_required()) else ""
-        # Special case: discriminator literal — always required, no suffix.
-        if field_name == "action_type":
+        # Special case: a discriminator literal is always REQUIRED (no suffix)
+        # so TS narrowing on it works. ``action_type`` for the event schema;
+        # ``type`` for the document-model blocks/spans (antiek-reader SPR-01).
+        # The event payloads have no ``type`` field, so adding it here leaves
+        # the events emitter byte-identical.
+        if field_name in ("action_type", "type"):
             suffix = ""
         lines.append(f"  {field_name}{suffix}: {ts_type};")
     lines.append("}")

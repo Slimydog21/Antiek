@@ -180,7 +180,11 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "compounding/benchmark/tests"]
+# antiek-reader SPR-01: the document-model + reader-surface contract tests live
+# beside the contracts they pin (``substrate/contracts/__tests__/``), per the
+# spec's file scope. Added here so the default ``pytest`` run COLLECTS them — a
+# test under a path outside ``testpaths`` would be silently dead (a fake gate).
+testpaths = ["tests", "compounding/benchmark/tests", "substrate/contracts/__tests__"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
 markers = [
