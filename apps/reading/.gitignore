@@ -5,6 +5,10 @@ storybook-static/
 *.log
 .DS_Store
 
+# TypeScript incremental build cache — a per-machine artifact (tsc -b),
+# never meant to be committed. One leaked into a prior commit; this stops it.
+*.tsbuildinfo
+
 # Lost-Pixel — baseline IS checked in; current + diff are not.
 .lostpixel/current/
 .lostpixel/diff/

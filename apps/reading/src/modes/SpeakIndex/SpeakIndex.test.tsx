@@ -74,6 +74,63 @@ describe("SpeakIndex — the warm door", () => {
     expect(screen.queryByText("PROJECT PAGE")).toBeNull();
   });
 
+  // ── SPR-01 M2 — frozen-shell snapshots ──
+  // These pin the shipped UI so SPR-02/SPR-03 cannot drift the shell or
+  // either lane's body unnoticed. Pure extraction: behavior-preserving.
+  describe("frozen-shell snapshots (SPR-01 M2)", () => {
+    it("matches the yours-empty snapshot", async () => {
+      const { container } = mount();
+      expect(await screen.findByText(/no one yet/i)).toBeTruthy();
+      expect(container).toMatchSnapshot();
+    });
+
+    it("matches the yours-populated snapshot", async () => {
+      listPeopleMock.mockResolvedValue([
+        { id: "y1", name: "Grandma Rosa", willBePublic: false, voiceCount: 0 },
+        { id: "y2", name: "Dad", willBePublic: true, voiceCount: 2 },
+      ]);
+      const { container } = mount();
+      expect(await screen.findByText("Grandma Rosa")).toBeTruthy();
+      expect(container).toMatchSnapshot();
+    });
+
+    it("matches the public-empty snapshot", async () => {
+      const { container } = mount();
+      fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
+      expect(await screen.findByText(/no public remembrances yet/i)).toBeTruthy();
+      expect(container).toMatchSnapshot();
+    });
+  });
+
+  // ── SPR-04 M1 — private-lane gratitude / impact (no money) ──
+  it("shows gratitude/impact on a populated private person, with no money word anywhere in the yours lane", async () => {
+    listPeopleMock.mockResolvedValue([
+      { id: "y1", name: "Grandma Rosa", willBePublic: false, voiceCount: 0 },
+      { id: "y2", name: "Dad", willBePublic: false, voiceCount: 2 },
+    ]);
+    mount();
+    // A person who has had voices shared gets the warm impact line…
+    const impact = await screen.findByText(
+      /their story is coming together — 2 voices have added a memory\./i,
+    );
+    expect(impact).toBeTruthy();
+    // …and the private lane (YoursLane's own <section>) never speaks money.
+    // Scope to YoursLane's output, not the SpeakIndex shell header (which the
+    // shell owns and legitimately uses "shares" in its warm intro copy).
+    const yoursLane = impact.closest("section");
+    expect(yoursLane).not.toBeNull();
+    expect(yoursLane?.textContent).not.toMatch(/\$|payout|earn|owed|share|paid/i);
+  });
+
+  it("stays honest (no false gratitude) for a private person with no voices yet", async () => {
+    listPeopleMock.mockResolvedValue([
+      { id: "y1", name: "Grandma Rosa", willBePublic: false, voiceCount: 0 },
+    ]);
+    mount();
+    expect(await screen.findByText("Grandma Rosa")).toBeTruthy();
+    expect(screen.queryByText(/their story is coming together/i)).toBeNull();
+  });
+
   // ── M1 — the public/private split ──
   it("has a public-feed tab with an honest empty state and an 'add your memory' entry", async () => {
     mount();

@@ -23,8 +23,10 @@ import { apiFetch } from "../../lib/api";
  * fallback always works.
  *
  * Consent is one honest sentence with a safe default — not a checklist wall.
- * Declining publish thanks-and-keeps-private (never a dead end); declining
- * outright thanks them and never pushes them into recording.
+ * Publish is OFF BY DEFAULT and only ever granted by an affirmative opt-IN: the
+ * prominent share button grants RECORD ONLY (the friend's words help, privately);
+ * a separate, clearly-labelled second button is the only thing that adds publish.
+ * Declining outright thanks them and never pushes them into recording.
  *
  * No engineering string is shown.
  */
@@ -50,10 +52,9 @@ export default function SpeakInvite() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Whether this person has agreed to take part. We keep consent to one
-  // honest decision (take part / not right now); the "be named / appear
-  // publicly" nuances are surfaced as a single reassuring sentence, not a
-  // checklist the invitee must parse.
+  // Whether this person has agreed to take part. Consent is two affirmative
+  // buttons — share privately (record-only) vs the explicit publish opt-in —
+  // never a checklist the invitee must parse. Publish is off by default.
   const [declined, setDeclined] = useState(false);
 
   const [mode, setMode] = useState<Mode>("voice");
@@ -95,15 +96,27 @@ export default function SpeakInvite() {
   const consented =
     landing !== null && landing.granted_consent_scopes.includes("record");
 
-  // One warm "yes, I'll take part" — grants the scopes the invite asks for
-  // (record is required; attribute/publish ride along as the invite scopes
-  // them, framed by the reassuring sentence, not a wall of checkboxes).
-  const takePart = useCallback(async () => {
+  // Take part. PUBLISH IS OFF BY DEFAULT — it is the one legally-sensitive
+  // scope ("did this friend actually agree to be published?"), so it is NEVER
+  // in the default grant. The prominent share button calls this with
+  // `includePublish=false`, granting RECORD ONLY (plus `attribute` if the
+  // invite asks for it — having one's name shown is not the publish-sensitive
+  // scope). A friend only ever publishes by actively picking the separate,
+  // clearly-labelled publish opt-IN button (`includePublish=true`). The backend
+  // supports record-only consent (tests/test_speak_api.py:259-260); the answer
+  // gate checks consent (record), not publish, so a record-only friend can
+  // still answer in full.
+  const takePart = useCallback(async (includePublish: boolean) => {
     if (!token || !landing) return;
     setBusy(true);
     setError(null);
     try {
-      const scopes = Array.from(new Set(["record", ...landing.required_consent_scopes]));
+      // Default path keeps publish out, no matter what the invite asks for.
+      // Only the explicit opt-in action adds publish (and only if it was asked).
+      const asked = includePublish
+        ? landing.required_consent_scopes
+        : landing.required_consent_scopes.filter((s) => s !== "publish");
+      const scopes = Array.from(new Set(["record", ...asked]));
       const r = await apiFetch(`/speak/invite/${encodeURIComponent(token)}/consent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -213,25 +226,49 @@ export default function SpeakInvite() {
         {error && <p className="mb-3 text-center font-serif text-[13px] text-emperor">{error}</p>}
 
         {!consented ? (
-          // ── Warm consent: one honest sentence + a safe default ──
+          // ── Warm consent: one honest sentence + a safe (private) default ──
+          // The prominent button grants RECORD ONLY — publish is never the
+          // default. Public use is a separate, affirmative opt-IN button below,
+          // offered only when the invite asks for publish.
           <section className="rounded-md border-2 border-ink bg-ice-0 p-5 text-center shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
             <p className="font-serif text-[15px] text-ink dark:text-bright">
               We'll record and write down what you share, to help tell{" "}
               {landing.subject_ref ? `${landing.subject_ref}'s` : "this"} story.
             </p>
             <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
-              {askingToPublish
-                ? "If this story is ever shared publicly, your words may appear in it — but you can ask to be removed at any time."
-                : "It's kept private, and you can ask to have your words removed at any time."}
+              Either way, what you share is kept private unless you choose
+              otherwise, and you can ask to have your words removed at any time.
             </p>
+            {/* PRIMARY: record-only. Publish is NOT granted here. */}
             <button
               type="button"
-              onClick={() => void takePart()}
+              onClick={() => void takePart(false)}
               disabled={busy}
               className="mt-5 w-full rounded-md border-2 border-ink bg-sun px-4 py-3 font-mono text-[14px] font-semibold text-ink shadow-z1 hover:-translate-y-0.5 disabled:opacity-50 dark:shadow-z1-night"
             >
               Yes, I'll share a memory
             </button>
+            {askingToPublish && (
+              <>
+                {/* Publish OPT-IN: an affirmative second choice the friend must
+                    actively pick. This is the ONLY action that grants publish —
+                    it is a button, never a pre-checked checklist, so "did this
+                    friend actually agree to be published?" is always a yes they
+                    chose. Grants record + publish. */}
+                <button
+                  type="button"
+                  onClick={() => void takePart(true)}
+                  disabled={busy}
+                  className="mt-3 block w-full rounded-md border-2 border-ink bg-ice-0 px-4 py-3 font-mono text-[13px] font-semibold text-ink hover:-translate-y-0.5 disabled:opacity-50 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                >
+                  Share — and you can use my words in the public story
+                </button>
+                <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                  Either way still helps — sharing privately keeps your words
+                  out of the public story unless you choose the second option.
+                </p>
+              </>
+            )}
             <button
               type="button"
               onClick={() => void declineInvite()}
