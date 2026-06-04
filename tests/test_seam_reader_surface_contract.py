@@ -1,21 +1,27 @@
 """Collision #1 guard — ReaderSurfaceContract single owner (seam #1).
 
-DRW SPR-10 owns the one reading surface; Read SPR-03 specializes by
-composition and Write SPR-07 traces into it via the same contract; neither
-forks a second reader. DRW SPR-10 is unbuilt, so the contract is **provisional**
-(``substrate.contracts.reading_surface.PROVISIONAL == True``) and Read/Write
-compose against this conformance-tested stub until it lands.
+────────────────────────────────────────────────────────────────────────────
+SUPERSEDED (in part) by antiek-reader SPR-01. DO NOT DELETE — antiek-reader
+SPR-09 deletes this file once the REAL conformance test (which asserts every
+door routes to the one ``<Reader>`` and no second renderer is importable) is
+green. See ``substrate/contracts/__tests__/test_reader_conformance.py`` for the
+pinned SPR-09 assertions and ``reading_surface.py`` for the ownership transfer.
+
+Two things changed under SPR-01:
+  * ``reading_surface.PROVISIONAL`` flipped to ``False`` and ``PINNED_BY`` moved
+    off the never-built "DRW SPR-10" to "antiek-reader SPR-01". So the old
+    ``test_contract_is_provisional_and_drw_owned`` below is now intentionally
+    INVERTED and is marked ``xfail`` (it documents the prior state; it is not a
+    live gate).
+  * The contract method signatures are now concrete (``Region`` /
+    ``RenderedRegion`` / ``AnchoredNote``), not ``Any``. The structural
+    composition tests below STILL pass — an ``Any``-typed implementation
+    remains assignable to the runtime_checkable Protocol — so they are kept
+    live as the "compose, don't fork" structural guard until SPR-09's real
+    conformance test replaces them.
 
 Named invariant a maintainer greps: "Read composes the reader contract, never
-forks" = this test file. The test proves:
-
-* the contract exposes the three composition extension points
-  (``render_region`` / ``anchor_note`` / ``locate_node``);
-* a Read-style specialization and a Write-style tracer both *satisfy* the
-  contract by composition (runtime_checkable Protocol), without subclassing —
-  the "compose, don't fork" shape;
-* the contract is flagged provisional + DRW-owned so SPR-08 treats it as
-  not-yet-load-bearing.
+forks" = this test file (and, going forward, the SPR-09 conformance harness).
 
 Rigor #3: a fork that drops an extension point FAILS the structural check.
 """
@@ -24,6 +30,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from substrate.contracts.reading_surface import (
     PINNED_BY,
     PROVISIONAL,
@@ -31,9 +39,15 @@ from substrate.contracts.reading_surface import (
 )
 
 
+@pytest.mark.xfail(
+    reason="SUPERSEDED by antiek-reader SPR-01: PROVISIONAL flipped to False and "
+    "PINNED_BY moved off the never-built DRW SPR-10 to 'antiek-reader SPR-01'. "
+    "This test documents the prior state; SPR-09 deletes it.",
+    strict=True,
+)
 def test_contract_is_provisional_and_drw_owned():
-    """The ownership flag SPR-08's harness reads: provisional, pinned by
-    DRW SPR-10."""
+    """The ownership flag the conformance harness reads. NOW INVERTED — SPR-01
+    pinned the seam, so this xfails by design (kept as a superseded record)."""
     assert PROVISIONAL is True
     assert PINNED_BY == "DRW SPR-10"
 

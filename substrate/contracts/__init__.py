@@ -19,8 +19,11 @@ Contract status:
 * COMMITTED — the implementation exists; the shape is pinned.
 * PROVISIONAL — the owner (typically a not-yet-landed DRW sprint) has not
   pinned the shape; marked so the SPR-08 conformance harness treats it as
-  not-yet-load-bearing. Today: ``ReaderSurfaceContract`` (DRW SPR-10) and the
-  Speak interviewer shapes.
+  not-yet-load-bearing. Today: the Speak interviewer shapes.
+  (``ReaderSurfaceContract`` WAS provisional under "DRW SPR-10"; antiek-reader
+  SPR-01 pinned it — ``reading_surface.PROVISIONAL`` is now ``False`` and the
+  concrete ``Region`` / ``RenderedRegion`` / ``AnchoredNote`` types are tied to
+  ``document_model``. See ``reading_surface.py`` for the ownership transfer.)
 
 See ``inventory.md`` for the full row-by-row map (contract · owning spec+sprint
 · consumers · status), and ``docs/decisions/tech-stack-ledger.md`` for the
