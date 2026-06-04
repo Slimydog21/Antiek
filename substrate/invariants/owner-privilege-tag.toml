@@ -1,0 +1,33 @@
+[invariant]
+id = "owner-privilege-tag"
+status = "guarded"
+owner = "SPR-owner-read"
+statement = """
+Owner-privilege retrieval bypass is auth-gated. A PRIVILEGED policy_tag
+(operator_only / private_research — substrate.graph.retrieval_gate.PRIVILEGED_POLICY_TAGS)
+is the §9.0 retrieval BYPASS: it admits the owner's gated (restricted_pending_opt_in)
+AND owner-only (personal_reading) corpus through the deny-by-default chunk gate.
+That bypass may reach search(...) / answer_book_question(...) ONLY after an auth
+check has proven the caller is the owner — the owner-read endpoints
+(interfaces/research/api/books.py ask_book + corpus_search) resolve it server-side
+via _owner_read_policy_tag(request), which returns operator_only ONLY for an
+authenticated owner. COST IF VIOLATED: a future endpoint / worker / script that
+hard-codes a privileged policy_tag literal into a retrieval call WITHOUT an auth
+check hands the §9.0 bypass to an unauthenticated caller and leaks the owner's
+gated/personal corpus — the exact Hachette/Bartz §9.0 leak the Sprint-18 legal
+gate + CLAUDE.md invariant #4 exist to prevent. The other §9.0 invariants are
+guarded mechanically (owner_boundary_check.py / retrieval_gate_check.py); this
+closes the matching hole on the privileged-TAG axis. NOTE (single-operator,
+CLAUDE.md #5): privilege == owner only while ANTIEK_OPERATOR_EMAIL is one
+operator; Sprint-22 multi-user must additionally scope retrieval by user_id
+against owner_user_id — documented at the privilege site in books.py.
+"""
+guard = "tools/lint/owner_privilege_check.py"
+guard_kind = "script"
+assertion = "An AST scan of the tree (skipping tests/ + tools/lint/) finds NO call to search(...) / answer_book_question(...) that passes a PRIVILEGED policy_tag as a static literal ('operator_only' / 'private_research') or as the _OWNER_READ_POLICY_TAG named constant, OUTSIDE the auth-checked allowlist (interfaces/research/api/books.py, where the two owner-read endpoints resolve the tag via _owner_read_policy_tag(request) — a call, never a literal). A planted privileged literal at a non-allowlisted call site is flagged as path:line and exits 1. Passes on the current tree (the two owner-read sites resolve the tag through the auth-checked helper) and is wired as the 'Owner-privilege boundary check' CI step."
+sunset = ""
+
+[non_vacuity]
+method = "negative_control"
+bite_test = "tests/test_owner_privilege_check.py::test_lint_catches_a_planted_privileged_literal"
+detail = "tests/test_owner_privilege_check.py::test_lint_catches_a_planted_privileged_literal plants a non-allowlisted endpoint passing policy_tag='operator_only' straight into search(...) without an auth check and proves the lint flags it as path:line; test_lint_is_green_when_tag_resolved_via_helper proves the SAME lint goes green when the tag is resolved through an auth-checked helper call (a real fail->pass control, not a lint that flags everything). test_lint_catches_private_research_literal + test_lint_catches_named_constant_form cover the other privileged tag + the named-constant form; test_lint_passes_on_the_current_tree pins the clean real tree. CI step: .github/workflows/ci.yml -> 'Owner-privilege boundary check' exercises exit 1 on violation."
