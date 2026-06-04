@@ -2,45 +2,19 @@
 
 Covers:
   - POST /thought-partner — AISidecar one-shot reply surface
+  - POST /voice/sessions/{id}/upload — InterviewVoiceCapture raw-body
+    upload contract
   - POST /cross-graph/citations — typed event emission verification
   - POST /quality-gate/evaluate — conditional typed event emission
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
-from substrate.dispatch import (
-    NormalizedUsage,
-    RawProviderResponse,
-    register_provider,
-    reset_provider_registry,
-)
-
-
-class _MockHermesProvider:
-    name = "hermes"
-
-    def __init__(self, reply_text: str):
-        self.reply_text = reply_text
-
-    def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
-        return RawProviderResponse(
-            text=self.reply_text,
-            raw_usage={"input_tokens": 12, "output_tokens": 8},
-            finish_reason="stop",
-            latency_ms=7,
-        )
-
-    def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
-        return NormalizedUsage(
-            input_tokens=int(raw_usage.get("input_tokens", 0)),
-            output_tokens=int(raw_usage.get("output_tokens", 0)),
-        )
+from substrate.dispatch import reset_provider_registry
 
 
 @pytest.fixture(autouse=True)
@@ -74,26 +48,74 @@ def _client():
     return TestClient(create_app(register_wrestling=False, register_providers=False))
 
 
-# ── Thought partner ─────────────────────────────────────────────────
+# ── Thought partner (antiek-reader SPR-06 — REAL dispatch, no canned reply) ──
+#
+# The old contract asserted a canned ``shape`` + ``text`` reply that NEVER
+# called a model — the one AI action that lied. SPR-06 replaced it with the real
+# Hermes-routed dispatch tier + an honest no-key 503. These tests now assert the
+# honest contract; the real-dispatch (cassette-backed) proof lives in
+# ``tests/test_passage_dialogue.py``.
 
 
-def test_thought_partner_returns_shape_and_text():
-    register_provider(_MockHermesProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
-    client = _client()
-    resp = client.post(
-        "/thought-partner",
-        json={"prompt": "Is liquid democracy compatible with multi-camera attention?"},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["shape"] in {"challenge", "synthesis", "extension"}
-    assert isinstance(body["text"], str) and body["text"].strip()
+def test_thought_partner_no_key_is_honest_503_not_a_canned_reply():
+    # ``register_providers=False`` wires NO real provider — the deterministic,
+    # key-free "no provider configured" state. (We do NOT rely on the ambient
+    # CI env being key-free: this environment DOES have an OpenRouter key, so a
+    # default app would attempt a real dispatch and the socket guard would block
+    # it. Pinning register_providers=False keeps the test honest AND offline.)
+    # Also reset the registry so a provider another test registered can't leak in.
+    from substrate.dispatch.router import reset_provider_registry
+
+    reset_provider_registry()
+    try:
+        app = create_app(register_wrestling=False, register_providers=False)
+        client = TestClient(app)
+        resp = client.post(
+            "/thought-partner",
+            json={"prompt": "Is liquid democracy compatible with multi-camera attention?"},
+        )
+        assert resp.status_code == 503
+        assert "dispatch_unavailable" in resp.json()["detail"]
+    finally:
+        reset_provider_registry()
 
 
 def test_thought_partner_rejects_empty_prompt():
     client = _client()
     resp = client.post("/thought-partner", json={"prompt": "   "})
     assert resp.status_code == 400
+
+
+# ── Voice upload ────────────────────────────────────────────────────
+
+
+def test_voice_upload_accepts_raw_body():
+    client = _client()
+    audio_bytes = b"\x00" * 1024  # 1 KiB of silence; content does not matter.
+    resp = client.post(
+        "/voice/sessions/session-xyz/upload?duration_seconds=12",
+        content=audio_bytes,
+        headers={"Content-Type": "audio/webm"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["session_id"] == "session-xyz"
+    assert body["bytes_received"] == 1024
+    assert body["duration_seconds"] == 12
+    assert body["audio_url"] == "/voice/sessions/session-xyz/audio"
+
+
+def test_voice_upload_defaults_duration_to_zero():
+    client = _client()
+    resp = client.post(
+        "/voice/sessions/s1/upload",
+        content=b"abc",
+        headers={"Content-Type": "audio/webm"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["duration_seconds"] == 0
+    assert body["bytes_received"] == 3
 
 
 # ── Typed event emission verification ──────────────────────────────

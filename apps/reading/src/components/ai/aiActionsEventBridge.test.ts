@@ -52,14 +52,22 @@ afterEach(() => {
 
 /** Helper: flush pending fire-and-forget Promises before asserting.
  * The bridge chain is: descriptor → sha256Hex (Web Crypto, real async)
- * → postTypedEvent (network mock). A macrotask yield + several
- * microtask rounds drains the whole chain reliably. */
+ * → postTypedEvent (network mock). A SINGLE macrotask yield was flaky
+ * UNDER PARALLEL TEST LOAD: the real Web Crypto digest is a macrotask, and
+ * when many test files run concurrently a single `setTimeout(0)` round can
+ * elapse before the digest resolves, so the bridge had not yet called the
+ * mock. This drains the chain over SEVERAL macrotask rounds (each a
+ * setTimeout(0) + microtask flush) so the digest reliably completes
+ * regardless of CPU contention. The bridge code is correct; this only makes
+ * the test's flush robust to scheduling, not load-dependent. */
 async function flushMicrotasks(): Promise<void> {
-  // Macrotask yield — lets the Web Crypto promise resolve.
-  await new Promise((r) => setTimeout(r, 0));
-  // Several microtask rounds for any chained .then() after the digest.
-  for (let i = 0; i < 5; i++) {
-    await Promise.resolve();
+  for (let round = 0; round < 8; round++) {
+    // Macrotask yield — lets the Web Crypto digest (a macrotask) resolve.
+    await new Promise((r) => setTimeout(r, 0));
+    // Microtask rounds for any chained .then() after the digest.
+    for (let i = 0; i < 5; i++) {
+      await Promise.resolve();
+    }
   }
 }
 

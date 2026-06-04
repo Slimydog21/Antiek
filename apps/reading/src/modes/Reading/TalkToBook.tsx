@@ -31,6 +31,26 @@ import type { TalkMessage } from "./useTalkThread";
  * APPROXIMATE PAGES: a citation whose page did not resolve to a `Page N` marker
  * is shown as "open the book", NEVER a fabricated page number (no false
  * precision — rigor #1).
+ *
+ * ════════════════════════════════════════════════════════════════════════
+ * SPR-06 CONVERGENCE (M5) — why TalkToBook is NOT the highlight Dialogue
+ * ════════════════════════════════════════════════════════════════════════
+ * SPR-06 made the ONE HIGHLIGHT gesture (the shared FloatMenu) Dialogue real,
+ * streamed, anchored to the passage Region, and graph-persisted. TalkToBook is a
+ * DIFFERENT surface: a floating BOOK-LEVEL bookmark with NO text selection — the
+ * reader asks the whole book a question and gets a PAGE-CITED, retrieval-grounded
+ * answer (`POST /books/{id}/ask` → `substrate.books.book_qa`, a real model over
+ * §9.0-gated chunks). It is not triggered by a highlight, so it is not a second
+ * "highlight system" and was deliberately NOT folded into the FloatMenu (folding
+ * it would lose the book-wide retrieval + page citations that ARE its point).
+ *
+ * Its running conversation rides `useTalkThread` → sessionStorage by an explicit
+ * operator decision (it is ephemeral reader view-state, the `usePosition`
+ * precedent — see useTalkThread.ts). That is honest for a book-level chat
+ * bookmark; it is NOT the passage-anchored thread SPR-06 persists to the graph.
+ * A future sprint that wants book-QA threads durable would route `book_qa`
+ * through `reading_surface.anchor_note` the way SPR-06's passage Dialogue does —
+ * tracked as an open item in the SPR-06 handoff, not silently conflated here.
  */
 
 export interface TalkToBookProps {
