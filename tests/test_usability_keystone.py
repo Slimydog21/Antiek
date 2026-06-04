@@ -239,6 +239,199 @@ def test_attribution_leg_named_when_owner_missing(monkeypatch):
     assert "ip_holder_name" in result.reason, result
 
 
+# ---------------------------------------------------------------------------
+# LIVE-MODE HELPERS — the live launch-poll + live compound assert the SAME legs
+# as in-process, over a mocked HTTP surface (no network). These prove the live
+# path that the operator runs is REAL (not a skipped/accept-on-launch shortcut)
+# without hitting api.antiek.ai.
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, payload: dict):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> dict:
+        return self._payload
+
+
+class _FakeSessionClient:
+    """A fake httpx client for GET /research/sessions/{id}: returns ``running``
+    until ``flip_after`` calls, then the supplied terminal ``states``."""
+
+    def __init__(self, terminal_states: dict, *, flip_after: int = 1):
+        self._terminal = terminal_states
+        self._flip_after = flip_after
+        self.calls = 0
+
+    def get(self, path: str) -> _FakeResponse:
+        self.calls += 1
+        if self.calls <= self._flip_after:
+            running = {iid: "running" for iid in self._terminal}
+            researches = [{"investigation_id": i, "state": s} for i, s in running.items()]
+        else:
+            researches = [{"investigation_id": i, "state": s}
+                          for i, s in self._terminal.items()]
+        return _FakeResponse(200, {"researches": researches})
+
+
+def test_live_await_terminal_session_polls_to_terminal_done():
+    """The live launch-poll returns the first terminal leaf + every state once ALL
+    researches are terminal — a REAL bounded poll, not accept-on-launch."""
+    client = _FakeSessionClient({"leaf-0": "done"}, flip_after=1)
+    leaf, states = ks._live_await_terminal_session(client, "session-x", deadline_s=2.0)
+    assert leaf == "leaf-0", (leaf, states)
+    assert states == {"leaf-0": "done"}
+    assert client.calls >= 2, "must have polled at least once past the running state"
+
+
+def test_live_await_terminal_session_times_out_to_none():
+    """A research that never reaches terminal returns (None, last_states) so the
+    caller reds the launch leg — the bounded-poll finding, not a silent pass."""
+    client = _FakeSessionClient({"leaf-0": "done"}, flip_after=10_000)  # never flips
+    leaf, states = ks._live_await_terminal_session(client, "session-x", deadline_s=0.25)
+    assert leaf is None, (leaf, states)
+    assert states == {"leaf-0": "running"}
+
+
+def test_live_await_terminal_session_waits_for_ALL_leaves():
+    """A partially-terminal fan-out (one done, one still running) is NOT terminal —
+    the journey is the whole fan-out."""
+    class _Partial:
+        def get(self, path):
+            return _FakeResponse(200, {"researches": [
+                {"investigation_id": "leaf-0", "state": "done"},
+                {"investigation_id": "leaf-1", "state": "running"},
+            ]})
+    leaf, states = ks._live_await_terminal_session(_Partial(), "s", deadline_s=0.25)
+    assert leaf is None, (leaf, states)
+    assert states == {"leaf-0": "done", "leaf-1": "running"}
+
+
+def test_live_reuse_count_counts_this_leafs_reused_events():
+    """The live compound signal counts THIS leaf's knowledge.reused events from
+    GET /trajectory/{leaf} — the SAME per-investigation assertion as in-process,
+    over HTTP (NOT the frozen /health global snapshot)."""
+    class _Traj:
+        def get(self, path):
+            assert path == "/trajectory/leaf-0", path
+            return _FakeResponse(200, {"events": [
+                {"action_type": "investigation.start_requested"},
+                {"action_type": "knowledge.reused"},
+                {"action_type": "knowledge.reused"},
+                {"action_type": "investigation.completed"},
+            ]})
+    assert ks._live_reuse_count(_Traj(), "leaf-0") == 2
+
+
+def test_live_reuse_count_zero_on_dead_flywheel():
+    """A live research whose trajectory carries NO knowledge.reused event yields 0
+    — the dead-flywheel signal that REDS the live compound leg (the whole point:
+    a dead flywheel on prod cannot green-pass the live keystone)."""
+    class _NoReuse:
+        def get(self, path):
+            return _FakeResponse(200, {"events": [
+                {"action_type": "investigation.start_requested"},
+                {"action_type": "investigation.completed"},
+            ]})
+    assert ks._live_reuse_count(_NoReuse(), "leaf-0") == 0
+
+
+def test_live_reuse_count_zero_on_non_200():
+    """A non-200 trajectory fetch yields 0 (reds compound) rather than raising."""
+    class _Err:
+        def get(self, path):
+            return _FakeResponse(404, {})
+    assert ks._live_reuse_count(_Err(), "leaf-0") == 0
+
+
+def test_live_mode_compound_reds_on_dead_flywheel(monkeypatch):
+    """END-TO-END live path (mocked HTTP, no network): drive _probe(base_url=...)
+    with a fake httpx client whose trajectory shows ZERO reuse → the live keystone
+    names the 'compound' leg. Proves the runbook's live 'compound — reuse == 0' RED
+    example is genuinely reproducible (it was a dead `pass` before this sprint)."""
+
+    class _LiveClient:
+        """Minimal live API double: login 401→200, plan/approve/launch ok, the
+        session poll reaches 'done', the trajectory shows NO knowledge.reused, and
+        /chunks would return a body — but compound reds first."""
+        def __init__(self):
+            self.closed = False
+
+        def post(self, path, json=None, headers=None):
+            if path == "/research/plans":
+                if not headers or "Bearer livetoken" not in headers.get("Authorization", ""):
+                    return _FakeResponse(401, {"error": {"code": "operator_auth_required"}})
+                return _FakeResponse(200, {"root_node_id": "root-1"})
+            if path.endswith("/approve") or path.endswith("/launch"):
+                return _FakeResponse(200, {"researches": [
+                    {"investigation_id": "session-root-1-leaf-0",
+                     "sub_question": "q", "question_node_id": "n"}]}
+                    if path.endswith("/launch") else {})
+            return _FakeResponse(200, {})
+
+        def get(self, path, headers=None):
+            if path.startswith("/research/sessions/"):
+                return _FakeResponse(200, {"researches": [
+                    {"investigation_id": "session-root-1-leaf-0", "state": "done"}]})
+            if path.startswith("/trajectory/"):
+                # dead flywheel: NO knowledge.reused event
+                return _FakeResponse(200, {"events": [
+                    {"action_type": "investigation.completed"}]})
+            return _FakeResponse(200, {})
+
+        def close(self):
+            self.closed = True
+
+    fake = _LiveClient()
+    import httpx
+    monkeypatch.setattr(httpx, "Client", lambda *a, **k: fake)
+    monkeypatch.setenv("ANTIEK_PROBE_OPERATOR_TOKEN", "livetoken")
+    result = ks._probe(base_url="https://example.invalid")
+    assert result.ok is False, result
+    assert result.reason.startswith("compound —"), result
+    assert "knowledge_reuse_count == 0" in result.reason, result
+    assert fake.closed is True, "the live client must be closed in finally"
+
+
+def test_live_mode_launch_reds_when_never_terminal(monkeypatch):
+    """Live path: a session whose researches never leave 'running' reds the launch
+    leg via the live status poll (the runbook's live 'launch — never terminal'
+    example) — proving live launch is a REAL poll, not accept-on-launch."""
+
+    class _LiveClient:
+        def post(self, path, json=None, headers=None):
+            if path == "/research/plans":
+                if not headers or "Bearer livetoken" not in headers.get("Authorization", ""):
+                    return _FakeResponse(401, {"error": {"code": "operator_auth_required"}})
+                return _FakeResponse(200, {"root_node_id": "root-1"})
+            if path.endswith("/launch"):
+                return _FakeResponse(200, {"researches": [
+                    {"investigation_id": "session-root-1-leaf-0",
+                     "sub_question": "q", "question_node_id": "n"}]})
+            return _FakeResponse(200, {})
+
+        def get(self, path, headers=None):
+            if path.startswith("/research/sessions/"):
+                return _FakeResponse(200, {"researches": [
+                    {"investigation_id": "session-root-1-leaf-0", "state": "running"}]})
+            return _FakeResponse(200, {})
+
+        def close(self):
+            pass
+
+    import httpx
+    monkeypatch.setattr(httpx, "Client", lambda *a, **k: _LiveClient())
+    monkeypatch.setenv("ANTIEK_PROBE_OPERATOR_TOKEN", "livetoken")
+    # Shrink the deadline so the test does not wait 8s.
+    monkeypatch.setattr(ks, "_TERMINAL_DEADLINE_S", 0.3)
+    result = ks._probe(base_url="https://example.invalid")
+    assert result.ok is False, result
+    assert result.reason.startswith("launch —"), result
+    assert result.failure_mode == "timeout", result
+
+
 def test_each_broken_leg_reports_a_distinct_stage(monkeypatch):
     """Cross-check: the five named stages are genuinely distinct strings — the
     probe threads the actual stage, it does not collapse to one generic label."""

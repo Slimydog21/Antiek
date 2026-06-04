@@ -21,12 +21,12 @@ against live `https://api.antiek.ai` as a **post-deploy** step.
 The keystone is the **CONJUNCTION** of the five legs that every other reachability
 probe asserts only in isolation — driven as ONE journey:
 
-| Leg | Assertion (a feature OUTCOME) |
+| Leg | Live assertion (a feature OUTCOME, over the prod HTTP surface) |
 |---|---|
 | **login** | A protected route returns **401 without** a bearer token and **200 with** it — the real `_operator_auth_middleware` bearer path (`app.py:1315-1340`, `secrets.compare_digest`). |
-| **launch** | A research started via the canonical entrypoint (`POST /research/plans` → `/approve` → `/launch`) reaches the terminal `investigation.completed` event. |
-| **compound** | `knowledge_reuse_count > 0` from **this** investigation's per-investigation `knowledge.reused` event — not a global `/health` counter. |
-| **read** | A real artifact comes back through `GET /chunks/{id}` (a real HTTP fetch through the production read surface). |
+| **launch** | A research started via the canonical entrypoint (`POST /research/plans` → `/approve` → `/launch`) is **polled** via `GET /research/sessions/{session_id}` until every research reaches a **terminal** RunState (`done`/`stopped`/`failed`/`budget_halted`); a non-`done` terminal reds. A research that never reaches terminal within the bounded deadline is a `launch` **finding** — not a silent pass. This is a **real live poll**, not accept-on-launch. |
+| **compound** | `knowledge_reuse_count > 0` for **this** investigation, counted from `GET /trajectory/{leaf}` `knowledge.reused` events — the **per-investigation** signal over HTTP, **not** the process-global `/health knowledge_reuse_count` snapshot (which is frozen at boot and would not move during a run). |
+| **read** | A real artifact comes back through `GET /chunks/{id}` (a real HTTP fetch through the production read surface). **The chunk read is a SEEDED §9-attributed source document you supply (`ANTIEK_PROBE_READ_CHUNK_ID`), NOT this journey's own research output** — see "What the read leg does and does NOT cover" below. |
 | **attribution** | The artifact carries well-formed §9 attribution: `document_id` + `ip_holder_name`/`ip_holder_status` present, `servable`/`servability` a well-formed pair. **Metadata presence only — no serving / payout is activated (G2/G3 stay closed).** |
 
 The **same probe** runs two ways, parameterized by `ANTIEK_PROBE_BASE_URL`:
@@ -34,8 +34,22 @@ The **same probe** runs two ways, parameterized by `ANTIEK_PROBE_BASE_URL`:
 * **In-process (pre-merge gate)** — boots `create_app()`; the CI/merge gate. No
   base URL set. This is what blocks merges.
 * **Live (post-deploy, THIS runbook)** — `ANTIEK_PROBE_BASE_URL=https://api.antiek.ai`;
-  `httpx` against the live API. Same routes, same assertions, same credential path.
-  No forked second implementation.
+  `httpx` against the live API. **Same routes, same assertions, same credential
+  path — no leg is skipped or weakened live.** Launch polls the live status route
+  to terminal; compound counts the live trajectory's per-investigation
+  `knowledge.reused`. No forked second implementation.
+
+### What the read leg does and does NOT cover
+
+The read + attribution legs fetch the **separately-seeded** servable chunk you pass
+in `ANTIEK_PROBE_READ_CHUNK_ID` — **not** the research the launch leg just ran. The
+launched demo cascade deposits **insights**, not a §9-readable **chunk**, so there
+is no chunk of *this journey's own product* to read back. **What survives:** a dead
+read surface (route moved / 404) and a stripped/malformed §9 attribution still RED
+the read/attribution legs — the read door and the attribution shape are genuinely
+exercised. **What it does NOT cover:** read-back of *this journey's own* research
+output. This is disclosed, not overclaimed; see caveat 3 in
+`docs/decisions/usability-keystone.md`.
 
 ### Why a live keystone, not just `/health`
 
@@ -121,12 +135,17 @@ The probe stops at the **first** failing leg and names it. Examples:
 
 * `login — … WITHOUT a bearer token returned 200, expected 401` → auth is **not
   enforced** on prod (a protected route is open). Stop — do not proceed.
-* `launch — no leaf research reached the terminal 'investigation.completed' event
-  within 8s` → a research started but never completed on prod (a runner/dispatch
-  problem). This is a bounded-poll **finding**, not a silent pass.
+* `launch — no research in session 'session-<root>' reached a terminal state within
+  8s via GET /research/sessions (states=…)` → a research started but never completed
+  on prod (a runner/dispatch problem). This is a bounded-poll **finding** from the
+  live status route, not a silent pass. (A terminal-but-`failed`/`budget_halted`
+  state reds with `reached terminal state '<state>' (not 'done')`.)
 * `compound — knowledge_reuse_count == 0 for investigation <id>` → **THE
-  dead-flywheel defect on the live box**: the research ran but reuse did not fire.
-  This is the exact prod failure the whole convergence spec exists to catch.
+  dead-flywheel defect on the live box**: the research ran but emitted **no**
+  `knowledge.reused` event (counted from `GET /trajectory/<leaf>`). This is the
+  exact prod failure the whole convergence spec exists to catch — and it is a REAL
+  live RED, reproducible against prod (no longer a documented-but-unreachable
+  example).
 * `read — GET /chunks/<id> 404'd` → the chunk id you supplied is absent; pick a
   real servable one.
 * `attribution — servable artifact has NO ip_holder_name` → §9 attribution is

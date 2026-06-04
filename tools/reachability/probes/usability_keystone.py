@@ -36,16 +36,25 @@ at the first failure — never collapse to a bare "failed"):
   launch       Start a research via the CANONICAL prod entrypoint (POST
                /research/plans → /approve → /launch — cascade_routes.py:577-638,
                the SAME flow flywheel/compounding drive), AUTHENTICATED, then POLL
-               its real per-leaf event log to the terminal ``investigation.completed``
-               event (substrate/schemas/events.py:83). A research that never reaches
-               terminal within the bounded deadline is reported as the ``launch``
-               leg (a FINDING), never a silent pass.
+               to a TERMINAL state. In-process: poll the per-leaf event log to the
+               terminal ``investigation.completed`` event (substrate/schemas/
+               events.py:83). LIVE: poll the production ``GET /research/sessions/
+               {session_id}`` status route (cascade_routes.py:666) until every
+               research's RunState is terminal (``done``/``stopped``/``failed``/
+               ``budget_halted``), and red a non-``done`` terminal. A research that
+               never reaches terminal within the bounded deadline is reported as the
+               ``launch`` leg (a FINDING), never a silent pass — IN BOTH MODES.
 
   compound     Assert ``knowledge_reuse_count > 0`` from THIS investigation's
-               PER-INVESTIGATION ``knowledge.reused`` event (``action_counts`` scoped
-               to the leaf iid on the temp events dir), NOT a process-global /health
-               counter. A global count can be true while THIS user's research
-               compounded nothing — the keystone asserts the user's own journey.
+               PER-INVESTIGATION ``knowledge.reused`` event, NOT a process-global
+               /health counter. In-process: ``action_counts`` scoped to the leaf iid
+               on the temp events dir. LIVE: fetch ``GET /trajectory/{leaf}``
+               (app.py:1751) over HTTP and count THIS leaf's ``knowledge.reused``
+               events — the SAME per-investigation signal, read over the prod HTTP
+               surface (NOT the frozen-at-boot /health global snapshot). A global
+               count can be true while THIS user's research compounded nothing — the
+               keystone asserts the user's own journey, IN BOTH MODES, so a dead
+               flywheel on live prod REDS the live keystone.
 
   read         Fetch a real artifact through the real backend read/chunk HTTP
                surface — GET /chunks/{id}, a REAL authenticated HTTP fetch through
@@ -85,13 +94,31 @@ docs/decisions/usability-keystone.md):
     leave the backend. The render-throw failure mode is covered by the vitest suite
     (apps/reading/src/modes/Reading/Reading.test.tsx), out of CI's headless reach.
 
-  * the LIVE run against api.antiek.ai is OPERATOR-GATED, not executed here. The
-    base-URL parameterization (``ANTIEK_PROBE_BASE_URL``) lets the SAME probe run
-    against live prod post-deploy; the in-process mode is the pre-merge gate. The
-    live run writes to the prod graph + needs prod creds + prod is HELD pending
-    §9.0, so the operator runs it as the documented post-deploy step
-    (infrastructure/runbooks/usability-keystone-verify-live.md). This in-process
-    gate, parameterized, IS that probe — no forked second impl.
+  * read leg reads a SEEDED §9-attributed source document, NOT this journey's own
+    research output. The read+attribution legs fetch a separately-seeded servable
+    public-domain doc (in-process: ``_seed_read_artifact``; live: a real prod
+    ``ANTIEK_PROBE_READ_CHUNK_ID``), because the launched demo cascade deposits
+    INSIGHTS, not a §9-readable chunk — there is no chunk of THIS journey's own
+    product to read back. WHAT PROTECTIVE VALUE SURVIVES: a dead read surface (route
+    moved / 404) and a stripped/malformed §9 attribution still RED here — the read
+    door and the attribution shape are genuinely exercised end-to-end. WHAT IT DOES
+    NOT COVER: read-back of THIS journey's own research output (that the specific
+    research just launched produced a readable, attributed artifact). When the
+    cascade deposits §9-readable chunks, promote the read leg to fetch one of THIS
+    investigation's chunks (see Reconsider-if in the decision record).
+
+  * the LIVE run against api.antiek.ai is OPERATOR-GATED, not executed here — but it
+    asserts the SAME five legs as in-process. The base-URL parameterization
+    (``ANTIEK_PROBE_BASE_URL``) runs the SAME probe against live prod post-deploy;
+    the in-process mode is the pre-merge gate. Live mode does NOT skip or weaken any
+    leg: login (bearer 401→200), launch (poll GET /research/sessions to terminal),
+    compound (count GET /trajectory knowledge.reused > 0 for THIS leaf), read +
+    attribution (GET /chunks against a real prod chunk id). The live run writes a
+    research to the prod graph + needs prod creds + prod is HELD pending §9.0, so the
+    operator runs it as the documented post-deploy step (infrastructure/runbooks/
+    usability-keystone-verify-live.md). This in-process gate, parameterized, IS that
+    probe — no forked second impl, and no leg silently asserts less live than the
+    docs claim.
 
 ────────────────────────────────────────────────────────────────────────────
 §16 / §9.0 SAFETY. The probe writes only to per-PID temp paths (ANTIEK_DUCKDB_PATH
@@ -104,7 +131,6 @@ serve.py path is touched). Env is restored + the temp tree rmtree'd in ``finally
 
 from __future__ import annotations
 
-import glob
 import os
 import shutil
 import tempfile
@@ -145,6 +171,16 @@ _TERMINAL_POLL_INTERVAL_S = 0.1
 # (host_local.py `_finish(..., ActionType.INVESTIGATION_COMPLETED, ...)`). SOURCE:
 # substrate/schemas/events.py:83 INVESTIGATION_COMPLETED = "investigation.completed".
 _TERMINAL_ACTION = "investigation.completed"
+
+# LIVE mode polls GET /research/sessions/{session_id}, whose researches[].state is
+# a RunState string. The terminal RunState values are the ones is_terminal() admits
+# (runtime/research_runner/protocol.py:55-56): done | stopped | failed |
+# budget_halted. SUCCESS-terminal is "done" — the live launch leg asserts the
+# research reached a TERMINAL state (and surfaces a non-"done" terminal as a finding,
+# never a silent pass). The deterministic session id is "session-{root_id}"
+# (cascade_routes.py:603).
+_LIVE_TERMINAL_STATES = frozenset({"done", "stopped", "failed", "budget_halted"})
+_LIVE_SUCCESS_STATE = "done"
 
 # The per-investigation reuse event the compound leg asserts on. SOURCE:
 # substrate/schemas/events.py:180 KNOWLEDGE_REUSED = "knowledge.reused". Emitted
@@ -255,6 +291,77 @@ def _reuse_count(events_dir: str, leaf_id: str) -> int:
     )
 
 
+def _live_await_terminal_session(
+    client: object, session_id: str, *, deadline_s: float
+) -> tuple[str | None, dict[str, str]]:
+    """LIVE launch-poll (the analogue of ``_await_terminal_leaf``, over HTTP).
+
+    Polls ``GET /research/sessions/{session_id}`` until EVERY research carries a
+    terminal RunState, or the deadline elapses. Returns ``(terminal_leaf_id,
+    states)`` where ``terminal_leaf_id`` is the first research that reached a
+    terminal state (or None if none did within the deadline) and ``states`` maps
+    every investigation_id → its last-seen state. Same bounded-deadline + "finding
+    not silent pass" discipline as the in-process poll — a research that never
+    reaches terminal returns ``(None, …)`` so the caller reds the launch leg.
+
+    The route is the production status surface (``cascade_routes.py:666``): a live
+    session reports ``researches[].state`` directly; after eviction/restart it
+    reconstructs the same shape from the event log (``all_terminal``). We treat a
+    research as terminal on its RunState alone, so both the live and the
+    recovered-from-log responses are handled identically."""
+    end = time.monotonic() + deadline_s
+    last_states: dict[str, str] = {}
+    while True:
+        resp = client.get(f"/research/sessions/{session_id}")
+        if resp.status_code == 200:
+            try:
+                body = resp.json()
+            except Exception:  # noqa: BLE001
+                body = {}
+            researches = body.get("researches") or []
+            last_states = {
+                r.get("investigation_id"): r.get("state")
+                for r in researches
+                if r.get("investigation_id")
+            }
+            terminal = [
+                iid for iid, st in last_states.items() if st in _LIVE_TERMINAL_STATES
+            ]
+            # Only declare "reached terminal" when ALL researches are terminal —
+            # the journey is the whole fan-out, not the first leaf to finish.
+            if last_states and len(terminal) == len(last_states):
+                return terminal[0], last_states
+        if time.monotonic() >= end:
+            return None, last_states
+        time.sleep(_TERMINAL_POLL_INTERVAL_S)
+
+
+def _live_reuse_count(client: object, leaf_id: str) -> int:
+    """LIVE compound signal (the analogue of ``_reuse_count``, over HTTP).
+
+    Fetches ``GET /trajectory/{leaf_id}`` — the production per-investigation event
+    log surface (``app.py:1751``) — and counts THIS leaf's ``knowledge.reused``
+    events. This is the SAME per-investigation assertion the in-process mode makes
+    (``action_counts`` scoped to the leaf), just read over HTTP instead of off the
+    temp events dir. It is NOT the process-global ``/health knowledge_reuse_count``
+    snapshot (which is frozen at boot and cannot move during a probe run) — it is
+    this user's own research's reuse, the only signal that means "the journey
+    compounded." Returns 0 on any non-200 / malformed body (the caller reds
+    compound on 0)."""
+    resp = client.get(f"/trajectory/{leaf_id}")
+    if resp.status_code != 200:
+        return 0
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001
+        return 0
+    return sum(
+        1
+        for ev in (body.get("events") or [])
+        if ev.get("action_type") == _REUSE_ACTION
+    )
+
+
 def _probe(base_url: str | None = None) -> ProbeResult:
     """Run the five-leg keystone journey.
 
@@ -266,12 +373,18 @@ def _probe(base_url: str | None = None) -> ProbeResult:
       * a URL (operator's live run, post-deploy) → ``httpx.Client(base_url=...)``
         against the live API. SAME routes, SAME assertions, SAME credential path.
 
-    In LIVE mode the temp-DB seed of the read artifact is skipped (we cannot write
-    the prod graph from the probe, and §16 forbids a second writer); the operator
-    runs the live probe AFTER a real research has produced a readable artifact, and
-    the read leg fetches a real prod chunk id supplied via ANTIEK_PROBE_READ_CHUNK_ID
-    — see the runbook. The in-process mode (the merge gate this sprint proves RED-
-    capable) seeds its own artifact so it is hermetic."""
+    Live mode asserts the SAME five legs, over the prod HTTP surface — no leg is
+    skipped or weakened:
+      * launch  → poll GET /research/sessions/{id} to a terminal RunState.
+      * compound→ count GET /trajectory/{leaf} knowledge.reused > 0 for THIS leaf.
+    The only live difference is the READ-LEG SEED: the temp-DB seed is skipped (we
+    cannot write the prod graph, and §16 forbids a second writer), so the operator
+    supplies a real prod chunk id via ANTIEK_PROBE_READ_CHUNK_ID and the read leg
+    GETs it — see the runbook. The in-process mode (the merge gate this sprint
+    proves RED-capable) seeds its own artifact so it is hermetic. Note (read-leg
+    caveat above): the read leg reads a SEEDED §9-attributed source document, not
+    this journey's own research output, because the cascade deposits insights, not a
+    §9-readable chunk."""
     base_url = base_url if base_url is not None else os.environ.get("ANTIEK_PROBE_BASE_URL")
     live = bool(base_url)
 
@@ -439,14 +552,37 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                     f"launch returned no researches[].investigation_id — the cascade "
                     f"entrypoint changed shape: {r.text[:160]}",
                 )
-            # In-process mode reads the per-leaf event log directly. Live mode would
-            # poll GET /research/sessions/{id} instead (the operator's runbook covers
-            # the live poll); the in-process path is the merge gate proven here.
+            # BOTH modes poll the launched research to a TERMINAL state — never
+            # accept-on-launch. In-process reads the per-leaf event log directly;
+            # live polls the production GET /research/sessions/{id} status route
+            # (the SAME assertion, over HTTP). A research that never reaches terminal
+            # within the bounded deadline is a launch FINDING, not a silent pass.
             if live:
-                # The operator's live run polls the live status route; in-process is
-                # the gate this sprint proves. Treat a live launch as reached when
-                # the launch route accepted it — the runbook drives the live poll.
-                terminal_leaf = leaf_ids[0]
+                session_id = f"session-{root_id}"
+                terminal_leaf, live_states = _live_await_terminal_session(
+                    client, session_id, deadline_s=_TERMINAL_DEADLINE_S
+                )
+                if terminal_leaf is None:
+                    return _blocked(
+                        "launch",
+                        f"no research in session {session_id!r} reached a terminal "
+                        f"state within {_TERMINAL_DEADLINE_S:.0f}s via "
+                        f"GET /research/sessions (states={live_states or 'none'}) — the "
+                        f"research started but never completed (bounded-poll finding "
+                        f"on the live status route, not a silent pass).",
+                        failure_mode="timeout",
+                    )
+                # A terminal-but-non-"done" state (failed / budget_halted / stopped)
+                # is reached-but-not-successful — surface it as a finding, never a
+                # silent green.
+                if live_states.get(terminal_leaf) != _LIVE_SUCCESS_STATE:
+                    return _blocked(
+                        "launch",
+                        f"research {terminal_leaf!r} reached terminal state "
+                        f"{live_states.get(terminal_leaf)!r} (not {_LIVE_SUCCESS_STATE!r}) "
+                        f"— the launch completed unsuccessfully on prod "
+                        f"(states={live_states}).",
+                    )
             else:
                 terminal_leaf = _await_terminal_leaf(
                     tmp_events, leaf_ids, deadline_s=_TERMINAL_DEADLINE_S
@@ -463,23 +599,25 @@ def _probe(base_url: str | None = None) -> ProbeResult:
 
             # ═══════════════════════ LEG 3: compound ══════════════════════
             # Assert reuse FIRED for THIS investigation, from its per-investigation
-            # knowledge.reused event — NOT a global /health counter.
-            if not live:
-                reused = _reuse_count(tmp_events, terminal_leaf)
-                if reused <= 0:
-                    return _blocked(
-                        "compound",
-                        f"knowledge_reuse_count == 0 for investigation "
-                        f"{terminal_leaf!r} — the research ran but emitted NO "
-                        f"knowledge.reused event. The flywheel is dead at the prod "
-                        f"entrypoint (cascade_routes.py launch omitted "
-                        f"retrieval_substrate). This is THE dead-flywheel defect.",
-                    )
+            # knowledge.reused event — NOT a global /health counter. BOTH modes
+            # assert the SAME per-investigation signal: in-process reads the temp
+            # event log; live fetches GET /trajectory/{leaf} over HTTP and counts the
+            # leaf's knowledge.reused events. A live dead flywheel (the cascade
+            # launch omitting retrieval_substrate) therefore REDS the live keystone —
+            # the prod gate genuinely catches the dead-flywheel incident.
+            if live:
+                reused = _live_reuse_count(client, terminal_leaf)
             else:
-                # Live: the operator confirms compound via /health
-                # knowledge_reuse_count > 0 per the runbook (the prod graph's
-                # per-investigation log is on the box, not fetchable here).
-                pass
+                reused = _reuse_count(tmp_events, terminal_leaf)
+            if reused <= 0:
+                return _blocked(
+                    "compound",
+                    f"knowledge_reuse_count == 0 for investigation "
+                    f"{terminal_leaf!r} — the research ran but emitted NO "
+                    f"knowledge.reused event. The flywheel is dead at the prod "
+                    f"entrypoint (cascade_routes.py launch omitted "
+                    f"retrieval_substrate). This is THE dead-flywheel defect.",
+                )
 
             # ════════════════ LEG 4 + 5: read + attribution ════════════════
             # In-process: seed a servable artifact, then fetch it AUTHENTICATED
@@ -613,9 +751,6 @@ def _probe(base_url: str | None = None) -> ProbeResult:
             else:
                 os.environ[key] = val
         shutil.rmtree(tmp_root, ignore_errors=True)
-        # Silence an unused-import lint if glob ends up unreferenced in a future
-        # edit — glob is imported for parity with the sibling probes' leaf scan.
-        _ = glob
 
 
 PROBE = Probe(
