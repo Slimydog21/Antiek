@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react";
 
 import Werner from "../brand/Werner";
+import { ROD_BUTT_LOCAL, ROD_TIP_LOCAL } from "./fishingLineGeometry";
+import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import "./waddle.css";
 
 /**
@@ -44,6 +46,78 @@ export interface WernerRigProps {
   label?: string;
   /** Positioning passthrough for the wrapper. */
   style?: CSSProperties;
+  /**
+   * Rod flex (perpendicular bow, in 64-viewBox units) under line tension.
+   * 0 = a straight rod at rest. A future tension wiring (or SPR-05's cast)
+   * feeds `rodBend(tipToBaitDistance)` here; today the rod rests straight.
+   * Forced to 0 under reduced motion (a static neutral rod, no flex).
+   */
+  bend?: number;
+}
+
+/**
+ * THE ROD — geometry shared with the line layer (the SPR-04 contract).
+ * ROD_BUTT_LOCAL / ROD_TIP_LOCAL live in fishingLineGeometry.ts so the rig and
+ * the catenary agree, to the unit, on where the rod begins and ends. The grip
+ * is the butt: the right flipper curls around it and the rod `<g>`'s
+ * transform-origin sits there, so a future cast (SPR-05) pivots the whole rod
+ * from the hand, not the body centre.
+ */
+const ROD_BUTT = ROD_BUTT_LOCAL; // (45,34) — curled into werner-rig-flipper-r
+const ROD_TIP = ROD_TIP_LOCAL; // (66,5) — end of the shaft (past the viewBox; overflow:visible)
+
+/** Stroke width butt→tip — the rod TAPERS so it reads as a rod, not a stick. */
+const ROD_BUTT_WIDTH = 2.6;
+const ROD_TIP_WIDTH = 0.7;
+/** How many stroked segments to step the taper + bend across (more = smoother). */
+const ROD_SEGMENTS = 6;
+
+/**
+ * Build the rod as a sequence of stroked segments along a quadratic Bézier
+ * (butt → control → tip). SVG strokes cannot taper natively, so we step the
+ * width down across the segments — wide at the butt, thin at the tip — which is
+ * what makes it read as a rod. The control point is offset PERPENDICULAR to the
+ * straight butt→tip axis by `bend` viewBox units, so `bend=0` is a dead-straight
+ * rod and a positive `bend` bows the shaft toward the load (the line side).
+ */
+function rodSegments(
+  bend: number,
+): Array<{ d: string; width: number }> {
+  const ax = ROD_TIP.x - ROD_BUTT.x;
+  const ay = ROD_TIP.y - ROD_BUTT.y;
+  const len = Math.hypot(ax, ay) || 1;
+  // Unit perpendicular to the rod axis (rotate the axis +90°). The rod runs
+  // up-and-right; this perpendicular points up-and-left, so a positive bend
+  // bows the shaft toward where the line hangs (visually "loaded").
+  const px = -ay / len;
+  const py = ax / len;
+  // Quadratic control point: midpoint of the chord, pushed out by `bend`.
+  const cx = (ROD_BUTT.x + ROD_TIP.x) / 2 + px * bend;
+  const cy = (ROD_BUTT.y + ROD_TIP.y) / 2 + py * bend;
+
+  const bez = (t: number) => {
+    const mt = 1 - t;
+    return {
+      x: mt * mt * ROD_BUTT.x + 2 * mt * t * cx + t * t * ROD_TIP.x,
+      y: mt * mt * ROD_BUTT.y + 2 * mt * t * cy + t * t * ROD_TIP.y,
+    };
+  };
+
+  const segs: Array<{ d: string; width: number }> = [];
+  for (let i = 0; i < ROD_SEGMENTS; i++) {
+    const t0 = i / ROD_SEGMENTS;
+    const t1 = (i + 1) / ROD_SEGMENTS;
+    const p0 = bez(t0);
+    const p1 = bez(t1);
+    // Taper: width at this segment's midpoint, lerped butt→tip.
+    const tm = (t0 + t1) / 2;
+    const width = ROD_BUTT_WIDTH + (ROD_TIP_WIDTH - ROD_BUTT_WIDTH) * tm;
+    segs.push({
+      d: `M ${p0.x.toFixed(2)} ${p0.y.toFixed(2)} L ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`,
+      width,
+    });
+  }
+  return segs;
 }
 
 /**
@@ -53,9 +127,18 @@ export interface WernerRigProps {
  * out, never as a second creature. Each limb carries the rig class the
  * descendant selectors drive.
  */
-export default function WernerRig({ size, label, style }: WernerRigProps) {
+export default function WernerRig({ size, label, style, bend = 0 }: WernerRigProps) {
   // The feet sit at ~88% down (Werner's foot line); flippers at ~52% (mid-body
   // sides). Coordinates are in a 64-unit viewBox so they scale with `size`.
+  //
+  // REDUCED MOTION (M5): the rod holds a STRAIGHT neutral rest pose — the flex
+  // collapses to 0 — so reduced motion gets a static rod, never a frozen mid-
+  // bend. (The limb walk-cycle's reduced-motion guard already lives in
+  // waddle.css + the roam's JS early-return; this is the rod's matching JS
+  // guard, paired with the new `@media` rod block in waddle.css.)
+  const reduceMotion = usePrefersReducedMotion();
+  const restBend = reduceMotion ? 0 : bend;
+  const segments = rodSegments(restBend);
   return (
     <span
       className="inline-block align-middle"
@@ -95,25 +178,60 @@ export default function WernerRig({ size, label, style }: WernerRigProps) {
         >
           <ellipse cx="18" cy="36" rx="3" ry="8" fill="var(--werner-coat)" />
         </g>
+        {/* RIGHT FLIPPER — reshaped into a GRIP (SPR-04 M1). Instead of a flat
+            paddle resting at the side, it curls UP to the rod butt at
+            ROD_BUTT (45,34) and wraps around it, so the hand reads as holding
+            the rod. The paddle body still sits at the mid-body side; a short
+            curl reaches over the butt so grip + rod overlap with no gap. The
+            transform-origin is the grip, matching the rod's pivot, so a future
+            cast swings the flipper-and-rod together from the hand. */}
         <g
           className="werner-rig-flipper-r"
-          style={{ transformOrigin: "44px 30px" }}
+          style={{ transformOrigin: `${ROD_BUTT.x}px ${ROD_BUTT.y}px` }}
         >
-          <ellipse cx="46" cy="36" rx="3" ry="8" fill="var(--werner-coat)" />
+          {/* Forearm/paddle, angled up toward the grip. */}
+          <path
+            d="M44 41 Q41 37 43 33 Q44.5 31 47 32 Q49 33 48 36 Q47 40 44 41 Z"
+            fill="var(--werner-coat)"
+          />
+          {/* The curl that wraps OVER the rod butt at (45,34) — closes the hand
+              around the shaft so there is no gap between flipper and rod. */}
+          <ellipse cx="45" cy="34" rx="3.2" ry="2.4" fill="var(--werner-coat)" />
         </g>
 
-        {/* Ice-fishing rod (WERNER-ICE SPR-14) — right flipper shoulder, tip ~(50,22). */}
-        <g data-werner-rod="" aria-hidden="true">
-          <ellipse cx="44" cy="30" rx="2" ry="3" fill="var(--werner-coat)" />
-          <line
-            x1="44"
-            y1="30"
-            x2="50"
-            y2="22"
-            stroke="var(--werner-coat)"
-            strokeWidth={2}
-            strokeLinecap="round"
-          />
+        {/* THE ROD (SPR-04) — a long, tapered, optionally-flexing fishing rod
+            gripped in the right flipper. Structured as its own <g> with
+            transform-origin AT THE GRIP (ROD_BUTT 45,34), so SPR-05's cast can
+            rotate the whole rod from the hand without re-deriving the rig.
+            Butt = ROD_BUTT (45,34), tip = ROD_TIP (66,5) — the SHARED contract
+            with fishingLineGeometry.ts (the catenary leaves ROD_TIP). The tip
+            sits PAST the 64-viewBox edge; the rig SVG is overflow:visible so the
+            rod reads long instead of clipping at the body. Token-coloured via
+            --werner-rod (no raw hex). NOTE (standalone build): SPR-01's typed
+            RigPart/pose-machine is deferred, so this is a clean structured <g>
+            with a grip transform-origin (same visible outcome, liftable later)
+            rather than a registered RigPart. */}
+        <g
+          data-werner-rod=""
+          aria-hidden="true"
+          style={{ transformOrigin: `${ROD_BUTT.x}px ${ROD_BUTT.y}px` }}
+        >
+          {/* Butt cap at the grip — a small node that reads as the rod handle
+              seated in the flipper (overlaps the grip curl, no gap). */}
+          <ellipse cx="45" cy="34" rx="1.8" ry="1.8" fill="var(--werner-rod)" />
+          {/* The tapered, (optionally) flexing shaft butt→tip. Stepped widths
+              give the taper SVG strokes can't do natively; bend bows the shaft
+              toward the load (0 = straight rest / reduced motion). */}
+          {segments.map((seg, i) => (
+            <path
+              key={i}
+              d={seg.d}
+              stroke="var(--werner-rod)"
+              strokeWidth={seg.width}
+              strokeLinecap="round"
+              fill="none"
+            />
+          ))}
         </g>
 
         {/* Feet — two sun-coloured webbed feet on the foot line. These are the

@@ -36,6 +36,9 @@ export function WernerFishingLayer({ disabled = false }: WernerFishingLayerProps
         return;
       }
       const rect = mascot.getBoundingClientRect();
+      // The line leaves the REAL rod tip: rodTipFromMascotRect defaults localTip
+      // to ROD_TIP_LOCAL (the shared SPR-04 contract = WernerRig's ROD_TIP), so
+      // this stays one geometry pass per frame — no new tip arg, no new cost.
       const rod = rodTipFromMascotRect(rect, MASCOT_SIZE);
       const bait = reading.live;
       path.setAttribute("d", catenaryPath(rod, bait));

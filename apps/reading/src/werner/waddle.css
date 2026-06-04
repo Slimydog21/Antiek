@@ -142,6 +142,7 @@
   .werner-rig-foot-r,
   .werner-rig-flipper-l,
   .werner-rig-flipper-r,
+  [data-werner-rod],
   .werner-waddle .werner-rig-foot-l,
   .werner-waddle .werner-rig-foot-r,
   .werner-waddle .werner-rig-flipper-l,
@@ -154,3 +155,12 @@
     transform: none !important;
   }
 }
+
+/* ── Rod rest pose (SPR-04 M5) ───────────────────────────────────────────
+ * The rod <g> [data-werner-rod] owns no animation today — at rest it draws a
+ * STRAIGHT shaft (the component forces bend 0 under reduced motion via the JS
+ * usePrefersReducedMotion guard). This belt-and-braces CSS guard is the second
+ * line of defence: should a later sprint (SPR-05's cast) add a transform/animation
+ * to swing the rod, reduced motion neutralises it here, just as the walk-cycle
+ * limbs above are neutralised — the rod holds a neutral angle, never a frozen
+ * mid-cast frame. (Listed in the @media block above with the other rig parts.) */
