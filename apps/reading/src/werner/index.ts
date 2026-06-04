@@ -20,10 +20,18 @@ export {
   wernerReducer,
   isBusy,
   INITIAL_WERNER_STATE,
+  // SPR-05 — the endless fishing loop (the Scrat cycle).
+  shouldFish,
+  fishingStep,
+  FISHING_BEATS,
+  FISHING_CYCLE_MS,
   type WernerState,
   type WernerStateName,
   type WernerEvent,
   type AmbientState,
+  type FishingBeat,
+  type FishingBeatStep,
+  type FishingFrame,
 } from "./wernerState";
 
 export {
@@ -49,11 +57,24 @@ export { wernerIceFishingCursor } from "./iceFishingFlags";
 export {
   REEL_TAU_MS,
   REEL_MAX_PX_PER_S,
+  REEL_SPRING_OMEGA_RAD_PER_S,
+  REEL_SPRING_MASS,
   ROAM_STROLL_MS,
   ROAM_REST_MIN_MS,
   ROAM_REST_MAX_MS,
 } from "./iceFishingConstants";
-export { reelStep, isReelSettled } from "./reelPursuit";
+export {
+  reelStep,
+  reelSpringStep,
+  reelStateStep,
+  makeReelState,
+  isReelSettled,
+  DEFAULT_REEL_CONFIG,
+  REEL_MAX_DT_MS,
+  type ReelConfig,
+  type ReelState,
+  type Vec2,
+} from "./reelPursuit";
 export { WernerIceBait } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";

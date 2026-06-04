@@ -11,7 +11,7 @@ import {
   installChoreography,
   installTargetChoreography,
   isReelSettled,
-  reelStep,
+  reelStateStep,
   ROAM_REST_MAX_MS,
   ROAM_REST_MIN_MS,
   ROAM_STROLL_MS,
@@ -102,6 +102,33 @@ import "../werner/waddle.css";
 /** The one project-tree panel id the rest of the shell already uses. */
 export const PROJECT_TREE_PANEL_ID = "shortcuts:projecttree";
 
+/**
+ * The randomness source for the autonomous-roam bounded wander. Defaults to
+ * Math.random; tests inject a deterministic source via __setRoamRandom so the
+ * roam is reproducible.
+ *
+ * WHY THIS EXISTS (SPR-05): the bounded wander hops by `(random()*2 - 1) * reach`
+ * on each axis. With Math.random, a hop where both axes happen to draw ≈0.5
+ * lands ≈0px away — and after clamping is INDISTINGUISHABLE from the start
+ * position. The pre-existing roam acceptance test ("strolls to a new on-screen
+ * spot by itself") asserts the mascot MOVED, so it failed ~1/4 of runs on that
+ * unlucky draw. Seeding the RNG here makes the hop deterministic (a known
+ * non-zero displacement) so the test is stable, WITHOUT weakening the assertion
+ * — it still proves Werner actually walks somewhere new. Production is unchanged
+ * (Math.random by default).
+ */
+let roamRandom: () => number = Math.random;
+
+/** TEST SEAM: install a deterministic RNG for the roam's bounded wander, and
+ *  return a restore fn. Not used in production (Math.random is the default). */
+export function __setRoamRandom(fn: (() => number) | null): () => void {
+  const prev = roamRandom;
+  roamRandom = fn ?? Math.random;
+  return () => {
+    roamRandom = prev;
+  };
+}
+
 /** The mascot's own footprint, used to clamp its position so it stays
  *  reachable. A square a touch larger than the rendered art. */
 const MASCOT_SIZE = 64;
@@ -129,6 +156,12 @@ export function PenguinMascot() {
   // Position lives in a ref + is written straight to the DOM during a drag
   // (pointer-capture, like PanelHandle) so dragging doesn't thrash React.
   const pos = useRef(initialMascotPos());
+  // SPR-03: the reel SPRING's velocity (vx/vy only — NOT a second position
+  // source; `pos.current` stays the one position of record). The spring's mass
+  // lives in this velocity: it ramps up off the mark and bleeds off as Werner
+  // settles. Reset to rest whenever the reel disengages so re-engaging (incl.
+  // after a tab-return stall) starts from zero — no carried-over lurch (M4).
+  const reelVel = useRef({ vx: 0, vy: 0 });
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const moved = useRef(false);
   // Pending single-click float, deferred so a double-click can cancel it
@@ -288,11 +321,13 @@ export function PenguinMascot() {
           { width: vw, height: vh },
         );
       }
-      // Idle pointer (or follow off): the original bounded wander.
+      // Idle pointer (or follow off): the original bounded wander. The RNG is
+      // injectable (roamRandom) so tests get a deterministic, non-zero hop —
+      // see __setRoamRandom. Production uses Math.random unchanged.
       return clampRectToViewport(
         {
-          x: pos.current.x + (Math.random() * 2 - 1) * reach,
-          y: pos.current.y + (Math.random() * 2 - 1) * reach,
+          x: pos.current.x + (roamRandom() * 2 - 1) * reach,
+          y: pos.current.y + (roamRandom() * 2 - 1) * reach,
           width: MASCOT_SIZE,
           height: MASCOT_SIZE,
         },
@@ -326,7 +361,9 @@ export function PenguinMascot() {
       roamTimer.current = window.setTimeout(() => {
         // Don't fight a drag/directed-walk that began mid-leg.
         if (!dragStart.current && !roamPaused.current) restGait();
-        const rest = REST_MIN_MS + Math.random() * (REST_MAX_MS - REST_MIN_MS);
+        // roamRandom (injectable) so the rest cadence is deterministic under a
+        // seeded test, same as the hop above — production uses Math.random.
+        const rest = REST_MIN_MS + roamRandom() * (REST_MAX_MS - REST_MIN_MS);
         roamTimer.current = window.setTimeout(stepOnce, rest);
       }, STROLL_MS);
     };
@@ -361,6 +398,24 @@ export function PenguinMascot() {
 
     let raf = 0;
     let last = performance.now();
+    // The reel starts from rest each time this effect (re)mounts.
+    reelVel.current = { vx: 0, vy: 0 };
+
+    // ── SPR-05: the endless fishing loop (the Scrat / Tom-&-Jerry gag). ──
+    // The loop is Werner's POINTER-IDLE behaviour (master decision log: SPR-05
+    // sprint page — "what Werner does when nobody is moving the mouse"). It is a
+    // pure CSS keyframe cartoon (waddle.css) gated by the `werner-fishing` class
+    // on the bob span; this toggle is the ONLY JS the loop needs. It rides the
+    // EXISTING reel rAF below — NO second rAF, NO new timer, NO idle re-detection
+    // (it reuses `reelActive`, which already folds in the existing pointer-idle
+    // signal). When the reel owns Werner (pointer moving), the class is OFF; when
+    // the reel stands down (pointer idle), the class is ON — exactly the
+    // shouldFish() XOR: the loop and the reel never run at once (M2). Removing
+    // this toggle makes Werner idle without the gag; flipping its sense would
+    // make the loop fight the reel — the mutation the gating tests guard.
+    const setFishingLoop = (on: boolean) => {
+      bobRef.current?.classList.toggle("werner-fishing", on);
+    };
 
     const setReelGait = (walking: boolean) => {
       const bob = bobRef.current;
@@ -378,6 +433,11 @@ export function PenguinMascot() {
     };
 
     const tick = (now: number) => {
+      // M4: clamp the per-frame gap. A tab-return / debugger-pause hands us one
+      // enormous (now - last); without this clamp the spring would integrate the
+      // whole stall and lurch in a straight line to catch up. (The pure spring
+      // step ALSO clamps dt internally — belt + braces — but clamping here keeps
+      // `last` honest for the next frame too.)
       const dt = Math.min(48, now - last);
       last = now;
       const reading = follow.read();
@@ -390,12 +450,28 @@ export function PenguinMascot() {
 
       if (!reelActive) {
         setReelGait(false);
+        // SPR-05: the reel stands down ⇒ the idle gag MAY own Werner. But the
+        // reel also disengages during a drag and a directed waddle (roamPaused /
+        // dragStart are folded into `reelActive` above), and the never-catch gag
+        // must NOT run then — that is not the ambient-idle/pointer-idle condition
+        // shouldFish() gates on. So fish only when the stand-down is genuinely
+        // idle / follow-off, never during a drag or a directed walk.
+        setFishingLoop(!roamPaused.current && !dragStart.current);
+        // Disengaging: drop the spring's momentum so the next pull starts from
+        // rest (no carried velocity to lurch with on re-engage — M4).
+        reelVel.current = { vx: 0, vy: 0 };
         if (roamRearm.current && roamTimer.current === null) {
           roamRearm.current(ROAM_REST_MIN_MS);
         }
         raf = window.requestAnimationFrame(tick);
         return;
       }
+
+      // SPR-05: the reel is engaging (pointer moving) ⇒ the loop hands Werner
+      // back to reel-follow. Drop the gag within this one leg (M2: a pointer
+      // move cancels the loop immediately — the class is gone before the reel
+      // moves him this frame).
+      setFishingLoop(false);
 
       if (roamTimer.current !== null) {
         window.clearTimeout(roamTimer.current);
@@ -414,15 +490,29 @@ export function PenguinMascot() {
         { ...hook, width: MASCOT_SIZE, height: MASCOT_SIZE },
         { width: vw, height: vh },
       );
-      const next = reelStep(pos.current, { x: clamped.x, y: clamped.y }, dt);
-      pos.current = next;
+      // SPR-03: one critically-damped spring step. `pos.current` stays the one
+      // position of record; reelVel carries only the spring's velocity. The
+      // exponential fallback is one DEFAULT_REEL_CONFIG.mode flip away.
+      const next = reelStateStep(
+        { x: pos.current.x, y: pos.current.y, ...reelVel.current },
+        { x: clamped.x, y: clamped.y },
+        dt,
+      );
+      pos.current = { x: next.x, y: next.y };
+      reelVel.current = { vx: next.vx, vy: next.vy };
       applyPos();
       setReelGait(!isReelSettled(pos.current, { x: clamped.x, y: clamped.y }));
       raf = window.requestAnimationFrame(tick);
     };
 
     raf = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(raf);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      // SPR-05: drop the gag class on teardown so a no-rAF state (unmount, or a
+      // flip into reduced motion where this effect early-returns) never strands
+      // Werner mid-cast with the loop class on.
+      bobRef.current?.classList.remove("werner-fishing");
+    };
   }, [reduceMotion, applyPos, follow]);
 
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
