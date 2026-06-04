@@ -36,13 +36,16 @@
     "@tiptap/react": "^3.23.6",
     "@tiptap/starter-kit": "^3.23.6",
     "framer-motion": "^12.40.0",
+    "katex": "^0.16.11",
     "pdfjs-dist": "^4.7.76",
     "posthog-js": "^1.379.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.1.0",
     "react-router-dom": "^6.30.3",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
