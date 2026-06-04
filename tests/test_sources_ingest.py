@@ -430,3 +430,197 @@ def test_arxiv_endpoint_row_gets_blocks_via_out_of_band_backfill(
     doc = Document.model_validate_json(blocks_after)
     assert doc.id == document_id
     assert doc.blocks  # real typed blocks recovered from stored text
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 5. SPR-02 (DA) — close the goal gap: the API arXiv path lands the abstract
+#    + returns 202 with NO inline governed egress, then a BackgroundTasks job
+#    upgrades the row to the FULL ar5iv/PDF typed-block document out-of-band.
+#    The M5 backfill could only ever reconstruct the abstract (raw_text), so the
+#    full document MUST come from the background full-document fetch. We inject
+#    the full-doc fetcher so the test never opens a socket (the CI socket guard
+#    would block real arXiv egress).
+# ─────────────────────────────────────────────────────────────────────
+
+
+def test_arxiv_endpoint_background_task_upgrades_to_full_blocks(
+    monkeypatch, temp_substrate
+):
+    """The load-bearing DA proof. ``POST /sources/ingest`` for an arXiv paper:
+
+      1. returns 202 with NO inline governed egress (``emit_structured_blocks``
+         stays False at the adapter boundary → no ar5iv/PDF round-trip blocks the
+         async event loop); then
+      2. a FastAPI ``BackgroundTasks`` job (run by TestClient AFTER the response,
+         in a threadpool) fetches the FULL document via the SAME governed seam the
+         batch ``emit=True`` path uses — here INJECTED to a stub — and persists
+         FULL typed blocks the abstract-only backfill could never produce.
+
+    No network: ``fetch_by_id`` + the module-level ``_fetch_arxiv_document``
+    indirection are both stubbed, so the SPR-02 socket guard sees ZERO outbound
+    connections."""
+    from datetime import UTC, datetime
+
+    import duckdb
+
+    from acquisition.arxiv.client import ArxivPaper
+    from processing.extraction.to_document_model import ArxivExtraction
+    from substrate.contracts.document_model import (
+        Document,
+        HeadingBlock,
+        ParagraphBlock,
+        TextSpan,
+    )
+
+    now = datetime(2024, 2, 15, 12, 0, 0, tzinfo=UTC)
+    paper = ArxivPaper(
+        arxiv_id="2402.03300",
+        version="v1",
+        title="A Real arXiv Paper on Bounds",
+        authors=["Jane Doe"],
+        # The abstract is SHORT — the full document below is much richer, so
+        # "more blocks than the abstract alone yields" is observable.
+        abstract="We derive a bound and prove convergence in the limit.",
+        categories=["cs.AI"],
+        primary_category="cs.AI",
+        published_at=now,
+        updated_at=now,
+        abs_url="https://arxiv.org/abs/2402.03300",
+        pdf_url="https://arxiv.org/pdf/2402.03300",
+    )
+
+    import acquisition.arxiv as _arxiv
+
+    # No network: hand the endpoint the already-parsed paper.
+    monkeypatch.setattr(_arxiv, "fetch_by_id", lambda *a, **kw: paper)
+
+    # Inject the FULL-document fetcher (the governed seam) with a stub that
+    # returns a rich multi-section document — what ar5iv/PDF would yield, and
+    # strictly MORE than the abstract. Capture the args so we prove the endpoint
+    # offloaded the *right* document.
+    captured: dict = {}
+
+    def _fake_fetch_arxiv_document(arxiv_id, *, document_id, title=None):
+        captured["arxiv_id"] = arxiv_id
+        captured["document_id"] = document_id
+        captured["title"] = title
+        full_doc = Document(
+            id=document_id,
+            title=title or "A Real arXiv Paper on Bounds",
+            blocks=[
+                HeadingBlock(level=1, spans=[TextSpan(text="Introduction")]),
+                ParagraphBlock(
+                    spans=[TextSpan(text="The full body the ar5iv source carries.")]
+                ),
+                HeadingBlock(level=2, spans=[TextSpan(text="Main Result")]),
+                ParagraphBlock(
+                    spans=[TextSpan(text="A theorem, a proof, and a discussion.")]
+                ),
+            ],
+        )
+        return ArxivExtraction(document=full_doc, path="structured_source")
+
+    _app_mod = sys.modules["interfaces.research.api.app"]
+    monkeypatch.setattr(
+        _app_mod, "_fetch_arxiv_document", _fake_fetch_arxiv_document
+    )
+
+    client = _client(temp_substrate)
+    resp = client.post(
+        "/sources/ingest",
+        json={"url": "https://arxiv.org/abs/2402.03300"},
+    )
+    assert resp.status_code == 202
+    document_id = resp.json()["document_id"]
+
+    # The background task is run by TestClient AFTER the response is produced,
+    # so by the time .post() returns the row is already upgraded. (That same
+    # threadpool execution is why the inline async handler never blocked.)
+    assert captured["document_id"] == document_id
+    assert captured["arxiv_id"] == "2402.03300"
+
+    db_path = temp_substrate["db_path"]
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        (raw_text, blocks_after) = con.execute(
+            "SELECT raw_text, structured_blocks FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+    # The abstract still landed as raw_text (the inline insert), AND the
+    # background task upgraded structured_blocks to the FULL document.
+    assert raw_text is not None
+    assert blocks_after is not None, (
+        "DA: the background task must populate structured_blocks with the FULL "
+        "document — the abstract-only M5 backfill could never produce this"
+    )
+    doc = Document.model_validate_json(blocks_after)
+    assert doc.id == document_id
+    # Strictly richer than the abstract: the full document has multiple section
+    # headings the abstract has none of.
+    heading_texts = {
+        e.text for e in doc.toc()
+    }
+    assert "Introduction" in heading_texts
+    assert "Main Result" in heading_texts
+
+
+def test_arxiv_endpoint_background_failure_leaves_null_for_backfill(
+    monkeypatch, temp_substrate
+):
+    """Best-effort guarantee: if the background full-document fetch RAISES (ban,
+    network, parse), the endpoint still returns 202, the abstract still lands,
+    and ``structured_blocks`` is left NULL (the M5 backfill safety-net), never a
+    500 and never a crashed background task."""
+    from datetime import UTC, datetime
+
+    import duckdb
+
+    from acquisition.arxiv.client import ArxivPaper
+
+    now = datetime(2024, 2, 15, 12, 0, 0, tzinfo=UTC)
+    paper = ArxivPaper(
+        arxiv_id="2402.03300",
+        version="v1",
+        title="A Real arXiv Paper on Bounds",
+        authors=["Jane Doe"],
+        abstract="We derive a bound and prove convergence in the limit. " * 6,
+        categories=["cs.AI"],
+        primary_category="cs.AI",
+        published_at=now,
+        updated_at=now,
+        abs_url="https://arxiv.org/abs/2402.03300",
+        pdf_url="https://arxiv.org/pdf/2402.03300",
+    )
+
+    import acquisition.arxiv as _arxiv
+
+    monkeypatch.setattr(_arxiv, "fetch_by_id", lambda *a, **kw: paper)
+
+    def _boom(arxiv_id, *, document_id, title=None):
+        raise RuntimeError("simulated ar5iv/PDF ban")
+
+    _app_mod = sys.modules["interfaces.research.api.app"]
+    monkeypatch.setattr(_app_mod, "_fetch_arxiv_document", _boom)
+
+    client = _client(temp_substrate)
+    resp = client.post(
+        "/sources/ingest",
+        json={"url": "https://arxiv.org/abs/2402.03300"},
+    )
+    assert resp.status_code == 202
+    document_id = resp.json()["document_id"]
+
+    db_path = temp_substrate["db_path"]
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        (raw_text, blocks_after) = con.execute(
+            "SELECT raw_text, structured_blocks FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert raw_text is not None  # abstract still landed
+    assert blocks_after is None  # background fetch failed → NULL, backfill is the net

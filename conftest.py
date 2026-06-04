@@ -87,7 +87,10 @@ def _is_loopback_host(host: object) -> bool:
         # public-internet INET target, allow (e.g. abstract namespace).
         return True
     h = host.strip().strip("[]").lower()
-    if h in ("localhost", "::1", "0.0.0.0", ""):  # noqa: S104 — match-only, not a bind
+    # Only genuine loopback names. ``0.0.0.0`` / "" are bind-wildcards, never a
+    # legitimate *connect* destination — a connect to either is suspect, so we do
+    # NOT allow-list them (the guard treats them as non-loopback → blocked).
+    if h in ("localhost", "::1"):
         return True
     if h.startswith("127."):
         return True
