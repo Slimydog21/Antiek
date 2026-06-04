@@ -241,3 +241,21 @@ describe("WernerRig — the rod in the flipper (SPR-04)", () => {
     expect(maxPerp, "bend did not bow the shaft off the chord").toBeGreaterThan(1);
   });
 });
+
+describe("WernerRig — idle fishing marks hidden at rest (SPR-05)", () => {
+  it("hides the idle line + fish by default; only the .werner-fishing loop reveals them", () => {
+    const { container } = render(<WernerRig size={64} />);
+    const line = container.querySelector(".werner-rig-line");
+    const fish = container.querySelector(".werner-rig-fish");
+    expect(line, "idle line node should exist").not.toBeNull();
+    expect(fish, "fish node should exist").not.toBeNull();
+    // No .werner-fishing ancestor here — the loop is OFF, which is the production
+    // default (ice flag off, reduced motion, or any rest moment). Both marks MUST
+    // be opacity 0 by default, else a teal fish + line dangle off a resting
+    // Werner (the MAJOR the critic caught: previously only the keyframes hid
+    // them, so at rest they showed permanently). The .werner-fishing keyframes
+    // animate opacity up only while the gag runs.
+    expect(line!.getAttribute("opacity")).toBe("0");
+    expect(fish!.getAttribute("opacity")).toBe("0");
+  });
+});

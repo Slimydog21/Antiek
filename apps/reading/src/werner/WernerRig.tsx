@@ -234,6 +234,73 @@ export default function WernerRig({ size, label, style, bend = 0 }: WernerRigPro
           ))}
         </g>
 
+        {/* ── SPR-05: THE ENDLESS-FISHING-LOOP MARKS (the idle gag). ──────────
+            The idle line + Werner's OWN little fish. BOTH are inert at rest:
+            they only animate when an ancestor carries the `werner-fishing`
+            class (added by PenguinMascot ONLY while the loop owns Werner —
+            ambient idle + pointer idle; the SPR-03 reel owns him otherwise, one
+            owner at a time). The keyframe cartoon (waddle.css) swings the rod
+            <g> above, drops/snaps THIS line, and drifts/escapes THIS fish
+            through cast→wait→bob→nibble→yank→miss→slump→reset, forever, never
+            landing the fish.
+
+            ONE LINE invariant: this idle line is SEPARATE from the
+            WernerFishingLayer viewport line — that one draws rod-tip → LIVE
+            CURSOR only during reel-follow (pointer moving), which is exactly
+            when the loop is OFF, so the two never draw at once. This is the
+            "documented idle variant" the sprint allows: a short, rig-local line
+            for the self-contained gag, not a second concurrent cursor line. */}
+
+        {/* The idle line: hangs DOWN from the real rod tip (ROD_TIP 66,5). It
+            scales from the tip (transform-origin) so the cast extends it and
+            the miss snaps it up empty. Token --werner-rod stroke (same line
+            material as the rod). HIDDEN at rest by default (opacity 0) — the
+            element opacity is animated up ONLY by the .werner-fishing keyframes
+            while the loop runs, so a resting / flag-off / reduced-motion Werner
+            shows no stray dangling line (the gag's line, not a second cursor
+            line). strokeOpacity tunes the line's weight while it IS shown. */}
+        <line
+          className="werner-rig-line"
+          x1={ROD_TIP.x}
+          y1={ROD_TIP.y}
+          x2={ROD_TIP.x - 2}
+          y2={ROD_TIP.y + 22}
+          stroke="var(--werner-rod)"
+          strokeWidth={0.6}
+          strokeOpacity={0.55}
+          strokeLinecap="round"
+          opacity={0}
+          style={{ transformOrigin: `${ROD_TIP.x}px ${ROD_TIP.y}px` }}
+        />
+
+        {/* Werner's OWN fish — a tiny token-coloured (--werner-fish, brand
+            aurora teal) mark below the line end. NEVER the cursor, NEVER the
+            ice-bait worm (the red --ice-fishing bait). A simple body + tail
+            triangle; it drifts up to the hook on the near-catch then darts away
+            on the miss. HIDDEN at rest by default (opacity 0 on the group) — the
+            .werner-fishing keyframes animate it up ONLY while the loop runs, so a
+            resting / flag-off / reduced-motion Werner shows no stray teal fish
+            (no white box, no dangling mark). */}
+        <g
+          className="werner-rig-fish"
+          opacity={0}
+          style={{ transformOrigin: `${ROD_TIP.x - 2}px ${ROD_TIP.y + 24}px` }}
+        >
+          {/* Body — a small lozenge. */}
+          <ellipse
+            cx={ROD_TIP.x - 2}
+            cy={ROD_TIP.y + 24}
+            rx={2.6}
+            ry={1.5}
+            fill="var(--werner-fish)"
+          />
+          {/* Tail — a little fan behind the body. */}
+          <path
+            d={`M ${ROD_TIP.x + 0.4} ${ROD_TIP.y + 24} l 2 -1.4 l 0 2.8 Z`}
+            fill="var(--werner-fish)"
+          />
+        </g>
+
         {/* Feet — two sun-coloured webbed feet on the foot line. These are the
             primary walk-cycle signal: they lift in alternation as he strolls. */}
         <g

@@ -20,10 +20,18 @@ export {
   wernerReducer,
   isBusy,
   INITIAL_WERNER_STATE,
+  // SPR-05 — the endless fishing loop (the Scrat cycle).
+  shouldFish,
+  fishingStep,
+  FISHING_BEATS,
+  FISHING_CYCLE_MS,
   type WernerState,
   type WernerStateName,
   type WernerEvent,
   type AmbientState,
+  type FishingBeat,
+  type FishingBeatStep,
+  type FishingFrame,
 } from "./wernerState";
 
 export {
