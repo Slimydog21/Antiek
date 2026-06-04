@@ -12,7 +12,7 @@ product-spec sprint pages (`specs/{deep-research-workspace,read,write,speak}/`)
 | `QuestionNodeContract` | DRW SPR-01 | Research, Read, Write, Speak | committed | `substrate/graph/insight_question.py` (`asks_about`/`resolved_by` edges) |
 | `NoteTakerOutputContract` | DRW SPR-03 | Research, Read, Write | committed | `roles/note_taker/parser.py::ExtractedNote` (L31-41) |
 | `ContextPackContract` / `AssembledLayerContract` | DRW SPR-04 | Research, Read | committed | `substrate/context_pack/` (`ContextPack`, `AssembledLayer`) |
-| `ReaderSurfaceContract` | DRW SPR-10 | Research, Read, Write | **provisional** | (unbuilt — no reader module in tree; seam #1) |
+| `ReaderSurfaceContract` | antiek-reader SPR-01 | Research, Read, Write | committed | `substrate/contracts/reading_surface.py` (PINNED; concrete `Region`/`RenderedRegion`/`AnchoredNote` over `document_model`; ownership moved off DRW SPR-10, never built there); seam #1 |
 | `ResearchRunner` (+ `StepEvent`) | DRW SPR-02 | Research (+ unified SPR-02 remote-exec) | committed | re-export of `runtime/research_runner/protocol.py` |
 | `OutlineBlockContract` | Write SPR-01 | Write (+ Speak via Write authoring) | committed | `substrate/write/outline_block.py` (L76-93) |
 | `ServableEntryContract` | Read SPR-01 (+ `provenance_class` from this sprint) | Read, Speak | committed | `constants.BOOK_SERVABILITY_STATUSES` (L545-551); seam #4 |

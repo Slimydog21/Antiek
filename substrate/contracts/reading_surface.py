@@ -20,9 +20,10 @@ sprint was **never built** — verified on 2026-06-04 against the tree at
 origin/main@80cc3a4:
 
 * ``substrate/contracts/drw_sprint_lock.py`` carries DRW sprint 10
-  (``reading-surface``) with ``status="provisional"`` and the inline comment
-  *"not yet implemented — see reading_surface.py"* (the lock never moved it to
-  ``status="implemented"``).
+  (``reading-surface``) with ``status="provisional"`` — the DRW deliverable was
+  never built, so it stays provisional as a DRW sprint; the lock's inline
+  comment now records that ownership of ``ReaderSurfaceContract`` moved here
+  (the lock never moved it to a "live"/"implemented" DRW status).
 * No ``reader_surface`` / ``ReaderSurface`` *implementation* module exists under
   ``substrate/`` or ``runtime/`` — only this contract file. (A tree search for
   ``*reader*surface*`` / ``*reading*surface*`` returns this file alone.)
@@ -116,9 +117,9 @@ class Region(BaseModel):
 
 class RenderedRegion(BaseModel):
     """The result of rendering a region: the ``Region`` echoed back plus the
-    typed-block ``Document`` slice the surface renders for it. A surface returns
-    the document slice (not an HTML string) so Read/Write compose over the SAME
-    typed model the one Reader renders — there is no second, stringly-typed
+    full typed-block ``Document`` the surface renders for it. A surface returns
+    the typed ``Document`` (not an HTML string) so Read/Write compose over the
+    SAME typed model the one Reader renders — there is no second, stringly-typed
     render path to fork into."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")

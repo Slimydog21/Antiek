@@ -103,7 +103,15 @@ DRW_SPRINTS: dict[int, Deliverable] = {
         10, "reading-surface",
         "Shared reading surface (the canonical reader)",
         ("ReaderSurfaceContract",),
-        status="provisional",  # not yet implemented — see reading_surface.py
+        # The DRW reading-surface deliverable was NEVER built (still provisional
+        # as a DRW sprint — the status the lock defines). Ownership of
+        # ReaderSurfaceContract has MOVED to antiek-reader SPR-01, which pins it
+        # (concrete Region/RenderedRegion/AnchoredNote over document_model) — see
+        # reading_surface.py "OWNERSHIP TRANSFER" + inventory.md (owner now
+        # "antiek-reader SPR-01", status committed). owns_contracts is retained
+        # to keep dependency_map's drw:10 → ReaderSurfaceContract edge resolvable;
+        # the authoritative owner is the contract module + inventory.md.
+        status="provisional",
     ),
 }
 

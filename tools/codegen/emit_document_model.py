@@ -127,43 +127,61 @@ _ALL_MODELS: tuple[type[BaseModel], ...] = (
 
 def render() -> str:
     """Render the complete document-model TS module. Pure function — the
-    staleness check compares this against the on-disk file."""
-    # Register the discriminated-union aliases so a field typed
-    # ``list[InlineSpan]`` / ``list[Block]`` emits the alias name, and register
-    # every model name as "known" so cross-references resolve in the mapper.
-    et._UNION_ALIASES[_SPAN_NAMES] = "InlineSpan"
-    et._UNION_ALIASES[_BLOCK_NAMES] = "Block"
-    for m in _ALL_MODELS:
-        et._KNOWN_NESTED_NAMES.add(m.__name__)
+    staleness check compares this against the on-disk file.
 
-    lines: list[str] = [GENERATED_HEADER]
-    lines.append(
-        f"export const DOCUMENT_MODEL_SCHEMA_VERSION = {DOCUMENT_MODEL_SCHEMA_VERSION};"
-    )
+    The discriminated-union aliases (``InlineSpan`` / ``Block``) and the set of
+    "known" model names this emitter needs live on ``emit_types``' SHARED module
+    globals (``_UNION_ALIASES`` / ``_KNOWN_NESTED_NAMES``). We register ours for
+    the duration of the render and RESTORE the originals in ``finally`` so a
+    future third emitter that reuses ``emit_types`` does not silently inherit
+    document_model's aliases (and so re-running this emitter is idempotent)."""
+    # Snapshot the shared globals so we can restore them — never leak our
+    # registrations into the shared mapper.
+    saved_aliases = dict(et._UNION_ALIASES)
+    saved_known = set(et._KNOWN_NESTED_NAMES)
+    try:
+        # Register the discriminated-union aliases so a field typed
+        # ``list[InlineSpan]`` / ``list[Block]`` emits the alias name, and
+        # register every model name as "known" so cross-references resolve.
+        et._UNION_ALIASES[_SPAN_NAMES] = "InlineSpan"
+        et._UNION_ALIASES[_BLOCK_NAMES] = "Block"
+        for m in _ALL_MODELS:
+            et._KNOWN_NESTED_NAMES.add(m.__name__)
 
-    # Span interfaces, then the InlineSpan alias.
-    for model in _SPAN_MODELS:
-        et._emit_interface(model, lines)
-    lines.append("")
-    lines.append("/** Inline span — narrow on `type`. */")
-    lines.append("export type InlineSpan =\n  | " + "\n  | ".join(m.__name__ for m in _SPAN_MODELS) + ";")
+        lines: list[str] = [GENERATED_HEADER]
+        lines.append(
+            f"export const DOCUMENT_MODEL_SCHEMA_VERSION = {DOCUMENT_MODEL_SCHEMA_VERSION};"
+        )
 
-    # ListItem (structural child of ListBlock) must precede the block interfaces
-    # that reference it.
-    et._emit_interface(ListItem, lines)
+        # Span interfaces, then the InlineSpan alias.
+        for model in _SPAN_MODELS:
+            et._emit_interface(model, lines)
+        lines.append("")
+        lines.append("/** Inline span — narrow on `type`. */")
+        lines.append("export type InlineSpan =\n  | " + "\n  | ".join(m.__name__ for m in _SPAN_MODELS) + ";")
 
-    # Block interfaces, then the Block alias.
-    for model in _BLOCK_MODELS:
-        et._emit_interface(model, lines)
-    lines.append("")
-    lines.append("/** Block — narrow on `type`. */")
-    lines.append("export type Block =\n  | " + "\n  | ".join(m.__name__ for m in _BLOCK_MODELS) + ";")
+        # ListItem (structural child of ListBlock) must precede the block
+        # interfaces that reference it.
+        et._emit_interface(ListItem, lines)
 
-    # Document + attribution + ToC + the reading-surface data types.
-    for model in (DocumentAttribution, TocEntry, Document, Region, RenderedRegion, AnchoredNote):
-        et._emit_interface(model, lines)
+        # Block interfaces, then the Block alias.
+        for model in _BLOCK_MODELS:
+            et._emit_interface(model, lines)
+        lines.append("")
+        lines.append("/** Block — narrow on `type`. */")
+        lines.append("export type Block =\n  | " + "\n  | ".join(m.__name__ for m in _BLOCK_MODELS) + ";")
 
-    return "\n".join(lines) + "\n"
+        # Document + attribution + ToC + the reading-surface data types.
+        for model in (DocumentAttribution, TocEntry, Document, Region, RenderedRegion, AnchoredNote):
+            et._emit_interface(model, lines)
+
+        return "\n".join(lines) + "\n"
+    finally:
+        # Restore the shared globals to exactly what we found.
+        et._UNION_ALIASES.clear()
+        et._UNION_ALIASES.update(saved_aliases)
+        et._KNOWN_NESTED_NAMES.clear()
+        et._KNOWN_NESTED_NAMES.update(saved_known)
 
 
 def write(output_path: Path | None = None) -> Path:

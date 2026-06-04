@@ -234,16 +234,17 @@ export type Block =
  *     non-servable, so an absent class is safe by default.
  */
 export interface DocumentAttribution {
-  ip_holder?: string | null;
+  ip_holder_id?: string | null;
   source_url?: string | null;
   content_class?: "public_domain" | "platform_authored" | "publisher_opted_in" | "source_declared_open" | "gated_metadata_only" | "taken_down" | null;
 }
 
 /**
  * One derived table-of-contents entry. ``text`` is the heading's plain-text
- *     rendering; ``index`` is the heading block's position in ``Document.blocks``
- *     so the Reader can scroll to it. DERIVED by ``Document.toc()`` — never stored
- *     on the Document (derive-don't-duplicate; see module docstring).
+ *     rendering; ``block_index`` is the heading block's position in
+ *     ``Document.blocks`` so the Reader can scroll to it. DERIVED by
+ *     ``Document.toc()`` — never stored on the Document (derive-don't-duplicate;
+ *     see module docstring).
  */
 export interface TocEntry {
   level: number;
@@ -285,9 +286,9 @@ export interface Region {
 
 /**
  * The result of rendering a region: the ``Region`` echoed back plus the
- *     typed-block ``Document`` slice the surface renders for it. A surface returns
- *     the document slice (not an HTML string) so Read/Write compose over the SAME
- *     typed model the one Reader renders — there is no second, stringly-typed
+ *     full typed-block ``Document`` the surface renders for it. A surface returns
+ *     the typed ``Document`` (not an HTML string) so Read/Write compose over the
+ *     SAME typed model the one Reader renders — there is no second, stringly-typed
  *     render path to fork into.
  */
 export interface RenderedRegion {

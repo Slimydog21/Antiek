@@ -28,7 +28,12 @@ from pathlib import Path
 
 import pytest
 
-_REPO = Path(__file__).resolve().parents[2]
+# The repo root is four parents up from this file
+# (``substrate/contracts/__tests__/test_reader_conformance.py`` → repo root).
+# ``parents[2]`` would stop at ``substrate/`` and miss the old seam test, which
+# lives at the REPO ROOT ``tests/`` (matches ``test_document_model_codegen.py``,
+# which computes the same root via ``Path(__file__).resolve().parent.parents[2]``).
+_REPO = Path(__file__).resolve().parents[3]
 _MIGRATION_MAP = (
     Path.home() / "specs" / "antiek-reader" / "migration-map.md"
 )

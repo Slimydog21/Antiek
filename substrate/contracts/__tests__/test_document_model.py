@@ -58,7 +58,7 @@ def arxiv_shaped_document() -> Document:
         id="arxiv:2310.00001",
         title="On the Convergence of Structured Readers",
         attribution=DocumentAttribution(
-            ip_holder="arXiv",
+            ip_holder_id="arXiv",
             source_url="https://arxiv.org/abs/2310.00001",
             content_class="source_declared_open",
         ),
