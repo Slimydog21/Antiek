@@ -60,21 +60,26 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
               <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
                 {p.willBePublic ? "Will be shared publicly" : "Kept private"}
               </p>
+              {/*
+                SPR-04 M1 — private-lane gratitude / impact (no money).
+                CONTRACT: split_applies == false here, so NO money/share/payout/
+                earnings language ever. Gratitude is purely emotional — that
+                their story is coming together as voices arrive. We have only
+                voiceCount in props (no per-person corroboration data is passed
+                to this lane), so the impact is grounded in it: stay honest when
+                no one has shared yet, warm once a voice has.
+              */}
+              {p.voiceCount > 0 ? (
+                <p className="mt-1 font-serif text-[12px] italic text-ink-soft dark:text-moonlight">
+                  {`Their story is coming together — ${p.voiceCount} ${
+                    p.voiceCount === 1 ? "voice has" : "voices have"
+                  } added a memory.`}
+                </p>
+              ) : null}
             </Link>
           </li>
         ))}
       </ul>
-      {/*
-        RESERVED — SPR-04 (gratitude / impact) owns this slot.
-        SPR-04 will surface private-lane gratitude/impact here, e.g.
-        "your memory is part of the story" or "N others remembered this".
-        Intentionally NOT rendered now: SpeakIndex.test.tsx.snap (SPR-01)
-        asserts YoursLane's exact output, so adding DOM would break the
-        frozen-shell snapshots. This is a JSX comment (emits no DOM) — a
-        placement anchor only.
-        CONTRACT: no money/share words on the private lane (split_applies=false).
-        Gratitude here is emotional ("part of the story"), never payout/earnings.
-      */}
     </section>
   );
 }

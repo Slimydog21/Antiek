@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import SpeakSettings from "./SpeakSettings";
 import type { EconomicsView } from "../../lib/speakApi";
+import { PAYOUT_COPY } from "../../lib/speakVocab";
 
 /**
  * SpeakSettings.test — split shown, not paid (Product Depth SPR-08 M4) +
@@ -138,5 +139,77 @@ describe("SpeakSettings — the honest split", () => {
     });
     // The result is framed as owed-not-paid (escrow).
     expect(await screen.findByText(/owed, not paid/i)).toBeTruthy();
+  });
+});
+
+// ── SPR-04 — the payout promise, legible & honest ──
+describe("SpeakSettings — the payout promise is explained honestly (SPR-04)", () => {
+  const renderPublic = (econ: EconomicsView = GATED) =>
+    render(
+      <SpeakSettings
+        willBePublic
+        subjectStatusWord={null}
+        economics={econ}
+        actionNote={null}
+        onPublish={() => {}}
+        onQuoteBook={() => {}}
+        onReleasePayout={vi.fn()}
+      />,
+    );
+
+  // ── M3 — the §9.3 Option-B basis, in human words (no formula, no per-second) ──
+  it("explains the §9.3 Option-B basis: share weighted by corroboration + sourcing quality", () => {
+    renderPublic();
+    // Rendered (and single-sourced from PAYOUT_COPY, so it can't drift from the
+    // public lane). The basis appears in both the split summary and the payout
+    // section, so assert at least one.
+    expect(screen.getAllByText((_t, el) => el?.textContent === PAYOUT_COPY.basis).length)
+      .toBeGreaterThan(0);
+    // Honest WORDS, not the formula and not a per-second/airtime model.
+    expect(screen.queryByText(/per second|per-second|airtime|ad-duration|timecode|per minute|runtime/i))
+      .toBeNull();
+  });
+
+  // ── M3 — slop earns $0 ──
+  it("says a low-effort answer earns nothing (slop earns $0)", () => {
+    renderPublic();
+    expect(screen.getAllByText((_t, el) => el?.textContent?.includes(PAYOUT_COPY.slopEarnsZero) ?? false).length)
+      .toBeGreaterThan(0);
+  });
+
+  // ── M3 — graded by a verifier, not the requester ──
+  it("says the grade comes from the system's verifier, not the requester", () => {
+    renderPublic();
+    expect(screen.getAllByText((_t, el) => el?.textContent === PAYOUT_COPY.verifierNotRequester).length)
+      .toBeGreaterThan(0);
+  });
+
+  // ── M2 — accrued-but-gated share, shown inline, branched on the LIVE gate ──
+  it("shows the gated-disbursement inline state when disbursementAllowed is false", () => {
+    renderPublic(GATED); // disbursementAllowed: false
+    // The share FRACTION accrues now…
+    expect(screen.getByText(/each voice's share accrues now/i)).toBeTruthy();
+    // …the $ AMOUNT is honestly $0 (rendered, possibly in more than one place)…
+    expect(screen.getAllByText(/\$0\.00/).length).toBeGreaterThan(0);
+    // …and nothing is paid until the legal review (G2/G3).
+    expect(screen.getByText(/nothing is paid out until the legal review \(g2\/g3\)/i)).toBeTruthy();
+  });
+
+  it("shows the open-disbursement inline copy when disbursementAllowed is true (hypothetical)", () => {
+    renderPublic({ ...GATED, disbursementAllowed: true });
+    expect(screen.getByText(/payouts are open — money routes to contributors/i)).toBeTruthy();
+  });
+
+  // ── M4 — escrow-only, honest $0, no withdraw affordance ──
+  it("has no withdraw / cash-out / claim-earnings affordance, and $0 renders as $0", () => {
+    renderPublic();
+    expect(
+      screen.queryByRole("button", {
+        name: /withdraw|cash ?out|claim earnings|claim your|pay out|disburse|send money/i,
+      }),
+    ).toBeNull();
+    expect(screen.getByText(/\$0\.00/)).toBeTruthy();
+    // No projected/estimated $ figure that isn't $0.
+    expect(screen.queryByText(/projected|estimated earnings|you will earn/i)).toBeNull();
   });
 });
