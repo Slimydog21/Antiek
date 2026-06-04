@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
 import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
+import { GATE_PHRASES } from "../../lib/speakVocab";
 
 /**
  * SpeakSettings — the one calm tap (Product Depth SPR-08 M4).
@@ -197,11 +198,26 @@ export default function SpeakSettings({
           />
           <GatePill label="Payouts" gated={disbursementGated} />
         </div>
-        <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
-          {publishingGated
-            ? "Going public — and any earnings with it — is on hold until the legal review is complete. You can try; we'll tell you plainly if it's not ready yet."
-            : "Publishing is open. Going public shares the assembled story and routes the contributor split."}
-        </p>
+        {publishingGated ? (
+          // Single-sourced from speakVocab.GATE_PHRASES so the gateHonesty
+          // contract test covers exactly what this surface renders (and the
+          // copy can't drift from the lanes). publicSharing = going public;
+          // disbursement = the earnings that ride on it.
+          <>
+            <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+              {GATE_PHRASES.publicSharing.whenGated}
+            </p>
+            <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+              {GATE_PHRASES.disbursement.whenGated} You can try; we'll tell you
+              plainly if it's not ready yet.
+            </p>
+          </>
+        ) : (
+          <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+            Publishing is open. Going public shares the assembled story and
+            routes the contributor split.
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap gap-2">
           <LemonButton variant="secondary" size="sm" disabled={busy} onClick={onPublish}>
             Try to publish

@@ -20,6 +20,7 @@ import {
   type EconomicsView,
   type ProjectDetail,
 } from "../../lib/speakApi";
+import { VOICE_STATE_LABELS } from "../../lib/speakVocab";
 import GlassSurface from "../../shell/GlassSurface";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Invites from "./Invites";
@@ -365,15 +366,7 @@ export default function Speak() {
                         {v.who}
                       </span>
                       <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
-                        {v.state === "shared"
-                          ? "shared"
-                          : v.state === "recording"
-                          ? "recording…"
-                          : v.state === "declined"
-                          ? "declined"
-                          : v.state === "unfinished"
-                          ? "started"
-                          : "invited"}
+                        {VOICE_STATE_LABELS[v.state]}
                       </span>
                     </li>
                   ))}

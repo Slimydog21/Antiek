@@ -64,6 +64,17 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
           </li>
         ))}
       </ul>
+      {/*
+        RESERVED — SPR-04 (gratitude / impact) owns this slot.
+        SPR-04 will surface private-lane gratitude/impact here, e.g.
+        "your memory is part of the story" or "N others remembered this".
+        Intentionally NOT rendered now: SpeakIndex.test.tsx.snap (SPR-01)
+        asserts YoursLane's exact output, so adding DOM would break the
+        frozen-shell snapshots. This is a JSX comment (emits no DOM) — a
+        placement anchor only.
+        CONTRACT: no money/share words on the private lane (split_applies=false).
+        Gratitude here is emotional ("part of the story"), never payout/earnings.
+      */}
     </section>
   );
 }
