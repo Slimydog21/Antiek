@@ -38,7 +38,7 @@ import {
 } from "../../reading-physics/minimap";
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
-import { openPdfPanel } from "../../workspace/actions";
+import { useOpenDocument } from "../../lib/openDocument";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 
@@ -713,6 +713,7 @@ function SourceCitation({
    *  restricted branch so an un-annotated source never silently opens). */
   decoration: ResolvedDecoration | undefined;
 }) {
+  const openDocument = useOpenDocument();
   const label = source.title ?? "an untitled source";
   const locator = source.locator ? `, ${source.locator}` : "";
   // SPR-10 M1 — "whose work grounds this": the IP-holder name is now declared
@@ -757,8 +758,12 @@ function SourceCitation({
   return (
     <button
       onClick={(e) => {
-        // ⌘/Ctrl-click opens the source jumped to its page; plain click
-        // previews the chunk inline first (the modal path).
+        // ⌘/Ctrl-click opens the source in the ONE Reader jumped to its page
+        // (SPR-05 — was openPdfPanel, the bespoke pdf.js panel; now the one door
+        // → the gated Reader). Plain click previews the chunk inline first (the
+        // modal path). This is MasterMdViewer's ONLY open-a-document-by-id seam;
+        // routing it here makes MasterMdViewer a pure synthesis-summary view (it
+        // no longer opens a document by id) — the survivor case the spec carves.
         if (e.metaKey || e.ctrlKey) {
           e.preventDefault();
           void (async () => {
@@ -768,13 +773,17 @@ function SourceCitation({
                 toast.err(`${label} isn’t available to open.`);
                 return;
               }
-              const page = source.locator
+              // `source.locator` is a 1-based source page label (e.g. "p. 17");
+              // the reader's `page` opt is a 0-based index — convert honestly.
+              const sourcePage = source.locator
                 ? parseInt(source.locator.replace(/\D/g, ""), 10)
+                : NaN;
+              const page = Number.isFinite(sourcePage)
+                ? Math.max(0, sourcePage - 1)
                 : undefined;
-              openPdfPanel({
-                documentId: chunk.document_id,
+              openDocument(chunk.document_id, {
                 page,
-                title: `${label}${source.locator ? ` · ${source.locator}` : ""}`,
+                chunkId: source.representativeChunkId,
               });
             } catch (err) {
               toast.err(

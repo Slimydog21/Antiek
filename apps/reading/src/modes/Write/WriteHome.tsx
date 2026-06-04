@@ -19,6 +19,7 @@ import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
+import { useOpenDocument } from "../../lib/openDocument";
 
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
@@ -41,6 +42,7 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
   const navigate = useNavigate();
+  const openDocument = useOpenDocument();
 
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
@@ -83,11 +85,24 @@ export default function WriteHome() {
       .catch(() => setPieces([]));
   }, [deliverableId]);
 
-  // Trace-to-source (M4): when a citation chip in the editor is clicked it
-  // emits a decoupled intent (Editor/traceIntent.ts). The shared reader (DRW
-  // SPR-10) is still unbuilt, so we resolve the trace target and route to the
-  // book reader when the source is servable — with an honest fallback when it
-  // isn't reachable (gated source, no reader), never a broken trip.
+  // Trace-to-source (SPR-05 M5): when a citation chip in the editor is clicked
+  // it emits a decoupled intent (Editor/traceIntent.ts). We resolve the trace
+  // target and open it in the ONE Reader via `openDocument` (the one door —
+  // was a direct navigate('/read/:id')), with an honest fallback when the
+  // source isn't reachable (gated source, no document), never a broken trip.
+  //
+  // REGION ANCHORING (honest scope): the spec's ideal is locate_node → Region →
+  // openDocument({highlight: region}). The trace endpoint
+  // (GET /write/blocks/{id}/trace) returns document_id + chunk_ids, but NOT a
+  // block-level Region (no block_id) — `reading_surface.locate_node` is a
+  // backend CONTRACT (substrate/contracts/reading_surface.py) not yet exposed
+  // over HTTP, and adding that endpoint + the §9.0 serve-gate changes is
+  // explicitly OUT of this sprint's scope. So we forward the FIRST chunk_id as
+  // the `chunkId` opt — the contract's exact seam for "scroll to the region a
+  // chunk maps to" — rather than FABRICATE a block_id from a chunk_id (which
+  // would be a false anchor, rigor #1). The Reader lands on the cited source;
+  // the exact char-range PAINT lands once locate_node is exposed + SPR-06
+  // paints. Recorded in the handoff as wired-to-chunk, region-paint-deferred.
   useEffect(() => {
     return onTraceIntent((intent) => {
       if (!intent.outlineBlockId) {
@@ -98,7 +113,11 @@ export default function WriteHome() {
         try {
           const target = await getTraceTarget(intent.outlineBlockId!);
           if (target.full_text_allowed && target.document_id) {
-            navigate(`/read/${encodeURIComponent(target.document_id)}`);
+            openDocument(target.document_id, {
+              // The trace's first chunk locates the cited region; the Reader
+              // resolves chunkId → region. No fabricated block-level Region.
+              chunkId: target.chunk_ids?.[0],
+            });
           } else {
             // Honest fallback (§9.0): gated/unreachable source — say so, don't
             // open a dead page.
@@ -112,7 +131,7 @@ export default function WriteHome() {
         }
       })();
     });
-  }, [navigate]);
+  }, [openDocument]);
 
   // The "start a piece" action — the obvious way to begin (WX-01). SPR-09 M1:
   // it now runs title → project-type → connect-to-research, so a piece is

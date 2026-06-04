@@ -35,6 +35,7 @@ import {
 } from "../../api/research";
 import { track } from "../../lib/analytics";
 import type { DistilledNode } from "../../lib/api";
+import { useOpenDocument } from "../../lib/openDocument";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
@@ -184,6 +185,23 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   // overlay, dismissed back to the canvas.
   const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
 
+  // SPR-05 one door: "cite source" on a canvas BlockCard opens that node's
+  // SOURCE document in the ONE Reader. The button was prop-gated and never
+  // wired in the live mount (the prior diagnosis: dead/unwired) — this makes it
+  // LIVE. A node with no `source_document_id` never renders the button
+  // (BlockCard shows "no source on record"), so the handler always has an id;
+  // we still guard defensively (an id-less node is an honest no-op, never a
+  // crash). The §9.0 gate is consulted by the /read route the door resolves to,
+  // so a withheld source opens to the deny panel, never the body.
+  const openDocument = useOpenDocument();
+  const onCiteSource = useCallback(
+    (node: DistilledNode) => {
+      if (!node.source_document_id) return; // honest no-op (button isn't shown anyway)
+      openDocument(node.source_document_id);
+    },
+    [openDocument],
+  );
+
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
     try {
@@ -223,7 +241,11 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
           </span>
         </div>
         <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
-          <Canvas investigationId={canvasFor} onOpenDetail={setOpenNode} />
+          <Canvas
+            investigationId={canvasFor}
+            onOpenDetail={setOpenNode}
+            onCiteSource={onCiteSource}
+          />
           {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
               opens off a BlockCard click as an overlay over the canvas (the
               canvas stays mounted underneath — non-breaking) and dismisses

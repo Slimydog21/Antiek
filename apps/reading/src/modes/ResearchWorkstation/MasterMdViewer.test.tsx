@@ -18,7 +18,10 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
-const { getChunkMock } = vi.hoisted(() => ({ getChunkMock: vi.fn() }));
+const { getChunkMock, openDocumentMock } = vi.hoisted(() => ({
+  getChunkMock: vi.fn(),
+  openDocumentMock: vi.fn(),
+}));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
@@ -30,6 +33,15 @@ vi.mock("../../workspace/actions", () => ({
   openNotebook: vi.fn(),
   openPdfPanel: vi.fn(),
 }));
+// SPR-05: the cmd-click source-open routes through the ONE door (openDocument),
+// a hook over useNavigate. Stub useOpenDocument to a spy so the standalone
+// (router-less) render works AND the open call is assertable — mirrors the
+// pre-SPR-05 openPdfPanel stub. The open seam moved from a store action to the
+// one-door hook; the test's contract (cmd-click opens the source) is unchanged.
+vi.mock("../../lib/openDocument", async (orig) => {
+  const actual = await orig<typeof import("../../lib/openDocument")>();
+  return { ...actual, useOpenDocument: () => openDocumentMock };
+});
 vi.mock("../../components/lemon/LemonToast", () => ({
   toast: { ok: vi.fn(), err: vi.fn() },
 }));
@@ -60,6 +72,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   getChunkMock.mockReset();
+  openDocumentMock.mockReset();
   if (PRIOR_RESIZE_OBSERVER === undefined) {
     delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
   } else {

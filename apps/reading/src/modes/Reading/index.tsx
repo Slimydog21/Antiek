@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse, TocItem } from "../../api/books";
@@ -18,6 +18,7 @@ import { allBlockTypesKnown } from "../../components/reader/knownBlockTypes";
 import { openDocumentStub } from "../../components/reader/openDocumentStub";
 import PdfViewer from "../../components/PdfViewer";
 import type { Block, Document, InlineSpan, TocEntry } from "../../types/document_model.gen";
+import { decodeRegion } from "../../lib/openDocument";
 import { paginateBlocks, windowForBlockIndex } from "./paginateBlocks";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
@@ -48,6 +49,32 @@ import { emitSourceRead, isRead } from "./sourceRead";
 export default function BookReader() {
   const { documentId = "" } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
+  // ── openDocument opts (SPR-05) ────────────────────────────────────────────
+  // openDocument navigates here with the opts the door passed, encoded as query
+  // params (lib/openDocument.ts::buildReaderTarget). We read them back so a door
+  // that requested a page / highlight / inspect register lands the reader there:
+  //   ?page=N    → seed the SAME usePosition sessionStorage locator (the reader
+  //                already opens on the saved page); the param makes the link
+  //                shareable. Library/MetaReading already seed the locator
+  //                directly — this is that one mechanism, not a parallel path.
+  //   ?hl=...    → a SPR-01 Region (document_id:block_id[:start-end]) to anchor;
+  //                we resolve it to its block's PAGE over the active block
+  //                pagination so a Write trace lands on the cited page. The
+  //                in-text char-range PAINT is SPR-06 (highlight chat) — this
+  //                sprint lands the reader on the region's page honestly.
+  //   ?mode=inspect → default the "view original" register on (the provenance
+  //                view), when an original exists.
+  //   ?chunk=... → forwarded for the Reader's chunk→region resolution (no
+  //                separate paint path this sprint).
+  const [searchParams] = useSearchParams();
+  const optPage = useMemo(() => {
+    const raw = searchParams.get("page");
+    if (raw === null) return null;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }, [searchParams]);
+  const optHighlight = useMemo(() => decodeRegion(searchParams.get("hl")), [searchParams]);
+  const optInspect = searchParams.get("mode") === "inspect";
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
@@ -172,6 +199,30 @@ export default function BookReader() {
     [pages, setPageIndex],
   );
 
+  // ── openDocument deep-link landing (SPR-05) ──────────────────────────────
+  // Once the body has paginated, honor the page the door requested. Runs ONCE
+  // per (document, requested target) so manual paging after the jump is never
+  // yanked back.
+  //
+  // HONEST LIMITATION (rigor #1): a `?hl=` Region carries a `block_id`, but the
+  // frontend typed `Document` blocks are NOT id-stamped in this model
+  // (document_model.gen.ts: only FootnoteBlock carries an `id`), so a Region's
+  // block_id CANNOT be resolved to a page here. We therefore land on the
+  // Region's `?page=` companion when openDocument supplied one (Write
+  // trace-to-source resolves the chunk's page and passes it), and otherwise open
+  // at the saved page — never a fabricated block jump. Painting the exact
+  // char-range in the body is SPR-06 (highlight chat). The Region still rides on
+  // the URL so SPR-06 has the anchor; this sprint lands the PAGE honestly.
+  const deepLinkAppliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (pages.length === 0) return;
+    const key = `${documentId}|${optPage ?? ""}|${searchParams.get("hl") ?? ""}`;
+    if (deepLinkAppliedRef.current === key) return;
+    deepLinkAppliedRef.current = key;
+    // Only an explicit page is resolvable to a jump today (see limitation above).
+    if (optPage !== null) jumpToPage(optPage);
+  }, [pages.length, optPage, documentId, searchParams, jumpToPage]);
+
   // Reader ad-impression flushing (SPR-05). A stable session id per mount;
   // the hook tracks focused dwell and flushes the page's slots on change.
   const [sessionId] = useState(
@@ -234,11 +285,17 @@ export default function BookReader() {
   // The structured model is the DEFAULT view. When a preserved original (a PDF
   // blob) exists, a toggle reveals it via PdfViewer as a SECONDARY view; with no
   // original the toggle is hidden entirely (no dead control). Reset to the
-  // structured default whenever the open document changes.
-  const [showOriginal, setShowOriginal] = useState(false);
+  // structured default whenever the open document changes — UNLESS the door
+  // opened us in the `inspect` register (?mode=inspect, the SPR-01 "view
+  // original" opt), in which case we default to the original view (only takes
+  // visible effect when an original actually exists; otherwise it's inert, the
+  // structured body still shows). `optHighlight` is decoded above and carried on
+  // the URL for SPR-06 to paint; this sprint lands the page, not the char span.
+  void optHighlight;
+  const [showOriginal, setShowOriginal] = useState(optInspect);
   useEffect(() => {
-    setShowOriginal(false);
-  }, [documentId]);
+    setShowOriginal(optInspect);
+  }, [documentId, optInspect]);
 
   // ── In-book SPR-04 float-menu host (SPR-07 M2) ───────────────────────────
   // The reader is the HOST for the SAME shared FloatMenu Research uses — it is

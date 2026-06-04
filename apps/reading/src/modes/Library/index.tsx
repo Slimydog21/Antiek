@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import type { BookSummary, CorpusStatus } from "../../api/books";
 import { curateBooks, listBooks } from "../../api/books";
+import { useOpenDocument } from "../../lib/openDocument";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
@@ -40,6 +41,7 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
 
 export default function Library() {
   const navigate = useNavigate();
+  const openDocument = useOpenDocument();
   // SPR-09 window-adaptation contract: in a WorkspaceWindow, fill the
   // container (h-full) and drop the opaque full-bleed bg so the glass shows
   // through. Gated on this flag → the full-page route is unchanged.
@@ -142,27 +144,28 @@ export default function Library() {
     return { displayed: books, ordering: null, themeTerms: [] };
   }, [curatedOrder, books, status, investigations]);
 
+  // SPR-05 one door: opening a book goes through `openDocument` (→ the gated
+  // /read/:id Reader route). Was a direct navigate('/read/:id') — same target,
+  // now the single resolver every door shares.
   const open = useCallback(
-    (documentId: string) => navigate(`/read/${encodeURIComponent(documentId)}`),
-    [navigate],
+    (documentId: string) => openDocument(documentId),
+    [openDocument],
   );
 
-  // Open a book at a specific page (M1 search-result jump). The reader reads its
-  // page from the SAME sessionStorage locator usePosition owns (no new
-  // mechanism); seeding it here lands the reader on the cited page. A null /
-  // unresolved page opens at the saved position (honest — no fake page jump).
+  // Open a book at a specific page (M1 search-result jump). `openDocument`'s
+  // `page` opt seeds the SAME usePosition sessionStorage locator (no new
+  // mechanism) so the reader lands on the cited page. A null/unresolved page
+  // opens at the saved position (honest — no fake page jump).
   const openAtPage = useCallback(
     (documentId: string, pageIndex?: number | null) => {
-      if (pageIndex !== null && pageIndex !== undefined && pageIndex >= 0) {
-        try {
-          window.sessionStorage.setItem(`antiek.read.pos.${documentId}`, String(pageIndex));
-        } catch {
-          /* private mode — the reader still opens, just at the saved page */
-        }
-      }
-      navigate(`/read/${encodeURIComponent(documentId)}`);
+      openDocument(
+        documentId,
+        pageIndex !== null && pageIndex !== undefined && pageIndex >= 0
+          ? { page: pageIndex }
+          : undefined,
+      );
     },
-    [navigate],
+    [openDocument],
   );
 
   const subtitle = useMemo(() => {

@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { usePinned } from "../components/navigation/pinnedStore";
+import { useOpenDocument } from "../lib/openDocument";
 import { LemonTag } from "../components/lemon/LemonTag";
 import {
   WORKFLOWS,
@@ -78,25 +79,32 @@ const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: 
   ],
 };
 
+// SPR-05 one door: a `document` node is NOT routed by a path string anymore —
+// it opens through `openDocument` (→ the gated /read/:id Reader). This is a door
+// that was NOT on the migration-map's 11 (it routed to /wrestle/:id, the killed
+// open target); per the spec's fifth-door rule, it is routed here too. Only
+// investigation / notebook nodes still resolve to a path; a `document` reaching
+// these helpers is unreachable (onItemClick routes it earlier) — we fail loud
+// rather than mint a dead /wrestle path.
 const routeForNode = (n: TreeNode): string => {
   switch (n.kind) {
     case "investigation":
       return `/inv/${n.id}`;
-    case "document":
-      return `/wrestle/${n.id}`;
     case "notebook":
       return `/notebook/${n.id}`;
+    case "document":
+      throw new Error("document nodes open via openDocument, not a route (SPR-05)");
   }
 };
 
-const panelKindForNode = (n: TreeNode) => {
+const panelKindForNode = (n: TreeNode): "Trajectory" | "Notebook" => {
   switch (n.kind) {
     case "investigation":
-      return "Trajectory" as const;
-    case "document":
-      return "PdfViewer" as const;
+      return "Trajectory";
     case "notebook":
-      return "Notebook" as const;
+      return "Notebook";
+    case "document":
+      throw new Error("document nodes open via openDocument, not a panel (SPR-05)");
   }
 };
 
@@ -116,6 +124,7 @@ export function ProjectTree({
   const pinned = usePinned((s) => s.pinned);
   const togglePin = usePinned((s) => s.toggle);
   const openPanel = useWorkspace((s) => s.open);
+  const openDocument = useOpenDocument();
 
   const pinnedKey = (n: TreeNode) => `${n.kind}:${n.id}`;
 
@@ -130,6 +139,16 @@ export function ProjectTree({
   });
 
   const onItemClick = (n: TreeNode, e: React.MouseEvent) => {
+    // SPR-05 one door: a document opens in the ONE Reader (openDocument → the
+    // gated /read/:id) on either click — a cmd-click opens it in the inspect
+    // ("view original") register rather than a bespoke PdfViewer panel (which
+    // would be a second document renderer). Investigations / notebooks keep
+    // their panel-or-route behaviour unchanged.
+    if (n.kind === "document") {
+      e.preventDefault();
+      openDocument(n.id, e.metaKey || e.ctrlKey ? { mode: "inspect" } : undefined);
+      return;
+    }
     if (e.metaKey || e.ctrlKey) {
       e.preventDefault();
       openPanel(panelKindForNode(n), { id: n.id }, { mode: "floating", title: n.title });

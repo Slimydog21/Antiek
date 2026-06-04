@@ -110,8 +110,16 @@ function AuthenticatedRoutes() {
             (the Research-entry cascade navigates here after launch). */}
         <Route path="/deep-research" element={<DeepResearchWorkspace />} />
         <Route path="/deep-research/:sessionId" element={<DeepResearchWorkspace />} />
+        {/* SPR-05 one door: /wrestle survives ONLY as the PDF upload / region-
+            selection INGEST surface (no documentId — the "bring your own PDF"
+            affordance). The by-id OPEN route /wrestle/:documentId is REMOVED —
+            every open-a-document door now routes through openDocument → the one
+            Reader at /read/:id (the §9.0-gated surface). A stale
+            /wrestle/:id deep-link falls through to the catch-all → "/" (no dead
+            page; the document opens via its proper door from there). See
+            migration-map.md §3: /wrestle is the ingest/annotation surface, never
+            a second reader. */}
         <Route path="/wrestle" element={<WrestleApp />} />
-        <Route path="/wrestle/:documentId" element={<WrestleApp />} />
         <Route path="/sources" element={<Sources />} />
         {/* Write SPR-07 door re-home: the Write door opens on WriteHome — the
             real blocks → outline → generate → edit loop — not the legacy

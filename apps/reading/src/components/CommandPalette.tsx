@@ -387,7 +387,12 @@ export default function CommandPalette() {
             id: `doc:${doc.document_id}`,
             title: doc.title ?? doc.document_id,
             subtitle: `Document · ${doc.document_id.slice(0, 8)}`,
-            path: `/wrestle/${doc.document_id}`,
+            // SPR-05 one door: open in the ONE Reader (the gated /read/:id route
+            // openDocument navigates to) — was a /wrestle/:id mis-route (the
+            // pdf.js page-1 surface that can't fetch by id). The palette
+            // navigates entry.path generically, so this IS openDocument(id) with
+            // no opts: the same route the door resolves to.
+            path: `/read/${encodeURIComponent(doc.document_id)}`,
           }),
         );
         setDocuments(items);
