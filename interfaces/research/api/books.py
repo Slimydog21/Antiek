@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
@@ -35,6 +35,78 @@ from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from .serve_guard import serve_full_text_guarded
 
 logger = logging.getLogger("antiek.interfaces.books")
+
+# §9.0 owner-read policy tags. The owner's OWN-corpus read path (talk-to-book +
+# corpus search) passes the PRIVILEGED ``operator_only`` tag so the retrieval
+# gate admits the owner's gated/personal content; everything else stays on the
+# non-privileged default. The string is the canonical privileged tag from
+# ``substrate.graph.retrieval_gate.PRIVILEGED_POLICY_TAGS`` — kept here as a
+# named local so the owner-read intent is legible at the call site (the gate
+# module remains the single source of which tags are privileged).
+_OWNER_READ_POLICY_TAG = "operator_only"
+_PUBLIC_READ_POLICY_TAG = "attribution_eligible"
+
+# Auth methods the middleware (``app.py::_operator_auth_middleware``) stamps on
+# ``request.state.auth_method`` once a caller has PROVEN owner identity with a
+# real credential. These four are the ONLY paths past the middleware when
+# enforcement is ON (an unauthenticated caller is 401'd and never reaches the
+# endpoint), so each one is a positive proof that THIS request is the owner.
+#
+# ``unauthenticated_local`` is deliberately EXCLUDED: it means enforcement is
+# OFF (no ANTIEK_OPERATOR_EMAIL / _TOKEN / _SECRET set). The §9.0 gated-content
+# bypass must bind to a real credential, never to "auth happened to be disabled"
+# — otherwise a box accidentally deployed without auth would serve the owner's
+# gated/personal corpus to any caller. Fail-closed by construction: the bypass
+# is granted only on an explicit authenticated method, never by default. (The
+# rest of the app gives ``unauthenticated_local`` full operator SCOPES for
+# local dev convenience; the §9.0 retrieval bypass is held to the stricter
+# bar deliberately — see the handoff steelman.)
+#
+# ── SINGLE-OPERATOR DEPENDENCY (CLAUDE.md invariant #5) ──────────────────────
+# ``authenticated ⇒ owner`` holds here ONLY under the single-operator invariant:
+# ``ANTIEK_OPERATOR_EMAIL`` is today exactly ONE operator. The middleware
+# (app.py:1215) actually parses it as a COMMA-SEPARATED allowlist, and this
+# helper keys solely on ``auth_method`` — it never consults ``request.state``'s
+# ``user_id`` / ``user_email``, and ``search()`` applies no ``owner_user_id``
+# filter (the column exists, schema.py:81). So the day the operator sets TWO
+# emails, BOTH authenticate, BOTH get ``operator_only`` here, and either tenant's
+# session could read the OTHER's ``personal_reading`` corpus — a §9.0
+# cross-tenant leak. When Sprint-22 multi-user lands (CLAUDE.md #5 gates it),
+# this privilege MUST additionally scope retrieval by ``request.state.user_id``
+# against ``owner_user_id``; ``operator_only`` alone is no longer sufficient.
+_OWNER_AUTH_METHODS: frozenset[str] = frozenset({
+    "antiek_session_cookie",
+    "cloudflare_access_email",
+    "cloudflare_service_token",
+    "bearer_token",
+})
+
+
+def _owner_read_policy_tag(request: Request) -> str:
+    """Resolve the §9.0 retrieval policy_tag for an OWNER read endpoint.
+
+    Returns the PRIVILEGED ``operator_only`` tag ONLY when the auth middleware
+    has stamped ``request.state.auth_method`` with one of the four AUTHENTICATED
+    methods (a real credential proven: session cookie, Cloudflare Access email,
+    Cloudflare service token, or operator bearer). For ANY other value — see the
+    ``_OWNER_AUTH_METHODS`` comment above for why ``unauthenticated_local`` and
+    absent state are EXCLUDED (the fail-closed, bind-to-a-real-credential rule) —
+    it returns the non-privileged default, so the §9.0 gate keeps excluding
+    gated/personal content. The privileged bypass requires a positive,
+    middleware-set authenticated signal; it is NEVER the default.
+
+    The signal is SERVER-DERIVED: ``auth_method`` is written only by the auth
+    middleware on the request object; a caller cannot set ``request.state`` or
+    spoof it via a header/param. When enforcement is on, a non-owner caller is
+    rejected with 401 BEFORE this runs, so it can only ever see owner requests.
+
+    PRIVILEGE == OWNER here only under the single-operator invariant — see the
+    SINGLE-OPERATOR DEPENDENCY note above ``_OWNER_AUTH_METHODS``.
+    """
+    auth_method = getattr(getattr(request, "state", None), "auth_method", None)
+    if auth_method in _OWNER_AUTH_METHODS:
+        return _OWNER_READ_POLICY_TAG
+    return _PUBLIC_READ_POLICY_TAG
 
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
@@ -629,14 +701,22 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=AskBookResponse,
         tags=["books"],
     )
-    async def ask_book(document_id: str, req: AskBookRequest) -> AskBookResponse:
+    async def ask_book(
+        document_id: str, req: AskBookRequest, request: Request,
+    ) -> AskBookResponse:
         """Answer one talk-to-book turn, page-cited, over THIS book only.
 
-        Retrieval is scoped to ``document_id`` through the §9.0 gate, so a
-        withheld book's body never reaches the model context or a citation. A
-        book with no extractable text returns an honest ungrounded answer
-        WITHOUT dispatching a model (no hallucination). The model is dispatched
-        through the ONE Hermes-routed path (§16); 503 when no provider is keyed.
+        Retrieval is scoped to ``document_id`` through the §9.0 gate. For the
+        AUTHENTICATED OWNER (resolved server-side from the auth middleware via
+        ``_owner_read_policy_tag``) the gate runs on the PRIVILEGED
+        ``operator_only`` tag, so the owner can talk to HIS OWN gated/personal
+        book in full. For any non-owner / unauthenticated caller (which, when
+        enforcement is on, is 401'd by the middleware before reaching here) the
+        gate stays non-privileged, so a withheld book's body never reaches the
+        model context or a citation. A book with no extractable text (or one the
+        gate fully withholds) returns an honest ungrounded answer WITHOUT
+        dispatching a model (no hallucination). The model is dispatched through
+        the ONE Hermes-routed path (§16); 503 when no provider is keyed.
         """
         from runtime.db_lock import connect_read
         from substrate.books.book_qa import Turn, answer_book_question
@@ -669,6 +749,9 @@ def register_book_routes(app: FastAPI) -> None:
                     investigation_id=f"read-{document_id}",
                     history=[Turn(question=t.question, answer=t.answer) for t in req.history],
                     research_tier=req.research_tier,
+                    # §9.0: privileged ONLY for the authenticated owner (resolved
+                    # server-side); non-owner / unauth callers stay gated.
+                    policy_tag=_owner_read_policy_tag(request),
                 )
             except ProviderError as exc:
                 # No keyed provider — honest 503, never a fabricated answer.
@@ -699,15 +782,22 @@ def register_book_routes(app: FastAPI) -> None:
         tags=["books"],
     )
     async def corpus_search(
+        request: Request,
         q: str,
         limit: int = 20,
         document_id: str | None = None,
     ) -> CorpusSearchResponse:
         """Search the owned corpus by a natural-language query. Wraps
-        ``substrate.graph.search.search`` with the DEFAULT (non-privileged)
-        policy_tag, so the §9.0 gate excludes restricted content. ``document_id``
-        optionally scopes to one document. The Library's typed query + file-drop
-        bias both POST text here (file = a query SIGNAL, never ingested)."""
+        ``substrate.graph.search.search`` through the §9.0 gate. For the
+        AUTHENTICATED OWNER (resolved server-side from the auth middleware via
+        ``_owner_read_policy_tag``) the gate runs on the PRIVILEGED
+        ``operator_only`` tag, so the owner can search across HIS OWN
+        gated/personal corpus. For any non-owner / unauthenticated caller (401'd
+        by the middleware before reaching here when enforcement is on) the gate
+        stays non-privileged and excludes restricted/personal content.
+        ``document_id`` optionally scopes to one document. The Library's typed
+        query + file-drop bias both POST text here (file = a query SIGNAL, never
+        ingested)."""
         from runtime.db_lock import connect_read
         from substrate.books.page_anchor import page_index_from_section_path
         from substrate.graph.search import SentenceTransformerEmbedding, search
@@ -722,7 +812,12 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            res = search(con, q, model=model, top_k=max(1, limit), document_id=document_id)
+            res = search(
+                con, q, model=model, top_k=max(1, limit), document_id=document_id,
+                # §9.0: privileged ONLY for the authenticated owner (resolved
+                # server-side); non-owner / unauth callers stay gated.
+                policy_tag=_owner_read_policy_tag(request),
+            )
         finally:
             con.close()
 
