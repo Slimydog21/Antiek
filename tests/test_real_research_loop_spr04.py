@@ -56,15 +56,11 @@ from runtime.research_runner import (
     BudgetCap,
     BudgetManager,
     HostLocalRunner,
-    PromotionFunnel,
     ResearchPlan,
     RunState,
     make_demo_loop,
 )
-from runtime.research_runner.host_local import LoopContext
 from runtime.research_runner.real_loop import (
-    LOCAL_TOP_K,
-    WEB_NUM_RESULTS,
     RealLoopDeps,
     real_research_loop,
     score_findings,
@@ -80,7 +76,6 @@ from substrate.dispatch.router import (
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.graph.schema import init_database
 from substrate.legal_gate import LegalGateVerdict, PermissiveLegalGate
-
 
 # ===========================================================================
 # Cassettes + fixtures
