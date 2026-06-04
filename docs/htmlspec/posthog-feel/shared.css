@@ -1,0 +1,873 @@
+/* ============================================================
+   Antiek UI redesign — Werner the penguin · sun-yellow outlining
+   Shared stylesheet. Imported by every page in this directory.
+
+   Brand premise:
+     • One constant across the whole app: SUN-YELLOW OUTLINING.
+       The chunky offset border is yellow on every card, panel, button
+       and chip. That is the brand mark — not a colour-on-fill, but a
+       colour-as-edge. Werner's bill and feet are the same yellow,
+       which is the visual hook.
+     • Day mode    — layered OFF-WHITES + GLACIALS. Lots of cool
+       white-blue gradations, very few hard edges. Antarctica at noon.
+     • Night mode  — layered OFF-BLACKS + DARK GREYS, ten gradations
+       deep, evoking a majestic night sky. The yellow outline glows.
+   ============================================================ */
+
+/* -----------------------------------------------------------
+   DAY MODE — default
+   "off-whites and glacials" — Antarctica at noon
+   ----------------------------------------------------------- */
+:root {
+  /* ---- THE brand colour ---- */
+  --sun:           #F5DF24;     /* sharp esoteric lemon — the constant brand */
+  --sun-deep:      #B89A00;     /* hover / pressed / dark-line variant */
+  --sun-glow:      #FCE85E;     /* highlight / glow / night-mode lift */
+  --sun-hl-day:    rgba(245,223,36,0.45);  /* reading highlighter, day */
+  --sun-hl-night:  rgba(252,232,94,0.30);  /* reading highlighter, night */
+
+  /* ---- Day surface stack (off-whites + glacials, light → mid) ---- */
+  --ice-0:         #FFFFFF;     /* pure white (used sparingly: card faces) */
+  --ice-1:         #FBFCFD;
+  --ice-2:         #F4F7FA;     /* page background base */
+  --ice-3:         #EAEFF4;
+  --ice-4:         #DCE5ED;
+  --glacial-1:     #C2D1DD;
+  --glacial-2:     #9AB0C0;
+  --shadow-1:      #64778A;     /* mid grey-blue, secondary text */
+  --shadow-2:      #384858;
+  --ink:           #0F1419;     /* darkest, primary text */
+  --ink-soft:      #2A3441;
+  --ink-mute:      #6A7785;
+  --rule:          #DCE5ED;
+  --rule-strong:   #0F1419;
+
+  /* ---- Cool accents (kept, but secondary to sun) ---- */
+  --aurora:        #16C2C2;     /* secondary accent, used sparingly */
+  --aurora-soft:   #C5F2EE;
+  --emperor:       #E33C2D;     /* danger only */
+  --emperor-soft:  #FBD7D2;
+
+  /* ---- Shadows: ink-coloured on day, sharp + chunky ---- */
+  --shadow-z1:     3px 3px 0 0 var(--ink);
+  --shadow-z2:     5px 5px 0 0 var(--ink);
+  --shadow-z3:     8px 8px 0 0 var(--ink);
+  --shadow-lift:   12px 12px 0 0 var(--ink);
+
+  /* ---- The brand border (sun yellow, day mode) ---- */
+  --edge:          var(--sun);
+  --edge-strong:   var(--sun-deep);    /* where we want hard contrast */
+  --edge-width:    2.5px;
+  --edge-radius:   6px;
+  --edge-radius-lg: 10px;
+
+  /* ---- Type ---- */
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: "Inter", system-ui, sans-serif;
+  --serif: "Charter", "Iowan Old Style", Georgia, serif;
+
+  /* ---- Werner mascot palette ----
+     Werner's coat is ink. His belly is ice-0. His bill + feet are
+     the same SUN yellow as the brand outline — that's the link. */
+  --werner-coat:   #0F1419;
+  --werner-belly:  #FBFCFD;
+  --werner-bill:   var(--sun);
+  --werner-foot:   var(--sun);
+  --werner-eye:    #0F1419;
+  --werner-blush:  #FCE85E;
+
+  /* page background carries a faint glacial gradient */
+  --page-bg:
+    radial-gradient(1100px 700px at 80% -10%, #DDE9F2, transparent 60%),
+    radial-gradient(900px  600px at -10% 110%, #E4ECF2, transparent 60%),
+    var(--ice-2);
+}
+
+/* -----------------------------------------------------------
+   NIGHT MODE — "majestic night sky"
+   layered off-blacks + dark greys, sun-yellow outline glowing
+   ----------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sun:         #F5DF24;
+    --sun-deep:    #8A7300;
+    --sun-glow:    #FFEC5F;
+
+    /* Night surface stack — 10 gradations from void to starlight */
+    --ice-0:       #1B202A;       /* "card face" at night = the highest plane */
+    --ice-1:       #161B24;
+    --ice-2:       #0D1019;       /* page background base */
+    --ice-3:       #0A0D14;
+    --ice-4:       #080A10;
+    --glacial-1:   #252B36;       /* re-purposed at night as elevated panel */
+    --glacial-2:   #323845;
+    --shadow-1:    #6B7585;       /* mid-grey, used for borders sparingly */
+    --shadow-2:    #A0AAB8;
+    --ink:         #EEF1F6;       /* primary text — bright starlight */
+    --ink-soft:    #C4CCD7;
+    --ink-mute:    #7C8696;
+    --rule:        #1F2530;
+    --rule-strong: #EEF1F6;
+
+    --aurora:      #3FE0DC;
+    --aurora-soft: #133838;
+    --emperor:     #FF6155;
+    --emperor-soft:#3C1A16;
+
+    /* Shadows on dark: a glowing sun-deep cast instead of ink absorption */
+    --shadow-z1:   3px 3px 0 0 var(--sun-deep);
+    --shadow-z2:   5px 5px 0 0 var(--sun-deep);
+    --shadow-z3:   8px 8px 0 0 var(--sun-deep);
+    --shadow-lift: 12px 12px 0 0 var(--sun-deep);
+
+    --edge:        var(--sun);
+    --edge-strong: var(--sun-glow);
+
+    /* Werner at night — coat blends slightly into the sky */
+    --werner-coat:  #0A0D14;
+    --werner-belly: #DCE2EA;
+    --werner-bill:  var(--sun);
+    --werner-foot:  var(--sun);
+    --werner-eye:   #DCE2EA;
+    --werner-blush: #8A7300;
+
+    /* Night-sky background: layered very-dark radials with faint starlight */
+    --page-bg:
+      radial-gradient(1300px 900px at 80% -12%, #14202C, transparent 65%),
+      radial-gradient(1100px 800px at -12% 112%, #0E1722, transparent 65%),
+      radial-gradient(700px 500px at 50% 40%,    #11151D, transparent 70%),
+      var(--ice-2);
+  }
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* faint star sprinkle in night mode only — pure CSS, no images */
+@media (prefers-color-scheme: dark) {
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(1px 1px at 13%  18%, rgba(238,241,246,0.55), transparent 50%),
+      radial-gradient(1px 1px at 27%  72%, rgba(238,241,246,0.40), transparent 50%),
+      radial-gradient(1px 1px at 44%  35%, rgba(238,241,246,0.50), transparent 50%),
+      radial-gradient(1px 1px at 58%  88%, rgba(238,241,246,0.35), transparent 50%),
+      radial-gradient(1px 1px at 71%  22%, rgba(238,241,246,0.60), transparent 50%),
+      radial-gradient(1px 1px at 83%  60%, rgba(238,241,246,0.45), transparent 50%),
+      radial-gradient(1px 1px at 91%  14%, rgba(238,241,246,0.40), transparent 50%),
+      radial-gradient(2px 2px at 36%  9%,  rgba(238,241,246,0.30), transparent 60%),
+      radial-gradient(2px 2px at 66%  47%, rgba(238,241,246,0.30), transparent 60%);
+    z-index: 0;
+  }
+  .shell, header.topbar { position: relative; z-index: 1; }
+}
+
+a { color: var(--sun-deep); text-decoration: none; border-bottom: 1px dotted var(--sun); }
+@media (prefers-color-scheme: dark) { a { color: var(--sun); border-bottom-color: var(--sun-glow); } }
+a:hover { text-decoration: none; border-bottom-style: solid; }
+
+code, pre, kbd { font-family: var(--mono); font-size: 13px; }
+pre {
+  background: var(--ink);
+  color: var(--ice-1);
+  padding: 16px 20px;
+  border-radius: var(--edge-radius);
+  border: var(--edge-width) solid var(--edge);
+  box-shadow: var(--shadow-z1);
+  overflow-x: auto;
+  line-height: 1.5;
+}
+@media (prefers-color-scheme: dark) {
+  pre {
+    background: #060810;
+    color: var(--ink-soft);
+  }
+}
+
+code:not(pre code) {
+  background: transparent;
+  padding: 0 4px;
+  border-radius: 2px;
+  border-bottom: 2px solid var(--sun);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+kbd {
+  background: var(--ice-0);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  box-shadow: 2px 2px 0 0 var(--sun);
+  display: inline-block;
+  color: var(--ink);
+}
+
+hr {
+  border: none;
+  height: 0;
+  border-top: 2px dashed var(--sun);
+  margin: 32px 0;
+  opacity: 0.7;
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+.shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 28px 96px;
+}
+
+header.topbar {
+  background: var(--ink);
+  color: var(--ice-1);
+  border-bottom: 3px solid var(--sun);
+  padding: 14px 28px;
+  font-family: var(--mono);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+@media (prefers-color-scheme: dark) {
+  header.topbar {
+    background: #050810;
+    border-bottom-color: var(--sun);
+  }
+}
+
+header.topbar .wordmark {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--sun);
+}
+header.topbar .wordmark .werner-mark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+header.topbar .crumbs { font-size: 12.5px; opacity: 0.85; color: var(--ice-2); }
+header.topbar nav { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; }
+header.topbar nav a {
+  color: var(--ice-2);
+  border-bottom: none;
+}
+header.topbar nav a:hover { color: var(--sun); }
+
+/* ============================================================
+   Typography
+   ============================================================ */
+h1, h2, h3, h4 { font-family: var(--display); letter-spacing: -0.01em; color: var(--ink); }
+h1 {
+  font-size: 40px;
+  line-height: 1.1;
+  margin: 24px 0 8px;
+  font-weight: 800;
+}
+h1 .sprint-tag {
+  display: inline-block;
+  background: var(--ink);
+  color: var(--sun);
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  padding: 4px 12px;
+  font-size: 14px;
+  font-family: var(--mono);
+  font-weight: 700;
+  vertical-align: middle;
+  margin-right: 12px;
+  box-shadow: var(--shadow-z1);
+}
+@media (prefers-color-scheme: dark) {
+  h1 .sprint-tag { background: #060810; }
+}
+
+h2 {
+  font-size: 26px;
+  margin: 48px 0 12px;
+  font-weight: 700;
+  padding-bottom: 8px;
+  border-bottom: 3px solid var(--sun);
+}
+h3 {
+  font-size: 19px;
+  margin: 32px 0 8px;
+  font-weight: 700;
+}
+h4 {
+  font-size: 15px;
+  margin: 20px 0 6px;
+  font-weight: 700;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+p { margin: 8px 0 14px; }
+strong { font-weight: 700; }
+em { font-style: italic; }
+
+/* Inline "highlighter" — the same yellow used in reading product */
+mark, .hl {
+  background: var(--sun-hl-day);
+  color: inherit;
+  padding: 0 3px;
+  border-radius: 2px;
+  box-shadow: 0 -2px 0 var(--sun) inset;
+}
+@media (prefers-color-scheme: dark) {
+  mark, .hl { background: var(--sun-hl-night); box-shadow: 0 -2px 0 var(--sun) inset; }
+}
+
+/* ============================================================
+   Lists
+   ============================================================ */
+ul, ol { padding-left: 22px; margin: 8px 0 16px; }
+li { margin: 4px 0; }
+li::marker { color: var(--sun-deep); font-weight: 700; }
+@media (prefers-color-scheme: dark) { li::marker { color: var(--sun); } }
+
+/* ============================================================
+   Cards — the core "yellow-outlined" primitive
+   ============================================================ */
+.card {
+  background: var(--ice-0);
+  border: var(--edge-width) solid var(--edge);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z2);
+  padding: 20px 22px;
+  margin: 18px 0;
+  color: var(--ink);
+}
+.card.sun     { background: var(--sun); color: var(--ink); }
+.card.aurora  { background: var(--aurora); color: var(--ink); }
+.card.ink     { background: var(--ink); color: var(--ice-1); }
+.card.ink h3, .card.ink h4 { color: var(--sun); }
+.card.glacial { background: var(--ice-3); }
+
+.card.compact { padding: 12px 16px; }
+.card.flat { box-shadow: var(--shadow-z1); }
+
+@media (prefers-color-scheme: dark) {
+  .card { background: var(--glacial-1); }
+  .card.glacial { background: var(--glacial-2); }
+  .card.ink { background: var(--ice-4); }
+}
+
+.callout {
+  background: var(--ice-0);
+  border: var(--edge-width) solid var(--edge);
+  border-left: 8px solid var(--sun);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z1);
+  padding: 14px 18px;
+  margin: 18px 0;
+  font-size: 14.5px;
+  color: var(--ink);
+}
+.callout.warn     { border-left-color: var(--emperor); }
+.callout.danger   { background: var(--emperor-soft); border-left-color: var(--emperor); }
+.callout.decision { background: var(--ice-0); border-left-color: var(--sun); }
+.callout strong {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  .callout { background: var(--glacial-1); }
+}
+
+/* ============================================================
+   Tags / chips
+   ============================================================ */
+.tag {
+  display: inline-block;
+  background: var(--ice-0);
+  border: 2px solid var(--sun);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  margin-right: 4px;
+  box-shadow: 2px 2px 0 0 var(--ink);
+  color: var(--ink);
+}
+.tag.sun     { background: var(--sun); }
+.tag.aurora  { background: var(--aurora); }
+.tag.danger  { background: var(--emperor); color: var(--ice-1); border-color: var(--ink); }
+.tag.muted   { background: var(--ice-3); color: var(--ink-mute); box-shadow: none; border: 1px solid var(--rule); }
+@media (prefers-color-scheme: dark) {
+  .tag { background: var(--glacial-1); box-shadow: 2px 2px 0 0 var(--sun-deep); }
+  .tag.muted { background: var(--ice-2); }
+}
+
+/* ============================================================
+   Tables
+   ============================================================ */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-z2);
+  margin: 16px 0;
+  background: var(--ice-0);
+}
+th, td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+  vertical-align: top;
+  color: var(--ink);
+}
+th {
+  background: var(--ink);
+  color: var(--sun);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+tr:last-child td { border-bottom: none; }
+td code { font-size: 12px; }
+@media (prefers-color-scheme: dark) {
+  table { background: var(--glacial-1); }
+  th { background: #060810; }
+}
+
+/* ============================================================
+   Work-package boxes
+   ============================================================ */
+.wp {
+  background: var(--ice-0);
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z2);
+  padding: 18px 22px;
+  margin: 18px 0;
+  position: relative;
+  color: var(--ink);
+}
+.wp .wp-id {
+  position: absolute;
+  top: -14px;
+  left: 14px;
+  background: var(--ink);
+  color: var(--sun);
+  border: 2px solid var(--sun);
+  border-radius: var(--edge-radius);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 10px;
+  box-shadow: 2px 2px 0 0 var(--sun);
+}
+.wp h3 { margin-top: 8px; }
+.wp .meta {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  margin-bottom: 8px;
+}
+.wp .meta span { margin-right: 14px; }
+@media (prefers-color-scheme: dark) {
+  .wp { background: var(--glacial-1); }
+  .wp .wp-id { background: #060810; }
+}
+
+/* ============================================================
+   ASCII / file-tree blocks
+   ============================================================ */
+.tree {
+  background: var(--ice-3);
+  border: 2px dashed var(--sun);
+  border-radius: var(--edge-radius);
+  padding: 14px 18px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.55;
+  margin: 14px 0;
+  color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  .tree { background: var(--ice-1); }
+}
+
+/* ============================================================
+   Sprint index grid
+   ============================================================ */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+  margin: 20px 0 40px;
+}
+.sprint-tile {
+  background: var(--ice-0);
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z2);
+  padding: 18px 18px 22px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+  text-decoration: none !important;
+  color: var(--ink) !important;
+  display: block;
+  border-bottom: var(--edge-width) solid var(--sun);
+}
+.sprint-tile:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-lift);
+  text-decoration: none !important;
+}
+.sprint-tile .num {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sprint-tile .title {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 6px 0 8px;
+  line-height: 1.25;
+}
+.sprint-tile .blurb { font-size: 13px; color: var(--ink-soft); margin: 0; }
+.sprint-tile .duration {
+  display: inline-block;
+  margin-top: 12px;
+  background: var(--sun);
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 4px;
+}
+.sprint-tile.brand {
+  background: var(--ink);
+  color: var(--sun) !important;
+  border-color: var(--sun);
+}
+.sprint-tile.brand .num,
+.sprint-tile.brand .blurb { color: rgba(245,223,36,0.65); }
+.sprint-tile.brand .title { color: var(--sun); }
+.sprint-tile.brand .duration { background: var(--sun); color: var(--ink); border-color: var(--sun); }
+@media (prefers-color-scheme: dark) {
+  .sprint-tile { background: var(--glacial-1); }
+  .sprint-tile.brand { background: #060810; }
+}
+
+/* ============================================================
+   Dependency / accept-criterion lists
+   ============================================================ */
+.ac-list { list-style: none; padding-left: 0; }
+.ac-list li {
+  position: relative;
+  padding-left: 30px;
+  margin: 6px 0;
+}
+.ac-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  background: var(--sun);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 18px;
+  font-family: var(--mono);
+  color: var(--ink);
+}
+.ac-list li::marker { content: none; }
+
+.risk-list { list-style: none; padding-left: 0; }
+.risk-list li {
+  position: relative;
+  padding-left: 30px;
+  margin: 8px 0;
+}
+.risk-list li::before {
+  content: "!";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 22px;
+  height: 22px;
+  background: var(--emperor);
+  color: var(--ice-1);
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 18px;
+  font-family: var(--mono);
+}
+.risk-list li::marker { content: none; }
+
+/* ============================================================
+   Nav footer (next/prev sprint)
+   ============================================================ */
+.sprint-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 60px;
+  padding-top: 28px;
+  border-top: 2px dashed var(--sun);
+}
+.sprint-nav a {
+  flex: 1;
+  background: var(--ice-0);
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  padding: 12px 16px;
+  box-shadow: var(--shadow-z2);
+  text-decoration: none !important;
+  color: var(--ink) !important;
+  font-family: var(--mono);
+  font-size: 13px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.sprint-nav a:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--shadow-lift);
+}
+.sprint-nav .label {
+  display: block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.sprint-nav .next { text-align: right; }
+@media (prefers-color-scheme: dark) {
+  .sprint-nav a { background: var(--glacial-1); }
+}
+
+/* ============================================================
+   Meta-strip at top of sprint page
+   ============================================================ */
+.meta-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin: 20px 0 32px;
+}
+.meta-strip .cell {
+  background: var(--ice-0);
+  border: 2px solid var(--sun);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z1);
+  padding: 10px 14px;
+  color: var(--ink);
+}
+.meta-strip .cell .label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+.meta-strip .cell .value {
+  font-size: 14.5px;
+  font-weight: 700;
+}
+@media (prefers-color-scheme: dark) {
+  .meta-strip .cell { background: var(--glacial-1); }
+}
+
+/* ============================================================
+   Diagram boxes (inline ascii-style boxes)
+   ============================================================ */
+.diagram {
+  background: var(--ink);
+  color: var(--ice-1);
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z2);
+  padding: 16px 20px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre;
+  overflow-x: auto;
+  margin: 18px 0;
+  line-height: 1.55;
+}
+.diagram .y { color: var(--sun); }
+.diagram .b { color: var(--sun-glow); }
+.diagram .r { color: var(--aurora); }
+.diagram .g { color: var(--aurora); }
+.diagram .m { color: var(--ink-mute); }
+.diagram .w { color: var(--ice-1); }
+@media (prefers-color-scheme: dark) {
+  .diagram { background: #060810; }
+}
+
+/* ============================================================
+   Mascot poses (brand page)
+   ============================================================ */
+.pose-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin: 20px 0 32px;
+}
+.pose {
+  background: var(--ice-0);
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z2);
+  padding: 18px;
+  text-align: center;
+  color: var(--ink);
+}
+.pose.dark {
+  background: var(--ink);
+  color: var(--ice-1);
+}
+.pose.dark .label, .pose.dark .ctx { color: rgba(238,241,246,0.85); }
+.pose svg { width: 100%; height: 160px; }
+.pose .label {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 12px;
+  color: var(--ink);
+  opacity: 0.95;
+}
+.pose .ctx {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  .pose { background: var(--glacial-1); }
+  .pose.dark { background: #060810; }
+}
+
+/* The signature Herzog homage — hero pose, wide aspect */
+.pose-hero {
+  background:
+    radial-gradient(900px 480px at 50% 100%, var(--ice-4), transparent 70%),
+    var(--ice-1);
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius-lg);
+  box-shadow: var(--shadow-lift);
+  padding: 32px 24px;
+  text-align: center;
+  margin: 28px 0 36px;
+}
+.pose-hero svg { width: 100%; max-width: 720px; height: 240px; }
+.pose-hero .caption {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 14.5px;
+  color: var(--ink-soft);
+  margin-top: 14px;
+  max-width: 620px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.5;
+}
+@media (prefers-color-scheme: dark) {
+  .pose-hero {
+    background:
+      radial-gradient(900px 480px at 50% 100%, #0E1722, transparent 70%),
+      #080B12;
+  }
+}
+
+.swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin: 18px 0 28px;
+}
+.swatch {
+  border: 2px solid var(--sun);
+  border-radius: var(--edge-radius);
+  box-shadow: var(--shadow-z2);
+  padding: 14px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink);
+  min-height: 76px;
+}
+.swatch .hex { font-size: 13px; font-weight: 700; }
+.swatch .name { opacity: 0.85; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.swatch.inkbg { color: var(--ice-1); }
+
+/* Ramp swatches — render a horizontal strip showing all gradations */
+.ramp {
+  display: flex;
+  height: 60px;
+  border: var(--edge-width) solid var(--sun);
+  border-radius: var(--edge-radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-z2);
+  margin: 12px 0 24px;
+}
+.ramp > div {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px;
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+}
+.ramp > div.dark-text { color: var(--ice-1); text-shadow: 0 1px 0 rgba(0,0,0,0.4); }

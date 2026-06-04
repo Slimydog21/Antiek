@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FEEL-S5 · Focus + motion · PostHog Feel</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wordmark">ANTIEK / POSTHOG-FEEL</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint-feel-s1.html">S1</a>
+    <a href="sprint-feel-s2.html">S2</a>
+    <a href="sprint-feel-s3.html">S3</a>
+    <a href="sprint-feel-s4.html">S4</a>
+    <a href="sprint-feel-s5.html">S5</a>
+    <a href="sprint-feel-s6.html">S6</a>
+  </nav>
+</header>
+<div class="shell">
+<h1><span class="sprint-tag">FEEL-S5</span>Focus ring + motion completeness</h1>
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~4 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">S2, S4</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S6</div></div>
+  <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>PostHog chrome feels crisp partly because keyboard focus is always visible. Unify <code>focus-visible:ring-sun</code> (controls) and <code>outline-sun</code> (panels/windows) across Feel scope; wire remaining motion gaps (<code>enter</code> optional on modals).</p>
+
+<h2>2 · Deliverables</h2>
+<ul>
+  <li><code>NEW: src/design/feel-focus.css</code> — <code>.feel-focusable</code> bundle.</li>
+  <li>Lemon primitives audit: Button, Input, Select, Dropdown.</li>
+  <li><code>PanelHandle</code> + window title buttons aligned.</li>
+  <li><code>NEW: e2e/feel-focus-ring.spec.ts</code> — Tab → active element has ring/outline.</li>
+  <li><code>NEW: feel-focus.test.ts</code> — static grep gate with allowlist.</li>
+</ul>
+
+<h2>3 · Acceptance criteria</h2>
+<ul class="ac-list">
+  <li>No <code>focus:outline-none</code> without paired <code>focus-visible:ring-*</code> in Feel dirs (allowlist documented).</li>
+  <li>Reduced-motion: ring remains; transform lift suppressed (S2/S4).</li>
+  <li>NavRail igloo keeps visible “Home” label (AMS regression).</li>
+</ul>
+
+<h2>5 · Rigor</h2>
+<ul>
+  <li><strong>Intellectual honesty:</strong> Grep gate exceptions listed in file, not hidden.</li>
+  <li><strong>Fairness:</strong> Steelman <code>:focus</code> ring on every click — rejected per S11.</li>
+  <li><strong>Rigor:</strong> e2e uses real Tab key, not programmatic focus only.</li>
+  <li><strong>Diligence:</strong> Compare with <code>navrail.spr06.test.tsx</code> patterns.</li>
+  <li><strong>Defensibility:</strong> Screenshot of ring on composer button attached to handoff.</li>
+</ul>
+
+<div class="sprint-nav">
+  <a href="sprint-feel-s4.html"><span class="label">←</span>S4</a>
+  <a class="next" href="sprint-feel-s6.html"><span class="label">Next →</span>S6</a>
+</div>
+</div>
+</body>
+</html>

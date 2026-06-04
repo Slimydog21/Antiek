@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
 import { LemonButton } from "../../components/lemon";
+import { track } from "../../lib/analytics";
 import {
   createPerson,
   listPeople,
@@ -93,6 +94,7 @@ export default function SpeakIndex() {
     setCreateFailed(false);
     try {
       const id = await createPerson(name);
+      track("speak_project_created");
       navigate(`/speak/${id}`);
     } catch {
       setCreateFailed(true);

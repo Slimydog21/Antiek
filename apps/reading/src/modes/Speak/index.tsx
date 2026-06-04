@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import WernerThinking from "../../brand/werner/animated/WernerThinking";
 import { LemonButton } from "../../components/lemon";
+import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
 import {
   assembleDraft,
@@ -125,6 +126,7 @@ export default function Speak() {
     if (!projectId || shareLink) return;
     try {
       const link = await makeShareLink(projectId);
+      track("speak_share_link_created", { project_id: projectId });
       setShareLink(link);
       await reload();
     } catch (e: unknown) {
@@ -145,6 +147,7 @@ export default function Speak() {
     if (!projectId) return;
     try {
       await inviteByEmail(projectId, email);
+      track("speak_invite_sent", { project_id: projectId });
       await reload();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -167,6 +170,10 @@ export default function Speak() {
     setDraft({ phase: "assembling" });
     try {
       const d = await assembleDraft(projectId, project?.willBePublic ?? false);
+      track("speak_draft_assembled", {
+        project_id: projectId,
+        will_be_public: project?.willBePublic ?? false,
+      });
       setDraft({ phase: "ready", draft: d });
     } catch {
       setDraft({ phase: "failed" });

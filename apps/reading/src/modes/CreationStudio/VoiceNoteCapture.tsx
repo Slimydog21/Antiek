@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { track } from "../../lib/analytics";
 import { ingestVoiceNote } from "../../lib/api";
 
 type RecordingState = "idle" | "recording" | "transcribing" | "ingested";
@@ -22,6 +23,7 @@ export function VoiceNoteCapture() {
     setState("transcribing");
     try {
       const r = await ingestVoiceNote({ transcript: transcript.trim() });
+      track("voice_note_ingested");
       setLastDocId(r.document_id);
       setState("ingested");
       setTranscript("");

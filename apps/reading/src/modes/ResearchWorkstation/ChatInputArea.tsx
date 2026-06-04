@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
+import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
 
 /**
@@ -53,6 +54,11 @@ export default function ChatInputArea({
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
       });
+      track("investigation_started", {
+        question_length: q.length,
+        has_parent: Boolean(parentInvestigationId),
+        has_spawn_context: Boolean(spawnContext),
+      });
       setQuestion("");
       if (onSubmitted) {
         onSubmitted(resp.investigation_id);
@@ -61,6 +67,7 @@ export default function ChatInputArea({
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      trackException(e instanceof Error ? e : new Error(msg));
       setError(`Submit failed: ${msg}`);
     } finally {
       setBusy(false);

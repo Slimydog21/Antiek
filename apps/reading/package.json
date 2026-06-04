@@ -30,12 +30,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@posthog/react": "^1.10.0",
     "@tiptap/extension-link": "^3.23.6",
     "@tiptap/extension-placeholder": "^3.23.6",
     "@tiptap/react": "^3.23.6",
     "@tiptap/starter-kit": "^3.23.6",
     "framer-motion": "^12.40.0",
     "pdfjs-dist": "^4.7.76",
+    "posthog-js": "^1.379.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.1.0",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
+import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
 import { PanelHost } from "../../workspace/PanelHost";
 
@@ -84,6 +85,7 @@ export default function InterviewMode() {
       if (!resp.ok) {
         throw new Error(`POST turn failed: HTTP ${resp.status}`);
       }
+      track("interview_turn_submitted", { role });
       if (role === "informant") setDraftInformant("");
       if (role === "interviewer") setDraftInterviewer("");
       await reload();
@@ -109,6 +111,7 @@ export default function InterviewMode() {
       if (!resp.ok) {
         throw new Error(`Complete failed: HTTP ${resp.status}`);
       }
+      track("interview_completed");
       await reload();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
