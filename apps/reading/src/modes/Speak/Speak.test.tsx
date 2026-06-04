@@ -116,7 +116,15 @@ describe("Speak project page", () => {
     // email-invite fallback) — assert it's present at least once.
     expect((await screen.findAllByText("aunt@x.com")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Uncle Theo").length).toBeGreaterThan(0);
-    expect(screen.getByText("shared")).toBeTruthy();
+    // Voice-state labels are now centralized in speakVocab (VOICE_STATE_LABELS)
+    // so the console and Invites can't drift — both surfaces show the humanized
+    // word ("Shared"), not the raw VoiceState. The shared voice (aunt@x.com)
+    // renders it in BOTH surfaces: the standalone Voices list AND the
+    // email-invite Invites fallback (completed→shared→"Shared"). The recording
+    // voice (Uncle Theo) shows "Recording…", not "Shared". So "Shared" must
+    // appear EXACTLY twice — a single-surface regression (e.g. the console
+    // dropping the label) would drop this to 1 and fail, where >0 would not.
+    expect(screen.getAllByText("Shared")).toHaveLength(2);
   });
 
   it("frames agreement as corroborated, never proven; shows disagreement", async () => {

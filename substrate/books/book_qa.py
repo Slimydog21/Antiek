@@ -10,13 +10,18 @@ page-level locations back into the SPR-07 reader.
 
 The three load-bearing properties (rigor #3 degenerate inputs are tested):
 
-1. §9.0 NO-LEAK. Retrieval goes through ``substrate.graph.search.search``
-   with the DEFAULT (non-privileged) ``policy_tag``, so a withheld /
-   restricted / taken-down book's chunks never enter the result set — and
-   therefore never enter the model's context or a citation. A talk-to-book
-   answer CANNOT quote or cite a withheld region because the body never
-   reaches it. This is the SAME gate the chunk-search path uses; we do not
-   re-implement or bypass it.
+1. §9.0 NO-LEAK. Retrieval goes through ``substrate.graph.search.search`` with
+   a ``policy_tag`` the CALLER supplies (default: non-privileged
+   'attribution_eligible'). On the default / any non-privileged tag a withheld /
+   restricted / personal book's chunks never enter the result set — and
+   therefore never enter the model's context or a citation; a talk-to-book
+   answer then CANNOT quote or cite that region because the body never reaches
+   it. The ONE exception is the authenticated OWNER reading his OWN
+   gated/personal book: the caller (which has done the owner-auth check) passes
+   a PRIVILEGED tag ('operator_only' ∈ ``PRIVILEGED_POLICY_TAGS``) and the
+   SAME gate then admits ``restricted_pending_opt_in`` + ``personal_reading``.
+   This is the SAME gate the chunk-search path uses; we do not re-implement or
+   bypass it — we only forward the tag the caller already resolved.
 
 2. NO-EXTRACTABLE-TEXT books fail gracefully. A scanned-image PDF has no
    embedded chunks (nothing to embed / retrieve). ``answer_book_question``
@@ -103,7 +108,7 @@ def _build_prompt(
     book_title: str | None,
     question: str,
     history: Sequence[Turn],
-    context_chunks: Sequence[dict],
+    context_chunks: Sequence[dict[str, Any]],
 ) -> str:
     """Assemble the dispatch prompt: the running conversation (bounded) + the
     gated book context + the new question. The model is instructed to answer
@@ -131,7 +136,7 @@ def _build_prompt(
     return "\n".join(parts)
 
 
-def _citations_from_chunks(context_chunks: Sequence[dict]) -> list[Citation]:
+def _citations_from_chunks(context_chunks: Sequence[dict[str, Any]]) -> list[Citation]:
     """Turn the retrieved (gate-served) chunks into page-level citations. Each
     chunk that survived the §9.0 gate is a legitimate, citable source; the page
     is resolved best-effort and labelled approximate when it does not pin."""
@@ -162,15 +167,26 @@ def answer_book_question(
     research_tier: str = "deep",
     top_k: int = DEFAULT_QA_TOP_K,
     config: Any | None = None,
+    policy_tag: str = "attribution_eligible",
 ) -> BookAnswer:
     """Answer one talk-to-book turn, page-cited, gate-safe.
 
-    Retrieval is scoped to ``document_id`` through the §9.0 gate (default
-    ``policy_tag`` — restricted content excluded). A book with no extractable
-    chunks returns an ungrounded, honest no-context answer WITHOUT dispatching
-    a model (rigor #3). Otherwise the gated context + the running conversation
-    are dispatched through the curated research tier; the reply's claims are
-    backed by the page-level citations of the retrieved chunks.
+    Retrieval is scoped to ``document_id`` through the §9.0 gate. A book with no
+    extractable chunks returns an ungrounded, honest no-context answer WITHOUT
+    dispatching a model (rigor #3). Otherwise the gated context + the running
+    conversation are dispatched through the curated research tier; the reply's
+    claims are backed by the page-level citations of the retrieved chunks.
+
+    ``policy_tag`` is the §9.0 retrieval policy threaded straight through to
+    ``substrate.graph.search.search`` — it is NOT re-interpreted here. The
+    DEFAULT ('attribution_eligible') is non-privileged: the gate excludes
+    restricted (``restricted_pending_opt_in``) AND owner-only
+    (``personal_reading``) content, so a withheld book's chunks never enter the
+    result set, the model context, or a citation. The owner read path (the
+    authenticated owner talking to HIS OWN gated/personal book) passes a
+    PRIVILEGED tag (``operator_only`` ∈ ``PRIVILEGED_POLICY_TAGS``) so — and
+    only then — the gate admits those classes. The privilege decision is the
+    CALLER's (it owns the auth check); this function only forwards the tag.
 
     Raises ``ProviderError`` when every provider in the dispatch chain is
     unavailable (no key) — the caller maps that to an honest 503, never a
@@ -184,9 +200,11 @@ def answer_book_question(
         model=model,
         top_k=top_k,
         document_id=document_id,
-        # DEFAULT policy_tag — the §9.0 gate excludes restricted content. A
-        # withheld book's chunks never enter this result set, so they can never
-        # reach the model context or a citation.
+        # §9.0 gate, applied via the caller-supplied policy_tag. The DEFAULT is
+        # non-privileged ⇒ restricted/personal chunks never enter retrieval (so
+        # never the model context or a citation). The authenticated-owner caller
+        # passes a PRIVILEGED tag to read his own gated/personal book in full.
+        policy_tag=policy_tag,
     )
     context_chunks = retrieved["results"]
 

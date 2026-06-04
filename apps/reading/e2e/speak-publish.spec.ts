@@ -32,20 +32,20 @@ test.describe("Speak — publish surface", () => {
     await loadStory(page, "workstation-speak-console--no-project-selected");
     // The console reads :projectId from the router; with none it shows
     // the guidance state — proving the page mounts without crashing.
-    await expect(page.getByText(/no project selected/i)).toBeVisible();
+    await expect(page.getByText(/no one selected/i)).toBeVisible();
   });
 
   test("project index renders the create form + publish-intent note", async ({ page }) => {
     await loadStory(page, "workstation-speak-index--empty-state");
-    await expect(page.getByText(/biography projects/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: /create/i })).toBeVisible();
+    await expect(page.getByText(/who do you want to remember/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /start their story/i })).toBeVisible();
   });
 
   test.skip(
     "publish per mode through the browser (needs running app + live API)",
     async () => {
       // Deferred: the Storybook iframe has no live /speak API. The publish
-      // leg is proven end-to-end in tests/test_speak_api.py
+      // leg is covered end-to-end in tests/test_speak_api.py
       // (test_full_operator_journey_to_public_publish + the gate refusals)
       // and in tests/test_speak_publish.py.
     },

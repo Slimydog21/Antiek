@@ -27,7 +27,11 @@ vi.mock("../werner/iceFishingFlags", () => ({
 
 import { wernerIceFishingCursor } from "../werner/iceFishingFlags";
 import { wernerIceFishingCursor as iceFromBarrel } from "../werner";
-import { PenguinMascot, PROJECT_TREE_PANEL_ID } from "./PenguinMascot";
+import {
+  __setRoamRandom,
+  PenguinMascot,
+  PROJECT_TREE_PANEL_ID,
+} from "./PenguinMascot";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
 const s = () => useWorkspace.getState();
@@ -248,35 +252,47 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
   });
 
   it("strolls to a new on-screen spot by itself, bounded to the viewport", () => {
-    const { container } = mount();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
-    const startLeft = parseFloat(el.style.left);
-    const startTop = parseFloat(el.style.top);
-    // Settle (1800ms) → first leg begins: position is retargeted + the foot
-    // bob is on while walking.
-    act(() => {
-      vi.advanceTimersByTime(1900);
-    });
-    const movedLeft = parseFloat(el.style.left);
-    const movedTop = parseFloat(el.style.top);
-    expect(
-      movedLeft !== startLeft || movedTop !== startTop,
-      "the mascot should have walked to a new spot on its own",
-    ).toBe(true);
-    expect(el.style.transition).toContain("left");
-    expect(container.querySelector(".werner-waddle")).toBeTruthy();
-    // Bounded: clamp keeps >= 80px reachable on every side (viewport 1200x800).
-    expect(movedLeft).toBeGreaterThanOrEqual(80 - 64);
-    expect(movedLeft).toBeLessThanOrEqual(1200 - 80);
-    expect(movedTop).toBeGreaterThanOrEqual(0);
-    expect(movedTop).toBeLessThanOrEqual(800 - 80);
-    // End of this stroll leg only (800ms stroll + slack) — not a multi-leg
-    // elapse that would land mid-walk on a later hop.
-    act(() => {
-      vi.advanceTimersByTime(900);
-    });
-    expect(container.querySelector(".werner-waddle")).toBeNull();
-    expect(el.style.transition).toBe("");
+    // DETERMINISTIC HOP (SPR-05): the bounded wander hops by (random()*2 - 1) *
+    // reach per axis. Under Math.random a draw of ≈0.5 on BOTH axes lands a
+    // ~0px hop that clamps back to the start — which made this test flaky
+    // (~1/4 failures). Seed the roam RNG with 0.95 → a strong +0.9*reach hop on
+    // each axis: a guaranteed, deterministic move to a NEW spot. This does NOT
+    // weaken the assertion (it still proves Werner walks somewhere new + stays
+    // bounded); it removes the unlucky-draw nondeterminism. Restored after.
+    const restoreRandom = __setRoamRandom(() => 0.95);
+    try {
+      const { container } = mount();
+      const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+      const startLeft = parseFloat(el.style.left);
+      const startTop = parseFloat(el.style.top);
+      // Settle (1800ms) → first leg begins: position is retargeted + the foot
+      // bob is on while walking.
+      act(() => {
+        vi.advanceTimersByTime(1900);
+      });
+      const movedLeft = parseFloat(el.style.left);
+      const movedTop = parseFloat(el.style.top);
+      expect(
+        movedLeft !== startLeft || movedTop !== startTop,
+        "the mascot should have walked to a new spot on its own",
+      ).toBe(true);
+      expect(el.style.transition).toContain("left");
+      expect(container.querySelector(".werner-waddle")).toBeTruthy();
+      // Bounded: clamp keeps >= 80px reachable on every side (viewport 1200x800).
+      expect(movedLeft).toBeGreaterThanOrEqual(80 - 64);
+      expect(movedLeft).toBeLessThanOrEqual(1200 - 80);
+      expect(movedTop).toBeGreaterThanOrEqual(0);
+      expect(movedTop).toBeLessThanOrEqual(800 - 80);
+      // End of this stroll leg only (800ms stroll + slack) — not a multi-leg
+      // elapse that would land mid-walk on a later hop.
+      act(() => {
+        vi.advanceTimersByTime(900);
+      });
+      expect(container.querySelector(".werner-waddle")).toBeNull();
+      expect(el.style.transition).toBe("");
+    } finally {
+      restoreRandom();
+    }
   });
 
   it("does NOT roam under prefers-reduced-motion (stays at the seed, still clickable)", () => {

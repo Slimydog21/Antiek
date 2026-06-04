@@ -37,9 +37,12 @@ describe("WERNER-ICE compat matrix", () => {
   });
 
   it("2 · lag budget constants match master spec", () => {
-    expect(LAG_MS).toBe(500);
+    expect(LAG_MS).toBe(500); // SPR-03: deliberately unchanged (trailing axis)
     expect(SAMPLE_INTERVAL_MS).toBe(60);
-    expect(REEL_TAU_MS).toBe(450);
+    // SPR-03 raised the reel exponential-fallback tau 450 → 950 (slower pull).
+    // The DEFAULT reel is now the critically-damped spring; this tau governs
+    // only the documented exponential fallback.
+    expect(REEL_TAU_MS).toBe(950);
   });
 
   it("3 · idle roam timings restored (not snappy 800/300)", () => {
