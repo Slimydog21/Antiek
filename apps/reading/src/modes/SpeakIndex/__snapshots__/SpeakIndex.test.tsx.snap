@@ -1,0 +1,323 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > matches the public-empty snapshot 1`] = `
+<div>
+  <div
+    class="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2"
+  >
+    <div
+      class="mx-auto max-w-2xl px-6 py-10"
+    >
+      <header
+        class="mb-7 flex items-start gap-3"
+      >
+        <span
+          aria-label="Werner idle"
+          class="inline-block align-middle"
+          role="img"
+          style="width: 44px; height: 44px;"
+        >
+          <img
+            alt=""
+            aria-hidden="true"
+            class="werner-idle"
+            draggable="false"
+            height="44"
+            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
+            style="display: block; width: 44px; height: 44px; object-fit: contain;"
+            width="44"
+          />
+        </span>
+        <div>
+          <h1
+            class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+          >
+            Who do you want to remember?
+          </h1>
+          <p
+            class="mt-1 text-sm text-ink-soft dark:text-moonlight"
+          >
+            Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
+          </p>
+        </div>
+      </header>
+      <form
+        class="mb-8 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+      >
+        <input
+          aria-label="Who do you want to remember?"
+          class="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+          placeholder="A name — e.g. my grandmother, Dad, Maria"
+          value=""
+        />
+        <button
+          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-[13px]  "
+          disabled=""
+          type="submit"
+        >
+          Start their story
+        </button>
+      </form>
+      <div
+        class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
+        role="tablist"
+      >
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          role="tab"
+          type="button"
+        >
+          People you're remembering
+        </button>
+        <button
+          aria-selected="true"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-sun text-ink dark:text-bright"
+          role="tab"
+          type="button"
+        >
+          Public remembrances
+        </button>
+      </div>
+      <section>
+        <p
+          class="font-serif text-sm italic text-ink-mute dark:text-moonlight"
+        >
+          No public remembrances yet. When someone shares a story publicly, it'll appear here — and you'll be able to add what you remember.
+        </p>
+      </section>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > matches the yours-empty snapshot 1`] = `
+<div>
+  <div
+    class="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2"
+  >
+    <div
+      class="mx-auto max-w-2xl px-6 py-10"
+    >
+      <header
+        class="mb-7 flex items-start gap-3"
+      >
+        <span
+          aria-label="Werner idle"
+          class="inline-block align-middle"
+          role="img"
+          style="width: 44px; height: 44px;"
+        >
+          <img
+            alt=""
+            aria-hidden="true"
+            class="werner-idle"
+            draggable="false"
+            height="44"
+            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
+            style="display: block; width: 44px; height: 44px; object-fit: contain;"
+            width="44"
+          />
+        </span>
+        <div>
+          <h1
+            class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+          >
+            Who do you want to remember?
+          </h1>
+          <p
+            class="mt-1 text-sm text-ink-soft dark:text-moonlight"
+          >
+            Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
+          </p>
+        </div>
+      </header>
+      <form
+        class="mb-8 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+      >
+        <input
+          aria-label="Who do you want to remember?"
+          class="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+          placeholder="A name — e.g. my grandmother, Dad, Maria"
+          value=""
+        />
+        <button
+          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-[13px]  "
+          disabled=""
+          type="submit"
+        >
+          Start their story
+        </button>
+      </form>
+      <div
+        class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
+        role="tablist"
+      >
+        <button
+          aria-selected="true"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-sun text-ink dark:text-bright"
+          role="tab"
+          type="button"
+        >
+          People you're remembering
+        </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          role="tab"
+          type="button"
+        >
+          Public remembrances
+        </button>
+      </div>
+      <p
+        class="font-serif text-sm italic text-ink-mute dark:text-moonlight"
+      >
+        No one yet — name the first person above.
+      </p>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > matches the yours-populated snapshot 1`] = `
+<div>
+  <div
+    class="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2"
+  >
+    <div
+      class="mx-auto max-w-2xl px-6 py-10"
+    >
+      <header
+        class="mb-7 flex items-start gap-3"
+      >
+        <span
+          aria-label="Werner idle"
+          class="inline-block align-middle"
+          role="img"
+          style="width: 44px; height: 44px;"
+        >
+          <img
+            alt=""
+            aria-hidden="true"
+            class="werner-idle"
+            draggable="false"
+            height="44"
+            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
+            style="display: block; width: 44px; height: 44px; object-fit: contain;"
+            width="44"
+          />
+        </span>
+        <div>
+          <h1
+            class="font-serif text-2xl font-semibold text-ink dark:text-bright"
+          >
+            Who do you want to remember?
+          </h1>
+          <p
+            class="mt-1 text-sm text-ink-soft dark:text-moonlight"
+          >
+            Name someone, then invite the people who knew them. Each records their memories — in their own voice, on their own time — and their story comes together from what everyone shares.
+          </p>
+        </div>
+      </header>
+      <form
+        class="mb-8 flex flex-wrap items-center gap-2 rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+      >
+        <input
+          aria-label="Who do you want to remember?"
+          class="min-w-[220px] flex-1 rounded border border-rule bg-transparent px-3 py-2 font-serif text-[15px] text-ink focus:outline-none focus:ring-2 focus:ring-sun dark:border-charcoal-1 dark:text-bright"
+          placeholder="A name — e.g. my grandmother, Dad, Maria"
+          value=""
+        />
+        <button
+          class="inline-flex items-center justify-center gap-2 font-mono font-semibold border-edge rounded-hog disabled:opacity-50 disabled:pointer-events-none bg-sun text-ink border-sun shadow-z1 dark:shadow-z1-night transition-transform duration-base ease-standard hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none h-9  px-3.5 text-[13px]  "
+          disabled=""
+          type="submit"
+        >
+          Start their story
+        </button>
+      </form>
+      <div
+        class="mb-4 flex gap-1 border-b border-rule dark:border-charcoal-1"
+        role="tablist"
+      >
+        <button
+          aria-selected="true"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-sun text-ink dark:text-bright"
+          role="tab"
+          type="button"
+        >
+          People you're remembering
+        </button>
+        <button
+          aria-selected="false"
+          class="-mb-px border-b-2 px-3 py-2 font-mono text-[11px] uppercase tracking-wider border-transparent text-ink-mute hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          role="tab"
+          type="button"
+        >
+          Public remembrances
+        </button>
+      </div>
+      <section>
+        <ul
+          class="space-y-2"
+        >
+          <li>
+            <a
+              class="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+              href="/speak/y1"
+            >
+              <div
+                class="flex items-center justify-between gap-3"
+              >
+                <span
+                  class="font-serif text-[16px] text-ink dark:text-bright"
+                >
+                  Grandma Rosa
+                </span>
+                <span
+                  class="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight"
+                >
+                  no voices yet
+                </span>
+              </div>
+              <p
+                class="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+              >
+                Kept private
+              </p>
+            </a>
+          </li>
+          <li>
+            <a
+              class="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
+              href="/speak/y2"
+            >
+              <div
+                class="flex items-center justify-between gap-3"
+              >
+                <span
+                  class="font-serif text-[16px] text-ink dark:text-bright"
+                >
+                  Dad
+                </span>
+                <span
+                  class="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight"
+                >
+                  2 voices
+                </span>
+              </div>
+              <p
+                class="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight"
+              >
+                Will be shared publicly
+              </p>
+            </a>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</div>
+`;
