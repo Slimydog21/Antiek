@@ -78,6 +78,16 @@ class ServeResult:
     title: str | None
     author: str | None
     reason: str
+    # The serialized SPR-01 typed-block ``Document`` (Reader SPR-02 persists it on
+    # ``documents.structured_blocks``; SPR-03's one ``<Reader>`` deserializes +
+    # renders it). §9.0: it is gated IDENTICALLY to ``full_text`` — populated on
+    # EXACTLY the branches that emit a full body (servable, and the owner
+    # personal_reading full-read), and ``None`` everywhere ``full_text`` is
+    # ``None`` (gated snippet, taken-down, not-found, gate-disagreement). So a
+    # withheld book's structured blocks never leave this function, the same as its
+    # raw body. Defaulted ``None`` so every existing construction site is
+    # unchanged.
+    structured_blocks: str | None = None
     # Rights context (populated by serve_full_text_guarded; defaulted here so
     # the bare gate and all existing construction sites are unchanged).
     tier: str | None = None
@@ -115,6 +125,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     row = con.execute(
         """
         SELECT d.title, d.author, d.content_class, d.raw_text,
+               d.structured_blocks,
                COALESCE(b.taken_down, FALSE) AS taken_down
         FROM documents d
         LEFT JOIN book_assets b ON d.document_id = b.document_id
@@ -130,7 +141,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             title=None, author=None, reason="document_not_found",
         )
 
-    title, author, content_class, raw_text, taken_down = row
+    title, author, content_class, raw_text, structured_blocks, taken_down = row
     taken_down = bool(taken_down)
     status = servability_of(content_class, taken_down=taken_down)
 
@@ -158,6 +169,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
         return ServeResult(
             document_id=document_id, found=True, servability=status,
             servable=False, full_text=raw_text, snippet=None,
+            structured_blocks=structured_blocks,
             title=title, author=author, reason="owner_personal_reading",
         )
 
@@ -174,6 +186,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
         return ServeResult(
             document_id=document_id, found=True, servability=status,
             servable=True, full_text=raw_text, snippet=None,
+            structured_blocks=structured_blocks,
             title=title, author=author, reason="servable",
         )
 

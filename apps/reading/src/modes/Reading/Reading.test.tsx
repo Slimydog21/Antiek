@@ -755,4 +755,168 @@ describe("BookReader", () => {
     );
     expect(searchBlocksMock).not.toHaveBeenCalled();
   });
+
+  // ── Reader SPR-03 M4: the ONE <Reader> for structured-blocks docs ───
+  //
+  // A servable book whose serve response carries `structured_blocks` renders
+  // through the rich typed-block <Reader>; a NULL/absent column falls back to
+  // the legacy ReadingColumn flattener; a gated book NEVER rich-renders and is
+  // NEVER attribution-tagged (§9.0); the ad-impression slot count equals the
+  // rendered page count (no false impressions).
+
+  // A serialized SPR-01 Document with two heading-led pages' worth of blocks.
+  // 14 blocks @ DEFAULT_BLOCKS_PER_PAGE=12 ⇒ exactly 2 block windows, so the
+  // rich path is multi-page (exercises the pager + ad-slot count alignment).
+  function structuredBlocksJson(): string {
+    const blocks: unknown[] = [
+      { type: "heading", level: 1, spans: [{ type: "text", text: "Chapter One" }] },
+      { type: "paragraph", spans: [{ type: "text", text: "A richly typeset opening paragraph." }] },
+    ];
+    // Pad to 14 total blocks so paginateBlocks yields 2 windows (12 + 2).
+    for (let i = 0; i < 12; i++) {
+      blocks.push({ type: "paragraph", spans: [{ type: "text", text: `Body paragraph ${i}.` }] });
+    }
+    // Put a heading on the second window so the derived ToC has 2 entries.
+    blocks.push({ type: "heading", level: 2, spans: [{ type: "text", text: "Chapter Two" }] });
+    return JSON.stringify({ id: "doc-1", title: "A Servable Book", schema_version: 1, blocks });
+  }
+
+  function richArticle(container: HTMLElement): HTMLElement | null {
+    return container.querySelector("article[data-reader-root]") as HTMLElement | null;
+  }
+
+  it("renders the rich <Reader> for a structured-blocks servable doc (not the legacy flattener)", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: structuredBlocksJson() }));
+    const { container } = await renderReader();
+    // The rich typed-block heading renders (the flattener collapsed all headings
+    // to one <h2>; the Reader renders a real <h1>). The presence of the
+    // data-reader-root article is the discriminator.
+    await waitFor(() => expect(richArticle(container)).toBeTruthy());
+    expect(screen.getByText("A richly typeset opening paragraph.")).toBeTruthy();
+    // The rich heading renders as an actual heading element (typographic fidelity).
+    expect(screen.getByRole("heading", { name: "Chapter One" })).toBeTruthy();
+  });
+
+  it("the rich <article> carries data-akb-asset-id for a servable doc (attribution unbroken, §9.0)", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: structuredBlocksJson() }));
+    const { container } = await renderReader();
+    const article = await waitFor(() => {
+      const a = richArticle(container);
+      expect(a).toBeTruthy();
+      return a as HTMLElement;
+    });
+    // The SPR-07 attribution marker is present on the rich path for a servable
+    // asset — exactly as it was on the legacy ReadingColumn.
+    expect(article.getAttribute("data-akb-asset-id")).toBe("doc-1");
+    // No fabricated chunk id (asset-level attribution).
+    expect(article.getAttribute("data-akb-chunk-id")).toBeNull();
+  });
+
+  it("falls back to the legacy ReadingColumn when structured_blocks is NULL", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: null }));
+    const { container } = await renderReader();
+    // The markdown body renders, but through the legacy column — NO rich
+    // data-reader-root article exists.
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    expect(richArticle(container)).toBeNull();
+  });
+
+  it("falls back to the legacy flattener when structured_blocks is malformed JSON (degrade, never throw/blank)", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: "{ not valid json" }));
+    const { container } = await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    expect(richArticle(container)).toBeNull();
+  });
+
+  it("§9.0: a gated book NEVER rich-renders and is NEVER attribution-tagged, even if structured_blocks rode along", async () => {
+    // Defense-in-depth: the backend serves structured_blocks null for a withheld
+    // body, but even if a stale/poisoned blob were present, the client refuses to
+    // rich-render a non-servable book. The gate is servable_full_text=false.
+    getBookMock.mockResolvedValue(
+      makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
+    );
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        servable: false,
+        full_text: null,
+        snippet: "Only a snippet is permitted.",
+        ad_eligible: false,
+        servability: "gated_metadata_only",
+        reason: "gated_metadata_only",
+        // A poisoned structured_blocks blob that must NOT be rich-rendered.
+        structured_blocks: structuredBlocksJson(),
+      }),
+    );
+    const { container } = await renderReader();
+    // The preview notice + snippet render (the legacy snippet path), NOT the rich
+    // Reader. The poisoned blocks never reach the DOM.
+    await waitFor(() => expect(screen.getByText(/licensed for full reading/)).toBeTruthy());
+    expect(screen.getByText("Only a snippet is permitted.")).toBeTruthy();
+    // NO rich article, and NOTHING is attribution-tagged for a gated book.
+    expect(richArticle(container)).toBeNull();
+    expect(container.querySelector("[data-akb-asset-id]")).toBeNull();
+    // The poisoned content never rendered.
+    expect(screen.queryByText("A richly typeset opening paragraph.")).toBeNull();
+  });
+
+  it("the FloatMenu selection scope (articleRef) survives on the rich path — highlighting opens the SAME menu", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: structuredBlocksJson() }));
+    await renderReader();
+    const para = await screen.findByText("A richly typeset opening paragraph.");
+    selectTextIn(para, "A richly typeset opening paragraph.");
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    expect(within(menu).getByRole("menuitem", { name: "Note" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Deep-research" })).toBeTruthy();
+  });
+
+  it("LOAD-BEARING (rich path): ad-impression slot count equals the RENDERED page count — no false impressions", async () => {
+    // The risk M4 closes: when the rich path paginates by BLOCKS, the page count
+    // the pager/usePosition/ad-slots use MUST equal the rendered block-window
+    // count. The structured doc has 14 blocks ⇒ 2 windows. A servable non-arXiv
+    // doc is ad-eligible, so each rendered page registers top+bottom slots and a
+    // page change flushes EXACTLY the previous page's two ad slots — never a
+    // slot for a page that didn't render.
+    recordAdImpressionsMock.mockClear();
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: structuredBlocksJson() }));
+    await renderReader();
+    // The pager reports 2 pages (the block-window count), matching the rich render.
+    await waitFor(() => expect(screen.getByText(/Page 1 of 2/)).toBeTruthy());
+    // Turn the page → the previous (rendered) page's top+bottom ad slots flush.
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await waitFor(() => expect(screen.getByText(/Page 2 of 2/)).toBeTruthy());
+    await waitFor(() => expect(recordAdImpressionsMock).toHaveBeenCalled());
+    const flushed = recordAdImpressionsMock.mock.calls.flatMap(([, , items]) =>
+      (items as { slot_id: string; page_index: number }[]).map((i) => i),
+    );
+    // Exactly page-0's top+bottom flushed (page 0 rendered; no slot for a
+    // non-existent page). Every flushed slot's page_index is a real rendered page.
+    const topBottom = flushed.filter((i) => /:top$|:bottom$/.test(i.slot_id));
+    expect(topBottom.map((i) => i.slot_id).sort()).toEqual([
+      "slot:doc-1:p0:bottom",
+      "slot:doc-1:p0:top",
+    ]);
+    // No flushed slot references a page index outside the rendered range [0,1].
+    expect(flushed.every((i) => i.page_index >= 0 && i.page_index <= 1)).toBe(true);
+  });
+
+  it("the derived ToC (rich path) reflects heading blocks and jumps to the right page", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: structuredBlocksJson() }));
+    await renderReader();
+    const toc = await screen.findByRole("navigation", { name: /Table of contents/ });
+    // Two derived entries from the two heading blocks (Chapter One on p0,
+    // Chapter Two on p1) — NOT the single legacy book.toc entry ("Chapter 1").
+    expect(within(toc).getByRole("button", { name: "Chapter One" })).toBeTruthy();
+    const chapterTwo = within(toc).getByRole("button", { name: "Chapter Two" });
+    expect(chapterTwo).toBeTruthy();
+    // Jumping to Chapter Two (a heading in the 2nd window) moves to page 2.
+    fireEvent.click(chapterTwo);
+    await waitFor(() => expect(screen.getByText(/Page 2 of 2/)).toBeTruthy());
+  });
 });
