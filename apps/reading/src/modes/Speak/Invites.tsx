@@ -1,5 +1,10 @@
 import { useState } from "react";
 
+import {
+  inviteStatusLabel,
+  type InviteStatus,
+} from "../../lib/speakVocab";
+
 /**
  * Speak SPR-03 M2 — the invitation surface.
  *
@@ -13,12 +18,7 @@ import { useState } from "react";
  * by props so it renders in Storybook without a backend; the host wires
  * `onInvite` to `substrate.speak.invitations.invite_stakeholder`.
  */
-export type InviteStatus =
-  | "invited"
-  | "in_progress"
-  | "completed"
-  | "declined"
-  | "incomplete";
+export type { InviteStatus };
 
 export type InviteRow = {
   interviewId: string;
@@ -35,6 +35,28 @@ type Props = {
   invites: InviteRow[];
   onInvite?: (email: string) => void | Promise<void>;
 };
+
+/** Plain words for the consent scopes a friend is asked for. `record` is what
+ *  taking part requires; `attribute`/`publish` are optional choices the friend
+ *  makes — so the operator reads "Sharing a memory" + which optionals are asked
+ *  for, not raw scope tokens. */
+const SCOPE_LABELS: Record<InviteRow["requiredScopes"][number], string> = {
+  record: "Sharing a memory",
+  attribute: "their name shown",
+  publish: "public sharing",
+};
+
+function describeScopes(scopes: InviteRow["requiredScopes"]): string {
+  const required = scopes.includes("record") ? SCOPE_LABELS.record : null;
+  const optional = scopes
+    .filter((s) => s !== "record")
+    .map((s) => SCOPE_LABELS[s]);
+  const parts: string[] = [];
+  if (required) parts.push(required);
+  if (optional.length > 0) parts.push(`optional: ${optional.join(", ")}`);
+  // Always show the required floor even if scopes somehow arrived empty.
+  return parts.length > 0 ? parts.join(" · ") : SCOPE_LABELS.record;
+}
 
 const STATUS_STYLE: Record<InviteStatus, string> = {
   invited: "text-ink-mute dark:text-moonlight",
@@ -113,7 +135,7 @@ export default function Invites({
                     STATUS_STYLE[iv.status]
                   }
                 >
-                  {iv.status}
+                  {inviteStatusLabel(iv.status)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -129,7 +151,7 @@ export default function Invites({
                 </button>
               </div>
               <span className="font-mono text-[9px] text-ink-mute dark:text-moonlight">
-                consent: {iv.requiredScopes.join(" · ")}
+                consent: {describeScopes(iv.requiredScopes)}
               </span>
             </li>
           ))}

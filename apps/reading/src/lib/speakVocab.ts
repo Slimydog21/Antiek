@@ -107,6 +107,57 @@ export const GATE_PHRASES = {
 
 export type GatePhraseKey = keyof typeof GATE_PHRASES;
 
+/**
+ * Display labels for an invitee's lifecycle state — the ONE place the console
+ * (modes/Speak/index.tsx) and the invite list (modes/Speak/Invites.tsx) read
+ * the human word for a voice's status, so the two surfaces cannot drift.
+ *
+ * Keyed by the humanized `VoiceState` (speakApi's enum-edge already maps the
+ * substrate strings → VoiceState via `VOICE_STATE`; this is the next hop,
+ * VoiceState → display word — it does NOT re-derive that substrate map).
+ *
+ * These are plain status words, never gate phrases: they grant no agency and
+ * name no flag, so they live OUTSIDE `gatePhraseStrings()` (they are not held
+ * to the read-only-gate discipline) but inside `allRenderedPhrases()` (so the
+ * env-flag-leak scan still covers them).
+ */
+export const VOICE_STATE_LABELS: Record<VoiceState, string> = {
+  invited: "Invited",
+  recording: "Recording…",
+  shared: "Shared",
+  declined: "Declined",
+  unfinished: "Started",
+};
+
+/**
+ * The Invites surface holds substrate-style status strings ("in_progress",
+ * "completed", "incomplete") rather than the humanized VoiceState. This maps
+ * each to the same display word as above — single-sourced through
+ * VOICE_STATE_LABELS, so an invite row and a console row for the same lifecycle
+ * stage always read identically. Mirrors speakApi's substrate→VoiceState
+ * semantics (in_progress→recording, completed→shared, incomplete→unfinished)
+ * without duplicating its runtime map.
+ */
+export type InviteStatus =
+  | "invited"
+  | "in_progress"
+  | "completed"
+  | "declined"
+  | "incomplete";
+
+const INVITE_STATUS_TO_VOICE_STATE: Record<InviteStatus, VoiceState> = {
+  invited: "invited",
+  in_progress: "recording",
+  completed: "shared",
+  declined: "declined",
+  incomplete: "unfinished",
+};
+
+/** Human display word for an Invites-surface status string. */
+export function inviteStatusLabel(status: InviteStatus): string {
+  return VOICE_STATE_LABELS[INVITE_STATUS_TO_VOICE_STATE[status]];
+}
+
 /** Every rendered string this module exposes, flattened — the surface the
  *  gate-honesty contract test scans. Keeping it derived (not hand-maintained)
  *  means a new label/phrase is automatically covered by the test. */
@@ -114,6 +165,7 @@ export function allRenderedPhrases(): string[] {
   const out: string[] = [
     ...Object.values(LANE_LABELS),
     ...Object.values(AGREEMENT_WORDS),
+    ...Object.values(VOICE_STATE_LABELS),
   ];
   for (const gate of Object.values(GATE_PHRASES)) {
     out.push(gate.label, gate.whenGated);

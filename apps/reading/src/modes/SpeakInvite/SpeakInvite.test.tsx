@@ -104,4 +104,130 @@ describe("SpeakInvite — phone-first, voice-first", () => {
     mount();
     expect(await screen.findByText(/invalid or has expired/i)).toBeTruthy();
   });
+
+  it("renders fully logged-out: no AuthProvider/RequireAuth in the tree, the token is the only credential", async () => {
+    // mount() deliberately wraps SpeakInvite in a bare MemoryRouter — NO
+    // AuthProvider, NO RequireAuth. If the component reached for auth context
+    // or redirected to /login, this would throw or fail to render. The route
+    // sits before the RequireAuth catch-all in App.tsx (verified at line 232).
+    apiFetchMock.mockResolvedValue(landingResponse(NOT_CONSENTED));
+    mount();
+    expect(await screen.findByText(/remember grandma rosa/i)).toBeTruthy();
+    // No login redirect happened; the landing rendered from the token alone.
+    expect(screen.queryByText(/log ?in/i)).toBeNull();
+  });
+
+  it("land → consent → answer (text): grants consent then submits the typed memory", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (typeof url === "string" && url.includes("/consent")) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      }
+      if (typeof url === "string" && url.includes("/answer")) {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({}) });
+      }
+      // The landing reload after consent reflects record granted; reload after
+      // the answer shows nothing pending (warm thank-you).
+      const consentDone = calls.some((c) => c.url.includes("/consent"));
+      const answerDone = calls.some((c) => c.url.includes("/answer"));
+      const body = answerDone
+        ? { ...CONSENTED, pending_questions: [] }
+        : consentDone
+          ? CONSENTED
+          : NOT_CONSENTED;
+      return Promise.resolve(landingResponse(body));
+    });
+    mount();
+    await screen.findByText(/remember grandma rosa/i);
+
+    // Consent — one warm yes.
+    fireEvent.click(screen.getByRole("button", { name: /i'll share a memory/i }));
+    await screen.findByText(/what's your earliest memory/i);
+
+    // Switch to typing (voice-first; text is the fallback), type, send.
+    fireEvent.click(screen.getByRole("button", { name: /i'd rather type/i }));
+    const box = screen.getByPlaceholderText(/share whatever comes to mind/i) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: "She always sang while cooking." } });
+    fireEvent.click(screen.getByRole("button", { name: /send this memory/i }));
+
+    // The warm done-state appears (no dead end), and the answer POST carried
+    // the typed transcript verbatim (the corrected transcript IS what they typed).
+    expect(await screen.findByText(/what you shared is saved/i)).toBeTruthy();
+    const answerCall = calls.find((c) => c.url.includes("/answer"));
+    expect(answerCall).toBeTruthy();
+    expect(JSON.parse(String(answerCall!.init!.body))).toMatchObject({
+      question_id: "q1",
+      transcript: "She always sang while cooking.",
+    });
+  });
+
+  it("publish is OFF BY DEFAULT: the prominent share action grants RECORD ONLY (no publish), never opt-out", async () => {
+    // This is the legally-load-bearing assertion: the one obvious button a
+    // friend taps must NOT publish them. Publishing is the consent that has to
+    // be defensible against "did this friend actually agree to be published?";
+    // it can only ever be granted by the explicit second action (next test).
+    const consentBodies: unknown[] = [];
+    apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/consent")) {
+        consentBodies.push(JSON.parse(String(init!.body)));
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      }
+      const body = consentBodies.length > 0 ? CONSENTED : NOT_CONSENTED;
+      return Promise.resolve(landingResponse(body));
+    });
+    mount();
+    await screen.findByText(/remember grandma rosa/i);
+    // The honest "still helps, just not public" framing is present (the invite
+    // asks for publish — NOT_CONSENTED.required_consent_scopes includes it).
+    expect(screen.getByText(/either way still helps/i)).toBeTruthy();
+    // Tap the PROMINENT / default share action.
+    fireEvent.click(screen.getByRole("button", { name: /yes, i'll share a memory/i }));
+    await screen.findByText(/what's your earliest memory/i);
+    // The default consent POST granted record only — publish was NOT snuck in.
+    expect(consentBodies).toHaveLength(1);
+    const granted = (consentBodies[0] as { scopes: string[] }).scopes;
+    expect(granted).toContain("record");
+    expect(granted).not.toContain("publish");
+  });
+
+  it("publish is an affirmative OPT-IN: only the explicit publish button grants publish (a button, not a checkbox)", async () => {
+    const consentBodies: unknown[] = [];
+    apiFetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === "string" && url.includes("/consent")) {
+        consentBodies.push(JSON.parse(String(init!.body)));
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+      }
+      const body = consentBodies.length > 0 ? CONSENTED : NOT_CONSENTED;
+      return Promise.resolve(landingResponse(body));
+    });
+    mount();
+    await screen.findByText(/remember grandma rosa/i);
+    // Publish opt-in is a clearly-affirmative BUTTON the friend actively picks —
+    // not a checkbox/checklist (the 0-checkboxes contract above stays green).
+    const optIn = screen.getByRole("button", {
+      name: /use my words in the public story/i,
+    });
+    expect(document.querySelectorAll('input[type="checkbox"]').length).toBe(0);
+    fireEvent.click(optIn);
+    await screen.findByText(/what's your earliest memory/i);
+    // Only this action grants publish — affirmatively, by the friend's choice.
+    expect(consentBodies).toHaveLength(1);
+    const granted = (consentBodies[0] as { scopes: string[] }).scopes;
+    expect(granted).toContain("record");
+    expect(granted).toContain("publish");
+  });
+
+  it("mic-denied is honest: 'Type instead' reveals a real text box with the no-mic reassurance", async () => {
+    apiFetchMock.mockResolvedValue(landingResponse(CONSENTED));
+    mount();
+    await screen.findByText(/what's your earliest memory/i);
+    // The capture surface offers an explicit out for a broken/blocked mic.
+    fireEvent.click(screen.getByRole("button", { name: /type instead/i }));
+    // We drop to the honest text fallback — never a dead end, never a fake mic.
+    expect(screen.getByText(/no microphone — no problem/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/share whatever comes to mind/i)).toBeTruthy();
+    // The mic is gone (we committed to text); no decorative recorder lingers.
+    expect(screen.queryByText(/tap to talk/i)).toBeNull();
+  });
 });
