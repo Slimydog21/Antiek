@@ -13,6 +13,8 @@ import type {
 import ChaseThread from "../ResearchWorkstation/ChaseThread";
 import ReadingColumn from "../../components/reader/ReadingColumn";
 import Reader, { deriveToc } from "../../components/reader/Reader";
+import ReaderErrorBoundary from "../../components/reader/ReaderErrorBoundary";
+import { allBlockTypesKnown } from "../../components/reader/knownBlockTypes";
 import { openDocumentStub } from "../../components/reader/openDocumentStub";
 import PdfViewer from "../../components/PdfViewer";
 import type { Block, Document, InlineSpan, TocEntry } from "../../types/document_model.gen";
@@ -86,21 +88,36 @@ export default function BookReader() {
 
   // ── The ONE rich-render gate (Reader SPR-03 M4), §9.0-DEFENDED ────────────
   // Deserialize the SPR-02 `structured_blocks` into the SPR-01 typed `Document`
-  // the one <Reader> renders — but ONLY for a SERVABLE book. Defense-in-depth:
+  // the one <Reader> renders — but ONLY for a SERVABLE book. What this gate
+  // DEFENDS, precisely (defense-in-depth):
   //   • `book.servable_full_text` must be true (the §9.0 serve verdict) — we
   //     NEVER rich-render a gated/taken-down book, even if a stale/poisoned
   //     `structured_blocks` somehow rode along (the backend serves it null for a
   //     withheld body, but the client refuses regardless);
-  //   • the JSON must parse AND carry a `blocks` array — a bad/wrong-shape blob
-  //     degrades to null, which falls back to the legacy text flattener (never a
-  //     blank, never a throw).
+  //   • the JSON must PARSE, carry a `blocks` array, AND every block must have a
+  //     KNOWN `type` discriminator (allBlockTypesKnown, sourced from the
+  //     generated `Block` union). A bad/wrong-shape blob — unparseable, no
+  //     `blocks` array, or a block whose `type` the dispatcher can't render
+  //     (`assertNever`) — degrades to null, taking the legacy text fallback
+  //     BEFORE the renderer can throw on it.
+  // This gate validates SHAPE only (parse + a known-`type` block array); it does
+  // NOT deep-validate every span/field, so a field-level skew within a known
+  // type (a `paragraph` missing `spans`, a `math` missing `tex`) can still slip
+  // through to render — that residual is caught by the ReaderErrorBoundary
+  // around the rich body, which degrades to the SAME legacy fallback. Together:
+  // never a blank, never a throw.
   // A null result ⇒ the legacy `ReadingColumn` text path, byte-identical to
   // before. So the rich path is reachable for a servable, well-formed doc ONLY.
   const structuredDoc = useMemo<Document | null>(() => {
     if (!book?.servable_full_text || !body?.structured_blocks) return null;
     try {
       const d = JSON.parse(body.structured_blocks);
-      return d && Array.isArray(d.blocks) ? (d as Document) : null;
+      if (!d || !Array.isArray(d.blocks)) return null;
+      // Reject a doc carrying any unknown block `type` (schema-skew / poisoned)
+      // BEFORE it reaches the dispatcher's `assertNever` — take the clean
+      // legacy fallback instead of letting the renderer throw.
+      if (!allBlockTypesKnown(d.blocks)) return null;
+      return d as Document;
     } catch {
       return null;
     }
@@ -140,15 +157,15 @@ export default function BookReader() {
   const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
-  // resolved 0-based page; map it to the window index and move the reader.
-  // REUSES the EXISTING reader navigation (windowForTocPage + setPageIndex) —
-  // the SAME path TOC jumps use, not a parallel one. The citation's page index
-  // is a position over the SAME active pagination, so clamping over `pages`
-  // (whichever path is active) is correct for both.
+  // resolved 0-based page; clamp it onto the active pagination and move the
+  // reader via the SAME setPageIndex the pager and TOC jumps use — not a
+  // parallel path. The citation's page index is a position over the SAME
+  // normalized `pages`, so clamping over its length is correct on either active
+  // pagination (block windows or text windows).
   const jumpToPage = useCallback(
     (page: number) => {
-      // `windowForTocPage` clamps a 0-based page into [0, length-1] using only
-      // `pages.length` — identical semantics on both active paginations.
+      // Clamp the 0-based page into [0, length-1] inline over the active
+      // normalized `pages` (whichever path is active) — same semantics on both.
       if (pages.length === 0) return;
       setPageIndex(Math.max(0, Math.min(page, pages.length - 1)));
     },
@@ -360,11 +377,24 @@ export default function BookReader() {
   const activePassageText = structuredDoc
     ? blocksToPlainText(activeWindow?.blocks ?? [])
     : (textPage?.text ?? "");
+  // D1 degrade text: if the rich <Reader> throws on a field-level skew the
+  // structuredDoc gate didn't catch (a paragraph missing `spans`, a math missing
+  // `tex`), the error boundary degrades to the legacy ReadingColumn with this
+  // text. The block pagination and the text pagination don't share page indices,
+  // so a mid-doc throw can't be mapped to a single text page reliably; the honest
+  // degrade renders the WHOLE gate-served body (same §9.0-served text) rather
+  // than a mis-mapped page. Empty body ⇒ ReadingColumn shows its honest
+  // "no readable pages" notice — still not blank, still no throw.
+  const legacyFallbackText = body.full_text ?? body.snippet ?? "";
   // M5: the preserved-original PDF bytes, or null when no original exists. Books
   // persist raw_text as the "view original" source (SPR-02 store-both), NOT a
   // PDF blob, and no endpoint serves PDF bytes for a book — so this is null for
   // every current book and the toggle stays hidden. The seam is wired for a
   // future PDF-bytes source without fabricating bytes that don't exist.
+  //
+  // M5 seam wired; structurally hidden until a PDF-bytes source exists — no
+  // `documents` PDF-blob column today. The toggle-hidden state is verified by a
+  // test ("M5: the view-original toggle is HIDDEN when there is no original").
   const originalPdfBytes: Uint8Array | null = null;
   const slotBase = `slot:${documentId}:p${pageIndex}`;
 
@@ -572,15 +602,36 @@ export default function BookReader() {
                     markers (Reader stamps data-akb-asset-id from a truthy assetId
                     — present here ONLY for a servable book, §9.0), and no
                     fabricated chunkId. openDocument is the SPR-03 stub (SPR-05
-                    wires the real gated resolver). */
-                <Reader
-                  ref={articleRef}
-                  document={structuredDoc}
-                  blocks={activeWindow?.blocks ?? []}
-                  assetId={book.servable_full_text ? documentId : null}
-                  chunkId={null}
-                  openDocument={openDocumentStub}
-                />
+                    wires the real gated resolver).
+
+                    D1 — "never blank, never a throw": the structuredDoc gate
+                    rejects an unknown block `type` up front, but a field-level
+                    skew within a KNOWN type (a paragraph missing `spans`, a math
+                    missing `tex`) would still throw during render. With no
+                    boundary that throw unmounts the whole surface to blank. The
+                    ReaderErrorBoundary catches it and degrades to the SAME legacy
+                    ReadingColumn — same articleRef, same §9.0 attribution — that
+                    a null structuredDoc takes. resetKey=documentId lets a healthy
+                    book after a broken one render rich again. */
+                <ReaderErrorBoundary
+                  resetKey={documentId}
+                  fallback={
+                    <ReadingColumn
+                      ref={articleRef}
+                      assetId={book.servable_full_text ? documentId : null}
+                      text={legacyFallbackText}
+                    />
+                  }
+                >
+                  <Reader
+                    ref={articleRef}
+                    document={structuredDoc}
+                    blocks={activeWindow?.blocks ?? []}
+                    assetId={book.servable_full_text ? documentId : null}
+                    chunkId={null}
+                    openDocument={openDocumentStub}
+                  />
+                </ReaderErrorBoundary>
               ) : (
                 /* LEGACY path: a null structuredDoc (un-backfilled / bad-JSON /
                     gated snippet) renders the markdown ReadingColumn flattener —

@@ -18,11 +18,11 @@ import katex from "katex";
  *
  * Why ``katex`` directly and not ``rehype-katex``: the Reader renders the TYPED
  * model (a ``MathSpan.tex`` / ``MathBlock.tex`` string), not a re-parsed
- * markdown document, so there is no markdown AST for the rehype plugin to walk.
- * ``rehype-katex`` is the right tool when react-markdown parses a string; here
- * the math is already isolated as a verbatim ``tex`` field, so the direct KaTeX
- * call is the honest, minimal path. (``rehype-katex`` remains available for the
- * one place we DO let react-markdown parse a string — see ``InlineMarkdown``.)
+ * markdown document, so there is no markdown AST for a rehype plugin to walk.
+ * The math is already isolated as a verbatim ``tex`` field, so the direct KaTeX
+ * call is the honest, minimal path — and the only math path in the reader. (The
+ * ``rehype-katex`` / ``remark-math`` markdown-AST plugins were unused and have
+ * been removed from the dependency set.)
  */
 
 export interface RenderedMath {

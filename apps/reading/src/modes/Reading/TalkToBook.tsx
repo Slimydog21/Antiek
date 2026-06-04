@@ -36,9 +36,9 @@ import type { TalkMessage } from "./useTalkThread";
 export interface TalkToBookProps {
   documentId: string;
   title: string | null;
-  /** Jump the reader to a page (the reader passes its windowForTocPage +
-   * setPageIndex composition). Reuses the EXISTING page navigation, not a
-   * parallel one. */
+  /** Jump the reader to a page. The reader's `jumpToPage` clamps the 0-based
+   * page onto its active pagination and calls the SAME setPageIndex the pager
+   * and TOC jumps use — the EXISTING page navigation, not a parallel one. */
   onJumpToPage: (pageIndex: number) => void;
 }
 
