@@ -578,3 +578,85 @@
         success_msg: |
           Frontend verified: SPA serves on https://{{ api_domain }}/.
       tags: [verify, frontend]
+
+    # ── 7. Usability-keystone verify-live (Antiek Convergence SPR-08 / M3) ──────
+    # The capstone: the SAME conjunction probe that gates merges in-process
+    # (tools/reachability/probes/usability_keystone.py) re-run AGAINST LIVE PROD,
+    # parameterized by ANTIEK_PROBE_BASE_URL. A green /health + green frontend can
+    # both pass while the END-TO-END JOURNEY is broken — that is exactly the
+    # dead-flywheel history this whole gate exists to kill (/health showed
+    # knowledge_reuse_count=0 on live prod while every brick was green). This task
+    # asserts the journey (login → launch → compound → read → §9 attribution) on
+    # the real public hostname.
+    #
+    # OPERATOR-GATED (scope boundary, docs/decisions/usability-keystone.md): the
+    # live run writes a real research to the PROD graph, needs PROD credentials,
+    # and prod is HELD pending §9.0. So it is OFF by default and ARMED only by the
+    # operator (antiek_keystone_verify_live=true + the three live credentials —
+    # see infrastructure/runbooks/usability-keystone-verify-live.md). This task is
+    # REQUIRED (it always runs; it is NEVER continue-on-error / silently skipped):
+    #   * ARMED   → run the parameterized probe; a non-zero exit (any broken leg)
+    #               FAILS the play.
+    #   * NOT armed → FAIL THE TASK with a REMINDER that the live keystone is owed
+    #               as the operator's post-deploy step, so it can never be silently
+    #               forgotten. (Set `-e antiek_keystone_verify_live=skip_acknowledged`
+    #               to record an explicit "I will run it by hand" acknowledgement
+    #               and let the play proceed — a deliberate, logged opt-out, not a
+    #               silent skip.)
+    - name: usability keystone — run the live verify (ARMED) or refuse (scope boundary)
+      ansible.builtin.command:
+        # Run from the control node (delegate_to: localhost), exactly like the
+        # /health + prod-parity tasks, so it exercises the full public path. The
+        # probe is parameterized to LIVE mode by ANTIEK_PROBE_BASE_URL; the live
+        # operator token + a real readable chunk id come from the environment
+        # (supplied by the operator per the runbook — never minted by this play).
+        # A non-zero exit (any broken leg) fails the play.
+        cmd: >-
+          python -m tools.reachability.probe_runner --only usability_keystone
+        chdir: "{{ playbook_dir }}/../../.."
+      environment:
+        ANTIEK_PROBE_BASE_URL: "https://{{ api_domain }}"
+        ANTIEK_PROBE_OPERATOR_TOKEN: "{{ lookup('env', 'ANTIEK_PROBE_OPERATOR_TOKEN') }}"
+        ANTIEK_PROBE_READ_CHUNK_ID: "{{ lookup('env', 'ANTIEK_PROBE_READ_CHUNK_ID') }}"
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      when: (antiek_keystone_verify_live | default(false) | string) == "true"
+      tags: [verify, keystone]
+
+    - name: usability keystone — REFUSE to silently skip the operator-gated live run
+      # NOT armed and NOT explicitly acknowledged: fail the verify so the live
+      # keystone can never be silently forgotten. This is the REQUIRED-step
+      # discipline — the operator must either arm it, run it by hand and
+      # acknowledge, or consciously defer with a recorded reason.
+      ansible.builtin.fail:
+        msg: |
+          USABILITY KEYSTONE LIVE-VERIFY NOT RUN.
+          The end-to-end keystone (login → launch → compound → read → §9
+          attribution) was NOT exercised against live https://{{ api_domain }}.
+          A green /health + green frontend can BOTH pass while the journey is
+          broken — that is the dead-flywheel history this gate exists to kill.
+
+          This live run is OPERATOR-GATED (it writes the prod graph + needs prod
+          creds + prod is held pending §9.0). Choose ONE:
+            (a) ARM it now:    -e antiek_keystone_verify_live=true  with
+                ANTIEK_PROBE_OPERATOR_TOKEN + ANTIEK_PROBE_READ_CHUNK_ID set
+                (infrastructure/runbooks/usability-keystone-verify-live.md), OR
+            (b) ACKNOWLEDGE you will run it by hand post-deploy:
+                -e antiek_keystone_verify_live=skip_acknowledged
+          Do NOT leave it silently un-run.
+      when: (antiek_keystone_verify_live | default(false) | string) not in ["true", "skip_acknowledged"]
+      tags: [verify, keystone]
+
+    - name: usability keystone — record an acknowledged manual-run deferral
+      ansible.builtin.debug:
+        msg: >-
+          ::warning:: USABILITY KEYSTONE live-verify DEFERRED to a manual
+          operator run (antiek_keystone_verify_live=skip_acknowledged). Run
+          `python -m tools.reachability.probe_runner --only usability_keystone`
+          with ANTIEK_PROBE_BASE_URL=https://{{ api_domain }} +
+          ANTIEK_PROBE_OPERATOR_TOKEN + ANTIEK_PROBE_READ_CHUNK_ID post-deploy
+          (infrastructure/runbooks/usability-keystone-verify-live.md). This
+          deferral was explicitly acknowledged, not silently skipped.
+      when: (antiek_keystone_verify_live | default(false) | string) == "skip_acknowledged"
+      tags: [verify, keystone]

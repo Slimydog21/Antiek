@@ -127,12 +127,23 @@ class Probe:
                    catch (README "the fixture-injection anti-pattern").
     ``timeout_s``— per-probe wall-clock ceiling (default
                    ``DEFAULT_PROBE_TIMEOUT_S``).
+    ``headline`` — when True, this probe is the TOP-LINE (headline) probe:
+                   it sorts FIRST in ``--list`` and in a full run, ahead of
+                   every non-headline probe (which keep their id-ascending
+                   order). SPR-08's ``usability_keystone`` is the headline —
+                   it is the conjunction of the other legs into one journey,
+                   so a maintainer reading the gate sees the "is the product
+                   usable end-to-end" verdict first, before the per-brick
+                   probes. A clean small field, NOT an id-prefix hack (an id
+                   like ``aaa_keystone`` would corrupt the ``--only`` selector
+                   and the ``known_red.json`` key; this keeps the id honest).
     """
 
     id: str
     feature: str
     run: Callable[[], ProbeResult]
     timeout_s: float = DEFAULT_PROBE_TIMEOUT_S
+    headline: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -143,8 +154,12 @@ class Probe:
 def discover_probes() -> list[Probe]:
     """Import every module under ``tools/reachability/probes/`` and collect
     its module-level ``PROBE`` attribute (a ``Probe``). A module without a
-    ``PROBE`` is skipped (helpers are allowed). Sorted by id for stable
-    output.
+    ``PROBE`` is skipped (helpers are allowed). Sorted HEADLINE-first, then by
+    id, for stable output: a probe flagged ``headline=True`` sorts ahead of
+    every non-headline probe (the others keep their id-ascending order), so the
+    end-to-end "is the product usable" verdict (SPR-08 ``usability_keystone``)
+    surfaces as the top line in ``--list`` and in a full run — without an
+    id-prefix hack that would corrupt the ``--only`` selector / known_red key.
 
     Discovery is anchored to THIS file's directory, NOT to the already-imported
     ``tools.reachability.probes`` package's ``__path__``. Reason (verified
@@ -169,7 +184,10 @@ def discover_probes() -> list[Probe]:
         probe = getattr(module, "PROBE", None)
         if isinstance(probe, Probe):
             found.append(probe)
-    return sorted(found, key=lambda p: p.id)
+    # Headline-first (not headline → sorts after), then id-ascending within
+    # each group. ``not p.headline`` is False (0) for the headline probe, so it
+    # sorts before the non-headline probes (True == 1); ``p.id`` breaks ties.
+    return sorted(found, key=lambda p: (not p.headline, p.id))
 
 
 # ---------------------------------------------------------------------------

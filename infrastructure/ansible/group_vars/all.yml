@@ -90,6 +90,35 @@ antiek_require_flywheel: false
 # arm the toggle) when the warning fires.
 antiek_flywheel_review_date: "2026-07-03"
 
+# ── Usability-keystone verify-live gate (Antiek Convergence SPR-08 / M3) ───────
+#
+# The usability keystone (tools/reachability/probes/usability_keystone.py) is the
+# CONJUNCTION probe: login → launch → compound → read → §9 attribution as ONE
+# journey. The SAME probe runs two ways, parameterized by ANTIEK_PROBE_BASE_URL:
+#   * IN-PROCESS (pre-merge gate)  — boots create_app(); the CI/merge gate.
+#   * LIVE (post-deploy)           — httpx against https://{{ api_domain }}; this
+#                                    deploy task.
+#
+# `antiek_keystone_verify_live` (default false) ARMS the live run. It is
+# operator-gated and OFF by default ON PURPOSE — running it against live prod
+# (a) writes a real research to the PROD graph, (b) needs PROD operator
+# credentials (a real bearer token + a real readable chunk id), and (c) prod is
+# HELD pending §9.0 on an unmerged branch. So the in-process gate is what blocks
+# merges this sprint; the live run is the OPERATOR's post-deploy step, documented
+# in infrastructure/runbooks/usability-keystone-verify-live.md.
+#
+# The deploy.yml task is REQUIRED (it always runs — never continue-on-error /
+# silently skipped): when the toggle is OFF it FAILS LOUD-OR-REMINDS that the
+# live keystone is owed as the operator's post-deploy step (it cannot be
+# forgotten); when the toggle is ON it RUNS the parameterized probe against the
+# public hostname and the play fails on a non-zero exit (any broken leg reds the
+# deploy). ARM by setting `antiek_keystone_verify_live: true` AND supplying the
+# three live credentials on the command line / vault (see the runbook):
+#   -e antiek_keystone_verify_live=true
+#   ANTIEK_PROBE_OPERATOR_TOKEN=<prod operator bearer>
+#   ANTIEK_PROBE_READ_CHUNK_ID=<a real servable prod chunk id>
+antiek_keystone_verify_live: false
+
 # ── Network ──────────────────────────────────────────────────────────────────
 
 # uvicorn binds here. Caddy reverse-proxies localhost:{{ uvicorn_port }}.
