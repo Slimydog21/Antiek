@@ -40,6 +40,15 @@ def client(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(tmpdir, "events"))
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    # RDR SPR-04: this suite verifies the cascade *plumbing* (launch → monitor →
+    # cost meter → recovery), NOT real research content. Since SPR-04 re-pointed
+    # the production factory at the real Exa+model loop (INERT without keys —
+    # which this hermetic, no-key, register_providers=False fixture deliberately
+    # withholds), pin this plumbing suite to the deterministic offline demo loop
+    # via its sanctioned escape-hatch flag. This is EXACTLY the legitimate use
+    # the flag exists for (deterministic, offline, no key); the production
+    # default remains the real loop (asserted in test_real_research_loop_spr04).
+    monkeypatch.setenv("ANTIEK_RESEARCH_DEMO_LOOP", "1")
     # Hermetic embedding (no sentence-transformers) for plan persistence + funnel.
     monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
     cr._SESSIONS.clear()
