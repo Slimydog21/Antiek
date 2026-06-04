@@ -832,6 +832,102 @@ describe("BookReader", () => {
     expect(richArticle(container)).toBeNull();
   });
 
+  // ── Reader SPR-03 D1: "never blank, never a throw" is TRUE ──────────
+  //
+  // A SERVABLE doc whose structured_blocks is arrayish-but-type-invalid must
+  // NOT crash the reading surface to blank. THREE skews, each degrading to the
+  // legacy body (or an honest notice) with NO throw and NO blank:
+  //   1. an UNKNOWN block `type` → rejected by the tightened structuredDoc gate
+  //      → null → legacy fallback (degrades BEFORE the renderer);
+  //   2. a `paragraph` missing `spans` → passes the gate (known type) but throws
+  //      in InlineSpans during render → caught by the ReaderErrorBoundary →
+  //      legacy fallback;
+  //   3. a `math` missing `tex` → passes the gate but throws in renderMath →
+  //      caught by the boundary → legacy fallback.
+  // The legacy fallback renders body.full_text ("The opening of the book."), so
+  // the reading surface is present (not blank); the rich article is absent
+  // (degraded); §9.0 attribution still rides the legacy column for a servable.
+  //
+  // The boundary throws are EXPECTED — React logs the caught error to
+  // console.error. We silence it for the duration so a real failure (an
+  // unexpected throw) is still visible, while the expected degrade stays quiet.
+  function withSilencedErrorBoundary(fn: () => Promise<void>): () => Promise<void> {
+    return async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        await fn();
+      } finally {
+        spy.mockRestore();
+        warn.mockRestore();
+      }
+    };
+  }
+
+  it(
+    "D1: a SERVABLE doc with an UNKNOWN block type degrades to the legacy body (gate rejects it; not blank, no throw)",
+    withSilencedErrorBoundary(async () => {
+      getBookMock.mockResolvedValue(makeDetail());
+      getFullTextMock.mockResolvedValue(
+        makeBody({ structured_blocks: JSON.stringify({ id: "doc-1", title: "T", blocks: [{ type: "__unknown__" }] }) }),
+      );
+      const { container } = await renderReader();
+      // The reading surface is PRESENT — the legacy body rendered (the served
+      // full_text), NOT a blank/crashed surface.
+      await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+      // It degraded: no rich article. The §9.0 attribution still tags the
+      // servable legacy column (attribution unbroken on the fallback).
+      expect(richArticle(container)).toBeNull();
+      expect(container.querySelector("[data-akb-asset-id]")).toBeTruthy();
+    }),
+  );
+
+  it(
+    "D1: a SERVABLE doc with a `paragraph` missing `spans` degrades via the error boundary (not blank, no throw)",
+    withSilencedErrorBoundary(async () => {
+      getBookMock.mockResolvedValue(makeDetail());
+      getFullTextMock.mockResolvedValue(
+        makeBody({
+          // Known `type` (passes the gate) but field-invalid: the renderer's
+          // InlineSpans throws mapping `undefined` spans → caught by the boundary.
+          structured_blocks: JSON.stringify({
+            id: "doc-1",
+            title: "T",
+            blocks: [{ type: "paragraph" }],
+          }),
+        }),
+      );
+      const { container } = await renderReader();
+      // The boundary degraded to the legacy body — the surface is up, not blank.
+      await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+      expect(richArticle(container)).toBeNull();
+      // §9.0 attribution preserved on the fallback (servable).
+      expect(container.querySelector("[data-akb-asset-id]")).toBeTruthy();
+    }),
+  );
+
+  it(
+    "D1: a SERVABLE doc with a `math` block missing `tex` degrades via the error boundary (not blank, no throw)",
+    withSilencedErrorBoundary(async () => {
+      getBookMock.mockResolvedValue(makeDetail());
+      getFullTextMock.mockResolvedValue(
+        makeBody({
+          // Known `type` (passes the gate) but missing the required `tex` →
+          // renderMath throws → caught by the boundary → legacy fallback.
+          structured_blocks: JSON.stringify({
+            id: "doc-1",
+            title: "T",
+            blocks: [{ type: "math" }],
+          }),
+        }),
+      );
+      const { container } = await renderReader();
+      await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+      expect(richArticle(container)).toBeNull();
+      expect(container.querySelector("[data-akb-asset-id]")).toBeTruthy();
+    }),
+  );
+
   it("§9.0: a gated book NEVER rich-renders and is NEVER attribution-tagged, even if structured_blocks rode along", async () => {
     // Defense-in-depth: the backend serves structured_blocks null for a withheld
     // body, but even if a stale/poisoned blob were present, the client refuses to
@@ -918,5 +1014,35 @@ describe("BookReader", () => {
     // Jumping to Chapter Two (a heading in the 2nd window) moves to page 2.
     fireEvent.click(chapterTwo);
     await waitFor(() => expect(screen.getByText(/Page 2 of 2/)).toBeTruthy());
+  });
+
+  // ── Reader SPR-03 D4: M5 view-original toggle is HONESTLY HIDDEN ─────
+  //
+  // No PDF bytes are persisted for books (raw_text is the preserved original,
+  // not a PDF blob — there is no `documents` PDF-blob column today), so
+  // originalPdfBytes is null and the "View original" toggle is structurally
+  // hidden. Hiding it (vs. showing a dead control) is the honest move; this test
+  // verifies the hidden state so the milestone's deferral is not just asserted in
+  // a comment. Holds on BOTH the rich and the legacy body paths.
+
+  it("M5: the view-original toggle is HIDDEN when there is no original (originalPdfBytes null) — legacy path", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody()); // legacy markdown body, no structured_blocks
+    await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    // No toggle control in either of its labels (no dead control with no original).
+    expect(screen.queryByRole("button", { name: /View original/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Back to reading view/ })).toBeNull();
+  });
+
+  it("M5: the view-original toggle is HIDDEN when there is no original — rich path", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: structuredBlocksJson() }));
+    const { container } = await renderReader();
+    await waitFor(() => expect(richArticle(container)).toBeTruthy());
+    // Still no toggle on the rich path — originalPdfBytes is null regardless of
+    // which body path renders.
+    expect(screen.queryByRole("button", { name: /View original/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Back to reading view/ })).toBeNull();
   });
 });
