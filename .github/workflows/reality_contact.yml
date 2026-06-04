@@ -1,0 +1,125 @@
+# Reality-Contact Ratchet — SPR-05 of the Antiek Reality-Contact Ledger
+# (~/specs/antiek-reality-contact/). A NEW, additive gate: it edits no
+# existing workflow and touches no infrastructure/ansible/* (that is the
+# sibling antiek-first-light spec's deploy territory — keeping these two
+# specs parallel-safe). It runs the one-way ratchet built in SPR-04 on
+# every PR and push and FAILS the build on a reality-contact regression.
+#
+# What the ratchet does (SPR-04, frozen): `python -m tools.reality_contact.ratchet`
+# regenerates the ledger from the LIVE tree in-memory (via build_ledger(),
+# no disk write) and compares it to the committed baseline.json. It exits
+# 0 (pass), 1 (a new un-exempted core-mock / theater-count regression,
+# naming file:line:symbol), or 2 (usage). The CI step is simply: run that
+# module and let a non-zero exit fail the job. The committed ledger.json
+# (SPR-01) is NOT read by the ratchet and is left untouched.
+#
+# ── WHY THIS GATE BLOCKS RATHER THAN WARNS ───────────────────────────────
+# The operator chose teeth. This whole spec exists to kill "green that
+# lies" — a test that mocks the orchestrator and asserts a synthesis. A
+# reality-contact gate that itself only WARNED would be the bitterest
+# possible failure: it would annotate-and-pass exactly the regression it
+# was built to stop. So there is deliberately NO `continue-on-error` and
+# NO `|| true` on the ratchet step: non-zero ratchet => red job.
+#
+# Steelman of the rejected alternative ("make it informational, like the
+# inline-rubric latency lock in ci.yml"): that pattern is correct for a
+# gate with a runner-noise failure mode — the latency lock is a microsecond
+# benchmark on a shared runner ~2x slower than the baseline hardware, so it
+# reports a false regression and must not block. This gate has NO such
+# mode: it is deterministic static analysis over the test tree (parse files,
+# resolve mock targets against boundaries.yaml, count theater per
+# subsystem). Same tree in => same verdict out, on any runner. Demoting it
+# to informational would not absorb noise (there is none); it would hide the
+# teeth the operator explicitly asked for. The fair carve-out for a
+# legitimately-mocked core path is the RECORDED exemption mechanism
+# (`ratchet --accept --reason ...`, SPR-04), not a blanket downgrade.
+#
+# RECONSIDER-IF: if SPR-07's mutation probe demonstrates the static
+# classifier has a HIGH FALSE-POSITIVE rate (it red-flags tests that make
+# genuine reality contact), then downgrading this to informational — or
+# narrowing its scope — becomes justified, because a noisy gate gets routed
+# around. Until that evidence exists, it blocks. (Full decision record:
+# the SPR-06 doc under docs/decisions/.)
+#
+# OPERATOR FOLLOW-UP (not committable from here): mark `reality-contact-ratchet`
+# a REQUIRED status check in GitHub branch-protection settings so a red run
+# actually prevents merge. This file makes the check exist and go red; only
+# repo settings make it blocking-at-merge.
+
+name: reality-contact-ratchet
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  # One run per branch; new pushes cancel the previous run (mirrors ci.yml).
+  group: reality-contact-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Opt into Node 24 for JS-based actions, matching ci.yml's forward-compat
+  # posture (Node 20 deprecated 2025-09-19).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  reality-contact:
+    name: reality-contact-ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          # Pinned to 3.14 to match ci.yml (the operator's local dev env and
+          # the canonical schema-serialization version). Mirrors the main
+          # test gate so this gate runs under the same interpreter.
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install Antiek + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          # Mirrors ci.yml: the ratchet walks the test tree and needs only
+          # PyYAML (in [dev]) beyond stdlib, but installing the same extras
+          # as the main gate keeps the environment identical and avoids
+          # import-time surprises if the tree grows a new dependency.
+          pip install -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
+
+      - name: Refresh the ledger from the live tree
+        # The scoreboard (next step) reads the COMMITTED ledger.json — SPR-01's
+        # frozen snapshot, which drifts as test files land. Regenerate it here
+        # from THIS PR's tree so the emitted RCR reflects the live tree and
+        # MATCHES what the gate evaluates: in a regressing PR the annotation must
+        # not show a stale-rosy number while the gate (next step) fails. This is
+        # ephemeral — the CI checkout only, never committed back. The gate step
+        # itself self-regenerates in-memory (SPR-04), so it does NOT depend on
+        # this; this exists solely to keep the informational number honest.
+        run: python -m tools.reality_contact.ledger
+
+      - name: Reality-Contact Ratio (RCR) — emit current number (always)
+        # Surface the headline RCR in the job summary in BOTH pass and fail
+        # cases so the number is always visible. `|| true` here is correct
+        # and intentional: this is the INFORMATIONAL reporting step (the
+        # report module is not the gate); the BLOCKING decision is the next
+        # step alone. Never let the report's exit status mask the ratchet.
+        run: |
+          echo '## Reality-Contact Ratio (current tree)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python -m tools.reality_contact >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Also a one-line annotation so the headline shows on the run page.
+          rcr="$(python -m tools.reality_contact 2>/dev/null | grep -m1 'HEADLINE RCR' | sed 's/^[[:space:]]*//' || true)"
+          echo "::notice title=Reality-Contact Ratio::${rcr:-RCR emitted in job summary}"
+
+      - name: Ratchet — block on a reality-contact regression
+        # THE GATE. No continue-on-error, no `|| true`, no swallowed exit:
+        # a non-zero ratchet (1 = regression, 2 = usage) fails this step and
+        # the whole job. If the ratchet raises (an exception/crash), that is
+        # a non-zero exit too — a FAIL, not a pass. See the blocking
+        # rationale + reconsider-if in this file's header.
+        run: |
+          python -m tools.reality_contact.ratchet
