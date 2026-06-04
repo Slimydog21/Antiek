@@ -57,6 +57,15 @@ export interface FullTextResponse {
   servability: Servability | null;
   full_text: string | null;
   snippet: string | null;
+  // The SPR-01 typed-block `Document`, serialized as JSON (Reader SPR-02 persists
+  // it; SPR-03's one `<Reader>` deserializes + renders it for rich typography).
+  // §9.0: present ONLY when the gate served the full body — a gated/taken-down
+  // book returns null here exactly as it does `full_text`, so withheld content's
+  // structured blocks never reach the client. Optional for now: SPR-02's serve
+  // change (which populates it, gated identically to full_text) is the deferred,
+  // critic-backed remaining work; until it lands the field is absent and the
+  // Reader falls back to the legacy `full_text` flattener (additive, never blank).
+  structured_blocks?: string | null;
   title: string | null;
   author: string | null;
   reason: string;
