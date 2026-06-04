@@ -91,15 +91,21 @@ export const sanitizeOutgoingEvent: BeforeSendFn = (
 if (posthogEnabled) {
   posthog.init(projectToken!, {
     api_host: apiHost || "https://eu.i.posthog.com",
-    defaults: "2026-01-30",
+    // Capture config is set EXPLICITLY, not via a dated `defaults` bundle.
+    // A future-dated `defaults: "2026-01-30"` (the SDK has no defaults set for
+    // a future date) left prod initialized but capturing ZERO events — remote
+    // config + flags + surveys loaded, yet no `/e/` egress on initial load,
+    // SPA navigation, or click (confirmed against the live bundle and the
+    // PostHog events API, no JS errors / opt-out / quota). Explicit flags make
+    // capture behaviour fully determined here and verifiable.
+    capture_pageview: true, // initial load + SPA route changes
+    capture_pageleave: true,
+    autocapture: true, // behavioural data; element text scrubbed by before_send
     person_profiles: "identified_only",
-    // Capture richly, never leak content. Autocapture ON (behavioural data);
-    // route-change pageviews stay on (opaque UUID paths). Session recording is
-    // pinned OFF in code — replay records the on-screen reading content, so it
-    // must not be silently enabled from the project dashboard; re-enable only
-    // with full input/text masking. The before_send firewall scrubs content
-    // from every event regardless of feature — see sanitizeOutgoingEvent.
-    autocapture: true,
+    // Session recording pinned OFF in code — replay records on-screen reading
+    // content; never enable without full input/text masking. The before_send
+    // firewall scrubs URL query strings + autocapture element text from every
+    // event regardless of feature — see sanitizeOutgoingEvent.
     disable_session_recording: true,
     before_send: sanitizeOutgoingEvent,
   });
