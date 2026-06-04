@@ -100,7 +100,13 @@ class ResultUnwrapError(RuntimeError):
         self.inner = error
 
 
-class Ok(BaseModel, Generic[T]):
+# ruff UP046/UP047 (PEP 695 type parameters) are intentionally suppressed on
+# the four Result generics below. ruff target-version is py314, but the package
+# still declares requires-python = ">=3.11", and PEP 695 `class Ok[T]` /
+# `def is_ok[T, E]` syntax is 3.12+. The classic Generic[T]/TypeVar form is
+# valid on every supported interpreter and avoids reworking this core Pydantic
+# type. Drop the noqas and modernize once 3.11 support is formally retired.
+class Ok(BaseModel, Generic[T]):  # noqa: UP046
     """The success arm of a ``Result``. Construct as ``Ok(value=...)`` or
     ``Ok(<positional>)`` (Pydantic accepts both)."""
 
@@ -153,7 +159,7 @@ class Ok(BaseModel, Generic[T]):
         return fn(self.value)
 
 
-class Err(BaseModel, Generic[E]):
+class Err(BaseModel, Generic[E]):  # noqa: UP046
     """The failure arm of a ``Result``. Construct as ``Err(error=...)`` or
     ``Err(<positional>)``."""
 
@@ -220,9 +226,9 @@ Result = Ok[T] | Err[E]
 # ---------------------------------------------------------------------- #
 
 
-def is_ok(result: Result[T, E]) -> bool:
+def is_ok(result: Result[T, E]) -> bool:  # noqa: UP047
     return isinstance(result, Ok)
 
 
-def is_err(result: Result[T, E]) -> bool:
+def is_err(result: Result[T, E]) -> bool:  # noqa: UP047
     return isinstance(result, Err)

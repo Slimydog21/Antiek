@@ -40,13 +40,31 @@ test.describe("PostHog Feel — experience matrix", () => {
   });
 
   test("F6: no PostHog hedgehog assets in built shell markup sample", async () => {
-    const { readFileSync } = await import("node:fs");
-    const { resolve } = await import("node:path");
+    const { readFileSync, readdirSync } = await import("node:fs");
+    const { resolve, join } = await import("node:path");
     const app = readFileSync(
       resolve(import.meta.dirname, "../src/App.tsx"),
       "utf8",
     );
     expect(app.toLowerCase()).not.toContain("hedgehog");
     expect(app).not.toContain("posthog.com");
+
+    // The mascot must not appear anywhere in shipped source — not just
+    // App.tsx. The analytics lib files (posthogClient.ts / PostHog*.tsx)
+    // legitimately reference the posthog.com host, so only the brand/voice
+    // mascot string is asserted tree-wide here.
+    const srcRoot = resolve(import.meta.dirname, "../src");
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const p = join(dir, entry.name);
+        if (entry.isDirectory()) return walk(p);
+        return /\.(ts|tsx|css|md|html)$/.test(entry.name) ? [p] : [];
+      });
+    for (const file of walk(srcRoot)) {
+      expect(
+        readFileSync(file, "utf8").toLowerCase(),
+        `mascot string in ${file}`,
+      ).not.toContain("hedgehog");
+    }
   });
 });

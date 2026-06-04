@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { track } from "../../lib/analytics";
 
 /**
  * Pricing surface (master-spec §13.5 + PostHog Wedge 6 template,
@@ -15,6 +17,10 @@ import { useMemo, useState } from "react";
  * transparent voice, free-tier limits prominent, no card on free.
  */
 export default function PricingPage() {
+  useEffect(() => {
+    track("pricing_viewed");
+  }, []);
+
   const [privateTokensMonthly, setPrivateTokensMonthly] = useState<number>(1_000_000);
   const [publicTokensMonthly, setPublicTokensMonthly] = useState<number>(0);
   const [pricePerMilTokens, setPricePerMilTokens] = useState<number>(5);

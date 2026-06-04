@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
+import { track } from "../../lib/analytics";
 import {
   launchParkedQuestion,
   listWatchForLater,
@@ -60,6 +61,7 @@ export default function BrainstormStation() {
       setLaunching(true);
       try {
         const handle = await launchParkedQuestion(q.question_id);
+        track("brainstorm_question_launched");
         // The folder reloads to hide this question (now sharpened);
         // operator follows the launched investigation in Mode A.
         await reload();

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FEEL-S3 · Glass window cascade · PostHog Feel</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wordmark">ANTIEK / POSTHOG-FEEL</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint-feel-s1.html">S1</a>
+    <a href="sprint-feel-s2.html">S2</a>
+    <a href="sprint-feel-s3.html">S3</a>
+    <a href="sprint-feel-s4.html">S4</a>
+    <a href="sprint-feel-s5.html">S5</a>
+    <a href="sprint-feel-s6.html">S6</a>
+  </nav>
+</header>
+<div class="shell">
+<h1><span class="sprint-tag">FEEL-S3</span>windowsStore cascade + focus (glass-preserving)</h1>
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~4 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">FEEL-S1</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S6</div></div>
+  <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>Make AMS glass workspace windows <em>feel</em> stacked: title-bar depth step by <code>z</code>, stronger cascade (≥20px visible separation), sun focus ring — without converting bodies to opaque chunky cards.</p>
+
+<h2>2 · Non-goals</h2>
+<ul>
+  <li>No <code>bg-ice-0</code> on window body.</li>
+  <li>No window persistence (still session-scoped per <code>windowsStore.ts</code> header).</li>
+  <li>No workspace-window popout (deferred in <code>components/windows/README.md</code>).</li>
+</ul>
+
+<h2>3 · Work packages</h2>
+<div class="wp"><div class="wp-id">WP-3.1</div><h3>Title-bar depth chrome</h3><p><code>WorkspaceWindow.tsx</code> — <code>shadowForStackDepth(orderIndex, "glass-scene")</code> on title bar only.</p></div>
+<div class="wp"><div class="wp-id">WP-3.2</div><h3>Cascade tuning</h3><p>Review <code>cascadeRect</code> in <code>windowsStore.ts:167–170</code>; bump step if e2e corners overlap.</p></div>
+<div class="wp"><div class="wp-id">WP-3.3</div><h3>Extend AMS proof</h3><p>Add corner-separation assertion to <code>windows-default.spec.ts</code> or <code>NEW: feel-windows-cascade.spec.ts</code>.</p></div>
+
+<h2>4 · Acceptance criteria</h2>
+<ul class="ac-list">
+  <li>Three launcher windows: title bars offset ≥18px in x and y.</li>
+  <li>Focused window: <code>backdrop-blur-glass</code> on body; unfocused: no blur (M7 preserved).</li>
+  <li><code>ams-v2-experience-matrix</code> criterion <code>windows</code> still passes.</li>
+  <li>Glass sample inside window still shows scene in pixel band (existing test).</li>
+</ul>
+
+<h2>5 · Rigor</h2>
+<ul>
+  <li><strong>Intellectual honesty:</strong> Document that “PostHog feel” on windows is cascade + ring, not opaque cards.</li>
+  <li><strong>Fairness:</strong> Steelman making windows opaque for “unified feel” — record AMS breakage.</li>
+  <li><strong>Rigor:</strong> Playwright bounding-box delta between win[0] and win[2] title bars ≥ threshold.</li>
+  <li><strong>Diligence:</strong> Run full <code>e2e:ams</code> before merge.</li>
+  <li><strong>Defensibility:</strong> Update <code>mountain-shell-v2-verification.md</code> addendum row F3b if cascade criterion added.</li>
+</ul>
+
+<div class="sprint-nav">
+  <a href="sprint-feel-s2.html"><span class="label">←</span>S2</a>
+  <a class="next" href="sprint-feel-s4.html"><span class="label">Next →</span>S4</a>
+</div>
+</div>
+</body>
+</html>
