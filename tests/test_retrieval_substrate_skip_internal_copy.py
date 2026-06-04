@@ -29,7 +29,6 @@ so the de-dup did not break the snapshot lifecycle.
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
 

@@ -303,10 +303,10 @@ def test_adding_a_row_adds_enforcement_without_touching_run_all(tmp_path: Path) 
     check and run_all enforces it — no edit to run_all required. Prove it by
     running run_all over an AUGMENTED registry whose extra concern is forked,
     and asserting the new concern reds while the engine code is untouched."""
-    from tools.lint import uniqueness_registry as reg
-
     # A throwaway concern that reds iff a sentinel file has != 1 'def sentinel'.
     import ast
+
+    from tools.lint import uniqueness_registry as reg
 
     def _sentinel_check(repo: Path):
         sites = []

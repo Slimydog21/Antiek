@@ -44,7 +44,6 @@ one scored-but-unratified artifact (or a malformed one).
 from __future__ import annotations
 
 import json
-import os
 import sys
 from collections.abc import Iterable
 from pathlib import Path
@@ -128,9 +127,7 @@ def _is_real_frozen_sha(value: object) -> bool:
     if any(c not in "0123456789abcdef" for c in digest.lower()):
         return False
     # An all-zero digest is the canonical "unset" sentinel — reject it.
-    if set(digest) == {"0"}:
-        return False
-    return True
+    return set(digest) != {"0"}
 
 
 def _candidate_paths(extra: Iterable[str]) -> list[Path]:

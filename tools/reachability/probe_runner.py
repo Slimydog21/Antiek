@@ -57,9 +57,8 @@ import json
 import os
 import pkgutil
 import sys
-import traceback
-from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 # Ensure the package root is importable when invoked as a bare script
 # (``python tools/reachability/probe_runner.py``) as well as a module

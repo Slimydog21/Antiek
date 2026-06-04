@@ -149,6 +149,7 @@ serve.py path is touched). Env is restored + the temp tree rmtree'd in ``finally
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import tempfile
@@ -605,10 +606,8 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                     f"enforced (a protected route is open). Body: {r_unauth.text[:160]}",
                 )
             err = {}
-            try:
+            with contextlib.suppress(Exception):
                 err = r_unauth.json().get("error", {})
-            except Exception:  # noqa: BLE001
-                pass
             if err.get("code") != "operator_auth_required":
                 return _blocked(
                     "login",

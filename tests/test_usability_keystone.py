@@ -35,12 +35,10 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from tools.reachability.probe_runner import (  # noqa: E402
-    Probe,
     ProbeResult,
     discover_probes,
 )
 from tools.reachability.probes import usability_keystone as ks  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # STRUCTURAL — discovered, headline, honest boot

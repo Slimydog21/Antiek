@@ -34,7 +34,6 @@ from runtime.research_runner.browse_loop import (
 from runtime.research_runner.host_local import HostLocalRunner
 from runtime.research_runner.protocol import BudgetCap, ResearchPlan
 
-
 # ---------------------------------------------------------------------------
 # A lightweight pack-unit double (the loop reads only .text / .similarity /
 # .unit_id / .source_investigation_id — the RetrievedUnit surface).

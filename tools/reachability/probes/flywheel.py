@@ -108,8 +108,9 @@ def _probe() -> ProbeResult:
     try:
         # ── boot the app the PRODUCTION way (failure mode: boot_fail) ──
         try:
-            from interfaces.research.api.app import create_app
             from fastapi.testclient import TestClient
+
+            from interfaces.research.api.app import create_app
 
             app = create_app()  # NO retrieval_substrate=, NO register_providers=False
             client = TestClient(app)

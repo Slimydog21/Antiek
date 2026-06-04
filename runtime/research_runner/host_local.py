@@ -40,6 +40,7 @@ isolation) and yields ``StepEvent``s. Graph promotion is the
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -394,10 +395,9 @@ class HostLocalRunner:
             log_event(iid, action, payload=payload or {}, role="user_agent",
                       events_dir=self._events_dir)
         if self._seal_on_complete:
-            try:
+            # seal is best-effort — a seal failure must not fail the research
+            with contextlib.suppress(Exception):  # pragma: no cover
                 seal_investigation(iid, events_dir=self._events_dir)
-            except Exception:  # pragma: no cover — seal is best-effort
-                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
