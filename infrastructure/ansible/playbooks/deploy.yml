@@ -81,7 +81,12 @@
     # unconditionally is fine.
     - name: refresh editable install + extras
       ansible.builtin.pip:
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding]"
+        # `extraction` (markdown-it-py / mdit-py-plugins, Reader SPR-02) MUST
+        # ride here too: a deploy that omits it leaves _build_parser() raising
+        # ImportError, the adapters swallow it, and structured_blocks lands NULL
+        # → the flat flattener (the bug SPR-02 fixes). Keep in lockstep with
+        # setup.yml's extras list.
+        name: "{{ antiek_install_dir }}[pdf,urls,embedding,extraction]"
         editable: true
         virtualenv: "{{ antiek_install_dir }}/.venv"
       become_user: "{{ antiek_user }}"

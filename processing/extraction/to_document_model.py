@@ -382,8 +382,15 @@ def markdown_to_blocks(markdown_text: str) -> list:
 
 def _fallback_doc_id(title: str | None, body: str) -> str:
     """A deterministic id when the caller gives none (round-trip / test use).
-    Content-addressed so the same body yields the same id."""
-    h = hashlib.sha256((title or "" + "\0" + body).encode("utf-8")).hexdigest()[:16]
+    Content-addressed so the same body yields the same id.
+
+    The parentheses around ``(title or "")`` are load-bearing: ``+`` binds
+    tighter than ``or``, so the unparenthesized ``title or "" + "\\0" + body``
+    parses as ``title or ("" + "\\0" + body)`` — a truthy title would short-
+    circuit and DROP the body entirely, so two same-title / different-body docs
+    would collide on the same id. Parenthesize the fallback FIRST, then prepend
+    it to the separator + body so the body is always part of the digest."""
+    h = hashlib.sha256(((title or "") + "\0" + body).encode("utf-8")).hexdigest()[:16]
     return f"doc-md-{h}"
 
 

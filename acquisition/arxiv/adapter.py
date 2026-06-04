@@ -177,6 +177,37 @@ def _format_abstract_markdown(paper: ArxivPaper) -> str:
     return "\n".join(lines)
 
 
+# Type of the injectable structured-document fetcher (Reader SPR-02 M3 wiring).
+# arxiv_id + the target doc id -> the structured ``Document`` JSON (or None when
+# the governed fetch/parse fails). Tests inject a stub so CI never opens a socket
+# (the 429-ban history forbids live arXiv egress in the suite); prod uses the
+# governed default below.
+StructuredDocFetcher = Callable[[str, str, "str | None"], "str | None"]
+
+
+def _default_fetch_structured_blocks(
+    arxiv_id: str, document_id: str, title: str | None,
+) -> str | None:
+    """Reader SPR-02 (M3) — fetch + map the arXiv paper to the structured typed-
+    block ``Document`` and return its serialized JSON, or ``None`` on any failure.
+
+    Egress goes through ``acquisition.arxiv.source_document.fetch_arxiv_document``,
+    which prefers governed ar5iv structured source (math as tex) and falls back to
+    the governed PDF path — the SAME host-global rate governor + 429 ban-sentinel
+    as every other arXiv job on the box (NO second fetcher; rigor #4). A ban /
+    network error raises out of ``fetch_arxiv_document``; the caller's best-effort
+    except (mirroring the URL adapter) turns it into NULL blocks + a backfill-later
+    row, NEVER a broken ingest. The structured blocks are emitted ALONGSIDE the
+    abstract ``raw_text`` (store-both) so the abstract stays the "view original"
+    body and the Reader renders the full structured document."""
+    from .source_document import fetch_arxiv_document
+
+    extraction = fetch_arxiv_document(
+        arxiv_id, document_id=document_id, title=title,
+    )
+    return extraction.document.model_dump_json()
+
+
 def ingest_paper(
     paper: ArxivPaper,
     *,
@@ -184,6 +215,8 @@ def ingest_paper(
     source_tier: int = DEFAULT_ARXIV_SOURCE_TIER,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
+    emit_structured_blocks: bool = True,
+    fetch_structured: StructuredDocFetcher | None = None,
 ) -> IngestResult:
     """Ingest one arXiv abstract into the substrate.
 
@@ -195,7 +228,18 @@ def ingest_paper(
     ``investigation_id`` scopes the event + the node's
     ``investigation_id`` foreign key. For corpus-scoped sweeps not
     tied to a single investigation, callers can pass
-    ``substrate.constants.SYSTEM_INVESTIGATION_ID``."""
+    ``substrate.constants.SYSTEM_INVESTIGATION_ID``.
+
+    Reader SPR-02 (M3) — ``emit_structured_blocks`` (default True) makes this
+    path PRODUCE the typed-block ``Document`` from the paper's structured source
+    (governed ar5iv, PDF fallback) and persist it in ``documents.structured_blocks``
+    ALONGSIDE the abstract ``raw_text`` (store-both), so a real arXiv paper lands
+    as typed blocks (the SPR-02 goal) instead of a flat abstract the Reader
+    flattens. ``fetch_structured`` is injectable for tests (default: the governed
+    fetcher); the fetch is BEST-EFFORT — a fetch/parse/ban failure logs + stores
+    NULL blocks (the abstract still lands; a later backfill upgrades it), it never
+    breaks ingest. Set ``emit_structured_blocks=False`` to keep the legacy abstract-
+    only behavior (e.g. a pure metadata sweep that must NOT touch ar5iv/arxiv.org)."""
 
     text = _format_abstract_markdown(paper)
     chash = "sha256:" + content_hash(text)
@@ -219,6 +263,26 @@ def ingest_paper(
         role="acquisition",
         policy_id="acquisition/arxiv",
     )
+
+    # Reader SPR-02 (M3) — emit the structured typed-block Document from the
+    # paper's structured source (governed ar5iv → tex math, PDF fallback) and
+    # persist it ALONGSIDE the abstract raw_text (store-both). Best-effort,
+    # mirroring the URL adapter: a fetch/parse/ban failure logs + degrades to
+    # NULL blocks (the abstract still lands as raw_text; a later
+    # backfill_structured_blocks run upgrades it) and NEVER breaks ingest.
+    structured_blocks_json: str | None = None
+    if emit_structured_blocks:
+        fetcher = fetch_structured or _default_fetch_structured_blocks
+        try:
+            structured_blocks_json = fetcher(paper.arxiv_id, document_id, paper.title)
+        except Exception:  # noqa: BLE001 — structured fetch is additive; abstract is the floor
+            logger.warning(
+                "structured-block fetch/extract failed for %s; storing abstract "
+                "raw_text only (backfill can upgrade later)",
+                document_id,
+                exc_info=True,
+            )
+            structured_blocks_json = None
 
     # Open the DB. ensure_initialized creates the file + schema if
     # this is the operator's first ingest.
@@ -248,6 +312,11 @@ def ingest_paper(
             published_at=paper.published_at,
             investigation_id=investigation_id,
             raw_text=text,
+            # Store-both (SPR-02 M3): the structured Document JSON alongside the
+            # abstract raw_text. None when the structured fetch degraded — the
+            # read side flattens raw_text exactly as today (purely additive); a
+            # later backfill upgrades the row from stored text without re-fetch.
+            structured_blocks=structured_blocks_json,
             metadata={
                 "arxiv_id": paper.arxiv_id,
                 "version": paper.version,

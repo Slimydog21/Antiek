@@ -71,6 +71,105 @@ from .extract import (  # noqa: E402  # sys.path bootstrap
 DEFAULT_URL_SOURCE_TIER = 4
 _NODE_LABEL_MAX = 160
 
+# Reader SPR-02 (M2) — a fetched URL whose body is a PDF must route to the PDF→
+# document-model extractor, not be force-flattened through html_to_markdown (which
+# would mangle the binary into garbage "text"). We detect a PDF two ways and accept
+# EITHER: (1) a ``application/pdf`` Content-Type, the declared signal; (2) a body
+# starting with the ``%PDF-`` magic bytes, the ground truth (some servers mislabel
+# a PDF as octet-stream / text). The magic-byte check is the floor so a mislabeled
+# PDF is still handled, and a text page that merely MENTIONS "application/pdf" in
+# its body is NOT misrouted (we check the leading bytes, not a substring).
+_PDF_MAGIC = b"%PDF-"
+
+
+def _looks_like_pdf(content_type: str | None, body: bytes) -> bool:
+    """True when this fetched body should be extracted as a PDF (M2)."""
+    ct = (content_type or "").lower()
+    if "application/pdf" in ct:
+        return True
+    return body[:5] == _PDF_MAGIC
+
+
+def _blocks_to_plain_text(blocks: list) -> str:
+    """Flatten the structured Document blocks into a plain-text body for raw_text
+    + chunking (so "view original" + the chunk/embedding pipeline behave exactly
+    as on the HTML path). The STRUCTURED model is what the Reader renders; this
+    flat text is only the chunker's input and the view-original fallback. Headings/
+    paragraphs/figure-captions/table-cells each contribute their plain text, one
+    block per line — lossy by intent (the structure lives in structured_blocks)."""
+    from substrate.contracts.document_model import _spans_to_plain_text
+
+    lines: list[str] = []
+    for b in blocks:
+        t = getattr(b, "type", None)
+        if t in ("heading", "paragraph"):
+            txt = _spans_to_plain_text(b.spans)
+            if txt.strip():
+                lines.append(txt)
+        elif t == "figure":
+            cap = _spans_to_plain_text(getattr(b, "caption", []) or [])
+            if cap.strip():
+                lines.append(cap)
+        elif t == "table":
+            table_rows: list = []
+            if b.header:
+                table_rows.append(b.header)
+            table_rows.extend(b.rows)
+            for row in table_rows:
+                cells = [_spans_to_plain_text(c) for c in row]
+                joined = " | ".join(c for c in cells if c.strip())
+                if joined.strip():
+                    lines.append(joined)
+    return "\n\n".join(lines)
+
+
+def _pdf_to_markdowndoc(
+    body: bytes, *, final_url: str,
+) -> tuple[MarkdownDoc, str | None]:
+    """Reader SPR-02 (M2) — extract a fetched PDF body to (a MarkdownDoc-shaped
+    record for the existing flow, the structured Document JSON). The structured
+    JSON is the real win (typed blocks via the confidence-tagged PDF extractor);
+    the MarkdownDoc carries the flattened raw_text + title + word_count the rest of
+    ``ingest_url`` already consumes (word-count gate, chunking, node labels).
+
+    Best-effort: a PDF-extraction failure (missing ``[pdf]`` extra, corrupt bytes)
+    degrades to an EMPTY MarkdownDoc + None structured JSON — the word-count gate
+    then skips the row (rather than storing a husk), and the failure is logged. It
+    NEVER raises out of ingest."""
+    document_id = url_doc_id(final_url)
+    try:
+        from processing.extraction.pdf_to_document_model import pdf_bytes_to_document
+
+        doc, _report = pdf_bytes_to_document(
+            body,
+            document_id=document_id,
+            attribution=DocumentAttribution(source_url=final_url),
+        )
+        flat = _blocks_to_plain_text(doc.blocks)
+        title = doc.title if doc.title not in (None, "(untitled PDF)") else None
+        return (
+            MarkdownDoc(
+                title=title,
+                author=None,
+                markdown=flat,
+                word_count=len(flat.split()),
+            ),
+            doc.model_dump_json(),
+        )
+    except Exception:  # noqa: BLE001 — PDF extraction is additive; ingest must not break
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "PDF→document-model extraction failed for %s; skipping structured "
+            "blocks (the word-count gate will skip this row)",
+            document_id,
+            exc_info=True,
+        )
+        return (
+            MarkdownDoc(title=None, author=None, markdown="", word_count=0),
+            None,
+        )
+
 # Minimum markdown word count below which we skip graph writes.
 # Pages where the extractor returns near-empty body usually mean it
 # missed the article (paywall, JS-rendered). Emitting events but
@@ -269,14 +368,33 @@ def ingest_url(
             )
 
     page: FetchedHtml = fetched or fetch(url, client=http_client)  # type: ignore[arg-type]
-    md_doc: MarkdownDoc = html_to_markdown(page.body, base_url=page.final_url)
+
+    # Reader SPR-02 (M2) — a PDF body routes to the PDF→document-model extractor,
+    # NOT html_to_markdown (which would garble the binary). On the PDF path we
+    # build the structured Document directly from the bytes, flatten its blocks to
+    # a raw_text body (so chunking + "view original" still work the same way), and
+    # carry the structured JSON forward so the M1 text path below is skipped for
+    # PDFs. Best-effort: a PDF-extraction failure degrades to an empty body, which
+    # the word-count gate skips — it never raises out of ingest.
+    # ``media_type`` is the DocumentLoadedPayload Literal (codegen-locked); a PDF
+    # body is the existing ``"pdf"`` value (NOT a new literal — the schema is a
+    # codegen source of truth and out of SPR-02 scope).
+    media_type = "url_extracted"
+    pdf_structured_json: str | None = None
+    if _looks_like_pdf(page.content_type, page.body):
+        md_doc, pdf_structured_json = _pdf_to_markdowndoc(
+            page.body, final_url=page.final_url,
+        )
+        media_type = "pdf"
+    else:
+        md_doc = html_to_markdown(page.body, base_url=page.final_url)
 
     document_id = url_doc_id(page.final_url)
     text = md_doc.markdown
     chash = "sha256:" + content_hash(text)
 
     payload = DocumentLoadedPayload(
-        media_type="url_extracted",
+        media_type=media_type,
         content_hash=chash,
         size_bytes=len(text.encode("utf-8")),
         title=md_doc.title,
@@ -334,39 +452,46 @@ def ingest_url(
     # failure must NOT break ingestion (the body still lands as raw_text, the
     # legacy flatten path), so we degrade to None and log rather than raise.
     structured_blocks_json: str | None = None
-    try:
-        from processing.extraction.to_document_model import text_to_document
+    if pdf_structured_json is not None:
+        # PDF path (M2): the structured Document was already built from the bytes
+        # above (the real win — headings/paragraphs/figures via the confidence-
+        # tagged PDF extractor), so we use it directly and skip the M1 text path.
+        structured_blocks_json = pdf_structured_json
+    else:
+        try:
+            from processing.extraction.to_document_model import text_to_document
 
-        # NOTE on attribution.content_class: the SPR-01 DocumentAttribution.
-        # content_class is typed against the §9.0 SERVABLE ContentClass
-        # vocabulary (servable.py), which deliberately EXCLUDES personal_reading
-        # (the owner-read, non-servable lane). A personal-reading web article is
-        # therefore recorded with content_class=None in the MODEL — the model's
-        # attribution records only SERVABLE classes. The AUTHORITATIVE rights
-        # record is the documents.content_class COLUMN, which insert_document
-        # stamps 'personal_reading' (deny-by-default, below). So the rights state
-        # is never lost — it lives on the row, where the gate reads it; the model
-        # carries source_url for provenance and leaves the servable-only field
-        # null, which is correct (this body is not servable).
-        _doc_model = text_to_document(
-            text,
-            document_id=document_id,
-            title=md_doc.title,
-            attribution=DocumentAttribution(source_url=page.final_url),
-        )
-        structured_blocks_json = _doc_model.model_dump_json()
-    except Exception:  # noqa: BLE001 — extraction is additive; raw_text is the floor
-        # Degrade to None (the read side flattens raw_text exactly as today) but
-        # LOG it — a swallowed extraction failure must be visible, not silent, so
-        # a regression surfaces in logs rather than as quietly-missing structure.
-        import logging
+            # NOTE on attribution.content_class: the SPR-01 DocumentAttribution.
+            # content_class is typed against the §9.0 SERVABLE ContentClass
+            # vocabulary (servable.py), which deliberately EXCLUDES personal_reading
+            # (the owner-read, non-servable lane). A personal-reading web article is
+            # therefore recorded with content_class=None in the MODEL — the model's
+            # attribution records only SERVABLE classes. The AUTHORITATIVE rights
+            # record is the documents.content_class COLUMN, which insert_document
+            # stamps 'personal_reading' (deny-by-default, below). So the rights
+            # state is never lost — it lives on the row, where the gate reads it;
+            # the model carries source_url for provenance and leaves the servable-
+            # only field null, which is correct (this body is not servable).
+            _doc_model = text_to_document(
+                text,
+                document_id=document_id,
+                title=md_doc.title,
+                attribution=DocumentAttribution(source_url=page.final_url),
+            )
+            structured_blocks_json = _doc_model.model_dump_json()
+        except Exception:  # noqa: BLE001 — extraction is additive; raw_text is the floor
+            # Degrade to None (the read side flattens raw_text exactly as today)
+            # but LOG it — a swallowed extraction failure must be visible, not
+            # silent, so a regression surfaces in logs rather than as quietly-
+            # missing structure.
+            import logging
 
-        logging.getLogger(__name__).warning(
-            "structured-block extraction failed for %s; storing raw_text only",
-            document_id,
-            exc_info=True,
-        )
-        structured_blocks_json = None
+            logging.getLogger(__name__).warning(
+                "structured-block extraction failed for %s; storing raw_text only",
+                document_id,
+                exc_info=True,
+            )
+            structured_blocks_json = None
 
     chunks: list[Chunk] = chunk_markdown(text)
     chunk_ids: list[str] = []
