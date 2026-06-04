@@ -1,0 +1,31 @@
+# KNOWN-REAL POSITIVE CONTROL — an invariant-registry guard already covered by
+# ci.yml's invariant-registry meta-check (the conceptual parent of this sprint).
+# The `boundary` invariant (substrate/invariants/boundary.toml, status=guarded)
+# names guard tools/lint/owner_boundary_check.py and carries a documented
+# non-vacuity negative control:
+#   tests/test_owner_boundary_lint.py::test_lint_catches_a_divergent_second_owner
+# This control proves the detector's KILL detection works on a gate KNOWN to be
+# real. If THIS mutant is not killed, the detector is broken — re-examine kill
+# detection before trusting any survivor. (rigor #1: never loosen `killed` to
+# reach a comfortable number; this anchor exists to keep kill detection honest.)
+
+[[mutant]]
+id = "positive_control.owner_boundary_second_owner_invert"
+target = "tools/lint/owner_boundary_check.py"
+op = "invert_guard"
+anchor = { qualname = "find_violations", match = "if pat.match(fn.name):" }
+test_selector = ["tests/test_owner_boundary_lint.py", "-k", "divergent_second_owner or missing_owner or lost_its_predicate"]
+rationale = """
+POSITIVE CONTROL. find_violations is the body of the one-owner-per-layer lint
+that backs the `boundary` invariant (already enforced by ci.yml's invariant-
+registry meta-check + its own CI step). ``if pat.match(fn.name)`` is the line that
+flags a SECOND owner of a concern (a competing predicate defined outside the
+sanctioned owner). Inverting it makes the lint flag every NON-matching def and
+miss the actual second owner. The invariant's documented non-vacuity control,
+tests/test_owner_boundary_lint.py::test_lint_catches_a_divergent_second_owner,
+injects a divergent second owner and asserts the lint flags it — a real fail→pass
+control. The inversion MUST break it. Outcome ``killed`` is the expected, REQUIRED
+result: it proves the detector's kill detection is sound on a gate known-real, so
+a `survived` elsewhere is a true finding and not a detector defect."""
+added = "2026-06-04"
+added_by = "abt-02 fake-gate-detector seed"

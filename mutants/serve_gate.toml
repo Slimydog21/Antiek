@@ -1,0 +1,46 @@
+# Serve-boundary guard mutants (master-spec §9.0 — the strategically
+# consequential layer). substrate/books/serve_guard.py is the SINGLE place a
+# full body leaves Antiek storage on the serving side. Two independent
+# deny-by-default gates compose here (the license-tier drift cross-check + the
+# arXiv link-back invariant); flipping either must break a behavior test, or the
+# rights boundary that blocks the §9.0 redistribution violation is a fake gate.
+# Targeting tests live in tests/test_serve_guard.py.
+
+[[mutant]]
+id = "serve_gate.drift_check_invert"
+target = "substrate/books/serve_guard.py"
+op = "invert_guard"
+anchor = { qualname = "serve_full_text_guarded", match = "if ctx.tier is not None and not body_servable(ctx.tier):" }
+test_selector = ["tests/test_serve_guard.py", "-k", "drift or t1_servable"]
+rationale = """
+The cardinal §9.0 gate: when the content_class gate has cleared a body
+(full_text is not None) the guard re-derives the rights tier from the immutable
+arXiv <license> and RAISES T3BodyServeError if that tier is not body-servable.
+Inverting this guard would let a T3/T2 (non-redistributable) body be SERVED from
+Antiek's commercial surface — the exact redistribution violation the Sprint-18
+legal gate blocks. tests/test_serve_guard.py::test_synthetic_drift_t3_license_with_servable_class_raises
+constructs that drift and asserts the raise; if it does not break when the guard
+is inverted, the rights boundary is fake."""
+added = "2026-06-04"
+added_by = "abt-02 fake-gate-detector seed"
+
+[[mutant]]
+id = "serve_gate.linkback_invert"
+target = "substrate/books/serve_guard.py"
+op = "invert_guard"
+anchor = { qualname = "serve_full_text_guarded", match = "if ctx.tier is not None and canonical_url is None:" }
+test_selector = ["tests/test_serve_guard.py"]
+rationale = """
+The arXiv link-back invariant (SPR-09 M2): a body emitted for an arXiv document
+MUST carry a canonical_url back to arxiv.org, or arXiv's attribution terms are
+violated. Inverting this guard would emit an un-attributed arXiv body whenever a
+canonical_url WAS derivable (the common case) and serve nothing when it was not
+— a behavior change on every served arXiv body. A real link-back test must break
+on the inversion; if none does, the attribution gate is fake. (Steelman: on the
+current tree every arXiv row sits at the gated floor so full_text is None and
+this branch never fires in production data — so this mutant may legitimately
+SURVIVE the existing suite, marking the link-back path as currently unexercised
+by a behavior test. That is itself the finding: an under-guarded load-bearing
+line, not a tool bug.)"""
+added = "2026-06-04"
+added_by = "abt-02 fake-gate-detector seed"

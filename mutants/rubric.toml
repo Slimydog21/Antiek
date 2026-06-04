@@ -1,0 +1,45 @@
+# Synthesis-rubric mutants (§14.4 — the inline fake-green-disease pin).
+# substrate/synthesis_rubric/scorer.py runs after every Phase 6 exit and scores
+# the synthesis against the 0.5 §14.4 gate. The two lines here are the
+# voice/style weight constant (the §5 slop bar, the heaviest term in the
+# composite) and the insufficient-evidence floor (the synthesizer correctly
+# declining to fabricate must NOT clear the gate). Targeting tests live in
+# tests/test_synthesis_rubric.py.
+
+[[mutant]]
+id = "rubric.voice_weight_constant_noop"
+target = "substrate/synthesis_rubric/scorer.py"
+op = "noop"
+anchor = { qualname = "W_VOICE_STYLE", match = "W_VOICE_STYLE = 0.30" }
+test_selector = ["tests/test_synthesis_rubric.py"]
+rationale = """
+W_VOICE_STYLE is the heaviest weight in the composite (0.30) because the §5
+voice/style quality bar is load-bearing for the product proposition (the slop
+test); score_synthesis sums W_VOICE_STYLE*voice + W_CONVICTION*conviction + ...
+No-op-ing the constant assignment removes the name, so every score_synthesis call
+raises NameError — code is broken. tests/test_synthesis_rubric.py exercises
+score_synthesis directly (test_composite_breakdown_sums_correctly even re-derives
+the weighted sum), so the suite must error. A survivor would mean the §14.4 rubric
+is verified only by mocks that never run the real scorer — a fake gate on the
+inline pin ci.yml's invariant-registry meta-check protects."""
+added = "2026-06-04"
+added_by = "abt-02 fake-gate-detector seed"
+
+[[mutant]]
+id = "rubric.insufficient_evidence_floor_noop"
+target = "substrate/synthesis_rubric/scorer.py"
+op = "noop"
+anchor = { qualname = "score_synthesis", match = "composite = min(composite, INSUFFICIENT_EVIDENCE_FLOOR)" }
+test_selector = ["tests/test_synthesis_rubric.py", "-k", "insufficient"]
+rationale = """
+When the synthesizer declines to produce a thesis (implicit_recommendation ==
+"insufficient_evidence") the composite is FLOORED at 0.10, below the 0.5 §14.4
+pass gate — a correct refusal-to-fabricate must not be scored as a pass. No-op-ing
+this floor (it is a full statement inside the if-block, alongside the notes
+assignment, so the block stays well-formed) lets a refusal score on its
+sub-components alone and potentially clear the gate.
+tests/test_synthesis_rubric.py::test_insufficient_evidence_floors_at_low_score
+asserts ``composite <= INSUFFICIENT_EVIDENCE_FLOOR``; the no-op must break it.
+A survivor would be a fake gate on the §14.4 refusal semantics."""
+added = "2026-06-04"
+added_by = "abt-02 fake-gate-detector seed"
