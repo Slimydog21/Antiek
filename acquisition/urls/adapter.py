@@ -42,6 +42,7 @@ from processing.embedding.embed import (  # noqa: E402
     default_embedding_provider,
 )
 from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
+from substrate.contracts.document_model import DocumentAttribution  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -326,6 +327,47 @@ def ingest_url(
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
 
+    # Reader SPR-02 (M4) — emit the structured typed-block Document from the
+    # cleaned markdown body and persist it ALONGSIDE raw_text (store-both) via
+    # the SAME single writer. raw_text stays the "view original" source;
+    # structured_blocks is what the one <Reader> renders. Best-effort: a parser
+    # failure must NOT break ingestion (the body still lands as raw_text, the
+    # legacy flatten path), so we degrade to None and log rather than raise.
+    structured_blocks_json: str | None = None
+    try:
+        from processing.extraction.to_document_model import text_to_document
+
+        # NOTE on attribution.content_class: the SPR-01 DocumentAttribution.
+        # content_class is typed against the §9.0 SERVABLE ContentClass
+        # vocabulary (servable.py), which deliberately EXCLUDES personal_reading
+        # (the owner-read, non-servable lane). A personal-reading web article is
+        # therefore recorded with content_class=None in the MODEL — the model's
+        # attribution records only SERVABLE classes. The AUTHORITATIVE rights
+        # record is the documents.content_class COLUMN, which insert_document
+        # stamps 'personal_reading' (deny-by-default, below). So the rights state
+        # is never lost — it lives on the row, where the gate reads it; the model
+        # carries source_url for provenance and leaves the servable-only field
+        # null, which is correct (this body is not servable).
+        _doc_model = text_to_document(
+            text,
+            document_id=document_id,
+            title=md_doc.title,
+            attribution=DocumentAttribution(source_url=page.final_url),
+        )
+        structured_blocks_json = _doc_model.model_dump_json()
+    except Exception:  # noqa: BLE001 — extraction is additive; raw_text is the floor
+        # Degrade to None (the read side flattens raw_text exactly as today) but
+        # LOG it — a swallowed extraction failure must be visible, not silent, so
+        # a regression surfaces in logs rather than as quietly-missing structure.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "structured-block extraction failed for %s; storing raw_text only",
+            document_id,
+            exc_info=True,
+        )
+        structured_blocks_json = None
+
     chunks: list[Chunk] = chunk_markdown(text)
     chunk_ids: list[str] = []
     node_ids: list[str] = []
@@ -359,6 +401,13 @@ def ingest_url(
                 "UPDATE documents SET raw_text = ? WHERE document_id = ?",
                 [text, document_id],
             )
+            # Store-both on the replace path too: refresh structured_blocks from
+            # the edited body so the Reader renders the NEW body, not a stale
+            # model. structured_blocks is unindexed (a plain UPDATE is safe).
+            con.execute(
+                "UPDATE documents SET structured_blocks = ? WHERE document_id = ?",
+                [structured_blocks_json, document_id],
+            )
             con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
             insert_on_conflict = "ignore"
         insert_document(
@@ -383,6 +432,10 @@ def ingest_url(
             published_at=None,
             investigation_id=investigation_id,
             raw_text=text,
+            # Store-both (SPR-02 M4): the structured Document JSON alongside
+            # raw_text. None when extraction degraded — the read side then
+            # flattens raw_text exactly as today (purely additive).
+            structured_blocks=structured_blocks_json,
             metadata={
                 "requested_url": page.requested_url,
                 "final_url": page.final_url,

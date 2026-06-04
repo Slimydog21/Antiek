@@ -61,7 +61,9 @@ from .ops import (
     insert_interview_project,
     insert_node,
     insert_section,
+    get_structured_blocks,
     new_random_id,
+    set_structured_blocks,
     update_section_prose,
 )
 from .rlm_tools import (
@@ -120,6 +122,8 @@ __all__ = [
     "insert_chunk",
     "insert_node",
     "insert_edge",
+    "set_structured_blocks",
+    "get_structured_blocks",
     "insert_deliverable",
     "insert_section",
     "attach_block_to_section",

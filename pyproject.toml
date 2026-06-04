@@ -50,6 +50,15 @@ dependencies = [
 # Acquisition-path-specific dependencies. Pull these in only where needed.
 arxiv = ["arxiv>=2.1"]
 pdf = ["pypdf>=4.3", "pdfplumber>=0.11"]
+# Document-model extraction (Reader SPR-02). markdown-it-py is the CommonMark
+# reference port used by processing/extraction/to_document_model.py to turn
+# stored markdown/text into the SPR-01 typed-block Document; mdit-py-plugins
+# supplies the dollar-math plugin ($..$ inline / $$..$$ display → MathSpan /
+# MathBlock). Lazy-imported there (loud ImportError with install hint) so the
+# rest of the substrate does not pay for the parser. Justified against the
+# repo's no-new-deps lean in the module docstring: the stored corpus is real
+# CommonMark (html2text output), too varied for a stdlib regex parser.
+extraction = ["markdown-it-py>=3.0", "mdit-py-plugins>=0.4"]
 urls = ["html2text>=2024.2", "beautifulsoup4>=4.12"]
 embedding = ["sentence-transformers>=3.0", "numpy>=1.26"]
 interview = ["openai-whisper>=20240930"]  # for ASR, swap for API client when wired

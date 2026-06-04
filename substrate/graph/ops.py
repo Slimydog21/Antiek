@@ -139,10 +139,23 @@ def insert_document(
     metadata: Any | None = None,
     content_class: str | None = None,
     ip_holder_id: str | None = None,
+    structured_blocks: str | None = None,
     on_conflict: OnConflict = "error",
     events_dir: str | None = None,
 ) -> str:
     """Insert one document row. Returns the document_id.
+
+    ``structured_blocks`` (Reader SPR-02) is the SERIALIZED SPR-01 typed-block
+    ``Document`` (a JSON string from ``Document.model_dump_json()``), persisted
+    ALONGSIDE ``raw_text`` — the STORE-BOTH decision. ``raw_text`` stays the
+    "view original" source; ``structured_blocks`` is what the one ``<Reader>``
+    renders. It is OPTIONAL (defaults None) so every existing caller is
+    unchanged and a document without it falls back to flattening ``raw_text``
+    exactly as today — purely additive. This does NOT widen the single-writer or
+    rights surface: it is one more column on the SAME INSERT, under the SAME
+    write lock, with the SAME deny-by-default content_class guard below. A
+    structured-blocks string is passed already-serialized so this writer stays a
+    thin SQL wrapper (no Pydantic import here); the caller owns serialization.
 
     Does not emit a typed event today — ``document.loaded`` already
     captures the ingestion-side signal from the reading UI surface,
@@ -209,12 +222,13 @@ def insert_document(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
         " source_tier, document_type, investigation_id, raw_text, metadata, "
-        " content_class, ip_holder_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " content_class, ip_holder_id, structured_blocks) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             document_id, source_uri, title, author, published_at,
             int(source_tier), document_type, investigation_id, raw_text,
             _maybe_json(metadata), content_class, ip_holder_id,
+            structured_blocks,
         ],
     )
 
@@ -311,6 +325,42 @@ def update_document_gate_columns(
             con.execute(
                 f"CREATE INDEX IF NOT EXISTS {idx} ON documents({col})"
             )
+
+
+def set_structured_blocks(
+    con: LockedConnection,
+    document_id: str,
+    structured_blocks: str | None,
+) -> None:
+    """Set ``documents.structured_blocks`` on an EXISTING row (Reader SPR-02 M5
+    backfill / the URL-replace path). ``structured_blocks`` is the serialized
+    SPR-01 ``Document`` JSON (or None to clear).
+
+    Unlike ``update_document_gate_columns``, no index dance is needed:
+    ``structured_blocks`` is UNINDEXED (like ``raw_text``), so a plain UPDATE
+    does not trip the DuckDB-1.5.2 FK-referenced-secondary-index restriction.
+    Runs on the passed ``LockedConnection`` so it inherits the single-writer
+    lock. Does NOT touch content_class / ip_holder_id — the rights stamping set
+    at insert time is preserved untouched (M5: upgrade the body, never re-stamp
+    rights)."""
+    _assert_write_locked(con)
+    con.execute(
+        "UPDATE documents SET structured_blocks = ? WHERE document_id = ?",
+        [structured_blocks, document_id],
+    )
+
+
+def get_structured_blocks(con: Any, document_id: str) -> str | None:
+    """Read ``documents.structured_blocks`` for a document (the serialized
+    SPR-01 ``Document`` JSON, or None when not yet upgraded). Read-only helper —
+    takes any connection (the read side does not need the write lock)."""
+    row = con.execute(
+        "SELECT structured_blocks FROM documents WHERE document_id = ?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return row[0]
 
 
 # ---------------------------------------------------------------------------
