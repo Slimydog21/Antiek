@@ -207,6 +207,10 @@ function scrubProperties(props: Properties | undefined): void {
 /**
  * Content firewall (master-spec §9.0 + substrate-as-source-of-truth).
  *
+ * §9.0 posture (autocapture-ON-but-scrubbed, fail-closed, recording-off, the
+ * deferred $elements_chain skeletonize follow-up): see
+ * docs/decisions/posthog-content-firewall.md
+ *
  * Antiek's reading/research content is substrate-owned and must never reach a
  * third party. Autocapture stays ON for rich behavioural data, but every
  * outgoing event — its own properties and any person-property $set/$set_once —
