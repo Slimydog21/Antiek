@@ -212,3 +212,31 @@ def test_empty_body_is_valid_empty_document():
     doc = text_to_document("", document_id="doc-empty")
     assert doc.blocks == []
     assert _roundtrips(doc)
+
+
+# ───────────────────────────────────────────────────────────────────────────
+# D3 — fallback-id operator-precedence bug. When no document_id is supplied,
+# text_to_document content-addresses the id from (title, body). The bug was
+# `(title or "" + "\0" + body)`: `+` binds tighter than `or`, so a TRUTHY title
+# short-circuited and DROPPED the body — two same-title / different-body docs
+# collided on one id. The fix parenthesizes `(title or "")` first.
+# ───────────────────────────────────────────────────────────────────────────
+
+
+def test_same_title_different_body_get_distinct_fallback_ids():
+    """Two docs with the SAME (truthy) title but DIFFERENT bodies must NOT
+    collide on the content-addressed fallback id — the body is part of the
+    digest. (Pre-fix they collided because the body was dropped.)"""
+    a = text_to_document("First body paragraph.", title="Shared Title")
+    b = text_to_document("A completely different body.", title="Shared Title")
+    assert a.id != b.id, (
+        "same title + different body must yield distinct fallback ids — the body "
+        "must be part of the digest (D3 operator-precedence fix)"
+    )
+
+
+def test_fallback_id_is_deterministic_for_same_inputs():
+    """Same (title, body) → same id (content-addressed, stable across runs)."""
+    a = text_to_document("Same body.", title="T")
+    b = text_to_document("Same body.", title="T")
+    assert a.id == b.id

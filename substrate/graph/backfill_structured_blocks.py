@@ -65,12 +65,22 @@ class BackfillReport:
     """What a backfill run did — logged to stdout as JSON (the M5 "logged"
     requirement). ``failures`` records (document_id, error) for rows the parser
     could not handle; those are SKIPPED (never written half-formed), so the run
-    is safe to re-run after a code fix."""
+    is safe to re-run after a code fix.
+
+    ``upgraded`` vs ``would_upgrade`` (D4 — no surprising log reader): ``upgraded``
+    is ALWAYS the count of rows ACTUALLY written (0 on ``--dry-run``, which writes
+    nothing); ``would_upgrade`` is the count a real run WOULD upgrade, populated
+    on the dry-run path so a planner can size the batch without a write. On a real
+    run ``would_upgrade == upgraded`` (everything projected was written, modulo
+    per-row ``failures``); on a dry run ``upgraded == 0`` and ``would_upgrade`` is
+    the projection. A log reader never has to guess which meaning ``upgraded``
+    carries — it is unambiguously "rows written"."""
 
     rows_scanned: int = 0
     candidates: int = 0  # had raw_text, no structured_blocks
     already_upgraded: int = 0  # had structured_blocks already (skipped)
-    upgraded: int = 0
+    upgraded: int = 0  # rows ACTUALLY written (always 0 on --dry-run)
+    would_upgrade: int = 0  # rows a real run WOULD write (the dry-run projection)
     skipped_empty_text: int = 0  # no raw_text to upgrade from
     failures: list[tuple[str, str]] = field(default_factory=list)
     dry_run: bool = False
@@ -128,9 +138,11 @@ def backfill_structured_blocks(
     report.candidates = len(candidates)
 
     if dry_run:
-        # Report what WOULD happen without writing.
-        report.upgraded = sum(1 for _, raw, _ in candidates if (raw or "").strip())
-        report.skipped_empty_text = report.candidates - report.upgraded
+        # Report what WOULD happen without writing. ``upgraded`` STAYS 0 (a dry
+        # run writes nothing); the projection lands in ``would_upgrade`` so a log
+        # reader is never misled into thinking rows were upgraded.
+        report.would_upgrade = sum(1 for _, raw, _ in candidates if (raw or "").strip())
+        report.skipped_empty_text = report.candidates - report.would_upgrade
         return report
 
     if not candidates:
@@ -168,6 +180,10 @@ def backfill_structured_blocks(
     finally:
         wcon.close()
 
+    # On a real run, the rows we WOULD upgrade are exactly the rows we DID upgrade
+    # (every non-empty candidate written, minus per-row failures). Mirror the two
+    # so a downstream reader sees the same invariant on either path.
+    report.would_upgrade = report.upgraded
     return report
 
 

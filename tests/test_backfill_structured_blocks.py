@@ -111,9 +111,24 @@ def test_dry_run_reports_without_writing(db_path):
     report = backfill_structured_blocks(db_path, dry_run=True)
     assert report.dry_run is True
     assert report.candidates == 1
-    assert report.upgraded == 1  # would-upgrade count
+    # D4: on a dry run NOTHING is written, so ``upgraded`` is 0 (it means "rows
+    # ACTUALLY written"); the projection rides in ``would_upgrade``. A log reader
+    # is never misled into thinking the dry run upgraded a row.
+    assert report.upgraded == 0
+    assert report.would_upgrade == 1  # the would-upgrade projection
     # But nothing was actually written.
     assert _read(db_path, "doc-legacy-4")[1] is None
+
+
+def test_real_run_would_upgrade_mirrors_upgraded(db_path):
+    """D4: on a REAL run ``would_upgrade`` equals ``upgraded`` (the rows we'd
+    upgrade are the rows we did upgrade), so the two fields agree off the dry-run
+    path and a reader sees a consistent invariant on both paths."""
+    _insert_legacy_doc(db_path, "doc-legacy-real")
+    report = backfill_structured_blocks(db_path)
+    assert report.upgraded == 1
+    assert report.would_upgrade == 1
+    assert report.would_upgrade == report.upgraded
 
 
 def test_backfill_skips_null_text_rows_not_candidates(db_path):

@@ -317,11 +317,16 @@
 
     - name: install Antiek with optional extras
       ansible.builtin.pip:
-        name: "{{ antiek_install_dir }}[pdf,urls,embedding]"
+        name: "{{ antiek_install_dir }}[pdf,urls,embedding,extraction]"
         editable: true
         virtualenv: "{{ antiek_install_dir }}/.venv"
         # Note: this resolves the editable install relative to the venv,
         # so it correctly picks up pyproject.toml's optional-deps.
+        # `extraction` carries markdown-it-py / mdit-py-plugins (Reader
+        # SPR-02): without it, _build_parser() raises ImportError in prod,
+        # the ingest adapters' best-effort except swallows it, and every
+        # ingest stores structured_blocks NULL → the flat flattener — the
+        # exact bug SPR-02 fixes. It MUST be installed on every prod box.
       become_user: "{{ antiek_user }}"
       tags: [code]
 
