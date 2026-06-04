@@ -49,11 +49,24 @@ export { wernerIceFishingCursor } from "./iceFishingFlags";
 export {
   REEL_TAU_MS,
   REEL_MAX_PX_PER_S,
+  REEL_SPRING_OMEGA_RAD_PER_S,
+  REEL_SPRING_MASS,
   ROAM_STROLL_MS,
   ROAM_REST_MIN_MS,
   ROAM_REST_MAX_MS,
 } from "./iceFishingConstants";
-export { reelStep, isReelSettled } from "./reelPursuit";
+export {
+  reelStep,
+  reelSpringStep,
+  reelStateStep,
+  makeReelState,
+  isReelSettled,
+  DEFAULT_REEL_CONFIG,
+  REEL_MAX_DT_MS,
+  type ReelConfig,
+  type ReelState,
+  type Vec2,
+} from "./reelPursuit";
 export { WernerIceBait } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";

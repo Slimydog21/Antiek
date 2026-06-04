@@ -11,7 +11,7 @@ import {
   installChoreography,
   installTargetChoreography,
   isReelSettled,
-  reelStep,
+  reelStateStep,
   ROAM_REST_MAX_MS,
   ROAM_REST_MIN_MS,
   ROAM_STROLL_MS,
@@ -129,6 +129,12 @@ export function PenguinMascot() {
   // Position lives in a ref + is written straight to the DOM during a drag
   // (pointer-capture, like PanelHandle) so dragging doesn't thrash React.
   const pos = useRef(initialMascotPos());
+  // SPR-03: the reel SPRING's velocity (vx/vy only — NOT a second position
+  // source; `pos.current` stays the one position of record). The spring's mass
+  // lives in this velocity: it ramps up off the mark and bleeds off as Werner
+  // settles. Reset to rest whenever the reel disengages so re-engaging (incl.
+  // after a tab-return stall) starts from zero — no carried-over lurch (M4).
+  const reelVel = useRef({ vx: 0, vy: 0 });
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const moved = useRef(false);
   // Pending single-click float, deferred so a double-click can cancel it
@@ -361,6 +367,8 @@ export function PenguinMascot() {
 
     let raf = 0;
     let last = performance.now();
+    // The reel starts from rest each time this effect (re)mounts.
+    reelVel.current = { vx: 0, vy: 0 };
 
     const setReelGait = (walking: boolean) => {
       const bob = bobRef.current;
@@ -378,6 +386,11 @@ export function PenguinMascot() {
     };
 
     const tick = (now: number) => {
+      // M4: clamp the per-frame gap. A tab-return / debugger-pause hands us one
+      // enormous (now - last); without this clamp the spring would integrate the
+      // whole stall and lurch in a straight line to catch up. (The pure spring
+      // step ALSO clamps dt internally — belt + braces — but clamping here keeps
+      // `last` honest for the next frame too.)
       const dt = Math.min(48, now - last);
       last = now;
       const reading = follow.read();
@@ -390,6 +403,9 @@ export function PenguinMascot() {
 
       if (!reelActive) {
         setReelGait(false);
+        // Disengaging: drop the spring's momentum so the next pull starts from
+        // rest (no carried velocity to lurch with on re-engage — M4).
+        reelVel.current = { vx: 0, vy: 0 };
         if (roamRearm.current && roamTimer.current === null) {
           roamRearm.current(ROAM_REST_MIN_MS);
         }
@@ -414,8 +430,16 @@ export function PenguinMascot() {
         { ...hook, width: MASCOT_SIZE, height: MASCOT_SIZE },
         { width: vw, height: vh },
       );
-      const next = reelStep(pos.current, { x: clamped.x, y: clamped.y }, dt);
-      pos.current = next;
+      // SPR-03: one critically-damped spring step. `pos.current` stays the one
+      // position of record; reelVel carries only the spring's velocity. The
+      // exponential fallback is one DEFAULT_REEL_CONFIG.mode flip away.
+      const next = reelStateStep(
+        { x: pos.current.x, y: pos.current.y, ...reelVel.current },
+        { x: clamped.x, y: clamped.y },
+        dt,
+      );
+      pos.current = { x: next.x, y: next.y };
+      reelVel.current = { vx: next.vx, vy: next.vy };
       applyPos();
       setReelGait(!isReelSettled(pos.current, { x: clamped.x, y: clamped.y }));
       raf = window.requestAnimationFrame(tick);
