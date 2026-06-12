@@ -6,7 +6,6 @@ coverage paired with P-12.
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import os
 import tempfile
@@ -14,21 +13,21 @@ import tempfile
 import pytest
 
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
+from roles.cascade_planner import (
+    SubQuestion,
+    approve_plan,
+    build_plan,
+    persist_tree,
+)
+from roles.cascade_planner.persist import load_tree
 from runtime.research_runner import (
     HostLocalRunner,
     PromotionFunnel,
     RunState,
     make_demo_loop,
 )
-from roles.cascade_planner import (
-    approve_plan,
-    build_plan,
-    persist_tree,
-    SubQuestion,
-)
-from roles.cascade_planner.persist import load_tree
 from substrate.graph.schema import init_database_at_path
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:
@@ -102,14 +101,13 @@ def _make_session(env):
         seal_on_complete=False,
         on_emit=funnel.submit,
     )
-    session = CascadeSession(
+    return CascadeSession(
         "session-1",
         runner=runner,
         funnel=funnel,
         events_dir=env["events"],
         db_path=env["db"],
     )
-    return session
 
 
 async def _drain(session: CascadeSession):

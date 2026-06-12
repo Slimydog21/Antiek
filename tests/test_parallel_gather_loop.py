@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Callable, List, Optional
 
 import httpx
 import pytest
@@ -27,7 +27,7 @@ def isolated_env(tmp_path, monkeypatch):
     yield {"events_dir": str(events_dir)}
 
 
-def _mock_parallel_client(responses: List[dict], *, status: int = 200) -> ParallelClient:
+def _mock_parallel_client(responses: list[dict], *, status: int = 200) -> ParallelClient:
     responses_iter = iter(responses)
     last = [None]
 
@@ -53,7 +53,7 @@ def _patch_ingest_url(monkeypatch, fake_ingest: Callable) -> None:
     monkeypatch.setitem(sys.modules, "acquisition.urls.adapter", mod)
 
 
-def _parallel_result(url: str, *, title: Optional[str] = None, excerpt: Optional[str] = None) -> dict:
+def _parallel_result(url: str, *, title: str | None = None, excerpt: str | None = None) -> dict:
     return {
         "url": url,
         "title": title,
@@ -120,11 +120,11 @@ def test_promote_discovery_ingested(isolated_env, monkeypatch):
         final_url: str = "https://example.com/x"
         chunk_ids: tuple = ()
         node_ids: tuple = ()
-        document_loaded_event_id: Optional[str] = "evt-loaded"
+        document_loaded_event_id: str | None = "evt-loaded"
         chunks_written: int = 3
-        skipped_reason: Optional[str] = None
-        title: Optional[str] = "Test"
-        author: Optional[str] = None
+        skipped_reason: str | None = None
+        title: str | None = "Test"
+        author: str | None = None
 
     _patch_ingest_url(monkeypatch, lambda *a, **k: FakeIngestResult())
 
@@ -162,11 +162,11 @@ async def test_parallel_gather_loop_emits_provenance_steps(isolated_env, monkeyp
         final_url: str = ""
         chunk_ids: tuple = ()
         node_ids: tuple = ()
-        document_loaded_event_id: Optional[str] = None
+        document_loaded_event_id: str | None = None
         chunks_written: int = 1
-        skipped_reason: Optional[str] = None
-        title: Optional[str] = None
-        author: Optional[str] = None
+        skipped_reason: str | None = None
+        title: str | None = None
+        author: str | None = None
 
     seq = {"n": 0}
 

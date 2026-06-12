@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import os
@@ -19,10 +18,17 @@ from orchestration.invariants.deep_research_complete import (  # noqa: E402
     check_deep_research_complete,
 )
 from orchestration.loop_one import register_handlers, run_synthesis_tail_from_pack  # noqa: E402
-from processing.embedding import _reset_default_provider, set_default_embedding_provider  # noqa: E402
+from processing.embedding import (  # noqa: E402
+    _reset_default_provider,
+    set_default_embedding_provider,
+)
 from roles.cascade_planner import SubQuestion, approve_plan, build_plan, persist_tree  # noqa: E402
 from roles.cascade_planner.persist import load_tree  # noqa: E402
-from runtime.research_runner import HostLocalRunner, PromotionFunnel, make_contract_gather_stub  # noqa: E402
+from runtime.research_runner import (  # noqa: E402
+    HostLocalRunner,
+    PromotionFunnel,
+    make_contract_gather_stub,
+)
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     NormalizedUsage,
@@ -169,7 +175,7 @@ async def test_pack_only_synthesis_tail_completes(tmp_path, monkeypatch):
     _register_synth(bus)
     coordinator = register_handlers(bus)
 
-    from orchestration.session_evidence_pack import SessionEvidencePack, PackChunk, PackDocument
+    from orchestration.session_evidence_pack import PackChunk, PackDocument, SessionEvidencePack
 
     pack = SessionEvidencePack(
         session_id="session-pack-only",

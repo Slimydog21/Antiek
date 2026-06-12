@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import json
 import os
 import sys
 from dataclasses import dataclass
 from types import ModuleType
-from typing import List, Optional
 
 import httpx
 import pytest
@@ -17,22 +14,25 @@ import pytest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
-from acquisition.search.parallel import ParallelClient
-from orchestration.cascade_session import CascadeSession, Leaf
-from orchestration.session_evidence_pack import build_session_evidence_pack
-from processing.embedding import _reset_default_provider, set_default_embedding_provider
-from roles.cascade_planner import SubQuestion, approve_plan, build_plan, persist_tree
-from roles.cascade_planner.persist import load_tree
-from runtime.research_runner import (
+from acquisition.search.parallel import ParallelClient  # noqa: E402
+from orchestration.cascade_session import CascadeSession, Leaf  # noqa: E402
+from orchestration.session_evidence_pack import build_session_evidence_pack  # noqa: E402
+from processing.embedding import (  # noqa: E402
+    _reset_default_provider,
+    set_default_embedding_provider,
+)
+from roles.cascade_planner import SubQuestion, approve_plan, build_plan, persist_tree  # noqa: E402
+from roles.cascade_planner.persist import load_tree  # noqa: E402
+from runtime.research_runner import (  # noqa: E402
     HostLocalRunner,
     PromotionFunnel,
     make_parallel_gather_loop,
 )
-from runtime.research_runner.promotion_funnel import _promotion_metadata
-from runtime.research_runner.protocol import StepEvent
-from substrate.event_log import trajectory
-from substrate.graph.schema import init_database_at_path
-from substrate.legal_gate import PermissiveLegalGate
+from runtime.research_runner.promotion_funnel import _promotion_metadata  # noqa: E402
+from runtime.research_runner.protocol import StepEvent  # noqa: E402
+from substrate.event_log import trajectory  # noqa: E402
+from substrate.graph.schema import init_database_at_path  # noqa: E402
+from substrate.legal_gate import PermissiveLegalGate  # noqa: E402
 
 
 class _FakeEmbedding:
@@ -51,7 +51,7 @@ class _Dec:
         return [SubQuestion(question=s) for s in self._subs]
 
 
-def _mock_parallel_client(responses: List[dict]) -> ParallelClient:
+def _mock_parallel_client(responses: list[dict]) -> ParallelClient:
     it = iter(responses)
     last = [None]
 
@@ -116,11 +116,11 @@ async def test_parallel_gather_pack_uses_doc_url_not_placeholder(env, monkeypatc
         final_url: str = ""
         chunk_ids: tuple = ()
         node_ids: tuple = ()
-        document_loaded_event_id: Optional[str] = None
+        document_loaded_event_id: str | None = None
         chunks_written: int = 1
-        skipped_reason: Optional[str] = None
-        title: Optional[str] = None
-        author: Optional[str] = None
+        skipped_reason: str | None = None
+        title: str | None = None
+        author: str | None = None
 
     seq = {"n": 0}
 

@@ -503,12 +503,11 @@ def check_phase_8(
     # ── (A) Trajectory event ──
     events = _events_of_type(investigation_id, ActionType.AUTO_PATCH_APPLIED)
     for e in reversed(events):
-        if isinstance(e.payload, AutoPatchAppliedPayload):
-            if e.payload.patched:
-                return True, (
-                    f"auto_patch_applied: status={e.payload.status}, "
-                    f"patched={e.payload.patched}"
-                )
+        if isinstance(e.payload, AutoPatchAppliedPayload) and e.payload.patched:
+            return True, (
+                f"auto_patch_applied: status={e.payload.status}, "
+                f"patched={e.payload.patched}"
+            )
 
     # ── (B) Skill-file mtime check ──
     knowledge_skills_dir = (
