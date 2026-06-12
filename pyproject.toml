@@ -192,7 +192,13 @@ warn_unused_ignores = true
 disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "compounding/benchmark/tests"]
+# services/antiek_format/tests added with the SPR-01 container landing: the
+# format's three gates (determinism / signature / forbidden-fields, each with
+# committed seeded-poison RED proofs) live package-local, mirroring the source
+# branch layout. Listing the path here keeps a bare `pytest` honest; ci.yml's
+# explicit-path pytest step names it too (an explicit path argument overrides
+# testpaths, so this line alone would NOT put the gates in CI).
+testpaths = ["tests", "compounding/benchmark/tests", "services/antiek_format/tests"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
 markers = [

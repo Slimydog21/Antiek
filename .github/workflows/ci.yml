@@ -123,8 +123,16 @@ jobs:
           # unset so the existing endpoint tests work without an
           # extra Authorization header.
           ANTIEK_OPERATOR_TOKEN: ""
+        # services/antiek_format/tests/ added with the SPR-01 container
+        # landing (HTML Projection Layer): the .antiek format gates
+        # (determinism / signature / forbidden-fields, each with a committed
+        # seeded-poison RED proof) live package-local, mirroring the source
+        # branch layout. The path is named here EXPLICITLY because this
+        # step's explicit `tests/` argument overrides pyproject testpaths —
+        # without it the landed gates would never run in CI (the silent-rot /
+        # fake-green hole the invariant-registry meta-check exists to kill).
         run: |
-          python -m pytest tests/ -q -m "not integration"
+          python -m pytest tests/ services/antiek_format/tests/ -q -m "not integration"
 
       - name: Substrate/dispatch boundary check
         # SPR-03 (DDIA-execution): forbid direct vendor-SDK imports
