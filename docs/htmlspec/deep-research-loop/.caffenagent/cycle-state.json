@@ -1,0 +1,94 @@
+{
+  "project": "ANT-DRL",
+  "spec_dir": "/Users/slimydog/Desktop/Antiek/docs/htmlspec/deep-research-loop",
+  "cycle": 2,
+  "phase": "decide",
+  "operator_scope": {
+    "include": ["substrate", "engine", "harness", "SPR-DRL-08", "SPR-DRL-09"],
+    "exclude": ["dual-vendor gather UI", "Exa unless measured gap (SPR-DRL-10)", "full HTTP cascade E2E"]
+  },
+  "phases_completed": [
+    "egghead-1-tribunal",
+    "htmlspec-2",
+    "exec-2",
+    "hardenx-2",
+    "egghead-3"
+  ],
+  "hardenx_verdicts": [
+    {
+      "phase": "hardenx-2",
+      "cmd": "hardenx --strict .",
+      "exitCode": 0,
+      "band": "LOW",
+      "realCount": 0,
+      "advisoryCount": 11,
+      "report": "docs/htmlspec/deep-research-loop/.caffenagent/hardenx/phase-2-report.md"
+    }
+  ],
+  "phases_skipped": [],
+  "exec_2": {
+    "sprint": "SPR-DRL-09",
+    "rounds": 2,
+    "gate_results": [
+      {
+        "cmd": "./.venv/bin/python -m pytest tests/test_drw_pack_fidelity.py -q",
+        "exitCode": 0
+      },
+      {
+        "cmd": "./scripts/canonical_verify.sh deep-research",
+        "exitCode": 0,
+        "tail": "CANONICAL_VERIFY_OK: deep-research"
+      }
+    ],
+    "sharpen_round_2": "test_session_status_exposes_completion_fields in test_cascade_api.py",
+    "files_touched": [
+      "runtime/research_runner/promotion_funnel.py",
+      "runtime/research_runner/host_local.py",
+      "orchestration/cascade_session.py",
+      "interfaces/research/api/cascade_routes.py",
+      "tests/test_drw_pack_fidelity.py",
+      "tests/test_cascade_api.py",
+      "docs/decisions/deep-research-smoke-checklist.md",
+      "docs/agent-execution/PLATFORM_EXEC_MATRIX.md",
+      "scripts/canonical_verify.sh"
+    ]
+  },
+  "tribunal_cycle_2": {
+    "synthesisPath": "docs/htmlspec/deep-research-loop/.caffenagent/egghead/tribunal-cycle-2-synthesis.md"
+  },
+  "egghead_1_verdict": {
+    "verdict": "loop-full-cycle",
+    "confidence": "moderate"
+  },
+  "egghead_3_verdict": {
+    "verdict": "proceed-prcrouch",
+    "confidence": "moderate",
+    "residualRisks": [
+      "SPR-DRL-08/09 uncommitted; prod unchanged until merge",
+      "Smoke DRW #1 not run — live parent terminal + pack fidelity unproved",
+      "Parallel index fit for operator queries — low confidence",
+      "Full HTTP cascade→synthesis profile still deferred"
+    ],
+    "openQuestions": [
+      "Smoke DRW #1 parent terminal + doc-url-* on real session",
+      "G2 counsel dispatch in parallel track",
+      "Clustered failure modes post-smoke → next htmlspec wave or point fix"
+    ],
+    "synthesisPath": "docs/htmlspec/deep-research-loop/.caffenagent/egghead/egghead-3-cycle-decision.md"
+  },
+  "merge_sha": "bfed09d",
+  "gate_results": [
+    {
+      "phase": "exec-2-barrier",
+      "cmd": "./scripts/canonical_verify.sh deep-research",
+      "exitCode": 0,
+      "tail": "CANONICAL_VERIFY_OK: deep-research (P-11..P-17)"
+    }
+  ],
+  "global_honesty_events": [
+    "exec-2 complete: SPR-DRL-09 all 5 milestones",
+    "P-17 added to PLATFORM_EXEC_MATRIX + canonical_verify",
+    "egghead-3: proceed-prcrouch (moderate) — smoke DRW #1 gates sessions 2–10"
+  ],
+  "last_updated": "2026-06-12T14:30:00Z"
+}

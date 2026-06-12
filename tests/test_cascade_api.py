@@ -290,6 +290,17 @@ def test_steer_endpoint_wiring(client):
 # --------------------------------------------------------------------------
 
 
+def test_session_status_exposes_completion_fields(client):
+    """SPR-DRL-09: live session status surfaces gather vs product terminal."""
+    root = _make_approved_plan(client, ("one leaf",))
+    sid = client.post(f"/research/plans/{root}/launch", json={}).json()["session_id"]
+    body = _poll_until_terminal(client, sid)
+    assert body.get("gather_complete") is True
+    assert "deep_research_complete" in body
+    assert "synthesis_tail_error" in body
+    assert "merge_error" in body
+
+
 def test_session_reconstructs_after_eviction(client):
     root = _make_approved_plan(client, ("a", "b"))
     sid = client.post(f"/research/plans/{root}/launch", json={}).json()["session_id"]
@@ -336,3 +347,24 @@ def test_prod_research_loop_factory_uses_contract_gather_stub():
     assert "make_contract_gather_stub" in src
     assert "make_demo_loop" not in src
     assert callable(cr._research_loop_factory())
+
+
+def test_prod_research_loop_factory_defaults_stub(monkeypatch):
+    """SPR-DRL-08: Parallel gather is env-gated; stub remains default."""
+    monkeypatch.delenv("ANTIEK_DRW_GATHER", raising=False)
+    loop = cr._research_loop_factory()
+    assert loop.__name__ == "_loop"
+    # Contract stub loop identifies itself in plan text.
+    import inspect
+
+    src = inspect.getsource(loop)
+    assert "gather-stub" in src
+
+
+def test_prod_research_loop_factory_parallel_mode(monkeypatch):
+    monkeypatch.setenv("ANTIEK_DRW_GATHER", "parallel")
+    loop = cr._research_loop_factory()
+    import inspect
+
+    src = inspect.getsource(loop)
+    assert "parallel-gather" in src

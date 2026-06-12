@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from collections.abc import Iterable
+from typing import Iterable, Optional
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -38,9 +38,11 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import Event  # noqa: E402
+
+from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
+
 
 # Action types the orchestrator awaits during the phase sequence.
 # These get a coordinator handler installed at construction time so
@@ -61,13 +63,13 @@ async def broadcast_emit(
     investigation_id: str,
     payload,
     *,
-    role: str | None = None,
-    policy_id: str | None = None,
-    parent_event_id: str | None = None,
-    synthesis_id: str | None = None,
-    phase: int | None = None,
-    document_id: str | None = None,
-) -> str | None:
+    role: Optional[str] = None,
+    policy_id: Optional[str] = None,
+    parent_event_id: Optional[str] = None,
+    synthesis_id: Optional[str] = None,
+    phase: Optional[int] = None,
+    document_id: Optional[str] = None,
+) -> Optional[str]:
     """Emit a typed event into the JSONL log AND broadcast it through
     the broadcaster so subscribed handlers (bridges) fire.
 

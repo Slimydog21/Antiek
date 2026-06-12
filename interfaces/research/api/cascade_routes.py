@@ -26,8 +26,10 @@ Lifecycle model (honest, the make-or-break part):
   NOT claim exactly-once.
 
 The browse loop is injected (``_research_loop_factory``) — it defaults to the
-contract gather stub (``make_contract_gather_stub``); the real Exa→Browserbase
-loop drops into the same seam with zero route changes. §16 honored: no Daytona;
+contract gather stub (``make_contract_gather_stub``); the real Exa gather
+(``make_exa_gather_loop``) and the Parallel Search gather
+(``make_parallel_gather_loop``) drop into the same seam, env-gated via
+``ANTIEK_DRW_GATHER``, with zero route changes. §16 honored: no Daytona;
 the host-local cap is what bounds "launch 20 at once", surfaced via the
 aggregate budget.
 """
@@ -55,7 +57,7 @@ from substrate.graph import default_db_path, ensure_initialized
 from runtime.research_runner import (
     BudgetCap, BudgetManager, Command, CommandKind, HostLocalRunner,
     PromotionFunnel, RunState, make_contract_gather_stub,
-    make_exa_gather_loop,
+    make_exa_gather_loop, make_parallel_gather_loop,
 )
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
 from roles.cascade_planner import (
@@ -145,6 +147,8 @@ def _research_loop_factory():
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     if mode == "exa":
         return make_exa_gather_loop(top_k=3)
+    if mode == "parallel":
+        return make_parallel_gather_loop()
     return make_contract_gather_stub(steps=2, cost_per_step=0.01)
 
 

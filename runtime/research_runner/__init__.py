@@ -35,6 +35,7 @@ from .host_local import (
     make_contract_gather_stub,
     make_demo_loop,
     make_exa_gather_loop,
+    make_parallel_gather_loop,
 )
 from .promotion_funnel import PromotionFunnel
 # Imported from ``daytona_gated`` (not ``daytona``) deliberately: the
@@ -51,6 +52,7 @@ __all__ = [
     # impls + machinery
     "HostLocalRunner", "LoopContext", "make_demo_loop",
     "make_contract_gather_stub", "make_exa_gather_loop",
+    "make_parallel_gather_loop",
     "DEFAULT_MAX_CONCURRENCY",
     "BudgetManager", "PromotionFunnel",
     # gated

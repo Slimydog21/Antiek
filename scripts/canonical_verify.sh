@@ -17,15 +17,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Prefer repo .venv (operator dev); fall back to active interpreter (CI pip install).
-if [[ -x "${ROOT}/.venv/bin/python" ]]; then
-  PY="${ROOT}/.venv/bin/python"
-elif [[ -n "${PYTHON:-}" && -x "${PYTHON}" ]]; then
-  PY="${PYTHON}"
-elif command -v python3 >/dev/null 2>&1; then
-  PY="$(command -v python3)"
-else
-  echo "FAIL: no python — create .venv or set PYTHON" >&2
+PY="${ROOT}/.venv/bin/python"
+if [[ ! -x "$PY" ]]; then
+  echo "FAIL: missing ${PY} — create .venv and install deps" >&2
   exit 2
 fi
 
@@ -107,11 +101,14 @@ cmd_deep_research() {
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
   echo "== deep-research: P-16 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
+  echo "== deep-research: P-16 Parallel gather mock E2E =="
+  "${PY}" -m pytest tests/test_parallel_gather_loop.py -q --tb=short
   echo "== deep-research: P-17 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
+  echo "== deep-research: P-17 pack fidelity =="
+  "${PY}" -m pytest tests/test_drw_pack_fidelity.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
-
 main() {
   local sub="${1:-}"
   shift || true

@@ -1,0 +1,28 @@
+{
+  "hatches": [
+    {
+      "id": "tribunal-cycle-2",
+      "phase": "egghead-1",
+      "parentHatch": null,
+      "question": "DRW execution thesis: dogfood-first vs engineering-first",
+      "subagent_ids": [
+        "019ebb4f-185e-7720-9c46-1b4fd9e2c5ec",
+        "019ebb4f-1863-7113-ad12-c8061c22fca6",
+        "019ebb4f-1864-7d70-9873-d86def385c82",
+        "019ebb4f-1865-7901-9c3c-179a3827842f"
+      ],
+      "status": "closed",
+      "output": "egghead/tribunal-cycle-2-synthesis.md"
+    },
+    {
+      "id": "htmlspec-2-sprint-09",
+      "phase": "htmlspec-2",
+      "parentHatch": "tribunal-cycle-2",
+      "question": "Author SPR-DRL-09 dogfood-readiness sprint from tribunal survivors",
+      "subagent_ids": [],
+      "status": "closed",
+      "output": "sprint-09-dogfood-readiness.html + egghead/htmlspec-2-synthesis.md"
+    }
+  ],
+  "last_updated": "2026-06-12T12:30:00Z"
+}
