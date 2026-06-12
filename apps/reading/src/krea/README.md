@@ -4,13 +4,15 @@ The secure, budgeted, cacheable, **offline-safe** plumbing the living
 mountain background (SPR-04) depends on. SPR-04 consumes the `useKreaScene`
 hook and never touches the network plumbing or the key directly.
 
-> **Honesty label.** The Krea wire shapes (`/generate/image`, `/jobs/{id}`)
-> are **doc-derived, NOT live-verified** — no live Krea call was made (no key
-> in the sandbox). The *frontend contract* below (the hook shape + the
-> `/krea/scene` 200/503 shapes) is what this code is built against and is
-> stable regardless of the live Krea schema. If the live schema differs, only
-> `_submit_generation` / `_poll_job` in `interfaces/research/api/krea_routes.py`
-> change.
+> **Honesty label.** The Krea wire shapes (`/generate/image/{model_path}`,
+> `/jobs/{id}`) are **docs-current as of 2026-06-12** (transcribed from
+> docs.krea.ai; the API launched in its current form 2026-05-27) — **live
+> verification is pending the SPR-09 capped smoke**; no live Krea call has
+> ever been made from this codebase. The *frontend contract* below (the hook
+> shape + the `/krea/scene` 200/503 shapes) is what this code is built
+> against and is stable regardless of the live Krea schema. If the live
+> schema differs, only `_submit_generation` / `_poll_job` in
+> `interfaces/research/api/krea_routes.py` change.
 
 ## The contract SPR-04 builds against (the seam)
 
@@ -40,7 +42,7 @@ Return shape (`UseKreaScene`):
 3. `art` is always non-null after the first resolve, so the background always
    has something to paint.
 
-## `/krea/scene` request/response (doc-derived contract)
+## `/krea/scene` request/response (the proxy contract)
 
 ```
 GET /krea/scene?mood=calm&day_night=day&season=summer
@@ -54,14 +56,26 @@ GET /krea/scene?mood=calm&day_night=day&season=summer
   { "enabled": false, "isFallback": true,
     "reason": "no_key" | "kill_switch" | "over_daily_budget" |
               "rate_limited" | "upstream_error" | "upstream_timeout" |
-              "upstream_bad_response" | "job_failed" | "job_timeout",
+              "upstream_bad_response" | "job_failed" | "job_timeout" |
+              "job_cancelled" | "no_api_balance",
     "scene_key": "calm|day|summer" | null }
 ```
 
-The lower-level `POST /krea/generate` (submit → `{job_id,status}`) and
-`GET /krea/jobs/{id}` (poll → `{status,image_url?}`) exist too; SPR-04
-normally uses `/krea/scene`, which encapsulates prompt + submit + poll +
-cache + budget behind one GET.
+The `reason` vocabulary is **additive-only** (existing strings never change).
+The two newest reasons (added 2026-06-12, SPR-01):
+
+- `job_cancelled` — the job reached Krea's terminal `cancelled` state
+  (one of the 9 documented job states; polling stops immediately).
+- `no_api_balance` — upstream HTTP 402: Krea's **prepaid API balance**
+  (separate from any web subscription; $5 minimum top-up) is empty. The
+  operator's signal to top up — distinct from our local `over_daily_budget`.
+
+The lower-level `POST /krea/generate` (submit → `{job_id,status}`; prompt
+≤ 1800 chars, width/height 512–2368 px per the flux-1-dev contract —
+out-of-bounds gets a 422 naming the bound) and `GET /krea/jobs/{id}` (poll →
+`{status,image_url?,error_code?}`) exist too; SPR-04 normally uses
+`/krea/scene`, which encapsulates prompt + submit + poll + cache + budget
+behind one GET.
 
 ## The test-time mock (run SPR-04 + CI with ZERO network)
 
@@ -92,13 +106,35 @@ const fakeHook = mockReadyScene("https://img/fixed.png");
 
 ## Budget defaults (server-side; every number derived)
 
-- **Daily cap** `KREA_DAILY_UNIT_CAP=50` — 50 images × ~$0.04 ≈ ~$2/day,
-  ~half the ~100-unit/day free tier.
-- **Rate limit** `KREA_RATE_LIMIT_MAX=6` per 60s — Flux is ~4s/image, so
-  ~6/min is generous for one operator yet caps a runaway loop.
+Pricing (docs.krea.ai, 2026-06-12): **flux-1-dev is $0.007/request**, drawn
+from a **prepaid API balance** ($5 minimum top-up; **the API has NO free
+tier** — the balance is separate from any web subscription's compute units;
+upstream answers HTTP 402 → `no_api_balance` when it's empty).
+
+- **Daily cap** `KREA_DAILY_UNIT_CAP=50` — 50 requests × $0.007 ≈
+  **$0.35/day** worst case (~$10.50/mo); a $5 minimum top-up survives ≥14
+  maxed-out days.
+- **Rate limit** `KREA_RATE_LIMIT_MAX=6` per 60s — generation takes seconds
+  (Krea-2 is documented ~10s; flux-1-dev undocumented), so ~6/min is
+  generous for one operator yet caps a runaway loop.
+- **Poll budget** `KREA_POLL_BUDGET_S=30` — 3× the documented Krea-2 ~10s
+  (flux-1-dev latency is undocumented), well under Krea's 3-minute hosted
+  job timeout. Poll cadence is 2.5s, inside the documented 2–5s guidance.
 - **Cache TTL** `KREA_CACHE_TTL_S=3600` — a scene-state is stable for long
   stretches; 1h de-bills a session's repeats.
+- **Model path** `ANTIEK_KREA_MODEL_PATH=bfl/flux-1-dev` — the model is a
+  URL path segment per the docs, never a body field; swap models here.
 - **Kill-switch** `KREA_KILL_SWITCH=1` — forces fallback regardless of key.
+
+**Billing-accounting divergence (deliberate, 2026-06-12).** Krea bills on
+job **completion** and does not bill failed/cancelled jobs; the proxy's
+daily counter instead records a unit on **any 2xx submit answer, before the
+body is parsed**. So the local count OVERCOUNTS on jobs that later fail —
+the safe direction for a runaway guard (the proxy throttles itself before
+the prepaid balance drains, never the reverse). Revisit only if the cap
+starts starving legitimate use under a high upstream failure rate — and fix
+it by reconciling against Krea's billing, not by loosening the
+record-before-parse ordering.
 
 Defaults are conservative; the operator tunes via env (no restart needed —
 read at call time). See `apps/reading/.env.example` for the backend env
