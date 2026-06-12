@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
-from typing import List, Optional
+from typing import Any, List, Optional
 
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -111,7 +111,7 @@ def _emit_proposed(
 ) -> DiscoveryProposed:
     discovery_id = _discovery_id(r.url, investigation_id, query)
     tier = suggest_tier(r.url)
-    provider_specific: dict = {}
+    provider_specific: dict[str, Any] = {}
     if search_id is not None:
         provider_specific["search_id"] = search_id
     payload = DiscoveryProposedPayload(

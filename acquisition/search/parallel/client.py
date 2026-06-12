@@ -16,7 +16,8 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from collections.abc import Callable
+from typing import Any, Literal, cast
 
 import httpx
 
@@ -39,8 +40,8 @@ class ParallelClientError(RuntimeError):
         self,
         message: str,
         *,
-        status: Optional[int] = None,
-        url: Optional[str] = None,
+        status: int | None = None,
+        url: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
@@ -50,21 +51,21 @@ class ParallelClientError(RuntimeError):
 @dataclass(frozen=True)
 class ParallelSearchResult:
     url: str
-    title: Optional[str]
-    published_date: Optional[str]
-    text_snippet_preview: Optional[str]
-    provider_response_id: Optional[str]
+    title: str | None
+    published_date: str | None
+    text_snippet_preview: str | None
+    provider_response_id: str | None
     cost_usd_estimate: float
 
 
 @dataclass
 class ParallelSearchResponse:
-    results: List[ParallelSearchResult] = field(default_factory=list)
-    search_id: Optional[str] = None
-    session_id: Optional[str] = None
+    results: list[ParallelSearchResult] = field(default_factory=list)
+    search_id: str | None = None
+    session_id: str | None = None
 
 
-def _resolve_api_key(api_key: Optional[str]) -> str:
+def _resolve_api_key(api_key: str | None) -> str:
     if api_key:
         return api_key
     v = os.environ.get("PARALLEL_API_KEY")
@@ -76,7 +77,7 @@ def _resolve_api_key(api_key: Optional[str]) -> str:
     return v
 
 
-def _resolve_base_url(base_url: Optional[str]) -> str:
+def _resolve_base_url(base_url: str | None) -> str:
     if base_url:
         return base_url.rstrip("/")
     return os.environ.get("PARALLEL_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
@@ -88,26 +89,26 @@ class ParallelClient:
     def __init__(
         self,
         *,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
-        client: Optional[httpx.Client] = None,
-        sleep: Optional[object] = None,
+        client: httpx.Client | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._api_key = _resolve_api_key(api_key)
         self._base_url = _resolve_base_url(base_url)
         self._timeout_s = timeout_s
         self._client = client
-        self._sleep = sleep or time.sleep
+        self._sleep: Callable[[float], None] = sleep or time.sleep
 
     def search(
         self,
         *,
         objective: str,
-        search_queries: List[str],
+        search_queries: list[str],
         max_results: int = 10,
         mode: ParallelSearchMode = "basic",
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> ParallelSearchResponse:
         if not search_queries:
             raise ParallelClientError("search_queries must be non-empty")
@@ -117,7 +118,7 @@ class ParallelClient:
         if max_results < 1 or max_results > 50:
             raise ParallelClientError("max_results must be 1..50")
 
-        body: dict = {
+        body: dict[str, Any] = {
             "objective": objective.strip() or None,
             "search_queries": cleaned,
             "mode": mode,
@@ -129,7 +130,7 @@ class ParallelClient:
         raw = self._post("/v1/search", body)
         return self._parse_search_response(raw, per_call_cost=COST_PER_SEARCH_USD)
 
-    def _post(self, path: str, body: dict) -> dict:
+    def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         url = f"{self._base_url}{path}"
         headers = {
             "User-Agent": DEFAULT_USER_AGENT,
@@ -169,7 +170,7 @@ class ParallelClient:
                     )
 
                 try:
-                    return r.json()
+                    return cast(dict[str, Any], r.json())
                 except ValueError as e:
                     raise ParallelClientError(
                         f"non-json body from parallel: {e}", status=r.status_code, url=url
@@ -180,10 +181,10 @@ class ParallelClient:
 
     @staticmethod
     def _backoff_seconds(attempt: int) -> float:
-        return 2 ** (attempt - 1)
+        return float(2 ** (attempt - 1))
 
     @staticmethod
-    def _retry_after_seconds(r: httpx.Response) -> Optional[float]:
+    def _retry_after_seconds(r: httpx.Response) -> float | None:
         v = r.headers.get("retry-after")
         if not v:
             return None
@@ -194,12 +195,12 @@ class ParallelClient:
 
     @staticmethod
     def _parse_search_response(
-        raw: dict, *, per_call_cost: float
+        raw: dict[str, Any], *, per_call_cost: float
     ) -> ParallelSearchResponse:
         search_id = raw.get("search_id")
         session_id = raw.get("session_id")
         results_raw = raw.get("results") or []
-        results: List[ParallelSearchResult] = []
+        results: list[ParallelSearchResult] = []
         per_result_cost = (
             per_call_cost / len(results_raw) if results_raw else per_call_cost
         )
