@@ -59,8 +59,9 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -80,7 +81,10 @@ from orchestration.phase_runner import (  # noqa: E402
     run_check,
     verify_phase,
 )
-from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
+from orchestration.session_evidence_pack import (  # noqa: E402
+    PackChunk,
+    SessionEvidencePack,
+)
 from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
@@ -150,7 +154,9 @@ def _extract_keywords(text: str, *, min_len: int = 3, max_n: int = 8) -> list[st
     return out
 
 
-def _keyword_search_chunks(con, keywords: list[str], top_k: int) -> list[dict]:
+def _keyword_search_chunks(
+    con: Any, keywords: list[str], top_k: int,
+) -> list[dict[str, Any]]:
     """Lexical fallback. For each keyword run a LIKE; collect chunks
     with their match count; rank by match count then source tier.
     Cheap, deterministic, works without sentence-transformers."""
@@ -223,7 +229,7 @@ def _render_chunks_block_for_sub_question(
     # hits since lexical matches are usually higher signal than weak
     # hash-embedding cosines.
     seen: set[str] = set()
-    merged: list[dict] = []
+    merged: list[dict[str, Any]] = []
     for r in embedding_hits + kw_hits:
         cid = r.get("chunk_id")
         if not cid or cid in seen:
@@ -318,7 +324,7 @@ class InvestigationContext:
     # Sprint 12: continuous-chase parameters threaded from the start
     # payload. When chase_mode != "off", the orchestrator hooks
     # _maybe_spawn_chase_child after _run_investigation completes.
-    chase_mode: str = "off"
+    chase_mode: Literal["off", "depth", "duration"] = "off"
     chase_value: int = 0
     chase_budget_usd: float = 2.0
     parent_investigation_id: str | None = None
@@ -328,12 +334,12 @@ class InvestigationContext:
     # substrate/dispatch/research_tier.py). Carried so a chase-spawned
     # child inherits the parent's tier rather than silently snapping back
     # to the default.
-    research_tier: str = "deep"
+    research_tier: Literal["fast", "deep"] = "deep"
 
 
-def _action_value(action_type) -> str:
+def _action_value(action_type: ActionType | str) -> str:
     """ActionType enum or string → string."""
-    if hasattr(action_type, "value"):
+    if isinstance(action_type, ActionType):
         return action_type.value
     return str(action_type)
 
@@ -427,7 +433,7 @@ async def _run_phase_1(
     orientation.md marker file so the file-artifact Phase 1
     postcondition (Prior Graph Knowledge section + chunk_/node_
     regex citation) passes."""
-    async def work():
+    async def work() -> None:
         await broadcast_emit(
             broadcaster,
             ctx.investigation_id,
@@ -487,11 +493,11 @@ async def _run_phase_2(
         ctx.fail_reason = "decomposition produced no sub-questions"
         return False
 
-    async def work():
+    async def work() -> None:
         sem = asyncio.Semaphore(PHASE_2_MAX_CONCURRENCY)
         delivered_action = _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED)
 
-        async def _retrieve_one(sq) -> EvidenceRetrieveDeliveredPayload:
+        async def _retrieve_one(sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
             async with sem:
                 chunks_block = _render_chunks_block_for_sub_question(
                     sq.sub_question, top_k=5,
@@ -551,7 +557,7 @@ async def _run_phase_3(
 ) -> bool:
     """Phase 3 (Round 1 critique) — extract parameters from the
     evidence retriever outputs."""
-    async def work():
+    async def work() -> None:
         evidence_block = json.dumps(
             [e.model_dump() for e in ctx.evidence],
             indent=2, default=str,
@@ -597,7 +603,7 @@ async def _run_phase_4(
     can land in a future sprint); the connector bridge handles
     empty-seed requests gracefully (role still gets a chance to
     confirm any pre-resolved mappings)."""
-    async def work():
+    async def work() -> None:
         await broadcast_emit(
             broadcaster,
             ctx.investigation_id,
@@ -635,7 +641,7 @@ async def _run_phase_5(ctx: InvestigationContext) -> bool:
     is subsumed by the constraint loop inside the synthesizer bridge.
     The orchestrator writes the marker file so the phase log stays
     contiguous for downstream audit."""
-    async def work():
+    async def work() -> None:
         body = (
             "# Round 2 critique\n\n"
             "_Constraint loop handled the round-2 critique role "
@@ -780,19 +786,23 @@ async def _run_phase_6(
         ctx.fail_reason = "phase 6 entered without parameters"
         return False
 
-    async def work():
+    parameters = ctx.parameters
+    decomposition = ctx.decomposition
+    connector_result = ctx.connector_result
+
+    async def work() -> None:
         decomposition_block = (
-            ctx.decomposition.model_dump_json(indent=2)
-            if ctx.decomposition is not None else "(none)"
+            decomposition.model_dump_json(indent=2)
+            if decomposition is not None else "(none)"
         )
         evidence_block = json.dumps(
             [e.model_dump() for e in ctx.evidence],
             indent=2, default=str,
         )
-        parameters_block = ctx.parameters.model_dump_json(indent=2)
+        parameters_block = parameters.model_dump_json(indent=2)
         substrate_block = (
-            ctx.connector_result.model_dump_json(indent=2)
-            if ctx.connector_result is not None else "(none)"
+            connector_result.model_dump_json(indent=2)
+            if connector_result is not None else "(none)"
         )
 
         await broadcast_emit(
@@ -804,7 +814,7 @@ async def _run_phase_6(
                 evidence_block=evidence_block,
                 parameters_block=parameters_block,
                 substrate_block=substrate_block,
-                constraints=list(ctx.parameters.constraints),
+                constraints=list(parameters.constraints),
             ),
             role="orchestrator",
             policy_id="orchestrator-deterministic",
@@ -838,26 +848,28 @@ async def _run_phase_7(ctx: InvestigationContext) -> bool:
         ctx.fail_reason = "phase 7 entered without synthesis"
         return False
 
-    async def work():
+    synthesis = ctx.synthesis
+
+    async def work() -> None:
         row = {
             "synthesis_id": f"syn-{ctx.investigation_id}",
             "investigation_id": ctx.investigation_id,
             "target_question": ctx.question,
             "status": "passed",
-            "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+            "implicit_recommendation": synthesis.implicit_recommendation,
             "thesis": {
-                "thesis_summary": ctx.synthesis.thesis_summary,
-                "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+                "thesis_summary": synthesis.thesis_summary,
+                "implicit_recommendation": synthesis.implicit_recommendation,
                 "thesis_components": [
-                    c.model_dump() for c in ctx.synthesis.thesis_components
+                    c.model_dump() for c in synthesis.thesis_components
                 ],
                 "falsification_conditions": [
-                    f.model_dump() for f in ctx.synthesis.falsification_conditions
+                    f.model_dump() for f in synthesis.falsification_conditions
                 ],
                 "execution_risks": [
-                    r.model_dump() for r in ctx.synthesis.execution_risks
+                    r.model_dump() for r in synthesis.execution_risks
                 ],
-                "constraint_compliance": ctx.synthesis.constraint_compliance.model_dump(),
+                "constraint_compliance": synthesis.constraint_compliance.model_dump(),
             },
         }
         # The MASTER.md generator emits ``master_md_written`` as part
@@ -879,17 +891,19 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
         ctx.fail_reason = "phase 8 entered without synthesis"
         return False
 
-    async def work():
+    synthesis = ctx.synthesis
+
+    async def work() -> None:
         thesis = {
-            "thesis_summary": ctx.synthesis.thesis_summary,
+            "thesis_summary": synthesis.thesis_summary,
             "thesis_components": [
-                c.model_dump() for c in ctx.synthesis.thesis_components
+                c.model_dump() for c in synthesis.thesis_components
             ],
             "falsification_conditions": [
-                f.model_dump() for f in ctx.synthesis.falsification_conditions
+                f.model_dump() for f in synthesis.falsification_conditions
             ],
             "execution_risks": [
-                r.model_dump() for r in ctx.synthesis.execution_risks
+                r.model_dump() for r in synthesis.execution_risks
             ],
         }
         # extract_and_patch with no llm_call (defaults to dispatch)
@@ -941,7 +955,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
 
 def _investigation_context_from_pack(pack: SessionEvidencePack) -> InvestigationContext:
     """Hydrate Loop 1 state for phases 6–9 from a DRW merge pack."""
-    by_sub_q: dict[str, list] = {}
+    by_sub_q: dict[str, list[PackChunk]] = {}
     for chunk in pack.chunks:
         by_sub_q.setdefault(chunk.sub_question, []).append(chunk)
 
@@ -1027,7 +1041,7 @@ async def run_synthesis_tail_from_pack(
 ) -> InvestigationContext:
     """Run Loop 1 phases 6–9 only — DRW gather already happened."""
     ctx = _investigation_context_from_pack(pack)
-    phases = [
+    phases: list[Callable[[], Awaitable[bool]]] = [
         lambda: _run_phase_6(ctx, broadcaster, coordinator),
         lambda: _run_phase_7(ctx),
         lambda: _run_phase_8(ctx),
@@ -1113,7 +1127,7 @@ async def _run_investigation(
     """Walk all 9 phases. On any phase failure, emits
     ``investigation.failed`` and returns. On success, emits
     ``investigation.completed`` with the synthesis verdict."""
-    phases = [
+    phases: list[Callable[[], Awaitable[bool]]] = [
         lambda: _run_phase_1(ctx, broadcaster, coordinator),
         lambda: _run_phase_2(ctx, broadcaster, coordinator),
         lambda: _run_phase_3(ctx, broadcaster, coordinator),
@@ -1200,7 +1214,7 @@ async def _run_investigation(
 def make_loop_one_handler(
     broadcaster: EventBroadcaster,
     coordinator: InvestigationCoordinator,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the Loop 1 handler. Subscribes to
     ``INVESTIGATION_START_REQUESTED``; for each request, spawns a
     detached task that runs the 9-phase sequence."""
@@ -1219,7 +1233,7 @@ def make_loop_one_handler(
             chase_value=req.chase_value,
             chase_budget_usd=req.chase_budget_usd,
             parent_investigation_id=req.parent_investigation_id,
-            research_tier=req.research_tier,
+            research_tier=req.research_tier or "deep",
         )
 
         async def run_and_maybe_chase() -> None:
@@ -1343,7 +1357,12 @@ async def _maybe_spawn_chase_child(
     depth, root_id = _walk_chase_chain(ctx.investigation_id)
     cost_total = _accumulated_chase_cost_usd(ctx.investigation_id)
 
-    halt_reason: str | None = None
+    halt_reason: Literal[
+        "depth_reached",
+        "duration_reached",
+        "budget_exceeded",
+        "no_open_questions",
+    ] | None = None
     if ctx.chase_mode == "depth":
         if depth + 1 > ctx.chase_value:
             halt_reason = "depth_reached"
@@ -1392,6 +1411,10 @@ async def _maybe_spawn_chase_child(
         )
         return
 
+    chase_question = next_question
+    if chase_question is None:
+        return
+
     # Spawn the child: emit a new INVESTIGATION_START_REQUESTED event
     # for a fresh investigation id. The same handler picks it up and
     # runs Loop 1, then itself checks chase conditions at the end.
@@ -1402,12 +1425,12 @@ async def _maybe_spawn_chase_child(
         broadcaster,
         child_id,
         InvestigationStartRequestedPayload(
-            question=next_question,
+            question=chase_question,
             context=ctx.context,
             topic_slug=ctx.topic_slug,
             max_sub_questions=ctx.max_sub_questions,
             parent_investigation_id=ctx.investigation_id,
-            spawn_context=next_question,
+            spawn_context=chase_question,
             chase_mode=ctx.chase_mode,
             chase_value=ctx.chase_value,
             chase_budget_usd=ctx.chase_budget_usd,
@@ -1425,7 +1448,7 @@ async def _maybe_spawn_chase_child(
         child_id,
         InvestigationSpawnedFromPayload(
             parent_investigation_id=ctx.investigation_id,
-            spawn_context=next_question,
+            spawn_context=chase_question,
         ),
         role="orchestrator",
         policy_id="orchestrator-chase",

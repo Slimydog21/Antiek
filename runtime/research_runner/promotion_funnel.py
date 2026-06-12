@@ -49,9 +49,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
 _FUNNEL_DONE = object()
 
 
-def _promotion_metadata(ev: StepEvent) -> dict:
+def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
     """Normalize runner StepEvent.data for pack builder provenance (SPR-DRL-09)."""
-    meta: dict = {"source": "research_runner", **ev.data}
+    meta: dict[str, Any] = {"source": "research_runner", **ev.data}
     doc_id = meta.get("source_document_id") or meta.get("document_id")
     if doc_id:
         meta["source_document_id"] = str(doc_id)
@@ -64,8 +64,8 @@ class PromotionFunnel:
     def __init__(self, *, db_path: str | None = None, embedding_provider: Any = None):
         self._db_path = db_path or graph_db_path()
         self._embedding_provider = embedding_provider
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._worker: asyncio.Task | None = None
+        self._queue: asyncio.Queue[StepEvent | object] = asyncio.Queue()
+        self._worker: asyncio.Task[None] | None = None
         self.promoted_insights = 0
         self.promoted_questions = 0
         self.errors: list[str] = []
@@ -94,10 +94,15 @@ class PromotionFunnel:
             if item is _FUNNEL_DONE:
                 self._queue.task_done()
                 return
+            if not isinstance(item, StepEvent):
+                self._queue.task_done()
+                continue
             try:
                 await asyncio.to_thread(self._promote, item)
             except Exception as exc:  # one bad promotion must not wedge the funnel
-                self.errors.append(f"{item.investigation_id}: {type(exc).__name__}: {exc}")
+                self.errors.append(
+                    f"{item.investigation_id}: {type(exc).__name__}: {exc}",
+                )
             finally:
                 self._queue.task_done()
 

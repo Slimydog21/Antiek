@@ -39,7 +39,7 @@ import json
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, cast
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -143,14 +143,8 @@ def _research_loop_factory() -> Callable[[LoopContext], AsyncIterator[StepEvent]
     Parallel gather when ``ANTIEK_DRW_GATHER=parallel``."""
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     if mode == "parallel":
-        return cast(
-            Callable[[LoopContext], AsyncIterator[StepEvent]],
-            make_parallel_gather_loop(),
-        )
-    return cast(
-        Callable[[LoopContext], AsyncIterator[StepEvent]],
-        make_contract_gather_stub(steps=2, cost_per_step=0.01),
-    )
+        return make_parallel_gather_loop()
+    return make_contract_gather_stub(steps=2, cost_per_step=0.01)
 
 
 def _command(kind: str, payload: dict[str, Any] | None) -> Command:

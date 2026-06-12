@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -150,7 +150,7 @@ def _document_ip_holder(
     ).fetchone()
     if row is None:
         return None
-    return row[0]
+    return cast(str | None, row[0])
 
 
 def _load_problem_question(
