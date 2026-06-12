@@ -1,0 +1,55 @@
+{
+  "notebook_id": "nbk-gate-clean-1",
+  "user_id": "user-gate-fixture",
+  "document_id": "doc-gate-1",
+  "parent_document_id": "doc-gate-1",
+  "content_class": "notebook",
+  "title": "Gate fixture: clean notebook (SPR-01 landing)",
+  "content_tiptap": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "antiek_highlight_card",
+        "attrs": {
+          "block_id": "blk-gate-h",
+          "passage_text": "A passage worth keeping.",
+          "operator_framing": "Why the operator kept it."
+        }
+      },
+      {
+        "type": "antiek_prose",
+        "attrs": { "block_id": "blk-gate-p" },
+        "content": [
+          { "type": "text", "text": "A clean follow-up paragraph with unicode: 注釈." }
+        ]
+      }
+    ]
+  },
+  "blocks_index": [
+    {
+      "block_id": "blk-gate-h",
+      "block_type": "highlight_card",
+      "position": 1.0,
+      "source_event_ids": ["evt-gate-1"]
+    },
+    {
+      "block_id": "blk-gate-p",
+      "block_type": "prose",
+      "position": 2.0,
+      "source_event_ids": []
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edg-gate-1",
+      "from_block_id": "blk-gate-h",
+      "to_content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "to_document_id": "doc-gate-99",
+      "kind": "supports",
+      "asserted_at": "2026-06-12T00:30:00+00:00",
+      "operator_note": "gate-fixture edge"
+    }
+  ],
+  "created_at": "2026-06-12T00:00:00+00:00",
+  "format_version": 1
+}

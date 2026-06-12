@@ -1,0 +1,29 @@
+{
+  "notebook_id": "nbk-gate-poison-clock-1",
+  "user_id": "user-gate-fixture",
+  "document_id": "doc-gate-3",
+  "parent_document_id": "doc-gate-3",
+  "content_class": "notebook",
+  "title": "Gate fixture: SEEDED POISON - created_at null lets wall-clock time into the manifest",
+  "content_tiptap": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "antiek_prose",
+        "attrs": { "block_id": "blk-gate-clock" },
+        "content": [{ "type": "text", "text": "Same content, two write instants." }]
+      }
+    ]
+  },
+  "blocks_index": [
+    {
+      "block_id": "blk-gate-clock",
+      "block_type": "prose",
+      "position": 1.0,
+      "source_event_ids": []
+    }
+  ],
+  "edges": [],
+  "created_at": null,
+  "format_version": 1
+}
