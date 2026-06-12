@@ -186,6 +186,24 @@ def test_200_path_fresh_then_cached_exits_0_and_leaks_nothing():
     assert proc.stderr == ""
 
 
+def test_non_str_image_url_prints_type_name_only_never_the_value():
+    """A dict-shaped image_url embedding a signed URL would bypass
+    strip_query if its repr were printed — the script must print only
+    the TYPE NAME for any non-str image_url, never the value."""
+    dict_url = {
+        "url": f"https://cdn.example.test/scene.png?{_FAKE_SIGNED_QUERY}"
+    }
+    fresh = dict(_FRESH_200, image_url=dict_url)
+    cached = dict(_CACHED_200, image_url=dict_url)
+    with _MockProxy([(200, fresh), (200, cached)]) as mock:
+        proc = _run_smoke(mock.port)
+    out = proc.stdout
+    assert proc.returncode == 0, out + proc.stderr
+    assert "image_url:  <unexpected type: dict — not printed>" in out
+    assert "cdn.example.test" not in out  # the embedded URL never surfaces
+    _assert_no_secrets(out)  # in particular: FAKESIGNEDVALUE marker absent
+
+
 def test_repeat_not_cached_is_a_rebill_failure_exit_1():
     with _MockProxy([(200, _FRESH_200), (200, _FRESH_200)]) as mock:
         proc = _run_smoke(mock.port)

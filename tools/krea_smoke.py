@@ -86,9 +86,10 @@ DECISION_TABLE: dict[str, tuple[str, str]] = {
     "kill_switch": (
         "KREA_KILL_SWITCH is on — the operator panic lever forces fallback"
         " for every generation, key-independent.",
-        "If this is intentional, nothing to do. To resume: remove"
-        " KREA_KILL_SWITCH from the server env and restart (runbook"
-        " section 6).",
+        "If this is intentional, nothing to do. To resume: remove (or"
+        " comment out) the appended KREA_KILL_SWITCH line from the"
+        " secrets file (/etc/antiek/secrets.env on prod) and restart"
+        " (runbook section 6).",
     ),
     "over_daily_budget": (
         "The server-side daily unit cap (KREA_DAILY_UNIT_CAP) is spent for"
@@ -259,7 +260,12 @@ def _print_scene_200(data: dict[str, Any], call_no: int) -> None:
     say(f"  cached:     {str(cached).lower()}   ({billing})")
     say(f"  scene_key:  {data.get('scene_key')}")
     url = data.get("image_url")
-    say(f"  image_url:  {strip_query(url) if isinstance(url, str) else url}")
+    if isinstance(url, str):
+        say(f"  image_url:  {strip_query(url)}")
+    else:
+        # Never print a non-str value: a dict/list could embed a signed
+        # URL string and bypass strip_query. Type name only.
+        say(f"  image_url:  <unexpected type: {type(url).__name__} — not printed>")
 
 
 def _print_scene_503(data: dict[str, Any], call_no: int) -> str:

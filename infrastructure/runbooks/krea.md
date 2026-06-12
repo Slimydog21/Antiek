@@ -270,8 +270,12 @@ section 4 is structurally unable to print one.
    type):
 
    ```bash
-   grep -rIl -F '<first-8-chars-of-old-key-id>' ~/Desktop/Antiek ~/specs ~/dev 2>/dev/null
+    grep -rIl -F '<first-8-chars-of-old-key-id>' ~/Desktop/Antiek ~/specs ~/dev 2>/dev/null
    ```
+
+   Type a **leading space** before that command (the block above ships
+   one) so the key fragment stays out of shell history — needs bash
+   `HISTCONTROL=ignorespace`/`ignoreboth` or zsh `setopt HIST_IGNORE_SPACE`.
 
 **Scan-path reality (honest)**: this repo has **no in-repo secret
 scanner** — no gitleaks/trufflehog config, no pre-commit hook, and none
