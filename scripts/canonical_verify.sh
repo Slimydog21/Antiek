@@ -6,6 +6,7 @@
 #   cascade              — hermetic cascade contract + adapter + light route
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
+#   deep-research        — ANT-DRL P-11..P-17 hermetic harness (SPR-DRL-02/08/09)
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -15,20 +16,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Prefer repo .venv (operator dev); fall back to active interpreter (CI pip install).
-if [[ -x "${ROOT}/.venv/bin/python" ]]; then
-  PY="${ROOT}/.venv/bin/python"
-elif [[ -n "${PYTHON:-}" && -x "${PYTHON}" ]]; then
-  PY="${PYTHON}"
-elif command -v python3 >/dev/null 2>&1; then
-  PY="$(command -v python3)"
-else
-  echo "FAIL: no python — create .venv or set PYTHON" >&2
+PY="${ROOT}/.venv/bin/python"
+if [[ ! -x "$PY" ]]; then
+  echo "FAIL: missing ${PY} — create .venv and install deps" >&2
   exit 2
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates|deep-research}" >&2
   exit 2
 }
 
@@ -75,6 +70,24 @@ cmd_agent_gates() {
   echo "CANONICAL_VERIFY_OK: agent-gates"
 }
 
+cmd_deep_research() {
+  echo "== deep-research: P-11 Loop 1 E2E =="
+  "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
+  echo "== deep-research: P-12 invariant negative =="
+  "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
+  echo "== deep-research: P-13 session reconstruct =="
+  "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
+  echo "== deep-research: P-14 PromotionFunnel serialize =="
+  "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
+  echo "== deep-research: P-15 knowledge.reused (two-run) =="
+  "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
+  echo "== deep-research: P-16 Parallel gather mock E2E =="
+  "${PY}" -m pytest tests/test_parallel_gather_loop.py -q --tb=no
+  echo "== deep-research: P-17 pack fidelity + parent terminal =="
+  "${PY}" -m pytest tests/test_drw_pack_fidelity.py -q --tb=no
+  echo "CANONICAL_VERIFY_OK: deep-research"
+}
+
 main() {
   local sub="${1:-}"
   shift || true
@@ -83,6 +96,7 @@ main() {
     cascade) cmd_cascade ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
+    deep-research) cmd_deep_research ;;
     *) usage ;;
   esac
 }

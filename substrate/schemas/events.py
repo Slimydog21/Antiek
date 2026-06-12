@@ -2876,7 +2876,7 @@ class PreferenceObservationRecordedPayload(_PayloadBase):
 # is still emitted exclusively by acquisition/urls/adapter.ingest_url.
 
 
-DiscoveryProvider = Literal["exa", "operator"]
+DiscoveryProvider = Literal["exa", "operator", "parallel"]
 # Future providers (serpapi, tavily, perplexity, brave) extend the
 # union here, not in payload fields. Keeping the discriminator narrow
 # means a new provider is a one-line schema change rather than a

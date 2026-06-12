@@ -1,0 +1,155 @@
+{
+  "spec_dir": "/Users/slimydog/Desktop/Antiek/docs/htmlspec/deep-research-loop",
+  "index_path": "/Users/slimydog/Desktop/Antiek/docs/htmlspec/deep-research-loop/index.html",
+  "target_branch": "main",
+  "run_mode": {
+    "autonomy": "full",
+    "wave_parallel": false,
+    "single_sprint": null,
+    "operator_deferrals": []
+  },
+  "capability_mapping": {
+    "builders": "orchestrator-inline",
+    "critic": "orchestrator-audit",
+    "gates": "Shell"
+  },
+  "sprints": {
+    "SPR-DRL-01": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Invariant tests", "cmd": "./.venv/bin/python -m pytest tests/test_deep_research_complete.py -q", "exitCode": 0, "tail": "all passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": "bfed09d",
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume; no worktree round"]
+    },
+    "SPR-DRL-02": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "deep-research profile", "cmd": "./scripts/canonical_verify.sh deep-research", "exitCode": 0, "tail": "CANONICAL_VERIFY_OK: deep-research"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-03": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Phase 2 parallel", "cmd": "./.venv/bin/python -m pytest tests/test_loop_one_phase2_parallel.py -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-04": {
+      "status": "done",
+      "round": 2,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped + sharpen"],
+      "gate_results": [
+        {"round": 2, "name": "cascade profile", "cmd": "./scripts/canonical_verify.sh cascade", "exitCode": 0, "tail": "CANONICAL_VERIFY_OK: cascade"},
+        {"round": 2, "name": "cost test fix", "cmd": "./.venv/bin/python -m pytest tests/test_cascade_api.py::test_launch_watch_and_cost -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Sharpen: test_launch_watch_and_cost updated for stub steps=2"]
+    },
+    "SPR-DRL-05": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Pack tests", "cmd": "./.venv/bin/python -m pytest tests/test_session_evidence_pack.py -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-06": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Convergence E2E", "cmd": "./.venv/bin/python -m pytest tests/test_cascade_convergence.py -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-07": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Flywheel reuse", "cmd": "./.venv/bin/python -m pytest tests/test_flywheel_reuse.py -q", "exitCode": 0, "tail": "passed"},
+        {"round": 1, "name": "deep-research profile", "cmd": "./scripts/canonical_verify.sh deep-research", "exitCode": 0, "tail": "CANONICAL_VERIFY_OK: deep-research"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-08": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — post-cycle-1"],
+      "gate_results": [
+        {"round": 1, "name": "P-16 parallel gather", "cmd": "./.venv/bin/python -m pytest tests/test_parallel_gather_loop.py -q", "exitCode": 0, "tail": "all passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Shipped post-cycle-1; Parallel-first per operator"]
+    },
+    "SPR-DRL-09": {
+      "status": "done",
+      "round": 2,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline exec-2"],
+      "gate_results": [
+        {"round": 1, "name": "pack fidelity", "cmd": "./.venv/bin/python -m pytest tests/test_drw_pack_fidelity.py -q", "exitCode": 0, "tail": "passed"},
+        {"round": 2, "name": "deep-research profile", "cmd": "./scripts/canonical_verify.sh deep-research", "exitCode": 0, "tail": "CANONICAL_VERIFY_OK"},
+        {"round": 2, "name": "session status sharpen", "cmd": "./.venv/bin/python -m pytest tests/test_cascade_api.py::test_session_status_exposes_completion_fields -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Round 2: HTTP session status exposes completion_status fields"]
+    }
+  },
+  "global_honesty_events": [
+    "2026-06-12: exec-2 SPR-DRL-09 done; P-17 green",
+    "2026-06-12: SPR-DRL-08 done; P-16 green"
+  ],
+  "merge_sha": "bfed09d",
+  "run_status": "egghead-3-proceed-prcrouch",
+  "last_updated": "2026-06-12T14:30:00Z"
+}

@@ -37,30 +37,32 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
+from typing import Any, AsyncIterator, Dict, List, Optional, Sequence, Tuple
 
 # orchestration/ is a top-level package and uses absolute imports (matching
 # orchestration/continuous/daemon.py). The sys.path nudge supports direct
 # script execution from inside the package.
 if __package__ in (None, ""):  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from roles.cascade_planner.approval import assert_launchable
-from runtime.db_lock import connect_write
 from runtime.research_runner import (
-    BudgetCap,
-    Command,
-    Handle,
-    HostLocalRunner,
-    ResearchPlan,
-    RunState,
-    StepEvent,
+    BudgetCap, Command, Handle, HostLocalRunner, ResearchPlan, RunState, StepEvent,
 )
 from runtime.research_runner.promotion_funnel import PromotionFunnel
+from runtime.db_lock import connect_write
 from substrate.event_log import default_events_dir, log_event, trajectory
+from substrate.schemas.events import ActionType
 from substrate.graph.insight_question import graph_db_path
 from substrate.graph.ops import insert_edge
-from substrate.schemas.events import ActionType
+from roles.cascade_planner.approval import assert_launchable
+from orchestration.invariants.deep_research_complete import (
+    check_deep_research_complete,
+)
+from orchestration.session_evidence_pack import (
+    SessionEvidencePack,
+    build_session_evidence_pack,
+)
+
 
 _SESSION_DONE = object()
 
@@ -72,7 +74,7 @@ class Leaf:
 
     investigation_id: str
     sub_question: str
-    question_node_id: str | None = None
+    question_node_id: Optional[str] = None
     budget: BudgetCap = field(default_factory=BudgetCap)
 
 
@@ -81,7 +83,7 @@ class ResearchState:
     investigation_id: str
     sub_question: str
     state: str
-    question_node_id: str | None = None
+    question_node_id: Optional[str] = None
 
 
 @dataclass
@@ -90,7 +92,7 @@ class SessionRecovery:
     in-memory runtime state — proof a refresh/restart loses nothing."""
 
     session_id: str
-    researches: list[ResearchState]
+    researches: List[ResearchState]
 
     @property
     def all_terminal(self) -> bool:
@@ -105,23 +107,26 @@ class CascadeSession:
         session_id: str,
         *,
         runner: HostLocalRunner,
-        funnel: PromotionFunnel | None = None,
-        events_dir: str | None = None,
-        db_path: str | None = None,
+        funnel: Optional[PromotionFunnel] = None,
+        events_dir: Optional[str] = None,
+        db_path: Optional[str] = None,
     ):
         self.session_id = session_id
         self._runner = runner
         self._funnel = funnel
         self._events_dir = events_dir
         self._db_path = db_path or graph_db_path()
-        self._leaves: dict[str, Leaf] = {}
-        self._handles: dict[str, Handle] = {}
-        self._out: asyncio.Queue = asyncio.Queue()
-        self._pump_tasks: list[asyncio.Task] = []
+        self._leaves: Dict[str, Leaf] = {}
+        self._handles: Dict[str, Handle] = {}
+        self._out: "asyncio.Queue" = asyncio.Queue()
+        self._pump_tasks: List[asyncio.Task] = []
+        self._merge_error: Optional[str] = None
+        self._synthesis_tail_error: Optional[str] = None
+        self._synthesis_tail_attempted: bool = False
 
     # -- M1: launch with approval enforcement --------------------------
 
-    async def launch(self, plan_root_node_id: str, leaves: Sequence[Leaf]) -> list[Handle]:
+    async def launch(self, plan_root_node_id: str, leaves: Sequence[Leaf]) -> List[Handle]:
         """Launch an approved plan as N investigations. Refuses an unapproved
         plan (SPR-05 gate). Each leaf is spawned_from the session parent."""
         assert_launchable(plan_root_node_id, db_path=self._db_path)
@@ -131,7 +136,7 @@ class CascadeSession:
                   payload={"plan_root_node_id": plan_root_node_id,
                            "leaf_count": len(leaves)},
                   role="user_agent", events_dir=self._events_dir)
-        handles: list[Handle] = []
+        handles: List[Handle] = []
         for leaf in leaves:
             self._leaves[leaf.investigation_id] = leaf
             plan = ResearchPlan(
@@ -236,7 +241,7 @@ class CascadeSession:
             con.close()
         return n
 
-    def status(self) -> list[ResearchState]:
+    def status(self) -> List[ResearchState]:
         out = []
         for iid, leaf in self._leaves.items():
             h = self._handles.get(iid)
@@ -251,14 +256,93 @@ class CascadeSession:
         queue."""
         return all(RunState(s.state).is_terminal() for s in self.status())
 
-    def drain_nowait(self) -> list[StepEvent]:
+    def record_merge_error(self, message: str) -> None:
+        self._merge_error = message
+        log_event(
+            self.session_id,
+            "cascade.merge_failed",
+            payload={"error": message},
+            role="system",
+            events_dir=self._events_dir,
+        )
+
+    def record_synthesis_tail_error(self, message: str) -> None:
+        self._synthesis_tail_error = message
+        log_event(
+            self.session_id,
+            "cascade.synthesis_tail_failed",
+            payload={"error": message},
+            role="system",
+            events_dir=self._events_dir,
+        )
+
+    def completion_status(self) -> dict:
+        """Operator-facing gather vs product terminal (SPR-DRL-09)."""
+        gather_complete = self.is_complete()
+        return {
+            "gather_complete": gather_complete,
+            "deep_research_complete": (
+                self.is_deep_research_complete() if gather_complete else False
+            ),
+            "synthesis_tail_attempted": self._synthesis_tail_attempted,
+            "synthesis_tail_error": self._synthesis_tail_error,
+            "merge_error": self._merge_error,
+        }
+
+    def is_deep_research_complete(self) -> bool:
+        """True when gather leaves are terminal AND the session parent
+        satisfies ``DeepResearchComplete`` (Path A convergence).
+
+        Leaf researches are gather-only; synthesis runs on
+        ``session_id``. Runner-level ``DONE`` without a synthesis tail
+        fails this check — the split-brain guard for ANT-DRL."""
+        if not self.is_complete():
+            return False
+        ok, _ = check_deep_research_complete(self.session_id)
+        return ok
+
+    def build_evidence_pack(
+        self,
+        *,
+        plan_root_node_id: Optional[str] = None,
+    ) -> SessionEvidencePack:
+        """Merge session leaves + JSONL trajectories into a typed pack."""
+        researches = [
+            (s.investigation_id, s.sub_question) for s in self.status()
+        ]
+        return build_session_evidence_pack(
+            self.session_id,
+            events_dir=self._events_dir or default_events_dir(),
+            db_path=self._db_path,
+            researches=researches,
+            plan_root_node_id=plan_root_node_id,
+        )
+
+    async def run_synthesis_tail(
+        self,
+        pack: SessionEvidencePack,
+        *,
+        broadcaster: Any,
+        coordinator: Any,
+    ) -> bool:
+        """Path A capstone — Loop 1 phases 6–9 on the session parent."""
+        from orchestration.loop_one.orchestrator import run_synthesis_tail_from_pack
+
+        await run_synthesis_tail_from_pack(
+            pack,
+            broadcaster=broadcaster,
+            coordinator=coordinator,
+        )
+        return self.is_deep_research_complete()
+
+    def drain_nowait(self) -> List[StepEvent]:
         """Pop all currently-buffered StepEvents without blocking (skips the
         internal sentinel). Lets a transport poll-and-drain the multiplexed
         stream and decide termination via ``is_complete`` — robust to a
         request/response server that only advances the loop while a request is
         in flight (the poller's ``await asyncio.sleep`` gives the research
         tasks loop time)."""
-        out: list[StepEvent] = []
+        out: List[StepEvent] = []
         while True:
             try:
                 item = self._out.get_nowait()
@@ -281,7 +365,7 @@ _TERMINAL_ACTION = {
 }
 
 
-def _list_investigation_ids(events_dir: str) -> list[str]:
+def _list_investigation_ids(events_dir: str) -> List[str]:
     if not os.path.isdir(events_dir):
         return []
     seen = set()
@@ -293,13 +377,13 @@ def _list_investigation_ids(events_dir: str) -> list[str]:
     return sorted(seen)
 
 
-def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> SessionRecovery:
+def reconstruct_session(session_id: str, *, events_dir: Optional[str] = None) -> SessionRecovery:
     """Rebuild a session's membership + per-research state from the event log
     alone — the durability guarantee. A child belongs to the session if its
     trajectory carries an ``investigation.spawned_from`` pointing at the
     session; its state is its terminal event (or ``running``)."""
     resolved = events_dir or default_events_dir()
-    researches: list[ResearchState] = []
+    researches: List[ResearchState] = []
     for iid in _list_investigation_ids(resolved):
         rows = trajectory(iid, events_dir=resolved)
         parent = None

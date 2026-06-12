@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from collections.abc import Iterable
+from typing import Iterable, Optional
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -38,9 +38,11 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import Event  # noqa: E402
+
+from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
+
 
 # Action types the orchestrator awaits during the phase sequence.
 # These get a coordinator handler installed at construction time so
@@ -61,13 +63,13 @@ async def broadcast_emit(
     investigation_id: str,
     payload,
     *,
-    role: str | None = None,
-    policy_id: str | None = None,
-    parent_event_id: str | None = None,
-    synthesis_id: str | None = None,
-    phase: int | None = None,
-    document_id: str | None = None,
-) -> str | None:
+    role: Optional[str] = None,
+    policy_id: Optional[str] = None,
+    parent_event_id: Optional[str] = None,
+    synthesis_id: Optional[str] = None,
+    phase: Optional[int] = None,
+    document_id: Optional[str] = None,
+) -> Optional[str]:
     """Emit a typed event into the JSONL log AND broadcast it through
     the broadcaster so subscribed handlers (bridges) fire.
 
@@ -124,7 +126,10 @@ class InvestigationCoordinator:
         action_types: Iterable[str] = DEFAULT_AWAITED_ACTION_TYPES,
     ):
         self.broadcaster = broadcaster
-        self._pending: dict[tuple[str, str], asyncio.Future[Event]] = {}
+        # (investigation_id, action_type, correlation_key) → Future.
+        # correlation_key disambiguates parallel Phase 2 evidence waits
+        # (sub_question string); "" means legacy single-waiter semantics.
+        self._pending: dict[tuple[str, str, str], asyncio.Future[Event]] = {}
         for action_type in action_types:
             broadcaster.register_handler(action_type, self._on_event)
 
@@ -135,10 +140,21 @@ class InvestigationCoordinator:
         action_value = event.action_type
         if hasattr(action_value, "value"):
             action_value = action_value.value
-        key = (event.investigation_id, str(action_value))
-        fut = self._pending.pop(key, None)
-        if fut is not None and not fut.done():
-            fut.set_result(event)
+        inv = event.investigation_id
+        action = str(action_value)
+        correlation = ""
+        payload = event.payload
+        if hasattr(payload, "sub_question"):
+            sq = getattr(payload, "sub_question", None)
+            if isinstance(sq, str) and sq:
+                correlation = sq
+        keys = [(inv, action, correlation)] if correlation else []
+        keys.append((inv, action, ""))
+        for key in keys:
+            fut = self._pending.pop(key, None)
+            if fut is not None and not fut.done():
+                fut.set_result(event)
+                return
 
     async def wait_for(
         self,
@@ -146,17 +162,18 @@ class InvestigationCoordinator:
         action_type: str,
         *,
         timeout: float = 60.0,
+        correlation: str = "",
     ) -> Event:
         """Await the next event of ``action_type`` for the given
         investigation. Raises ``asyncio.TimeoutError`` if no matching
         event arrives within ``timeout`` seconds.
 
-        Only one waiter per ``(investigation_id, action_type)`` at a
-        time is supported — registering a second waiter replaces the
-        first (which will then never resolve). The orchestrator
-        sequences phases linearly so this constraint is satisfied by
-        construction."""
-        key = (investigation_id, action_type)
+        When ``correlation`` is set (Phase 2 sub_question), multiple
+        concurrent waiters on the same action type are supported —
+        the handler matches ``payload.sub_question``. With an empty
+        correlation, only one waiter per ``(investigation_id,
+        action_type)`` is allowed (linear phases 1, 3–9)."""
+        key = (investigation_id, action_type, correlation)
         loop = asyncio.get_running_loop()
         fut: asyncio.Future[Event] = loop.create_future()
         self._pending[key] = fut

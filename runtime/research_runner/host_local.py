@@ -42,12 +42,11 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import AsyncIterator, Awaitable, Callable, Dict, Optional
 
 try:
     from ...event_log import log_event, seal_investigation
     from ...schemas.events import ActionType
-    from .budget import BudgetManager
     from .protocol import (
         BudgetExceeded,
         Command,
@@ -60,24 +59,17 @@ try:
         StepEvent,
         StopResearch,
     )
+    from .budget import BudgetManager
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
-        BudgetExceeded,
-        Command,
-        CommandKind,
-        CostState,
-        Handle,
-        ResearchPlan,
-        RunState,
-        Status,
-        StepEvent,
-        StopResearch,
-    )
     from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
     from substrate.schemas.events import ActionType  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+        BudgetExceeded, Command, CommandKind, CostState, Handle, ResearchPlan,
+        RunState, Status, StepEvent, StopResearch,
+    )
+    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
 
 
 # Policy cap, not a runtime limit — see module docstring. The product
@@ -103,7 +95,7 @@ class LoopContext:
         self._resume = asyncio.Event()
         self._resume.set()                # starts un-paused
         self._stop = False
-        self._pending_redirect: str | None = None
+        self._pending_redirect: Optional[str] = None
         self.paused = False
 
     # -- steering (mutated by the runner from steer()) -----------------
@@ -162,10 +154,10 @@ class _ResearchState:
     def __init__(self, plan: ResearchPlan):
         self.plan = plan
         self.state = RunState.PENDING
-        self.ctx: LoopContext | None = None
-        self.queue: asyncio.Queue = asyncio.Queue()
-        self.task: asyncio.Task | None = None
-        self.error: str | None = None
+        self.ctx: Optional[LoopContext] = None
+        self.queue: "asyncio.Queue" = asyncio.Queue()
+        self.task: Optional[asyncio.Task] = None
+        self.error: Optional[str] = None
         self.follow_ups: list[str] = []
         self.started = False
 
@@ -178,11 +170,11 @@ class HostLocalRunner:
         loop_fn: Callable[[LoopContext], AsyncIterator[StepEvent]],
         *,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
-        budget: BudgetManager | None = None,
-        events_dir: str | None = None,
+        budget: Optional[BudgetManager] = None,
+        events_dir: Optional[str] = None,
         seal_on_complete: bool = True,
-        on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
-        retrieval_substrate: object | None = None,
+        on_emit: Optional[Callable[[StepEvent], Awaitable[None]]] = None,
+        retrieval_substrate: Optional[object] = None,
         reuse_role: str = "user_agent",
     ):
         self._loop_fn = loop_fn
@@ -205,7 +197,7 @@ class HostLocalRunner:
         # extension of the existing ``start`` lifecycle stage.
         self._retrieval_substrate = retrieval_substrate
         self._reuse_role = reuse_role
-        self._states: dict[str, _ResearchState] = {}
+        self._states: Dict[str, _ResearchState] = {}
 
     # -- protocol: start -----------------------------------------------
 
@@ -433,7 +425,7 @@ class HostLocalRunner:
         if st.task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(st.task), timeout=5.0)
-            except (TimeoutError, asyncio.CancelledError):
+            except (asyncio.TimeoutError, asyncio.CancelledError):
                 st.task.cancel()
 
     async def join(self) -> None:
@@ -455,7 +447,7 @@ def make_demo_loop(
     cost_per_step: float = 0.01,
     delay_s: float = 0.0,
     emit_note: bool = True,
-    fail_on_step: int | None = None,
+    fail_on_step: Optional[int] = None,
 ):
     """Build a deterministic browse loop for tests. A real loop calls Exa /
     Browserbase between checkpoints; this one just sleeps + charges."""
@@ -472,5 +464,127 @@ def make_demo_loop(
         if emit_note:
             yield ctx.note(f"insight from {ctx.investigation_id}: {ctx.sub_question}")
             yield ctx.question(f"open question from {ctx.investigation_id}?")
+
+    return _loop
+
+
+# ---------------------------------------------------------------------------
+# Contract gather stub — prod factory default until Exa adapter (ANT-DRL-04).
+# ---------------------------------------------------------------------------
+
+
+def make_contract_gather_stub(
+    *,
+    steps: int = 2,
+    cost_per_step: float = 0.01,
+    delay_s: float = 0.0,
+):
+    """Honest production gather placeholder — not real research.
+
+    Unlike ``make_demo_loop`` (benchmark/test MOCK, reuse-blind), this stub
+    is the default in ``cascade_routes._research_loop_factory``. It emits
+    real ``StepEvent``s and promotes notes through ``PromotionFunnel``,
+    but performs no retrieval or synthesis. It does **not** satisfy
+    ``DeepResearchComplete`` — gather-only by design until Exa lands.
+    """
+
+    async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
+        yield ctx.plan_event(f"[gather-stub] plan: {ctx.sub_question}")
+        for i in range(steps):
+            sub_q = await ctx.checkpoint()
+            if delay_s:
+                await asyncio.sleep(delay_s)
+            yield ctx.step(
+                f"[gather-stub] pass {i} on '{sub_q}'",
+                cost_usd=cost_per_step,
+                tokens=0,
+                gather_mode="contract_stub",
+            )
+        yield ctx.note(
+            f"[gather-stub] provisional note from {ctx.investigation_id}: "
+            f"{ctx.sub_question}",
+            gather_mode="contract_stub",
+        )
+
+    return _loop
+
+
+# ---------------------------------------------------------------------------
+# Parallel gather loop — SPR-DRL-08 (operator: Parallel-first).
+# ---------------------------------------------------------------------------
+
+
+def make_parallel_gather_loop(
+    *,
+    top_k: int = 3,
+    num_results: int = 10,
+    client: Optional[object] = None,
+    legal_gate: Optional[object] = None,
+    db_path: Optional[str] = None,
+    events_dir: Optional[str] = None,
+):
+    """Browse loop: Parallel discover → promote top-k → StepEvents with provenance."""
+
+    async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
+        from acquisition.search.parallel import discover as parallel_discover
+        from acquisition.search.parallel.adapter import promote_discovery
+
+        yield ctx.plan_event(
+            f"[parallel-gather] plan: {ctx.sub_question}",
+            gather_mode="parallel",
+        )
+        sub_q = await ctx.checkpoint()
+
+        proposals = await asyncio.to_thread(
+            parallel_discover,
+            query=sub_q,
+            investigation_id=ctx.investigation_id,
+            num_results=num_results,
+            client=client,
+            events_dir=events_dir,
+        )
+        discover_cost = sum(p.cost_usd_estimate for p in proposals)
+        yield ctx.step(
+            f"[parallel-gather] discovered {len(proposals)} urls for '{sub_q}'",
+            cost_usd=discover_cost,
+            tokens=0,
+            gather_mode="parallel",
+        )
+
+        promoted = 0
+        for proposal in proposals[:top_k]:
+            result = await asyncio.to_thread(
+                promote_discovery,
+                proposal,
+                investigation_id=ctx.investigation_id,
+                legal_gate=legal_gate,
+                db_path=db_path,
+                events_dir=events_dir,
+            )
+            yield ctx.step(
+                f"[parallel-gather] {result.decision}: {proposal.url}",
+                cost_usd=0.0,
+                tokens=0,
+                gather_mode="parallel",
+                discovery_id=proposal.discovery_id,
+                document_id=result.document_id,
+                promotion_decision=result.decision,
+            )
+            if result.decision == "ingested" and result.document_id:
+                promoted += 1
+                yield ctx.note(
+                    f"[parallel-gather] ingested {result.document_id}: {proposal.url}",
+                    gather_mode="parallel",
+                    source_document_id=result.document_id,
+                    discovery_id=proposal.discovery_id,
+                    promotion_decision=result.decision,
+                )
+
+        if promoted == 0:
+            yield ctx.note(
+                f"[parallel-gather] promoted 0/"
+                f"{min(top_k, len(proposals))} from {ctx.investigation_id}: {sub_q}",
+                gather_mode="parallel",
+            )
 
     return _loop

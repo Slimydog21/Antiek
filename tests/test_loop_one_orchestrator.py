@@ -47,6 +47,9 @@ from substrate.dispatch import (  # noqa: E402
     reset_provider_registry,
 )
 from substrate.event_log import trajectory  # noqa: E402
+from orchestration.invariants.deep_research_complete import (  # noqa: E402
+    check_deep_research_complete,
+)
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
@@ -375,6 +378,7 @@ async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
     """Wait for INVESTIGATION_COMPLETED or _FAILED to appear in the
     trajectory. The orchestrator runs as a detached asyncio.Task —
     we poll the trajectory rather than register another handler."""
+    import asyncio
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
         await bus.wait_for_handlers(timeout=2.0)
@@ -435,6 +439,9 @@ async def test_loop_one_happy_path_emits_completed(
     assert Path(p.master_md_path).exists()
     assert p.total_phases_verified == 8
     assert "quantum-computing-knowledge" in p.domains_patched
+
+    ok, reason = check_deep_research_complete(inv)
+    assert ok is True, reason
 
 
 @pytest.mark.asyncio

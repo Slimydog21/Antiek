@@ -24,39 +24,44 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Any
+from typing import Any, Optional
 
 try:
-    from ...graph.insight_question import (
-        graph_db_path,
-        promote_insight,
-        promote_question,
-    )
     from ...runtime.db_lock import connect_write
+    from ...graph.insight_question import (
+        graph_db_path, promote_insight, promote_question,
+    )
     from .protocol import StepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import connect_write  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import StepEvent  # type: ignore[no-redef]
     from substrate.graph.insight_question import (  # type: ignore[no-redef]
-        graph_db_path,
-        promote_insight,
-        promote_question,
+        graph_db_path, promote_insight, promote_question,
     )
+    from runtime.research_runner.protocol import StepEvent  # type: ignore[no-redef]
 
 
 _FUNNEL_DONE = object()
 
 
+def _promotion_metadata(ev: StepEvent) -> dict:
+    """Normalize runner StepEvent.data for pack builder provenance (SPR-DRL-09)."""
+    meta: dict = {"source": "research_runner", **ev.data}
+    doc_id = meta.get("source_document_id") or meta.get("document_id")
+    if doc_id:
+        meta["source_document_id"] = str(doc_id)
+    return meta
+
+
 class PromotionFunnel:
     """Serialized drain of research notes/questions into graph nodes."""
 
-    def __init__(self, *, db_path: str | None = None, embedding_provider: Any = None):
+    def __init__(self, *, db_path: Optional[str] = None, embedding_provider: Any = None):
         self._db_path = db_path or graph_db_path()
         self._embedding_provider = embedding_provider
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._worker: asyncio.Task | None = None
+        self._queue: "asyncio.Queue" = asyncio.Queue()
+        self._worker: Optional[asyncio.Task] = None
         self.promoted_insights = 0
         self.promoted_questions = 0
         self.errors: list[str] = []
@@ -101,10 +106,11 @@ class PromotionFunnel:
         try:
             con.execute("BEGIN")
             try:
+                meta = _promotion_metadata(ev)
                 if ev.kind == "note":
                     nid = promote_insight(
                         text=ev.text, investigation_id=ev.investigation_id,
-                        metadata={"source": "research_runner", **ev.data},
+                        metadata=meta,
                         embedding_provider=self._embedding_provider, con=con,
                     )
                     self.promoted_insights += 1
@@ -112,7 +118,7 @@ class PromotionFunnel:
                 elif ev.kind == "question":
                     nid = promote_question(
                         text=ev.text, investigation_id=ev.investigation_id,
-                        metadata={"source": "research_runner", **ev.data},
+                        metadata=meta,
                         embedding_provider=self._embedding_provider, con=con,
                     )
                     self.promoted_questions += 1

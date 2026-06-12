@@ -15,8 +15,6 @@ import tempfile
 
 import pytest
 
-from processing.embedding import _reset_default_provider, set_default_embedding_provider
-from runtime.db_lock import connect_read
 from runtime.research_runner import (
     BudgetCap,
     BudgetManager,
@@ -29,13 +27,17 @@ from runtime.research_runner import (
     ResearchPlan,
     ResearchRunner,
     RunState,
+    StepEvent,
     daytona_enabled,
+    make_contract_gather_stub,
     make_demo_loop,
 )
 from runtime.research_runner.host_local import LoopContext
 from substrate.event_log import trajectory
 from substrate.graph.schema import init_database_at_path
+from runtime.db_lock import connect_read
 from substrate.schemas.events import ActionType
+from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:
@@ -182,6 +184,31 @@ async def test_promotion_funnel_serialized_no_lock_timeout(events_dir):
         assert n_log >= 20
     finally:
         con.close()
+
+
+async def test_contract_gather_stub_promotes_note_via_funnel(events_dir):
+    """ANT-DRL-04: prod stub emits real StepEvents + funnel promotion."""
+    db = os.path.join(tempfile.mkdtemp(), "graph.duckdb")
+    init_database_at_path(db)
+    funnel = PromotionFunnel(db_path=db, embedding_provider=_FakeEmbedding())
+    await funnel.start()
+
+    r = HostLocalRunner(
+        make_contract_gather_stub(steps=2, cost_per_step=0.01),
+        events_dir=events_dir,
+        seal_on_complete=False,
+        on_emit=funnel.submit,
+    )
+    h = await r.start("inv-0", _plan(0))
+    events = [ev async for ev in r.stream(h)]
+    await r.join()
+    await funnel.drain_and_stop()
+
+    assert any(ev.kind == "step" and "[gather-stub]" in ev.text for ev in events)
+    assert funnel.promoted_insights >= 1
+    cost = r.cost(h)
+    assert cost.spent_usd == pytest.approx(0.02)
+    assert cost.steps == 2
 
 
 # --------------------------------------------------------------------------
