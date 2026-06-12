@@ -19,8 +19,8 @@ from orchestration.loop_one.orchestrator import (  # noqa: E402
 )
 from substrate.schemas import (  # noqa: E402
     ActionType,
-    EvidenceRetrieveDeliveredPayload,
     Event,
+    EvidenceRetrieveDeliveredPayload,
 )
 
 

@@ -42,11 +42,12 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import AsyncIterator, Awaitable, Callable, Dict, Optional
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 try:
     from ...event_log import log_event, seal_investigation
     from ...schemas.events import ActionType
+    from .budget import BudgetManager
     from .protocol import (
         BudgetExceeded,
         Command,
@@ -59,17 +60,24 @@ try:
         StepEvent,
         StopResearch,
     )
-    from .budget import BudgetManager
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+        BudgetExceeded,
+        Command,
+        CommandKind,
+        CostState,
+        Handle,
+        ResearchPlan,
+        RunState,
+        Status,
+        StepEvent,
+        StopResearch,
+    )
     from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
     from substrate.schemas.events import ActionType  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
-        BudgetExceeded, Command, CommandKind, CostState, Handle, ResearchPlan,
-        RunState, Status, StepEvent, StopResearch,
-    )
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
 
 
 # Policy cap, not a runtime limit — see module docstring. The product
@@ -95,7 +103,7 @@ class LoopContext:
         self._resume = asyncio.Event()
         self._resume.set()                # starts un-paused
         self._stop = False
-        self._pending_redirect: Optional[str] = None
+        self._pending_redirect: str | None = None
         self.paused = False
 
     # -- steering (mutated by the runner from steer()) -----------------
@@ -154,10 +162,10 @@ class _ResearchState:
     def __init__(self, plan: ResearchPlan):
         self.plan = plan
         self.state = RunState.PENDING
-        self.ctx: Optional[LoopContext] = None
-        self.queue: "asyncio.Queue" = asyncio.Queue()
-        self.task: Optional[asyncio.Task] = None
-        self.error: Optional[str] = None
+        self.ctx: LoopContext | None = None
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self.task: asyncio.Task | None = None
+        self.error: str | None = None
         self.follow_ups: list[str] = []
         self.started = False
 
@@ -170,11 +178,11 @@ class HostLocalRunner:
         loop_fn: Callable[[LoopContext], AsyncIterator[StepEvent]],
         *,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
-        budget: Optional[BudgetManager] = None,
-        events_dir: Optional[str] = None,
+        budget: BudgetManager | None = None,
+        events_dir: str | None = None,
         seal_on_complete: bool = True,
-        on_emit: Optional[Callable[[StepEvent], Awaitable[None]]] = None,
-        retrieval_substrate: Optional[object] = None,
+        on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
+        retrieval_substrate: object | None = None,
         reuse_role: str = "user_agent",
     ):
         self._loop_fn = loop_fn
@@ -197,7 +205,7 @@ class HostLocalRunner:
         # extension of the existing ``start`` lifecycle stage.
         self._retrieval_substrate = retrieval_substrate
         self._reuse_role = reuse_role
-        self._states: Dict[str, _ResearchState] = {}
+        self._states: dict[str, _ResearchState] = {}
 
     # -- protocol: start -----------------------------------------------
 
@@ -425,7 +433,7 @@ class HostLocalRunner:
         if st.task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(st.task), timeout=5.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 st.task.cancel()
 
     async def join(self) -> None:
@@ -447,7 +455,7 @@ def make_demo_loop(
     cost_per_step: float = 0.01,
     delay_s: float = 0.0,
     emit_note: bool = True,
-    fail_on_step: Optional[int] = None,
+    fail_on_step: int | None = None,
 ):
     """Build a deterministic browse loop for tests. A real loop calls Exa /
     Browserbase between checkpoints; this one just sleeps + charges."""
@@ -518,10 +526,10 @@ def make_parallel_gather_loop(
     *,
     top_k: int = 3,
     num_results: int = 10,
-    client: Optional[object] = None,
-    legal_gate: Optional[object] = None,
-    db_path: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    client: object | None = None,
+    legal_gate: object | None = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
 ):
     """Browse loop: Parallel discover → promote top-k → StepEvents with provenance."""
 

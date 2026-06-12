@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
-from typing import Any, List, Optional
+from typing import Any
 
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,17 +18,16 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from acquisition.search.exa.adapter import (  # noqa: E402
+    DiscoveryPromotionResult,
+    DiscoveryProposed,
+    suggest_tier,
+)
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.legal_gate import LegalGate, default_legal_gate  # noqa: E402
 from substrate.schemas.events import (  # noqa: E402
     DiscoveryProposedPayload,
     DiscoverySelectedPayload,
-)
-
-from acquisition.search.exa.adapter import (  # noqa: E402
-    DiscoveryPromotionResult,
-    DiscoveryProposed,
-    suggest_tier,
 )
 
 from .client import COST_PER_SEARCH_USD, ParallelClient, ParallelSearchResult  # noqa: E402
@@ -39,12 +38,12 @@ _POLICY_ID = "acquisition/search/parallel"
 
 def _discovery_id(url: str, investigation_id: str, query: str = "") -> str:
     h = hashlib.sha256(
-        f"{url}\x1f{investigation_id}\x1f{query}".encode("utf-8")
+        f"{url}\x1f{investigation_id}\x1f{query}".encode()
     ).hexdigest()[:16]
     return f"{_DISCOVERY_ID_PREFIX}{h}"
 
 
-def _search_queries_from_objective(objective: str) -> List[str]:
+def _search_queries_from_objective(objective: str) -> list[str]:
     """Derive 2–3 keyword queries from a sub-question (Parallel API guidance)."""
     text = objective.strip()
     if not text:
@@ -63,10 +62,10 @@ def discover(
     query: str,
     investigation_id: str,
     num_results: int = 10,
-    client: Optional[ParallelClient] = None,
-    events_dir: Optional[str] = None,
-    session_id: Optional[str] = None,
-) -> List[DiscoveryProposed]:
+    client: ParallelClient | None = None,
+    events_dir: str | None = None,
+    session_id: str | None = None,
+) -> list[DiscoveryProposed]:
     """Run Parallel Search; emit DiscoveryProposed events; return proposals."""
     if not query.strip():
         raise ValueError("discover: empty query")
@@ -85,7 +84,7 @@ def discover(
         session_id=session_id,
     )
 
-    proposals: List[DiscoveryProposed] = []
+    proposals: list[DiscoveryProposed] = []
     for r in response.results:
         if not r.url:
             continue
@@ -106,8 +105,8 @@ def _emit_proposed(
     *,
     query: str,
     investigation_id: str,
-    events_dir: Optional[str],
-    search_id: Optional[str],
+    events_dir: str | None,
+    search_id: str | None,
 ) -> DiscoveryProposed:
     discovery_id = _discovery_id(r.url, investigation_id, query)
     tier = suggest_tier(r.url)
@@ -158,11 +157,11 @@ def promote_discovery(
     discovery: DiscoveryProposed,
     *,
     investigation_id: str,
-    source_tier: Optional[int] = None,
-    legal_gate: Optional[LegalGate] = None,
-    db_path: Optional[str] = None,
-    embedder: Optional[object] = None,
-    events_dir: Optional[str] = None,
+    source_tier: int | None = None,
+    legal_gate: LegalGate | None = None,
+    db_path: str | None = None,
+    embedder: object | None = None,
+    events_dir: str | None = None,
 ) -> DiscoveryPromotionResult:
     """Promote a prior discovery to ingestion via ``ingest_url``."""
     if events_dir is None:

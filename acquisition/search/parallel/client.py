@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass, field
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
 import httpx

@@ -38,7 +38,7 @@ import asyncio
 import json
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException
