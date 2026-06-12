@@ -14,11 +14,12 @@
  * a 503 as a typed "unavailable / fallback" state rather than a thrown
  * network error.
  *
- * DOC-DERIVED, UNVERIFIED LIVE: the `/krea/scene` request/response shapes
- * below mirror the backend route, whose Krea wire shape is itself
- * doc-derived (no live Krea call was made — no key in sandbox). The
- * server's contract (200 SceneArt | 503 DisabledResponse) is what this
- * client codes against and is stable regardless of the live Krea schema.
+ * HONESTY: the `/krea/scene` request/response shapes below mirror the
+ * backend route, whose Krea wire shape is docs-current as of 2026-06-12
+ * (transcribed from docs.krea.ai; live verification pending the SPR-09
+ * capped smoke — no live Krea call has ever been made). The server's
+ * contract (200 SceneArt | 503 DisabledResponse) is what this client
+ * codes against and is stable regardless of the live Krea schema.
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
@@ -47,15 +48,21 @@ export interface SceneArt {
 
 /** The typed FALLBACK signal (HTTP 503 from /krea/*). Returned for EVERY
  *  disabled / failure mode: no key, kill-switch, over-budget, rate-limited,
- *  upstream error/timeout/bad-json, job failed/timeout. The hook turns any
- *  of these into `isFallback: true` + a deterministic placeholder. This is
- *  NOT an error to throw — it is an expected, handled state. */
+ *  upstream error/timeout/bad-json, job failed/timeout/cancelled, empty
+ *  prepaid API balance. The hook turns any of these into
+ *  `isFallback: true` + a deterministic placeholder. This is NOT an error
+ *  to throw — it is an expected, handled state. */
 export interface SceneDisabled {
   enabled: false;
   isFallback: true;
-  /** Stable machine reason (e.g. "no_key", "kill_switch", "over_daily_budget",
-   *  "rate_limited", "upstream_error", "upstream_timeout",
-   *  "upstream_bad_response", "job_failed", "job_timeout"). */
+  /** Stable machine reason. The vocabulary is ADDITIVE-ONLY (existing
+   *  strings never change; new failure modes get new strings): "no_key",
+   *  "kill_switch", "over_daily_budget", "rate_limited", "upstream_error",
+   *  "upstream_timeout", "upstream_bad_response", "job_failed",
+   *  "job_timeout", plus (added 2026-06-12, SPR-01) "job_cancelled" — the
+   *  job reached Krea's terminal cancelled state — and "no_api_balance" —
+   *  upstream HTTP 402: Krea's prepaid API balance (separate from any
+   *  subscription) is empty and needs a top-up. */
   reason: string;
   /** The scene-state key when the server knew it; lets the caller keep a
    *  stable placeholder keyed to the same state. May be null. */
@@ -77,6 +84,9 @@ export interface JobResult {
   job_id: string;
   status: string;
   image_url?: string | null;
+  /** Stable machine code from a failed job's error object (additive,
+   *  2026-06-12). The upstream error MESSAGE is never forwarded. */
+  error_code?: string | null;
 }
 
 export type GenerateResponse = GenerateResult | SceneDisabled;
@@ -140,7 +150,15 @@ export async function requestScene(scene: SceneState): Promise<SceneResult> {
 }
 
 /** Submit a raw generation (lower-level; SPR-04 usually uses requestScene).
- *  503 → typed fallback signal; success → {job_id,status}. */
+ *  503 → typed fallback signal; success → {job_id,status}.
+ *
+ *  NOTE (2026-06-12, SPR-01): `opts.model` is IGNORED by the server — per
+ *  docs.krea.ai the model is a URL path segment, selected server-side via
+ *  the ANTIEK_KREA_MODEL_PATH env (default bfl/flux-1-dev), never a body
+ *  field. The option is kept so older callers keep compiling; the server
+ *  drops unknown body keys. Server-enforced bounds (docs.krea.ai
+ *  flux-1-dev, 2026-06-12): prompt ≤ 1800 chars, width/height 512–2368 px
+ *  — out-of-bounds gets a 422 naming the bound. */
 export async function generateImage(
   prompt: string,
   opts?: { model?: string; width?: number; height?: number },

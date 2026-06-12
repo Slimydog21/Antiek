@@ -9,12 +9,14 @@ module mandatory rather than a convenience:
      hold. So the key MUST live server-side; the browser talks to
      ``/krea/*`` here and never sees the token (``grep -rn KREA_API_TOKEN
      apps/reading/src`` returns zero).
-  2. BUDGET + KILL-SWITCH. Krea bills per generation (Flux ~$0.04/image,
-     video ~$0.20/sec). A client-direct caller could run the bill to the
-     moon; the server-side daily compute-unit cap + per-process rate limit
-     + ``KREA_KILL_SWITCH`` flag bound spend and give the operator a single
-     panic lever. Over budget / killed → the FALLBACK signal, never an
-     upstream call.
+  2. BUDGET + KILL-SWITCH. Krea bills per generation against a PREPAID
+     API balance — separate from any web subscription's compute units,
+     $5 minimum top-up, HTTP 402 when empty (docs.krea.ai, 2026-06-12).
+     flux-1-dev is $0.007/request; there is NO API free tier. A
+     client-direct caller could still drain the balance; the server-side
+     daily unit cap + per-process rate limit + ``KREA_KILL_SWITCH`` flag
+     bound spend and give the operator a single panic lever. Over budget
+     / killed → the FALLBACK signal, never an upstream call.
   3. CACHE. Identical scene-state (mood / day-night / season) must not be
      re-billed; an in-memory TTL cache de-dupes generations.
 
@@ -35,24 +37,42 @@ in ``substrate/dispatch/providers/bootstrap.py`` (``_maybe_deepseek`` ->
 handling, status check before ``.json()``, body preview on error).
 
 ────────────────────────────────────────────────────────────────────────
-HONESTY — the Krea wire shape below is DOC-DERIVED, NOT LIVE-VERIFIED.
+HONESTY — wire shapes are DOCS-CURRENT AS OF 2026-06-12; LIVE
+VERIFICATION IS PENDING SPR-09 (the first capped live smoke).
 ────────────────────────────────────────────────────────────────────────
-No live call was made (no key in sandbox). The exact request/response
-shapes this module codes against, recorded so a maintainer can re-verify
-when a real key arrives:
+No live call has ever been made from this codebase (no funded key was
+ever present). The shapes below are TRANSCRIPTIONS of docs.krea.ai
+(the API launched in its current form 2026-05-27), re-verified against
+the docs 2026-06-12 — transcriptions, not observations. Do NOT delete
+this banner when tests are green; retire it only after SPR-09 records
+live behavior. The shapes this module codes against:
 
-  Submit a generation (async job pattern):
-    POST {BASE}/generate/image
+  Submit a generation (async job pattern; the MODEL IS IN THE PATH,
+  vendor-prefixed — docs.krea.ai flux-1-dev reference, 2026-06-12):
+    POST {BASE}/generate/image/{model_path}    e.g. bfl/flux-1-dev
     Headers: Authorization: Bearer <token>, Content-Type: application/json
-    Body:    {"model": "flux", "prompt": "...", "width": W, "height": H}
-    -> 200 {"job_id": "job_abc123", "status": "queued"}
+    Body:    {"prompt": "...", "width": W, "height": H}
+             (NO model key in the body — the model is the URL path;
+              other models live at other paths, e.g. krea/krea-2/medium)
+    -> 200 {"job_id": "...", "status": "queued", "created_at": ...}
+       (the docs' worked example; submit responses do NOT carry a
+        result at submit time — assumption noted in fixture comments)
+    -> 402 {"message": ...} when the prepaid API balance is empty.
 
-  Poll a job:
+  Poll a job (docs.krea.ai jobs reference, 2026-06-12):
     GET {BASE}/jobs/{job_id}
     Headers: Authorization: Bearer <token>
-    -> 200 {"job_id": "...", "status": "completed",
-            "output": {"image_url": "https://..."}}
-       status in {"queued","processing","completed","failed"}.
+    -> 200 {"job_id": "...", "status": "...",
+            "result": {"urls": ["https://...", ...]}}  on completion
+       ``result.urls`` is an ARRAY OF URI STRINGS — take [0]; ``result``
+       may also carry ``style_id`` (ignored here). Failed jobs carry
+       ``"error": {"code": ..., "message": ...}`` instead.
+       status enum (9 states): backlogged | queued | scheduled |
+       processing | sampling | intermediate-complete | completed |
+       failed | cancelled. TERMINAL: completed / failed / cancelled.
+       Krea does NOT bill failed/cancelled jobs (we still count the
+       submit locally — see the bill-on-submit divergence comment at
+       the recording sites).
 
 BASE defaults to ``https://api.krea.ai`` and is overridable via
 ``ANTIEK_KREA_BASE_URL`` (mirrors the ``ANTIEK_DEEPSEEK_BASE_URL``
@@ -70,9 +90,13 @@ The v2 mountain shell ships a 60fps procedural floor with PERIODIC,
 mood-gated Krea stills crossfaded over it — NOT a near-real-time
 generative stream. The stream was ruled out in ``docs/ams-v2/stream-spike.md``
 (verdict: NO-GO): the doc-derived generative ceiling is ~0.25 gen fps
-(Flux ~4 s/image) against a ≥10 gen-fps "near-real-time" bar, and a
-poll-driven pseudo-stream at that rate is ~$0.60/min, exhausting the
-50-unit daily cap in ~3.3 minutes. So:
+(~4 s/image per the spike's 2026-05 doc snapshot) against a ≥10 gen-fps
+"near-real-time" bar, and a poll-driven pseudo-stream at that rate is
+15 submits/min — burning the 50-unit daily cap in ~3.3 minutes. (The
+spike priced that at ~$0.60/min from its 2026-05 per-image snapshot; at
+the corrected 2026-06-12 price of $0.007/request it is ~$0.105/min —
+the NO-GO is unchanged: it is latency- and cap-exhaustion-bound, not
+only price-bound.) So:
 
   - NO streaming route is added here (no SSE / WebSocket / EventSource /
     ``/krea/stream``). The ``/krea`` namespace stays exactly three routes:
@@ -102,7 +126,7 @@ import os
 import threading
 import time
 from datetime import date
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 from fastapi import FastAPI, Query
@@ -117,41 +141,67 @@ from pydantic import BaseModel, Field
 # substrate/dispatch/providers/bootstrap.py.
 _DEFAULT_BASE_URL = "https://api.krea.ai"
 
-# Outbound request timeout (seconds). Krea's Flux model lands ~4s/image
-# per the docs; the async submit returns a job_id fast, and we poll. We
-# keep the per-HTTP-call timeout short so a hung connection never deadlocks
-# the request handler. 15s comfortably covers a slow submit/poll round
-# while staying well under any reasonable browser patience. Matches the
-# spirit of openai_compat._DEFAULT_TIMEOUT_S (which is 120s for long
-# synthesis — image submit/poll is far quicker, so we use a tighter bound).
+# Outbound per-HTTP-call timeout (seconds). UNCHANGED at 15s (SPR-01,
+# 2026-06-12): this bounds ONE network round-trip (a submit POST or a
+# poll GET — both return promptly; job latency is the POLL BUDGET's
+# problem, not this one's), so a hung connection never deadlocks the
+# request handler. Matches the spirit of openai_compat._DEFAULT_TIMEOUT_S
+# (120s for long synthesis — a single submit/poll round-trip is far
+# quicker, so we keep the tighter bound).
 _DEFAULT_TIMEOUT_S = 15.0
 
 # How long to poll a submitted job before giving up and falling back.
-# Doc-derived: Flux ~4s/image; under queueing it can take longer. We poll
-# up to ~12s total (well past the ~4s nominal, short enough that the
-# request handler returns promptly and the frontend can show the
-# deterministic placeholder while a later refresh may hit the warm cache).
-_POLL_BUDGET_S = 12.0
-_POLL_INTERVAL_S = 0.75
+# Default 30s. Source (docs.krea.ai, 2026-06-12): flux-1-dev's latency is
+# NOT documented, so we take the nearest documented model — Krea-2 at
+# ~10s/generation — and budget 3x for headroom; 30s is also well under
+# Krea's documented 3-minute hosted job timeout. Override via
+# KREA_POLL_BUDGET_S (read at call time via _poll_budget_s(), like the
+# other knobs). On expiry the handler returns the typed job_timeout
+# fallback promptly — a later refresh may find the job done.
+_POLL_BUDGET_S = 30.0
+
+# Poll cadence. Source (docs.krea.ai, 2026-06-12): the docs say to poll
+# job status every 2–5 seconds. 2.5s sits at the bottom of that band so
+# a fast job is noticed promptly while staying inside the guidance (the
+# shipped 0.75s was below it — out of contract).
+_POLL_INTERVAL_S = 2.5
+
+# Default model path for the submit URL. Source (docs.krea.ai flux-1-dev
+# reference, 2026-06-12): the model is a vendor-prefixed URL path segment
+# (POST {BASE}/generate/image/bfl/flux-1-dev), NOT a body field. Other
+# models live at other paths (e.g. krea/krea-2/medium); the
+# ANTIEK_KREA_MODEL_PATH env knob (see _model_path) covers future swaps.
+_DEFAULT_MODEL_PATH = "bfl/flux-1-dev"
+
+# Poll-loop clock seam. The /krea/scene poll loop reads these module
+# aliases (NOT time.monotonic/time.sleep directly) so tests can install a
+# mock clock and prove the 2.5s interval + the poll budget are honored
+# without any real sleeps (rigor #3). Production behavior is identical:
+# these ARE the real clock functions.
+_monotonic = time.monotonic
+_sleep = time.sleep
 
 # ── Budget knobs. EVERY number carries its derivation (rigor #5). ───────
 #
-# Krea pricing (doc-derived): Flux ~$0.04/image. The free tier is
-# ~100 compute units/day; we treat ONE image generation as ONE compute
-# unit for the cap (conservative — a unit can't cost less than an image).
+# Krea pricing (docs.krea.ai, 2026-06-12): flux-1-dev is $0.007/request.
+# There is NO API free tier — the API draws a separate PREPAID USD
+# balance ($5 minimum top-up; distinct from any web subscription's
+# compute units; upstream returns HTTP 402 when it is empty, mapped to
+# the no_api_balance reason below). We treat ONE image generation as ONE
+# budget unit.
 #
 # DAILY CAP. Default 50 units/day.
-#   Derivation: 50 images x ~$0.04/image = ~$2.00/day worst case (~$60/mo).
-#   That is HALF the free tier's ~100 units/day, so the default stays
-#   inside the free allotment with headroom for the cache to absorb
-#   repeats. Conservative on purpose: the operator raises it via
-#   KREA_DAILY_UNIT_CAP once real demand + a paid plan justify it. A
+#   Derivation: 50 requests x $0.007/request ≈ $0.35/day worst case
+#   (~$10.50/mo) against the prepaid balance — i.e. a $5 minimum top-up
+#   survives ≥14 maxed-out days. Conservative on purpose: the operator
+#   raises it via KREA_DAILY_UNIT_CAP once real demand justifies it. A
 #   living background that refreshes a few scene-states per session, with
 #   the cache de-duping identical states, sits far under 50/day.
 _DEFAULT_DAILY_UNIT_CAP = 50
 
 # PER-PROCESS RATE LIMIT. Default 6 submissions / 60s window.
-#   Derivation: Flux ~4s/image, so a single client genuinely needs at most
+#   Derivation: generation takes seconds (Krea-2 is documented ~10s;
+#   flux-1-dev undocumented), so a single client genuinely needs at most
 #   ~1 new generation every few seconds; 6/min is generous for one operator
 #   driving one living background yet still caps a runaway loop (a bug that
 #   re-requests every frame) at 6 bills/min instead of hundreds. This is a
@@ -180,7 +230,10 @@ _CACHE_MAX_ENTRIES = 256
 
 # Reasons surfaced in the disabled/fallback body. Stable strings the
 # frontend may switch on (it primarily switches on enabled=false, but a
-# precise reason aids debugging + honest UI copy).
+# precise reason aids debugging + honest UI copy). The vocabulary is
+# ADDITIVE-ONLY: existing strings are a frozen frontend contract — never
+# rename or remove one; new failure modes get NEW strings (mirrored in
+# apps/reading/src/api/krea.ts's reason doc + src/krea/README.md).
 _REASON_NO_KEY = "no_key"
 _REASON_KILL_SWITCH = "kill_switch"
 _REASON_OVER_BUDGET = "over_daily_budget"
@@ -190,6 +243,29 @@ _REASON_UPSTREAM_TIMEOUT = "upstream_timeout"
 _REASON_UPSTREAM_BAD_RESPONSE = "upstream_bad_response"
 _REASON_JOB_FAILED = "job_failed"
 _REASON_JOB_TIMEOUT = "job_timeout"
+# ADDITIVE 2026-06-12 (SPR-01) — two reasons for live-API states the
+# doc-derived adapters could not name (docs.krea.ai, 2026-06-12):
+#   job_cancelled  — the job reached the terminal "cancelled" state of
+#                    the 9-state lifecycle; polling stops immediately.
+#   no_api_balance — upstream HTTP 402: Krea's prepaid API balance
+#                    (separate from any subscription) is empty. The
+#                    operator's signal to top up, distinct from our own
+#                    local over_daily_budget guard.
+_REASON_JOB_CANCELLED = "job_cancelled"
+_REASON_NO_API_BALANCE = "no_api_balance"
+
+# ── Request bounds. Transcribed from the flux-1-dev model reference ─────
+# (docs.krea.ai, 2026-06-12). Enforced at the proxy BEFORE any billable
+# submit: scene prompts are proxy-built (and clamped in _scene_prompt);
+# direct /krea/generate callers get a 422 naming the violated bound
+# (FastAPI/Pydantic includes the bound in the validation message).
+#   prompt: max 1800 characters (the shipped 2000 admitted requests the
+#           API would reject — i.e. invalid-but-billable risk).
+#   width/height: 512–2368 px (the shipped 64–2048 was half out of
+#           contract on both ends).
+_PROMPT_MAX_CHARS = 1800
+_DIM_MIN_PX = 512
+_DIM_MAX_PX = 2368
 
 
 # ── Request / response models ───────────────────────────────────────────
@@ -197,15 +273,20 @@ _REASON_JOB_TIMEOUT = "job_timeout"
 
 class GenerateRequest(BaseModel):
     """POST /krea/generate body. ``prompt`` is the only required field;
-    the rest carry doc-derived defaults. The browser never sends a key —
-    it sends a prompt and the server attaches the bearer token."""
+    the rest carry defaults inside the flux-1-dev bounds (docs.krea.ai,
+    2026-06-12). The browser never sends a key — it sends a prompt and
+    the server attaches the bearer token. The MODEL is NOT a body field
+    (removed 2026-06-12): per the flux-1-dev reference the model is the
+    URL path segment, server-selected via ANTIEK_KREA_MODEL_PATH (see
+    _model_path). Unknown body keys from older clients are ignored by
+    Pydantic's default config."""
 
-    prompt: str = Field(..., min_length=1, max_length=2000)
-    # Doc-derived Flux default; the model id is a per-call argument, not a
-    # pinned secret (mirrors how the dispatch tier supplies model ids).
-    model: str = Field(default="flux", max_length=64)
-    width: int = Field(default=1024, ge=64, le=2048)
-    height: int = Field(default=1024, ge=64, le=2048)
+    # flux-1-dev: prompt max 1800 chars (docs.krea.ai, 2026-06-12).
+    prompt: str = Field(..., min_length=1, max_length=_PROMPT_MAX_CHARS)
+    # flux-1-dev: width/height 512–2368 px (docs.krea.ai, 2026-06-12);
+    # the 1024 default sits comfortably inside the band.
+    width: int = Field(default=1024, ge=_DIM_MIN_PX, le=_DIM_MAX_PX)
+    height: int = Field(default=1024, ge=_DIM_MIN_PX, le=_DIM_MAX_PX)
 
 
 class GenerateResponse(BaseModel):
@@ -215,16 +296,28 @@ class GenerateResponse(BaseModel):
 
     enabled: bool = True
     job_id: str
-    status: str  # doc-derived: "queued" | "processing" | "completed" | ...
+    # The 9-state job lifecycle (docs.krea.ai, 2026-06-12): backlogged |
+    # queued | scheduled | processing | sampling | intermediate-complete |
+    # completed | failed | cancelled. A submit answers "queued" in the
+    # docs' worked example; kept a free string so a future upstream state
+    # never crashes the proxy.
+    status: str
 
 
 class JobResponse(BaseModel):
-    """200 from GET /krea/jobs/{id}. Mirrors the doc-derived poll shape."""
+    """200 from GET /krea/jobs/{id}. Mirrors the docs.krea.ai job shape
+    (2026-06-12): ``status`` is the 9-state lifecycle enum (see
+    GenerateResponse.status), ``image_url`` is ``result.urls[0]`` on
+    completion, and ``error_code`` (ADDITIVE 2026-06-12) is the stable
+    machine code from a failed job's ``error`` object. The upstream error
+    MESSAGE is parsed but never serialized — sanitized-preview
+    discipline: no upstream prose reaches the browser."""
 
     enabled: bool = True
     job_id: str
     status: str
     image_url: str | None = None
+    error_code: str | None = None
 
 
 class SceneArt(BaseModel):
@@ -243,7 +336,8 @@ class SceneArt(BaseModel):
 class DisabledResponse(BaseModel):
     """The typed FALLBACK signal — returned (HTTP 503) for EVERY failure
     mode: no key, kill-switch, over-budget, rate-limited, upstream error /
-    timeout / bad-json, job failed / timed out. NEVER a 500. The frontend
+    timeout / bad-json, job failed / timed out / cancelled, empty prepaid
+    API balance (402). NEVER a 500. The frontend
     treats any 503 here as ``isFallback: true`` and renders the
     deterministic placeholder. ``reason`` is a stable machine string;
     ``scene_key`` (when known) lets the surface keep its deterministic
@@ -400,6 +494,34 @@ def _base_url() -> str:
     return os.environ.get("ANTIEK_KREA_BASE_URL", _DEFAULT_BASE_URL).rstrip("/")
 
 
+def _model_path() -> str:
+    """The model segment of the submit URL (docs.krea.ai, 2026-06-12:
+    POST {BASE}/generate/image/{model_path}; the model is vendor-prefixed
+    IN THE PATH, not a body field). Read at call time via
+    ANTIEK_KREA_MODEL_PATH — same no-restart-tuning convention as the
+    other knobs — defaulting to the flux-1-dev path this module's
+    fixtures transcribe. Slashes are trimmed at the edges so an operator
+    value like ``/bfl/flux-1-dev/`` still forms a clean URL."""
+    raw = os.environ.get("ANTIEK_KREA_MODEL_PATH", "").strip().strip("/")
+    return raw or _DEFAULT_MODEL_PATH
+
+
+def _poll_budget_s() -> float:
+    """KREA_POLL_BUDGET_S override, read at call time (mirrors
+    _BudgetState.daily_cap's env-override pattern). Falls back to
+    _POLL_BUDGET_S = 30s — see the derivation at the constant (3x the
+    documented Krea-2 ~10s; well under Krea's 3-minute job timeout)."""
+    raw = os.environ.get("KREA_POLL_BUDGET_S", "").strip()
+    if raw:
+        try:
+            v = float(raw)
+            if v >= 0:
+                return v
+        except ValueError:
+            pass
+    return _POLL_BUDGET_S
+
+
 def _api_token() -> str | None:
     """Graceful-absence read of the Krea token (mirrors bootstrap.py's
     ``if not os.environ.get(...): return None``). Returns None when the
@@ -432,12 +554,22 @@ def _scene_prompt(mood: str, day_night: str, season: str) -> str:
     """Build the generation prompt from scene-state. Kept here (server
     side) so the browser never crafts prompts and the prompt is one
     auditable place. SPR-04 owns the actual visual; this is only the
-    art-request text."""
-    return (
+    art-request text.
+
+    CLAMPED to the flux-1-dev prompt limit (_PROMPT_MAX_CHARS = 1800,
+    docs.krea.ai 2026-06-12) BEFORE the billable submit: the three axes
+    are length-bounded upstream (Query max_length=64) so the template
+    sits far below the limit (asserted for every mood-matrix combination
+    in tests/test_krea_routes.py), but the clamp makes over-limit
+    structurally impossible — a proxy-built prompt must never fail its
+    own GenerateRequest validation (clamping is safe here precisely
+    because the prompt is proxy-built, not caller-supplied)."""
+    text = (
         f"A serene mountain landscape, {day_night.strip().lower()}, "
         f"{season.strip().lower()} season, {mood.strip().lower()} mood, "
         "soft painterly illustration, wide aspect, calm reading backdrop"
     )
+    return text[:_PROMPT_MAX_CHARS]
 
 
 # ── Upstream adapters (doc-derived; the ONLY part that changes if the ───
@@ -470,19 +602,33 @@ def _submit_generation(
     req: GenerateRequest,
     *,
     client: httpx.Client | None = None,
+    on_2xx: Callable[[], None] | None = None,
 ) -> tuple[str, str]:
-    """POST {BASE}/generate/image → (job_id, status). DOC-DERIVED shape.
-    Reuses the openai_compat httpx idiom: monotonic timing, separate
-    Timeout/RequestError handling, status check before .json(), tolerant
-    of partial/garbage JSON. Raises _UpstreamError (never a bare crash)."""
+    """POST {BASE}/generate/image/{model_path} → (job_id, status).
+
+    Wire shape transcribed from docs.krea.ai (flux-1-dev reference,
+    2026-06-12; live verification pending SPR-09): the model is the URL
+    path segment (vendor-prefixed; selected via ANTIEK_KREA_MODEL_PATH),
+    the body carries exactly prompt/width/height, and the docs' worked
+    example answers {"job_id": ..., "status": "queued", "created_at": ...}.
+    Reuses the openai_compat httpx idiom: separate Timeout/RequestError
+    handling, status check before .json(), tolerant of partial/garbage
+    JSON. Raises _UpstreamError (never a bare crash).
+
+    ``on_2xx`` fires the moment upstream answers ANY 2xx — BEFORE the
+    body is parsed. It is the billing-accounting seam (M6): a 2xx means
+    Krea ACCEPTED the submit, so the caller's budget unit must be
+    recorded even when the body then turns out to be unparseable."""
     http, owns = _ensure_client(client)
-    url = f"{_base_url()}/generate/image"
+    url = f"{_base_url()}/generate/image/{_model_path()}"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+    # Body per the flux-1-dev schema (docs.krea.ai, 2026-06-12): exactly
+    # prompt/width/height. There is NO model key in the body — the model
+    # is the URL path segment above.
     body = {
-        "model": req.model,
         "prompt": req.prompt,
         "width": req.width,
         "height": req.height,
@@ -494,16 +640,31 @@ def _submit_generation(
             raise _UpstreamError(_REASON_UPSTREAM_TIMEOUT, str(e)) from e
         except httpx.RequestError as e:  # offline / DNS / connection refused
             raise _UpstreamError(_REASON_UPSTREAM_ERROR, str(e)) from e
+        # 402 = the prepaid API balance is empty (docs.krea.ai, 2026-06-12:
+        # the API draws a separate prepaid USD balance, $5 minimum top-up;
+        # empty → HTTP 402 {"message": ...}). Its own reason so the
+        # operator reads "top up" rather than a generic upstream error. A
+        # refused submit is NOT billable — no unit is recorded.
+        if resp.status_code == 402:
+            raise _UpstreamError(
+                _REASON_NO_API_BALANCE,
+                f"HTTP 402 — {(resp.text or '')[:300]}",
+            )
         # 401 (invalid key), 429 (rate-limited upstream / queue), 5xx —
         # ALL collapse to the fallback signal. We do not retry here; the
         # frontend simply shows the placeholder and a later refresh may
         # succeed (and hit the warm cache).
-        if resp.status_code != 200:
+        if not (200 <= resp.status_code < 300):
             preview = (resp.text or "")[:300]
             raise _UpstreamError(
                 _REASON_UPSTREAM_ERROR,
                 f"HTTP {resp.status_code} — {preview}",
             )
+        # ANY 2xx: Krea accepted the submit. Record the budget unit NOW,
+        # before parsing (M6) — see the divergence comment at the
+        # recording site in krea_generate.
+        if on_2xx is not None:
+            on_2xx()
         try:
             data: Any = resp.json()
         except ValueError as e:  # partial / garbage JSON failure mode
@@ -530,9 +691,13 @@ def _poll_job(
     *,
     client: httpx.Client | None = None,
 ) -> JobResponse:
-    """GET {BASE}/jobs/{id} → JobResponse. DOC-DERIVED shape. One poll
-    (not the loop) — the loop lives in the /krea/scene handler so a single
-    poll is independently testable. Raises _UpstreamError on any problem."""
+    """GET {BASE}/jobs/{id} → JobResponse. Shape transcribed from the
+    docs.krea.ai jobs reference (2026-06-12; live verification pending
+    SPR-09). One poll (not the loop) — the loop lives in the /krea/scene
+    handler so a single poll is independently testable. Raises
+    _UpstreamError on any problem, including a completed job that is
+    missing its result URLs (a half-shape must surface as
+    upstream_bad_response, never a None-URL success)."""
     http, owns = _ensure_client(client)
     url = f"{_base_url()}/jobs/{job_id}"
     headers = {"Authorization": f"Bearer {token}"}
@@ -543,7 +708,15 @@ def _poll_job(
             raise _UpstreamError(_REASON_UPSTREAM_TIMEOUT, str(e)) from e
         except httpx.RequestError as e:
             raise _UpstreamError(_REASON_UPSTREAM_ERROR, str(e)) from e
-        if resp.status_code != 200:
+        # 402 mid-poll: same prepaid-balance signal as on submit
+        # (docs.krea.ai, 2026-06-12) — mapped to the same reason so the
+        # operator's "top up" signal is consistent wherever it lands.
+        if resp.status_code == 402:
+            raise _UpstreamError(
+                _REASON_NO_API_BALANCE,
+                f"HTTP 402 — {(resp.text or '')[:300]}",
+            )
+        if not (200 <= resp.status_code < 300):
             preview = (resp.text or "")[:300]
             raise _UpstreamError(
                 _REASON_UPSTREAM_ERROR,
@@ -558,17 +731,41 @@ def _poll_job(
                 _REASON_UPSTREAM_BAD_RESPONSE, f"non-object body: {type(data)}",
             )
         status = str(data.get("status") or "")
-        output = data.get("output")
-        image_url = None
-        if isinstance(output, dict):
-            image_url = output.get("image_url")
-        # Some doc variants put the URL at the top level; tolerate both.
-        if not image_url:
-            image_url = data.get("image_url")
-        if image_url is not None and not isinstance(image_url, str):
-            image_url = None
+        # Failure detail (docs.krea.ai jobs reference, 2026-06-12): failed
+        # jobs carry error: {code, message}. The CODE is a stable machine
+        # string surfaced additively on JobResponse; the MESSAGE is
+        # upstream prose and is deliberately dropped here (sanitized-
+        # preview discipline — no upstream text reaches a response body).
+        error_code: str | None = None
+        err = data.get("error")
+        if isinstance(err, dict):
+            code = err.get("code")
+            if isinstance(code, str) and code:
+                error_code = code
+        # Completed jobs carry result.urls — an ARRAY OF URI STRINGS; take
+        # [0] (docs.krea.ai jobs reference, 2026-06-12). result may also
+        # carry style_id (ignored). The legacy doc-derived parse paths (a
+        # nested image-url object and a top-level image-url) were REMOVED
+        # 2026-06-12: the live API never serves them, and a parser that
+        # accepts shapes the API never sends masks the next schema drift.
+        image_url: str | None = None
+        result = data.get("result")
+        if isinstance(result, dict):
+            urls = result.get("urls")
+            if (isinstance(urls, list) and urls
+                    and isinstance(urls[0], str) and urls[0]):
+                image_url = urls[0]
+        if status == "completed" and image_url is None:
+            # A completed job MUST carry result.urls per the docs. Missing
+            # → bad-response fallback, never a None-URL 200 (and never an
+            # endless re-poll of a job that will not change).
+            raise _UpstreamError(
+                _REASON_UPSTREAM_BAD_RESPONSE,
+                f"completed job missing result.urls: {str(data)[:200]}",
+            )
         return JobResponse(
             job_id=job_id, status=status or "unknown", image_url=image_url,
+            error_code=error_code,
         )
     finally:
         if owns:
@@ -625,8 +822,9 @@ def register_krea_routes(app: FastAPI) -> None:
     def krea_generate(req: GenerateRequest):
         """Submit a generation. Returns 200 {job_id,status} when enabled +
         under budget; otherwise the typed 503 fallback. Charges the budget
-        ONLY on a successful upstream submit (a gated request never bills,
-        and an upstream failure does not bill a phantom unit).
+        on ANY 2xx submit answer (a gated request never bills; a non-2xx
+        refusal never bills; a 2xx with an unparseable body DOES bill —
+        see the divergence comment below).
 
         SYNC handler ON PURPOSE: it makes a blocking httpx call. Declared
         ``def`` (not ``async def``) so Starlette runs it in the threadpool
@@ -638,12 +836,32 @@ def register_krea_routes(app: FastAPI) -> None:
         token = _api_token()
         assert token is not None  # _gate() guarantees this
         try:
-            job_id, status = _submit_generation(token, req, client=_http())
+            # BILLING-ACCOUNTING (M6, 2026-06-12): the budget unit is
+            # recorded by on_2xx the moment Krea answers ANY 2xx — BEFORE
+            # the body is parsed — so a 200 with a surprising shape still
+            # counts against the daily cap (the shipped code recorded only
+            # after a parseable submit, leaving a hole where upstream
+            # could bill while the local cap never moved).
+            #
+            # DELIBERATE DIVERGENCE from Krea's semantics: Krea bills on
+            # job COMPLETION and does NOT bill failed/cancelled jobs
+            # (docs.krea.ai, 2026-06-12). We count on submit-accept, so
+            # this counter OVERCOUNTS on jobs that later fail — the safe
+            # direction for a runaway guard (we throttle ourselves before
+            # the prepaid balance drains, never the reverse). REVISIT IF
+            # the cap starts starving legitimate use under a high upstream
+            # failure rate: reconcile against Krea's billing then — do not
+            # loosen the record-before-parse ordering.
+            job_id, status = _submit_generation(
+                token, req, client=_http(),
+                on_2xx=lambda: budget.record_submit(units=1),
+            )
         except _UpstreamError as e:
-            # Every upstream failure mode (timeout / network / 401 / 429 /
-            # 5xx / bad-json) ends here → typed fallback, never a 500.
+            # Every upstream failure mode (timeout / network / 401 / 402 /
+            # 429 / 5xx / bad-json) ends here → typed fallback, never a
+            # 500. (A 2xx-then-bad-body path has ALREADY recorded its unit
+            # via on_2xx by the time the parse error lands here.)
             return _disabled(e.reason)
-        budget.record_submit(units=1)
         return JSONResponse(
             status_code=200,
             content=GenerateResponse(job_id=job_id, status=status).model_dump(),
@@ -651,9 +869,11 @@ def register_krea_routes(app: FastAPI) -> None:
 
     @app.get("/krea/jobs/{job_id}", tags=["krea"])
     def krea_job(job_id: str):
-        """Poll a submitted job. 200 {job_id,status,image_url?} when
-        enabled; typed 503 fallback when disabled / on any upstream
-        failure. Polling does NOT bill (only the submit does).
+        """Poll a submitted job. 200 {job_id,status,image_url?,error_code?}
+        when enabled; typed 503 fallback when disabled / on any upstream
+        failure (incl. 402 → no_api_balance and a completed job missing
+        its result URLs → upstream_bad_response). Polling does NOT bill
+        (only the submit does).
 
         SYNC handler (see krea_generate): blocking httpx in the threadpool,
         never on the event loop."""
@@ -679,7 +899,8 @@ def register_krea_routes(app: FastAPI) -> None:
         behind a single GET keyed by scene-state.
 
         SYNC handler — CRITICAL. This endpoint runs a blocking poll loop
-        (``time.sleep`` up to ``_POLL_BUDGET_S`` = 12s). Declared ``def``
+        (sleeps up to the poll budget — KREA_POLL_BUDGET_S, default
+        ``_POLL_BUDGET_S`` = 30s). Declared ``def``
         (not ``async def``) so Starlette runs it in the threadpool; an
         ``async def`` here would block the single-worker event loop for the
         whole poll, stalling /health, the WS tail, and every other request
@@ -719,19 +940,36 @@ def register_krea_routes(app: FastAPI) -> None:
         assert token is not None
         gen = GenerateRequest(prompt=_scene_prompt(mood, day_night, season))
         try:
-            job_id, _status = _submit_generation(token, gen, client=_http())
+            # Budget unit recorded on ANY 2xx submit, BEFORE parsing —
+            # cache miss only (a cache hit returned above, unbilled). Same
+            # bill-on-submit-accept divergence as krea_generate: Krea
+            # bills on completion (failed/cancelled unbilled); we count
+            # the accepted submit — overcounting is the safe direction
+            # for a runaway guard. Full rationale + revisit condition at
+            # the krea_generate recording site.
+            job_id, _status = _submit_generation(
+                token, gen, client=_http(),
+                on_2xx=lambda: budget.record_submit(units=1),
+            )
         except _UpstreamError as e:
             return _disabled(e.reason, scene=key)
-        # Charge the budget for the real submit (cache miss only).
-        budget.record_submit(units=1)
 
-        # 4. Poll to completion within the poll budget.
-        deadline = time.monotonic() + _POLL_BUDGET_S
+        # 4. Poll to completion within the poll budget (KREA_POLL_BUDGET_S,
+        #    default 30s — derivation at _POLL_BUDGET_S) at the documented
+        #    2–5s cadence (_POLL_INTERVAL_S = 2.5). _monotonic/_sleep are
+        #    the module clock seam so tests prove this loop with a mock
+        #    clock, no real sleeps.
+        deadline = _monotonic() + _poll_budget_s()
         while True:
             try:
                 job = _poll_job(token, job_id, client=_http())
             except _UpstreamError as e:
                 return _disabled(e.reason, scene=key)
+            # Terminal states per the docs.krea.ai 9-state job lifecycle
+            # (2026-06-12): completed / failed / cancelled. Every other
+            # state (backlogged / queued / scheduled / processing /
+            # sampling / intermediate-complete — and any state a future
+            # docs revision adds) keeps polling until the budget expires.
             if job.status == "completed" and job.image_url:
                 cache.put(key, job.image_url)
                 return JSONResponse(
@@ -742,9 +980,14 @@ def register_krea_routes(app: FastAPI) -> None:
                 )
             if job.status == "failed":
                 return _disabled(_REASON_JOB_FAILED, scene=key)
-            if time.monotonic() >= deadline:
+            if job.status == "cancelled":
+                # Terminal — short-circuit NOW (M3): burning the remaining
+                # poll budget on a job that can never complete would only
+                # delay the frontend's placeholder.
+                return _disabled(_REASON_JOB_CANCELLED, scene=key)
+            if _monotonic() >= deadline:
                 # Took too long — fall back now; a later refresh may find
                 # the job done and (if the surface re-requests) it can warm
                 # the cache. We do NOT hang the request.
                 return _disabled(_REASON_JOB_TIMEOUT, scene=key)
-            time.sleep(_POLL_INTERVAL_S)
+            _sleep(_POLL_INTERVAL_S)
