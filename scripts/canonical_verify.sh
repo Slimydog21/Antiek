@@ -6,6 +6,7 @@
 #   cascade              — hermetic cascade contract + adapter + light route
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
+#   deep-research        — ANT-DRL P-11..P-15 hermetic harness (SPR-DRL-02)
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -22,7 +23,7 @@ if [[ ! -x "$PY" ]]; then
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates|deep-research}" >&2
   exit 2
 }
 
@@ -69,6 +70,20 @@ cmd_agent_gates() {
   echo "CANONICAL_VERIFY_OK: agent-gates"
 }
 
+cmd_deep_research() {
+  echo "== deep-research: P-11 Loop 1 E2E =="
+  "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
+  echo "== deep-research: P-12 invariant negative =="
+  "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
+  echo "== deep-research: P-13 session reconstruct =="
+  "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
+  echo "== deep-research: P-14 PromotionFunnel serialize =="
+  "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
+  echo "== deep-research: P-15 knowledge.reused (two-run) =="
+  "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
+  echo "CANONICAL_VERIFY_OK: deep-research"
+}
+
 main() {
   local sub="${1:-}"
   shift || true
@@ -77,6 +92,7 @@ main() {
     cascade) cmd_cascade ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
+    deep-research) cmd_deep_research ;;
     *) usage ;;
   esac
 }

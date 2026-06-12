@@ -13,7 +13,8 @@ Lifecycle model (honest, the make-or-break part):
   the project's ``--workers 1`` single-writer invariant there is exactly one
   process + one event loop, so an in-memory registry is correct, not a
   shortcut. Launch starts the fan-out and schedules its completion
-  (join + funnel-drain + merge) as a background task on that loop.
+  (join + funnel-drain + merge + Loop 1 synthesis tail on the session
+  parent) as a background task on that loop when a synthesis runner is wired.
 * Recovery is from the **event log**, not the registry: ``GET`` status of a
   session not in memory (after eviction or restart) calls
   ``reconstruct_session`` — membership via ``investigation.spawned_from``,
@@ -25,10 +26,10 @@ Lifecycle model (honest, the make-or-break part):
   NOT claim exactly-once.
 
 The browse loop is injected (``_research_loop_factory``) — it defaults to the
-SPR-02 demo loop; the real Exa→Browserbase loop drops into the same seam with
-zero route changes (mirrors the contract-first design that let DRW's gap
-detector drop into Speak). §16 honored: no Daytona; the host-local cap is what
-bounds "launch 20 at once", surfaced via the aggregate budget.
+contract gather stub (``make_contract_gather_stub``); the real Exa→Browserbase
+loop drops into the same seam with zero route changes. §16 honored: no Daytona;
+the host-local cap is what bounds "launch 20 at once", surfaced via the
+aggregate budget.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ from runtime.db_lock import connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from runtime.research_runner import (
     BudgetCap, BudgetManager, Command, CommandKind, HostLocalRunner,
-    PromotionFunnel, RunState, make_demo_loop,
+    PromotionFunnel, RunState, make_contract_gather_stub,
 )
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
 from roles.cascade_planner import (
@@ -67,6 +68,16 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
 _SESSIONS: Dict[str, "CascadeSession"] = {}
 _SESSION_TASKS: Dict[str, "asyncio.Task"] = {}
+
+# Optional hook set by ``create_app`` after Loop 1 handlers register.
+# Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
+_SYNTHESIS_TAIL_RUNNER: Optional[Any] = None
+
+
+def set_synthesis_tail_runner(runner: Any) -> None:
+    """Wire the Loop 1 synthesis tail into cascade background completion."""
+    global _SYNTHESIS_TAIL_RUNNER
+    _SYNTHESIS_TAIL_RUNNER = runner
 
 
 # ---------------------------------------------------------------------------
@@ -113,9 +124,9 @@ def _decompose(problem: str, max_depth: int):
 
 
 def _research_loop_factory():
-    """The browse loop each investigation runs. Default = SPR-02 demo loop;
-    the real Exa→Browserbase loop drops in here with no route change."""
-    return make_demo_loop(steps=3, cost_per_step=0.01, emit_note=True)
+    """The browse loop each investigation runs. Default = contract gather stub
+    (honest placeholder); Exa adapter drops in here with no route change."""
+    return make_contract_gather_stub(steps=2, cost_per_step=0.01)
 
 
 def _command(kind: str, payload: Optional[dict]) -> Command:
@@ -328,7 +339,11 @@ async def approve(root_id: str, req: ApproveRequest) -> dict:
 @cascade_router.post("/plans/{root_id}/launch")
 async def launch(root_id: str, req: LaunchRequest) -> dict:
     """Launch an approved plan as N parallel researches. Refuses an
-    unapproved plan (SPR-05 gate). Returns the session id + the researches."""
+    unapproved plan (SPR-05 gate). Returns the session id + the researches.
+
+    Background completion runs gather (per leaf) then the Loop 1 synthesis
+    tail (phases 6–9 on ``session_id``) when a synthesis runner is wired —
+    see ``set_synthesis_tail_runner``."""
     with _translate():
         if not is_plan_launchable(root_id, db_path=_db()):
             raise PlanNotApproved(
@@ -368,6 +383,9 @@ async def launch(root_id: str, req: LaunchRequest) -> dict:
 async def _run_to_completion(session: CascadeSession) -> None:
     try:
         await session.join_and_merge()
+        if _SYNTHESIS_TAIL_RUNNER is not None:
+            pack = session.build_evidence_pack()
+            await _SYNTHESIS_TAIL_RUNNER(session, pack)
     except Exception:  # pragma: no cover — background completion is best-effort
         pass
 

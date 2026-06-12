@@ -1,0 +1,46 @@
+id: drw_done_without_synthesis
+observed_at: 2026-06-12
+source: docs/htmlspec/deep-research-loop/sprint-01-terminal-contract.html
+agent: operator-manual
+phase: cascade_gather
+failure_type: split_brain_terminal
+
+context_summary: |
+  DRW cascade sessions used make_demo_loop in the prod research factory.
+  Leaf researches reached runner DONE (or appeared terminal in session
+  recovery) without synthesize.delivered or investigation.completed.
+  The product surface named this "deep research" but the substrate had
+  no falsifiable terminal contract — gather-only trajectories looked done.
+
+input:
+  prompt: |
+    POST /research/plans → cascade launches N leaves via
+    _research_loop_factory() → make_demo_loop(steps=3).
+    No Loop 1 phases 6-9 run on leaf investigations.
+  env:
+    ANTIEK_RESEARCH_EVENTS_DIR: /tmp/antiek-events
+
+expected_behavior: |
+  A DRW leaf must not satisfy DeepResearchComplete until
+  synthesize.delivered (constraint_loop_status single_pass or passed),
+  phases 7-9 postconditions, and investigation.completed are present.
+  Session-level is_deep_research_complete() must return False while
+  only the MOCK gather loop has run.
+
+actual_failure: |
+  make_demo_loop emitted step events and HostLocalRunner marked leaves
+  DONE. cascade_session.is_complete() returned True. No synthesizer,
+  no investigation.completed, no phase 6 event — yet the session
+  appeared finished to poll-drain consumers.
+
+harness_check_that_now_catches: |
+  orchestration/invariants/deep_research_complete.check_deep_research_complete
+  rejects trajectories missing investigation.completed and phase 6;
+  orchestration/cascade_session.CascadeSession.is_deep_research_complete
+  returns False for MOCK-only leaves.
+
+fix_commit: ANT-DRL-06
+
+notes: |
+  ANT-DRL SPR-DRL-01. fix_commit updates when this commit lands on main.
+  Exa / parallel web adapters are out of scope — contract precedes adapter.

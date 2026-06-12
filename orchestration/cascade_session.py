@@ -55,6 +55,13 @@ from substrate.schemas.events import ActionType
 from substrate.graph.insight_question import graph_db_path
 from substrate.graph.ops import insert_edge
 from roles.cascade_planner.approval import assert_launchable
+from orchestration.invariants.deep_research_complete import (
+    check_deep_research_complete,
+)
+from orchestration.session_evidence_pack import (
+    SessionEvidencePack,
+    build_session_evidence_pack,
+)
 
 
 _SESSION_DONE = object()
@@ -245,6 +252,52 @@ class CascadeSession:
         which does not depend on the single-consumer ``stream()`` draining the
         queue."""
         return all(RunState(s.state).is_terminal() for s in self.status())
+
+    def is_deep_research_complete(self) -> bool:
+        """True when gather leaves are terminal AND the session parent
+        satisfies ``DeepResearchComplete`` (Path A convergence).
+
+        Leaf researches are gather-only; synthesis runs on
+        ``session_id``. Runner-level ``DONE`` without a synthesis tail
+        fails this check — the split-brain guard for ANT-DRL."""
+        if not self.is_complete():
+            return False
+        ok, _ = check_deep_research_complete(self.session_id)
+        return ok
+
+    def build_evidence_pack(
+        self,
+        *,
+        plan_root_node_id: Optional[str] = None,
+    ) -> SessionEvidencePack:
+        """Merge session leaves + JSONL trajectories into a typed pack."""
+        researches = [
+            (s.investigation_id, s.sub_question) for s in self.status()
+        ]
+        return build_session_evidence_pack(
+            self.session_id,
+            events_dir=self._events_dir or default_events_dir(),
+            db_path=self._db_path,
+            researches=researches,
+            plan_root_node_id=plan_root_node_id,
+        )
+
+    async def run_synthesis_tail(
+        self,
+        pack: SessionEvidencePack,
+        *,
+        broadcaster: Any,
+        coordinator: Any,
+    ) -> bool:
+        """Path A capstone — Loop 1 phases 6–9 on the session parent."""
+        from orchestration.loop_one.orchestrator import run_synthesis_tail_from_pack
+
+        await run_synthesis_tail_from_pack(
+            pack,
+            broadcaster=broadcaster,
+            coordinator=coordinator,
+        )
+        return self.is_deep_research_complete()
 
     def drain_nowait(self) -> List[StepEvent]:
         """Pop all currently-buffered StepEvents without blocking (skips the

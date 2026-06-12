@@ -466,3 +466,44 @@ def make_demo_loop(
             yield ctx.question(f"open question from {ctx.investigation_id}?")
 
     return _loop
+
+
+# ---------------------------------------------------------------------------
+# Contract gather stub — prod factory default until Exa adapter (ANT-DRL-04).
+# ---------------------------------------------------------------------------
+
+
+def make_contract_gather_stub(
+    *,
+    steps: int = 2,
+    cost_per_step: float = 0.01,
+    delay_s: float = 0.0,
+):
+    """Honest production gather placeholder — not real research.
+
+    Unlike ``make_demo_loop`` (benchmark/test MOCK, reuse-blind), this stub
+    is the default in ``cascade_routes._research_loop_factory``. It emits
+    real ``StepEvent``s and promotes notes through ``PromotionFunnel``,
+    but performs no retrieval or synthesis. It does **not** satisfy
+    ``DeepResearchComplete`` — gather-only by design until Exa lands.
+    """
+
+    async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
+        yield ctx.plan_event(f"[gather-stub] plan: {ctx.sub_question}")
+        for i in range(steps):
+            sub_q = await ctx.checkpoint()
+            if delay_s:
+                await asyncio.sleep(delay_s)
+            yield ctx.step(
+                f"[gather-stub] pass {i} on '{sub_q}'",
+                cost_usd=cost_per_step,
+                tokens=0,
+                gather_mode="contract_stub",
+            )
+        yield ctx.note(
+            f"[gather-stub] provisional note from {ctx.investigation_id}: "
+            f"{ctx.sub_question}",
+            gather_mode="contract_stub",
+        )
+
+    return _loop

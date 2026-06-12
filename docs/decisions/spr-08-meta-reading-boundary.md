@@ -103,15 +103,15 @@ a deliberate, documented trade — recorded here so a maintainer can reconstruct
 The operative reason is that the cascade is **not functionally reusable for real
 synthesis today**, independent of the boundary argument above:
 
-- The cascade's only execution loop is `make_demo_loop`
-  (`runtime/research_runner/host_local.py:392-416`) — a deterministic **demo
-  stub** that yields canned `step {i} on '{sub_q}'` text with **zero** calls to
-  `substrate.graph.search`, to dispatch/synthesis, or to any retrieval. Reusing
-  it "scoped to owned docs" would produce canned non-synthesis, failing the real
-  M4 outcome criteria (a *cited synthesis over the owned corpus*).
-- The only **real** loop on the roadmap is the unwired Exa→Browserbase
-  **internet** loop (`interfaces/research/api/cascade_routes.py:27-31`, "the real
-  Exa→Browserbase loop drops into the same seam") — i.e. an **open-web** path,
+- The cascade's prod factory loop is `make_contract_gather_stub`
+  (`cascade_routes._research_loop_factory`) — an honest **gather placeholder**
+  labeled `[gather-stub]` with **zero** calls to `substrate.graph.search`,
+  dispatch/synthesis, or retrieval. `make_demo_loop` remains for benchmark MOCK
+  and unit tests only. Reusing the cascade "scoped to owned docs" would still
+  produce gather-only non-synthesis until Path A convergence (SPR-DRL-06).
+- The only **real** retrieval loop on the roadmap is the unwired Exa→Browserbase
+  **internet** loop (`interfaces/research/api/cascade_routes.py`, same factory
+  seam) — i.e. an **open-web** path,
   which is exactly what an internet-agnostic owned-corpus feature must NOT use.
 - No owned-corpus / `document_id` scope is threaded through the cascade's
   `Leaf` / `ResearchPlan` / `LoopContext`, so even the skeleton would need new

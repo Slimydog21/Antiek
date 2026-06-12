@@ -28,7 +28,13 @@ from .protocol import (
     StopResearch,
 )
 from .budget import BudgetManager
-from .host_local import DEFAULT_MAX_CONCURRENCY, HostLocalRunner, LoopContext, make_demo_loop
+from .host_local import (
+    DEFAULT_MAX_CONCURRENCY,
+    HostLocalRunner,
+    LoopContext,
+    make_contract_gather_stub,
+    make_demo_loop,
+)
 from .promotion_funnel import PromotionFunnel
 # Imported from ``daytona_gated`` (not ``daytona``) deliberately: the
 # tier-0 integration checker keys on the top-level import name, and a module
@@ -42,7 +48,8 @@ __all__ = [
     "CostState", "Handle", "RunState", "Status", "StepEvent",
     "StopResearch", "BudgetExceeded",
     # impls + machinery
-    "HostLocalRunner", "LoopContext", "make_demo_loop", "DEFAULT_MAX_CONCURRENCY",
+    "HostLocalRunner", "LoopContext", "make_demo_loop",
+    "make_contract_gather_stub", "DEFAULT_MAX_CONCURRENCY",
     "BudgetManager", "PromotionFunnel",
     # gated
     "DaytonaRunner", "DaytonaGatedError", "daytona_enabled",
