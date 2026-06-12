@@ -44,6 +44,18 @@ dependencies = [
   # no OS keyring daemon: see runtime/byok/store.py docstring for the
   # mechanism rationale on this headless single-writer host.
   "pynacl>=1.5",
+  # HTML-projection SPR-01 (.antiek container landing): services/antiek_format/
+  # signature.py imports `cryptography` (Ed25519 sign/verify + Raw key
+  # serialization) at MODULE level, and the package __init__ imports signature
+  # unconditionally — so without this the whole format package fails to import.
+  # The wrestle-evolution branch never declared it (latent branch defect: its
+  # tests only ever ran in an env that happened to carry it transitively);
+  # declared here as core, same discipline as pynacl above. Ratified format
+  # (decision #2, docs/decisions/wrestle-evolution-spec-2026-05-23.md) keeps
+  # `cryptography` — porting signature.py to the already-declared pynacl would
+  # mutate gate-proven code during transport (rejected in the SPR-01 transport
+  # manifest, §4).
+  "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]
