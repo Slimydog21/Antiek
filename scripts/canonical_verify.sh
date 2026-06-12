@@ -19,7 +19,10 @@ cd "$ROOT"
 
 PY="${ROOT}/.venv/bin/python"
 if [[ ! -x "$PY" ]]; then
-  echo "FAIL: missing ${PY} — create .venv and install deps" >&2
+  PY="$(command -v python3 || command -v python || true)"
+fi
+if [[ -z "$PY" || ! -x "$PY" ]]; then
+  echo "FAIL: no python interpreter (tried .venv and PATH)" >&2
   exit 2
 fi
 
