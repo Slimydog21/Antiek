@@ -65,8 +65,8 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+    from runtime.research_runner.budget import BudgetManager
+    from runtime.research_runner.protocol import (
         BudgetExceeded,
         Command,
         CommandKind,
@@ -78,8 +78,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
         StepEvent,
         StopResearch,
     )
-    from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
-    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
+    from substrate.event_log import log_event, seal_investigation
+    from substrate.schemas.events import ActionType
 
 from typing import Any
 
