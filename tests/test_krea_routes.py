@@ -882,6 +882,13 @@ def test_scene_prompt_within_limit_for_every_mood_matrix_combination():
     weather clear/snow → mood = daypart, day_night ∈ {day, night},
     season ∈ {winter, clear}) — AND for the worst case a direct caller
     can reach (three 64-char axes, the Query max_length bound)."""
+    # MANUAL MIRROR of apps/reading/src/scene/mood.ts — hand-transcribed,
+    # not imported. If mood.ts grows a daypart / day-night / season value,
+    # EXTEND these lists or the matrix silently under-covers. Drift here
+    # degrades COVERAGE only, never safety: _scene_prompt clamps to
+    # _PROMPT_MAX_CHARS, so an over-limit prompt is structurally impossible
+    # whatever mood.ts emits (the worst-case assertion below proves the
+    # clamp independently of this list).
     dayparts = ["dawn", "day", "dusk", "night"]   # mood.ts DayPart
     day_nights = ["day", "night"]                 # mood.ts sceneStateFromMood
     seasons = ["winter", "clear"]                 # mood.ts weather mapping

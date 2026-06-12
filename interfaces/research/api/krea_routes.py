@@ -133,7 +133,8 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-# ── Constants: defaults are DOC-DERIVED and CONSERVATIVE ────────────────
+# ── Constants: defaults are DOCS-CURRENT (2026-06-12) and CONSERVATIVE ──
+#    (transcribed from docs.krea.ai; live verification pending SPR-09) ──
 
 # Krea base URL. Doc-derived (api.krea.ai); override for proxying / a
 # host change via ANTIEK_KREA_BASE_URL — mirrors the
@@ -572,8 +573,9 @@ def _scene_prompt(mood: str, day_night: str, season: str) -> str:
     return text[:_PROMPT_MAX_CHARS]
 
 
-# ── Upstream adapters (doc-derived; the ONLY part that changes if the ───
-#    live Krea schema differs from the docs) ────────────────────────────
+# ── Upstream adapters (docs-current 2026-06-12, live verification ───────
+#    pending SPR-09; the ONLY part that changes if the live Krea schema
+#    differs from the docs) ─────────────────────────────────────────────
 
 
 def _ensure_client(client: httpx.Client | None) -> tuple[httpx.Client, bool]:
@@ -970,6 +972,15 @@ def register_krea_routes(app: FastAPI) -> None:
             # state (backlogged / queued / scheduled / processing /
             # sampling / intermediate-complete — and any state a future
             # docs revision adds) keeps polling until the budget expires.
+            # DELIBERATE BELT-AND-BRACES: the ``and job.image_url`` arm is
+            # unreachable today — _poll_job raises upstream_bad_response on
+            # a completed job without result.urls (see the raise there), so
+            # a completed JobResponse always carries image_url. It stays
+            # anyway: JobResponse.image_url is typed ``str | None`` and this
+            # guard is the local narrowing that keeps SceneArt(image_url=...)
+            # a str; if _poll_job's raise ever drifts, a None-URL completed
+            # job degrades to the typed job_timeout 503 below — never a
+            # pydantic-ValidationError 500.
             if job.status == "completed" and job.image_url:
                 cache.put(key, job.image_url)
                 return JSONResponse(
