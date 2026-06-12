@@ -1450,4 +1450,14 @@ def register_handlers(
         _action_value(ActionType.INVESTIGATION_START_REQUESTED),
         make_loop_one_handler(broadcaster, coordinator),
     )
+    # ANT-DRL-06: Path A — wire DRW gather → Loop 1 synthesis tail.
+    from interfaces.research.api.cascade_routes import set_synthesis_tail_runner
+    from orchestration.cascade_session import CascadeSession
+
+    async def _run_cascade_synthesis_tail(session: CascadeSession, pack: SessionEvidencePack) -> None:
+        await session.run_synthesis_tail(
+            pack, broadcaster=broadcaster, coordinator=coordinator,
+        )
+
+    set_synthesis_tail_runner(_run_cascade_synthesis_tail)
     return coordinator
