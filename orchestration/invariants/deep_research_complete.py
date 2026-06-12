@@ -16,6 +16,8 @@ runner ``DONE`` without synthesis until Path A convergence (SPR-DRL-06).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 # Phase postconditions delegated here — keep in sync with
 # orchestration/phase_runner/postconditions.py check_phase_6..9.
 DEEP_RESEARCH_TERMINAL_PHASES: tuple[int, ...] = (6, 7, 8, 9)
@@ -69,7 +71,7 @@ def check_deep_research_complete(
         knowledge_skills_dir or default_knowledge_skills_dir()
     )
 
-    phase_checks = (
+    phase_checks: tuple[tuple[int, Callable[[], tuple[bool, str]]], ...] = (
         (6, lambda: check_phase_6(investigation_id)),
         (7, lambda: check_phase_7(
             investigation_id, research_dir=resolved_research_dir,

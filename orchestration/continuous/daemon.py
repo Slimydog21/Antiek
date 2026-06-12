@@ -45,10 +45,10 @@ from .scoring import GapRegistry, score_gap
 #: own the actual cost — the daemon only reserves an expected amount
 #: via DaemonBudget; the spawn function reports actual cost back via
 #: a callback on its context dict (key ``record_actual_cb``).
-SpawnFn = Callable[[str, dict], str | None]
+SpawnFn = Callable[[str, dict[str, Any]], str | None]
 
 
-def no_op_spawn(question: str, context: dict) -> str | None:  # noqa: ARG001
+def no_op_spawn(question: str, context: dict[str, Any]) -> str | None:  # noqa: ARG001
     """Default spawn: does nothing, returns None. Substitute the real
     orchestrator wiring in production (Sprint 14 follow-up)."""
     return None

@@ -40,7 +40,7 @@ if _PKG_ROOT not in sys.path:
 
 from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
-from substrate.schemas import Event  # noqa: E402
+from substrate.schemas import ActionType, Event  # noqa: E402
 
 # Action types the orchestrator awaits during the phase sequence.
 # These get a coordinator handler installed at construction time so
@@ -135,11 +135,13 @@ class InvestigationCoordinator:
         """Resolve any pending future matching
         ``(investigation_id, action_type)``. No-op when nobody is
         waiting — the event flows through normally."""
-        action_value = event.action_type
-        if hasattr(action_value, "value"):
-            action_value = action_value.value
+        raw_action = event.action_type
+        action = (
+            raw_action.value
+            if isinstance(raw_action, ActionType)
+            else str(raw_action)
+        )
         inv = event.investigation_id
-        action = str(action_value)
         correlation = ""
         payload = event.payload
         if hasattr(payload, "sub_question"):
