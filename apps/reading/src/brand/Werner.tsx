@@ -2,6 +2,8 @@ import type { CSSProperties } from "react";
 
 import "./werner/animated/animations.css";
 import type { WernerMood } from "../design/tokens";
+import type { SceneMood } from "../scene/mood";
+import { wernerMoodForScene } from "./wernerSceneMap";
 
 // SPR-12 M4 — the idle pose now points at the alpha-cut variant. The
 // original `_corrected` raster baked a near-white (≈255,253,253) opaque
@@ -73,6 +75,15 @@ const POSE: Record<(typeof MOODS)[number], string> = {
 
 type Props = {
   mood?: WernerMood;
+  /**
+   * SPR-07 M1 — scene reactivity. When `mood` is NOT explicitly set, Werner
+   * derives his RESTING pose from the scene he stands in via the pure
+   * wernerSceneMap (so he is calmly present in his weather rather than ignoring
+   * it). An explicit `mood` always wins — the four named slots (rail idle, AI
+   * thinking, blank empty, action-complete celebrate) stay authoritative and
+   * unchanged. Pure/prop-driven: same scene ⇒ same pose, no clock, no RNG.
+   */
+  scene?: SceneMood;
   size?: number;
   label?: string;
   className?: string;
@@ -82,24 +93,36 @@ type Props = {
 };
 
 export default function Werner({
-  mood = "idle",
+  mood,
+  scene,
   size = 28,
   label,
   className,
   style,
 }: Props) {
+  // Scene reactivity (M1): an explicit mood ALWAYS wins (the four named slots);
+  // otherwise, if a scene was provided, derive the resting pose from it (pure,
+  // deterministic); otherwise default to idle. The map only ever returns a
+  // sanctioned mood, so the restraint guard below still holds.
+  const effectiveMood: WernerMood =
+    mood ?? (scene ? wernerMoodForScene(scene) : "idle");
+
   // Dev runtime guard — throws immediately on any string outside the four.
   // This is the mechanical half of U-02; the visual half lives in the rail
   // 28 px render and the CanonicalMoods story. A fifth mood cannot reach
   // production or even a Storybook build without this firing first.
-  if (process.env.NODE_ENV !== "production" && mood && !(MOODS as readonly string[]).includes(mood)) {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    effectiveMood &&
+    !(MOODS as readonly string[]).includes(effectiveMood)
+  ) {
     throw new Error(
-      `Werner: invalid mood "${mood}". Only ${MOODS.join(", ")} are permitted. ` +
+      `Werner: invalid mood "${effectiveMood}". Only ${MOODS.join(", ")} are permitted. ` +
         "The four-slot restraint is non-negotiable per brand/README.md and U-02."
     );
   }
 
-  const resolvedMood = (mood ?? "idle") as (typeof MOODS)[number];
+  const resolvedMood = (effectiveMood ?? "idle") as (typeof MOODS)[number];
   // Idle keeps the restrained breathing sway; the keyframe + its
   // prefers-reduced-motion collapse both live in animations.css.
   const rootClass = resolvedMood === "idle" ? "werner-idle" : "";

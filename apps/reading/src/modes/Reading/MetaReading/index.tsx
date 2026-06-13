@@ -6,6 +6,7 @@ import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
+import { READING_STATE_COPY } from "../../../shared/language";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -213,9 +214,31 @@ export default function MetaReading() {
             </p>
           </section>
 
+          {/* Error — assertive alert, calm §5 sentence, NEVER the raw engine
+              string (ALC SPR-07 M3/M4): a raw diagnostic (`e.message`) is exactly
+              the LLM-slop §5 forbids. The reason is captured in state for logging
+              but the reader only ever sees the authored sentence. */}
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
-              {error}
+            <p
+              className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded"
+              role="alert"
+              aria-live="assertive"
+            >
+              {READING_STATE_COPY.metaReadingError}
+            </p>
+          )}
+
+          {/* Loading — polite live region (ALC SPR-07 M4) so a screen reader
+              hears the corpus is being read without interrupting. Shown on the
+              re-open path (assetId) where there is otherwise no visible status;
+              the generate path also reflects busy in the button label below. */}
+          {busy && (
+            <p
+              className="text-sm text-shadow-1 dark:text-moonlight italic"
+              role="status"
+              aria-live="polite"
+            >
+              {READING_STATE_COPY.collectionGathering}
             </p>
           )}
 

@@ -320,6 +320,32 @@ describe("BookReader", () => {
     await waitFor(() => expect(screen.getByText(/in the library/)).toBeTruthy());
   });
 
+  // ── SPR-07 M3/M4: reading-state copy is §5-voice + announced (a11y). ──
+  it("SPR-07: the loading state is a polite live region in §5 prose (scene-aware)", async () => {
+    // Hold the fetches open (never-resolving) so the loading frame stays on
+    // screen to inspect; the cleanup() in afterEach unmounts the pending reader.
+    getBookMock.mockReturnValue(new Promise<BookDetail>(() => {}));
+    getFullTextMock.mockReturnValue(new Promise<FullTextResponse>(() => {}));
+    await renderReader();
+    const loading = await screen.findByRole("status");
+    expect(loading.getAttribute("aria-live")).toBe("polite");
+    expect(loading.textContent).toMatch(/Opening the book/);
+  });
+
+  it("SPR-07: a generic load failure shows the calm §5 catch-all as an alert, never the raw engine string", async () => {
+    // A raw diagnostic string must NOT reach the reader (§5: no LLM-slop/jargon).
+    getBookMock.mockRejectedValue(new Error("ECONNRESET tcp read failed at 0x7f"));
+    getFullTextMock.mockRejectedValue(new Error("ECONNRESET tcp read failed at 0x7f"));
+    await renderReader();
+    const alert = await screen.findByRole("alert");
+    expect(alert.getAttribute("aria-live")).toBe("assertive");
+    // The calm catch-all sentence is shown…
+    expect(alert.textContent).toMatch(/didn’t load/);
+    // …and the raw engine diagnostic is NOT leaked into the copy.
+    expect(alert.textContent).not.toMatch(/ECONNRESET/);
+    expect(screen.queryByText(/0x7f/)).toBeNull();
+  });
+
   it("spins a research from the current page and hands off to it", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());

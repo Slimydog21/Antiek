@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
 import GlassSurface from "../../shell/GlassSurface";
+import { moodFromTheme } from "../../scene/mood";
 import {
   WORKFLOWS,
   WORKFLOW_ORDER,
@@ -52,6 +54,16 @@ const DOOR_VERB: Record<(typeof WORKFLOW_ORDER)[number], string> = {
 export function Home() {
   const navigate = useNavigate();
 
+  // SPR-07 M1 — Werner is scene-reactive on the front door. The hero penguin
+  // stands over the live <Scene/> (z-0 mountainscape shows through GlassSurface),
+  // so his RESTING pose is derived from the SAME scene mood the sky uses
+  // (moodFromTheme — the OS day/night signal), via the pure wernerSceneMap. This
+  // is the LIVE consumer that makes the map non-inert: change the OS theme and
+  // Werner notices the weather he stands in (day ⇒ idle, night ⇒ idle today; the
+  // dusk/dawn cues light up when SPR-06's phase drift emits them). Pure +
+  // memoised; an explicit slot would still win, but here we WANT scene-resting.
+  const scene = useMemo(() => moodFromTheme(), []);
+
   return (
     // Landing-glass (SPR-03 M2): the Home front door is a LANDING surface, so
     // its full-bleed root renders through GlassSurface — the mountainscape
@@ -62,7 +74,9 @@ export function Home() {
       <div className="mx-auto max-w-3xl px-6 py-14">
         {/* Brand statement — what Antiek is, in its own voice. */}
         <header className="mb-10 flex flex-col items-center text-center">
-          <Werner mood="idle" size={72} label="Antiek" />
+          {/* Scene-reactive (M1): no explicit mood — the resting pose is derived
+              from the live scene the hero stands over. */}
+          <Werner scene={scene} size={72} label="Antiek" />
           <h1 className="mt-4 font-serif text-3xl font-semibold text-ink dark:text-bright">
             One workspace for everything you read, research, and write.
           </h1>

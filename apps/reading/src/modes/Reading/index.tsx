@@ -25,6 +25,7 @@ import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
+import { READING_STATE_COPY } from "../../shared/language";
 
 /**
  * Book reader — the Read workflow's reading surface (Read SPR-03).
@@ -267,12 +268,18 @@ export default function BookReader() {
   }, [pageIndex, houseFill, documentId, pages.length, observePage, body?.ad_eligible]);
 
   if (loading) {
-    return <CenterNote>Opening the book…</CenterNote>;
+    // The scene is already painted around the reader; the book opens INTO that
+    // world. Announced as a live status (a11y) — calm, scene-aware, §5 prose.
+    return <CenterNote status>{READING_STATE_COPY.bookOpening}</CenterNote>;
   }
   if (error || !book || !body) {
+    // A known reason gets its own line; anything else gets the calm catch-all —
+    // the raw engine string is never shown to the reader (§5: no raw diagnostic).
     return (
       <CenterNote tone="error">
-        {error === "book_not_found" ? "That book isn't in the library." : error}
+        {error === "book_not_found"
+          ? READING_STATE_COPY.bookNotFound
+          : READING_STATE_COPY.errorGeneric}
       </CenterNote>
     );
   }
@@ -557,12 +564,31 @@ export default function BookReader() {
   );
 }
 
-function CenterNote({ children, tone }: { children: React.ReactNode; tone?: "error" }) {
+/**
+ * The centered reader-state note (loading / error). a11y per state (SPR-07 M4):
+ *  - LOADING (`status`) is a polite live region (role="status" / aria-live
+ *    "polite") so a screen reader hears "Opening the book…" without interrupting.
+ *  - ERROR is an assertive alert (role="alert") so the failure is announced.
+ * Both are calm, serif, §5-voice prose on the same procedural background the
+ * reader already sees — the world stays; only the book is between states.
+ */
+function CenterNote({
+  children,
+  tone,
+  status,
+}: {
+  children: React.ReactNode;
+  tone?: "error";
+  status?: boolean;
+}) {
+  const isError = tone === "error";
   return (
     <div className="h-screen flex items-center justify-center bg-ice-0 dark:bg-charcoal-2">
       <p
+        role={isError ? "alert" : status ? "status" : undefined}
+        aria-live={isError ? "assertive" : status ? "polite" : undefined}
         className={`text-sm font-serif ${
-          tone === "error" ? "text-emperor" : "text-shadow-1 dark:text-moonlight italic"
+          isError ? "text-emperor" : "text-shadow-1 dark:text-moonlight italic"
         }`}
       >
         {children}

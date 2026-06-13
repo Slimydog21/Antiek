@@ -13,6 +13,8 @@ import type {
   ProjectMatch,
 } from "../../../api/books";
 import { acceptFiling, suggestFiling } from "../../../lib/researchSuggestion";
+import Werner from "../../../brand/Werner";
+import { READING_STATE_COPY } from "../../../shared/language";
 
 /**
  * PersonalSpace — the reader's "personal bed of information that labels itself"
@@ -143,22 +145,31 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
             )}
           </header>
 
+          {/* Error — assertive alert, calm §5 sentence, never the raw engine
+              string (SPR-07 M3): a raw diagnostic is the LLM-slop §5 forbids. */}
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
-              {error}
+            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert" aria-live="assertive">
+              {READING_STATE_COPY.collectionError}
             </p>
           )}
 
+          {/* Loading — polite live region, §5 prose in the reader's own words
+              (SPR-07 M3/M4), not a bare mechanical ellipsis. */}
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <p className="text-sm text-shadow-1 dark:text-moonlight italic" role="status" aria-live="polite">
+              {READING_STATE_COPY.collectionGathering}
+            </p>
           )}
 
-          {/* M1 empty state — guides the user (rigor #3 a: no crash, no phantom). */}
+          {/* M1 empty state — an AUTHORED moment (SPR-07 M4): Werner takes the
+              stage in his sanctioned `empty` slot (brand/README four-slot rule),
+              and the copy guides. Not a default-looking blank. */}
           {!loading && !error && visibleAssets.length === 0 && (
             <div
-              className="rounded-md border border-rule dark:border-charcoal-1 px-5 py-8 text-center space-y-2"
+              className="rounded-md border border-rule dark:border-charcoal-1 px-5 py-8 text-center space-y-3"
               data-testid="personal-space-empty"
             >
+              <Werner mood="empty" size={64} label="" className="mx-auto" />
               <p className="text-sm font-serif text-ink dark:text-bright">
                 {metaDocsOnly
                   ? "You haven’t made any readings yet."

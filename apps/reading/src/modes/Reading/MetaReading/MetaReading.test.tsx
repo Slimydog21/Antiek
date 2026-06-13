@@ -9,7 +9,7 @@
  * minutes to the narrate control (M3 scope wiring).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import MetaReading from "./index";
@@ -172,5 +172,39 @@ describe("MetaReading (M4)", () => {
     expect(await screen.findByText(/readable corpus is empty/)).toBeTruthy();
     // No deliverable section, no report.
     expect(screen.queryByTestId("meta-reading-deliverable")).toBeNull();
+  });
+
+  // ── ALC SPR-07 M3/M4: a generation failure shows the calm §5 catch-all as an
+  // assertive alert and NEVER leaks the raw engine string (the M3/M4 leak this
+  // surface was silently scoped past). This surface had ZERO error-path coverage. ──
+  it("a generation failure shows the calm §5 alert, never the raw engine string", async () => {
+    generateMock.mockRejectedValue(new Error("ECONNRESET socket hang up 0xDEADBEEF"));
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "anything" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Make the reading" }));
+    const alert = await screen.findByRole("alert");
+    // Announced assertively (a11y).
+    expect(alert.getAttribute("aria-live")).toBe("assertive");
+    // The calm §5 sentence is shown…
+    expect(alert.textContent).toMatch(/didn’t come through/);
+    // …and the raw engine diagnostic NEVER reaches the DOM.
+    expect(alert.textContent).not.toMatch(/ECONNRESET/);
+    expect(screen.queryByText(/0xDEADBEEF/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/ECONNRESET|0xDEADBEEF|socket hang up/);
+  });
+
+  it("the loading state is a polite live region in §5 prose (a11y announce)", async () => {
+    // Hold the generate open so the busy frame stays on screen to inspect.
+    generateMock.mockReturnValue(new Promise<MetaReadingResponse>(() => {}));
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "anything" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Reading your corpus|Make the reading/ }));
+    const status = await waitFor(() => screen.getByRole("status"));
+    expect(status.getAttribute("aria-live")).toBe("polite");
+    expect(status.textContent).toMatch(/Gathering your readings/);
   });
 });

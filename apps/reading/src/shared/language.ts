@@ -168,3 +168,48 @@ export const BANNED_PATTERNS: readonly BannedPattern[] = [
 export function userFacingFor(term: string): GlossaryEntry | undefined {
   return GLOSSARY.find((g) => g.term === term);
 }
+
+/**
+ * READING_STATE_COPY — the reading surface's SYSTEM-STATE microcopy, in §5 voice
+ * (ALC SPR-07 M3).
+ *
+ * The glossary above governs WORDS (substrate noun → user noun). This governs
+ * SENTENCES for the reading surface's loading / empty / error / fallback states
+ * — the moments a surface most often reads as a default. Centralised here (the
+ * copy home) so the wording has one place and the §5 discipline is enforceable.
+ *
+ * Every string is held to master-product-spec §5: prose flows, no LLM-slop
+ * vocabulary, ≤1 em-dash per thesis, no padding ("It is important to note"), no
+ * forced exclamation, confidence by rhythm not "(…)" markers, calm. And to the
+ * SPR-07 firewall: no apology theatre, and the procedural scene is NEVER called
+ * "degraded" or a "fallback" in front of a reader — the procedural floor is
+ * normal (the rationale lives in docs, the copy treats it as ordinary).
+ *
+ * NOTE: a generic engine error string is NOT shown raw to the reader (a raw
+ * diagnostic is exactly the LLM-slop/jargon §5 forbids). `errorGeneric` is the
+ * calm sentence shown when there is no specific, user-meaningful reason; a
+ * specific, known reason (e.g. a book that isn't in the library) gets its own
+ * line.
+ */
+export const READING_STATE_COPY = {
+  /** Loading a book. The world (the scene) is already there; we are opening the
+   *  book INTO it, so the verb is "opening", not a mechanical "loading". */
+  bookOpening: "Opening the book…",
+  /** Loading a personal collection. Prose, not a bare ellipsis: it says what is
+   *  happening in the reader's own words. */
+  collectionGathering: "Gathering your readings…",
+  /** A known, user-meaningful error: the requested book isn't in the library. */
+  bookNotFound: "That book isn’t in the library.",
+  /** The catch-all error. Calm and specific about what the reader can do, with
+   *  no raw diagnostic, no apology, no blame. */
+  errorGeneric:
+    "That didn’t load. The book may have moved, or the connection dropped; try opening it again.",
+  /** A personal collection that failed to load. */
+  collectionError:
+    "Your readings didn’t load just now. Refresh the page, or try again in a moment.",
+  /** A meta-reading (the one-shot synthesis over the owned corpus) that failed
+   *  to generate or re-open. Calm, specific about the next step, no raw engine
+   *  diagnostic — the same firewall the rest of the reading surface holds. */
+  metaReadingError:
+    "That reading didn’t come through. Nothing was lost; try making it again, or open it in a moment.",
+} as const;

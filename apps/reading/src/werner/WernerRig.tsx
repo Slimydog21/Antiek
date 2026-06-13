@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import Werner from "../brand/Werner";
+import type { WernerMood } from "../design/tokens";
 import { ROD_BUTT_LOCAL, ROD_TIP_LOCAL } from "./fishingLineGeometry";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import "./waddle.css";
@@ -44,6 +45,15 @@ export interface WernerRigProps {
   size: number;
   /** Screen-reader label for the penguin mark. */
   label?: string;
+  /**
+   * The base Werner pose the rig sits over (ALC SPR-07 M1). Defaults to `idle`
+   * (the SPR-06 resting frame). PenguinMascot threads the SCENE-derived resting
+   * pose here so the floating mascot notices the weather it stands in, and flashes
+   * a transition MOMENT'S sanctioned pose (one of the four) for a one-shot beat.
+   * It is always one of the four sanctioned moods — Werner.tsx's dev guard bites
+   * on anything else, so the four-slot restraint is preserved.
+   */
+  mood?: WernerMood;
   /** Positioning passthrough for the wrapper. */
   style?: CSSProperties;
   /**
@@ -127,7 +137,7 @@ function rodSegments(
  * out, never as a second creature. Each limb carries the rig class the
  * descendant selectors drive.
  */
-export default function WernerRig({ size, label, style, bend = 0 }: WernerRigProps) {
+export default function WernerRig({ size, label, mood = "idle", style, bend = 0 }: WernerRigProps) {
   // The feet sit at ~88% down (Werner's foot line); flippers at ~52% (mid-body
   // sides). Coordinates are in a 64-unit viewBox so they scale with `size`.
   //
@@ -152,8 +162,10 @@ export default function WernerRig({ size, label, style, bend = 0 }: WernerRigPro
       data-werner-rig=""
     >
       {/* The canonical Werner mark (transparent, SPR-06 M2). The base body +
-          breathing sway; the rig limbs ride over it. */}
-      <Werner mood="idle" size={size} label={label} />
+          breathing sway; the rig limbs ride over it. The pose is scene-driven
+          (ALC SPR-07 M1) — `mood` defaults to idle but PenguinMascot threads the
+          resting/moment pose here so the floating mascot reacts to the scene. */}
+      <Werner mood={mood} size={size} label={label} />
 
       {/* The vector limbs overlay. aria-hidden — the labelled Werner mark
           above is the accessible name; these are decorative footwork. */}

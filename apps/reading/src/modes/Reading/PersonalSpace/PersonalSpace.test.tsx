@@ -120,8 +120,26 @@ describe("M1 — list + open + empty", () => {
     listMock.mockResolvedValue({ assets: [], count: 0 });
     categoriesMock.mockResolvedValue({ categories: [], ordering: "recency", stability_bound: 4 });
     render(<PersonalSpace />);
-    expect(await screen.findByTestId("personal-space-empty")).toBeTruthy();
+    const empty = await screen.findByTestId("personal-space-empty");
+    expect(empty).toBeTruthy();
     expect(screen.queryByTestId("personal-space-category")).toBeNull();
+    // SPR-07 M4: the empty state is an AUTHORED moment — Werner takes his
+    // sanctioned `empty` stage (role=img with a Werner label), not a bare blank.
+    const werner = empty.querySelector('[role="img"]');
+    expect(werner).toBeTruthy();
+    expect(werner?.getAttribute("aria-label")).toMatch(/Werner empty/);
+  });
+
+  it("SPR-07: a load failure shows the calm §5 catch-all as an alert, never the raw engine string", async () => {
+    listMock.mockRejectedValue(new Error("ECONNRESET 0xDEADBEEF socket hang up"));
+    categoriesMock.mockRejectedValue(new Error("ECONNRESET 0xDEADBEEF socket hang up"));
+    render(<PersonalSpace />);
+    const alert = await screen.findByRole("alert");
+    expect(alert.getAttribute("aria-live")).toBe("assertive");
+    expect(alert.textContent).toMatch(/didn’t load/);
+    // The raw diagnostic is NOT leaked into user-facing copy (§5).
+    expect(alert.textContent).not.toMatch(/ECONNRESET/);
+    expect(screen.queryByText(/0xDEADBEEF/)).toBeNull();
   });
 });
 

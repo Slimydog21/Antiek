@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import type { SceneState } from "../api/krea";
 
 /**
@@ -74,4 +76,37 @@ export function sceneStateFromMood(mood: SceneMood): SceneState {
  *  crossfade change-detector (art refreshes only when THIS changes). */
 export function moodKey(mood: SceneMood): string {
   return `${mood.dayPart}|${mood.weather}`;
+}
+
+/**
+ * useSceneMood — the LIVE scene mood, re-derived when the OS day/night signal
+ * flips (ALC SPR-07 M1). Subscribers re-render when `prefers-color-scheme`
+ * changes (e.g. the OS crosses sunset, or the operator toggles dark mode),
+ * exactly the way `usePrefersReducedMotion` tracks the reduced-motion query.
+ *
+ * This is the SAME signal `Scene.tsx` paints the sky from — so a consumer of
+ * THIS hook and the sky can never disagree about what time it is. It carries no
+ * clock and no RNG: the mood is a pure function of the media-query match, and
+ * the only "event" is the OS preference change the app already emits.
+ *
+ * SSR-safe: seeds from `prefersDark()` (false off-window) and no-ops without
+ * matchMedia.
+ */
+export function useSceneMood(): SceneMood {
+  const [dark, setDark] = useState<boolean>(() => prefersDark());
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => setDark(e.matches);
+    mql.addEventListener("change", handler);
+    // Re-sync once on mount in case the preference changed between the initial
+    // render's lazy seed and the effect firing (no missed transition).
+    setDark(mql.matches);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
+  return moodFromTheme(dark);
 }

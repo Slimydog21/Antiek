@@ -388,3 +388,145 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
     expect(nestedFocusable.length).toBe(0);
   });
 });
+
+/**
+ * ALC SPR-07 M1 — the FLOATING mascot belongs to the scene's weather/time.
+ *
+ * The headline goal: the primary Werner-over-the-living-background reacts to the
+ * scene. Asserted here through the WIRED path (not just the pure-lib test):
+ *  - the floating mascot derives its RESTING pose from the live scene mood
+ *    (idle today — the four-pose set has no daypart-distinct art, POSE_GAPS);
+ *  - on the live day→night transition (the OS prefers-color-scheme flip the app
+ *    already emits) the `nightfall` MOMENT fires and flashes its sanctioned pose
+ *    (thinking) on the visible mascot as a one-shot, then settles back to idle;
+ *  - the trigger is PURE (prev→next scene mood) — no Math.random, no Date.now;
+ *  - under prefers-reduced-motion the moment collapses to its `reducedPose`.
+ */
+describe("PenguinMascot ALC SPR-07 — scene-reactive moment on the live transition", () => {
+  // A matchMedia that (a) answers the dark + reduced queries from mutable flags
+  // and (b) captures the registered `change` handlers PER QUERY so the test can
+  // fire the OS day↔night flip (the signal useSceneMood subscribes to).
+  let darkMatches = false;
+  let reduceMatches = false;
+  const colorSchemeHandlers = new Set<(e: MediaQueryListEvent) => void>();
+
+  function installSceneMatchMedia() {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => {
+        const isColorScheme = query.includes("color-scheme");
+        const isReduce = query.includes("reduce");
+        return {
+          matches: isReduce ? reduceMatches : isColorScheme ? darkMatches : false,
+          media: query,
+          onchange: null,
+          addEventListener: (_type: string, cb: (e: MediaQueryListEvent) => void) => {
+            if (isColorScheme) colorSchemeHandlers.add(cb);
+          },
+          removeEventListener: (_type: string, cb: (e: MediaQueryListEvent) => void) => {
+            if (isColorScheme) colorSchemeHandlers.delete(cb);
+          },
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        };
+      },
+    });
+  }
+
+  /** Flip the OS day/night signal and notify the subscribed hook. */
+  function flipColorScheme(toDark: boolean) {
+    darkMatches = toDark;
+    act(() => {
+      colorSchemeHandlers.forEach((cb) =>
+        cb({ matches: toDark } as MediaQueryListEvent),
+      );
+    });
+  }
+
+  function mountScene() {
+    return render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="*" element={<PenguinMascot />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    darkMatches = false;
+    reduceMatches = false;
+    colorSchemeHandlers.clear();
+    installSceneMatchMedia();
+  });
+
+  it("the resting pose is the scene-derived pose (idle by day — the honest ceiling)", () => {
+    const { container } = mountScene();
+    const img = container.querySelector("[data-werner-rig] img") as HTMLImageElement;
+    expect(img, "the rig's base Werner mark should render").toBeTruthy();
+    // Day resting cue is idle (POSE_GAPS: no daypart-distinct art). The idle pose
+    // is the `werner_default` art.
+    expect(img.getAttribute("src")).toMatch(/werner_default/);
+  });
+
+  it("fires the nightfall MOMENT on the live day→night flip, then settles back (pure prev→next, no clock)", () => {
+    const { container } = mountScene();
+    const rigImg = () =>
+      container.querySelector("[data-werner-rig] img") as HTMLImageElement;
+    // Day: resting idle.
+    expect(rigImg().getAttribute("src")).toMatch(/werner_default/);
+    // The OS crosses sunset (day → night): the nightfall moment flashes the
+    // `thinking` pose as a one-shot on the visible mascot.
+    flipColorScheme(true);
+    expect(
+      rigImg().getAttribute("src"),
+      "the nightfall moment must flash the thinking pose on the floating mascot",
+    ).toMatch(/werner_thinking/);
+    // The one-shot ends (crossfade duration ~1200ms) → settle back to the night
+    // resting cue (idle today).
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(rigImg().getAttribute("src")).toMatch(/werner_default/);
+  });
+
+  it("fires the daybreak MOMENT on the live night→day flip", () => {
+    darkMatches = true; // start at night
+    const { container } = mountScene();
+    const rigImg = () =>
+      container.querySelector("[data-werner-rig] img") as HTMLImageElement;
+    expect(rigImg().getAttribute("src")).toMatch(/werner_default/); // night idle
+    // Night → day: daybreak flashes the celebrate (raised-flipper lift) pose.
+    flipColorScheme(false);
+    expect(rigImg().getAttribute("src")).toMatch(/werner_caught_a_fish/);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(rigImg().getAttribute("src")).toMatch(/werner_default/);
+  });
+
+  it("under prefers-reduced-motion the nightfall moment collapses to its reducedPose (no flourish)", () => {
+    reduceMatches = true;
+    const { container } = mountScene();
+    const rigImg = () =>
+      container.querySelector("[data-werner-rig] img") as HTMLImageElement;
+    flipColorScheme(true);
+    // nightfall.reducedPose == the night resting cue (idle), NOT the thinking
+    // flourish — a quiet pose, no involuntary motion.
+    expect(rigImg().getAttribute("src")).toMatch(/werner_default/);
+    expect(rigImg().getAttribute("src")).not.toMatch(/werner_thinking/);
+  });
+
+  it("the moment trigger is PURE — no Math.random / Date.now in the wiring", () => {
+    // The detector is a pure function of (prev, next) scene mood; a re-flip to
+    // the SAME state fires nothing (no change ⇒ no beat), proving there is no
+    // clock/RNG driving it.
+    const { container } = mountScene();
+    const rigImg = () =>
+      container.querySelector("[data-werner-rig] img") as HTMLImageElement;
+    flipColorScheme(false); // already day → no change → no beat
+    expect(rigImg().getAttribute("src")).toMatch(/werner_default/);
+  });
+});

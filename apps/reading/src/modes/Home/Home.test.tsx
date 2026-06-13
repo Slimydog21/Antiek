@@ -114,4 +114,39 @@ describe("Home (SPR-12 M1)", () => {
     fireEvent.click(screen.getByTestId("home-biographies-cta"));
     expect(screen.getByText(/BIOGRAPHY SURFACE/)).toBeTruthy();
   });
+
+  // ── SPR-07 M1: the hero Werner is SCENE-REACTIVE (the live map consumer). ──
+  it("the hero Werner derives its resting pose from the live scene (day ⇒ idle)", () => {
+    // matchMedia stub returns matches:false ⇒ light ⇒ day|snow ⇒ idle resting cue.
+    mount();
+    const hero = screen.getByLabelText("Antiek");
+    expect(hero).toBeTruthy();
+    // It rendered the real penguin mark (role=img wrapping the pose <img>),
+    // proving the scene-derived mood resolved to a sanctioned pose, not undefined.
+    expect(hero.getAttribute("role")).toBe("img");
+    expect(hero.querySelector("img")?.getAttribute("src")).toBeTruthy();
+  });
+
+  it("the hero Werner follows the scene at night too (dark ⇒ still a sanctioned resting pose)", () => {
+    // Dark-theme stub: prefers-color-scheme dark ⇒ night|snow ⇒ idle (night cue).
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: query.includes("dark"),
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+    mount();
+    const hero = screen.getByLabelText("Antiek");
+    // Night resolves to a sanctioned resting pose (idle today; never undefined,
+    // never a 5th mood that would throw the Werner dev guard).
+    expect(hero.querySelector("img")?.getAttribute("src")).toBeTruthy();
+  });
 });

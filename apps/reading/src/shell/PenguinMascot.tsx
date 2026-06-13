@@ -4,6 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { moodKey, useSceneMood, type SceneMood } from "../scene/mood";
+import { wernerMoodForScene } from "../brand/wernerSceneMap";
+import { momentForTransition } from "../brand/wernerMoments";
+import type { WernerMood } from "../design/tokens";
 import {
   centerLaggedTarget,
   createWernerStage,
@@ -148,6 +152,28 @@ function initialMascotPos(): { x: number; y: number } {
 export function PenguinMascot() {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
+
+  // ── ALC SPR-07 M1: the floating mascot belongs to the scene's weather. ──
+  // The live scene mood (the SAME OS day/night signal the sky paints from). The
+  // mascot's RESTING pose is derived from it via the pure wernerSceneMap, so
+  // Werner is calmly present in his weather instead of ignoring it. (Honest
+  // ceiling: the four-pose set has no daypart-distinct art — POSE_GAPS — so the
+  // resting pose is `idle` in both day and night today; the OBSERVABLE
+  // scene-reactivity is the one-shot MOMENT below at the day↔night transition.)
+  const sceneMood = useSceneMood();
+  const restingPose = wernerMoodForScene(sceneMood);
+  // The transient one-shot pose a transition MOMENT flashes (nightfall/daybreak),
+  // overriding the resting pose for the beat's duration, then clearing back. Null
+  // = no moment playing (the steady resting pose shows). This is the ONLY
+  // scene-driven motion; it does NOT touch position/roam/cursor/choreography.
+  const [momentPose, setMomentPose] = useState<WernerMood | null>(null);
+  // The previous scene_key, to detect a TRANSITION purely (prev→next). A ref so
+  // the detector effect re-runs only on a real mood change, not every render.
+  const prevSceneKey = useRef<string>(moodKey(sceneMood));
+  const prevSceneMood = useRef<SceneMood>(sceneMood);
+  // The single in-flight moment timer (latest-wins; cleared on a new moment +
+  // unmount). One token, never a loop.
+  const momentTimer = useRef<number | null>(null);
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   // The bob wrapper (the span carrying the walk animation + idle wander). The
@@ -572,6 +598,47 @@ export function PenguinMascot() {
     }
   }, [reduceMotion]);
 
+  // ── ALC SPR-07 M1: fire a one-shot MOMENT on the live day↔night transition. ──
+  // PURE trigger: the moment is `momentForTransition(prev, next)` of two scene
+  // moods — NO Math.random, NO Date.now. When the OS day/night signal flips
+  // (nightfall: day→night, daybreak: night→day), this plays the moment's
+  // sanctioned pose as a brief one-shot override on the visible mascot, then
+  // collapses back to the resting pose. It does NOT touch position / roam /
+  // cursor / choreography (those own movement; this owns only the base POSE), so
+  // it never fights them and the single-mascot model is preserved. Under
+  // reduced-motion it uses the moment's designed `reducedPose` (a quiet pose, no
+  // motion). Re-runs only when the scene_key changes (the prev-ref guard below).
+  useEffect(() => {
+    const nextKey = moodKey(sceneMood);
+    if (nextKey === prevSceneKey.current) return; // no change ⇒ no beat
+    const prev = prevSceneMood.current;
+    prevSceneKey.current = nextKey;
+    prevSceneMood.current = sceneMood;
+
+    const moment = momentForTransition(prev, sceneMood);
+    if (!moment) return; // a change that earns no beat settles quietly
+
+    // Reduced motion: the moment is a quiet pose (reducedPose), shown for the
+    // beat then cleared — no animation, the designed reduced-state.
+    const pose = reduceMotion ? moment.reducedPose : moment.pose;
+    setMomentPose(pose);
+    if (momentTimer.current !== null) window.clearTimeout(momentTimer.current);
+    momentTimer.current = window.setTimeout(() => {
+      momentTimer.current = null;
+      setMomentPose(null); // settle back to the resting (scene-derived) pose
+    }, moment.durationMs);
+  }, [sceneMood, reduceMotion]);
+
+  // Clear any in-flight moment timer on unmount so it can't fire after teardown.
+  useEffect(() => {
+    return () => {
+      if (momentTimer.current !== null) {
+        window.clearTimeout(momentTimer.current);
+        momentTimer.current = null;
+      }
+    };
+  }, []);
+
   // ── Single-click: float the project tab. ──
   // Open the one project-tree panel in floating mode; if it already exists,
   // flip it to floating (the store's `open` focuses an existing id rather
@@ -752,7 +819,16 @@ export function PenguinMascot() {
             it consumes the existing roam signal. When an emote is playing the
             rig is hidden behind the emote overlay so we don't stack penguins. */}
         <span style={{ visibility: emote ? "hidden" : "visible" }}>
-          <WernerRig size={MASCOT_SIZE} label="Project" />
+          {/* The base pose is scene-driven (ALC SPR-07 M1): the resting pose
+              derived from the live scene mood, briefly overridden by a one-shot
+              transition MOMENT's pose (nightfall/daybreak) when one fires. Always
+              one of the four sanctioned moods (the moment + map both guarantee
+              it), so Werner.tsx's restraint guard still holds. */}
+          <WernerRig
+            size={MASCOT_SIZE}
+            label="Project"
+            mood={momentPose ?? restingPose}
+          />
         </span>
         {/* The active emote (SPR-05) — an existing animated Werner mark mapped
             to the emote kind, overlaid on the mascot. Keyed by kind so a
