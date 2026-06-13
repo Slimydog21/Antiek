@@ -31,6 +31,8 @@ the default under test). The poll loop is exercised with a mock clock
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -552,14 +554,18 @@ def test_upstream_missing_job_id_returns_fallback(monkeypatch):
         client.close()
 
 
-def test_scene_job_failed_returns_fallback_message_sanitized(monkeypatch):
-    """M2: failed jobs carry error: {code, message} (docs.krea.ai jobs
-    reference, 2026-06-12) → typed 503 job_failed, and the upstream
-    MESSAGE text never appears in the response body (sanitized-preview
-    discipline)."""
+def test_scene_job_failed_returns_fallback_message_sanitized(monkeypatch, caplog):
+    """M2 + DEFECT 1: failed jobs carry error: {code, message} (docs.krea.ai
+    jobs reference, 2026-06-12) → typed 503 job_failed. The stable machine
+    error_code now SURFACES to the operator in BOTH the ring-buffer preview
+    AND the WARNING record (so the gate is no longer hollow — before the fix
+    the preview was empty because the code was DROPPED, not scrubbed), while
+    the upstream MESSAGE prose still never appears in the response body
+    (sanitized-preview discipline)."""
     monkeypatch.setenv("KREA_API_TOKEN", "test-token")
     app = _app()
     leak_marker = "GPU pool exploded at 03:14 leak-marker"
+    error_code = "nsfw_filter"  # a real, non-secret machine failure code
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == _SUBMIT_PATH:
@@ -569,17 +575,76 @@ def test_scene_job_failed_returns_fallback_message_sanitized(monkeypatch):
         # error carries a machine code + a human message.
         return httpx.Response(200, json={
             "job_id": "job_abc", "status": "failed",
-            "error": {"code": "generation_failed", "message": leak_marker},
+            "error": {"code": error_code, "message": leak_marker},
         })
 
     client = _client_with_transport(app, handler)
     try:
         tc = TestClient(app)
-        r = tc.get("/krea/scene")
+        with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+            r = tc.get("/krea/scene")
         assert r.status_code == 503
         assert r.json()["reason"] == "job_failed"
-        # The upstream error message must NOT leak into the 503 body.
+        # The upstream error PROSE message must NOT leak into the 503 body.
         assert leak_marker not in r.text
+        # DEFECT 1: the stable machine error_code now reaches the operator —
+        # in the ring preview AND the WARNING. (This is the core sprint goal:
+        # "reach the true reason in one request".)
+        preview = app.state.krea_failures.snapshot()["entries"][0]["preview"]
+        assert preview == error_code
+        recs = [
+            rec for rec in caplog.records
+            if rec.name == "antiek.interfaces.krea"
+            and rec.levelno == logging.WARNING
+        ]
+        assert len(recs) == 1
+        assert error_code in recs[0].getMessage()
+        # The body still excludes the preview/detail (the log/response split).
+        assert error_code not in r.text
+    finally:
+        client.close()
+
+
+def test_scene_job_failed_error_code_with_embedded_token_is_scrubbed(
+    monkeypatch, caplog,
+):
+    """DEFECT 1 + rigor #1: even a job_failed whose error_code embeds a
+    credential-shaped token has the token scrubbed on EVERY channel (ring
+    preview, /krea/status payload, WARNING, 503 body) — the error_code flows
+    through _scrub_secrets like any other detail, so surfacing it never
+    becomes a leak vector."""
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    app = _app()
+    # A pathological error_code that embeds a bearer-shaped token.
+    poisoned_code = f"generation_failed Bearer {_FAKE_TOKEN}"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == _SUBMIT_PATH:
+            return httpx.Response(200, json=_submit_ok_body())
+        return httpx.Response(200, json={
+            "job_id": "job_abc", "status": "failed",
+            "error": {"code": poisoned_code, "message": "irrelevant"},
+        })
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+            r = tc.get("/krea/scene")
+        assert r.status_code == 503
+        assert r.json()["reason"] == "job_failed"
+        preview = app.state.krea_failures.snapshot()["entries"][0]["preview"]
+        assert _FAKE_TOKEN not in preview
+        assert "PLANTEDLEAKMARKER" not in preview
+        assert "[redacted]" in preview
+        status_raw = tc.get("/krea/status").text
+        assert _FAKE_TOKEN not in status_raw
+        assert "PLANTEDLEAKMARKER" not in status_raw
+        for rec in caplog.records:
+            assert _FAKE_TOKEN not in rec.getMessage()
+            assert "PLANTEDLEAKMARKER" not in rec.getMessage()
+        assert _FAKE_TOKEN not in r.text
+        assert "PLANTEDLEAKMARKER" not in r.text
     finally:
         client.close()
 
@@ -904,3 +969,531 @@ def test_scene_prompt_within_limit_for_every_mood_matrix_combination():
     worst = kr._scene_prompt("m" * 64, "d" * 64, "s" * 64)
     assert len(worst) <= kr._PROMPT_MAX_CHARS
     kr.GenerateRequest(prompt=worst)
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# SPR-04 (antiek-living-caliber) — FALLBACK OBSERVABILITY
+# ═════════════════════════════════════════════════════════════════════════
+#
+# The typed-503 contract is SACRED: this block OBSERVES the degradation, it
+# never redesigns it. It locks M1 (failure ring), M2 (GET /krea/status), and
+# M4 (structured WARNING at the single 503-minting boundary).
+#
+# RIGOR #1 — no-leak by CONSTRUCTION (scrub before storage) + a planted-fake-
+# token across EVERY output channel (status payload, ring buffer, caplog,
+# 503 bodies). The token is a credential-SHAPED FAKE — no real secret is ever
+# used (no live Krea call is ever made).
+# RIGOR #3 — EVERY reason that mints a 503 gets a test-trio (ring + WARNING +
+# 503 body); the reason matrix below is the single source the sweeps use.
+
+# A planted credential-SHAPED FAKE token (never a real secret). The marker
+# PLANTEDLEAKMARKER lets any channel be scanned for zero occurrences.
+_FAKE_TOKEN = "sk-PLANTEDLEAKMARKER1234567890abcdefABCDEF"
+# A bearer-like string in an UPSTREAM ERROR BODY — the realistic leak vector
+# (Krea echoing our auth header back in a 401/500). The scrubber must redact
+# it before it reaches the ring / status payload / logs.
+_LEAK_BODY = f"upstream rejected: Authorization: Bearer {_FAKE_TOKEN} — denied"
+
+# Every reason that can mint a 503 (rigor #3 — enumeration, not sampling).
+_ALL_REASONS = [
+    "no_key",
+    "kill_switch",
+    "over_daily_budget",
+    "rate_limited",
+    "upstream_error",
+    "upstream_timeout",
+    "upstream_bad_response",
+    "job_failed",
+    "job_timeout",
+    "job_cancelled",
+    "no_api_balance",
+]
+
+# DEFECT 4 — leak enumeration, not sampling. Classify EVERY reason by whether
+# its 503 mint carries an upstream-derived detail (→ a non-empty, scrubbed
+# preview that a planted token could ride) vs carries NONE by design (a gate
+# reject / a terminal-state short-circuit → empty preview). The leak sweep
+# below asserts scrubbing on EVERY carrier and empty-by-design on the rest, so
+# "every reason scrubbed" is enumerated across all 11 reasons.
+#
+# Carriers whose preview is BUILT FROM the planted leak body under _trip(leak=
+# True) — the token must be present-then-scrubbed (→ "[redacted]"):
+_LEAK_CARRYING_REASONS = [
+    "upstream_error",     # detail = "HTTP 500 — <leak body>"
+    "upstream_timeout",   # detail = str(TimeoutException(<leak body>))
+    "no_api_balance",     # detail = "HTTP 402 — {...<leak body>...}"
+    "job_failed",         # detail = error.code (now surfaced; leak planted in it)
+]
+# Carrier whose preview is non-empty but does NOT echo the leak body: a JSON
+# decode error message ("Expecting value: ...") — token absent trivially, but
+# the preview is still a real (scrubbed) detail, so it is a carrier, not empty.
+_DETAIL_NO_LEAK_ECHO_REASONS = ["upstream_bad_response"]
+# Empty-by-design: gate rejects + terminal-state short-circuits pass NO detail
+# to _disabled(), so the preview is "" for these.
+_EMPTY_PREVIEW_REASONS = [
+    "no_key", "kill_switch", "over_daily_budget", "rate_limited",
+    "job_timeout", "job_cancelled",
+]
+
+# Sanity: the three buckets partition _ALL_REASONS exactly (no reason missed,
+# none double-counted) — this is what makes the sweep an ENUMERATION.
+assert set(
+    _LEAK_CARRYING_REASONS + _DETAIL_NO_LEAK_ECHO_REASONS + _EMPTY_PREVIEW_REASONS
+) == set(_ALL_REASONS)
+assert len(
+    _LEAK_CARRYING_REASONS + _DETAIL_NO_LEAK_ECHO_REASONS + _EMPTY_PREVIEW_REASONS
+) == len(_ALL_REASONS)
+
+
+def _trip(reason, monkeypatch, *, leak=False):
+    """Build an app whose next /krea/scene call mints the given `reason` 503.
+    Returns (app, client, call). `leak=True` plants _LEAK_BODY in the upstream
+    error body for reasons whose preview comes from upstream prose."""
+    if reason != "no_key":
+        monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    if reason == "kill_switch":
+        monkeypatch.setenv("KREA_KILL_SWITCH", "1")
+    if reason == "over_daily_budget":
+        monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "0")
+    if reason == "rate_limited":
+        monkeypatch.setenv("KREA_RATE_LIMIT_MAX", "0")
+        monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "100")
+    if reason == "job_timeout":
+        _install_clock(monkeypatch)
+
+    app = _app()
+    leak_body_text = _LEAK_BODY if leak else "boom"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if reason == "upstream_error":
+            return httpx.Response(500, text=leak_body_text)
+        if reason == "upstream_timeout":
+            # The timeout's str(e) becomes the _UpstreamError.detail (and so
+            # the preview) — so leak=True plants the bearer-token there too.
+            raise httpx.TimeoutException(leak_body_text, request=request)
+        if reason == "no_api_balance":
+            return httpx.Response(402, json={"message": leak_body_text})
+        if reason == "upstream_bad_response":
+            return httpx.Response(200, text=f"<html>{leak_body_text}</html>")
+        if path == _SUBMIT_PATH:
+            return httpx.Response(200, json={
+                "job_id": "j", "status": "queued",
+                "created_at": "2026-06-12T00:00:00Z",
+            })
+        if reason == "job_failed":
+            # DEFECT 1: the preview now comes from error.CODE (surfaced to
+            # the operator), not error.message. So under leak=True plant the
+            # bearer-token in the CODE — that is the channel the fix exposes,
+            # and the scrubber must still redact it. error.message stays prose
+            # that is dropped entirely.
+            failed_code = (
+                f"generation_failed {leak_body_text}" if leak
+                else "generation_failed"
+            )
+            return httpx.Response(200, json={
+                "job_id": "j", "status": "failed",
+                "error": {"code": failed_code, "message": "upstream prose msg"},
+            })
+        if reason == "job_cancelled":
+            return httpx.Response(200, json={"job_id": "j", "status": "cancelled"})
+        if reason == "job_timeout":
+            return httpx.Response(200, json={"job_id": "j", "status": "processing"})
+        return httpx.Response(404)
+
+    client = _client_with_transport(app, handler)
+
+    def call() -> httpx.Response:
+        tc = TestClient(app)
+        return tc.get("/krea/scene", params={
+            "mood": "calm", "day_night": "day", "season": "summer",
+        })
+
+    return app, client, call
+
+
+# ── M1: ring buffer records exactly one entry per minted 503 (every reason) ─
+
+
+@pytest.mark.parametrize("reason", _ALL_REASONS)
+def test_spr04_each_reason_records_exactly_one_ring_entry(reason, monkeypatch):
+    """M1 + rigor #3 (enumeration): tripping each reason once appends EXACTLY
+    one sanitized ring entry (reason + scene_key match), AND the 503 body
+    still carries the typed contract unchanged."""
+    app, client, call = _trip(reason, monkeypatch)
+    try:
+        r = call()
+        assert r.status_code == 503
+        body = r.json()
+        assert body["enabled"] is False
+        assert body["isFallback"] is True
+        assert body["reason"] == reason
+        # DEFECT 3: the SACRED typed-503 contract is exactly these 4 keys for
+        # EVERY reason — no preview/detail ever leaks into the body. Proven by
+        # an exact key-set assertion across all 11 reasons (not just the 4
+        # upstream-prose ones).
+        assert set(body) == {"enabled", "isFallback", "reason", "scene_key"}
+        snap = app.state.krea_failures.snapshot()
+        assert len(snap["entries"]) == 1, snap
+        entry = snap["entries"][0]
+        assert entry["reason"] == reason
+        assert entry["scene_key"] == "calm|day|summer"
+        assert entry["timestamp"]
+        assert "preview" in entry
+        assert snap["failure_counts"][reason] == 1
+    finally:
+        client.close()
+
+
+def test_spr04_ring_evicts_oldest_at_51(monkeypatch):
+    """M1: the ring holds the LAST 50; the 51st append evicts the 1st (the
+    per-reason counter is a TOTAL, not ring-bounded)."""
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "0")  # every call → over_budget
+    app = _app()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("over-budget gate must not reach upstream")
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        for i in range(51):
+            r = tc.get("/krea/scene", params={
+                "mood": f"mood{i}", "day_night": "day", "season": "summer",
+            })
+            assert r.status_code == 503
+        snap = app.state.krea_failures.snapshot()
+        assert len(snap["entries"]) == 50
+        keys = [e["scene_key"] for e in snap["entries"]]
+        assert "mood0|day|summer" not in keys  # evicted
+        assert "mood50|day|summer" in keys
+        assert snap["failure_counts"]["over_daily_budget"] == 51  # total
+    finally:
+        client.close()
+
+
+def test_spr04_scrub_runs_before_storage_on_ring(monkeypatch):
+    """M1 + rigor #1: an upstream body embedding a bearer-like token is
+    scrubbed BEFORE it enters the ring — the stored preview carries ZERO
+    occurrences of the planted token (proof by construction) and is ≤300."""
+    app, client, call = _trip("upstream_error", monkeypatch, leak=True)
+    try:
+        r = call()
+        assert r.status_code == 503
+        preview = app.state.krea_failures.snapshot()["entries"][0]["preview"]
+        assert "PLANTEDLEAKMARKER" not in preview
+        assert _FAKE_TOKEN not in preview
+        assert "[redacted]" in preview
+        assert len(preview) <= 300
+    finally:
+        client.close()
+
+
+def test_spr04_unit_scrubber_redacts_every_credential_shape():
+    """M1 + rigor #1 (unit): the scrubber redacts each credential SHAPE it
+    claims to, leaving no original secret bytes."""
+    samples = [
+        f"Authorization: Bearer {_FAKE_TOKEN}",
+        f"token={_FAKE_TOKEN}",
+        'api_key: "abcdef0123456789ABCDEF"',
+        'password="hunter2hunter2hunter2"',
+        "sk-abcdefghijklmnop0123456789",
+    ]
+    for s in samples:
+        out = kr._scrub_secrets(s)
+        assert _FAKE_TOKEN not in out
+        assert "abcdef0123456789ABCDEF" not in out
+        assert "hunter2hunter2hunter2" not in out
+        assert "abcdefghijklmnop0123456789" not in out
+        assert "[redacted]" in out
+
+
+def test_spr04_short_odd_token_redacted_by_exact_match_every_channel(
+    monkeypatch, caplog,
+):
+    """DEFECT 2 + rigor #1: a short / odd-shaped configured token (12 chars,
+    NO `sk-` prefix, label-DETACHED) echoed BARE in an upstream preview would
+    slip past the 24-char catch-all + the labelled patterns — but the exact
+    substring redaction of the configured KREA_API_TOKEN removes it FIRST,
+    regardless of shape. Prove it is ABSENT from the ring entry, the
+    /krea/status payload, the WARNING, AND the 503 body."""
+    short_token = "QZ7kP2mW9xLr"  # 12 chars, no sk- prefix, no label nearby
+    assert len(short_token) == 12  # below the 24-char catch-all floor
+    bare_in_prose = f"upstream rejected request {short_token} for account"
+    # The SHAPE patterns ALONE do NOT catch this bare token (no label, <24
+    # chars) — proven directly: with NO token configured the scrubber leaves
+    # it intact. ONLY the exact-match on the configured value redacts it,
+    # which is the BY-CONSTRUCTION claim DEFECT 2 closes.
+    monkeypatch.delenv("KREA_API_TOKEN", raising=False)
+    assert short_token in kr._scrub_secrets(bare_in_prose)
+    monkeypatch.setenv("KREA_API_TOKEN", short_token)
+    assert short_token not in kr._scrub_secrets(bare_in_prose)  # now caught
+    app = _app()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Upstream echoes the bare token (no "Bearer", no "token=" label) —
+        # the detached-echo leak vector the catch-all floor cannot reach.
+        return httpx.Response(500, text=bare_in_prose)
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+            r = tc.post("/krea/generate", json={"prompt": "x"})
+        assert r.status_code == 503
+        assert r.json()["reason"] == "upstream_error"
+        # Ring entry preview.
+        preview = app.state.krea_failures.snapshot()["entries"][0]["preview"]
+        assert short_token not in preview
+        assert "[redacted]" in preview
+        # /krea/status payload.
+        assert short_token not in tc.get("/krea/status").text
+        # WARNING record.
+        for rec in caplog.records:
+            assert short_token not in rec.getMessage()
+        # 503 body (which carries no preview at all, but assert anyway).
+        assert short_token not in r.text
+    finally:
+        client.close()
+
+
+# ── M4: structured WARNING at the single 503-minting boundary (every reason) ─
+
+
+@pytest.mark.parametrize("reason", _ALL_REASONS)
+def test_spr04_each_reason_emits_exactly_one_warning(reason, monkeypatch, caplog):
+    """M4 + rigor #3: each reason emits EXACTLY one WARNING on the
+    antiek.interfaces.krea logger with reason + scene_key + preview, and the
+    503 body STILL excludes the preview (the log/response split)."""
+    app, client, call = _trip(reason, monkeypatch)
+    try:
+        with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+            r = call()
+        assert r.status_code == 503
+        recs = [
+            rec for rec in caplog.records
+            if rec.name == "antiek.interfaces.krea"
+            and rec.levelno == logging.WARNING
+        ]
+        assert len(recs) == 1, [rec.getMessage() for rec in recs]
+        msg = recs[0].getMessage()
+        assert f"reason={reason}" in msg
+        assert "scene_key=calm|day|summer" in msg
+        assert "preview=" in msg
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("reason", _ALL_REASONS)
+def test_spr04_warning_preview_scrubbed_and_body_excludes_preview(
+    reason, monkeypatch, caplog,
+):
+    """M4 + rigor #1 + DEFECT 4 (enumeration, not sampling): for EVERY reason,
+    a planted bearer-token appears in NEITHER the log record, the ring preview,
+    the /krea/status payload, NOR the 503 body. The preview lives ONLY in the
+    log/ring (sanitized); the response never carries it (the log/response
+    split). The expectation per reason is bucket-driven (carrier → token
+    present-then-redacted; empty-by-design → empty preview)."""
+    app, client, call = _trip(reason, monkeypatch, leak=True)
+    try:
+        with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+            r = call()
+        assert r.status_code == 503
+        # No channel ever carries the planted token (log + status payload).
+        for rec in caplog.records:
+            line = rec.getMessage()
+            assert "PLANTEDLEAKMARKER" not in line
+            assert _FAKE_TOKEN not in line
+        assert "PLANTEDLEAKMARKER" not in tc_status_text(app)
+        # 503 body excludes the preview/detail entirely (SACRED contract).
+        assert "PLANTEDLEAKMARKER" not in r.text
+        assert _FAKE_TOKEN not in r.text
+        assert "Bearer" not in r.text
+        body = r.json()
+        assert body["reason"] == reason
+        assert set(body) == {"enabled", "isFallback", "reason", "scene_key"}
+
+        # DEFECT 4: enumerate the preview expectation per bucket.
+        preview = app.state.krea_failures.snapshot()["entries"][0]["preview"]
+        assert _FAKE_TOKEN not in preview
+        assert "PLANTEDLEAKMARKER" not in preview
+        if reason in _LEAK_CARRYING_REASONS:
+            # The planted token rode the detail in → it must be REDACTED.
+            assert "[redacted]" in preview, (reason, preview)
+        elif reason in _DETAIL_NO_LEAK_ECHO_REASONS:
+            # A real (non-empty) detail that simply does not echo the leak.
+            assert preview != ""
+        else:
+            # Empty-by-design: gate rejects + terminal short-circuits carry
+            # NO upstream detail, so the preview is empty.
+            assert reason in _EMPTY_PREVIEW_REASONS
+            assert preview == "", (reason, preview)
+    finally:
+        client.close()
+
+
+def tc_status_text(app) -> str:
+    """Read the /krea/status payload text on a fresh TestClient (the app's
+    injected mock transport is irrelevant — /krea/status touches no network).
+    Used by the leak sweep to assert no token rides the status surface."""
+    return TestClient(app).get("/krea/status").text
+
+
+# ── M2: GET /krea/status — auth, shape, read-only, no token bytes ─────────
+
+
+def test_spr04_status_401_without_operator_creds(monkeypatch):
+    """M2: /krea/status is NOT in the open-paths set, so with operator-auth
+    configured it requires operator creds — 401 without them, 200 with the
+    operator bearer (mirrors test_operator_bearer_middleware.py)."""
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "op_secret")
+    app = create_app(
+        register_wrestling=False, register_providers=False, cors_origins=[],
+    )
+    tc = TestClient(app)
+    r = tc.get("/krea/status")
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "operator_auth_required"
+    r2 = tc.get("/krea/status", headers={"Authorization": "Bearer op_secret"})
+    assert r2.status_code == 200
+
+
+def test_spr04_status_open_when_auth_disabled():
+    """When operator-auth is NOT configured (test/local default), the
+    middleware admits everything with a default operator identity, so
+    /krea/status answers 200."""
+    app = _app()
+    tc = TestClient(app)
+    assert tc.get("/krea/status").status_code == 200
+
+
+def test_spr04_status_shape_locked_no_key_posture():
+    """M2: the status payload shape is locked; the README mirrors it
+    byte-for-byte. NO-KEY posture → key_present strict-bool False, verdict
+    no_key, every section present."""
+    app = _app()
+    tc = TestClient(app)
+    body = tc.get("/krea/status").json()
+    assert set(body.keys()) == {
+        "enabled", "key_present", "kill_switch", "gate_verdict",
+        "budget", "rate_window", "cache", "last_success_at",
+        "failure_counts", "failures",
+    }
+    assert body["key_present"] is False
+    assert isinstance(body["key_present"], bool)
+    assert body["kill_switch"] is False
+    assert body["enabled"] is False
+    assert body["gate_verdict"] == "no_key"
+    assert body["budget"] == {"spent_today": 0, "cap": 50}
+    assert set(body["rate_window"].keys()) == {"occupancy", "max", "window_s"}
+    assert body["rate_window"]["occupancy"] == 0
+    assert set(body["cache"].keys()) == {"entries", "hits", "misses"}
+    assert body["last_success_at"] is None
+    assert body["failure_counts"] == {}
+    assert body["failures"] == []
+
+
+def test_spr04_status_key_present_is_boolean_no_token_bytes(monkeypatch):
+    """M2 + rigor #1: with a planted fake token, key_present is BOOLEAN True
+    and NO field carries >8 consecutive chars of the token value."""
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    app = _app()
+    tc = TestClient(app)
+    r = tc.get("/krea/status")
+    body = r.json()
+    assert body["key_present"] is True
+    assert isinstance(body["key_present"], bool)
+    raw = r.text
+    assert "PLANTEDLEAKMARKER" not in raw
+    for i in range(0, len(_FAKE_TOKEN) - 8):
+        window = _FAKE_TOKEN[i:i + 9]
+        assert window not in raw, f"token slice leaked into status: {window!r}"
+
+
+def test_spr04_status_gate_verdict_tracks_kill_switch(monkeypatch):
+    """M2: key present + kill-switch on → verdict kill_switch (first gate),
+    enabled False even though a key is present."""
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    monkeypatch.setenv("KREA_KILL_SWITCH", "1")
+    app = _app()
+    body = TestClient(app).get("/krea/status").json()
+    assert body["key_present"] is True
+    assert body["kill_switch"] is True
+    assert body["gate_verdict"] == "kill_switch"
+    assert body["enabled"] is False
+
+
+def test_spr04_status_reflects_failures_and_last_success(monkeypatch):
+    """M2: after a live success then a failure, the payload reports the
+    failure in the ring + counts AND a non-null last_success_at (preserved
+    across the later failure)."""
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    app = _app()
+    mode = {"fail": False}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == _SUBMIT_PATH:
+            return httpx.Response(200, json={
+                "job_id": "j", "status": "queued",
+                "created_at": "2026-06-12T00:00:00Z",
+            })
+        if mode["fail"]:
+            return httpx.Response(200, json={"job_id": "j", "status": "failed",
+                                             "error": {"code": "x"}})
+        return httpx.Response(200, json=_completed_body("j", "https://img/ok.png"))
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        r1 = tc.get("/krea/scene", params={"mood": "calm", "day_night": "day",
+                                           "season": "summer"})
+        assert r1.status_code == 200
+        s1 = tc.get("/krea/status").json()
+        assert s1["last_success_at"] is not None
+        assert s1["failure_counts"] == {}
+        mode["fail"] = True
+        r2 = tc.get("/krea/scene", params={"mood": "stormy", "day_night": "night",
+                                           "season": "winter"})
+        assert r2.status_code == 503
+        s2 = tc.get("/krea/status").json()
+        assert s2["failure_counts"]["job_failed"] == 1
+        assert len(s2["failures"]) == 1
+        assert s2["last_success_at"] == s1["last_success_at"]  # unchanged
+    finally:
+        client.close()
+
+
+def test_spr04_status_is_read_only_counter_equality(monkeypatch):
+    """M2 (read-only by COUNTER-EQUALITY, not impression): /krea/status,
+    called 25x, perturbs NO budget / rate / cache / failure counter. Seed a
+    miss→submit→put then a hit so every counter has moved, then assert
+    byte-identical counters across the reads."""
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    app = _app()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == _SUBMIT_PATH:
+            return httpx.Response(200, json={
+                "job_id": "j", "status": "queued",
+                "created_at": "2026-06-12T00:00:00Z",
+            })
+        return httpx.Response(200, json=_completed_body("j", "https://img/ok.png"))
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        params = {"mood": "calm", "day_night": "day", "season": "summer"}
+        tc.get("/krea/scene", params=params)  # miss + bill + put
+        tc.get("/krea/scene", params=params)  # hit
+        before = tc.get("/krea/status").json()
+        for _ in range(25):
+            tc.get("/krea/status")
+        after = tc.get("/krea/status").json()
+        assert after["budget"] == before["budget"]
+        assert after["rate_window"]["occupancy"] == before["rate_window"]["occupancy"]
+        assert after["cache"] == before["cache"]
+        assert after["failure_counts"] == before["failure_counts"]
+        assert after["failures"] == before["failures"]
+    finally:
+        client.close()

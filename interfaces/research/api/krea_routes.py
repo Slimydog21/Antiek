@@ -122,16 +122,31 @@ NO streaming route was added.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import threading
 import time
-from datetime import date
+from collections import deque
+from datetime import date, datetime, timezone
 from typing import Any, Callable
 
 import httpx
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+# Module logger (SPR-04 fallback observability). Mirrors
+# interfaces/research/api/books.py:39 (`antiek.interfaces.books`): a named
+# logger so the 503-boundary WARNING lines (M4) are attributable to this
+# module and route through the standard logging config (the systemd journal
+# captures them in prod — see the SPR-04 README "fallback visibility"
+# section + the handoff's journal-capture check). NO secret material is ever
+# logged: the preview passed here is the SAME sanitized <=300-char
+# _UpstreamError.detail the 503 body already drops, run through the
+# token-scrubber (_scrub_secrets) one more time before it is stored OR
+# logged (defence-by-construction, rigor #1).
+logger = logging.getLogger("antiek.interfaces.krea")
 
 # ── Constants: defaults are DOCS-CURRENT (2026-06-12) and CONSERVATIVE ──
 #    (transcribed from docs.krea.ai; live verification pending SPR-09) ──
@@ -429,6 +444,34 @@ class _BudgetState:
             self._roll_day_locked()
             return self._units_today
 
+    def status_snapshot(self) -> dict[str, Any]:
+        """Read-only budget + rate snapshot for GET /krea/status (M2).
+
+        Counter-equality discipline (M2): this method does NOT mutate
+        _units_today or _recent_submits. It deliberately does NOT call
+        _roll_day_locked() (a day rollover would zero the counters — a
+        mutation) and does NOT prune _recent_submits (rate_limited() prunes;
+        this only COUNTS within the window). So calling /krea/status N times
+        in a row returns identical numbers and perturbs no state — the
+        read-only assertion. The reported rate occupancy is the count of
+        submits still inside the 60s window at read time (a pure count, no
+        list rewrite)."""
+        now = time.monotonic()
+        window = _DEFAULT_RATE_LIMIT_WINDOW_S
+        with self._lock:
+            in_window = sum(1 for t in self._recent_submits if now - t < window)
+            return {
+                "budget": {
+                    "spent_today": self._units_today,
+                    "cap": self.daily_cap(),
+                },
+                "rate_window": {
+                    "occupancy": in_window,
+                    "max": self._rate_max(),
+                    "window_s": window,
+                },
+            }
+
     def reset(self) -> None:
         """Test hook — clear all counters."""
         with self._lock:
@@ -449,6 +492,14 @@ class _SceneCache:
         self._max_entries = max_entries
         # key -> (expires_at_monotonic, image_url)
         self._store: dict[str, tuple[float, str]] = {}
+        # Hit/miss tallies for the /krea/status payload (M2). A "hit" is a
+        # live, unexpired entry returned; a "miss" is an absent or expired
+        # key. Updated only by get() (a lookup), never by stats() — so a
+        # /krea/status read leaves these counters untouched (the read-only
+        # counter-equality assertion, M2). An expired entry counts as a miss
+        # (the caller will regenerate), matching the get() return contract.
+        self._hits = 0
+        self._misses = 0
 
     def _ttl(self) -> float:
         raw = os.environ.get("KREA_CACHE_TTL_S", "").strip()
@@ -466,12 +517,15 @@ class _SceneCache:
         with self._lock:
             entry = self._store.get(key)
             if entry is None:
+                self._misses += 1
                 return None
             expires_at, url = entry
             if now >= expires_at:
                 # Expired — evict + miss so a stale day/season refreshes.
                 self._store.pop(key, None)
+                self._misses += 1
                 return None
+            self._hits += 1
             return url
 
     def put(self, key: str, url: str) -> None:
@@ -486,6 +540,163 @@ class _SceneCache:
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
+
+    def stats(self) -> dict[str, int]:
+        """Read-only snapshot for GET /krea/status (M2): live entry count +
+        hit/miss tallies. Calling this NEVER mutates the store OR the
+        counters (it only reads under the lock), so repeated /krea/status
+        calls leave the cache identical (the read-only counter-equality
+        assertion, M2)."""
+        with self._lock:
+            return {
+                "entries": len(self._store),
+                "hits": self._hits,
+                "misses": self._misses,
+            }
+
+
+# ── Failure observability (SPR-04; process-local, NO DuckDB / event-log) ──
+#
+# WHY IN-MEMORY (steelman + defence, rigor #2): a DuckDB / event-log trail
+# would survive a restart and give a durable cross-restart forensic record —
+# genuinely better for post-mortems. We REJECT it here because (a) the
+# CLAUDE.md single-writer invariant routes EVERY graph write through
+# runtime/db_lock on the one host worker; a failure-logging side-channel
+# into DuckDB would either contend for that lock on the hot request path or
+# open a second writer — both forbidden; (b) the WARNING logs (M4) ARE the
+# durable trail (the systemd journal persists them across restarts — see the
+# README's diagnostic ladder); and (c) the spec scopes persistence OUT. So
+# the ring buffer is a fast, lock-guarded, process-local breadcrumb for the
+# LIVE operator surface (/krea/status), and the journal is the durable tier.
+# A restart empties the ring (acceptable — the journal still holds the
+# history). If a future need for a durable, queryable failure table appears,
+# it lands behind the single writer, not as a cache side-channel.
+
+# Token-ish secret patterns scrubbed BEFORE anything is stored OR logged
+# (rigor #1: prove no-leak by CONSTRUCTION, not inspection). Conservative +
+# additive: each pattern matches a credential SHAPE, not a specific secret.
+#   - "Bearer <token>"            an Authorization header that slipped into
+#                                 an upstream error body / message
+#   - sk-… / api-key-like runs    long opaque key-shaped tokens
+#   - "...token...: <value>"      a JSON-ish token/secret/key field value
+# The replacement is a fixed redaction marker carrying NO original bytes.
+_REDACTED = "[redacted]"
+_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # Authorization: Bearer <token>  (and bare "Bearer <token>")
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._\-+/=]{8,}"),
+    # token / secret / api[_-]?key / password "field": "value" (JSON-ish)
+    re.compile(
+        r"(?i)(token|secret|api[_-]?key|apikey|password|authorization)"
+        r"(\"?\s*[:=]\s*\"?)"
+        r"[A-Za-z0-9._\-+/=]{6,}"
+    ),
+    # sk-… style opaque keys (OpenAI/Krea-ish), >=16 chars after the prefix
+    re.compile(r"(?i)\bsk-[A-Za-z0-9._\-]{16,}"),
+    # Any long opaque run that looks like a raw key (>=24 chars, mixed) —
+    # last so the labelled patterns above win first.
+    re.compile(r"\b[A-Za-z0-9._\-+/=]{24,}\b"),
+)
+
+
+def _scrub_secrets(text: str) -> str:
+    """Redact credential-shaped substrings. Idempotent + total: runs every
+    pattern; returns a string carrying NO original secret bytes for any
+    match. Applied to the preview at the recording site (M1) BEFORE it
+    enters the ring buffer AND before it is logged (M4), so the planted-
+    fake-token tests across status payload / ring buffer / caplog all find
+    zero token material on every channel (rigor #1).
+
+    EXACT-MATCH FIRST (DEFECT 2 fix — close the no-leak claim BY
+    CONSTRUCTION): when a KREA_API_TOKEN is configured, redact the actual
+    configured token value by EXACT substring match BEFORE the pattern pass.
+    The pattern pass has a 24-char catch-all floor, so a short / odd-shaped
+    real token (e.g. a 12-char, no-`sk-`-prefix value) echoed bare could
+    otherwise survive the shape patterns; an exact match on the configured
+    value removes the real secret regardless of shape, length, or position.
+    The token is sourced from the SAME _api_token() the gate reads (no new
+    env read). The pattern pass below still runs as defence-in-depth for
+    OTHER credential shapes in upstream prose."""
+    out = text
+    # The configured Krea token (if any) — same source as the gate. A blank /
+    # absent token is None (graceful absence), so this branch is a no-op in
+    # the no-key posture.
+    token = _api_token()
+    if token:
+        out = out.replace(token, _REDACTED)
+    for pat in _SECRET_PATTERNS:
+        out = pat.sub(_REDACTED, out)
+    return out
+
+
+# Max preview chars stored per entry. The upstream detail is already capped
+# at 300 at the mint sites (_UpstreamError(..., "...[:300]")) but a gate-
+# reject path supplies no detail; clamp here too so the ring NEVER stores a
+# longer preview than the contract promises (M1: <=300 chars).
+_PREVIEW_MAX_CHARS = 300
+# Ring depth. Last 50 failures (M1). Small + bounded — this is a live
+# operator breadcrumb, not an archive (the journal is the archive).
+_RING_MAX = 50
+
+
+class _FailureRing:
+    """Process-local, lock-guarded ring of the last N sanitized failures
+    (M1). Same threading.Lock idiom as _BudgetState / _SceneCache — a short
+    critical section that appends + bounds. Each entry is
+    {timestamp, reason, scene_key, preview} where ``preview`` is ALREADY
+    scrubbed (the recorder scrubs before calling record) and clamped to
+    <=300 chars. Touches NO DuckDB / db_lock (steelman + rationale above).
+
+    Also keeps per-reason failure counts and a last_success_at marker for
+    the /krea/status payload (M2) — both updated under the same lock so a
+    status read is a consistent snapshot."""
+
+    def __init__(self, maxlen: int = _RING_MAX) -> None:
+        self._lock = threading.Lock()
+        self._entries: deque[dict[str, str | None]] = deque(maxlen=maxlen)
+        self._counts: dict[str, int] = {}
+        self._last_success_at: str | None = None
+
+    def record(self, reason: str, scene_key: str | None, preview: str) -> None:
+        """Append one sanitized failure. ``preview`` MUST already be scrubbed
+        by the caller (_record_failure does this); we clamp length here as a
+        belt-and-braces final bound. The 51st append evicts the 1st (deque
+        maxlen — M1)."""
+        clamped = (preview or "")[:_PREVIEW_MAX_CHARS]
+        entry: dict[str, str | None] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+            "scene_key": scene_key,
+            "preview": clamped,
+        }
+        with self._lock:
+            self._entries.append(entry)
+            self._counts[reason] = self._counts.get(reason, 0) + 1
+
+    def mark_success(self) -> None:
+        """Record a successful (live, non-cached) generation timestamp for
+        the status payload's last_success_at. Cache hits do NOT call this
+        (they are not fresh successes); only a completed live generation
+        does — see the krea_scene completion site."""
+        with self._lock:
+            self._last_success_at = datetime.now(timezone.utc).isoformat()
+
+    def snapshot(self) -> dict[str, Any]:
+        """Read-only snapshot for GET /krea/status (M2). Returns COPIES so a
+        caller can never mutate the ring; calling this NEVER mutates state
+        (the read-only counter-equality assertion, M2)."""
+        with self._lock:
+            return {
+                "entries": [dict(e) for e in self._entries],
+                "failure_counts": dict(self._counts),
+                "last_success_at": self._last_success_at,
+            }
+
+    def reset(self) -> None:
+        """Test hook — clear the ring + counts + success marker."""
+        with self._lock:
+            self._entries.clear()
+            self._counts.clear()
+            self._last_success_at = None
 
 
 # ── Pure helpers ────────────────────────────────────────────────────────
@@ -789,8 +1000,13 @@ def register_krea_routes(app: FastAPI) -> None:
 
     budget = _BudgetState()
     cache = _SceneCache()
+    failures = _FailureRing()
     app.state.krea_budget = budget
     app.state.krea_cache = cache
+    # Failure ring + per-reason counts + last-success marker (SPR-04). Same
+    # per-app-instance ownership as budget/cache so test apps don't bleed
+    # failure history into each other; resettable via app.state.krea_failures.
+    app.state.krea_failures = failures
     # Optional injected httpx client for tests (MockTransport). Production
     # leaves this None → each call builds + closes its own short-timeout
     # client. Set via app.state.krea_http_client in a test.
@@ -799,8 +1015,37 @@ def register_krea_routes(app: FastAPI) -> None:
     def _http() -> httpx.Client | None:
         return getattr(app.state, "krea_http_client", None)
 
-    def _disabled(reason: str, scene: str | None = None) -> JSONResponse:
-        """Build the typed 503 fallback body. ALWAYS 503, NEVER 500."""
+    def _disabled(
+        reason: str, scene: str | None = None, detail: str = "",
+    ) -> JSONResponse:
+        """Build the typed 503 fallback body — THE single 503-minting
+        boundary (M4). ALWAYS 503, NEVER 500. The contract is UNCHANGED: the
+        response body is exactly {enabled, isFallback, reason, scene_key} and
+        NEVER carries ``detail`` (the preview stays in the log + ring buffer
+        only — the log/response split, SPR-04).
+
+        SPR-04 observability (the VOICE the typed-503 never had): every 503
+        minted here ALSO (a) records a sanitized entry in the failure ring
+        for /krea/status, and (b) emits one structured WARNING. The preview
+        is sanitized by CONSTRUCTION — _scrub_secrets runs on it BEFORE it is
+        stored OR logged (rigor #1), so no token material reaches the ring,
+        the status payload, or any log line. ``detail`` defaults to "" so the
+        gate-reject paths (which have no upstream prose) still record + log a
+        clean entry."""
+        # Sanitize before anything is stored or logged (defence-by-
+        # construction). The upstream detail is already <=300 chars + has its
+        # own sanitized framing at the mint site; this is the second, total
+        # scrub that covers ANY credential-shaped run, plus the gate paths.
+        preview = _scrub_secrets(detail or "")[:_PREVIEW_MAX_CHARS]
+        failures.record(reason, scene, preview)
+        # One structured WARNING per failure (M4): reason + scene_key +
+        # sanitized preview, attributable to this module's logger. The
+        # systemd journal persists these across restarts (the durable tier;
+        # the ring is the live tier) — see the README diagnostic ladder.
+        logger.warning(
+            "krea fallback: reason=%s scene_key=%s preview=%s",
+            reason, scene, preview,
+        )
         payload = DisabledResponse(reason=reason, scene_key=scene)
         return JSONResponse(status_code=503, content=payload.model_dump())
 
@@ -862,8 +1107,11 @@ def register_krea_routes(app: FastAPI) -> None:
             # Every upstream failure mode (timeout / network / 401 / 402 /
             # 429 / 5xx / bad-json) ends here → typed fallback, never a
             # 500. (A 2xx-then-bad-body path has ALREADY recorded its unit
-            # via on_2xx by the time the parse error lands here.)
-            return _disabled(e.reason)
+            # via on_2xx by the time the parse error lands here.) The already-
+            # sanitized e.detail (<=300 chars, built + dropped at the mint
+            # site) is now captured into the ring + WARNING by _disabled, then
+            # STILL dropped from the response body (the log/response split).
+            return _disabled(e.reason, detail=e.detail)
         return JSONResponse(
             status_code=200,
             content=GenerateResponse(job_id=job_id, status=status).model_dump(),
@@ -887,7 +1135,7 @@ def register_krea_routes(app: FastAPI) -> None:
         try:
             job = _poll_job(token, job_id, client=_http())
         except _UpstreamError as e:
-            return _disabled(e.reason)
+            return _disabled(e.reason, detail=e.detail)
         return JSONResponse(status_code=200, content=job.model_dump())
 
     @app.get("/krea/scene", tags=["krea"])
@@ -954,7 +1202,7 @@ def register_krea_routes(app: FastAPI) -> None:
                 on_2xx=lambda: budget.record_submit(units=1),
             )
         except _UpstreamError as e:
-            return _disabled(e.reason, scene=key)
+            return _disabled(e.reason, scene=key, detail=e.detail)
 
         # 4. Poll to completion within the poll budget (KREA_POLL_BUDGET_S,
         #    default 30s — derivation at _POLL_BUDGET_S) at the documented
@@ -966,7 +1214,7 @@ def register_krea_routes(app: FastAPI) -> None:
             try:
                 job = _poll_job(token, job_id, client=_http())
             except _UpstreamError as e:
-                return _disabled(e.reason, scene=key)
+                return _disabled(e.reason, scene=key, detail=e.detail)
             # Terminal states per the docs.krea.ai 9-state job lifecycle
             # (2026-06-12): completed / failed / cancelled. Every other
             # state (backlogged / queued / scheduled / processing /
@@ -983,6 +1231,11 @@ def register_krea_routes(app: FastAPI) -> None:
             # pydantic-ValidationError 500.
             if job.status == "completed" and job.image_url:
                 cache.put(key, job.image_url)
+                # A fresh live generation completed — mark the success time
+                # for /krea/status's last_success_at (M2). Cache hits (the
+                # early return above) do NOT mark success: they are not fresh
+                # generations, just warm-cache replays.
+                failures.mark_success()
                 return JSONResponse(
                     status_code=200,
                     content=SceneArt(
@@ -990,7 +1243,18 @@ def register_krea_routes(app: FastAPI) -> None:
                     ).model_dump(),
                 )
             if job.status == "failed":
-                return _disabled(_REASON_JOB_FAILED, scene=key)
+                # Surface the stable machine error_code (DEFECT 1 fix): the
+                # job carries error.code (nsfw_filter / oom / generation_failed
+                # — docs.krea.ai jobs reference, 2026-06-12), already parsed by
+                # _poll_job onto job.error_code. It is a non-secret machine
+                # string, so passing it as the detail lets the operator reach
+                # the TRUE failure reason in one /krea/status request (the
+                # sprint's core goal) — and it still flows through
+                # _scrub_secrets like every other detail, so a code that
+                # somehow embedded a credential-shaped run is still redacted.
+                return _disabled(
+                    _REASON_JOB_FAILED, scene=key, detail=(job.error_code or ""),
+                )
             if job.status == "cancelled":
                 # Terminal — short-circuit NOW (M3): burning the remaining
                 # poll budget on a job that can never complete would only
@@ -1002,3 +1266,74 @@ def register_krea_routes(app: FastAPI) -> None:
                 # the cache. We do NOT hang the request.
                 return _disabled(_REASON_JOB_TIMEOUT, scene=key)
             _sleep(_POLL_INTERVAL_S)
+
+    @app.get("/krea/status", tags=["krea"])
+    def krea_status(request: Request):
+        """Operator-only Krea observability surface (SPR-04 M2).
+
+        AUTH: this route is deliberately NOT in app.py's
+        _OPERATOR_AUTH_OPEN_PATHS, so when operator-auth is configured the
+        middleware gates it like every other non-open path (401 without
+        operator creds). It exposes degradation signal the operator could
+        otherwise only infer from "the art looks procedural forever" — the
+        whole reason the typed-503 needed a voice.
+
+        SECRET DISCIPLINE (rigor #1): the ONLY thing this reports about the
+        key is key_present (a BOOLEAN) — never any token bytes. The ring
+        previews are sanitized at the recording site (_scrub_secrets before
+        storage), so nothing here can carry credential material.
+
+        READ-ONLY (M2): every value is read via a non-mutating snapshot
+        (budget.status_snapshot / cache.stats / failures.snapshot do not
+        prune, roll the day, or bump counters), so repeated /krea/status
+        calls return identical numbers and perturb no budget/rate/cache
+        state — asserted by counter-equality in the tests.
+
+        SYNC handler — a pure in-memory read; declared ``def`` for symmetry
+        with the other Krea handlers (no blocking I/O here, so it is cheap
+        either way)."""
+        # request.state.user_id is attached by the operator-auth middleware
+        # (app.py ~1250-1258); we don't need to re-check auth here — reaching
+        # this handler means the middleware admitted the caller. (Referenced
+        # so the operator-identity dependency is explicit at the call site.)
+        _ = getattr(request.state, "user_id", None)
+
+        budget_snap = budget.status_snapshot()
+        cache_snap = cache.stats()
+        fail_snap = failures.snapshot()
+
+        # Evaluated gate verdict — "what /krea/scene would do right now + which
+        # gate trips FIRST" — computed from the READ-ONLY snapshot (NOT _gate(),
+        # which mutates via rate_limited()'s prune). Mirrors _gate()'s order:
+        # kill-switch → no-key → over-budget → rate-limited. None ⇒ would
+        # attempt a live generation.
+        key_present = _api_token() is not None
+        kill_switch = _kill_switch_on()
+        spent = budget_snap["budget"]["spent_today"]
+        cap = budget_snap["budget"]["cap"]
+        occ = budget_snap["rate_window"]["occupancy"]
+        rate_max = budget_snap["rate_window"]["max"]
+        if kill_switch:
+            verdict = _REASON_KILL_SWITCH
+        elif not key_present:
+            verdict = _REASON_NO_KEY
+        elif spent >= cap:
+            verdict = _REASON_OVER_BUDGET
+        elif occ >= rate_max:
+            verdict = _REASON_RATE_LIMITED
+        else:
+            verdict = None  # would attempt a live generation
+
+        payload = {
+            "enabled": key_present and not kill_switch,
+            "key_present": key_present,         # BOOLEAN only — never token bytes
+            "kill_switch": kill_switch,
+            "gate_verdict": verdict,            # None ⇒ would generate live
+            "budget": budget_snap["budget"],
+            "rate_window": budget_snap["rate_window"],
+            "cache": cache_snap,
+            "last_success_at": fail_snap["last_success_at"],
+            "failure_counts": fail_snap["failure_counts"],
+            "failures": fail_snap["entries"],
+        }
+        return JSONResponse(status_code=200, content=payload)

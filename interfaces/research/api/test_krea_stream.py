@@ -347,19 +347,43 @@ def test_runaway_distinct_scene_states_bounded_by_rate_limit(monkeypatch):
 # ── (c) NO streaming route was added under /krea (RULE-1) ────────────────
 
 
-def test_krea_namespace_is_exactly_three_routes_no_stream():
-    """The /krea namespace exposes EXACTLY the three SPR-02 routes and
-    nothing matching a streaming shape. SPR-05 (NO-GO) adds no SSE /
-    WebSocket / EventSource / /krea/stream endpoint."""
+def test_krea_namespace_is_exactly_four_routes_no_stream():
+    """The /krea namespace exposes EXACTLY the four routes and nothing
+    matching a streaming shape.
+
+    ─── AMENDMENT 2026-06-13 (antiek-living-caliber SPR-04, "Fallback
+    observability") — the asserted set moved 3 → 4. ──────────────────────
+    SPR-05's NO-GO locked the namespace at THREE routes (generate / jobs /
+    scene) to prove no streaming endpoint was smuggled in. SPR-04 adds ONE
+    operator-only, NON-streaming, read-only observability route —
+    ``GET /krea/status`` — that gives the typed-503 degradation a voice
+    (sanitized failure ring + budget/cache/gate snapshot) WITHOUT touching
+    the typed-503 fallback contract or the anti-per-frame-billing ceiling.
+    It is a plain in-memory read (no SSE / WebSocket / EventSource / poll
+    loop), so it does NOT reopen the streaming question SPR-05 closed; the
+    streaming-marker scan below still runs and /krea/status passes it (no
+    stream/sse/ws/events token in the path). The set therefore grows by
+    exactly one to FOUR, and the test STILL fails on a FIFTH route — the
+    route-surface lock is preserved, just re-baselined.
+
+    Why the lock lives HERE and not in tests/test_krea_routes.py: the
+    SPR-04 spec's M3 files-list pointed at test_krea_routes.py, but the
+    actual route-count lock has always been THIS file's
+    ``test_krea_namespace_is_exactly_three_routes_no_stream`` (counting via
+    ``_krea_paths``). The amendment lands where the lock really is. See the
+    master-spec decision-log entry for SPR-04 (fallback observability) for
+    the ratification of /krea/status as the fourth, non-streaming route."""
     app = _app()
     krea = _krea_paths(app)
     assert krea == {
         "/krea/generate",
         "/krea/jobs/{job_id}",
         "/krea/scene",
+        "/krea/status",  # SPR-04: operator-only, read-only, NON-streaming
     }, f"unexpected /krea route surface: {sorted(krea)}"
 
-    # No krea path matches any streaming marker.
+    # No krea path matches any streaming marker — /krea/status is a plain
+    # read, so it passes this scan unchanged (the SPR-05 NO-GO still holds).
     streamy = [
         p for p in krea
         if any(tok in p.lower() for tok in (

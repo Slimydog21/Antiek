@@ -1,4 +1,5 @@
 import type { SceneArt } from "../useSceneArt";
+import { SceneStatusBadge } from "../SceneStatusBadge";
 
 /**
  * KreaArtLayer (SPR-04, milestone 4 — periodic Krea art, crossfaded).
@@ -24,7 +25,12 @@ export interface KreaArtLayerProps {
 }
 
 export function KreaArtLayer({ art, frozen }: KreaArtLayerProps) {
-  // Fallback ⇒ render nothing; the procedural sky is the whole picture.
+  // Fallback ⇒ render nothing visual; the procedural sky is the whole
+  // picture. SPR-04: mount the OPERATOR-ONLY fallback badge here — it
+  // self-gates (renders only when authenticated AND fallback), so a
+  // non-operator viewer still gets a truly empty layer (the badge is absent
+  // from the DOM, not hidden). It consumes only the existing hook state
+  // (art.reason); no new network call.
   if (art.isFallback || !art.imageUrl) {
     return (
       <div
@@ -32,7 +38,9 @@ export function KreaArtLayer({ art, frozen }: KreaArtLayerProps) {
         data-testid="krea-art-layer"
         data-krea="fallback"
         aria-hidden="true"
-      />
+      >
+        <SceneStatusBadge isFallback reason={art.reason} />
+      </div>
     );
   }
 

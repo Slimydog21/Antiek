@@ -50,7 +50,12 @@ export interface AuthContextValue {
   signOut: () => Promise<void>;
 }
 
-const AuthCtx = createContext<AuthContextValue | null>(null);
+// Exported (additive, antiek-living-caliber SPR-04) so a presentational
+// component can read auth state WITHOUT the throwing `useAuth` — i.e. render
+// safely when there is no <AuthProvider> above it (the scene layers are
+// rendered standalone in tests). `useAuth` stays the canonical hook for app
+// surfaces that REQUIRE a provider; the badge uses the optional read below.
+export const AuthCtx = createContext<AuthContextValue | null>(null);
 
 async function fetchIdentity(): Promise<AuthIdentity | null> {
   const r = await apiFetch(authUrl("/auth/me"));
