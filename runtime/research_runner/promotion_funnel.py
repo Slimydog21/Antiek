@@ -49,24 +49,26 @@ except ImportError:  # pragma: no cover — direct-script fallback
 _FUNNEL_DONE = object()
 
 
-def _promotion_metadata(ev: StepEvent) -> dict:
-    """Map a StepEvent's ``data`` to the node metadata the graph stores.
+def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
+    """Map a StepEvent's ``data`` to the node metadata the graph stores
+    (SPR-DRL-09).
 
     The single load-bearing transform: when a gather loop's note carries a
-    real ``document_id`` (a ``doc-url-*`` id from ``promote_discovery`` →
-    ``ingest_url``), surface it under the key the substrate + the evidence
-    pack read for grounding — ``source_document_id``. Without this map the
-    id would land under ``document_id`` in metadata, which
+    real grounding id — either ``source_document_id`` (Parallel gather) or
+    ``document_id`` (a ``doc-url-*`` id from ``promote_discovery`` →
+    ``ingest_url``, Exa gather) — surface it under the key the substrate +
+    the evidence pack read for grounding: ``source_document_id``. Without
+    this map the id would land under ``document_id`` in metadata, which
     ``session_evidence_pack`` does not consult, so the pack would fall back
     to the ``doc-gather-*`` placeholder and the chunk→document→ip_holder
-    attribution chain would be broken for Exa-sourced evidence.
+    attribution chain would be broken for the promoted evidence.
 
     Everything else in ``ev.data`` (e.g. ``gather_mode``) is preserved.
     The base ``source`` tag matches the funnel's prior behavior so
     ``content_hash`` for already-doc-url paths is unchanged.
     """
-    meta: dict = {"source": "research_runner", **ev.data}
-    doc_id = meta.get("document_id")
+    meta: dict[str, Any] = {"source": "research_runner", **ev.data}
+    doc_id = meta.get("source_document_id") or meta.get("document_id")
     if doc_id:
         meta["source_document_id"] = doc_id
     return meta

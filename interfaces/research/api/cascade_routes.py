@@ -135,14 +135,20 @@ def _research_loop_factory():
     """The browse loop each investigation runs.
 
     Default = the contract gather stub (an honest placeholder that does
-    no real retrieval — the safe prod default). When the operator sets
-    ``ANTIEK_DRW_GATHER=exa``, the loop switches to the real Exa Wedge-1
-    discovery layer (``make_exa_gather_loop``), which promotes documents
-    into the evidence pack as ``doc-url-*`` chunks through the single
-    ``ingest_url`` write seam + the legal gate. No route change either way.
+    no real retrieval — the safe prod default). The env var
+    ``ANTIEK_DRW_GATHER`` selects a real provider:
 
-    Reading the env here (not at import) keeps the exa branch — and any
-    ``ExaClient`` it would build — out of the stub-default path entirely.
+      * ``exa``      → the Exa Wedge-1 discovery layer
+        (``make_exa_gather_loop``), promoting documents into the evidence
+        pack as ``doc-url-*`` chunks through the single ``ingest_url``
+        write seam + the legal gate.
+      * ``parallel`` → the Parallel discovery layer
+        (``make_parallel_gather_loop``).
+      * anything else (incl. ``stub``) → the contract gather stub.
+
+    Reading the env here (not at import) keeps each provider branch — and
+    any client it would build — out of the stub-default path entirely.
+    No route change for any mode.
     """
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     if mode == "exa":
