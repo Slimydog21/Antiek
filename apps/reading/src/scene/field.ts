@@ -43,6 +43,26 @@ export interface SnowParticle {
   r: number;
 }
 
+/** STAR_COUNT = 48 (ALC SPR-05 M2). The night/dusk sky needs enough stars to
+ *  read as a sky, few enough to stay crisp behind glass content and cheap as
+ *  static SVG circles (no animation — twinkle would be a new keyframe, OOS). 48
+ *  across the upper two-thirds is a calm field, not a planetarium. */
+export const STAR_COUNT = 48;
+
+/** One star's immutable placement + size. Fully determined by its seed, so the
+ *  field is byte-stable for a given scene key (the determinism gate). No time
+ *  term — stars are STATIC here (twinkle is temporal → SPR-06, not this sprint). */
+export interface Star {
+  /** x in [0,1] of the field width. */
+  x: number;
+  /** y in [0,1] of the field height (biased to the upper sky). */
+  y: number;
+  /** radius in px. */
+  r: number;
+  /** per-star opacity multiplier (a little variety in brightness). */
+  alpha: number;
+}
+
 /** One cloud's immutable attributes; position derives from these + time. */
 export interface CloudPuff {
   x0: number; // base x in [0,1]
@@ -82,6 +102,24 @@ export function makeClouds(seed: number, count = CLOUD_COUNT): CloudPuff[] {
       scale: far ? rng.range(0.5, 0.9) : rng.range(0.9, 1.6),
       speed: far ? rng.range(0.004, 0.009) : rng.range(0.01, 0.02),
       alpha: far ? rng.range(0.4, 0.7) : rng.range(0.6, 1),
+    });
+  }
+  return out;
+}
+
+/** Deterministically generate the star field for a seed. Stars cluster in the
+ *  upper two-thirds of the sky (y in [0, 0.66]) so they sit ABOVE the peak
+ *  silhouettes, never inside the ground. Pure + seeded — same seed → same field
+ *  (the M2 star-determinism gate: double-render byte-diff). */
+export function makeStars(seed: number, count = STAR_COUNT): Star[] {
+  const rng: Rng = makeRng(seed ^ 0x57a8); // "STAR"-ish salt, distinct stream
+  const out: Star[] = [];
+  for (let i = 0; i < count; i++) {
+    out.push({
+      x: rng.next(),
+      y: rng.range(0.02, 0.66), // upper sky only — above the ridge line
+      r: rng.range(0.4, 1.4),
+      alpha: rng.range(0.35, 1),
     });
   }
   return out;

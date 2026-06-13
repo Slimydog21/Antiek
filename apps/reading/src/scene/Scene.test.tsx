@@ -57,6 +57,7 @@ describe("Scene — compositor", () => {
     const { container } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
     const order = [
       "peaks-layer",
+      "mountainscape-layer", // ALC SPR-05 M4: foreground depth planes (z-0b)
       "krea-art-layer",
       "clouds-layer",
       "snow-layer",

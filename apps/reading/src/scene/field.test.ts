@@ -13,10 +13,12 @@ import { makeRng, seedFromString } from "./rng";
 import {
   CLOUD_COUNT,
   SNOW_COUNT,
+  STAR_COUNT,
   cloudX,
   fieldSeed,
   makeClouds,
   makeSnow,
+  makeStars,
   snowAt,
 } from "./field";
 
@@ -72,6 +74,32 @@ describe("snow field — deterministic layout + frame N", () => {
         expect(y).toBeGreaterThanOrEqual(0);
         expect(y).toBeLessThanOrEqual(600);
       }
+    }
+  });
+});
+
+describe("star field — deterministic (ALC SPR-05 M2)", () => {
+  it("emits exactly STAR_COUNT stars", () => {
+    expect(makeStars(fieldSeed("night|snow"))).toHaveLength(STAR_COUNT);
+  });
+
+  it("same seed → byte-identical star field (the M2 determinism gate)", () => {
+    const seed = fieldSeed("night|snow");
+    expect(makeStars(seed)).toEqual(makeStars(seed));
+  });
+
+  it("different scene keys diverge (dusk ≠ night star fields)", () => {
+    expect(makeStars(fieldSeed("dusk|snow"))).not.toEqual(
+      makeStars(fieldSeed("night|snow")),
+    );
+  });
+
+  it("stars sit in the UPPER sky (y ≤ 0.66) so none land in the ground", () => {
+    for (const s of makeStars(fieldSeed("night|snow"))) {
+      expect(s.y).toBeGreaterThanOrEqual(0);
+      expect(s.y).toBeLessThanOrEqual(0.66);
+      expect(s.x).toBeGreaterThanOrEqual(0);
+      expect(s.x).toBeLessThanOrEqual(1);
     }
   });
 });

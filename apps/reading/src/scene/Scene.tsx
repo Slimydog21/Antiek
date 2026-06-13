@@ -5,6 +5,7 @@ import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
 import type { SceneFetcher } from "../krea/useKreaScene";
 import { Peaks } from "./layers/Peaks";
+import { Mountainscape } from "./layers/Mountainscape";
 import { Clouds } from "./layers/Clouds";
 import { Snow } from "./layers/Snow";
 import { PenguinJourney } from "./layers/PenguinJourney";
@@ -17,16 +18,24 @@ import "./scene.css";
  * Scene — the living mountainscape compositor (SPR-04, milestone 1 + 7).
  *
  * ─── LAYER ORDER (back → front; documented contract) ─────────────────────
- *   z-0  ProceduralSky      sky gradient + far/mid/near peak silhouettes
- *                           (inside <Peaks/>, which adds bounded parallax)
- *   z-1  KreaArtLayer       periodic Krea art, crossfaded over the sky on
- *                           mood change; renders nothing in fallback
+ *   z-0a ProceduralSky      layered atmosphere (multi-stop sky + horizon glow +
+ *                           seeded stars) + backdrop ridge bands (inside
+ *                           <Peaks/>, which adds bounded parallax). ELEVATED in
+ *                           ALC SPR-05 M2.
+ *   z-0b Mountainscape      foreground depth planes (far/mid/near + aerial
+ *                           haze) — the terrain the penguin journeys across,
+ *                           parallax-ready (typed seams). NEW in ALC SPR-05 M4.
+ *   z-1  KreaArtLayer       periodic Krea art, crossfaded over the whole
+ *                           procedural composition on mood change; renders
+ *                           nothing in fallback (the always-on real path)
  *   z-2  Clouds             parallax cloud drift (canvas, off the scene clock)
  *   z-3  Snow               wind-driven snow flurry (canvas, scene clock)
  *   z-4  PenguinJourney     scenery penguin walking toward the horizon
  * ─────────────────────────────────────────────────────────────────────────
- * Peaks render FIRST (furthest back) and the penguin LAST so it walks in front
- * of the ridge but behind the glass content above the whole Scene.
+ * Peaks render FIRST (furthest back), the foreground terrain over it, and the
+ * penguin LAST so it walks in front of the ridge but behind the glass content
+ * above the whole Scene. Krea (when present) crossfades over the ENTIRE
+ * procedural composition (sky + backdrop + foreground terrain).
  *
  * MOUNTING: the Scene is `position:absolute inset-0 z-0 pointer-events-none` —
  * it paints behind everything and never captures pointer events. AppShell
@@ -83,8 +92,10 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       data-scene-fallback={art.isFallback ? "true" : "false"}
       aria-hidden="true"
     >
-      {/* z-0 sky + peaks (with bounded parallax) */}
+      {/* z-0a layered atmosphere sky + backdrop ridge (with bounded parallax) */}
       <Peaks mood={mood} frozen={frozen} />
+      {/* z-0b foreground depth planes (static; parallax-ready seams for SPR-06) */}
+      <Mountainscape mood={mood} />
       {/* z-1 periodic Krea art, crossfaded on mood change (nothing in fallback) */}
       <KreaArtLayer art={art} frozen={frozen} />
       {/* z-2 clouds (canvas) */}

@@ -75,11 +75,14 @@ export function SceneStatusBadge({ isFallback, reason }: SceneStatusBadgeProps) 
         left: "12px",
         bottom: "12px",
         // Token-styled glass chip — native chrome, not a loud overlay.
+        // Token-ONLY: tokens.css is imported app-wide so these vars are always
+        // defined; the prior literal var() fallbacks were dead code and tripped
+        // token-lint. Dropped for token discipline (ALC SPR-05).
         padding: "2px 8px",
         borderRadius: "var(--radius-sm)",
-        background: "var(--glass-bg, rgba(251,252,253,0.72))",
-        border: "1px solid var(--glass-border, rgba(15,20,25,0.12))",
-        color: "var(--text-muted, #4F5F70)",
+        background: "var(--glass-bg)",
+        border: "1px solid var(--glass-border)",
+        color: "var(--text-muted)",
         font: "11px/1.4 var(--mono, ui-monospace, monospace)",
         letterSpacing: "0.01em",
         // Purely informational — never captures pointer events (the scene is

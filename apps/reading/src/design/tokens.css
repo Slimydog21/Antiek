@@ -80,6 +80,19 @@
      tokens.ts `rule.day` + tailwind.config.js colors.rule. */
   --rule:       #788596;
 
+  /* Deep "space"/"charcoal" ramp as CSS vars (ALC SPR-05 M3). These existed
+     only as Tailwind colour keys (tailwind.config.js space-1/2, charcoal-1/2);
+     the scene's atmosphere ramp consumes them via var() (the canvas painters +
+     the multi-stop sky gradients can't read Tailwind classes), so we mirror the
+     SAME hexes here as the single CSS-var source of truth. Values are byte-equal
+     to tailwind.config.js; day = the deep night-surface hexes (the night sky is
+     dark regardless of OS theme — it is the SKY, not a UI surface). Night block
+     keeps them identical (a deep sky is deep in both OS themes). */
+  --space-1:    #080A10;  /* == tailwind space-1 — darkest sky surface */
+  --space-2:    #0D1019;  /* == tailwind space-2 */
+  --charcoal-1: #13171F;  /* == tailwind charcoal-1 */
+  --charcoal-2: #1B202A;  /* == tailwind charcoal-2 */
+
   /* aliases for readability */
   --page:       var(--ice-2);
   --card:       var(--ice-0);
@@ -165,6 +178,86 @@
   --mono:  "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --serif: "Charter", "Iowan Old Style", Georgia, serif;
 
+  /* ── Scene atmosphere ramp (ALC SPR-05 M3) ───────────────────────────────
+     Per-dayPart sky + atmosphere tokens for the procedural-first living floor.
+     The ARCHITECTURE activates four dayPart anchors (dawn/day/dusk/night) that
+     SPR-06 drifts BETWEEN over the day; these are the colours those anchors
+     light up. Token-only: the scene layers consume these via var()/palette.ts
+     and carry ZERO hex of their own (token-lint invariant).
+
+     Each anchor exposes a 4-stop vertical sky ramp (zenith → high → low →
+     horizon), a horizon GLOW (the warm/cool band where the light pools at the
+     skyline), an atmospheric HAZE (the recessive veil that sits between peak
+     planes for aerial perspective), and a STAR colour (only night/dusk paint
+     stars). Values are sourced from the EXISTING ice/glacial/space/charcoal
+     ramps + the weathered-sun family — no NEW palette, a composition of the
+     ramp the app already owns, so day/night mode-swap stays coherent.
+
+     DECISION (origin, not just the hex): dawn = a cool pre-light wash warming to
+     a low straw band at the skyline (the weathered --sun-light family carries
+     the dawn glow so the warm light reads aged, not a loud sunrise); day = the
+     existing bright ice ramp, kept as the proven baseline; dusk = the deep-space
+     ramp lifted at the horizon by the same weathered straw (the mirror of dawn,
+     cooling DOWN into night); night = the deepest space ramp with a faint
+     glacial horizon and visible stars. dawn/dusk INTENTIONALLY share the warm
+     horizon glow (--scene-glow-dawn) — they are the two twilight anchors SPR-06
+     interpolates THROUGH, so one warm twilight glow, used twice, keeps the drift
+     continuous rather than introducing a second hue to fight it. */
+
+  /* DAWN — cool pre-light sky warming to a weathered-straw skyline. */
+  --scene-sky-dawn-0: var(--glacial-2);   /* zenith: cool blue-grey, still dim */
+  --scene-sky-dawn-1: var(--glacial-1);   /* high: the cool wash lifts */
+  --scene-sky-dawn-2: var(--ice-3);       /* low: paler as the light approaches */
+  --scene-sky-dawn-3: var(--sun-light-soft); /* horizon: the palest weathered straw — first light */
+  --scene-glow-dawn:  var(--sun-light);   /* the warm twilight glow band (shared with dusk) */
+  --scene-haze-dawn:  var(--glacial-1);   /* aerial veil between planes: cool + recessive */
+  /* STAR COLOUR — a FIXED bright cool tone, NOT the --ice ramp. The twilight/
+     night skies are dark in EITHER OS theme (they are the SKY, not a UI
+     surface — see --space-*/--charcoal-* note above), so the star colour must
+     NOT track --ice, which inverts to near-black under the dark cascade and
+     made stars invisible (star-vs-sky ≈ 1.04:1). Pinned to --scene-star-base,
+     a bright cool tone overridden in the dark block below so stars stay bright
+     wherever they paint. dawn stars only render once SPR-06 activates dawn. */
+  --scene-star-base:  #F4F7FA;            /* fixed bright cool star tone (day ice-2 lightness) */
+  --scene-star-dawn:  var(--scene-star-base); /* a few fading stars linger at dawn */
+
+  /* DAY — the proven bright ice ramp (baseline kept; brightest, no glow/stars). */
+  --scene-sky-day-0:  var(--glacial-1);   /* zenith: cool high sky */
+  --scene-sky-day-1:  var(--ice-3);       /* high */
+  --scene-sky-day-2:  var(--ice-2);       /* low */
+  --scene-sky-day-3:  var(--ice-1);       /* horizon: palest, near-white haze */
+  --scene-glow-day:   var(--ice-0);       /* a soft bright skyline pool (no warm cast by day) */
+  --scene-haze-day:   var(--glacial-1);   /* the existing far-haze token, kept */
+  --scene-star-day:   transparent;        /* no stars by day */
+
+  /* DUSK — the mirror of dawn: space ramp cooling down, warm straw at skyline. */
+  --scene-sky-dusk-0: var(--space-2);     /* zenith: deepening toward night */
+  --scene-sky-dusk-1: var(--charcoal-2);  /* high */
+  --scene-sky-dusk-2: var(--glacial-1);   /* low: the last cool daylight */
+  --scene-sky-dusk-3: var(--sun-light-soft); /* horizon: the weathered straw, setting */
+  --scene-glow-dusk:  var(--sun-light);   /* SHARED warm twilight glow (== dawn) */
+  --scene-haze-dusk:  var(--glacial-2);   /* cooler, darker aerial veil than dawn */
+  /* the first faint stars appear at dusk — fixed bright cool tone (see
+     --scene-star-base). NOT var(--ice-3): under the dark cascade --ice-3 →
+     #0A0D14, near-identical to the dusk sky, which would have made the dusk
+     stars invisible the moment SPR-06 activates dusk. */
+  --scene-star-dusk:  var(--scene-star-base); /* the first faint stars appear at dusk */
+
+  /* NIGHT — deepest space ramp, faint glacial horizon, visible stars. */
+  --scene-sky-night-0: var(--space-1);    /* zenith: the darkest surface */
+  --scene-sky-night-1: var(--space-2);    /* high */
+  --scene-sky-night-2: var(--charcoal-1); /* low */
+  --scene-sky-night-3: var(--charcoal-2); /* horizon: a touch lighter than zenith */
+  --scene-glow-night:  var(--glacial-1);  /* a cold, faint horizon pool (moonlight, not sun) */
+  --scene-haze-night:  var(--charcoal-1); /* dark recessive veil between night planes */
+  /* BRIGHT cool stars against the deep night sky. Pinned to the FIXED
+     --scene-star-base (#F4F7FA), NOT var(--ice-2): --ice-2 inverts to #0D1019
+     under the dark cascade — byte-identical to --space-2, the night sky's
+     "high" stop — so var(--ice-2) stars rendered at ≈1.04:1 (invisible) on the
+     most-viewed dark-mode cell. The fixed base + the dark override below keep
+     stars bright (≈8:1) wherever night/dusk paints. */
+  --scene-star-night:  var(--scene-star-base); /* bright cool stars against the deep sky */
+
   /* edge-reservation seam (SPR-06 M3) — the single source of truth for the
      always-on ad border's inset. AppShell's outer frame reserves these four
      edges as padding so the working region sits INSIDE them. DEFAULT 0:
@@ -201,6 +294,25 @@
        for elements that read var(--border)/var(--rule), and components keep
        their explicit dark:border-charcoal-1 override. */
     --rule:       #606C7E;
+
+    /* Deep sky ramp (ALC SPR-05 M3) — identical to day: the night SKY is a
+       deep surface in both OS themes (it is the sky, not a UI card). Kept here
+       explicitly so var(--space-*)/var(--charcoal-*) resolve under the night
+       cascade without falling back to an empty string. */
+    --space-1:    #080A10;
+    --space-2:    #0D1019;
+    --charcoal-1: #13171F;
+    --charcoal-2: #1B202A;
+
+    /* STAR COLOUR override (ALC SPR-05 M3, sharpen R2 — Defect 1). The day
+       default --scene-star-base is the bright cool #F4F7FA; we re-assert the
+       SAME bright tone here so the star colour is FIXED across the cascade and
+       can never inherit/track the inverting --ice ramp. The night/dusk skies
+       are deep in BOTH themes, so bright stars must stay bright in BOTH. With
+       this, --scene-star-{night,dusk,dawn} → #F4F7FA over the dark night sky
+       stops (#080A10…#1B202A) = WCAG ~8:1, well above the 1.4.11 3:1 floor.
+       (The old var(--ice-2) value collapsed to ≈1.04:1 here — invisible.) */
+    --scene-star-base:  #F4F7FA;
 
     --page:       #0D1019;
     --card:       #1B202A;

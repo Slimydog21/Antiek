@@ -1,30 +1,59 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`ProceduralSky — deterministic fallback > renders a deliberate day sky + seeded peaks (snapshot) 1`] = `
+exports[`ProceduralSky — layered atmosphere (M2) > renders the layered atmosphere for day (snapshot) 1`] = `
 <div
   aria-hidden="true"
-  class="absolute inset-0 bg-gradient-to-b from-glacial-1 via-ice-3 to-ice-1"
+  class="absolute inset-0 overflow-hidden"
+  data-daypart="day"
   data-mood="day|snow"
   data-testid="procedural-sky"
 >
+  <div
+    class="absolute inset-0"
+    data-sky-layer="gradient"
+    style="background: linear-gradient(to bottom, var(--scene-sky-day-0) 0%, var(--scene-sky-day-1) 38%, var(--scene-sky-day-2) 68%, var(--scene-sky-day-3) 100%);"
+  />
+  <div
+    class="absolute inset-0"
+    data-sky-layer="glow"
+    style="background: radial-gradient(120% 60% at 50% 100%, var(--scene-glow-day) 0%, transparent 62%); opacity: 0.75;"
+  />
   <svg
     class="absolute inset-0 h-full w-full"
     focusable="false"
     preserveAspectRatio="none"
     viewBox="0 0 100 100"
   >
-    <path
-      class="fill-glacial-1"
-      d="M -2,102 L 0.00,79.58 L 6.25,79.89 L 12.50,79.32 L 18.75,77.28 L 25.00,77.30 L 31.25,74.64 L 37.50,72.15 L 43.75,70.63 L 50.00,67.68 L 56.25,67.45 L 62.50,67.24 L 68.75,66.90 L 75.00,66.34 L 81.25,65.75 L 87.50,67.03 L 93.75,68.86 L 100.00,73.57 L 102,102 Z"
-    />
-    <path
-      class="fill-glacial-2"
-      d="M -2,102 L 0.00,61.64 L 6.25,58.57 L 12.50,50.14 L 18.75,49.83 L 25.00,48.44 L 31.25,49.30 L 37.50,49.31 L 43.75,49.60 L 50.00,50.13 L 56.25,52.54 L 62.50,53.66 L 68.75,57.81 L 75.00,58.05 L 81.25,59.57 L 87.50,56.58 L 93.75,63.58 L 100.00,65.60 L 102,102 Z"
-    />
-    <path
-      class="fill-shadow-1"
-      d="M -2,102 L 0.00,53.07 L 6.25,47.17 L 12.50,47.77 L 18.75,36.04 L 25.00,36.04 L 31.25,36.04 L 37.50,36.04 L 43.75,36.04 L 50.00,36.04 L 56.25,36.04 L 62.50,36.99 L 68.75,37.65 L 75.00,41.70 L 81.25,41.20 L 87.50,43.47 L 93.75,49.25 L 100.00,56.37 L 102,102 Z"
-    />
+    <g
+      data-band="0"
+    >
+      <path
+        class="fill-glacial-1"
+        d="M -2,102 L 0.00,79.58 L 6.25,79.89 L 12.50,79.32 L 18.75,77.28 L 25.00,77.30 L 31.25,74.64 L 37.50,72.15 L 43.75,70.63 L 50.00,67.68 L 56.25,67.45 L 62.50,67.24 L 68.75,66.90 L 75.00,66.34 L 81.25,65.75 L 87.50,67.03 L 93.75,68.86 L 100.00,73.57 L 102,102 Z"
+      />
+      <path
+        d="M -2,102 L 0.00,79.58 L 6.25,79.89 L 12.50,79.32 L 18.75,77.28 L 25.00,77.30 L 31.25,74.64 L 37.50,72.15 L 43.75,70.63 L 50.00,67.68 L 56.25,67.45 L 62.50,67.24 L 68.75,66.90 L 75.00,66.34 L 81.25,65.75 L 87.50,67.03 L 93.75,68.86 L 100.00,73.57 L 102,102 Z"
+        data-sky-layer="haze"
+        fill="var(--scene-haze-day)"
+        opacity="0.34"
+      />
+    </g>
+    <g
+      data-band="1"
+    >
+      <path
+        class="fill-glacial-2"
+        d="M -2,102 L 0.00,61.64 L 6.25,58.57 L 12.50,50.14 L 18.75,49.83 L 25.00,48.44 L 31.25,49.30 L 37.50,49.31 L 43.75,49.60 L 50.00,50.13 L 56.25,52.54 L 62.50,53.66 L 68.75,57.81 L 75.00,58.05 L 81.25,59.57 L 87.50,56.58 L 93.75,63.58 L 100.00,65.60 L 102,102 Z"
+      />
+    </g>
+    <g
+      data-band="2"
+    >
+      <path
+        class="fill-shadow-1"
+        d="M -2,102 L 0.00,53.07 L 6.25,47.17 L 12.50,47.77 L 18.75,36.04 L 25.00,36.04 L 31.25,36.04 L 37.50,36.04 L 43.75,36.04 L 50.00,36.04 L 56.25,36.04 L 62.50,36.99 L 68.75,37.65 L 75.00,41.70 L 81.25,41.20 L 87.50,43.47 L 93.75,49.25 L 100.00,56.37 L 102,102 Z"
+      />
+    </g>
   </svg>
 </div>
 `;
