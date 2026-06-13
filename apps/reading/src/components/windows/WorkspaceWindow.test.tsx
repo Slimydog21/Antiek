@@ -11,6 +11,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 
 import { WorkspaceWindow } from "./WorkspaceWindow";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
+import { Z_BANDS, zIndex } from "../../shell/zScale";
 
 function stubMatchMedia(reduce: boolean): void {
   Object.defineProperty(window, "matchMedia", {
@@ -233,13 +234,34 @@ describe("WorkspaceWindow — reduced motion (M8)", () => {
   });
 });
 
-// Ensure WINDOW_Z_BASE is applied to the rendered z-index (over the scene).
-describe("WorkspaceWindow — z stacking", () => {
-  it("applies WINDOW_Z_BASE + win.z as the rendered z-index", () => {
+// Ensure a window renders inside the documented `windows` z-band — over the
+// scene, but ALWAYS UNDER the bars (the F-1 fix, SPR-08 M1). The rendered z is
+// mapped from the store's monotonic counter via the shell z-scale, which clamps
+// it into the band so no window can climb into the nav chrome.
+describe("WorkspaceWindow — z stacking (F-1 band invariant)", () => {
+  it("renders inside the windows band, over the scene and under the bars", () => {
     const id = w().open("library", {});
     const { container } = renderWindow(id);
     const root = container.querySelector(`[data-workspace-window='${id}']`) as HTMLElement;
     const z = Number(root.style.zIndex);
-    expect(z).toBeGreaterThan(WINDOW_Z_BASE);
+    // Over the scene (≥ the base), inside the windows band, strictly below bars.
+    expect(z).toBeGreaterThanOrEqual(WINDOW_Z_BASE);
+    expect(z).toBeGreaterThanOrEqual(Z_BANDS.windows.min);
+    expect(z).toBeLessThan(Z_BANDS.windows.max);
+    expect(z).toBeLessThan(zIndex.bar);
+  });
+
+  it("keeps EVERY window in the band even after many focus restacks", () => {
+    // Open + refocus repeatedly to climb the monotonic counter; the rendered z
+    // must never escape the band into the bars (the clamp's whole job).
+    const ids = ["a", "b", "c"].map((k) => w().open(k, {}));
+    for (let i = 0; i < 50; i++) w().focus(ids[i % ids.length]);
+    for (const id of ids) {
+      const { container } = renderWindow(id);
+      const root = container.querySelector(`[data-workspace-window='${id}']`) as HTMLElement;
+      const z = Number(root.style.zIndex);
+      expect(z).toBeLessThan(Z_BANDS.windows.max);
+      expect(z).toBeLessThan(zIndex.bar);
+    }
   });
 });

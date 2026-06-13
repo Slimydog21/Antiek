@@ -11,6 +11,7 @@ import {
   type Workflow,
 } from "./workflowTaxonomy";
 import { ProductsLauncher } from "./ProductsLauncher";
+import { zIndex } from "./zScale";
 import IglooMark from "../brand/werner/marks/IglooMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
@@ -200,7 +201,14 @@ function RailButton({
       data-product-id={productId}
       className={
         (orientation === "left" ? "mx-1.5 " : "mx-0.5 ") +
-        "flex rounded relative " +
+        // SPR-08 M3 — `feel-focusable` closes the focus-bypass: every rail door
+        // (Search, the four workflows, More) now carries the shared keyboard
+        // focus-visible ring (design/feel-focus.css, `outline 2px var(--sun)`),
+        // which previously had ZERO consumers. `transition-colors duration-base`
+        // (motion token, no raw ms) gives the hover/active colour shift a
+        // coherent timing. Rest/hover/active colours come from `color` above;
+        // focus-visible adds the ring; disabled is n/a (rail doors never disable).
+        "feel-focusable flex rounded relative transition-colors duration-base ease-standard " +
         layout +
         " " +
         color
@@ -278,7 +286,11 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
         title="Open navigation"
         aria-label="Open navigation"
         onClick={() => setCollapsed(false)}
-        className="absolute top-2 left-2 z-50 w-9 h-9 flex flex-col items-center justify-center gap-1 bg-ink text-sun border-edge border-sun rounded shadow-z2"
+        // z: bar-floating — the collapsed-rail toggle must sit above sibling bar
+        // chrome (shell/zScale.ts `barFloating`). Inline so it reads the token.
+        style={{ zIndex: zIndex.barFloating }}
+        // SPR-08 M3 — feel-focusable focus-visible ring (was no keyboard focus).
+        className="feel-focusable absolute top-2 left-2 w-9 h-9 flex flex-col items-center justify-center gap-1 bg-ink text-sun border-edge border-sun rounded shadow-z2 transition-colors duration-base ease-standard hover:bg-shadow-2"
       >
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
         <span className="w-4 h-0.5 bg-sun" aria-hidden="true" />
@@ -410,9 +422,19 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
     return (
       <>
         <aside
+          // z: bar band (shell/zScale.ts `bar`) on EVERY tier — the F-1 fix. The
+          // rail carries `zIndex.bar` whether it is `relative` (desktop, in flow)
+          // or `absolute` (mobile, overlaying). This is load-bearing: on desktop
+          // the rail was previously a STATIC sibling (z:auto) that a positioned
+          // window layer out-painted, hiding the nav chrome; making the rail a
+          // POSITIONED bar-band element means the whole windows band (which lives
+          // inside the working region's z:auto context) paints strictly UNDER it.
+          // Pre-SPR-08 this was a raw z-40 set only on mobile (and it TIED
+          // WINDOW_Z_BASE, outranking the windows layer z-30 inconsistently).
+          style={{ position: isMobile ? "absolute" : "relative", zIndex: zIndex.bar }}
           className={
             "h-14 w-full shrink-0 flex items-stretch bg-ink dark:bg-void border-t-edge border-sun " +
-            (isMobile ? "absolute bottom-0 left-0 z-40 shadow-z3" : "") +
+            (isMobile ? "bottom-0 left-0 shadow-z3" : "") +
             (showRail ? "" : " hidden")
           }
           aria-label="Primary navigation"
@@ -440,9 +462,13 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
   return (
     <>
       <aside
+        // z: bar band (shell/zScale.ts `bar`) on every tier — same F-1 contract
+        // as the bottom rail. `relative` (desktop, in flow) or `absolute` (mobile)
+        // both carry the bar z so the windows band paints strictly under the rail.
+        style={{ position: isMobile ? "absolute" : "relative", zIndex: zIndex.bar }}
         className={
           "w-[72px] shrink-0 h-full flex flex-col bg-ink dark:bg-void border-r-edge border-sun " +
-          (isMobile ? "absolute top-0 left-0 z-40 shadow-z3" : "") +
+          (isMobile ? "top-0 left-0 shadow-z3" : "") +
           (showRail ? "" : " hidden")
         }
         aria-label="Primary navigation"
@@ -453,7 +479,8 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
             title="Close navigation"
             aria-label="Close navigation"
             onClick={() => setCollapsed(true)}
-            className="absolute -right-8 top-1 w-8 h-8 flex items-center justify-center bg-ink text-sun border-edge border-sun rounded text-[13px]"
+            // SPR-08 M3 — feel-focusable focus-visible ring + token transition.
+            className="feel-focusable absolute -right-8 top-1 w-8 h-8 flex items-center justify-center bg-ink text-sun border-edge border-sun rounded text-[13px] transition-colors duration-base ease-standard hover:bg-shadow-2"
           >
             ✕
           </button>

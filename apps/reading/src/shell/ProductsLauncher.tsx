@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonTag } from "../components/lemon/LemonTag";
+import { zIndex } from "./zScale";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
 import {
   MODE_TAXONOMY,
@@ -56,7 +57,7 @@ const RUN_LABELS: Record<string, string> = {
  * source used by rail, tree, stubs and palette.
  *
  * Presentation note (post M4 sharpen): rendered as a fixed centered overlay
- * (inset-0 z-50 pt-20 w-[760px] card, role=dialog aria-modal). The "drawer"
+ * (inset-0 launcher-band z pt-20 w-[760px] card, role=dialog aria-modal). The "drawer"
  * language in the broader spec is aspirational; the implementation is a
  * modal/overlay for immediate accessibility and keyboard parity with ⌘K.
  */
@@ -195,7 +196,11 @@ export function ProductsLauncher({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-ink/40 flex items-start justify-center pt-20"
+      // z: launcher band (shell/zScale.ts `launcher`) — a rail-spawned overlay
+      // that sits just above the bars, below Werner/modals. Inline so it reads
+      // the token (was a raw z-50).
+      style={{ zIndex: zIndex.launcher }}
+      className="fixed inset-0 bg-ink/40 flex items-start justify-center pt-20"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -223,7 +228,12 @@ export function ProductsLauncher({
             }}
             onKeyDown={onSearchKeyDown}
             placeholder="Filter…"
-            className="mt-3 w-full px-3 py-2 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight outline-none focus:border-sun"
+            // SPR-08 M3 — the bare `:focus` (the rubric's named level-1 symptom:
+            // it fires on a MOUSE click, not keyboard-only) is replaced by
+            // `:focus-visible` for the border-accent, PLUS the shared
+            // feel-focusable ring for a keyboard-legible outline. Rest border is
+            // --rule; focus-visible deepens it to --sun and adds the ring.
+            className="feel-focusable mt-3 w-full px-3 py-2 text-sm bg-ice-2 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-ink dark:text-bright placeholder:text-ink-mute dark:placeholder:text-moonlight outline-none transition-colors duration-base ease-standard focus-visible:border-sun"
           />
         </div>
 
@@ -246,7 +256,7 @@ export function ProductsLauncher({
                 navigate("/home");
                 onClose();
               }}
-              className="w-full text-left px-2 py-1.5 rounded flex items-center gap-2 hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
+              className="feel-focusable w-full text-left px-2 py-1.5 rounded flex items-center gap-2 hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer transition-colors duration-base ease-standard"
             >
               <span className="flex-1 min-w-0 truncate text-[13px]">
                 Antiek home — what you can do, and where to start
@@ -294,7 +304,7 @@ export function ProductsLauncher({
                             // workflow in a window"; an eligible mode is "Open <Mode>
                             // in a window" with no "workflow" token).
                             aria-label={`Open ${g.label} workflow in a window`}
-                            className="w-full text-left font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright cursor-pointer flex items-center gap-1.5"
+                            className="feel-focusable w-full text-left font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright cursor-pointer flex items-center gap-1.5 transition-colors duration-base ease-standard"
                           >
                             <span className="flex-1 min-w-0 truncate">{g.label}</span>
                             <span aria-hidden="true" className="shrink-0 normal-case tracking-normal opacity-70">
@@ -312,7 +322,7 @@ export function ProductsLauncher({
                                 title={m.blurb}
                                 data-mode-id={m.id}
                                 className={
-                                  "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
+                                  "feel-focusable flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 transition-colors duration-base ease-standard " +
                                   (m.built
                                     ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
                                     : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
@@ -335,7 +345,7 @@ export function ProductsLauncher({
                                   onClick={() => openModeInWindow(m)}
                                   title={`Open ${m.label} in a floating window over the scene`}
                                   aria-label={`Open ${m.label} in a window`}
-                                  className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
+                                  className="feel-focusable shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright transition-colors duration-base ease-standard"
                                 >
                                   ⊞
                                 </button>
@@ -364,7 +374,7 @@ export function ProductsLauncher({
                           title={m.blurb}
                           data-mode-id={m.id}
                           className={
-                            "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
+                            "feel-focusable flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 transition-colors duration-base ease-standard " +
                             (m.built
                               ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
                               : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
@@ -387,7 +397,7 @@ export function ProductsLauncher({
                             onClick={() => openModeInWindow(m)}
                             title={`Open ${m.label} in a floating window over the scene`}
                             aria-label={`Open ${m.label} in a window`}
-                            className="shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright"
+                            className="feel-focusable shrink-0 px-1.5 py-1 rounded text-[12px] text-shadow-1 dark:text-moonlight hover:bg-sun/20 dark:hover:bg-sun/10 hover:text-ink dark:hover:text-bright transition-colors duration-base ease-standard"
                           >
                             ⊞
                           </button>

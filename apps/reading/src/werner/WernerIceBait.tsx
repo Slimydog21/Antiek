@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { zIndex } from "../shell/zScale";
 import { wernerIceFishingCursor } from "./iceFishingFlags";
 import { useMouseFollow, type UseMouseFollowOptions } from "./useMouseFollow";
 import "./ice-fishing.css";
@@ -47,7 +48,16 @@ export function WernerIceBait({ disabled = false, now }: WernerIceBaitProps) {
   if (!wernerIceFishingCursor || disabled) return null;
 
   return (
-    <span ref={elRef} className="werner-ice-bait" aria-hidden="true">
+    <span
+      ref={elRef}
+      className="werner-ice-bait"
+      aria-hidden="true"
+      // z: driven from the single z-scale token (ALC SPR-08 deferral 4a) — the
+      // bait sits at the werner band floor, with the fishing-line cursor layer
+      // (WernerFishingLayer uses the same `zIndex.werner`), just under the mascot
+      // (`wernerMascot`). No CSS literal mirror to desync; the token is the source.
+      style={{ zIndex: zIndex.werner }}
+    >
       <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
         <ellipse className="werner-ice-bait__worm" cx="5" cy="5.5" rx="3" ry="2" />
         <circle className="werner-ice-bait__hook" cx="7.5" cy="3" r="0.8" />

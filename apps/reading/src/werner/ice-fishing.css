@@ -15,7 +15,8 @@
 
 .werner-ice-bait {
   position: fixed;
-  z-index: 59;
+  /* z-index is set INLINE from the z-scale token (zIndex.werner) in
+     WernerIceBait.tsx — no CSS literal to desync (ALC SPR-08 deferral 4a). */
   pointer-events: none;
   width: 10px;
   height: 10px;

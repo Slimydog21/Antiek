@@ -2,6 +2,7 @@ import { AnimatePresence } from "framer-motion";
 import { Suspense } from "react";
 
 import { useWindows } from "../../workspace/windowsStore";
+import { zIndex } from "../../shell/zScale";
 import { WINDOW_PAGES } from "./openWindow";
 import { WorkspaceWindow } from "./WorkspaceWindow";
 
@@ -30,7 +31,11 @@ export function WindowsLayer() {
   if (order.length === 0) return null;
 
   return (
-    <div data-windows-layer className="absolute inset-0 pointer-events-none z-30">
+    <div
+      data-windows-layer
+      className="absolute inset-0 pointer-events-none"
+      style={{ zIndex: zIndex.windowsLayer }}
+    >
       <AnimatePresence>
         {order.map((id) => {
           const win = windows[id];

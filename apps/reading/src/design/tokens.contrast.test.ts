@@ -40,6 +40,9 @@
  * reddens. The browser gate (e2e/token-retone.spec.ts) proves the same facts
  * on live rendered pixels.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { contrastRatio, over, relativeLuminance, type Rgb, type Rgba } from "../../e2e/_ams/visible";
@@ -89,6 +92,66 @@ const INK_NIGHT = hex(surface.night[9]); // night prose text (--ink / bright)
 
 const AA_TEXT = 4.5; // WCAG 1.4.3 (text over its background)
 const AA_NONTEXT = 3.0; // WCAG 1.4.11 (non-text / UI-edge contrast)
+
+// ── CSS-custom-property resolver (for the badge AA gate, ALC SPR-08 M2) ───────
+// The SceneStatusBadge consumes `--badge-text` over `--badge-bg`, both defined
+// ONLY in tokens.css (the night `--badge-text` has no named TS mirror — it is
+// `--shadow-2`'s night override). To make the badge AA floor a REAL gate
+// (not a comment), we read the badge pair STRAIGHT FROM tokens.css — the exact
+// source the badge renders against — and resolve its `var()` chain per theme.
+// Day = the top `:root { … }` block; night = the `@media (prefers-color-scheme:
+// dark) :root { … }` block (the only two theme scopes — theme is driven purely
+// by prefers-color-scheme, verified in index.css). A future edit that reverts
+// `--badge-text` to a translucent/lower-contrast value reddens HERE.
+const TOKENS_CSS = readFileSync(resolve(import.meta.dirname, "./tokens.css"), "utf8");
+
+/** Slice the body of the FIRST `:root { … }` at/after `fromIndex` (brace-matched). */
+function rootBlockBody(css: string, fromIndex: number): string {
+  const rootAt = css.indexOf(":root", fromIndex);
+  const open = css.indexOf("{", rootAt);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}") {
+      depth--;
+      if (depth === 0) return css.slice(open + 1, i);
+    }
+  }
+  throw new Error("tokens.css: unbalanced :root block");
+}
+
+const DAY_BLOCK = rootBlockBody(TOKENS_CSS, 0);
+const NIGHT_BLOCK = rootBlockBody(TOKENS_CSS, TOKENS_CSS.indexOf("prefers-color-scheme: dark"));
+
+/** Read the LAST declaration of `--name` in a block body (later wins, like CSS). */
+function declValue(blockBody: string, name: string): string {
+  const re = new RegExp(`--${name}\\s*:\\s*([^;]+);`, "g");
+  let last: string | undefined;
+  for (const m of blockBody.matchAll(re)) last = m[1].trim();
+  if (last === undefined) throw new Error(`tokens.css: --${name} not declared in block`);
+  return last;
+}
+
+/**
+ * Resolve a CSS custom property to a concrete colour, following `var(--x)`
+ * chains within the theme block (night falls back to day for vars it doesn't
+ * override — real CSS cascade). Returns a `#RRGGBB` hex (the badge tokens all
+ * resolve to a solid hex).
+ */
+function resolveVar(name: string, nightBlock: string | null): string {
+  const seen = new Set<string>();
+  const step = (n: string): string => {
+    if (seen.has(n)) throw new Error(`tokens.css: var cycle at --${n}`);
+    seen.add(n);
+    // Night overrides win; otherwise fall back to the day :root declaration.
+    let raw: string;
+    if (nightBlock && new RegExp(`--${n}\\s*:`).test(nightBlock)) raw = declValue(nightBlock, n);
+    else raw = declValue(DAY_BLOCK, n);
+    const m = raw.match(/^var\(\s*--([\w-]+)\s*\)$/);
+    return m ? step(m[1]) : raw;
+  };
+  return step(name);
+}
 
 /** Contrast of prose `text` over a translucent `veil` composited on `surface`. */
 function highlighterContrast(veil: string, surface: Rgb, text: Rgb): number {
@@ -187,6 +250,29 @@ describe("AMS-SPR-09 token re-tone — every consumed pair still clears WCAG", (
       const glowN = hex(sun.glow.night);
       const vn = rgba(sun.highlight.night);
       expect([vn.r, vn.g, vn.b]).toEqual([glowN.r, glowN.g, glowN.b]);
+    });
+  });
+
+  // ── M2 (ALC SPR-08, closes SPR-05→SPR-08 deferral a): the operator badge ──
+  // The SceneStatusBadge AA fix was previously asserted only structurally
+  // (SceneStatusBadge.test.tsx checks it consumes --badge-bg/--badge-text). This
+  // is the NUMERIC gate it deferred to: --badge-text over --badge-bg must clear
+  // AA-normal (4.5:1) on BOTH themes, read from tokens.css (the real source). A
+  // token edit that drops the badge below AA reddens here — the hollow gate is
+  // now a real one.
+  describe("M2 — the operator badge text clears AA over its opaque chip, both themes", () => {
+    it("day --badge-text over --badge-bg ≥ 4.5:1", () => {
+      const text = hex(resolveVar("badge-text", null));
+      const bg = hex(resolveVar("badge-bg", null));
+      // The recorded day pair (shadow-1 over glass-bg-solid) is 6.38:1.
+      expect(contrastRatio(text, bg)).toBeGreaterThanOrEqual(AA_TEXT);
+    });
+
+    it("night --badge-text over --badge-bg ≥ 4.5:1", () => {
+      const text = hex(resolveVar("badge-text", NIGHT_BLOCK));
+      const bg = hex(resolveVar("badge-bg", NIGHT_BLOCK));
+      // The recorded night pair (night shadow-2 over night glass-bg-solid) is 6.95:1.
+      expect(contrastRatio(text, bg)).toBeGreaterThanOrEqual(AA_TEXT);
     });
   });
 

@@ -55,26 +55,32 @@ const SceneCell = ({ scene }: { scene: SceneMood }) => {
  *  rationale shown. The two states the app emits today (day|snow, night|snow)
  *  are live; the rest light up when SPR-06's phase drift emits them. */
 export const SceneRestingPoses: Story = {
-  render: () => (
-    <div className="min-h-screen bg-ice-2 p-8 dark:bg-space-2">
-      <h1 className="mb-1 font-serif text-xl text-ink dark:text-bright">
-        Werner — scene resting poses
-      </h1>
-      <p className="mb-6 max-w-2xl font-serif text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
-        Werner notices the weather he stands in. Every one of the eight scene
-        states resolves to a sanctioned pose; where the pose set has no bespoke
-        art, the cue falls back to the closest existing pose and the gap is
-        recorded for a future art session (marked “gap”).
-      </p>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {DAY_PARTS.flatMap((dayPart) =>
-          WEATHERS.map((weather) => (
-            <SceneCell key={`${dayPart}|${weather}`} scene={{ dayPart, weather }} />
-          )),
-        )}
+  // BLOCK-bodied render (mirrors DelightMoments). The CSF babel indexer chokes on
+  // an EXPRESSION-bodied `render: () => ( <JSX/> )` in this file's cumulative
+  // token context (ALC SPR-08, fixing inherited SPR-07 build-storybook break);
+  // the JSX is unchanged — only the arrow-body shape.
+  render: () => {
+    return (
+      <div className="min-h-screen bg-ice-2 p-8 dark:bg-space-2">
+        <h1 className="mb-1 font-serif text-xl text-ink dark:text-bright">
+          Werner — scene resting poses
+        </h1>
+        <p className="mb-6 max-w-2xl font-serif text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
+          Werner notices the weather he stands in. Every one of the eight scene
+          states resolves to a sanctioned pose; where the pose set has no bespoke
+          art, the cue falls back to the closest existing pose and the gap is
+          recorded for a future art session (marked “gap”).
+        </p>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {DAY_PARTS.flatMap((dayPart) =>
+            WEATHERS.map((weather) => (
+              <SceneCell key={`${dayPart}|${weather}`} scene={{ dayPart, weather }} />
+            )),
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  },
 };
 
 const TransitionCell = ({

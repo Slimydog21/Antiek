@@ -183,6 +183,11 @@ export const GlassSurface = forwardRef<HTMLElement, GlassSurfaceProps>(
               aria-hidden + pointer-events-none so it is purely presentational.
               `inset-0` here covers the backing div, which spans the full scroll
               content (see the WHY above), not just the visible client box. */}
+          {/* `-z-10` is a LOCAL stack INSIDE this glass surface's own stacking
+              context (`isolate` on the Component above) — it only puts the scrim
+              BEHIND this surface's own content. It is NOT a shell-family z and is
+              deliberately outside the zScale band system (which orders whole
+              surfaces, not a surface's internal layers). */}
           <span
             aria-hidden="true"
             data-glass-scrim=""

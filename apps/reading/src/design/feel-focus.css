@@ -1,7 +1,41 @@
 /**
- * feel-focus.css — shared keyboard focus bundle (FEEL-S5).
- * Controls: ring-sun. Panels/windows use outline-sun on chrome (see consumers).
+ * feel-focus.css — shared keyboard focus bundle (FEEL-S5; upgraded ALC SPR-08 M3).
+ *
+ * THE RING IS DUAL-TONE (the SPR-08 M3 fix — legible over the living scene)
+ * -----------------------------------------------------------------------
+ * The first cut was a single `outline: 2px solid var(--sun)`. The loud lemon ring
+ * is brilliant over DARK chrome/scene (sun vs black ≈ 15:1) but NEARLY INVISIBLE
+ * over LIGHT surfaces — sun vs white/ice-1 ≈ 1.3:1, far below the WCAG 1.4.11
+ * non-text floor of 3:1. Shell controls sit on BOTH (the dark ink bars AND the
+ * light ice launcher/scene-chrome cards) and over the always-on scene (which can
+ * paint bright Krea art). A single-tone ring therefore failed the legibility
+ * coverage gate on half the surfaces.
+ *
+ * The fix is a DUAL-TONE ring, NOT dimming the scene (the brief's explicit
+ * escalation rule — never dim the scene to make chrome pass): the brand `--sun`
+ * outline carries the identity, and a tight `--ink` halo (box-shadow) rides just
+ * inside it. On a dark surface the sun layer clears the floor (12–15:1); on a
+ * light surface the ink layer does (17–18:1); and the two layers contrast each
+ * other 13.6:1 so the ring always reads AS a ring. Verified over the four worst
+ * scene/chrome cells in feel-focus.test.ts (black / white / ice-1 / charcoal-2):
+ * best-of-{sun,ink} ≥ 12:1 on every cell, well above the 3:1 floor.
+ *
+ * The halo uses a CSS var (`--feel-focus-halo`, default --ink) so a surface that
+ * needs the inverse tone can override it locally; the default works everywhere.
+ *
+ * `.feel-focusable`        — outline-style ring (default control ring).
+ * `.feel-focusable-ring`   — box-shadow-only ring (for inline/overflow-clipped
+ *                            controls where an outline would be clipped).
+ * Each pairs `:focus { outline: none }` so a MOUSE click never shows the ring;
+ * only `:focus-visible` (keyboard) does.
  */
+
+/* `--feel-focus-halo` is the FIXED DARK contrasting tone the dual-tone ring rides
+   on; it is defined in tokens.css (the token source of truth — a literal hex here
+   would break token-lint). It does NOT invert with the theme, so it always
+   contrasts the light --sun core AND is visible on light surfaces; on dark
+   surfaces the sun core carries the indicator. See tokens.css for the why. */
+
 .feel-focusable:focus {
   outline: none;
 }
@@ -9,6 +43,10 @@
 .feel-focusable:focus-visible {
   outline: 2px solid var(--sun);
   outline-offset: 2px;
+  /* The dual-tone halo: a 1px contrasting ring tight to the element, INSIDE the
+     2px offset gap, so on light surfaces (where --sun washes out) the --ink halo
+     carries the indicator. GPU-cheap (box-shadow only, no layout). */
+  box-shadow: 0 0 0 1px var(--feel-focus-halo);
 }
 
 .feel-focusable-ring:focus {
@@ -16,5 +54,9 @@
 }
 
 .feel-focusable-ring:focus-visible {
-  box-shadow: 0 0 0 2px var(--sun);
+  /* Box-shadow-only variant for inline/clipped controls: the same dual tone as
+     a stacked shadow — an inner --ink halo then the --sun ring outside it. */
+  box-shadow:
+    0 0 0 1px var(--feel-focus-halo),
+    0 0 0 3px var(--sun);
 }

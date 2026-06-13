@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
+import { zIndex } from "../shell/zScale";
 import { catenaryPath, rodTipFromMascotRect } from "./fishingLineGeometry";
 import { wernerIceFishingCursor } from "./iceFishingFlags";
 import { useMouseFollow } from "./useMouseFollow";
@@ -59,7 +60,10 @@ export function WernerFishingLayer({ disabled = false }: WernerFishingLayerProps
         width: "100%",
         height: "100%",
         pointerEvents: "none",
-        zIndex: 59,
+        // z: werner band floor (shell/zScale.ts `werner`) — the fishing-line
+        // cursor layer sits just UNDER the mascot itself (`wernerMascot`), over
+        // all other shell chrome. Sourced from the z-scale (was a raw 59).
+        zIndex: zIndex.werner,
       }}
     >
       <path

@@ -124,6 +124,27 @@
   --glass-bg-solid: #FBFCFD;                /* opaque fallback == --card-soft */
   --glass-border:   rgba(15,20,25,0.12);    /* --ink #0F1419 @ 0.12 hairline */
   --glass-blur:     12px;                    /* backdrop-filter radius */
+  /* Glass HAIRLINE WIDTH (ALC SPR-08 M2). The one named width every glass-chrome
+     hairline uses, so a "1px" literal never re-appears in a component (the badge
+     border was the last raw `1px solid` — now it reads this). Matches the
+     Tailwind `border` default (1px) the glass surfaces already paint; promoted to
+     a token so chrome hairlines share ONE source. (The chunky shell EDGE is the
+     separate, intentionally-different `--edge` 2.5px — see the deliberate table
+     in the SPR-08 handoff: hairline ≠ edge is a recorded decision, not a drift.) */
+  --glass-hairline-w: 1px;
+
+  /* OPERATOR SceneStatusBadge tokens (ALC SPR-08 M2 — closes SPR-05 deferral a).
+     The badge is a small OPERATOR-ONLY diagnostic chip over the living scene. On
+     `--glass-bg` (translucent) its `--text-muted` text fell to ~3.79:1 over a
+     dark night scene and ~1.13:1 over bright Krea art — below AA-normal 4.5:1 for
+     11px text. DECISION: the badge goes OPAQUE (`--badge-bg` == --glass-bg-solid,
+     no scene bleed) and uses a dedicated text token that clears AA over that
+     solid. Day --badge-text == --shadow-1 #4F5F70 → 6.38:1 over solid ✓; night
+     overrides to --shadow-2 #A0AAB8 → 6.95:1 over the night solid ✓. The chip is
+     a glance, not a content surface, so opacity is the right trade (the scene
+     still shows everywhere else). */
+  --badge-bg:   var(--glass-bg-solid);
+  --badge-text: var(--shadow-1);
 
   /* werner — five fills for the single-source <Werner> component.
      Bill + foot lock to --sun so the mark carries the brand constant at every size.
@@ -258,6 +279,17 @@
      stars bright (≈8:1) wherever night/dusk paints. */
   --scene-star-night:  var(--scene-star-base); /* bright cool stars against the deep sky */
 
+  /* Focus-ring halo (ALC SPR-08 M3) — the FIXED dark tone the dual-tone keyboard
+     focus ring rides on (design/feel-focus.css). It is FIXED (mode-invariant),
+     NOT var(--ink) which inverts to bright at night, for two reasons that both
+     break if it tracks the theme: (1) it must always CONTRAST the light --sun ring
+     core so the indicator reads as a ring (sun vs halo 13.6:1); (2) it must be
+     visible on LIGHT surfaces where the sun core washes out (vs white 18:1). On
+     DARK surfaces the sun core carries the ring (vs black 15:1). Together the two
+     layers clear the WCAG 1.4.11 3:1 floor over every scene/chrome cell — the
+     SPR-08 M3 over-scene legibility fix that needed NO scene dimming. == --ink day. */
+  --feel-focus-halo: #0F1419;
+
   /* edge-reservation seam (SPR-06 M3) — the single source of truth for the
      always-on ad border's inset. AppShell's outer frame reserves these four
      edges as padding so the working region sits INSIDE them. DEFAULT 0:
@@ -360,6 +392,17 @@
     --glass-bg-solid: #1B202A;              /* opaque fallback == night --card */
     --glass-border:   rgba(238,241,246,0.14); /* --ink(night) #EEF1F6 @ 0.14 */
     --glass-blur:     12px;
+    /* hairline width is mode-invariant (1px); re-declared so var(--glass-hairline-w)
+       resolves under the night cascade without falling back to empty. */
+    --glass-hairline-w: 1px;
+
+    /* SceneStatusBadge night (ALC SPR-08 M2). --badge-bg stays the opaque solid
+       (night --glass-bg-solid #1B202A). --badge-text LIFTS to --shadow-2 #A0AAB8
+       — the day default --shadow-1 #6B7585 clears only 3.50:1 over the night
+       solid (below AA), while --shadow-2 clears 6.95:1. This is the night half of
+       the badge AA fix. */
+    --badge-bg:   var(--glass-bg-solid);
+    --badge-text: var(--shadow-2);
 
     --werner-coat:  #0A0D14;
     --werner-belly: #DCE2EA;

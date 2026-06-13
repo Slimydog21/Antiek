@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
+import { zIndex } from "../../shell/zScale";
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -73,6 +74,11 @@ export function Topbar() {
 
   return (
     <header
+      // z: bar band (shell/zScale.ts `bar`) — the Topbar is bar chrome and must
+      // paint over the windows band (a window dragged up to the top edge stays
+      // UNDER the breadcrumb/account bar), consistent with the bottom NavRail.
+      // `relative` makes the z take effect (was a static, z:auto sibling).
+      style={{ position: "relative", zIndex: zIndex.bar }}
       className="h-11 shrink-0 flex items-center gap-3 px-4 bg-ice-1 dark:bg-charcoal-2 border-b-edge border-sun"
       role="banner"
     >

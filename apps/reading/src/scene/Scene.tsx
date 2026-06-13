@@ -11,6 +11,7 @@ import { Snow } from "./layers/Snow";
 import { PenguinJourney } from "./layers/PenguinJourney";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
 import { useSceneDrift } from "./useSceneDrift";
+import { zIndex } from "../shell/zScale";
 // The scene's consolidated keyframes + reduced-motion guard (one motion home,
 // sanctioned in motion.guard.test.ts) — see scene.css.
 import "./scene.css";
@@ -92,7 +93,11 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
+      // z: scene band floor (shell/zScale.ts `zIndex.scene` == 0) — the living
+      // mountainscape paints behind every shell family. Inline so it reads the
+      // single z-scale token (was a raw Tailwind `z-0`).
+      style={{ zIndex: zIndex.scene }}
+      className="pointer-events-none absolute inset-0 overflow-hidden"
       data-testid="scene-root"
       data-scene-mood={mood.dayPart}
       data-scene-frozen={frozen ? "true" : "false"}

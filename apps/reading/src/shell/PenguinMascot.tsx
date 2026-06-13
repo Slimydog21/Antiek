@@ -26,6 +26,7 @@ import {
   type WernerStageController,
   WernerRig,
 } from "../werner";
+import { zIndex } from "./zScale";
 import "../werner/waddle.css";
 
 /**
@@ -777,13 +778,17 @@ export function PenguinMascot() {
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       // Fixed so it floats over the whole app regardless of scroll/route.
-      // z below modals (100) + toasts (200) but above docked panels.
+      // z: werner band (shell/zScale.ts `wernerMascot`) — the autonomous mascot
+      // floats over all shell chrome (scene/windows/bars/launcher) yet below the
+      // modal (100) + toast (200) stacks. Inline so it reads the z-scale token
+      // (was a raw z-[60]).
       className={
-        "fixed z-[60] select-none touch-none cursor-grab active:cursor-grabbing " +
+        "fixed select-none touch-none cursor-grab active:cursor-grabbing " +
         "rounded-full p-0 border-0 bg-transparent " +
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun"
       }
       style={{
+        zIndex: zIndex.wernerMascot,
         width: MASCOT_SIZE,
         height: MASCOT_SIZE,
         // The idle waddle/wander. The CSS `werner-idle` sway rides on the

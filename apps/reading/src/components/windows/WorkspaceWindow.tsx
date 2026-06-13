@@ -6,6 +6,7 @@ import { shadowForStackDepth } from "../../design/elevation";
 import { clampRectToViewport } from "../../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { WINDOW_Z_BASE, useWindows } from "../../workspace/windowsStore";
+import { windowZIndex } from "../../shell/zScale";
 import type { AdFillView } from "../../modes/Reading/AdBorder";
 import { WindowHostProvider } from "./windowHostContext";
 import { WindowAdBorder } from "./WindowAdBorder";
@@ -219,15 +220,21 @@ export function WorkspaceWindow({
   const isFull = win.mode === "full";
 
   // Geometry. Full = fill the working region (inset-0); floating = the rect.
+  // Z: `win.z` is the store's monotonic focus counter (≥ WINDOW_Z_BASE); we map
+  // it to a real z-index via the shell z-scale, which CLAMPS it into the
+  // `windows` band so a window paints over the scene yet always UNDER the bars
+  // (the F-1 fix — windows < bars on every tier). The offset = win.z minus the
+  // base, so the most-recently-focused window still sorts topmost within the band.
+  const z = windowZIndex(win.z - WINDOW_Z_BASE);
   const geometry: React.CSSProperties = isFull
-    ? { position: "absolute", inset: 0, zIndex: WINDOW_Z_BASE + win.z }
+    ? { position: "absolute", inset: 0, zIndex: z }
     : {
         position: "absolute",
         top: win.rect.y,
         left: win.rect.x,
         width: win.rect.width,
         height: win.rect.height,
-        zIndex: WINDOW_Z_BASE + win.z,
+        zIndex: z,
       };
 
   // PERF (M7): the focused floating window gets live glass blur; unfocused
@@ -300,7 +307,7 @@ export function WorkspaceWindow({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => toggleMode(id)}
           aria-label={isFull ? "Restore window to floating" : "Expand window to full"}
-          className="px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
+          className="feel-focusable px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors duration-base ease-standard"
         >
           {isFull ? "❐" : "▢"}
         </button>
@@ -310,7 +317,7 @@ export function WorkspaceWindow({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => close(id)}
           aria-label="Close window"
-          className="px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-emperor"
+          className="feel-focusable px-1.5 leading-none text-[13px] text-shadow-1 dark:text-moonlight hover:text-emperor transition-colors duration-base ease-standard"
         >
           ✕
         </button>

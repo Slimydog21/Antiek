@@ -129,6 +129,30 @@ describe("SceneStatusBadge — the operator-only fallback rule", () => {
   });
 });
 
+describe("SceneStatusBadge — AA contrast on the operator chip (ALC SPR-08 M2, deferral a)", () => {
+  // The badge fix is token-side: it paints on the OPAQUE --badge-bg with a
+  // dedicated --badge-text that clears AA-normal (≥4.5:1) over that solid on BOTH
+  // themes (day 6.38:1, night 6.95:1 — computed in the SPR-08 handoff). We assert
+  // the STRUCTURE here (the badge consumes the AA-fixed token roles, not the old
+  // translucent/raw paths); the numeric AA floor for the underlying token VALUES
+  // is guarded by tokens.contrast.test.ts (the single AA math home, reading token
+  // exports — no raw hex re-introduced here, per the token-lint discipline).
+  it("the badge consumes the token roles (opaque bg + dedicated text), not the raw --text-muted/--glass-bg", () => {
+    const wrap = withAuth(OPERATOR);
+    const { getByTestId } = render(
+      wrap(<SceneStatusBadge isFallback reason="no_key" />) as JSX.Element,
+    );
+    const badge = getByTestId("scene-status-badge");
+    const style = badge.getAttribute("style") ?? "";
+    expect(style).toContain("var(--badge-bg)");
+    expect(style).toContain("var(--badge-text)");
+    expect(style).toContain("var(--glass-hairline-w)");
+    // The old translucent/raw paths are gone (no raw "1px solid", no --glass-bg
+    // as the chip fill, no --text-muted text).
+    expect(style).not.toContain("1px solid");
+  });
+});
+
 describe("SceneStatusBadge — wired through KreaArtLayer", () => {
   const fallbackArt = (reason: string | null): SceneArt => ({
     imageUrl: null,

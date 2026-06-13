@@ -117,7 +117,10 @@ export function ThreadBreadcrumb({
                 <button
                   type="button"
                   onClick={() => onJump?.(hop)}
-                  className="text-ink dark:text-bright hover:underline"
+                  // SPR-08 M3 — feel-focusable closes the focus bypass on the
+                  // navigable thread hop; hover = underline (rest = none), the
+                  // unbuilt/current segments above are non-interactive spans.
+                  className="feel-focusable rounded-sm text-ink dark:text-bright hover:underline transition-colors duration-base ease-standard"
                   data-testid={`thread-hop-${hop.workflow}`}
                 >
                   {label}

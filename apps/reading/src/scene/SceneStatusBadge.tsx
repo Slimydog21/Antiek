@@ -80,9 +80,15 @@ export function SceneStatusBadge({ isFallback, reason }: SceneStatusBadgeProps) 
         // token-lint. Dropped for token discipline (ALC SPR-05).
         padding: "2px 8px",
         borderRadius: "var(--radius-sm)",
-        background: "var(--glass-bg)",
-        border: "1px solid var(--glass-border)",
-        color: "var(--text-muted)",
+        // ALC SPR-08 M2 (closes SPR-05 deferral a) — the badge now paints on the
+        // OPAQUE badge surface (== --glass-bg-solid) with a dedicated --badge-text
+        // token, so its 11px operator text clears WCAG AA-normal (≥4.5:1) on BOTH
+        // themes: day 6.38:1, night 6.95:1. Over the prior translucent --glass-bg
+        // the text fell to ~3.79:1 (night) / ~1.13:1 (bright Krea art) — below AA.
+        // The hairline is the named --glass-hairline-w (no raw `1px`).
+        background: "var(--badge-bg)",
+        border: "var(--glass-hairline-w) solid var(--glass-border)",
+        color: "var(--badge-text)",
         font: "11px/1.4 var(--mono, ui-monospace, monospace)",
         letterSpacing: "0.01em",
         // Purely informational — never captures pointer events (the scene is
@@ -91,7 +97,11 @@ export function SceneStatusBadge({ isFallback, reason }: SceneStatusBadgeProps) 
         // Quiet + static: no animation, no transition.
         userSelect: "none",
         whiteSpace: "nowrap",
-        backdropFilter: "blur(var(--glass-blur, 12px))",
+        // The badge is opaque now, so the backdrop-blur is no longer load-bearing
+        // for legibility; kept as a subtle frost over the moving scene edge using
+        // the named --glass-blur (no raw px fallback — tokens.css is imported
+        // app-wide so the var is always defined).
+        backdropFilter: "blur(var(--glass-blur))",
       }}
     >
       {label}

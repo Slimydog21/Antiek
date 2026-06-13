@@ -26,10 +26,14 @@
  *   toggleMode  (id)                           expand ⇄ restore
  *   reset       ()                             wipe all windows
  *
- * Z-ordering: windows live ABOVE the scene but BELOW the in-page panel
- * floating layer's modals/toasts. A monotonic `zCounter` makes the most
- * recently focused window the topmost. The base is WINDOW_Z_BASE so a
- * window always sits over the scene (z≈0) yet under LemonModal (z=100).
+ * Z-ordering: windows live ABOVE the scene but BELOW the bars (Topbar/NavRail)
+ * and the in-page modal/toast stack — the documented `windows` band in
+ * shell/zScale.ts. A monotonic `zCounter` makes the most recently focused window
+ * the topmost WITHIN that band; WorkspaceWindow maps the counter to a real
+ * z-index via `windowZIndex`, which clamps it inside the band so no window can
+ * ever climb into the bars (the F-1 fix). The base is WINDOW_Z_BASE
+ * (== zScale `zIndex.windowBase`) so a window always sits over the scene yet
+ * under the nav chrome and LemonModal (z=100).
  *
  * ── AMS2-SPR-04: windows are now the DEFAULT for within-contract pages ──
  * As of the mountain-shell-v2 work, opening a window is no longer a buried,
@@ -65,6 +69,7 @@
 import { create } from "zustand";
 
 import { cascadeOffset } from "../design/elevation";
+import { zIndex } from "../shell/zScale";
 
 /** A window hosts a product page identified by its route kind. The kind is a
  *  free string (the route key); openWindow.ts maps each to a renderer. We do
@@ -144,9 +149,15 @@ type Store = WindowsSnapshot & WindowsActions;
  */
 export const MAX_WINDOWS = 8;
 
-/** Base z so a window always paints over the scene (z≈0) but under the
- *  in-page modal/toast stack (LemonModal z=100). */
-export const WINDOW_Z_BASE = 40;
+/**
+ * Base for the store's MONOTONIC focus counter (`win.z` = base, base+1, …) so
+ * the most-recently-focused window sorts topmost WITHIN the windows layer. This
+ * is an internal ordering value, NOT a rendered z-index: WorkspaceWindow maps it
+ * to a real z via `windowZIndex` (shell/zScale.ts), which clamps it into the
+ * `windows` band so a window paints over the scene yet UNDER the bars (the F-1
+ * fix — see zScale.ts). Sourced from the single z-scale (`zIndex.windowBase`) so
+ * the store and the renderer can never drift from the documented bands. */
+export const WINDOW_Z_BASE = zIndex.windowBase;
 
 /** Initial (and reset) state. With no persist middleware this is also the
  *  state every page LOAD starts in — a reload = zero windows, by design (see

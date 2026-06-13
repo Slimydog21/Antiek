@@ -213,7 +213,7 @@ export function ProjectTree({
             key={l.to}
             type="button"
             onClick={() => navigate(l.to)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left"
+            className="feel-focusable w-full flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left transition-colors duration-base ease-standard"
           >
             <span className="opacity-50">›</span>
             <span>{l.label}</span>
@@ -243,7 +243,7 @@ function Section({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="w-full flex items-center gap-1.5 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright"
+        className="feel-focusable w-full flex items-center gap-1.5 px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors duration-base ease-standard"
       >
         <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
         <span>{label}</span>
@@ -285,7 +285,7 @@ function NodeRow({
       <button
         type="button"
         onClick={onClick}
-        className="flex-1 flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left min-w-0"
+        className="feel-focusable flex-1 flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left min-w-0 transition-colors duration-base ease-standard"
         title="Click to open. Cmd/Ctrl+Click to open as floating panel."
       >
         <span aria-hidden="true" className="text-ink-mute dark:text-moonlight shrink-0">
@@ -306,10 +306,13 @@ function NodeRow({
         }}
         aria-label={pinned ? "Unpin" : "Pin"}
         className={
-          "px-2 py-1.5 shrink-0 text-[13px] " +
+          // SPR-08 M3 — feel-focusable; the unpinned star is opacity-0 until the
+          // row is hovered/focused. `group-focus-within:opacity-100` keeps it
+          // reachable for KEYBOARD users (hover alone hid it from the keyboard).
+          "feel-focusable px-2 py-1.5 shrink-0 text-[13px] transition-colors duration-base ease-standard " +
           (pinned
             ? "text-sun-deep dark:text-sun"
-            : "text-ink-mute dark:text-moonlight opacity-0 group-hover:opacity-100 hover:text-ink dark:hover:text-bright")
+            : "text-ink-mute dark:text-moonlight opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:text-ink dark:hover:text-bright")
         }
       >
         {pinned ? "★" : "☆"}

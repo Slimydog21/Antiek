@@ -49,7 +49,9 @@ describe("Scene — compositor", () => {
     const root = container.querySelector('[data-testid="scene-root"]') as HTMLElement;
     expect(root).toBeTruthy();
     expect(root.className).toContain("pointer-events-none");
-    expect(root.className).toContain("z-0");
+    // z-0 migrated to the shell z-scale token (SPR-08 M1): the scene band floor
+    // is now an inline zIndex:0 (shell/zScale.ts), not a Tailwind `z-0` class.
+    expect(root.style.zIndex).toBe("0");
     expect(root.className).toContain("absolute");
   });
 
