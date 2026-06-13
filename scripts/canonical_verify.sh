@@ -6,7 +6,7 @@
 #   cascade              — hermetic cascade contract + adapter + light route
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-11..P-15 hermetic harness (SPR-DRL-02)
+#   deep-research        — ANT-DRL P-11..P-16 hermetic harness (SPR-DRL-02, SPR-DRL-08)
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -81,6 +81,8 @@ cmd_deep_research() {
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
   echo "== deep-research: P-15 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
+  echo "== deep-research: P-16 Exa gather mock E2E =="
+  "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
 
