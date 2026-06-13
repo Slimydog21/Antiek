@@ -18,13 +18,16 @@
  *   pin / unpin  (id)                          survive route changes (S9)
  *   reset        ()                            wipe everything
  *
- * Z-index conventions (see src/workspace/README.md):
+ * Z-index conventions (see src/workspace/README.md). These are the named
+ * layers of the single z-index ladder (`src/design/zIndex.ts`) — the floating
+ * band starts at `zIndex.floatingPanelBase` (2) and the modal/toast ceilings
+ * are `zIndex.modal` (100) / `zIndex.toast` (200):
  *
  *   Dock chrome:       z = 0
- *   Docked panels:     z = 1
- *   Floating panels:   z = 2…50 (via zCounter)
- *   LemonModal:        z = 100
- *   LemonToast:        z = 200
+ *   Docked panels:     z = 1   (zIndex.raised)
+ *   Floating panels:   z = 2…50 (zIndex.floatingPanelBase…floatingPanelCeiling, via zCounter)
+ *   LemonModal:        z = 100 (zIndex.modal)
+ *   LemonToast:        z = 200 (zIndex.toast)
  */
 
 import { create } from "zustand";

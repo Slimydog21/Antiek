@@ -22,6 +22,8 @@
     "typecheck": "tsc -b --noEmit",
     "lint:tokens": "tsx scripts/lint_tokens.ts",
     "lint:tokens:update": "tsx scripts/lint_tokens.ts --update",
+    "lint:type": "tsx scripts/lint_type_scale.ts",
+    "lint:type:update": "tsx scripts/lint_type_scale.ts --update",
     "check:tokens": "tsx scripts/check_token_parity.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
