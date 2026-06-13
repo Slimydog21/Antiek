@@ -1,22 +1,21 @@
 /**
- * crossfade.test.tsx — AMS-v2 SPR-05 (Scene Engine: M2 — periodic-art crossfade).
+ * crossfade.test.tsx — AMS-v2 SPR-05 M2 crossfade mechanics, REBUILT for ALC
+ * SPR-06 M3 (choreographed, INTERRUPTIBLE crossfade).
  *
  * On a NO-GO (no generative stream), the Krea art is a SLOW, mood-gated tint
- * that swaps a handful of times a session. When it does swap, it must CROSSFADE
- * (no hard cut), and — critically — the procedural floor must keep ticking
- * THROUGH the swap (the crossfade never gates the clock), with the art staying
- * z-1 behind the clouds/snow canvases.
+ * that swaps a handful of times a session. When it swaps it must CROSSFADE (no
+ * hard cut), the procedural floor must keep ticking THROUGH the swap (the
+ * crossfade never gates the clock), and — NEW in SPR-06 — the crossfade must be
+ * INTERRUPTIBLE: a mood flip mid-fade retargets from the current visual state
+ * rather than restarting.
  *
- *   - a new generated frame (mood change → new live URL) promotes current→prev
- *     and bumps `fadeKey` (the crossfade trigger). [useSceneArt]
- *   - the procedural clock keeps incrementing `frame` ACROSS the swap (the
- *     crossfade is presentational; it does not touch the heartbeat). [useSceneClock]
- *   - KreaArtLayer renders the incoming art keyed on fadeKey with the
- *     `--motion-slow` / `--ease-standard` tokenized transition (no magic
- *     number, no hard cut), and renders NOTHING (z-1 placeholder) in fallback.
+ * The DOM-level mechanics changed in M3: the SPR-04 key-remount @keyframes
+ * became a two PERSISTENT slot CSS opacity TRANSITION (KreaArtLayer +
+ * crossfadeMachine). These tests pin the NEW mechanics; the interruption STATE
+ * MACHINE has its own pure unit test in crossfadeMachine.test.ts (rigor #3).
  *
  * The *visual* "the procedural layers kept moving while the art crossfaded" is
- * the e2e pixel-diff gate; here we pin the swap mechanics + the token usage.
+ * the e2e pixel-diff gate; here we pin the swap mechanics + token usage.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, renderHook } from "@testing-library/react";
@@ -25,6 +24,7 @@ import { waitFor } from "@testing-library/react";
 import { useSceneArt } from "./useSceneArt";
 import { subscribeSceneClock } from "./useSceneClock";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
+import { CROSSFADE } from "../design/motion/sceneMotion";
 import type { SceneArt } from "./useSceneArt";
 import type { SceneMood } from "./mood";
 import type { SceneResult, SceneState } from "../api/krea";
@@ -89,7 +89,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("M2 — a new generated frame triggers a fadeKey crossfade (no hard cut)", () => {
+describe("M2/M3 — a new generated frame triggers a crossfade (no hard cut); clock keeps ticking", () => {
   it("promotes current→prev and bumps fadeKey on the second frame; the clock keeps ticking across the swap", async () => {
     const { pump } = installControllableRaf();
     const { fn } = liveFetcher();
@@ -99,36 +99,29 @@ describe("M2 — a new generated frame triggers a fadeKey crossfade (no hard cut
       { initialProps: { mood: DAY } },
     );
 
-    // Frame 1 (DAY): live art arrives; fadeKey bumps once; no prev yet.
     await waitFor(() => expect(result.current.imageUrl).toBe("https://art/day.png"));
     const fadeKey1 = result.current.fadeKey;
     expect(fadeKey1).toBeGreaterThan(0);
     expect(result.current.prevImageUrl).toBeNull();
 
-    // Run the procedural floor across the swap window and capture the frame.
     const framesBefore: number[] = [];
     let stop = subscribeSceneClock((_t, f) => framesBefore.push(f), {
       reducedMotion: false,
     });
     pump(30);
     stop();
-    const frameBeforeSwap = framesBefore.at(-1)!;
-    expect(frameBeforeSwap).toBe(30);
+    expect(framesBefore.at(-1)).toBe(30);
 
-    // Frame 2 (NIGHT): the mood change is the only thing that fetches new art.
     rerender({ mood: NIGHT });
     await waitFor(() => expect(result.current.imageUrl).toBe("https://art/night.png"));
 
-    // CROSSFADE MECHANICS: previous URL is retained to fade out, fadeKey bumped.
+    // CROSSFADE MECHANICS (useSceneArt side, unchanged): previous URL retained,
+    // fadeKey bumped — KreaArtLayer turns this into a two-slot transition.
     expect(result.current.prevImageUrl).toBe("https://art/day.png");
     expect(result.current.fadeKey).toBeGreaterThan(fadeKey1);
 
-    // THE CLOCK KEPT TICKING ACROSS THE SWAP: a fresh subscriber continues to
-    // increment frames (the crossfade did not gate / reset the heartbeat).
     const framesAfter: number[] = [];
-    stop = subscribeSceneClock((_t, f) => framesAfter.push(f), {
-      reducedMotion: false,
-    });
+    stop = subscribeSceneClock((_t, f) => framesAfter.push(f), { reducedMotion: false });
     pump(30);
     stop();
     expect(framesAfter).toHaveLength(30);
@@ -137,7 +130,7 @@ describe("M2 — a new generated frame triggers a fadeKey crossfade (no hard cut
   });
 });
 
-describe("M2 — KreaArtLayer is presentational: tokenized crossfade, z-1, fallback paints nothing", () => {
+describe("M3 — KreaArtLayer is a two-slot opacity TRANSITION (interruptible), tokenized, fallback paints nothing", () => {
   const liveArt = (over: Partial<SceneArt> = {}): SceneArt => ({
     imageUrl: "https://art/night.png",
     prevImageUrl: "https://art/day.png",
@@ -148,38 +141,47 @@ describe("M2 — KreaArtLayer is presentational: tokenized crossfade, z-1, fallb
     ...over,
   });
 
-  it("uses the --motion-slow / --ease-standard tokens for the opacity transition (no magic number)", () => {
+  it("paints the live art into a persistent slot with the tokenized opacity transition (CROSSFADE.ms/easeIn) — no @keyframes", () => {
     const { container } = render(<KreaArtLayer art={liveArt()} />);
     const layer = container.querySelector('[data-testid="krea-art-layer"]') as HTMLElement;
     expect(layer.getAttribute("data-krea")).toBe("live");
-    // The incoming art keyed on fadeKey carries the tokenized opacity transition.
-    const incoming = container.querySelector(
-      '[data-krea="live"] > div:last-child',
-    ) as HTMLElement;
-    expect(incoming.style.transition).toContain("var(--motion-slow)");
-    expect(incoming.style.transition).toContain("var(--ease-standard)");
-    // The crossfade KEYFRAME (akb-krea-fade-in) lives in scene.css (motion home)
-    // and is referenced here via the var-driven animation — not a hard cut.
-    expect(incoming.style.animation).toContain("akb-krea-fade-in");
-    expect(incoming.style.animation).toContain("var(--motion-slow)");
+
+    // At least one slot paints the live art; it carries the tokenized transition.
+    const slots = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-krea-slot]"),
+    );
+    expect(slots.length).toBeGreaterThanOrEqual(1);
+    const front = slots.find((s) => s.style.opacity === String(CROSSFADE.paintedOpacity));
+    expect(front).toBeTruthy();
+    expect(front!.style.transition).toContain("opacity");
+    expect(front!.style.transition).toContain(CROSSFADE.ms);
+    expect(front!.style.transition).toContain(CROSSFADE.easeIn);
+    // The crossfade is a TRANSITION, not a keyframe animation (interruptible).
+    expect(front!.style.animation).toBe("");
+    // GPU-cheap hint.
+    expect(front!.style.willChange).toBe("opacity");
   });
 
-  it("under frozen (reduced-motion) drops the transition (static art, no animation)", () => {
+  it("under frozen (reduced-motion) the transition collapses to the near-instant dissolve (opacity only, no transform/keyframe)", () => {
     const { container } = render(<KreaArtLayer art={liveArt()} frozen />);
-    const incoming = container.querySelector(
-      '[data-krea="live"] > div:last-child',
-    ) as HTMLElement;
-    expect(incoming.style.transition).toBe("");
-    expect(incoming.style.animation).toBe("");
+    const slot = container.querySelector<HTMLElement>("[data-krea-slot]")!;
+    // Still an opacity transition (a designed dissolve), but near-instant.
+    expect(slot.style.transition).toContain("opacity");
+    expect(slot.style.transition).toContain(CROSSFADE.reducedMs);
+    // Never a transform transition, never a keyframe.
+    expect(slot.style.transition).not.toContain("transform");
+    expect(slot.style.animation).toBe("");
   });
 
-  it("fallback paints nothing (the procedural floor is the whole picture)", () => {
+  it("fallback paints nothing (no slots, no image divs) — the procedural floor is the whole picture", () => {
     const { container } = render(
       <KreaArtLayer art={liveArt({ isFallback: true, imageUrl: null, prevImageUrl: null })} />,
     );
     const layer = container.querySelector('[data-testid="krea-art-layer"]') as HTMLElement;
     expect(layer.getAttribute("data-krea")).toBe("fallback");
-    // No image divs rendered in fallback.
+    // No slot has ever been painted → no image divs (the badge self-gates to
+    // null with no AuthProvider). The layer is truly empty.
+    expect(layer.querySelectorAll("[data-krea-slot]").length).toBe(0);
     expect(layer.querySelectorAll("div").length).toBe(0);
   });
 });

@@ -6,17 +6,22 @@
  * every layer .tsx. This mirrors the Werner mascot's src/werner/waddle.css
  * pattern. Imported once by Scene.tsx.
  *
+ * ALC SPR-06 M3: the krea crossfade @keyframes (akb-krea-fade-in) was RETIRED.
+ * The art crossfade is now an INTERRUPTIBLE two-slot CSS opacity TRANSITION
+ * (KreaArtLayer.tsx + crossfadeMachine.ts), not a keyframe — a keyframe restarts
+ * from 0% on a mid-fade interrupt (a jump-cut), a transition retargets from the
+ * current computed opacity (a smooth glide). The remaining keyframes are the
+ * scenery penguin's journey + bob (CSS-driven scenery, not interruption-sensitive).
+ * Removing the dead keyframe SHRINKS the motion-guard baseline (allowed).
+ *
  * Reduced motion is enforced in TWO places that agree: structurally in JS
  * (useSceneClock never schedules rAF when frozen, so the canvas layers stop),
  * and here via the media query below (which also stops the CSS-driven penguin
  * journey + bob — including the inner bob element, which the wrapper's
- * `motion-reduce:` Tailwind variant alone would not reach). Colours are token
- * vars only; this file declares motion, not palette, so it adds no hex. */
-
-@keyframes akb-krea-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 0.82; }
-}
+ * `motion-reduce:` Tailwind variant alone would not reach — AND any transition
+ * on the krea art slots, belt-and-braces with the `frozen` prop's near-instant
+ * dissolve). Colours are token vars only; this file declares motion, not palette,
+ * so it adds no hex. */
 
 @keyframes akb-penguin-journey {
   0%   { transform: translateX(-8vw) scale(1); }

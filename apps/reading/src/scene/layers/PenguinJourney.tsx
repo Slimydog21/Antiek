@@ -1,4 +1,5 @@
 import type { SceneMood } from "../mood";
+import { PENGUIN } from "../../design/motion/sceneMotion";
 
 /**
  * PenguinJourney (SPR-04, milestone 3 — "the penguin running off into the
@@ -53,13 +54,17 @@ export function PenguinJourney({ mood }: PenguinJourneyProps) {
       <div
         className="absolute bottom-[18%] h-7 w-7 motion-reduce:!animate-none"
         style={{
-          animation: "akb-penguin-journey 38s linear infinite",
+          // Timing/easing sourced from the scene motion vocabulary (M2), not
+          // inline literals — see src/design/motion/sceneMotion.ts (PENGUIN).
+          animation: `akb-penguin-journey ${PENGUIN.journeyDuration} ${PENGUIN.journeyEase} infinite`,
           willChange: "transform",
         }}
       >
         <div
           className="h-full w-full"
-          style={{ animation: "akb-penguin-bob 0.9s ease-in-out infinite" }}
+          style={{
+            animation: `akb-penguin-bob ${PENGUIN.bobDuration} ${PENGUIN.bobEase} infinite`,
+          }}
         >
           {/* A compact penguin silhouette — distinct, simplified, NOT the
               full Werner mark. Token fills only. */}

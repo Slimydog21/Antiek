@@ -5,11 +5,12 @@ import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
 import type { SceneFetcher } from "../krea/useKreaScene";
 import { Peaks } from "./layers/Peaks";
-import { Mountainscape } from "./layers/Mountainscape";
+import { Mountainscape, PLANE_DEPTHS } from "./layers/Mountainscape";
 import { Clouds } from "./layers/Clouds";
 import { Snow } from "./layers/Snow";
 import { PenguinJourney } from "./layers/PenguinJourney";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
+import { useSceneDrift } from "./useSceneDrift";
 // The scene's consolidated keyframes + reduced-motion guard (one motion home,
 // sanctioned in motion.guard.test.ts) — see scene.css.
 import "./scene.css";
@@ -83,6 +84,12 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
   // Periodic, mood-gated Krea art (never per frame — see useSceneArt).
   const art = useSceneArt(mood, fetchScene);
 
+  // SPR-06 M4 — the parallax BREATH: slow, subtle, independent per-plane drift
+  // driven off the SAME scene clock, fed to Mountainscape via its typed seams
+  // (SPR-05's interface — we never touch the layer's internals). Frozen ⇒ static
+  // identity seams (the designed reduced-motion pose).
+  const driftSeams = useSceneDrift(PLANE_DEPTHS, frozen);
+
   return (
     <div
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
@@ -94,8 +101,8 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
     >
       {/* z-0a layered atmosphere sky + backdrop ridge (with bounded parallax) */}
       <Peaks mood={mood} frozen={frozen} />
-      {/* z-0b foreground depth planes (static; parallax-ready seams for SPR-06) */}
-      <Mountainscape mood={mood} />
+      {/* z-0b foreground depth planes; SPR-06 drives the breath via the typed seams */}
+      <Mountainscape mood={mood} seams={driftSeams} />
       {/* z-1 periodic Krea art, crossfaded on mood change (nothing in fallback) */}
       <KreaArtLayer art={art} frozen={frozen} />
       {/* z-2 clouds (canvas) */}

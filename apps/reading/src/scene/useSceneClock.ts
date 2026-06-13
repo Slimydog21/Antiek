@@ -4,7 +4,8 @@ import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 
 /**
  * useSceneClock — the single requestAnimationFrame heartbeat for the living
- * mountainscape (SPR-04, milestones 1 + 6).
+ * mountainscape (SPR-04 milestones 1 + 6; SPR-06 M1 adds the deterministic
+ * time seam + the continuous phase scalar).
  *
  * It is the ONLY rAF loop in the scene: every animated layer (Clouds, Snow,
  * Peaks parallax) reads the clock's `t` (elapsed ms) rather than scheduling
@@ -27,6 +28,28 @@ import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
  *
  * DETERMINISM: when frozen, `t === FROZEN_T` exactly, so a seeded layer
  * snapshots identically across runs (milestone 2 + 5 tests rely on this).
+ *
+ * ─── SPR-06 M1: the two new outputs (both ADDITIVE — `t`/`frame` unchanged) ──
+ *
+ *   (a) An INJECTABLE TIME SOURCE (`getTime`). Production reads the wall clock
+ *       (`() => Date.now()`); tests and SPR-05's deterministic snapshots inject
+ *       a FIXED source so the SCENE STATE is byte-identical across runs. The
+ *       time source feeds ONLY the new `phase` scalar (light drift) — it does
+ *       NOT touch `t`/`frame` (the rAF-elapsed counters the canvas painters
+ *       ride), so the cadence invariant and the painter behaviour are untouched.
+ *
+ *   (b) A CONTINUOUS 0..1 PHASE SCALAR (`phase`). Today's discrete mood snaps
+ *       (light → day, dark → night). `phase` is the SMOOTH time-of-day position
+ *       so procedural light can DRIFT through dawn/dusk instead of snapping —
+ *       it is the seam SPR-06's drift/crossfade choreography eases against. The
+ *       DISCRETE mood/state output that useSceneArt watches is DERIVED ELSEWHERE
+ *       (mood.ts) and is NOT affected by `phase`: the fetch cadence stays
+ *       mood-gated (phase changing every frame must NEVER trigger a fetch).
+ *
+ * THE CADENCE INVARIANT, named once more (SPR-06): `phase` updates continuously
+ * while running, but it is NOT a dependency of useSceneArt and is NOT derived
+ * into the mood — so no amount of phase drift can amplify Krea fetches. The
+ * 120-render/1-fetch test (useSceneArt.test.tsx) + the N-flips test stay green.
  */
 
 /** The single composed-frame timestamp used in the reduced-motion freeze.
@@ -34,6 +57,47 @@ import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
  *  mid-cycle frame (not their t=0 start pose), but it is FIXED so the frame
  *  is deterministic. Chosen as 1500 ms ≈ a calm point a couple of seconds in. */
 export const FROZEN_T = 1500;
+
+/** The wall-clock time source used in production: the current epoch ms. Tests
+ *  and SPR-05's deterministic snapshots inject a FIXED replacement so the phase
+ *  scalar (and therefore the whole composed scene) is byte-identical per run. */
+export type TimeSource = () => number;
+
+/** The default production time source. Isolated so the injection seam has a
+ *  single, named default and tests can assert "no injection ⇒ wall clock". */
+export const wallClock: TimeSource = () => Date.now();
+
+/** Milliseconds in a day — the period the phase scalar wraps over. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The continuous 0..1 time-of-day phase from an epoch-ms instant, in LOCAL
+ * time (the scene's light should track the viewer's local day, the same local
+ * frame the OS `prefers-color-scheme` mood already follows).
+ *
+ *   phase = 0.0  ⇔ local midnight (00:00)
+ *   phase = 0.25 ⇔ 06:00 (dawn)
+ *   phase = 0.5  ⇔ 12:00 (noon)
+ *   phase = 0.75 ⇔ 18:00 (dusk)
+ *
+ * CONTINUOUS + MONOTONIC WITHIN A DAY, WRAPPING at the day boundary: as wall
+ * time advances from 23:59 to 00:00 the phase wraps 0.999… → 0.0 (a clean
+ * single-cycle wrap, never a backwards jump within the cycle). Pure + exported
+ * so the boundary unit tests (23:59→00:00, the dawn/dusk edges) assert it
+ * directly without a clock loop.
+ */
+export function phaseOf(epochMs: number): number {
+  const d = new Date(epochMs);
+  const localMs =
+    d.getHours() * 3_600_000 +
+    d.getMinutes() * 60_000 +
+    d.getSeconds() * 1000 +
+    d.getMilliseconds();
+  // localMs ∈ [0, DAY_MS); divide for [0,1). The modulo guards a leap-second /
+  // DST edge from ever pushing the value to exactly 1.0 (which would read as a
+  // discontinuous "next day start" within the same cycle).
+  return (localMs % DAY_MS) / DAY_MS;
+}
 
 export interface SceneClock {
   /** Elapsed animation time in ms (drift-free: accumulates only while
@@ -46,6 +110,12 @@ export interface SceneClock {
   running: boolean;
   /** True when frozen to a single static frame (reduced-motion). */
   frozen: boolean;
+  /** SPR-06 M1 — continuous 0..1 time-of-day position (see phaseOf). The seam
+   *  procedural light drifts against; NOT involved in the discrete mood or the
+   *  Krea fetch cadence. Sampled from the injected time source each running
+   *  tick; held at its mount value while frozen (a fixed, deterministic phase
+   *  — the static composition's designed light). */
+  phase: number;
 }
 
 /**
@@ -58,8 +128,12 @@ export interface SceneClock {
  * `subscribe` form below) so the heavy painters read `t` inside their own rAF
  * callback without forcing React reconciliation. This hook's state is used for
  * the lightweight "running/frozen" decisions and crossfade timing.
+ *
+ * @param getTime  injectable time source for the phase scalar. Production omits
+ *                 it (defaults to the wall clock); tests + SPR-05 snapshots
+ *                 inject a FIXED source for byte-identical scene state.
  */
-export function useSceneClock(): SceneClock {
+export function useSceneClock(getTime: TimeSource = wallClock): SceneClock {
   const reducedMotion = usePrefersReducedMotion();
 
   const [clock, setClock] = useState<SceneClock>(() => ({
@@ -67,6 +141,7 @@ export function useSceneClock(): SceneClock {
     frame: 0,
     running: false,
     frozen: reducedMotion,
+    phase: phaseOf(getTime()),
   }));
 
   // Mutable accumulators so the rAF callback never closes over stale state.
@@ -74,14 +149,27 @@ export function useSceneClock(): SceneClock {
   const frameRef = useRef(0);
   const lastTsRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+  // Keep the latest getTime in a ref so the rAF loop reads the CURRENT injected
+  // source without re-subscribing the effect every render (the effect depends
+  // only on reducedMotion — re-subscribing per render would churn rAF).
+  const getTimeRef = useRef(getTime);
+  getTimeRef.current = getTime;
 
   useEffect(() => {
     // RUNG 2 — reduced-motion: never schedule a loop; emit one frozen frame.
+    // Phase holds at a single sampled value (deterministic under an injected
+    // fixed source) — the static composition's designed light, no drift.
     if (reducedMotion) {
       tRef.current = FROZEN_T;
       frameRef.current = 0;
       lastTsRef.current = null;
-      setClock({ t: FROZEN_T, frame: 0, running: false, frozen: true });
+      setClock({
+        t: FROZEN_T,
+        frame: 0,
+        running: false,
+        frozen: true,
+        phase: phaseOf(getTimeRef.current()),
+      });
       return; // no rAF, no listener — zero per-frame work.
     }
 
@@ -99,6 +187,8 @@ export function useSceneClock(): SceneClock {
         frame: frameRef.current,
         running: true,
         frozen: false,
+        // Sample the (live) time source each tick → continuous light drift.
+        phase: phaseOf(getTimeRef.current()),
       });
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -157,26 +247,33 @@ export function useSceneClock(): SceneClock {
  *
  * This keeps the per-frame work off the React reconciler entirely — the
  * canvas mutates its own bitmap; React only ever sees mount/unmount.
+ *
+ * SPR-06 M1: `onFrame` now receives the continuous `phase` as a third arg, so a
+ * canvas painter that wants to tint with the time-of-day light reads it WITHOUT
+ * a React re-render (the same off-reconciler path `t`/`frame` already use). The
+ * `getTime` source is injectable here too, defaulting to the wall clock — under
+ * reduced-motion it is sampled exactly ONCE (the one frozen frame), never looped.
  */
 export function subscribeSceneClock(
-  onFrame: (t: number, frame: number) => void,
-  opts?: { reducedMotion?: boolean },
+  onFrame: (t: number, frame: number, phase: number) => void,
+  opts?: { reducedMotion?: boolean; getTime?: TimeSource },
 ): () => void {
   const reducedMotion =
     opts?.reducedMotion ??
     (typeof window !== "undefined" &&
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const getTime = opts?.getTime ?? wallClock;
 
   if (reducedMotion) {
-    // One static composed frame; no loop ever scheduled.
-    onFrame(FROZEN_T, 0);
+    // One static composed frame; no loop ever scheduled. Phase sampled once.
+    onFrame(FROZEN_T, 0, phaseOf(getTime()));
     return () => {};
   }
 
   if (typeof requestAnimationFrame !== "function") {
     // Non-browser / test env without rAF: emit one frame, no loop.
-    onFrame(FROZEN_T, 0);
+    onFrame(FROZEN_T, 0, phaseOf(getTime()));
     return () => {};
   }
 
@@ -190,7 +287,7 @@ export function subscribeSceneClock(
     t += Math.min(ts - last, 64);
     last = ts;
     frame += 1;
-    onFrame(t, frame);
+    onFrame(t, frame, phaseOf(getTime()));
     raf = requestAnimationFrame(tick);
   };
   const start = () => {

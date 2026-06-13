@@ -213,8 +213,8 @@
   --scene-haze-dawn:  var(--glacial-1);   /* aerial veil between planes: cool + recessive */
   /* STAR COLOUR — a FIXED bright cool tone, NOT the --ice ramp. The twilight/
      night skies are dark in EITHER OS theme (they are the SKY, not a UI
-     surface — see --space-*/--charcoal-* note above), so the star colour must
-     NOT track --ice, which inverts to near-black under the dark cascade and
+     surface — see the --space and --charcoal note above), so the star colour
+     must NOT track --ice, which inverts to near-black under the dark cascade and
      made stars invisible (star-vs-sky ≈ 1.04:1). Pinned to --scene-star-base,
      a bright cool tone overridden in the dark block below so stars stay bright
      wherever they paint. dawn stars only render once SPR-06 activates dawn. */

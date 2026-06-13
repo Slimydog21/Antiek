@@ -141,6 +141,12 @@ export function useKreaScene(
   const reqId = useRef(0);
 
   useEffect(() => {
+    // IN-FLIGHT DEDUP is delegated to the server cache BY DESIGN: re-entering a
+    // key whose fetch is still pending fires a second request, but the server's
+    // warm-cache answers it cheaply and the reqId stale-discard below drops any
+    // out-of-order resolution. From the binary OS-theme mood this is unreachable
+    // at a meaningful rate, so a client-side in-flight registry is not worth its
+    // complexity — the server cache + reqId are the dedup layer.
     const myId = ++reqId.current;
     let cancelled = false;
     // Show the placeholder for THIS scene while loading.

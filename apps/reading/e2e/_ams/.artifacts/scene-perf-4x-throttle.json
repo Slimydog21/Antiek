@@ -1,0 +1,12 @@
+{
+  "frames": 97,
+  "p50": 16.700000000000045,
+  "p95": 33.40000000000009,
+  "max": 50,
+  "longFrames": 0,
+  "longTasks": 0,
+  "longTaskSupported": true,
+  "composition": "appshell + project-tree dock + active parallax drift + live krea crossfade in-flight",
+  "throttle": "4x",
+  "capturedAt": "2026-06-13T18:30:05.842Z"
+}
