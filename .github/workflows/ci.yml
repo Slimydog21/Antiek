@@ -355,6 +355,19 @@ jobs:
         working-directory: apps/reading
         run: npm run lint:tokens
 
+      - name: Type-scale lint (24px chrome ceiling — no raw px above the scale)
+        # CFEEL-S2 M2 (sibling of "Token lint" above). Fails the PR on any NEW
+        # chrome font-size above PostHog's 24px app-type-scale ceiling, expressed
+        # as the two scale-bypass escape hatches: a raw `font-size: NNpx` or a
+        # Tailwind arbitrary `text-[NNpx]`. Named utilities (text-2xl …) are the
+        # sanctioned scale and are not scanned. Reading-body CONTENT subtrees are
+        # exempt (a book heading is content, not chrome). Existing violations are
+        # grandfathered in scripts/type_scale_lint_baseline.json; the baseline
+        # only ever shrinks. Re-mint deliberately with `npm run lint:type:update`;
+        # never to silence a regression. See scripts/lint_type_scale.ts.
+        working-directory: apps/reading
+        run: npm run lint:type
+
       - name: Token parity (tokens.css ↔ tailwind.config.js)
         # CFEEL-FIX-1. Fails the PR if the sun accent (sun-deep / sun-glow) or
         # the *-night box-shadows drift between src/design/tokens.css (the

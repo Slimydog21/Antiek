@@ -10,6 +10,8 @@
  * elevation *feel*, not their layout architecture.
  */
 
+import { zIndex } from "./zIndex";
+
 export type ChromeMode = "opaque-chunky" | "glass-scene";
 
 /** Tailwind class strings aligned with tokens.css `--shadow-z1…z3`. */
@@ -36,8 +38,14 @@ export const CASCADE_PANEL_WRAP_PX = 200;
 
 export type CascadeStore = "windows" | "panels";
 
-/** First z-index assigned to a floating panel (`WorkspaceStore` / README). */
-export const FLOATING_Z_BASE = 2;
+/**
+ * First z-index assigned to a floating panel — the single owner of the
+ * "z = 2…50" band's floor, sourced from the named ladder (`zIndex.ts`) so the
+ * shadow-depth math below and the WorkspaceStore band read ONE value. The value
+ * is unchanged (2); only its source is centralised, so a future re-layer edits
+ * `zIndex.floatingPanelBase` once and the shadow math tracks it.
+ */
+export const FLOATING_Z_BASE = zIndex.floatingPanelBase;
 
 /**
  * Map stack depth (0 = flat/docked or scene) to shadow classes.
