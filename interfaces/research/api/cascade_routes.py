@@ -50,6 +50,7 @@ from substrate.graph import default_db_path, ensure_initialized
 from runtime.research_runner import (
     BudgetCap, BudgetManager, Command, CommandKind, HostLocalRunner,
     PromotionFunnel, RunState, make_contract_gather_stub,
+    make_exa_gather_loop,
 )
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
 from roles.cascade_planner import (
@@ -124,8 +125,21 @@ def _decompose(problem: str, max_depth: int):
 
 
 def _research_loop_factory():
-    """The browse loop each investigation runs. Default = contract gather stub
-    (honest placeholder); Exa adapter drops in here with no route change."""
+    """The browse loop each investigation runs.
+
+    Default = the contract gather stub (an honest placeholder that does
+    no real retrieval — the safe prod default). When the operator sets
+    ``ANTIEK_DRW_GATHER=exa``, the loop switches to the real Exa Wedge-1
+    discovery layer (``make_exa_gather_loop``), which promotes documents
+    into the evidence pack as ``doc-url-*`` chunks through the single
+    ``ingest_url`` write seam + the legal gate. No route change either way.
+
+    Reading the env here (not at import) keeps the exa branch — and any
+    ``ExaClient`` it would build — out of the stub-default path entirely.
+    """
+    mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
+    if mode == "exa":
+        return make_exa_gather_loop(top_k=3)
     return make_contract_gather_stub(steps=2, cost_per_step=0.01)
 
 
