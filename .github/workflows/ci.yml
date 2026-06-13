@@ -355,6 +355,19 @@ jobs:
         working-directory: apps/reading
         run: npm run lint:tokens
 
+      - name: Token parity (tokens.css ↔ tailwind.config.js)
+        # CFEEL-FIX-1. Fails the PR if the sun accent (sun-deep / sun-glow) or
+        # the *-night box-shadows drift between src/design/tokens.css (the
+        # re-toned weathered source) and tailwind.config.js (the utilities ~45
+        # components consume). lint:tokens above proves "no raw hex"; this proves
+        # the tokens that DO exist still AGREE across the CSS-var and Tailwind
+        # sides, so "lived feel" can never silently diverge from "designed feel".
+        # Same guard the src/design/token-parity.test.ts vitest runs as a
+        # subprocess — kept here too so the gate is enforced even if a vitest run
+        # is skipped. See scripts/check_token_parity.ts for the parity rule.
+        working-directory: apps/reading
+        run: npm run check:tokens
+
       - name: Bundle budget (S12 WP-12.2)
         # `vite build` + scripts/check_bundle.ts. Fails the PR if the entry
         # `index` chunk (≤ 700 KB gz) or the `lemon` primitives chunk

@@ -15,8 +15,22 @@ export default {
       colors: {
         // THE brand — invariant across modes
         sun: "#F5DF24",
-        "sun-deep": "#B89A00",
-        "sun-glow": "#FCE85E",
+        // Re-toned sun family (AMS-SPR-09 / CFEEL-FIX-1). These were the OLD
+        // loud hexes (sun-deep #B89A00, sun-glow #FCE85E) AFTER tokens.css /
+        // tokens.ts had already been re-toned to the weathered values — a
+        // HIGH-severity token drift ("lived feel ≠ designed feel"): the ~45
+        // utility consumers rendered the old loud values on screen. FIX: point
+        // these keys at the CSS vars so they resolve through tokens.css and
+        // cascade per theme automatically — day --sun-deep #9C8636 / night
+        // #84722F, day --sun-glow #F1E08F / night #F2DE9A. This is strictly
+        // MORE correct than a static day hex: several consumers (text-sun-deep
+        // in VoiceToDraft / FloatMenu / ResearchPanel) carry NO dark: override,
+        // so a static day hex would render the day ochre even at night; the
+        // var resolves to the night token there. And the drift can never recur
+        // — there is now ONE value, in tokens.css, the parity guard asserts.
+        // Mirror: tokens.ts `sun.deep`/`sun.glow`, tokens.css --sun-deep/--sun-glow.
+        "sun-deep": "var(--sun-deep)",
+        "sun-glow": "var(--sun-glow)",
 
         // Neutral "light" chrome border (AMS-SPR-01). Was the default border
         // = sun #F5DF24; the operator asked to "replace that yellowness with
@@ -85,11 +99,19 @@ export default {
         z2: "5px 5px 0 0 #0F1419",
         z3: "8px 8px 0 0 #0F1419",
         lift: "12px 12px 0 0 #0F1419",
-        // Night: sun-deep-cast glow
-        "z1-night": "3px 3px 0 0 #8A7300",
-        "z2-night": "5px 5px 0 0 #8A7300",
-        "z3-night": "8px 8px 0 0 #8A7300",
-        "lift-night": "12px 12px 0 0 #8A7300",
+        // Night: sun-deep-cast glow. Every consumer applies these only behind a
+        // `dark:` variant (dark:shadow-z1-night …), so they fire ONLY in the
+        // night subtree where --sun-deep cascades to the night value #84722F.
+        // The cast colour was the OLD loud #8A7300 here AFTER tokens.css /
+        // tokens.ts had re-toned the night cast to the weathered #84722F
+        // (AMS-SPR-09) — the same drift as the sun-deep/glow keys. FIX: read
+        // var(--sun-deep), byte-identical to how tokens.css --shadow-z* read it
+        // (tokens.css:251-254), so these never drift from the night shadow
+        // again. Mirror: tokens.ts `shadow.night` (#84722F).
+        "z1-night": "3px 3px 0 0 var(--sun-deep)",
+        "z2-night": "5px 5px 0 0 var(--sun-deep)",
+        "z3-night": "8px 8px 0 0 var(--sun-deep)",
+        "lift-night": "12px 12px 0 0 var(--sun-deep)",
       },
       borderColor: {
         // Default border = neutral "light" rule (AMS-SPR-01). Was the brand
