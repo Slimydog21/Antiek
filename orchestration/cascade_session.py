@@ -35,6 +35,7 @@ the FastAPI app (which the parallel stream owns) rather than edited here.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 from dataclasses import dataclass, field
@@ -66,6 +67,14 @@ from orchestration.session_evidence_pack import (
 
 _SESSION_DONE = object()
 
+_log = logging.getLogger(__name__)
+
+# Audit action_type for a synthesis-tail failure recorded on the session's own
+# trajectory. Untyped (free-string) like ``cascade.launched`` above — the
+# Researchmaxx vocabulary that hasn't been schemaed yet. Recoverable from the
+# event log so the from-event-log status path can surface it honestly.
+SYNTHESIS_TAIL_FAILED = "cascade.synthesis_tail.failed"
+
 
 @dataclass
 class Leaf:
@@ -93,6 +102,11 @@ class SessionRecovery:
 
     session_id: str
     researches: List[ResearchState]
+    # Reconstructed from the session's own trajectory: the
+    # ``cascade.synthesis_tail.failed`` audit event, if one was emitted before
+    # the session was evicted. None when no such event exists — we surface only
+    # what is honestly recoverable, never a fabricated success or failure.
+    synthesis_tail_error: Optional[str] = None
 
     @property
     def all_terminal(self) -> bool:
@@ -120,6 +134,11 @@ class CascadeSession:
         self._handles: Dict[str, Handle] = {}
         self._out: "asyncio.Queue" = asyncio.Queue()
         self._pump_tasks: List[asyncio.Task] = []
+        # Set by background completion (``_run_to_completion``) when the Loop 1
+        # synthesis tail raises. A non-None value means the session never
+        # reached ``DeepResearchComplete`` because synthesis failed — the
+        # split-brain / silent-synthesis hazard the ANT-DRL programme guards.
+        self.synthesis_tail_error: Optional[str] = None
 
     # -- M1: launch with approval enforcement --------------------------
 
@@ -265,6 +284,67 @@ class CascadeSession:
         ok, _ = check_deep_research_complete(self.session_id)
         return ok
 
+    def record_synthesis_tail_error(
+        self, exc: BaseException, *, stage: str = "synthesis_tail"
+    ) -> None:
+        """Capture a background-completion failure: store it on the session AND
+        emit a durable audit trail. Called by ``_run_to_completion`` when
+        ``join_and_merge`` OR the Loop 1 synthesis tail raises — it must NOT
+        re-raise (the event loop stays alive) and the failure must NOT be
+        silently swallowed. The split-brain guard.
+
+        ``stage`` records WHICH completion step failed (``join_and_merge`` vs
+        ``synthesis_tail``) so a merge failure isn't mislabeled as a tail one; it
+        is prefixed onto the stored message and carried in the audit payload.
+
+        Two-pronged audit, both convention-matching:
+          * a ``cascade.synthesis_tail.failed`` event on the session's own
+            trajectory (same untyped ``log_event`` seam as ``cascade.launched``)
+            so the from-event-log status path can reconstruct it; and
+          * a structured ``logger.exception`` (the best-effort-isolation
+            precedent in ``interfaces/research/api/books.py``) so it is visible
+            in the operator's logs and assertable via ``caplog``.
+
+        The durable-event emit is defensively isolated — recording a failure must
+        never become a second failure that crashes the loop — but a failed emit
+        still leaves a ``logger.warning`` breadcrumb rather than a silent ``pass``
+        (the very pattern this method exists to kill); the error is already on the
+        in-memory field + the ``logger.exception`` below regardless."""
+        self.synthesis_tail_error = f"[{stage}] {type(exc).__name__}: {exc}"
+        try:
+            log_event(
+                self.session_id,
+                SYNTHESIS_TAIL_FAILED,
+                payload={"error": self.synthesis_tail_error,
+                         "error_type": type(exc).__name__,
+                         "stage": stage},
+                role="user_agent",
+                events_dir=self._events_dir,
+            )
+        except Exception:  # pragma: no cover — audit-of-audit isolation
+            _log.warning(
+                "synthesis-tail audit event emit failed for session_id=%s "
+                "(error preserved on the session field + the logger.exception below)",
+                self.session_id, exc_info=True,
+            )
+        _log.exception(
+            "cascade completion failed at stage=%s for session_id=%s; "
+            "session did not reach DeepResearchComplete (captured, non-fatal)",
+            stage, self.session_id,
+        )
+
+    def terminal_status(self) -> dict:
+        """The session's deep-research terminal contract, for status surfaces.
+
+        ``deep_research_complete`` is the authoritative Path-A convergence
+        check (gather leaves terminal AND the session parent satisfies
+        ``DeepResearchComplete``); ``synthesis_tail_error`` is the captured
+        failure string (None when the tail has not failed)."""
+        return {
+            "deep_research_complete": self.is_deep_research_complete(),
+            "synthesis_tail_error": self.synthesis_tail_error,
+        }
+
     def build_evidence_pack(
         self,
         *,
@@ -368,4 +448,24 @@ def reconstruct_session(session_id: str, *, events_dir: Optional[str] = None) ->
         if parent == session_id:
             researches.append(ResearchState(iid, sub_q, state.value))
     researches.sort(key=lambda r: r.investigation_id)
-    return SessionRecovery(session_id=session_id, researches=researches)
+    tail_error = _recover_synthesis_tail_error(session_id, events_dir=resolved)
+    return SessionRecovery(
+        session_id=session_id,
+        researches=researches,
+        synthesis_tail_error=tail_error,
+    )
+
+
+def _recover_synthesis_tail_error(
+    session_id: str, *, events_dir: Optional[str] = None
+) -> Optional[str]:
+    """The last ``cascade.synthesis_tail.failed`` audit event recorded on the
+    session's own trajectory, or None if none was emitted. Honest by
+    construction: absence of the event yields None (we never fabricate a
+    failure or a success the event log cannot prove)."""
+    last: Optional[str] = None
+    for ev in trajectory(session_id, events_dir=events_dir):
+        if ev.get("action_type") == SYNTHESIS_TAIL_FAILED:
+            payload = ev.get("payload", {}) if isinstance(ev.get("payload"), dict) else {}
+            last = payload.get("error") or last
+    return last

@@ -395,13 +395,27 @@ async def launch(root_id: str, req: LaunchRequest) -> dict:
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
+    """Drive a launched session to completion on the event loop.
+
+    Background completion is best-effort in the sense that it must NEVER crash
+    the loop — but a *silent* swallow of a synthesis-tail failure is exactly the
+    split-brain / silent-synthesis hazard the ANT-DRL programme guards against
+    (a session that failed to reach ``DeepResearchComplete`` would look fine and
+    the operator would never know). So we capture the failure, record it as the
+    session's ``synthesis_tail_error`` and emit a durable audit trail (a typed
+    event on the session trajectory + a structured log), then return — the task
+    stays non-fatal, the failure stays visible in trajectory/status."""
+    stage = "join_and_merge"
     try:
         await session.join_and_merge()
         if _SYNTHESIS_TAIL_RUNNER is not None:
+            stage = "synthesis_tail"
             pack = session.build_evidence_pack()
             await _SYNTHESIS_TAIL_RUNNER(session, pack)
-    except Exception:  # pragma: no cover — background completion is best-effort
-        pass
+    except Exception as exc:
+        # Capture, do not swallow: record WITH the failing stage (so a join/merge
+        # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
+        session.record_synthesis_tail_error(exc, stage=stage)
 
 
 @cascade_router.get("/sessions/{session_id}")
@@ -409,6 +423,7 @@ async def session_status(session_id: str) -> dict:
     live = _SESSIONS.get(session_id)
     if live is not None:
         cost = live.aggregate_cost()
+        terminal = live.terminal_status()
         return {
             "session_id": session_id, "live": True,
             "researches": [
@@ -417,6 +432,11 @@ async def session_status(session_id: str) -> dict:
                 for s in live.status()
             ],
             "cost": cost,
+            # DRW parent-terminal observability (SPR-DRL-09 M3): surface whether
+            # the session reached DeepResearchComplete and any captured
+            # synthesis-tail failure, so a silent terminal failure cannot hide.
+            "deep_research_complete": terminal["deep_research_complete"],
+            "synthesis_tail_error": terminal["synthesis_tail_error"],
         }
     # Recovery from the event log (durability — session evicted / restart).
     rec = reconstruct_session(session_id)
@@ -430,6 +450,12 @@ async def session_status(session_id: str) -> dict:
             for r in rec.researches
         ],
         "all_terminal": rec.all_terminal,
+        # Recovered path: surface only what the event log honestly proves. We do
+        # not recompute DeepResearchComplete here (its phase postconditions read
+        # research artifacts the recovered view does not load) — null means
+        # "not reconstructable from membership alone", not "false".
+        "deep_research_complete": None,
+        "synthesis_tail_error": rec.synthesis_tail_error,
     }
 
 
