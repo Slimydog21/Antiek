@@ -186,7 +186,7 @@ export type SynthesisRecommendation = "proceed" | "pass" | "conditional" | "unde
 
 export type AuditSeverity = "info" | "warning" | "critical";
 
-export type DiscoveryProvider = "exa" | "operator";
+export type DiscoveryProvider = "exa" | "operator" | "parallel";
 
 export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
 
@@ -1748,7 +1748,7 @@ export interface SkillRulePromotedPayload {
 export interface DiscoveryProposedPayload {
   action_type: "discovery.proposed";
   discovery_id: string;
-  provider: "exa" | "operator";
+  provider: "exa" | "operator" | "parallel";
   query: string;
   url: string;
   title?: string | null;
