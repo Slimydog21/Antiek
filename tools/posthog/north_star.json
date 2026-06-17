@@ -1,0 +1,344 @@
+{
+  "dashboard": {
+    "description": "Curated single-pane product health (built 2026-06-04): acquisition \u2192 activation \u2192 engagement \u2192 commerce \u2192 retention. Reuses existing insights; supersedes the duplicate Analytics-basics dashboards.",
+    "name": "Antiek \u2014 North Star"
+  },
+  "insights": [
+    {
+      "name": "Deep research cascade workflow",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "funnelsFilter": {
+            "breakdownAttributionType": "first_touch",
+            "exclusions": [],
+            "funnelOrderType": "ordered",
+            "funnelStepReference": "total",
+            "funnelVizType": "steps",
+            "funnelWindowInterval": 14,
+            "funnelWindowIntervalUnit": "day",
+            "layout": "vertical",
+            "showValuesOnSeries": false
+          },
+          "kind": "FunnelsQuery",
+          "properties": [],
+          "series": [
+            {
+              "event": "deep_research_cascade_created",
+              "kind": "EventsNode",
+              "name": "Cascade created"
+            },
+            {
+              "event": "deep_research_plan_approved",
+              "kind": "EventsNode",
+              "name": "Plan approved"
+            },
+            {
+              "event": "deep_research_cascade_launched",
+              "kind": "EventsNode",
+              "name": "Cascade launched"
+            },
+            {
+              "event": "deep_research_canvas_opened",
+              "kind": "EventsNode",
+              "name": "Canvas opened"
+            }
+          ]
+        }
+      },
+      "slug": "deep-research-cascade-workflow"
+    },
+    {
+      "name": "Growth accounting",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "interval": "week",
+          "kind": "LifecycleQuery",
+          "lifecycleFilter": {
+            "showLegend": false
+          },
+          "properties": [],
+          "series": [
+            {
+              "event": "$pageview",
+              "kind": "EventsNode",
+              "name": "$pageview"
+            }
+          ]
+        }
+      },
+      "slug": "growth-accounting"
+    },
+    {
+      "name": "Key actions overview",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "interval": "day",
+          "kind": "TrendsQuery",
+          "properties": [],
+          "series": [
+            {
+              "event": "investigation_started",
+              "kind": "EventsNode",
+              "math": "total",
+              "name": "Investigation started"
+            },
+            {
+              "event": "reading_research_spun",
+              "kind": "EventsNode",
+              "math": "total",
+              "name": "Reading research spun"
+            },
+            {
+              "event": "notebook_block_appended",
+              "kind": "EventsNode",
+              "math": "total",
+              "name": "Notebook block added"
+            },
+            {
+              "event": "notebook_block_deleted",
+              "kind": "EventsNode",
+              "math": "total",
+              "name": "Notebook block deleted"
+            },
+            {
+              "event": "speak_draft_assembled",
+              "kind": "EventsNode",
+              "math": "total",
+              "name": "Story assembled"
+            }
+          ],
+          "trendsFilter": {
+            "aggregationAxisFormat": "numeric",
+            "display": "ActionsLineGraph",
+            "excludeBoxPlotOutliers": true,
+            "hideWeekends": false,
+            "resultCustomizationBy": "value",
+            "showAlertThresholdLines": false,
+            "showLegend": false,
+            "showMultipleYAxes": false,
+            "showPercentStackView": false,
+            "showValuesOnSeries": false,
+            "smoothingIntervals": 1,
+            "stackBreakdownValues": false,
+            "yAxisScaleType": "linear"
+          },
+          "version": 2
+        }
+      },
+      "slug": "key-actions-overview"
+    },
+    {
+      "name": "Login magic-link funnel",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "funnelsFilter": {
+            "breakdownAttributionType": "first_touch",
+            "exclusions": [],
+            "funnelOrderType": "ordered",
+            "funnelStepReference": "total",
+            "funnelVizType": "steps",
+            "funnelWindowInterval": 14,
+            "funnelWindowIntervalUnit": "day",
+            "layout": "vertical",
+            "showValuesOnSeries": false
+          },
+          "kind": "FunnelsQuery",
+          "properties": [],
+          "series": [
+            {
+              "event": "login_requested",
+              "kind": "EventsNode",
+              "name": "Login requested"
+            },
+            {
+              "event": "login_link_sent",
+              "kind": "EventsNode",
+              "name": "Magic link sent"
+            }
+          ]
+        }
+      },
+      "slug": "login-magic-link-funnel"
+    },
+    {
+      "name": "Pricing page views",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "interval": "day",
+          "kind": "TrendsQuery",
+          "properties": [],
+          "series": [
+            {
+              "event": "pricing_viewed",
+              "kind": "EventsNode",
+              "math": "dau",
+              "name": "Pricing viewed"
+            }
+          ],
+          "trendsFilter": {
+            "aggregationAxisFormat": "numeric",
+            "display": "ActionsLineGraph",
+            "excludeBoxPlotOutliers": true,
+            "hideWeekends": false,
+            "resultCustomizationBy": "value",
+            "showAlertThresholdLines": false,
+            "showLegend": false,
+            "showMultipleYAxes": false,
+            "showPercentStackView": false,
+            "showValuesOnSeries": false,
+            "smoothingIntervals": 1,
+            "stackBreakdownValues": false,
+            "yAxisScaleType": "linear"
+          },
+          "version": 2
+        }
+      },
+      "slug": "pricing-page-views"
+    },
+    {
+      "name": "Research investigations over time",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "interval": "day",
+          "kind": "TrendsQuery",
+          "properties": [],
+          "series": [
+            {
+              "event": "investigation_started",
+              "kind": "EventsNode",
+              "math": "total",
+              "name": "Investigations started"
+            }
+          ],
+          "trendsFilter": {
+            "aggregationAxisFormat": "numeric",
+            "display": "ActionsLineGraph",
+            "excludeBoxPlotOutliers": true,
+            "hideWeekends": false,
+            "resultCustomizationBy": "value",
+            "showAlertThresholdLines": false,
+            "showLegend": false,
+            "showMultipleYAxes": false,
+            "showPercentStackView": false,
+            "showValuesOnSeries": false,
+            "smoothingIntervals": 1,
+            "stackBreakdownValues": false,
+            "yAxisScaleType": "linear"
+          },
+          "version": 2
+        }
+      },
+      "slug": "research-investigations-over-time"
+    },
+    {
+      "name": "Retention",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-7d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "kind": "RetentionQuery",
+          "properties": [],
+          "retentionFilter": {
+            "period": "Week",
+            "retentionType": "retention_first_time",
+            "returningEntity": {
+              "id": "$pageview",
+              "type": "events"
+            },
+            "targetEntity": {
+              "id": "$pageview",
+              "type": "events"
+            },
+            "totalIntervals": 11
+          },
+          "version": 2
+        }
+      },
+      "slug": "retention"
+    },
+    {
+      "name": "Speak project lifecycle",
+      "query": {
+        "kind": "InsightVizNode",
+        "source": {
+          "dateRange": {
+            "date_from": "-30d",
+            "explicitDate": false
+          },
+          "filterTestAccounts": false,
+          "funnelsFilter": {
+            "breakdownAttributionType": "first_touch",
+            "exclusions": [],
+            "funnelOrderType": "ordered",
+            "funnelStepReference": "total",
+            "funnelVizType": "steps",
+            "funnelWindowInterval": 14,
+            "funnelWindowIntervalUnit": "day",
+            "layout": "vertical",
+            "showValuesOnSeries": false
+          },
+          "kind": "FunnelsQuery",
+          "properties": [],
+          "series": [
+            {
+              "event": "speak_project_created",
+              "kind": "EventsNode",
+              "name": "Project created"
+            },
+            {
+              "event": "speak_share_link_created",
+              "kind": "EventsNode",
+              "name": "Share link created"
+            },
+            {
+              "event": "speak_draft_assembled",
+              "kind": "EventsNode",
+              "name": "Story assembled"
+            }
+          ]
+        }
+      },
+      "slug": "speak-project-lifecycle"
+    }
+  ]
+}
