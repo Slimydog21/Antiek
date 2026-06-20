@@ -6635,36 +6635,6 @@
     },
     {
       "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 30,
-      "path": "runtime/research_runner/promotion_funnel.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:import-not-found",
-      "line": 35,
-      "path": "runtime/research_runner/promotion_funnel.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 40,
-      "path": "runtime/research_runner/promotion_funnel.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 41,
-      "path": "runtime/research_runner/promotion_funnel.py"
-    },
-    {
-      "col": 0,
-      "kind": "mypy:unused-ignore",
-      "line": 42,
-      "path": "runtime/research_runner/promotion_funnel.py"
-    },
-    {
-      "col": 0,
       "kind": "mypy:type-arg",
       "line": 58,
       "path": "runtime/research_runner/promotion_funnel.py"

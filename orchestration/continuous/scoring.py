@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import hashlib
 import math
-from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+from typing import Iterable, Optional
+
 
 # ── Tuning constants ──────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ class GapEntry:
 
     normalized_key: str
     gap_description: str
-    additional_retrieval_suggested: str | None
+    additional_retrieval_suggested: Optional[str]
     first_seen_at: datetime
     last_seen_at: datetime
     investigation_ids: list[str] = field(default_factory=list)
@@ -90,7 +91,7 @@ class GapRegistry:
         self,
         *,
         gap_description: str,
-        additional_retrieval_suggested: str | None,
+        additional_retrieval_suggested: Optional[str],
         investigation_id: str,
         emitted_at: datetime,
     ) -> GapEntry:
@@ -168,14 +169,14 @@ def normalize_gap_description(text: str) -> str:
     return hashlib.sha256(truncated.encode("utf-8")).hexdigest()[:16]
 
 
-def _recency_score(emitted_at: datetime, *, now: datetime | None = None) -> float:
+def _recency_score(emitted_at: datetime, *, now: Optional[datetime] = None) -> float:
     """Exponential decay over days since emission. Returns [0, 1]."""
-    ref = now or datetime.now(UTC)
+    ref = now or datetime.now(timezone.utc)
     # Ensure timezone-aware comparison. If naive, treat as UTC.
     if emitted_at.tzinfo is None:
-        emitted_at = emitted_at.replace(tzinfo=UTC)
+        emitted_at = emitted_at.replace(tzinfo=timezone.utc)
     if ref.tzinfo is None:
-        ref = ref.replace(tzinfo=UTC)
+        ref = ref.replace(tzinfo=timezone.utc)
     delta_days = max(0.0, (ref - emitted_at).total_seconds() / 86400.0)
     # exp(ln(2) * -delta / half_life) — half-life decay.
     return math.exp(-math.log(2.0) * delta_days / RECENCY_HALF_LIFE_DAYS)
@@ -194,7 +195,7 @@ def _interaction_score(interaction_count: int) -> float:
     return INTERACTION_BOOST if interaction_count > 0 else 1.0
 
 
-def score_gap(entry: GapEntry, *, now: datetime | None = None) -> float:
+def score_gap(entry: GapEntry, *, now: Optional[datetime] = None) -> float:
     """Composite score for a single gap. Returns 0.0 if the gap has
     been chased ≥ MAX_CHASE_COUNT times (decay rule, §7.4).
 
