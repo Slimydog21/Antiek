@@ -563,12 +563,7 @@ def collect_acquisition_cost(
     for f in sorted(budget_path.glob("exa_*.json")):
         try:
             stem_date = f.stem.replace("exa_", "")
-            # Naive UTC, matching this module's convention (_default_window /
-            # _parse_event_ts both return tzinfo-naive UTC). The prior
-            # `.replace(tzinfo=UTC)` made `day` tz-AWARE, so the window
-            # comparisons below raised "can't compare offset-naive and
-            # offset-aware datetimes" against the naive `start`/`end`.
-            day = datetime.strptime(stem_date, "%Y-%m-%d")
+            day = datetime.strptime(stem_date, "%Y-%m-%d").replace(tzinfo=UTC)
         except ValueError:
             continue
         if day < start.replace(hour=0, minute=0, second=0, microsecond=0):
