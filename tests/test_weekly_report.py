@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from runtime.weekly_report import (  # noqa: E402
     build_report,
+    collect_acquisition_cost,
     collect_constraint_distribution,
     collect_cross_doc_link_rate,
     collect_dispatch_cost,
@@ -479,3 +480,39 @@ def test_cli_emits_json_to_file(events_dir, log_dir, tmp_path):
     body = json.loads(output.read_text())
     assert "phase_telemetry" in body
     assert "window" in body
+
+
+# ---------------------------------------------------------------------------
+# 11. Acquisition-cost sidecar — tz-safe window
+# ---------------------------------------------------------------------------
+
+
+def test_acquisition_cost_reads_sidecar_without_tz_crash(tmp_path):
+    """``collect_acquisition_cost`` walks ``exa_<date>.json`` sidecars and
+    compares each sidecar's date against the window. The sidecar dates are
+    parsed tz-naive, but a caller may hand in a tz-aware window — which used to
+    raise "can't compare offset-naive and offset-aware datetimes" the instant
+    any sidecar existed. The bug stayed dormant on origin/main (no Exa → no
+    sidecars) and only fired once the Exa discovery layer began writing them, so
+    no existing test covered the sidecar-present path. Lock both a naive and an
+    aware window against a planted sidecar."""
+    budgets = tmp_path / "budgets"
+    budgets.mkdir()
+    (budgets / "exa_2026-06-18.json").write_text(
+        json.dumps({"spent_usd": 1.23, "call_count": 5})
+    )
+
+    naive = collect_acquisition_cost(
+        datetime(2026, 6, 1), datetime(2026, 6, 30), budget_dir=str(budgets)
+    )
+    assert naive["total_usd"] == pytest.approx(1.23)
+    assert naive["total_calls"] == 5
+
+    # A tz-aware window must be coerced to naive UTC, not crash.
+    aware = collect_acquisition_cost(
+        datetime(2026, 6, 1, tzinfo=UTC),
+        datetime(2026, 6, 30, tzinfo=UTC),
+        budget_dir=str(budgets),
+    )
+    assert aware["total_usd"] == pytest.approx(1.23)
+    assert aware["total_calls"] == 5

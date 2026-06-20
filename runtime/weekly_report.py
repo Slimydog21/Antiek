@@ -557,13 +557,26 @@ def collect_acquisition_cost(
             "top_day": None,
         }
 
+    # The sidecar dates below are parsed tz-naive (strptime), and this module's
+    # window convention is naive UTC (see _resolve_window / _parse_event_ts). A
+    # caller may still hand us a tz-aware window, so coerce both ends to naive
+    # UTC before comparing — otherwise the loop raises "can't compare offset-naive
+    # and offset-aware datetimes". This path stayed dormant until the Exa
+    # discovery layer began writing exa_*.json sidecars; once any sidecar exists
+    # the loop body runs, so the comparison must be tz-consistent or the weekly
+    # report crashes the moment real Exa spend is recorded.
+    if start.tzinfo is not None:
+        start = start.astimezone(UTC).replace(tzinfo=None)
+    if end.tzinfo is not None:
+        end = end.astimezone(UTC).replace(tzinfo=None)
+
     # Walk each provider sidecar in the date window. Format:
     #   exa_<YYYY-MM-DD>.json
     # Future providers extend by glob pattern.
     for f in sorted(budget_path.glob("exa_*.json")):
         try:
             stem_date = f.stem.replace("exa_", "")
-            day = datetime.strptime(stem_date, "%Y-%m-%d").replace(tzinfo=UTC)
+            day = datetime.strptime(stem_date, "%Y-%m-%d")
         except ValueError:
             continue
         if day < start.replace(hour=0, minute=0, second=0, microsecond=0):
