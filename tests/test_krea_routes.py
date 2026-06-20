@@ -73,8 +73,12 @@ def test_routes_registered_and_health_unaffected():
     h = tc.get("/health")
     assert h.status_code == 200
     assert h.json()["status"] == "ok"
-    # The Krea routes exist (no 404 for the path itself).
-    paths = {r.path for r in app.routes}  # type: ignore[attr-defined]
+    # The Krea routes exist (no 404 for the path itself). Tolerate route types
+    # without ``.path`` — a newer FastAPI registers an ``_IncludedRouter`` in
+    # ``app.routes`` that has no ``.path``; the krea APIRoutes still carry it, so
+    # the assertions below are unaffected. (Pre-existing origin/main test bug
+    # surfaced by CI; fixed here to unblock the gate, not caused by this PR.)
+    paths = {r.path for r in app.routes if hasattr(r, "path")}  # type: ignore[attr-defined]
     assert "/krea/generate" in paths
     assert "/krea/jobs/{job_id}" in paths
     assert "/krea/scene" in paths
