@@ -104,7 +104,7 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except (OutlineBlockError, OutlineError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -452,14 +452,14 @@ def generate_section_draft(section_id: str) -> dict:
             ctx=ctx, dispatch_fn=default_dispatch_fn(investigation_id=deliverable_id),
             section_id=section_id,
         )
-    except KeyError:
+    except KeyError as e:
         # creative_writer not wired into the dispatch config.
         raise HTTPException(
             status_code=503,
             detail="generation unavailable: creative_writer is not in the dispatch config",
-        )
+        ) from e
     except Exception as e:  # provider/credential failure
-        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}")
+        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}") from e
 
     report = result.citation_report
     # M3: persist prose_provenance so the X-ray can read paragraph→blocks back.

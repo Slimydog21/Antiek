@@ -47,8 +47,11 @@ def _scan(tree: ast.AST, path: Path) -> list[Violation]:
             base = node.module.split(".")[0]
             if base in FORBIDDEN_MODULES or node.module in FORBIDDEN_MODULES:
                 out.append(Violation(path, node.lineno, f"from {node.module} import ..."))
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in FORBIDDEN_ATTRS:
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in FORBIDDEN_ATTRS
+        ):
                 qual = getattr(node.func.value, "id", None)
                 if qual == "duckdb" and node.func.attr == "connect":
                     out.append(Violation(path, node.lineno, "duckdb.connect(...)"))

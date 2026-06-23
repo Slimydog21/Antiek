@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import duckdb
+import duckdb  # noqa: E402
 
 # Hard-to-vary analytics views (duckdb_plane §6). Created only when base tables exist.
 _ANALYTICS_VIEWS: tuple[str, ...] = (

@@ -31,9 +31,9 @@ typed ``error.code``.
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Request
-from runtime.db_lock import connect_read
 from pydantic import BaseModel, Field
 
+from runtime.db_lock import connect_read
 from substrate.ad_inventory.advertiser_onboarding import (
     AdvertiserOnboardingError,
     AdvertiserRecord,

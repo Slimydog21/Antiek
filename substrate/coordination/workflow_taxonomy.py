@@ -6,12 +6,12 @@ Mirrors apps/reading workflow taxonomy; do not fork this map elsewhere.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 REMOTE_EXEC_PROVIDERS: frozenset[str] = frozenset({"remote_exec", "daytona"})
 
 
-class Workflow(str, Enum):
+class Workflow(StrEnum):
     RESEARCH = "research"
     READ = "read"
     WRITE = "write"

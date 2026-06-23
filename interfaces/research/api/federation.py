@@ -30,9 +30,9 @@ The signed_token + shared_secret are NEVER reflected in API responses
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
-from runtime.db_lock import connect_read
 from pydantic import BaseModel, Field
 
+from runtime.db_lock import connect_read
 from substrate.cross_graph.federation import (
     FederationConfig,
     FederationGateError,

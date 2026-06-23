@@ -14,7 +14,8 @@ from substrate.coordination.workflow_taxonomy import (
     is_remote_exec_provider,
     workflow_for_role,
 )
-from substrate.event_log.events import default_events_dir, trajectory as _trajectory
+from substrate.event_log.events import default_events_dir
+from substrate.event_log.events import trajectory as _trajectory
 from substrate.schemas.events import ActionType
 
 
@@ -48,12 +49,10 @@ def iter_dispatch_call_rows(
         for row in _trajectory(iid, events_dir=resolved):
             if row.get("action_type") != dispatch:
                 continue
-            payload: Mapping[str, Any]
             raw_payload = row.get("payload")
-            if isinstance(raw_payload, dict):
-                payload = raw_payload
-            else:
-                payload = {}
+            payload: Mapping[str, Any] = (
+                raw_payload if isinstance(raw_payload, dict) else {}
+            )
 
             role = payload.get("target_role") or row.get("role")
             provider = payload.get("provider")

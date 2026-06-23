@@ -11,12 +11,10 @@ render "you have $X accrued; $Y paid out; KYC status: COMPLETED".
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import FastAPI, HTTPException
-from runtime.db_lock import connect_read
 from pydantic import BaseModel
 
+from runtime.db_lock import connect_read
 
 # ── Pydantic shapes ────────────────────────────────────────────────
 
@@ -24,7 +22,7 @@ from pydantic import BaseModel
 class TransferSummaryResponse(BaseModel):
     transfer_attempt_id: str
     decision_id: str
-    stripe_transfer_id: Optional[str]
+    stripe_transfer_id: str | None
     amount_usd_cents: int
     status: str  # 'transferred' | 'skipped_escrow' | 'skipped_platform' | 'failed' | 'pending'
     note: str
@@ -33,7 +31,7 @@ class TransferSummaryResponse(BaseModel):
 
 class CreatorPayoutsResponse(BaseModel):
     recipient_ref: str
-    kyc_state: Optional[str]
+    kyc_state: str | None
     rollover_balance_cents: int
     total_paid_cents: int
     total_skipped_escrow_cents: int
@@ -57,7 +55,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_kyc_state(con, recipient_ref: str) -> Optional[str]:
+def _load_kyc_state(con, recipient_ref: str) -> str | None:
     """Read the latest kyc_status row for the recipient."""
     try:
         row = con.execute(
@@ -65,7 +63,7 @@ def _load_kyc_state(con, recipient_ref: str) -> Optional[str]:
             "ORDER BY row_inserted_at DESC LIMIT 1",
             [recipient_ref],
         ).fetchone()
-    except duckdb.Error:
+    except Exception:
         return None
     return row[0] if row else None
 
@@ -84,7 +82,7 @@ def _load_transfers(con, recipient_ref: str) -> list[tuple]:
             "ORDER BY initiated_at DESC",
             [recipient_ref],
         ).fetchall()
-    except duckdb.Error:
+    except Exception:
         return []
     return rows
 

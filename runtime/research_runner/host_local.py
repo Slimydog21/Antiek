@@ -40,6 +40,7 @@ isolation) and yields ``StepEvent``s. Graph promotion is the
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -355,10 +356,8 @@ class HostLocalRunner:
             log_event(iid, action, payload=payload or {}, role="user_agent",
                       events_dir=self._events_dir)
         if self._seal_on_complete:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover — best-effort
                 seal_investigation(iid, events_dir=self._events_dir)
-            except Exception:  # pragma: no cover — seal is best-effort
-                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
@@ -525,12 +524,12 @@ def make_contract_gather_stub(
 def make_exa_gather_loop(
     *,
     top_k: int = 3,
-    client: Optional[object] = None,
-    legal_gate: Optional[object] = None,
-    events_dir: Optional[str] = None,
-    daily_budget_usd: Optional[float] = None,
-    db_path: Optional[str] = None,
-    embedder: Optional[object] = None,
+    client: object | None = None,
+    legal_gate: object | None = None,
+    events_dir: str | None = None,
+    daily_budget_usd: float | None = None,
+    db_path: str | None = None,
+    embedder: object | None = None,
 ):
     """Real DRW gather, wired to the Exa Wedge-1 discovery layer.
 

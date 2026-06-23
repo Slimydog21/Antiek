@@ -133,9 +133,7 @@ def _is_essay_url(url: str) -> bool:
         return False
     if not _ESSAY_HREF_RE.match(slug):
         return False
-    if slug in _NON_ESSAY_SLUGS:
-        return False
-    return True
+    return slug not in _NON_ESSAY_SLUGS
 
 
 def parse_article_list(html: bytes | str, *, base_url: str = PG_BASE_URL) -> list[str]:
@@ -589,7 +587,6 @@ def _stored_raw_text(url: str, *, db_path: str | None) -> str | None:
     """Read back the persisted ``documents.raw_text`` (the extracted markdown)
     for this URL's document so the live-path quality verdict inspects the real
     extracted body. Returns None when the doc/DB is absent."""
-    import duckdb
 
     from substrate.graph import default_db_path
 
@@ -659,7 +656,6 @@ def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
     Returns None when the doc/DB is absent so a first run treats every essay as
     new.
     """
-    import duckdb
 
     from processing.chunking.chunker import content_hash
     from substrate.graph import default_db_path

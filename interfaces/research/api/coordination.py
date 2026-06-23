@@ -23,9 +23,9 @@ of any such path here — greppable, and asserted in
 from __future__ import annotations
 
 from fastapi import FastAPI
-from runtime.db_lock import connect_read
 from pydantic import BaseModel
 
+from runtime.db_lock import connect_read
 from substrate.coordination.consent_view import (
     ConsentView,
     IpHolderConsentRow,
@@ -161,8 +161,10 @@ class RoadmapResponse(BaseModel):
             ],
             unblocked_now=[s.node_id for s in rm.unblocked_now()],
             substrate_layers=[
-                SubstrateLayerResponse(name=l.name, owner=l.owner, status=l.status)
-                for l in rm.substrate_layers
+                SubstrateLayerResponse(
+                    name=layer.name, owner=layer.owner, status=layer.status
+                )
+                for layer in rm.substrate_layers
             ],
         )
 

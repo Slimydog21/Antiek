@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
+from substrate.event_log.events import default_events_dir
 from substrate.observability.burn_report import (
     GroupBy,
     default_analytics_db_path,
@@ -16,7 +17,6 @@ from substrate.observability.burn_report import (
     report_from_analytics_db,
     report_write_log_rollup,
 )
-from substrate.event_log.events import default_events_dir
 
 
 def _cmd_report(args: argparse.Namespace) -> int:

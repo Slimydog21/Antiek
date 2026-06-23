@@ -20,9 +20,9 @@ Live activation gates per master-spec §9.0 + §9.4:
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
-from runtime.db_lock import connect_read
 from pydantic import BaseModel, Field
 
+from runtime.db_lock import connect_read
 from substrate.ad_inventory import (
     AdInventoryItem,
     PageContext,
@@ -184,11 +184,11 @@ def register_ad_impression_routes(app: FastAPI) -> None:
         ):
             try:
                 kind = RevShareKind(kind_str)
-            except ValueError:
+            except ValueError as exc:
                 raise _refuse(
                     422, "invalid_kind",
                     f"unknown RevShareKind {kind_str!r}",
-                )
+                ) from exc
             recipient_map[doc_id] = (kind, recipient_ref, bool(requires_escrow))
 
         router = PayoutRouter()

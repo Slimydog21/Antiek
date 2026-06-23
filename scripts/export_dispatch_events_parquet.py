@@ -16,13 +16,13 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import duckdb  # analytics script allowlist — not OLTP funnel
+import duckdb  # analytics script allowlist — not OLTP funnel  # noqa: E402
 
 _DISPATCH_DDL = """
 CREATE TABLE dispatch_calls (
@@ -90,7 +90,7 @@ def export_dispatch_parquet(events_dir: str, out_path: Path) -> dict:
         con.close()
 
     manifest = {
-        "exported_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "exported_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "antiek_param_version": ANTIEK_PARAM_VERSION,
         "source_events_dir": events_dir,
         "artifact": out_path.name,

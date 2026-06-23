@@ -13,8 +13,9 @@ the substrate's event log + the payout_transfers table on demand.
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
-from runtime.db_lock import connect_read
 from pydantic import BaseModel
+
+from runtime.db_lock import connect_read
 
 
 class CampaignSummaryResponse(BaseModel):
@@ -54,7 +55,7 @@ def _load_advertiser_budget(
             "ORDER BY row_inserted_at DESC LIMIT 1",
             [advertiser_id],
         ).fetchone()
-    except duckdb.Error:
+    except Exception:
         return (False, None)
     if row is None:
         return (False, None)

@@ -12,8 +12,9 @@ This module is the public entry point used by the API and by Phase
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import duckdb
@@ -52,7 +53,7 @@ class AttributionResult:
     document_count: int
     claim_count: int
     # document_id → ip_holder_id (or None when the document has no owner).
-    document_ip_holders: Mapping[str, Optional[str]] = field(default_factory=dict)
+    document_ip_holders: Mapping[str, str | None] = field(default_factory=dict)
     # ip_holder_id → status word (pre_onboarded | invited | claimed | opted_out).
     document_ip_holder_status: Mapping[str, str] = field(default_factory=dict)
 
@@ -95,9 +96,9 @@ def _build_claims(
 def compute_attribution_for_synthesis(
     synthesis_id: str,
     *,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     emit_event: bool = False,
-    investigation_id: Optional[str] = None,
+    investigation_id: str | None = None,
 ) -> SynthesisAttributionResult:
     """Compute attribution for one archived synthesis. Returns all
     three algorithms' results.
@@ -157,8 +158,8 @@ def compute_attribution_for_synthesis(
             doc_rows = []
         doc_to_tier: dict[str, int] = {r[0]: int(r[1]) for r in doc_rows}
         doc_to_title: dict[str, str] = {r[0]: (r[2] or "") for r in doc_rows}
-        doc_to_content_class: dict[str, Optional[str]] = {r[0]: r[3] for r in doc_rows}
-        doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}
+        doc_to_content_class: dict[str, str | None] = {r[0]: r[3] for r in doc_rows}
+        doc_to_ip_holder: dict[str, str | None] = {r[0]: r[4] for r in doc_rows}
 
         # §9.0 retrieval-time gating, on the SURFACED (attribution) path.
         # Two content_classes must NOT surface into an attribution-triggering
@@ -221,11 +222,11 @@ def compute_attribution_for_synthesis(
     c_shares = attribution_option_c(claims)
 
     def _r(algo: str, shares: dict[str, float]) -> AttributionResult:
-        owners = {k: doc_to_ip_holder.get(k) for k in shares.keys()}
+        owners = {k: doc_to_ip_holder.get(k) for k in shares}
         return AttributionResult(
             algorithm=algo,
             shares=shares,
-            document_titles={k: doc_to_title.get(k, "") for k in shares.keys()},
+            document_titles={k: doc_to_title.get(k, "") for k in shares},
             document_count=len(shares),
             claim_count=len(claims),
             document_ip_holders=owners,

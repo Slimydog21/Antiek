@@ -14,7 +14,6 @@ from typing import Any, Literal
 
 from substrate.analytics.dispatch_rows import iter_dispatch_call_rows
 from substrate.coordination.cost_view import build_cost_view
-from substrate.event_log.events import default_events_dir
 
 GroupBy = Literal["workflow", "provider", "model", "tool", "role"]
 

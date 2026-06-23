@@ -15,7 +15,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -133,7 +133,7 @@ def export_tables(db_path: str, out_dir: Path, tables: tuple[str, ...]) -> dict:
     con = connect_read(db_path)
 
     manifest: dict = {
-        "exported_at_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "exported_at_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "antiek_param_version": ANTIEK_PARAM_VERSION,
         "source_db": db_path,
         "table_layers": TABLE_LAYER,

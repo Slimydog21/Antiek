@@ -53,7 +53,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 
 from substrate.coordination.workflow_taxonomy import (
     Workflow,
@@ -76,7 +76,7 @@ from substrate.speak.economics_mode import (
 
 # ── Margin status (honesty #1 — stub the economics you can't compute) ────────
 
-class MarginStatus(str, Enum):
+class MarginStatus(StrEnum):
     """Whether a margin figure is real (the policy is built) or honestly
     stubbed (the product sprint hasn't landed). A stubbed margin is NEVER
     rendered as a dollar figure — only the raw realized cost is."""
