@@ -249,6 +249,7 @@ def default_llm_call_factory(*, investigation_id: str) -> LLMCall:
     ``llm_call`` don't pay the dispatch / config load cost.
     """
     from substrate.dispatch import dispatch
+    from substrate.dispatch.session_routing import dispatch_routing_kwargs
 
     def _call(*, system: str, user: str) -> str:
         prompt = system + "\n\n" + user
@@ -256,6 +257,7 @@ def default_llm_call_factory(*, investigation_id: str) -> LLMCall:
             prompt,
             "knowledge_extractor",
             investigation_id=investigation_id,
+            **dispatch_routing_kwargs(investigation_id),
         )
         return result.text
 

@@ -49,6 +49,7 @@ from typing import Any
 
 from substrate.dispatch.research_tier import resolve_research_tier
 from substrate.dispatch.router import dispatch
+from substrate.dispatch.session_routing import dispatch_routing_kwargs
 from substrate.graph.search import EmbeddingModel, search
 
 from .page_anchor import page_index_from_section_path
@@ -237,6 +238,7 @@ def answer_book_question(
         provider_override=target.provider,
         model_override=target.model,
         config=config,
+        **dispatch_routing_kwargs(investigation_id, presence="engaged"),
     )
     return BookAnswer(
         answer=result.text,

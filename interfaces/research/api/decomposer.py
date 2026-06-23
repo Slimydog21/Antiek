@@ -56,6 +56,7 @@ from roles.decomposer import (  # noqa: E402
     render_full_prompt,
 )
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch.session_routing import dispatch_routing_kwargs  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph.search import EmbeddingModel  # noqa: E402
 from substrate.schemas import (  # noqa: E402
@@ -289,6 +290,7 @@ def _dispatch_and_parse(
             "decomposer",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            **dispatch_routing_kwargs(event.investigation_id),
         )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"

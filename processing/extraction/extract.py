@@ -346,11 +346,14 @@ def extract_from_chunk(
     # Dispatch the extractor.
     full_prompt = EXTRACTION_SYSTEM_PROMPT + "\n\nChunk ID: " + chunk_id + "\n\n## Text\n" + text
     try:
+        from substrate.dispatch.session_routing import dispatch_routing_kwargs
+
         result = dispatch(
             full_prompt,
             "parameter_extractor",
             investigation_id=investigation_id,
             parent_event_id=parent_event_id,
+            **dispatch_routing_kwargs(investigation_id),
         )
         response_text = result.text
     except (ProviderError, KeyError):

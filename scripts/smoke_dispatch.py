@@ -18,6 +18,9 @@ Usage::
     # Cheap, fast: hit DeepSeek-Flash via the 'flash' tier.
     python scripts/smoke_dispatch.py --tier flash
 
+    # TileRT speed lane (needs ANTIEK_TILERT_API_KEY + ANTIEK_TILERT_BASE_URL).
+    python scripts/smoke_dispatch.py --tier speed --latency-mode interactive --brain glm
+
     # Expensive, high-quality: hit Claude via the 'synthesis' tier.
     python scripts/smoke_dispatch.py --tier synthesis
 
@@ -54,12 +57,9 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO))
 
-from substrate.dispatch import (  # noqa: E402
-    AnthropicProvider,
-    OpenAICompatProvider,
-    dispatch,
-    register_provider,
-)
+from substrate.dispatch import dispatch  # noqa: E402
+from substrate.dispatch.providers.bootstrap import register_default_providers  # noqa: E402
+from substrate.dispatch.session_routing import dispatch_routing_kwargs  # noqa: E402
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.schemas import DispatchCallPayload, Event  # noqa: E402
 
@@ -69,35 +69,8 @@ TIER_TO_ROLE = {
     "flash": "note_taker",       # routes to flash via role_tiers
     "pro": "decomposer",         # routes to pro
     "synthesis": "synthesizer",  # routes to synthesis
+    "speed": "synthesizer",      # TileRT tier (needs ANTIEK_TILERT_* + engagement kwargs)
 }
-
-
-def _register_default_providers() -> None:
-    """Register the providers referenced by the default config.yaml.
-
-    Each adapter only validates its API key when ``call`` is invoked —
-    instantiating them with absent keys here is safe; the dispatch path
-    surfaces the error at call time.
-    """
-    register_provider(AnthropicProvider(api_key_env="ANTHROPIC_API_KEY"))
-    register_provider(OpenAICompatProvider(
-        name="deepseek",
-        base_url="https://api.deepseek.com",
-        api_key_env="DEEPSEEK_API_KEY",
-    ))
-    # MiMo and Hermes are placeholders today — fallbacks reference them
-    # but we don't have credentials wired. The router will skip a tier
-    # whose adapter raises a key-missing error and try the next link.
-    register_provider(OpenAICompatProvider(
-        name="xiaomi",
-        base_url="https://api.xiaomi-mimo.com",  # placeholder
-        api_key_env="XIAOMI_API_KEY",
-    ))
-    register_provider(OpenAICompatProvider(
-        name="hermes",
-        base_url="https://hermes.local",  # placeholder
-        api_key_env="HERMES_API_KEY",
-    ))
 
 
 def main() -> int:
@@ -116,16 +89,44 @@ def main() -> int:
         "--max-tokens", type=int, default=64,
         help="Cap the response length. 64 is enough for a smoke probe.",
     )
+    parser.add_argument(
+        "--latency-mode",
+        choices=("interactive", "autonomous"),
+        default="interactive",
+        help="Engagement clock for routing (speed tier needs interactive + brain=glm).",
+    )
+    parser.add_argument(
+        "--brain",
+        choices=("glm", "premium"),
+        default="glm",
+        help="Brain toggle when exercising speed / engaged driving roles.",
+    )
     args = parser.parse_args()
 
-    _register_default_providers()
+    registered = register_default_providers()
+    if args.tier == "speed" and "tilert" not in registered:
+        print(
+            "tilert provider not registered — set ANTIEK_TILERT_API_KEY and "
+            "ANTIEK_TILERT_BASE_URL (see infrastructure/modal/tilert_glm5/README.md)",
+            file=sys.stderr,
+        )
+        return 2
+
     role = TIER_TO_ROLE[args.tier]
+    routing = dispatch_routing_kwargs(
+        args.investigation_id,
+        presence="engaged" if args.latency_mode == "interactive" else "background",
+    )
+    routing["latency_mode"] = args.latency_mode
+    routing["brain"] = args.brain
 
     print(f"→ dispatching role={role!r} (tier={args.tier!r}) prompt={args.prompt!r}")
     result = dispatch(
-        args.prompt, role,
+        args.prompt,
+        role,
         investigation_id=args.investigation_id,
         max_tokens=args.max_tokens,
+        **routing,
     )
 
     print()

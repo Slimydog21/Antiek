@@ -39,7 +39,7 @@ def test_no_keys_registers_nothing(monkeypatch):
     not an error."""
     for k in (
         "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-        "XIAOMI_API_KEY", "HERMES_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY", "ANTIEK_TILERT_API_KEY",
     ):
         monkeypatch.delenv(k, raising=False)
     registered = register_default_providers(quiet=True)
@@ -126,6 +126,22 @@ def test_hermes_provider_url_does_not_double_v1(monkeypatch):
     )
 
 
+def test_tilert_registers_with_key(monkeypatch):
+    for k in (
+        "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ANTIEK_TILERT_API_KEY", "tilert-test")
+    monkeypatch.setenv("ANTIEK_TILERT_BASE_URL", "https://tilert.example.modal.run")
+    registered = register_default_providers(quiet=True)
+    assert registered == {"tilert"}
+    tilert = get_provider("tilert")
+    assert tilert.base_url + tilert.chat_completions_path == (
+        "https://tilert.example.modal.run/v1/chat/completions"
+    )
+
+
 def test_create_app_auto_registers_in_default_mode(monkeypatch):
     """The bug we hit on 2026-05-17: production create_app() must
     register providers. Without this wiring, /health.registered_providers
@@ -163,3 +179,23 @@ def test_health_endpoint_reports_registered_providers(monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert sorted(body["registered_providers"]) == ["anthropic", "deepseek"]
+
+
+def test_health_lists_tilert_when_gateway_env_set(monkeypatch):
+    """SPR-01 milestone 4 — /health.registered_providers includes tilert."""
+    for k in (
+        "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("ANTIEK_TILERT_API_KEY", "tilert-test")
+    monkeypatch.setenv("ANTIEK_TILERT_BASE_URL", "https://tilert.example.modal.run")
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+
+    app = create_app(register_wrestling=False)
+    with TestClient(app) as client:
+        resp = client.get("/health")
+    assert resp.status_code == 200
+    assert "tilert" in resp.json()["registered_providers"]

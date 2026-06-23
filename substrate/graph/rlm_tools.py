@@ -589,12 +589,15 @@ def _default_llm_call(
     through ``substrate.dispatch.dispatch`` so cost tracking +
     fallback chains apply uniformly."""
     from substrate.dispatch import dispatch
+    from substrate.dispatch.session_routing import dispatch_routing_kwargs
 
     def _call(system: str, user: str) -> str:
         prompt = system + "\n\n" + user
         result = dispatch(
-            prompt, role,
+            prompt,
+            role,
             investigation_id=investigation_id,
+            **dispatch_routing_kwargs(investigation_id),
         )
         return result.text
 

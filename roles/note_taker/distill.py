@@ -71,16 +71,36 @@ class DispatchDistiller:
 
     Imported lazily inside ``distill`` so this module (and the passes that
     use it) stay importable without the dispatch stack — tests use a fake.
+
+    Always-on passes without an investigation use ``SYSTEM_INVESTIGATION_ID``
+    and ``presence=background`` (throughput / ``research_flash``).
     """
 
-    def __init__(self, *, role: str = "note_taker", system_prompt: str = NOTE_TAKER_SYSTEM_PROMPT):
+    def __init__(
+        self,
+        *,
+        role: str = "note_taker",
+        system_prompt: str = NOTE_TAKER_SYSTEM_PROMPT,
+        investigation_id: str | None = None,
+    ):
         self._role = role
         self._system_prompt = system_prompt
+        self._investigation_id = investigation_id
 
     def distill(self, text: str, *, source_event_ids: Sequence[str] = (), context: str = "") -> Distillation:
+        from substrate.constants import SYSTEM_INVESTIGATION_ID
         from substrate.dispatch import dispatch  # lazy
+        from substrate.dispatch.session_routing import dispatch_routing_kwargs
+
+        inv = self._investigation_id or SYSTEM_INVESTIGATION_ID
+        presence = "engaged" if self._investigation_id else "background"
         prompt = self._build_prompt(text, context, source_event_ids)
-        result = dispatch(prompt, role=self._role)
+        result = dispatch(
+            prompt,
+            role=self._role,
+            investigation_id=inv,
+            **dispatch_routing_kwargs(inv, presence=presence),
+        )
         response_text = getattr(result, "text", None) or getattr(result, "response_text", "") or str(result)
         return self._parse(response_text)
 

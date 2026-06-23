@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from roles.note_taker import NOTE_TAKER_SYSTEM_PROMPT, parse_notes_response
 from roles.note_taker.parser import ExtractedNote
 from substrate.dispatch import ProviderError, dispatch
+from substrate.dispatch.session_routing import dispatch_routing_kwargs
 
 
 class DispatchNoteDistiller:
@@ -43,7 +44,12 @@ class DispatchNoteDistiller:
             + text
             + "\n\nNow produce the JSON object."
         )
-        result = dispatch(prompt, "note_taker", investigation_id=self.investigation_id)
+        result = dispatch(
+            prompt,
+            "note_taker",
+            investigation_id=self.investigation_id,
+            **dispatch_routing_kwargs(self.investigation_id),
+        )
         notes = parse_notes_response(result.text)
         # Thread the capture-event provenance onto each note.
         if source_event_ids:

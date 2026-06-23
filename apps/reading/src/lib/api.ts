@@ -156,6 +156,12 @@ export async function getHealth(): Promise<{
  */
 export type ResearchTier = "fast" | "deep";
 
+/**
+ * Driving-model brain at research entry (closed set). "glm" = GLM-5.2 / TileRT
+ * when engaged (default, cost-efficient). "premium" = Opus/pro driving tiers.
+ */
+export type BrainChoice = "glm" | "premium";
+
 export interface StartInvestigationRequest {
   question: string;
   context?: string;
@@ -166,6 +172,10 @@ export interface StartInvestigationRequest {
   investigation_id?: string;
   /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
   research_tier?: ResearchTier;
+  /** Driving brain; defaults server-side to "glm" when omitted. */
+  brain_choice?: BrainChoice;
+  /** When true, autonomous jobs may still route driving roles to speed tier. */
+  deliverable_speed_preference?: boolean;
 }
 
 export interface StartInvestigationResponse {

@@ -376,9 +376,13 @@ def default_dispatch_fn(*, investigation_id: str = "__operator__") -> DispatchFn
     system + user (the router takes a single prompt string)."""
     def _fn(system: str, user: str) -> str:
         from substrate.dispatch.router import dispatch
+        from substrate.dispatch.session_routing import dispatch_routing_kwargs
+
         result = dispatch(
-            f"{system}\n\n{user}", role="creative_writer",
+            f"{system}\n\n{user}",
+            role="creative_writer",
             investigation_id=investigation_id,
+            **dispatch_routing_kwargs(investigation_id),
         )
         return getattr(result, "text", "") or getattr(result, "content", "")
     return _fn

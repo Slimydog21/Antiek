@@ -62,22 +62,13 @@ tiers:
       model: deepseek/deepseek-v4-pro
 
   synthesis:
-    # Synthesizer role — the human-facing artifact.
-    #
-    # MEASUREMENT WINDOW OPEN 2026-05-19 (Sprint 17 → Sprint 20).
-    # Per master-spec §14.4 + sprint17 spec §1.2: synthesizer is pinned
-    # to Opus 4.7 via OpenRouter primary, Hermes/Grok fallback, for
-    # 2 weeks of normal investigation traffic. At Sprint 20 verdict:
-    #   - if Grok-on-synthesis verifier-pass-rate within 5pp of Opus →
-    #     flip primary back to hermes/grok-4.3 on cost grounds
-    #   - if gap > 5pp → keep Opus primary; the cost savings on Grok
-    #     are illusory because they convert to additional verifier and
-    #     re-synthesizer dispatch
-    # Synthesis is the operator-facing artifact and voice/style
-    # discipline (master §5) is synthesizer-level; Grok 4.3 has not
-    # been benchmarked on long-form English research writing the way
-    # Opus 4.7 has. The right denominator is cost-per-acceptable-
-    # synthesis, not cost-per-call.
+    # Synthesizer — human-facing artifact. Base tier (no engagement override):
+    # still Opus for legacy / explicit non-interactive paths that do not set
+    # autonomous overrides. **Interactive** sessions remap synthesizer → ``speed``
+    # (TileRT GLM-5.2) via engagement_policy (operator 2026-06-23). **Autonomous**
+    # sessions use ``research_synthesis`` (Kimi / DeepSeek throughput).
+    # Falsifier: if verifier pass rate on GLM synthesis drops >5pp vs Opus baseline,
+    # revert interactive synthesizer override in engagement_policy only.
     provider: openrouter
     model: anthropic/claude-opus-4.7
     pricing:
@@ -143,6 +134,99 @@ tiers:
     provider: null
     model: null
 
+  speed:
+    # TileRT GLM-5.2-FP8 on Modal (HF zai-org/GLM-5.2-FP8; infrastructure/modal/tilert_glm5). Latency-first
+    # tier for interactive sessions (engagement_policy.interactive). Operator 2026-06-23:
+    # GLM-5.2 via TileRT is the driving model when the user is in-product; replaces
+    # Opus/Hermes for engaged driving roles. Set ANTIEK_TILERT_API_KEY +
+    # ANTIEK_TILERT_BASE_URL on the gateway host.
+    provider: tilert
+    model: glm5
+    pricing:
+      # Modal B200:8 — set from observed $/hr and measured tok/s; placeholder 0
+      # until operator calibrates (see DESIGN.md).
+      input_per_mtok: 0.0
+      output_per_mtok: 0.0
+      cached_input_per_mtok: 0.0
+    fallback:
+      provider: xiaomi
+      model: mimo-v2.5-pro
+
+  research_flash:
+    # Autonomous throughput — bulk graph irrigation (flash roles).
+    provider: xiaomi
+    model: mimo-v2.5-flash
+    pricing:
+      input_per_mtok: 0.0
+      output_per_mtok: 0.0
+      cached_input_per_mtok: 0.0
+    fallback:
+      provider: deepseek
+      model: deepseek-v4-flash
+
+  research_pro:
+    # Autonomous throughput — reasoning / connector / challenger paths.
+    provider: deepseek
+    model: deepseek-v4-pro
+    pricing:
+      input_per_mtok: 0.0
+      output_per_mtok: 0.0
+      cached_input_per_mtok: 0.0
+    fallback:
+      provider: xiaomi
+      model: mimo-v2.5-pro
+
+  research_synthesis:
+    # Autonomous throughput — long-form deliverables off-product. Kimi via OpenRouter
+    # until a first-class ``kimi`` provider ships in bootstrap.py.
+    provider: openrouter
+    model: moonshotai/kimi-k2.5
+    pricing:
+      input_per_mtok: 0.0
+      output_per_mtok: 0.0
+      cached_input_per_mtok: 0.0
+    fallback:
+      provider: deepseek
+      model: deepseek-v4-pro
+
+  ceo:
+    # Future: Fable / Mythos brain tier (NotDiamond-orchestrated CEO). No provider
+    # today — placeholder so config can reference ``ceo`` without code edits.
+    provider: null
+    model: null
+
+# ---------------------------------------------------------------------------
+# Engagement vs autonomous routing (operator 2026-06-23).
+# Interactive → TileRT ``speed`` for driving roles. Autonomous → research_* APIs.
+# Callers pass ``latency_mode=`` on dispatch(); gateway may set ANTIEK_LATENCY_MODE.
+# ---------------------------------------------------------------------------
+engagement_policy:
+  # Default platform brain is ``glm`` (brain_choice.py). Users opt into
+  # ``premium`` at research start for Opus/pro driving tiers.
+  default_mode: autonomous
+  interactive:
+    role_tier_overrides:
+      decomposer: speed
+      connector: speed
+      challenger: speed
+      user_agent: speed
+      synthesizer: speed
+      knowledge_extractor: speed
+  autonomous:
+    role_tier_overrides:
+      note_taker: research_flash
+      evidence_retriever: research_flash
+      parameter_extractor: research_flash
+      grounder: research_flash
+      tier_assigner: research_flash
+      constraint_checker: research_flash
+      decomposer: research_pro
+      connector: research_pro
+      challenger: research_pro
+      user_agent: research_pro
+      knowledge_extractor: research_pro
+      synthesizer: research_synthesis
+
 # ---------------------------------------------------------------------------
 # Role → tier mapping. Defaults match substrate/constants.py:DEFAULT_ROLE_TIER.
 # Override here without touching code.
@@ -203,6 +287,22 @@ tier_defaults:
     max_tokens: 0
     temperature: 0.0
     context_budget_tokens: 0
+  speed:
+    max_tokens: 8192
+    temperature: 0.3
+    context_budget_tokens: 128000
+  research_flash:
+    max_tokens: 4096
+    temperature: 0.2
+    context_budget_tokens: 32000
+  research_pro:
+    max_tokens: 8192
+    temperature: 0.3
+    context_budget_tokens: 64000
+  research_synthesis:
+    max_tokens: 16384
+    temperature: 0.4
+    context_budget_tokens: 256000
 
 # ---------------------------------------------------------------------------
 # Cost tracking. The router records per-role and per-investigation

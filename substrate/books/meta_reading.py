@@ -44,6 +44,7 @@ from typing import Any, Literal
 
 from substrate.dispatch.research_tier import resolve_research_tier
 from substrate.dispatch.router import dispatch
+from substrate.dispatch.session_routing import dispatch_routing_kwargs
 from substrate.graph.search import EmbeddingModel, search
 
 from .book_qa import Citation, _citations_from_chunks
@@ -247,6 +248,7 @@ def generate_meta_reading(
         provider_override=target.provider,
         model_override=target.model,
         config=config,
+        **dispatch_routing_kwargs(investigation_id, presence="engaged"),
     )
     report, truncated = _bound_to_budget(result.text, length_box.word_budget)
     return MetaReading(

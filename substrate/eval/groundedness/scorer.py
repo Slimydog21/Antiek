@@ -195,6 +195,7 @@ def _llm_judge_backend(
     import json
 
     from substrate.dispatch.router import dispatch  # deferred
+    from substrate.dispatch.session_routing import dispatch_routing_kwargs
 
     def _judge(claim: str, chunk_texts: Sequence[str]) -> tuple[float, str]:
         if not chunk_texts:
@@ -217,6 +218,7 @@ def _llm_judge_backend(
             investigation_id=investigation_id,
             verification_required=True,
             config=config,
+            **dispatch_routing_kwargs(investigation_id),
         )
         try:
             obj = json.loads(result.text)

@@ -748,7 +748,20 @@ class DispatchCallPayload(_PayloadBase):
     action_type: Literal[ActionType.DISPATCH_CALL] = ActionType.DISPATCH_CALL
     provider: str
     model: str
-    tier: Literal["flash", "pro", "synthesis", "verify", "local"]
+    tier: Literal[
+        "flash",
+        "pro",
+        "synthesis",
+        "verify",
+        "local",
+        "speed",
+        "research_flash",
+        "research_pro",
+        "research_synthesis",
+        "transcription",
+        "tts",
+        "ceo",
+    ]
     target_role: str
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
@@ -2111,6 +2124,15 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
     research_tier: Literal["fast", "deep"] | None = None
+    # Driving model ("Brain") at research entry. CLOSED set: ``glm`` (default,
+    # GLM-5.2 / TileRT when engaged — cost-efficient) or ``premium`` (Opus/pro
+    # path). ``None`` → resolve via DEFAULT_BRAIN_CHOICE (glm). Future CEO
+    # models (Fable/Mythos) use tier ``ceo`` — not exposed here until shipped.
+    # Map + normalization: substrate/dispatch/brain_choice.py.
+    brain_choice: Literal["glm", "premium"] | None = None
+    # When true, autonomous background work still uses TileRT on driving roles
+    # for this investigation (user asked for speed on this research/write).
+    deliverable_speed_preference: bool = False
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):

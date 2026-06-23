@@ -58,6 +58,7 @@ from roles.synthesizer import (  # noqa: E402
     render_full_prompt,
 )
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
+from substrate.dispatch.session_routing import dispatch_routing_kwargs  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
@@ -292,6 +293,7 @@ def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
             parent_event_id=event.event_id,
             provider_override=provider_override,
             model_override=model_override,
+            **dispatch_routing_kwargs(event.investigation_id),
         )
         return result.text, f"{result.provider}/{result.model}"
     except (ProviderError, KeyError) as exc:

@@ -45,7 +45,6 @@ from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.dispatch.session_routing import dispatch_routing_kwargs  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -354,6 +353,8 @@ def make_distillation_handler(
         # failure. A future refinement: emit a dedicated
         # ``distillation.failed`` event type.
         try:
+            from substrate.dispatch.session_routing import dispatch_routing_kwargs
+
             result = dispatch(
                 full_prompt,
                 "synthesizer",

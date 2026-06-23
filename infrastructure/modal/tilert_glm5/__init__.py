@@ -1,0 +1,1 @@
+# Antiek TileRT GLM-5 Modal package (deploy entrypoints live in app.py / prep_weights.py).

@@ -116,6 +116,24 @@ def _maybe_xiaomi() -> OpenAICompatProvider | None:
     )
 
 
+def _maybe_tilert() -> OpenAICompatProvider | None:
+    # TileRT GLM-5 on Modal (antiek-tilert-glm5). OpenAI-shaped chat API;
+    # model id ``glm5`` is served by TileRT's GLM-5 backend. Base URL is the
+    # Modal ASGI host **without** a trailing slash; path is /v1/chat/completions
+    # (default adapter path — base should NOT include /v1).
+    if not os.environ.get("ANTIEK_TILERT_API_KEY"):
+        return None
+    return OpenAICompatProvider(
+        name="tilert",
+        base_url=os.environ.get(
+            "ANTIEK_TILERT_BASE_URL",
+            "http://127.0.0.1:8789",
+        ),
+        api_key_env="ANTIEK_TILERT_API_KEY",
+        timeout_s=300.0,
+    )
+
+
 def _maybe_hermes() -> OpenAICompatProvider | None:
     # Hermes is the operator's local subscription gateway. Disabled
     # by default; opt-in via HERMES_API_KEY + ANTIEK_HERMES_BASE_URL.
@@ -148,6 +166,7 @@ _DEFAULT_PROVIDERS = [
     ("openrouter", _maybe_openrouter),
     ("xiaomi", _maybe_xiaomi),
     ("hermes", _maybe_hermes),
+    ("tilert", _maybe_tilert),
 ]
 
 

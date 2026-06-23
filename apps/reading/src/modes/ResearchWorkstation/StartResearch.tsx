@@ -10,7 +10,7 @@ import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
-import type { ResearchTier } from "../../lib/api";
+import type { BrainChoice, ResearchTier } from "../../lib/api";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -96,6 +96,21 @@ const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
 ];
 const DEFAULT_TIER: ResearchTier = "deep";
 
+/**
+ * ATSB SPR-03 — closed driving-brain set at research entry (not a model dropdown).
+ * Default GLM = fast / cost-efficient GLM-5.2 when you are in the product.
+ * Premium = Opus-class driving quality (higher cost).
+ */
+const BRAIN_OPTIONS: ReadonlyArray<{
+  value: BrainChoice;
+  label: string;
+  hint: string;
+}> = [
+  { value: "glm", label: "GLM", hint: "fast, cost-efficient (default)" },
+  { value: "premium", label: "Premium", hint: "higher-quality driving model" },
+];
+const DEFAULT_BRAIN: BrainChoice = "glm";
+
 /** Grace period before navigating even if no event has streamed yet, so a
  *  slow WS connection doesn't strand the operator on the start surface. */
 const NAVIGATE_GRACE_MS = 1500;
@@ -135,6 +150,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
   // Recorded on the investigation server-side so it's queryable after.
   const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
+  const [brain, setBrain] = useState<BrainChoice>(DEFAULT_BRAIN);
+  const [deliverableSpeed, setDeliverableSpeed] = useState(false);
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -167,9 +184,14 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   } = start;
 
   const onSubmit = useCallback(async () => {
-    const id = await submit({ question, researchTier: tier });
+    const id = await submit({
+      question,
+      researchTier: tier,
+      brainChoice: brain,
+      deliverableSpeedPreference: deliverableSpeed || undefined,
+    });
     if (id) setQuestion("");
-  }, [submit, question, tier]);
+  }, [submit, question, tier, brain, deliverableSpeed]);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -618,6 +640,53 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <span className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
               {RESEARCH_TIER_OPTIONS.find((o) => o.value === tier)?.hint}
             </span>
+          </div>
+
+          <div
+            className="flex flex-wrap items-center gap-2"
+            role="radiogroup"
+            aria-label="Driving brain"
+          >
+            <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              Brain
+            </span>
+            <div className="inline-flex rounded-hog border border-rule dark:border-charcoal-1 overflow-hidden">
+              {BRAIN_OPTIONS.map((opt) => {
+                const active = brain === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setBrain(opt.value)}
+                    disabled={busy}
+                    title={opt.hint}
+                    className={
+                      "px-3 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 disabled:pointer-events-none " +
+                      (active
+                        ? "bg-sun text-ink"
+                        : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright hover:bg-sun/10")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
+              {BRAIN_OPTIONS.find((o) => o.value === brain)?.hint}
+            </span>
+            <label className="flex items-center gap-1.5 text-[11px] font-mono text-ink-mute dark:text-moonlight cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deliverableSpeed}
+                onChange={(e) => setDeliverableSpeed(e.target.checked)}
+                disabled={busy}
+                className="rounded border-rule"
+              />
+              Prefer speed for this deliverable when running in background
+            </label>
           </div>
 
           <div className="flex items-center justify-between gap-3">

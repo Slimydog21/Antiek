@@ -38,6 +38,11 @@ try:
         ProviderError,
         RawProviderResponse,
     )
+    from .engagement_mode import (
+        EngagementPolicy,
+        resolve_latency_mode,
+        resolve_tier_name,
+    )
 except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -49,6 +54,11 @@ except ImportError:  # pragma: no cover
     )
     from event_log import emit_typed  # type: ignore[no-redef]
     from schemas import DispatchCallPayload  # type: ignore[no-redef]
+    from dispatch.engagement_mode import (  # type: ignore[no-redef]
+        EngagementPolicy,
+        resolve_latency_mode,
+        resolve_tier_name,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +99,7 @@ class DispatchConfig:
 
     role_tiers: Mapping[str, str]  # role name → tier name
     tiers: Mapping[str, TierConfig]
+    engagement_policy: EngagementPolicy | None = None
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> DispatchConfig:
@@ -152,7 +163,12 @@ class DispatchConfig:
                 fallback=fallback_obj,
             )
 
-        return cls(role_tiers=data.get("role_tiers", {}), tiers=resolved)
+        engagement = EngagementPolicy.from_dict(data.get("engagement_policy"))
+        return cls(
+            role_tiers=data.get("role_tiers", {}),
+            tiers=resolved,
+            engagement_policy=engagement,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +356,9 @@ def dispatch(
     config_path: str | Path | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    latency_mode: str | None = None,
+    brain: str | None = None,
+    deliverable_speed_preference: bool = False,
 ) -> DispatchResult:
     """Route an LLM call.
 
@@ -377,6 +396,15 @@ def dispatch(
             present (a half-specified override is a caller bug, so we
             refuse to guess the missing half and fall back to config).
         model_override: see ``provider_override``.
+        latency_mode: ``interactive`` or ``autonomous``. When set (or when
+            ``ANTIEK_LATENCY_MODE`` / ``engagement_policy.default_mode`` apply),
+            ``engagement_policy.role_tier_overrides`` remap roles before tier
+            lookup — e.g. interactive driving roles → ``speed`` (TileRT).
+        brain: ``glm`` (default, TileRT when engaged) or ``premium`` (Opus/pro
+            driving tiers). See ``brain_choice.py``.
+        deliverable_speed_preference: when autonomous, still route driving
+            roles through interactive overrides if the user asked for speed
+            on this deliverable.
 
     Returns:
         DispatchResult for the first successful call.
@@ -396,7 +424,19 @@ def dispatch(
             f"Role {role!r} not in config.role_tiers. Known: "
             f"{sorted(config.role_tiers)}"
         )
-    tier_name = config.role_tiers[role]
+    base_tier = config.role_tiers[role]
+    mode = resolve_latency_mode(
+        latency_mode,  # type: ignore[arg-type]
+        policy=config.engagement_policy,
+    )
+    tier_name = resolve_tier_name(
+        role,
+        base_tier,
+        mode=mode,
+        policy=config.engagement_policy,
+        brain=brain,  # type: ignore[arg-type]
+        deliverable_speed_preference=deliverable_speed_preference,
+    )
     if tier_name not in config.tiers:
         raise KeyError(
             f"Tier {tier_name!r} (for role {role!r}) not in config.tiers. Known: "

@@ -181,6 +181,35 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     );
   });
 
+  it("defaults brain to glm on start (ATSB SPR-03)", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-brain" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "A question with enough length." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ brain_choice: "glm" }),
+      ),
+    );
+  });
+
+  it("selecting Premium submits brain_choice premium (ATSB SPR-03)", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-prem" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "A question with enough length." },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Premium" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ brain_choice: "premium" }),
+      ),
+    );
+  });
+
   it("selecting Fast changes the submitted tier (SPR-01 M3)", async () => {
     startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fast" });
     renderStart();

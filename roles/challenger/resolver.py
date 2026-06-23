@@ -92,7 +92,14 @@ def make_dispatch_resolver(
             f"The challenge:\n{challenge_text or DEFAULT_CHALLENGE_PROMPT}"
         )
         try:
-            result = dispatch(prompt, role, investigation_id=investigation_id)
+            from substrate.dispatch.session_routing import dispatch_routing_kwargs
+
+            result = dispatch(
+                prompt,
+                role,
+                investigation_id=investigation_id,
+                **dispatch_routing_kwargs(investigation_id),
+            )
         except (ProviderError, KeyError) as exc:
             # No model could run — escalating here would mislabel a config
             # gap as an open research thread. Surface it honestly instead.

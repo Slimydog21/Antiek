@@ -59,6 +59,7 @@ class DispatchDecomposer:
 
         from roles.decomposer import parse_decomposer_response, render_full_prompt
         from substrate.dispatch import dispatch
+        from substrate.dispatch.session_routing import dispatch_routing_kwargs
 
         investigation_id = f"decomp-{uuid.uuid4().hex[:12]}"
         prompt = render_full_prompt(
@@ -66,7 +67,12 @@ class DispatchDecomposer:
             question=question,
             context=context,
         )
-        result = dispatch(prompt, role="decomposer", investigation_id=investigation_id)
+        result = dispatch(
+            prompt,
+            role="decomposer",
+            investigation_id=investigation_id,
+            **dispatch_routing_kwargs(investigation_id, presence="engaged"),
+        )
         text = getattr(result, "text", None) or str(result)
         parsed = parse_decomposer_response(
             text, expected_investigation_id=investigation_id,

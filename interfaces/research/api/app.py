@@ -2193,6 +2193,7 @@ def create_app(
         ``servable`` / ``servability`` so the surface need not re-derive
         it."""
         import duckdb as _duckdb
+
         from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.graph.retrieval_gate import is_chunk_body_withheld
