@@ -62,7 +62,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # Top-K chunks to surface to the grounder. 5 is enough for a tight
 # decision; more dilutes the prompt and increases cost.

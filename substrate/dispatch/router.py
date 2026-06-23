@@ -36,7 +36,6 @@ try:
         NormalizedUsage,
         Provider,
         ProviderError,
-        RawProviderResponse,
     )
     from .engagement_mode import (
         EngagementPolicy,
@@ -52,13 +51,13 @@ except ImportError:  # pragma: no cover
         Provider,
         ProviderError,
     )
-    from event_log import emit_typed  # type: ignore[no-redef]
-    from schemas import DispatchCallPayload  # type: ignore[no-redef]
     from dispatch.engagement_mode import (  # type: ignore[no-redef]
         EngagementPolicy,
         resolve_latency_mode,
         resolve_tier_name,
     )
+    from event_log import emit_typed  # type: ignore[no-redef]
+    from schemas import DispatchCallPayload  # type: ignore[no-redef]
 
 
 # ---------------------------------------------------------------------------

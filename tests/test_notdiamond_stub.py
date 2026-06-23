@@ -1,12 +1,15 @@
 """NotDiamond orchestration stub."""
 
-import os
 
 from substrate.dispatch.orchestration import (
     OrchestrationPlan,
     notdiamond_enabled,
     plan_research_lane,
 )
+
+
+def test_notdiamond_enabled_is_bool() -> None:
+    assert isinstance(notdiamond_enabled(), bool)
 
 
 def test_plan_interactive_user_present():

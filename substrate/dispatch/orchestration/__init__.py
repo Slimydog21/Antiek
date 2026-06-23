@@ -7,4 +7,4 @@ the router.
 
 from .notdiamond import OrchestrationPlan, notdiamond_enabled, plan_research_lane
 
-__all__ = ["OrchestrationPlan", "plan_research_lane"]
+__all__ = ["OrchestrationPlan", "notdiamond_enabled", "plan_research_lane"]

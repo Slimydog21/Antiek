@@ -71,7 +71,7 @@ from substrate.schemas import (  # noqa: E402
     SubQuestion,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -67,12 +67,8 @@ class DispatchDecomposer:
             question=question,
             context=context,
         )
-        result = dispatch(
-            prompt,
-            role="decomposer",
-            investigation_id=investigation_id,
-            **dispatch_routing_kwargs(investigation_id, presence="engaged"),
-        )
+        result = dispatch(prompt, role="decomposer", investigation_id=investigation_id,
+                          **dispatch_routing_kwargs(investigation_id, presence="engaged"))
         text = getattr(result, "text", None) or str(result)
         parsed = parse_decomposer_response(
             text, expected_investigation_id=investigation_id,

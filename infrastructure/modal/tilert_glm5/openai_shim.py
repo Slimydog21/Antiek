@@ -6,10 +6,10 @@ full ``messages[]`` for forward compatibility (Codex, tools later).
 
 from __future__ import annotations
 
-import json
 import time
 import uuid
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 
 def _approx_tokens(text: str) -> int:

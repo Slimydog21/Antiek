@@ -17,8 +17,9 @@ second dispatcher (§16 discipline).
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, Mapping
+from typing import Any, Literal
 
 from .brain_choice import (
     DEFAULT_BRAIN_CHOICE,

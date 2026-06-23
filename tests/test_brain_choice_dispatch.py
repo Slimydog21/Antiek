@@ -11,7 +11,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.dispatch import (
+from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     TierConfig,
     TierPricing,
@@ -19,11 +19,11 @@ from substrate.dispatch import (
     register_provider,
     reset_provider_registry,
 )
-from substrate.dispatch.brain_choice import normalize_brain_choice
-from substrate.dispatch.engagement_mode import EngagementPolicy, resolve_tier_name
-from substrate.event_log import trajectory
-from substrate.schemas import ActionType, DispatchCallPayload, Event
-from tests.test_dispatch import _MockOpenAICompatProvider
+from substrate.dispatch.brain_choice import normalize_brain_choice  # noqa: E402
+from substrate.dispatch.engagement_mode import EngagementPolicy, resolve_tier_name  # noqa: E402
+from substrate.event_log import trajectory  # noqa: E402
+from substrate.schemas import ActionType, DispatchCallPayload, Event  # noqa: E402
+from tests.test_dispatch import _MockOpenAICompatProvider  # noqa: E402
 
 
 def _config_with_engagement() -> DispatchConfig:

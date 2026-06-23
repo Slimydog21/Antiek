@@ -76,7 +76,7 @@ from substrate.schemas import (  # noqa: E402
     SeedPair,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Traversal dispatch
