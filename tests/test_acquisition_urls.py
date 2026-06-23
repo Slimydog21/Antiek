@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -292,7 +293,7 @@ def test_ingest_reader_snapshot_when_flag_set(temp_substrate, monkeypatch):
     )
     assert res.reader_snapshot_path is not None
     assert os.path.isfile(res.reader_snapshot_path)
-    text = open(res.reader_snapshot_path, encoding="utf-8").read()
+    text = Path(res.reader_snapshot_path).read_text(encoding="utf-8")
     assert res.document_id in text
     assert "Article Heading" in text or "substantive" in text
     assert "<script>" not in text.lower() or "alert" not in text
