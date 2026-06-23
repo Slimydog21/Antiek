@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -54,7 +55,7 @@ from substrate.schemas import (  # noqa: E402
     NoteEmergedPayload,
 )
 
-from .broadcast import EventBroadcaster  # noqa: E402
+from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
 
 # Action types the note-taker subscribes to. Tightened to the events
 # that ACTUALLY reflect substantive wrestling movement — distillations
@@ -95,7 +96,7 @@ def _resolve_threshold() -> int:
 # ---------------------------------------------------------------------------
 
 
-def _format_recent_events_for_prompt(rows: list[dict]) -> str:
+def _format_recent_events_for_prompt(rows: list[dict[str, Any]]) -> str:
     """Compact one-line-per-event rendering of the recent wrestling
     history. The role prompt needs each event identifiable by its
     event_id (for attribution) and its type (for context). Full
@@ -146,7 +147,7 @@ def make_note_taker_handler(
     broadcaster: EventBroadcaster,
     *,
     threshold: int | None = None,
-):
+) -> EventHandler:
     """Build the async handler closed over a broadcaster. Maintains a
     per-investigation event counter and triggers a synthesis pass
     every ``threshold`` qualifying events. Same handler is registered

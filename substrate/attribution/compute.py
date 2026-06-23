@@ -14,10 +14,10 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import duckdb
+    pass
 
 from substrate.event_log import emit_typed
 from substrate.graph import default_db_path, ensure_initialized
@@ -70,8 +70,7 @@ class SynthesisAttributionResult:
 
 
 def _build_claims(
-    con: duckdb.DuckDBPyConnection,
-    thesis_components: list[dict],
+    thesis_components: list[dict[str, Any]],
     chunk_to_doc: Mapping[str, str],
     doc_to_tier: Mapping[str, int],
 ) -> list[AttributionClaim]:
@@ -129,7 +128,10 @@ def compute_attribution_for_synthesis(
                 thesis = json.loads(thesis_json)
             except (TypeError, ValueError):
                 thesis = {}
-        thesis_components = thesis.get("thesis_components") or []
+        raw_components = thesis.get("thesis_components") or []
+        thesis_components: list[dict[str, Any]] = (
+            raw_components if isinstance(raw_components, list) else []
+        )
 
         all_chunk_ids: set[str] = set()
         for comp in thesis_components:
@@ -211,11 +213,11 @@ def compute_attribution_for_synthesis(
                 f"WHERE ip_holder_id IN ({placeholders})",
                 list(owner_ids),
             ).fetchall():
-                ip_status[hid] = status
+                ip_status[str(hid)] = str(status)
     finally:
         con.close()
 
-    claims = _build_claims(None, thesis_components, chunk_to_doc, doc_to_tier)
+    claims = _build_claims(thesis_components, chunk_to_doc, doc_to_tier)
 
     a_shares = attribution_option_a(claims)
     b_shares = attribution_option_b(claims)

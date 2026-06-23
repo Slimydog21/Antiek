@@ -71,7 +71,7 @@ from substrate.schemas import (  # noqa: E402
     SubQuestion,
 )
 
-from .broadcast import EventBroadcaster  # noqa: E402
+from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -146,7 +146,7 @@ def make_decomposer_handler(
     broadcaster: EventBroadcaster,
     *,
     embedder: EmbeddingModel | None = None,
-):
+) -> EventHandler:
     """Build the handler closed over a broadcaster + embedder.
     Registered against ``ActionType.DECOMPOSE_QUESTION_REQUESTED``.
 

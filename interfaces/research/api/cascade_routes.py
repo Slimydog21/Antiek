@@ -38,7 +38,7 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
@@ -66,11 +66,15 @@ from runtime.research_runner import (
     Command,
     CommandKind,
     HostLocalRunner,
+    LoopContext,
     PromotionFunnel,
+    StepEvent,
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
 from substrate.graph import default_db_path, ensure_initialized
+
+ResearchLoopFn = Callable[[LoopContext], AsyncIterator[StepEvent]]
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +86,7 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 # ---------------------------------------------------------------------------
 
 _SESSIONS: dict[str, CascadeSession] = {}
-_SESSION_TASKS: dict[str, asyncio.Task] = {}
+_SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
 
 # Optional hook set by ``create_app`` after Loop 1 handlers register.
 # Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
@@ -126,19 +130,19 @@ def _translate() -> Iterator[None]:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-def _embedding_provider():
+def _embedding_provider() -> Any:
     from processing.embedding import default_embedding_provider
     return default_embedding_provider()
 
 
-def _decompose(problem: str, max_depth: int):
+def _decompose(problem: str, max_depth: int) -> Any:
     """The decomposer the plan endpoint uses when the caller does not supply
     sub-questions. A module attribute so tests can monkeypatch it to a
     deterministic fake without a live model."""
     return build_plan(problem, decomposer=DispatchDecomposer(), max_depth=max_depth)
 
 
-def _research_loop_factory():
+def _research_loop_factory() -> ResearchLoopFn:
     """The browse loop each investigation runs.
 
     Default = the contract gather stub (an honest placeholder that does
@@ -157,7 +161,7 @@ def _research_loop_factory():
     return make_contract_gather_stub(steps=2, cost_per_step=0.01)
 
 
-def _command(kind: str, payload: dict | None) -> Command:
+def _command(kind: str, payload: dict[str, Any] | None) -> Command:
     try:
         return Command(kind=CommandKind(kind), payload=payload or {})
     except ValueError as exc:
@@ -200,7 +204,7 @@ class LaunchRequest(BaseModel):
 
 class SteerRequest(BaseModel):
     kind: str  # pause | resume | stop | redirect | deepen
-    payload: dict | None = None
+    payload: dict[str, Any] | None = None
 
 
 class SuggestionOut(BaseModel):
@@ -230,7 +234,7 @@ class SuggestionsResponse(BaseModel):
 
 
 @cascade_router.get("/budget-defaults")
-async def budget_defaults() -> dict:
+async def budget_defaults() -> dict[str, Any]:
     """The per-research spend ceiling the runner uses when the launch request
     omits one, plus the host-local concurrency cap. Both read straight off the
     contracts (``BudgetCap`` + ``host_local.DEFAULT_MAX_CONCURRENCY``) so the
@@ -286,13 +290,18 @@ async def suggestions(limit: int = 8) -> SuggestionsResponse:
 
 
 @cascade_router.post("/plans")
-async def create_plan(req: CreatePlanRequest) -> dict:
+async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
     """Decompose a problem into an editable, focus-checked sub-question tree
     and persist it. Returns the root node id + the editable tree."""
     if req.sub_questions:
         class _Fixed:
-            def decompose(self, q, *, context=""):
-                return [SubQuestion(question=s) for s in req.sub_questions]
+            def decompose(
+                self,
+                q: str,
+                *,
+                context: str = "",
+            ) -> list[SubQuestion]:
+                return [SubQuestion(question=s) for s in (req.sub_questions or [])]
         report = build_plan(req.problem, decomposer=_Fixed(), max_depth=req.max_depth)
     else:
         try:
@@ -323,7 +332,7 @@ async def create_plan(req: CreatePlanRequest) -> dict:
 
 
 @cascade_router.get("/plans/{root_id}")
-async def get_plan(root_id: str) -> dict:
+async def get_plan(root_id: str) -> dict[str, Any]:
     tree = load_tree(root_id, db_path=_db())
     if tree is None:
         raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
@@ -332,7 +341,7 @@ async def get_plan(root_id: str) -> dict:
 
 
 @cascade_router.post("/plans/{root_id}/edit")
-async def edit_plan(root_id: str, req: TreeEditRequest) -> dict:
+async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
     """Apply one edit to the tree and re-persist. Any edit re-opens the
     approval gate (SPR-05 contract)."""
     with _translate():
@@ -364,7 +373,7 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
 
 
 @cascade_router.post("/plans/{root_id}/approve")
-async def approve(root_id: str, req: ApproveRequest) -> dict:
+async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
     with _write("approve_plan") as con:
         approval = approve_plan(root_id, approver=req.approver,
                                 investigation_id="__operator__", con=con)
@@ -378,7 +387,7 @@ async def approve(root_id: str, req: ApproveRequest) -> dict:
 
 
 @cascade_router.post("/plans/{root_id}/launch")
-async def launch(root_id: str, req: LaunchRequest) -> dict:
+async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     """Launch an approved plan as N parallel researches. Refuses an
     unapproved plan (SPR-05 gate). Returns the session id + the researches.
 
@@ -446,7 +455,7 @@ async def _run_to_completion(session: CascadeSession) -> None:
 
 
 @cascade_router.get("/sessions/{session_id}")
-async def session_status(session_id: str) -> dict:
+async def session_status(session_id: str) -> dict[str, Any]:
     live = _SESSIONS.get(session_id)
     if live is not None:
         cost = live.aggregate_cost()
@@ -487,7 +496,7 @@ async def session_status(session_id: str) -> dict:
 
 
 @cascade_router.get("/sessions/{session_id}/cost")
-async def session_cost(session_id: str) -> dict:
+async def session_cost(session_id: str) -> dict[str, Any]:
     live = _SESSIONS.get(session_id)
     if live is None:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
@@ -495,7 +504,7 @@ async def session_cost(session_id: str) -> dict:
 
 
 @cascade_router.post("/sessions/{session_id}/researches/{investigation_id}/steer")
-async def steer(session_id: str, investigation_id: str, req: SteerRequest) -> dict:
+async def steer(session_id: str, investigation_id: str, req: SteerRequest) -> dict[str, Any]:
     live = _SESSIONS.get(session_id)
     if live is None:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
@@ -513,7 +522,7 @@ async def session_stream(session_id: str) -> StreamingResponse:
     clients dedup on (investigation_id, seq)."""
     live = _SESSIONS.get(session_id)
 
-    async def _live() -> Any:
+    async def _live(session: CascadeSession) -> AsyncIterator[str]:
         # Poll-drain rather than consume ``session.stream()`` directly: the
         # drain + ``asyncio.sleep`` give the in-process research tasks loop
         # time (so the fan-out progresses while the client watches) and the
@@ -521,19 +530,19 @@ async def session_stream(session_id: str) -> StreamingResponse:
         # hangs waiting on a queue sentinel.
         idle_after_complete = 0
         while True:
-            for ev in live.drain_nowait():
+            for ev in session.drain_nowait():
                 yield _sse({
                     "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
                     "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
                     "state": ev.state.value if ev.state else None, "data": ev.data,
                 })
-            if live.is_complete():
+            if session.is_complete():
                 # Drain one more cycle to flush any final events, then close.
                 idle_after_complete += 1
                 if idle_after_complete >= 2:
                     break
             await asyncio.sleep(0.02)
-        for ev in live.drain_nowait():
+        for ev in session.drain_nowait():
             yield _sse({
                 "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
                 "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
@@ -541,16 +550,16 @@ async def session_stream(session_id: str) -> StreamingResponse:
             })
         yield _sse({"kind": "session_done"})
 
-    async def _recovered() -> Any:
+    async def _recovered() -> AsyncIterator[str]:
         rec = reconstruct_session(session_id)
         for r in rec.researches:
             yield _sse({"investigation_id": r.investigation_id, "kind": "status",
                         "text": r.sub_question, "state": r.state})
         yield _sse({"kind": "session_done", "recovered": True})
 
-    gen = _live() if live is not None else _recovered()
+    gen = _live(live) if live is not None else _recovered()
     return StreamingResponse(gen, media_type="text/event-stream")
 
 
-def _sse(obj: dict) -> str:
+def _sse(obj: dict[str, Any]) -> str:
     return f"data: {json.dumps(obj, default=str)}\n\n"

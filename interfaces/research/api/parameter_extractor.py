@@ -58,7 +58,7 @@ from substrate.schemas import (  # noqa: E402
     ParameterExtractRequestedPayload,
 )
 
-from .broadcast import EventBroadcaster  # noqa: E402
+from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -144,7 +144,7 @@ def _dispatch_and_parse(
 # ---------------------------------------------------------------------------
 
 
-def make_parameter_extractor_handler(broadcaster: EventBroadcaster):
+def make_parameter_extractor_handler(broadcaster: EventBroadcaster) -> EventHandler:
     """Build the handler closed over a broadcaster. Registered against
     ``ActionType.PARAMETER_EXTRACT_REQUESTED``."""
 

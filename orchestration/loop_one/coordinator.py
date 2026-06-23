@@ -135,11 +135,13 @@ class InvestigationCoordinator:
         """Resolve any pending future matching
         ``(investigation_id, action_type)``. No-op when nobody is
         waiting — the event flows through normally."""
-        action_value = event.action_type
-        if hasattr(action_value, "value"):
-            action_value = action_value.value
+        raw_action = event.action_type
+        action = (
+            str(raw_action.value)
+            if hasattr(raw_action, "value")
+            else str(raw_action)
+        )
         inv = event.investigation_id
-        action = str(action_value)
         correlation = ""
         payload = event.payload
         if hasattr(payload, "sub_question"):

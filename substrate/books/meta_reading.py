@@ -267,7 +267,7 @@ def _build_synthesis_prompt(
     *,
     prompt: str,
     length_box: LengthBox,
-    context_chunks: Sequence[dict],
+    context_chunks: Sequence[dict[str, Any]],
 ) -> str:
     """Assemble the synthesis prompt: the ask, the hard word budget (built-to-
     size), and the owned-corpus passages. The model is told to synthesize ONLY

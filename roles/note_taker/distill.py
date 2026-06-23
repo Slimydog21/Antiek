@@ -25,7 +25,7 @@ import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 try:
     from .parser import ExtractedNote, parse_notes_response
@@ -90,16 +90,22 @@ class DispatchDistiller:
     def distill(self, text: str, *, source_event_ids: Sequence[str] = (), context: str = "") -> Distillation:
         from substrate.constants import SYSTEM_INVESTIGATION_ID
         from substrate.dispatch import dispatch  # lazy
-        from substrate.dispatch.session_routing import dispatch_routing_kwargs
+        from substrate.dispatch.session_routing import (
+            PresenceHint,
+            dispatch_routing_kwargs,
+        )
 
         inv = self._investigation_id or SYSTEM_INVESTIGATION_ID
-        presence = "engaged" if self._investigation_id else "background"
+        presence: PresenceHint = (
+            "engaged" if self._investigation_id else "background"
+        )
         prompt = self._build_prompt(text, context, source_event_ids)
+        routing: dict[str, Any] = dispatch_routing_kwargs(inv, presence=presence)
         result = dispatch(
             prompt,
             role=self._role,
             investigation_id=inv,
-            **dispatch_routing_kwargs(inv, presence=presence),
+            **routing,
         )
         response_text = getattr(result, "text", None) or getattr(result, "response_text", "") or str(result)
         return self._parse(response_text)

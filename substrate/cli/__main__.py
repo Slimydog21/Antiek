@@ -2,39 +2,46 @@
 
 from __future__ import annotations
 
+import importlib
 import sys
 from collections.abc import Callable
 
 
-def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
-    main_fn: Callable[[list[str] | None], int]
-    if name == "burn":
-        from substrate.observability.burn_cli import main as main_fn
-    elif name == "branch":
-        from substrate.conversation.cli import main as main_fn
-    elif name == "hooks":
-        from substrate.cli.hooks import main as main_fn
-    elif name == "harness":
-        from substrate.cli.harness import main as main_fn
-    elif name == "compact":
-        from substrate.cli.compact import main as main_fn
-    elif name == "queue":
-        from substrate.cli.queue import main as main_fn
-    elif name == "lint":
-        import importlib.util
-        from pathlib import Path
+def _lint_main() -> Callable[[list[str] | None], int]:
+    import importlib.util
+    from pathlib import Path
 
-        script = (
-            Path(__file__).resolve().parents[2]
-            / "scripts" / "lint_context_injection.py"
-        )
-        spec = importlib.util.spec_from_file_location("antiek_lint", script)
-        assert spec and spec.loader
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        main_fn = module.main
-    else:
+    script = (
+        Path(__file__).resolve().parents[2]
+        / "scripts" / "lint_context_injection.py"
+    )
+    spec = importlib.util.spec_from_file_location("antiek_lint", script)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"lint script not found: {script}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    fn: Callable[[list[str] | None], int] = module.main
+    return fn
+
+
+_SUBCOMMAND_MODULES: dict[str, str] = {
+    "burn": "substrate.observability.burn_cli",
+    "branch": "substrate.conversation.cli",
+    "hooks": "substrate.cli.hooks",
+    "harness": "substrate.cli.harness",
+    "compact": "substrate.cli.compact",
+    "queue": "substrate.cli.queue",
+}
+
+
+def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
+    if name == "lint":
+        return _lint_main()
+    module_name = _SUBCOMMAND_MODULES.get(name)
+    if module_name is None:
         raise ValueError(f"unknown subcommand {name!r}")
+    mod = importlib.import_module(module_name)
+    main_fn: Callable[[list[str] | None], int] = mod.main
     return main_fn
 
 

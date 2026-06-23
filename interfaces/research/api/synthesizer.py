@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -50,6 +51,7 @@ from middleware.constraint_check import (  # noqa: E402
     ConstraintLoopResult,
     run_constraint_loop,
 )
+from middleware.constraint_check.constraints import Violation  # noqa: E402
 from roles.synthesizer import (  # noqa: E402
     SynthesizerValidationError,
     ThesisResult,
@@ -74,7 +76,7 @@ from substrate.schemas import (  # noqa: E402
     ViolationJustification,
 )
 
-from .broadcast import EventBroadcaster  # noqa: E402
+from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -190,7 +192,7 @@ def _empty_delivered_payload(
 # ---------------------------------------------------------------------------
 
 
-def _research_tier_override(investigation_id: str):
+def _research_tier_override(investigation_id: str) -> tuple[str | None, str | None]:
     """Resolve the (provider, model) research-tier override for THIS
     investigation's SYNTHESIZER dispatch, READ from the persisted start
     event. Returns ``(provider, model)`` to swap the synthesizer's config
@@ -309,7 +311,7 @@ def _dispatch_and_parse(
     prompt: str,
     event: Event,
     *,
-    rerender_with_prefix=None,
+    rerender_with_prefix: Callable[[str], str] | None = None,
 ) -> tuple[ThesisResult | None, str]:
     """Dispatch + parse with one self-repair retry on parse failure.
 
@@ -379,7 +381,7 @@ def _dispatch_and_parse(
 # ---------------------------------------------------------------------------
 
 
-def make_synthesizer_handler(broadcaster: EventBroadcaster):
+def make_synthesizer_handler(broadcaster: EventBroadcaster) -> EventHandler:
     """Build the synthesizer handler. Registered against
     ``ActionType.SYNTHESIZE_REQUESTED``."""
 
@@ -414,7 +416,10 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster):
         # the behavior we want for unconstrained syntheses.
         latest_result: ThesisResult = first_result
 
-        def synthesizer_callable(violations, iteration):
+        def synthesizer_callable(
+            violations: list[Violation],
+            iteration: int,
+        ) -> list[Claim]:
             nonlocal latest_result
             prefix = build_revision_prefix(violations)
             revised_prompt = render_full_prompt(

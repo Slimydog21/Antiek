@@ -31,6 +31,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 DEFAULT_RETENTION_DAYS = 30
 
@@ -48,7 +49,7 @@ def _events_dir(events_dir: str | None) -> Path:
     return Path(default_discovery_events_dir())
 
 
-def _parse_event_ts(raw: dict) -> datetime | None:
+def _parse_event_ts(raw: dict[str, Any]) -> datetime | None:
     """Best-effort parse of the event's emitted_at ISO timestamp.
     None means the event will be conservatively kept (not rolled
     up) — same posture as `runtime/weekly_report.py`'s parser."""
@@ -115,7 +116,7 @@ def rollup_expired(
 
     # Per (provider, day_utc, query_hash) aggregate buckets accumulated
     # across all expired files, then upserted in one transaction.
-    buckets: dict[tuple[str, str, str], dict] = defaultdict(
+    buckets: dict[tuple[str, str, str], dict[str, Any]] = defaultdict(
         lambda: {
             "query_preview": None,
             "proposal_count": 0,
@@ -139,7 +140,7 @@ def rollup_expired(
         # event is newer than the cutoff, skip the whole file —
         # partial rollups would lose data.
         most_recent: datetime | None = None
-        parsed_events: list[dict] = []
+        parsed_events: list[dict[str, Any]] = []
         for line in lines:
             line = line.strip()
             if not line:
@@ -278,7 +279,7 @@ def recent_summary(
     *,
     days: int = 7,
     db_path: str | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Read the most-recent `days` of discovery_summary rows.
     Operator-facing helper; the audit CLI consumes this."""
     from runtime.db_lock import connect_read

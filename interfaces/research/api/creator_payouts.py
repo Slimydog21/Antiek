@@ -11,6 +11,8 @@ render "you have $X accrued; $Y paid out; KYC status: COMPLETED".
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -55,7 +57,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _load_kyc_state(con, recipient_ref: str) -> str | None:
+def _load_kyc_state(con: Any, recipient_ref: str) -> str | None:
     """Read the latest kyc_status row for the recipient."""
     try:
         row = con.execute(
@@ -65,10 +67,10 @@ def _load_kyc_state(con, recipient_ref: str) -> str | None:
         ).fetchone()
     except Exception:
         return None
-    return row[0] if row else None
+    return cast(str | None, row[0]) if row else None
 
 
-def _load_transfers(con, recipient_ref: str) -> list[tuple]:
+def _load_transfers(con: Any, recipient_ref: str) -> list[tuple[Any, ...]]:
     """Load every transfer attempt routed to the recipient. Filters
     by ``recipient_account_id`` matching the recipient_ref (the
     substrate uses the user_id / ip_holder_id as the Stripe Connect

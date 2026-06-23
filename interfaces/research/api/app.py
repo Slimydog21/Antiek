@@ -1526,11 +1526,14 @@ def create_app(
         )
         _loop_coordinator = _register_loop_one(bus)
         # ANT-DRL-06: Path A convergence — DRW gather then Loop 1 tail.
-        from interfaces.research.api.cascade_routes import (
-            set_synthesis_tail_runner,
-        )
+        from interfaces.research.api.cascade_routes import set_synthesis_tail_runner
+        from orchestration.cascade_session import CascadeSession
+        from orchestration.session_evidence_pack import SessionEvidencePack
 
-        async def _run_cascade_synthesis_tail(session, pack) -> None:
+        async def _run_cascade_synthesis_tail(
+            session: CascadeSession,
+            pack: SessionEvidencePack,
+        ) -> None:
             await session.run_synthesis_tail(
                 pack, broadcaster=bus, coordinator=_loop_coordinator,
             )

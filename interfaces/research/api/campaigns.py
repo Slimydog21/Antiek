@@ -12,6 +12,8 @@ the substrate's event log + the payout_transfers table on demand.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -45,7 +47,8 @@ def _resolve_db_path() -> str:
 
 
 def _load_advertiser_budget(
-    con, advertiser_id: str,
+    con: Any,
+    advertiser_id: str,
 ) -> tuple[bool, int | None]:
     """Returns (advertiser_exists, monthly_budget_usd_cents)."""
     try:

@@ -112,7 +112,7 @@ def _translate() -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
-def _block_dict(b: OutlineBlock) -> dict:
+def _block_dict(b: OutlineBlock) -> dict[str, Any]:
     return {
         "outline_block_id": b.outline_block_id, "section_id": b.section_id,
         "block_kind": b.block_kind, "provenance_kind": b.provenance_kind,
@@ -121,7 +121,7 @@ def _block_dict(b: OutlineBlock) -> dict:
     }
 
 
-def _node_dict(n: OutlineNode) -> dict:
+def _node_dict(n: OutlineNode) -> dict[str, Any]:
     return {
         "section_id": n.section_id, "title": n.title, "depth": n.depth,
         "section_index": n.section_index,
@@ -185,7 +185,7 @@ class PromoteContextRequest(BaseModel):
 
 
 @write_router.post("/blocks", status_code=201)
-def place_outline_block(req: PlaceBlockRequest) -> dict:
+def place_outline_block(req: PlaceBlockRequest) -> dict[str, Any]:
     with _translate(), _write("write/place_block") as con:
         if con.execute(
             "SELECT 1 FROM deliverable_sections WHERE section_id = ?", [req.section_id]
@@ -200,7 +200,7 @@ def place_outline_block(req: PlaceBlockRequest) -> dict:
 
 
 @write_router.post("/blocks/{outline_block_id}/move", status_code=202)
-def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict:
+def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict[str, Any]:
     with _translate(), _write("write/move_block") as con:
         move_block(
             con, outline_block_id=outline_block_id,
@@ -210,7 +210,7 @@ def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict:
 
 
 @write_router.delete("/blocks/{outline_block_id}", status_code=200)
-def delete_outline_block(outline_block_id: str) -> dict:
+def delete_outline_block(outline_block_id: str) -> dict[str, Any]:
     with _write("write/remove_block") as con:
         removed = remove_block(con, outline_block_id=outline_block_id)
     if not removed:
@@ -219,7 +219,7 @@ def delete_outline_block(outline_block_id: str) -> dict:
 
 
 @write_router.get("/sections/{section_id}/blocks")
-def get_section_blocks(section_id: str) -> dict:
+def get_section_blocks(section_id: str) -> dict[str, Any]:
     with _read() as con:
         blocks = list_section_blocks(con, section_id)
         # The routed outline renders block TEXT, never an id (SPR-07 M2:
@@ -245,14 +245,14 @@ def get_section_blocks(section_id: str) -> dict:
 
 
 @write_router.get("/deliverables/{deliverable_id}/outline")
-def get_outline(deliverable_id: str) -> dict:
+def get_outline(deliverable_id: str) -> dict[str, Any]:
     with _read() as con:
         roots = build_outline_tree(con, deliverable_id)
     return {"deliverable_id": deliverable_id, "roots": [_node_dict(n) for n in roots]}
 
 
 @write_router.get("/blocks/{outline_block_id}/provenance")
-def get_provenance(outline_block_id: str) -> dict:
+def get_provenance(outline_block_id: str) -> dict[str, Any]:
     with _read() as con:
         if get_block(con, outline_block_id) is None:
             raise HTTPException(status_code=404, detail="outline block not found")
@@ -271,7 +271,7 @@ def get_provenance(outline_block_id: str) -> dict:
 
 
 @write_router.get("/blocks/{outline_block_id}/trace")
-def get_trace_target(outline_block_id: str) -> dict:
+def get_trace_target(outline_block_id: str) -> dict[str, Any]:
     with _read() as con:
         if get_block(con, outline_block_id) is None:
             raise HTTPException(status_code=404, detail="outline block not found")
@@ -291,14 +291,14 @@ def get_trace_target(outline_block_id: str) -> dict:
 
 
 @write_router.post("/folders", status_code=201)
-def create_folder(req: CreateFolderRequest) -> dict:
+def create_folder(req: CreateFolderRequest) -> dict[str, Any]:
     with _write("write/create_folder") as con:
         fid = folders_mod.create_folder(con, name=req.name)
     return {"folder_id": fid}
 
 
 @write_router.get("/folders")
-def list_folders() -> dict:
+def list_folders() -> dict[str, Any]:
     with _read() as con:
         items = folders_mod.list_folders(con)
     return {
@@ -311,14 +311,14 @@ def list_folders() -> dict:
 
 
 @write_router.post("/folders/{folder_id}/blocks", status_code=202)
-def add_folder_block(folder_id: str, req: FolderMemberRequest) -> dict:
+def add_folder_block(folder_id: str, req: FolderMemberRequest) -> dict[str, Any]:
     with _write("write/add_folder_block") as con:
         created = folders_mod.add_block_to_folder(con, folder_id=folder_id, node_id=req.node_id)
     return {"status": "added" if created else "already_member"}
 
 
 @write_router.delete("/folders/{folder_id}/blocks/{node_id}", status_code=200)
-def remove_folder_block(folder_id: str, node_id: str) -> dict:
+def remove_folder_block(folder_id: str, node_id: str) -> dict[str, Any]:
     with _write("write/remove_folder_block") as con:
         removed = folders_mod.remove_block_from_folder(con, folder_id=folder_id, node_id=node_id)
     return {"status": "removed" if removed else "not_member"}
@@ -330,7 +330,7 @@ def search_repository(
     folder_id: str | None = Query(default=None),
     source_document_id: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
-) -> dict:
+) -> dict[str, Any]:
     with _read() as con:
         hits = block_search.search_blocks(
             con, query=q, folder_id=folder_id,
@@ -355,7 +355,7 @@ def search_repository(
 
 
 @write_router.post("/brainstorm/emit-blocks", status_code=201)
-def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict:
+def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict[str, Any]:
     drivers = DriverSet(
         insights=req.insights, questions=req.questions, data_points=req.data_points,
     )
@@ -384,7 +384,7 @@ def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict:
 
 
 @write_router.post("/context/promote", status_code=201)
-def promote_context(req: PromoteContextRequest) -> dict:
+def promote_context(req: PromoteContextRequest) -> dict[str, Any]:
     specs = [
         ContextBlockSpec(
             block_kind=b.block_kind, provenance_kind=b.provenance_kind,
@@ -410,7 +410,7 @@ def promote_context(req: PromoteContextRequest) -> dict:
 
 
 @write_router.post("/sections/{section_id}/generate", status_code=200)
-def generate_section_draft(section_id: str) -> dict:
+def generate_section_draft(section_id: str) -> dict[str, Any]:
     """Generate a section's prose from its attached OutlineBlocks.
 
     The no-blocks→gap path needs no model. The live generation path routes

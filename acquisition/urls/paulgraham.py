@@ -41,6 +41,7 @@ import urllib.robotparser
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
+from typing import Any
 from urllib.parse import urldefrag, urljoin, urlparse
 
 # Repo root on path for direct invocation (mirrors adapter.py).
@@ -258,7 +259,7 @@ class EssayQuality:
     ingested: bool
     skipped_reason: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "url": self.url,
             "document_id": self.document_id,
@@ -348,7 +349,7 @@ class RunSummary:
     # than silently degrading the lawful-acquisition posture.
     warnings: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "discovered": self.discovered,
             "fetched": self.fetched,
@@ -404,7 +405,7 @@ def run(
     *,
     investigation_id: str,
     db_path: str | None = None,
-    embedder: object | None = None,
+    embedder: Any | None = None,
     # M1 injection seams (tests/offline):
     articles_html: bytes | str | None = None,
     robots_txt: str | None = None,

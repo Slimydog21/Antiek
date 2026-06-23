@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Any, cast
 
 # Direct import — interfaces/research/api/ depends on substrate.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -62,7 +63,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster  # noqa: E402
+from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
 
 # Top-K chunks to surface to the grounder. 5 is enough for a tight
 # decision; more dilutes the prompt and increases cost.
@@ -94,7 +95,7 @@ def _search_chunks_for_claim(
     claim_text: str,
     embedder: EmbeddingProvider,
     top_k: int = GROUNDING_SEARCH_TOP_K,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Read-side query against ``substrate.graph.search``. Scoped to
     ``document_id`` when set; spanning all chunks otherwise (the
     wrestling bridge always sets document_id, but the grounder
@@ -108,10 +109,10 @@ def _search_chunks_for_claim(
         )
     finally:
         con.close()
-    return result["results"]
+    return cast(list[dict[str, Any]], result["results"])
 
 
-def _render_chunks_for_prompt(chunks: list[dict]) -> str:
+def _render_chunks_for_prompt(chunks: list[dict[str, Any]]) -> str:
     """Format the search results for the grounder prompt. Each chunk
     gets a numbered entry with its chunk_id and full text excerpt so
     the model can quote it back."""
@@ -149,7 +150,7 @@ def make_grounding_handler(
     *,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
-):
+) -> EventHandler:
     """Build the handler closed over a broadcaster + db path +
     embedder. Registered against ``ActionType.CLAIM_CHALLENGE_RAISED``;
     on fire it produces a passed/failed event and broadcasts it."""
