@@ -80,8 +80,9 @@ next free number. Track the counter at the bottom of this file.
 | OA-020 | Sprint 18 retrieval-time gating production deploy verified | OPEN | Activation of substrate-side G1 close | Operator + ops |
 | OA-021 | DuckDB analytics plane on prod (Sprint 03 + 06) | OPEN | Operated `analytics.duckdb`; plane deploy | Operator + ops |
 | OA-022 | TileRT GLM-5 Modal deploy + gateway env (ATSB SPR-01) | OPEN | Brain=GLM on `speed` tier in prod; SPR-07 metrics | Operator + ops |
+| OA-023 | GitHub Actions billing / spending limit (runner jobs) | OPEN | **All CI on Antiek**; PR #83 merge gate | Operator |
 
-**Total OPEN:** 21 (1 partially done, 1 awaiting operator test). One
+**Total OPEN:** 22 (1 partially done, 1 awaiting operator test). One
 entry is closeable today (OA-005); a few are achievable within weeks
 (OA-001 → OA-002 → OA-015 chain); the longest-pole items (OA-003 G7
 compounding, OA-004 G8 Loop 3) are ≥ 6 months out.
@@ -926,13 +927,53 @@ SPR-01 → done; begin SPR-07 metric collection.
 
 ---
 
+### OA-023 — GitHub Actions billing / spending limit (runner jobs)
+
+**Status:** OPEN
+**Owner:** Operator
+**Blocks:** Every Actions job on `Slimydog21/Antiek` (pytest, declared-bar,
+agent-gates, visualtest); **PR #83** DuckDB plane transport cannot close in CI
+until jobs start (`runner_id` ≠ 0)
+**Surfaced by:** caffenagent-cycle PRcrouch on `caffen/duckdb-plane` @ `03c9a4b7`
+(2026-06-24)
+**First flagged:** 2026-06-24
+
+#### What the operator needs to do
+
+GitHub check annotation (job `83081287806`, PR #83):
+
+> The job was not started because recent account payments have failed or your
+> spending limit needs to be increased. Please check the 'Billing & plans'
+> section in your settings.
+
+1. Open [GitHub Settings → Billing & plans](https://github.com/settings/billing)
+   (org billing if Antiek is under an org).
+2. Fix failed payment or raise **Actions spending limit** / restore minutes.
+3. Re-run failed workflows on PR #83 (or push an empty commit).
+4. Confirm a job reaches **Set up job** with a non-zero `runner_id` and runs
+   pytest (~25–40 min).
+
+#### Once closed
+
+Mark OA-023 CLOSED with date + link to first green PR #83 run after fix.
+Then operator may merge PR #83 and proceed **OA-021** (prod analytics plane).
+
+#### Cross-references
+
+- [PR #83](https://github.com/Slimydog21/Antiek/pull/83) — `caffen/duckdb-plane`
+- Branch HEAD transport stack: `03c9a4b7` (pytest fixes + SPR-02 synthesizer audit)
+- Local proof while CI blocked: `bash scripts/duckdb_plane_verify.sh` →
+  `DUCKDB_PLANE_VERIFY_OK`; declared bar @ `.venv314`
+
+---
+
 ## Appending new entries — for future agents
 
 When you (any agent) discover a new operator-only blocker:
 
 1. Check the quick-status table above for duplicates.
-2. Assign the next free `OA-NNN` (current counter: **OA-022**;
-   next free: **OA-023**).
+2. Assign the next free `OA-NNN` (current counter: **OA-023**;
+   next free: **OA-024**).
 3. Fill in the schema at the top of this file.
 4. Add a row to the quick-status table.
 5. Bump the counter line below.
@@ -945,5 +986,5 @@ not.
 
 ---
 
-**Counter:** next-free OA = OA-023. Last updated: 2026-06-23 by
-caffenagent-cycle TileRT speed-brain session.
+**Counter:** next-free OA = OA-024. Last updated: 2026-06-24 by
+caffenagent-cycle DuckDB plane PRcrouch session.
