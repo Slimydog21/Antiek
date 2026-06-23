@@ -78,8 +78,10 @@ next free number. Track the counter at the bottom of this file.
 | OA-018 | Federation partner instance found (Sprint 30+ Thread 1) | OPEN | Sprint 30+ Thread 1 | Operator |
 | OA-019 | SOC 2 PURSUE/DEFER decision recorded | OPEN | Sprint 25+ Phase 6 conditional | Operator |
 | OA-020 | Sprint 18 retrieval-time gating production deploy verified | OPEN | Activation of substrate-side G1 close | Operator + ops |
+| OA-021 | DuckDB analytics plane on prod (Sprint 03 + 06) | OPEN | Operated `analytics.duckdb`; plane deploy | Operator + ops |
+| OA-022 | TileRT GLM-5 Modal deploy + gateway env (ATSB SPR-01) | OPEN | Brain=GLM on `speed` tier in prod; SPR-07 metrics | Operator + ops |
 
-**Total OPEN:** 19 (1 partially done, 1 awaiting operator test). One
+**Total OPEN:** 21 (1 partially done, 1 awaiting operator test). One
 entry is closeable today (OA-005); a few are achievable within weeks
 (OA-001 → OA-002 → OA-015 chain); the longest-pole items (OA-003 G7
 compounding, OA-004 G8 Loop 3) are ≥ 6 months out.
@@ -844,13 +846,93 @@ Sprint 18 legal gate for Stripe Connect activation.
 
 ---
 
+### OA-021 — DuckDB analytics plane on prod (caffenagent Sprint 03 + 06)
+
+**Status:** OPEN
+**Owner:** Operator + ops
+**Blocks:** Closing htmlspec Sprint 03/06; operated `analytics.duckdb` on VM
+**Surfaced by:** caffenagent-cycle Antiek DuckDB plane (2026-06-23)
+**First flagged:** 2026-06-23
+
+#### What the operator needs to do
+
+Substrate + Ansible are ready (`playbooks/setup.yml --tags analytics`,
+`docs/duckdb_plane_sprint03_operator.md`). Prod health is OK but
+`build_sha` predates local plane commits.
+
+1. Deploy plane code: `ansible-playbook … playbooks/deploy.yml` (or merge + deploy per Sprint 06).
+2. `ansible-playbook … setup.yml --tags analytics` if cron not installed.
+3. Run `antiek-analytics-plane` once; smoke-query `analytics.duckdb` views.
+4. Append proof line to this OA (timestamp + query outcome).
+5. Parallel-stream commits per `CLAUDE.md` for the uncommitted plane tree.
+
+#### Once closed
+
+Mark OA-021 CLOSED; reference export path + `DUCKDB_PLANE_VERIFY_OK` on VM if feasible.
+
+#### Cross-references
+
+- `docs/duckdb_plane.md` §6, §16
+- `/Users/slimydog/specs/antiek-duckdb-plane/sprint-03-analytics-prod.html`
+- `.caffenagent/run-ledger.md`
+
+---
+
+### OA-022 — TileRT GLM-5 Modal deploy + gateway env (ATSB SPR-01)
+
+**Status:** OPEN
+**Owner:** Operator + ops
+**Blocks:** Live `speed` tier for Brain=GLM; closing SPR-01; filling
+`docs/decisions/tilert-glm5-verdict-2026-06-23.md` with production metrics
+**Surfaced by:** caffenagent-cycle `antiek-tilert-speed-brain` exec-1 (2026-06-23)
+**First flagged:** 2026-06-23
+
+#### What the operator needs to do
+
+Substrate routing, Modal app scaffold, and smoke scripts are ready. Agents
+**must not** create Modal secrets or run multi-hour `prep_weights` on the
+operator's behalf.
+
+1. Create Modal secret **`antiek-tilert-auth`** with `ANTIEK_TILERT_MODAL_TOKEN`
+   (see `infrastructure/modal/tilert_glm5/README.md` §1).
+2. If weights are gated: create **`hf-token`** secret with `HF_TOKEN`.
+3. Run **`modal run infrastructure/modal/tilert_glm5/prep_weights.py --hf-repo zai-org/GLM-5.2-FP8`**
+   from `prcrouch-feel` root (one-time; hours on B200).
+4. **`modal deploy infrastructure/modal/tilert_glm5/app.py`**; note the web URL.
+5. **`scripts/smoke_tilert_modal.sh`** against that URL + token (health, models, chat).
+6. On Hetzner VM (or local gateway): set **`ANTIEK_TILERT_API_KEY`** (same as modal token)
+   and **`ANTIEK_TILERT_BASE_URL`** (no trailing slash).
+7. Optional dispatch smoke: `uv run python scripts/smoke_dispatch.py --tier speed --latency-mode interactive --brain glm`
+   (exits 2 if tilert provider not registered).
+8. Append proof line here (deploy timestamp + smoke OK + first prod `dispatch.call` with `tier=speed`).
+
+#### Inputs needed before acting
+
+- Modal **B200:8** quota; HF access to `zai-org/GLM-5.2-FP8`.
+- Decision to accept dedicated 8-GPU fixed cost for engaged driving path.
+
+#### Once closed
+
+Mark OA-022 CLOSED; update
+`/Users/slimydog/specs/antiek-tilert-speed-brain/.caffenagent/run-ledger.md`
+SPR-01 → done; begin SPR-07 metric collection.
+
+#### Cross-references
+
+- `infrastructure/modal/tilert_glm5/README.md`, `DESIGN.md`
+- `docs/decisions/tilert-antiek-placement.md`, `tilert-modal-glm5.md`
+- `/Users/slimydog/specs/antiek-tilert-speed-brain/index.html` (SPR-01)
+- `substrate/dispatch/README.md` (engagement + brain)
+
+---
+
 ## Appending new entries — for future agents
 
 When you (any agent) discover a new operator-only blocker:
 
 1. Check the quick-status table above for duplicates.
-2. Assign the next free `OA-NNN` (current counter: **OA-020**;
-   next free: **OA-021**).
+2. Assign the next free `OA-NNN` (current counter: **OA-022**;
+   next free: **OA-023**).
 3. Fill in the schema at the top of this file.
 4. Add a row to the quick-status table.
 5. Bump the counter line below.
@@ -863,5 +945,5 @@ not.
 
 ---
 
-**Counter:** next-free OA = OA-021. Last updated: 2026-05-23 by
-the Phase 2 audit v3 session.
+**Counter:** next-free OA = OA-023. Last updated: 2026-06-23 by
+caffenagent-cycle TileRT speed-brain session.
