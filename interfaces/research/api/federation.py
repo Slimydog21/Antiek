@@ -29,8 +29,8 @@ The signed_token + shared_secret are NEVER reflected in API responses
 
 from __future__ import annotations
 
-import duckdb
 from fastapi import FastAPI, HTTPException
+from runtime.db_lock import connect_read
 from pydantic import BaseModel, Field
 
 from substrate.cross_graph.federation import (
@@ -331,7 +331,7 @@ def register_federation_routes(app: FastAPI) -> None:
     )
     async def list_partners() -> PartnerListResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             ensure_partner_table(con)
             registry = load_registry(con)
@@ -352,7 +352,7 @@ def register_federation_routes(app: FastAPI) -> None:
     )
     async def get_partner(partner_id: str) -> PartnerPublicResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             ensure_partner_table(con)
             registry = load_registry(con)
@@ -375,7 +375,7 @@ def register_federation_routes(app: FastAPI) -> None:
     )
     async def get_config() -> FederationConfigResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             cfg = load_federation_config(con)
         finally:
@@ -421,7 +421,7 @@ def register_federation_routes(app: FastAPI) -> None:
         req: OutboundCitationRequest,
     ) -> OutboundCitationResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             cfg = load_federation_config(con)
             registry = load_registry(con)

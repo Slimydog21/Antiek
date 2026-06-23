@@ -110,11 +110,11 @@ def lookup_url_alias(
     Safe to call against a missing DB file (returns None — the
     cache fails open per the discovery_cache convention).
     """
-    import duckdb
+    from runtime.db_lock import connect_read
 
     resolved = db_path or default_db_path()
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return None
     try:

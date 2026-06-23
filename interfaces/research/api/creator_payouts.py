@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-import duckdb
 from fastapi import FastAPI, HTTPException
+from runtime.db_lock import connect_read
 from pydantic import BaseModel
 
 
@@ -101,7 +101,7 @@ def register_creator_payouts_routes(app: FastAPI) -> None:
         recipient_ref: str,
     ) -> CreatorPayoutsResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             kyc_state = _load_kyc_state(con, recipient_ref)
             rows = _load_transfers(con, recipient_ref)
@@ -140,7 +140,7 @@ def register_creator_payouts_routes(app: FastAPI) -> None:
             load_balance_cents,
         )
 
-        con2 = duckdb.connect(db, read_only=True)
+        con2 = connect_read(db)
         try:
             rollover_balance_cents = load_balance_cents(
                 con2, recipient_ref,

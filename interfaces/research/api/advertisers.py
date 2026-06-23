@@ -30,8 +30,8 @@ typed ``error.code``.
 
 from __future__ import annotations
 
-import duckdb
 from fastapi import FastAPI, HTTPException, Request
+from runtime.db_lock import connect_read
 from pydantic import BaseModel, Field
 
 from substrate.ad_inventory.advertiser_onboarding import (
@@ -282,7 +282,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
     )
     async def list_advertisers() -> AdvertiserListResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             registry = load_registry(con)
         finally:
@@ -303,7 +303,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
     )
     async def list_serving() -> AdvertiserListResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             registry = load_registry(con)
         finally:
@@ -322,7 +322,7 @@ def register_advertiser_routes(app: FastAPI) -> None:
     )
     async def get_advertiser(advertiser_id: str) -> AdvertiserResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             registry = load_registry(con)
         finally:

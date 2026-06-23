@@ -596,7 +596,9 @@ def _stored_raw_text(url: str, *, db_path: str | None) -> str | None:
     resolved = db_path or default_db_path()
     document_id = url_doc_id(url)
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        from runtime.db_lock import connect_read
+
+        con = connect_read(resolved)
     except Exception:
         return None
     try:
@@ -665,7 +667,9 @@ def _stored_content_hash(url: str, *, db_path: str | None) -> str | None:
     resolved = db_path or default_db_path()
     document_id = url_doc_id(url)
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        from runtime.db_lock import connect_read
+
+        con = connect_read(resolved)
     except Exception:
         return None
     try:

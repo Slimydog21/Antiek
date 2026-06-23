@@ -284,13 +284,12 @@ def recent_summary(
 ) -> list[dict]:
     """Read the most-recent `days` of discovery_summary rows.
     Operator-facing helper; the audit CLI consumes this."""
-    import duckdb
-
+    from runtime.db_lock import connect_read
     from substrate.graph import default_db_path
 
     resolved = db_path or default_db_path()
     try:
-        con = duckdb.connect(resolved, read_only=True)
+        con = connect_read(resolved)
     except Exception:
         return []
     try:

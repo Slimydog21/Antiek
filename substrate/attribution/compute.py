@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Mapping, Optional
+from typing import TYPE_CHECKING, Mapping, Optional
 
-import duckdb
+if TYPE_CHECKING:
+    import duckdb
 
 from substrate.event_log import emit_typed
 from substrate.graph import default_db_path, ensure_initialized
@@ -108,7 +109,9 @@ def compute_attribution_for_synthesis(
     use ``emit_event=False`` to compute without writing to the log."""
     resolved = db_path or default_db_path()
     ensure_initialized(resolved)
-    con = duckdb.connect(resolved, read_only=True)
+    from runtime.db_lock import connect_read
+
+    con = connect_read(resolved)
     try:
         row = con.execute(
             "SELECT synthesis_id, target_question, thesis, investigation_id "

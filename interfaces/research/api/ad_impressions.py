@@ -19,8 +19,8 @@ Live activation gates per master-spec §9.0 + §9.4:
 
 from __future__ import annotations
 
-import duckdb
 from fastapi import FastAPI, HTTPException
+from runtime.db_lock import connect_read
 from pydantic import BaseModel, Field
 
 from substrate.ad_inventory import (
@@ -132,7 +132,7 @@ def register_ad_impression_routes(app: FastAPI) -> None:
     )
     async def post_select_ad(req: AdSelectRequest) -> AdSelectResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             targeted, flat = _load_serving_inventory(con)
         finally:
@@ -199,6 +199,17 @@ def register_ad_impression_routes(app: FastAPI) -> None:
             attribution_shares=req.attribution_shares,
             document_to_recipient=recipient_map,
         )
+        try:
+            from substrate.observability.product_mirror import mirror_layer_event
+
+            mirror_layer_event(
+                "read",
+                "ad_impression_recorded",
+                impression_id=req.impression_id,
+                revenue_usd_cents=req.revenue_usd_cents,
+            )
+        except Exception:
+            pass
         return AdImpressionResponse(
             impression_id=req.impression_id,
             decisions=[

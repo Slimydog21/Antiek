@@ -22,8 +22,8 @@ of any such path here — greppable, and asserted in
 
 from __future__ import annotations
 
-import duckdb
 from fastapi import FastAPI
+from runtime.db_lock import connect_read
 from pydantic import BaseModel
 
 from substrate.coordination.consent_view import (
@@ -392,7 +392,7 @@ def register_coordination_routes(app: FastAPI) -> None:
         DuckDB connection is opened ``read_only=True``; no escrow write, no payout
         path."""
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             view = build_consent_view(con)
         finally:

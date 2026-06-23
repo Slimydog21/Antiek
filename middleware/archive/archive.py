@@ -339,6 +339,19 @@ def archive_synthesis_via_db(
         synthesis_id=sid,
         inputs=inputs,
     )
+    try:
+        from substrate.observability.product_mirror import mirror_layer_event
+
+        mirror_layer_event(
+            "research",
+            "synthesis_archived",
+            antiek_event_id=archive_event,
+            synthesis_id=sid,
+            investigation_id=investigation_id,
+            synthesis_status=inputs.status,
+        )
+    except Exception:
+        pass  # product mirror is optional; jsonl + DuckDB are truth
     emit_substrate_manifest_written(
         investigation_id=investigation_id,
         synthesis_id=sid,

@@ -188,16 +188,15 @@ def _render_chunks_block_for_sub_question(
     sentence-transformers isn't installed (HashEmbedding's semantic
     locality is too weak to drive useful retrieval on its own)."""
     try:
-        import duckdb
-
         from processing.embedding.embed import default_embedding_provider
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.graph.search import search as graph_search
 
         db_path = default_db_path()
         embedder = default_embedding_provider()
         keywords = _extract_keywords(sub_question)
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             # Embedding side — half the slots
             emb_half = max(1, top_k // 2)
@@ -301,6 +300,10 @@ class InvestigationContext:
     # child inherits the parent's tier rather than silently snapping back
     # to the default.
     research_tier: str = "deep"
+    brain_choice: str | None = None
+    deliverable_speed_preference: bool = False
+    # Advisory NotDiamond / heuristic plan notes (no second router).
+    orchestration_notes: str = ""
 
 
 def _action_value(action_type) -> str:
@@ -913,6 +916,16 @@ async def _run_investigation(
     """Walk all 9 phases. On any phase failure, emits
     ``investigation.failed`` and returns. On success, emits
     ``investigation.completed`` with the synthesis verdict."""
+    from substrate.dispatch.orchestration import plan_research_lane
+
+    plan = plan_research_lane(
+        user_present=True,
+        deliverable_speed_preference=ctx.deliverable_speed_preference,
+        task_kind="research",
+        brain_choice=ctx.brain_choice or "glm",
+    )
+    ctx.orchestration_notes = plan.notes
+
     phases = [
         lambda: _run_phase_1(ctx, broadcaster, coordinator),
         lambda: _run_phase_2(ctx, broadcaster, coordinator),
@@ -1012,6 +1025,8 @@ def make_loop_one_handler(
             chase_budget_usd=req.chase_budget_usd,
             parent_investigation_id=req.parent_investigation_id,
             research_tier=req.research_tier,
+            brain_choice=req.brain_choice,
+            deliverable_speed_preference=req.deliverable_speed_preference,
         )
 
         async def run_and_maybe_chase() -> None:
@@ -1209,6 +1224,8 @@ async def _maybe_spawn_chase_child(
             # research tier so the chosen fast/deep posture holds across
             # the chase tree rather than snapping back to the default.
             research_tier=ctx.research_tier,
+            brain_choice=ctx.brain_choice,
+            deliverable_speed_preference=ctx.deliverable_speed_preference,
         ),
         role="orchestrator",
         policy_id="orchestrator-chase",

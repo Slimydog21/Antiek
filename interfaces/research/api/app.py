@@ -258,6 +258,10 @@ class InvestigationStartRequest(BaseModel):
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
     research_tier: Literal["fast", "deep"] | None = None
+    # Brain toggle: ``glm`` = GLM-5.2/TileRT when engaged (default, cost-efficient);
+    # ``premium`` = Opus/pro driving tiers. None → platform default (glm).
+    brain_choice: Literal["glm", "premium"] | None = None
+    deliverable_speed_preference: bool = False
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -1811,6 +1815,8 @@ def create_app(
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
                     research_tier=req.research_tier,
+                    brain_choice=req.brain_choice,
+                    deliverable_speed_preference=req.deliverable_speed_preference,
                 ),
                 role="operator",
                 policy_id="operator-cli",
@@ -2176,13 +2182,13 @@ def create_app(
         ``servable`` / ``servability`` so the surface need not re-derive
         it."""
         import duckdb as _duckdb
-
+        from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
         from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
         db_path = default_db_path()
         try:
-            con = _duckdb.connect(db_path, read_only=True)
+            con = connect_read(db_path)
         except _duckdb.IOException as exc:
             raise HTTPException(
                 status_code=503,
@@ -2429,9 +2435,10 @@ def create_app(
 
     @app.get("/deliverables", response_model=DeliverableListResponse)
     async def list_deliverables(limit: int = 50) -> DeliverableListResponse:
-        import duckdb
+        from runtime.db_lock import connect_read
+
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT d.deliverable_id, d.title, d.deliverable_kind, "
@@ -2460,9 +2467,10 @@ def create_app(
     async def get_deliverable(deliverable_id: str) -> DeliverableDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
+
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT deliverable_id, title, deliverable_kind, status, "
@@ -2567,10 +2575,11 @@ def create_app(
         Sprint 14 implementation: ILIKE over nodes.canonical_label +
         metadata. Sprint 15 swaps in cosine search via the embedding
         column so semantic matches surface."""
-        import duckdb
+        from runtime.db_lock import connect_read
+
         db = _resolve_db_path()
         like = f"%{q}%" if q.strip() else "%"
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT n.node_id, n.canonical_label, n.node_type, "
@@ -2777,9 +2786,10 @@ def create_app(
             )
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
+
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             head = con.execute(
                 "SELECT title, deliverable_kind FROM deliverables "
@@ -3224,9 +3234,10 @@ def create_app(
     async def list_interview_projects() -> list[InterviewProjectSummary]:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
+
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT p.project_id, p.title, p.topic_description, "
@@ -3265,10 +3276,10 @@ def create_app(
         project_id: str,
     ) -> list[InterviewSummary]:
         """All interviews invited under one project, oldest first."""
-        import duckdb
+        from runtime.db_lock import connect_read
 
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             rows = con.execute(
                 "SELECT i.interview_id, i.project_id, i.informant_handle, "
@@ -3343,9 +3354,10 @@ def create_app(
     async def get_interview(interview_id: str) -> InterviewDetailResponse:
         import json as _json
 
-        import duckdb
+        from runtime.db_lock import connect_read
+
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             row = con.execute(
                 "SELECT i.interview_id, i.project_id, i.status, "
@@ -3438,6 +3450,10 @@ def create_app(
                 interview_id=interview_id,
                 transcript_document_id=req.transcript_document_id,
             )
+            (project_id,) = con.execute(
+                "SELECT project_id FROM interviews WHERE interview_id = ?",
+                [interview_id],
+            ).fetchone()
             r = con.execute(
                 "SELECT project_id, informant_handle, informant_email, "
                 "status, strftime(invited_at, '%Y-%m-%dT%H:%M:%S'), "
@@ -3446,6 +3462,18 @@ def create_app(
                 "transcript_turns "
                 "FROM interviews WHERE interview_id = ?", [interview_id],
             ).fetchone()
+        try:
+            from substrate.observability.product_mirror import mirror_layer_event
+
+            mirror_layer_event(
+                "speak",
+                "interview_completed",
+                interview_id=interview_id,
+                project_id=project_id,
+                transcript_document_id=req.transcript_document_id,
+            )
+        except Exception:
+            pass
         import json as _json
         turn_count = 0
         if r[7]:

@@ -12,8 +12,8 @@ the substrate's event log + the payout_transfers table on demand.
 
 from __future__ import annotations
 
-import duckdb
 from fastapi import FastAPI, HTTPException
+from runtime.db_lock import connect_read
 from pydantic import BaseModel
 
 
@@ -73,7 +73,7 @@ def register_campaign_routes(app: FastAPI) -> None:
         advertiser_id: str,
     ) -> CampaignSummaryResponse:
         db = _resolve_db_path()
-        con = duckdb.connect(db, read_only=True)
+        con = connect_read(db)
         try:
             exists, monthly_budget = _load_advertiser_budget(
                 con, advertiser_id,
