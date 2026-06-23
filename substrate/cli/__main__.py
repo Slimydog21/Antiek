@@ -7,18 +7,19 @@ from collections.abc import Callable
 
 
 def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
+    main_fn: Callable[[list[str] | None], int]
     if name == "burn":
-        from substrate.observability.burn_cli import main
+        from substrate.observability.burn_cli import main as main_fn
     elif name == "branch":
-        from substrate.conversation.cli import main
+        from substrate.conversation.cli import main as main_fn
     elif name == "hooks":
-        from substrate.cli.hooks import main
+        from substrate.cli.hooks import main as main_fn
     elif name == "harness":
-        from substrate.cli.harness import main
+        from substrate.cli.harness import main as main_fn
     elif name == "compact":
-        from substrate.cli.compact import main
+        from substrate.cli.compact import main as main_fn
     elif name == "queue":
-        from substrate.cli.queue import main
+        from substrate.cli.queue import main as main_fn
     elif name == "lint":
         import importlib.util
         from pathlib import Path
@@ -31,10 +32,10 @@ def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
         assert spec and spec.loader
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        main = module.main
+        main_fn = module.main
     else:
         raise ValueError(f"unknown subcommand {name!r}")
-    return main
+    return main_fn
 
 
 SUBCOMMANDS = ("burn", "branch", "hooks", "harness", "compact", "queue", "lint")

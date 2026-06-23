@@ -3095,8 +3095,8 @@ class AIActionAppliedPayload(_PayloadBase):
     ]
     target_id: str
     operator_prompt: str = Field(min_length=1, max_length=2000)
-    prev_state: dict = Field(default_factory=dict)
-    next_state: dict = Field(default_factory=dict)
+    prev_state: dict[str, object] = Field(default_factory=dict)
+    next_state: dict[str, object] = Field(default_factory=dict)
     # SHA-256 of (target_kind + target_id + prev_state JSON) — gives
     # the undo handler a cheap optimistic-concurrency check so two
     # rapid AI actions on the same target can't accidentally overwrite

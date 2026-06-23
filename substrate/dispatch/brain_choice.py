@@ -15,7 +15,7 @@ governs the *driving* roles under ``engagement_policy``, not flash bulk alone.
 from __future__ import annotations
 
 import os
-from typing import Literal
+from typing import Any, Literal
 
 from ..event_log import trajectory
 from ..schemas import ActionType
@@ -47,7 +47,7 @@ def normalize_brain_choice(value: object) -> BrainChoice:
     return DEFAULT_BRAIN_CHOICE
 
 
-def _start_payload_dict(investigation_id: str) -> dict | None:
+def _start_payload_dict(investigation_id: str) -> dict[str, Any] | None:
     start = ActionType.INVESTIGATION_START_REQUESTED.value
     try:
         rows = trajectory(investigation_id)

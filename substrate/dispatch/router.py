@@ -46,18 +46,18 @@ except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
-    from dispatch.base import (  # type: ignore[no-redef]
+    from dispatch.base import (  # type: ignore[import-not-found,no-redef]
         NormalizedUsage,
         Provider,
         ProviderError,
     )
-    from dispatch.engagement_mode import (  # type: ignore[no-redef]
+    from dispatch.engagement_mode import (  # type: ignore[import-not-found,no-redef]
         EngagementPolicy,
         resolve_latency_mode,
         resolve_tier_name,
     )
-    from event_log import emit_typed  # type: ignore[no-redef]
-    from schemas import DispatchCallPayload  # type: ignore[no-redef]
+    from event_log import emit_typed  # type: ignore[import-not-found,no-redef]
+    from schemas import DispatchCallPayload  # type: ignore[import-not-found,no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +463,9 @@ def dispatch(
 
     current: TierConfig | None = tier
     while current is not None:
-        if current.provider is None or current.model is None:
+        provider_id = current.provider
+        model_id = current.model
+        if provider_id is None or model_id is None:
             # Tier defined but no concrete backend (e.g. "local" placeholder).
             # Skip to fallback.
             current = current.fallback
@@ -478,12 +480,12 @@ def dispatch(
         # handles it. This is what keeps the SPR-01 M3 route-override a
         # preference, not a single point of failure.
         try:
-            provider = get_provider(current.provider)
+            provider = get_provider(provider_id)
         except KeyError as e:
             last_error = ProviderError(
-                f"provider {current.provider!r} is not registered "
+                f"provider {provider_id!r} is not registered "
                 f"(no API key / not bootstrapped); falling back. {e}",
-                provider=current.provider, model=current.model or "<none>",
+                provider=provider_id, model=model_id,
                 latency_ms=0, retryable=True,
             )
             _emit_dispatch_call(
@@ -491,8 +493,8 @@ def dispatch(
                 parent_event_id=parent_event_id,
                 role=role,
                 tier=tier_name,
-                provider=current.provider,
-                model=current.model,
+                provider=provider_id,
+                model=model_id,
                 usage=NormalizedUsage(input_tokens=0, output_tokens=0),
                 cost_usd=0.0,
                 latency_ms=0,
@@ -510,7 +512,7 @@ def dispatch(
         t_start = time.monotonic()
         try:
             raw = provider.call(
-                model=current.model,
+                model=model_id,
                 prompt=prompt,
                 max_tokens=effective_max_tokens,
                 temperature=current.temperature,
@@ -524,8 +526,8 @@ def dispatch(
                 parent_event_id=parent_event_id,
                 role=role,
                 tier=tier_name,
-                provider=current.provider,
-                model=current.model,
+                provider=provider_id,
+                model=model_id,
                 usage=NormalizedUsage(input_tokens=0, output_tokens=0),
                 cost_usd=0.0,
                 latency_ms=latency_ms,
@@ -549,8 +551,8 @@ def dispatch(
             parent_event_id=parent_event_id,
             role=role,
             tier=tier_name,
-            provider=current.provider,
-            model=current.model,
+            provider=provider_id,
+            model=model_id,
             usage=usage,
             cost_usd=cost,
             latency_ms=raw.latency_ms,
@@ -565,8 +567,8 @@ def dispatch(
             usage=usage,
             cost_usd=cost,
             latency_ms=raw.latency_ms,
-            provider=current.provider,
-            model=current.model,
+            provider=provider_id,
+            model=model_id,
             tier=tier_name,
             finish_reason=finish,
             fallback_chain_index=chain_index,

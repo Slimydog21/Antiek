@@ -641,14 +641,14 @@ class SubLLMWithTools:
         self.max_rounds = max_rounds
         self.temperature = temperature
         self.synthesis_max_tokens = synthesis_max_tokens
-        self._tools: dict[str, dict] = {}
+        self._tools: dict[str, dict[str, Any]] = {}
 
     def register_tool(
         self,
         name: str,
-        fn: Callable,
+        fn: Callable[..., Any],
         description: str,
-        parameters: list[dict],
+        parameters: list[dict[str, Any]],
     ) -> None:
         """Register a tool the sub-LLM can call."""
         self._tools[name] = {
@@ -736,7 +736,7 @@ class SubLLMWithTools:
     def _call_llm(self, system: str, user: str) -> str:
         return self.llm_call(system, user)
 
-    def _execute_tool(self, name: str, args: dict) -> str:
+    def _execute_tool(self, name: str, args: dict[str, Any]) -> str:
         fn = self._tools[name]["fn"]
         try:
             return str(fn(**args))
@@ -755,7 +755,7 @@ class SubLLMWithTools:
 
 
 def equipped_llm_batch(
-    tasks: list[dict],
+    tasks: list[dict[str, Any]],
     *,
     llm_call: LLMCall | None = None,
     investigation_id: str | None = None,
@@ -782,7 +782,7 @@ def equipped_llm_batch(
             temperature=temperature,
         )
 
-    def _run_one(task: dict) -> str:
+    def _run_one(task: dict[str, Any]) -> str:
         sub = _build_sub()
         sub.register_builtins(task.get("tools", []))
         return sub.run(task["prompt"])

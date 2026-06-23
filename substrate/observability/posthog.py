@@ -53,7 +53,7 @@ def _client_or_none() -> Any | None:
         return _client
     _init_attempted = True
     try:
-        import posthog  # tier-allow: sole shim; integrations.toml prod_call_sites
+        import posthog  # type: ignore[import-not-found]  # tier-allow shim
     except ImportError:
         return None
     posthog.api_key = _api_key()
