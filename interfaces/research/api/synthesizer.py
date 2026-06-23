@@ -288,10 +288,6 @@ def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
         event.investigation_id,
     )
     try:
-        routing = dispatch_routing_kwargs(event.investigation_id)
-        # §14.4 window: synthesis voice stays on the config ``synthesis`` tier
-        # (Opus-class) even when engaged routing defaults to GLM ``speed``.
-        routing["brain"] = "premium"
         result = dispatch(
             prompt,
             "synthesizer",
@@ -299,7 +295,12 @@ def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
             parent_event_id=event.event_id,
             provider_override=provider_override,
             model_override=model_override,
-            **routing,
+            # §14.4 window: synthesis voice stays on ``synthesis`` (Opus-class)
+            # even when engaged routing defaults to GLM ``speed``.
+            **{
+                **dispatch_routing_kwargs(event.investigation_id),
+                "brain": "premium",
+            },
         )
         return result.text, f"{result.provider}/{result.model}"
     except (ProviderError, KeyError) as exc:
