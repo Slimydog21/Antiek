@@ -5822,9 +5822,6 @@ def create_app(
     from interfaces.research.api.distill_routes import distill_router
     app.include_router(distill_router)
 
-    from interfaces.research.api.artifact_routes import artifact_router
-    app.include_router(artifact_router)
-
     return app
 
 
