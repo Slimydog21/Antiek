@@ -567,7 +567,7 @@ export interface DispatchCallPayload {
   action_type: "dispatch.call";
   provider: string;
   model: string;
-  tier: "flash" | "pro" | "synthesis" | "verify" | "local";
+  tier: "flash" | "pro" | "synthesis" | "verify" | "local" | "speed" | "research_flash" | "research_pro" | "research_synthesis" | "transcription" | "tts" | "ceo";
   target_role: string;
   input_tokens: number;
   output_tokens: number;
@@ -1499,6 +1499,8 @@ export interface InvestigationStartRequestedPayload {
   chase_value?: number;
   chase_budget_usd?: number;
   research_tier?: "fast" | "deep" | null;
+  brain_choice?: "glm" | "premium" | null;
+  deliverable_speed_preference?: boolean;
 }
 
 /**

@@ -563,12 +563,14 @@ def collect_acquisition_cost(
     for f in sorted(budget_path.glob("exa_*.json")):
         try:
             stem_date = f.stem.replace("exa_", "")
-            day = datetime.strptime(stem_date, "%Y-%m-%d").replace(tzinfo=UTC)
+            day = datetime.strptime(stem_date, "%Y-%m-%d")
         except ValueError:
             continue
-        if day < start.replace(hour=0, minute=0, second=0, microsecond=0):
+        start_floor = start.replace(hour=0, minute=0, second=0, microsecond=0)
+        if day < start_floor:
             continue
-        if day > end:
+        end_ceil = end.replace(hour=23, minute=59, second=59, microsecond=999999)
+        if day > end_ceil:
             continue
         try:
             data = json.loads(f.read_text())

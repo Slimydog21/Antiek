@@ -102,9 +102,11 @@ def _register_real_synthesis_chain_as_stubs():
     openrouter = _RecordingStubProvider("openrouter")
     hermes = _RecordingStubProvider("hermes")
     deepseek = _RecordingStubProvider("deepseek")
+    xiaomi = _RecordingStubProvider("xiaomi")
     register_provider(openrouter)
     register_provider(hermes)
     register_provider(deepseek)
+    register_provider(xiaomi)
     return openrouter, hermes, deepseek
 
 

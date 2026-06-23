@@ -178,10 +178,14 @@ spec_doc = "docs/integration_exa_browserbase.md"
 
 [posthog]
 package = "posthog"
-tier = 1
+tier = 2
 voucher = "slimydog"
 vouched_at = "2026-05-18"
-justification = "Single measured carve-out from §16 REJECT list per CLAUDE.md. Server-side only; env-gated via substrate/observability/posthog.py shim (not yet shipped — file is the planned-only home). Ratify-or-remove gate at Sprint 20 per docs/decisions/sprint20_posthog_ratification.md. Promote to Tier 2 once the shim ships and the env enables it in prod."
+sunset_date = "2026-09-18"
+justification = "Server-side product mirror; env-gated shim at substrate/observability/posthog.py. Tier 2 prod call-site gate per sprint20_posthog_ratification.md."
+prod_call_sites = [
+    "substrate/observability/posthog.py",
+]
 spec_doc = "docs/integration_posthog.md"
 
 
@@ -191,10 +195,15 @@ spec_doc = "docs/integration_posthog.md"
 
 [notdiamond]
 package = "notdiamond"
-tier = 0
-voucher = ""
-vouched_at = "2026-05-24"
-justification = "Draft spec only at ~/specs/antiek-notdiamond/. ND advisory layer above dispatch; 8 sprints / 4 waves; not yet wired. Per project-antiek-notdiamond-spec memory."
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-06-23"
+sunset_date = "2026-09-23"
+justification = "Optional advisory lane planner; lazy import behind env gate in substrate/dispatch/orchestration/notdiamond.py."
+prod_call_sites = [
+    "substrate/dispatch/orchestration/__init__.py",
+    "substrate/dispatch/orchestration/notdiamond.py",
+]
 spec_doc = "~/specs/antiek-notdiamond/"
 
 [turbopuffer]
@@ -231,11 +240,16 @@ spec_doc = "docs/master-product-spec.md"
 
 [modal]
 package = "modal"
-tier = 0
-voucher = ""
-vouched_at = "2026-05-24"
-justification = "Hard REJECT per CLAUDE.md §16 and master-spec §16 REJECT list. Listed here so the tier-check CI catches an accidental import; the existing 'modal' substring matches in code are 'multi-modal' and UI modal dialogs, not the SDK."
-spec_doc = "docs/master-product-spec.md (§16 REJECT)"
+tier = 2
+voucher = "slimydog"
+vouched_at = "2026-06-23"
+sunset_date = "2026-09-23"
+justification = "TileRT GLM-5.2 on Modal (infrastructure/modal/tilert_glm5) — scoped prod SDK imports only at listed call sites; not general dispatch."
+prod_call_sites = [
+    "infrastructure/modal/tilert_glm5/app.py",
+    "infrastructure/modal/tilert_glm5/prep_weights.py",
+]
+spec_doc = "infrastructure/modal/tilert_glm5/DESIGN.md"
 
 [daytona]
 package = "daytona"

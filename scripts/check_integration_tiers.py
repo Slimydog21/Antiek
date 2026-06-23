@@ -161,7 +161,7 @@ def collect_imports(path: Path) -> list[tuple[str, int]]:
     """
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    except SyntaxError:
+    except (SyntaxError, UnicodeDecodeError, OSError):
         return []
     out: list[tuple[str, int]] = []
     for node in ast.walk(tree):

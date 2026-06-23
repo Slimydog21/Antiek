@@ -209,6 +209,40 @@ class _WorkingHermesProvider:
         )
 
 
+class _WorkingDeepseekProvider:
+    """Fallback for ``research_synthesis`` (OpenRouter-primary, DeepSeek fallback)."""
+
+    name = "deepseek"
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
+        self.calls.append({"model": model})
+        return RawProviderResponse(
+            text="deepseek fallback — openrouter was down",
+            raw_usage={
+                "prompt_tokens": 100,
+                "completion_tokens": 30,
+                "total_tokens": 130,
+            },
+            finish_reason="stop",
+            latency_ms=360,
+        )
+
+    def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
+        return NormalizedUsage(
+            input_tokens=int(raw_usage.get("prompt_tokens", 0)),
+            output_tokens=int(raw_usage.get("completion_tokens", 0)),
+            cached_input_tokens=0,
+        )
+
+
+# Hermes-primary chaos tests must opt into base ``role_tiers`` (flash/pro/verify),
+# not engagement_policy autonomous research_* tiers (operator 2026-06-23).
+_CHAOS_PREMIUM_ROUTING = {"latency_mode": "interactive", "brain": "premium"}
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 1. Config-level invariants (architectural insurance)
 # ─────────────────────────────────────────────────────────────────────
@@ -289,8 +323,11 @@ def test_dispatch_falls_through_to_openrouter_when_hermes_dies(
 
     investigation_id = f"inv-chaos-{role}"
     result = dispatch(
-        "prompt", role, investigation_id=investigation_id,
+        "prompt",
+        role,
+        investigation_id=investigation_id,
         config=production_config,
+        **_CHAOS_PREMIUM_ROUTING,
     )
 
     assert result.provider == "openrouter", (
@@ -307,27 +344,26 @@ def test_dispatch_falls_through_to_openrouter_when_hermes_dies(
 def test_synthesis_falls_through_to_hermes_when_openrouter_dies(
     role, production_config, _events_dir,
 ):
-    """Sprint 17-20 measurement-window companion to the Hermes-primary
-    chaos test. The synthesis tier is OpenRouter-primary during the
-    measurement window (master-spec §14.4); when OpenRouter dies the
-    dispatch must fall through to Hermes. Without this, an OpenRouter
-    outage during the measurement window would brick every synthesis
-    dispatch and there would be no synthesis trajectory for the
-    Sprint 20 verdict measurement."""
+    """Autonomous synthesizer uses ``research_synthesis`` (OpenRouter-primary,
+    DeepSeek fallback). When OpenRouter dies the dispatch must complete via
+    DeepSeek."""
     failing = _FailingOpenRouterProvider()
-    working = _WorkingHermesProvider()
+    working = _WorkingDeepseekProvider()
     register_provider(failing)
     register_provider(working)
 
     investigation_id = f"inv-chaos-{role}-or-down"
     result = dispatch(
-        "prompt", role, investigation_id=investigation_id,
+        "prompt",
+        role,
+        investigation_id=investigation_id,
         config=production_config,
+        latency_mode="autonomous",
     )
 
-    assert result.provider == "hermes", (
-        f"role {role!r} did not fall through to hermes; got provider="
-        f"{result.provider!r}. OpenRouter-primary fallback chain broken."
+    assert result.provider == "deepseek", (
+        f"role {role!r} did not fall through to deepseek; got provider="
+        f"{result.provider!r}. research_synthesis fallback chain broken."
     )
     assert result.fallback_chain_index >= 1
     assert len(failing.calls) == 1
@@ -344,8 +380,11 @@ def test_chaos_event_log_has_two_events_per_dispatch(production_config, _events_
     register_provider(_WorkingOpenRouterProvider())
 
     dispatch(
-        "prompt", "decomposer", investigation_id="inv-chaos-events",
+        "prompt",
+        "decomposer",
+        investigation_id="inv-chaos-events",
         config=production_config,
+        **_CHAOS_PREMIUM_ROUTING,
     )
     rows = trajectory("inv-chaos-events")
     assert len(rows) == 2, (

@@ -388,6 +388,9 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
     # kind-specific dict the substrate-side validator interprets).
     if tp is Any:
         return "unknown"
+    # ``dict[str, object]`` snapshots (e.g. ai.action.applied prev/next state).
+    if tp is object:
+        return "unknown"
 
     # Bare Enum class (e.g. ``ActionType`` on Event.action_type) — emit the
     # enum's class name, which we also emit as a TS type alias in

@@ -53,6 +53,19 @@ def _app():
     return create_app(register_wrestling=False)
 
 
+def _collect_route_paths(routes) -> set[str]:
+    """Flatten FastAPI/Starlette routes (incl. ``_IncludedRouter`` mounts)."""
+    out: set[str] = set()
+    for route in routes:
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            out.add(path)
+        nested = getattr(route, "routes", None)
+        if nested:
+            out |= _collect_route_paths(nested)
+    return out
+
+
 def _client_with_transport(app, handler) -> httpx.Client:
     """Build an httpx.Client backed by a MockTransport running ``handler``
     and inject it onto the app so the Krea routes use it instead of a real
@@ -74,7 +87,7 @@ def test_routes_registered_and_health_unaffected():
     assert h.status_code == 200
     assert h.json()["status"] == "ok"
     # The Krea routes exist (no 404 for the path itself).
-    paths = {r.path for r in app.routes}  # type: ignore[attr-defined]
+    paths = _collect_route_paths(app.routes)
     assert "/krea/generate" in paths
     assert "/krea/jobs/{job_id}" in paths
     assert "/krea/scene" in paths
