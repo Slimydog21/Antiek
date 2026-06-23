@@ -89,6 +89,92 @@ export class ApiError extends Error {
   }
 }
 
+/** Closed set — docs/decisions/drw-plan-failure-contract.md */
+export type FailureCode =
+  | "backend_unreachable"
+  | "provider_unconfigured"
+  | "provider_upstream_error"
+  | "timeout"
+  | "unknown";
+
+const FAILURE_CODES: ReadonlySet<string> = new Set([
+  "backend_unreachable",
+  "provider_unconfigured",
+  "provider_upstream_error",
+  "timeout",
+  "unknown",
+]);
+
+/** Verbatim headlines — frontend must match contract §4. */
+export const FAILURE_HEADLINES: Record<FailureCode, string> = {
+  backend_unreachable:
+    "The research engine isn't running. Start the backend, then retry.",
+  provider_unconfigured:
+    "No model provider is configured. Set a provider key and restart.",
+  provider_upstream_error:
+    "The model provider returned an error. Retry, or check your key's quota.",
+  timeout: "The engine took too long to respond. Try again.",
+  unknown: "Something unexpected went wrong. Try again.",
+};
+
+export const FAILURE_RETRYABLE_DEFAULT: Record<FailureCode, boolean> = {
+  backend_unreachable: true,
+  provider_unconfigured: false,
+  provider_upstream_error: true,
+  timeout: true,
+  unknown: true,
+};
+
+export interface ClientFailureClassification {
+  code: FailureCode;
+  message?: string;
+  retryable: boolean;
+}
+
+function isFailureDetailObject(
+  value: unknown,
+): value is { code: string; message?: string; retryable?: boolean } {
+  if (typeof value !== "object" || value === null) return false;
+  const o = value as Record<string, unknown>;
+  return typeof o.code === "string";
+}
+
+function parseApiErrorEnvelope(err: ApiError): ClientFailureClassification {
+  try {
+    const parsed = JSON.parse(err.body) as { detail?: unknown };
+    const detail = parsed.detail;
+    if (isFailureDetailObject(detail) && FAILURE_CODES.has(detail.code)) {
+      const code = detail.code as FailureCode;
+      return {
+        code,
+        message:
+          typeof detail.message === "string" ? detail.message : undefined,
+        retryable:
+          typeof detail.retryable === "boolean"
+            ? detail.retryable
+            : FAILURE_RETRYABLE_DEFAULT[code],
+      };
+    }
+  } catch {
+    // unparseable body
+  }
+  return {
+    code: "unknown",
+    retryable: FAILURE_RETRYABLE_DEFAULT.unknown,
+  };
+}
+
+/** Classify a thrown value from apiFetch / research client calls. */
+export function classifyClientError(e: unknown): ClientFailureClassification {
+  if (e instanceof ApiError) {
+    return parseApiErrorEnvelope(e);
+  }
+  return {
+    code: "backend_unreachable",
+    retryable: FAILURE_RETRYABLE_DEFAULT.backend_unreachable,
+  };
+}
+
 export async function postTypedEvent(
   envelope: TypedEventEnvelope,
 ): Promise<EmittedEventResponse> {
@@ -908,6 +994,63 @@ export interface DistillationResponse {
   investigation_id: string;
   insights: DistilledNode[];
   questions: DistilledNode[];
+}
+
+/** ANT-AHT — outline blocks for Write drag (same node_ids as distill). */
+export interface ResearchArtifactBlock {
+  node_id: string;
+  kind: string;
+  label: string;
+  investigation_id: string;
+  artifact_path: string | null;
+}
+
+export interface ResearchArtifactBlocksResponse {
+  investigation_id: string;
+  blocks: ResearchArtifactBlock[];
+}
+
+export interface ResearchArtifactExportResponse {
+  investigation_id: string;
+  path: string;
+  content_hash: string;
+  size_bytes: number;
+  event_id: string | null;
+}
+
+/** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
+export async function getResearchArtifactBlocks(
+  investigationId: string,
+): Promise<ResearchArtifactBlocksResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/blocks`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /research/{id}/artifact/blocks failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/{id}/artifact/export — write Profile B HTML to operator store. */
+export async function exportResearchArtifact(
+  investigationId: string,
+): Promise<ResearchArtifactExportResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/${encodeURIComponent(investigationId)}/artifact/export`,
+    { method: "POST" },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/{id}/artifact/export failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
 }
 
 /** GET /research/{id}/distill — the durable product of a research:

@@ -1,4 +1,9 @@
 import LemonButton from "../components/lemon/LemonButton";
+import {
+  FAILURE_HEADLINES,
+  FAILURE_RETRYABLE_DEFAULT,
+  type FailureCode,
+} from "../lib/api";
 
 /**
  * AIActionFailure — the one honest-failure surface every AI action shares.
@@ -36,6 +41,14 @@ type Props = {
   onRetry: () => void;
   /** Label for the retry control. Defaults to "Try again". */
   retryLabel?: string;
+  /**
+   * Machine-readable failure code from docs/decisions/drw-plan-failure-contract.md.
+   * When set, renders the canonical headline for that code (DRW and future callers).
+   * When omitted, legacy reason / no-reason branches are unchanged.
+   */
+  code?: FailureCode;
+  /** When `code` is set, controls retry affordance (defaults from contract). */
+  retryable?: boolean;
   className?: string;
 };
 
@@ -44,8 +57,15 @@ export default function AIActionFailure({
   reason,
   onRetry,
   retryLabel = "Try again",
+  code,
+  retryable,
   className,
 }: Props) {
+  const showRetry =
+    code === undefined
+      ? true
+      : (retryable ?? FAILURE_RETRYABLE_DEFAULT[code]);
+
   return (
     <div
       role="alert"
@@ -57,7 +77,16 @@ export default function AIActionFailure({
       }
     >
       <p className="leading-relaxed">
-        {reason ? (
+        {code ? (
+          <>
+            {title} — {FAILURE_HEADLINES[code]}
+            {code === "unknown" && reason ? (
+              <span className="block mt-1 text-ink-mute dark:text-moonlight not-italic">
+                Engine: {reason}
+              </span>
+            ) : null}
+          </>
+        ) : reason ? (
           <>
             {title} — the engine reported a problem. Try again.
             <span className="block mt-1 text-ink-mute dark:text-moonlight not-italic">
@@ -72,11 +101,13 @@ export default function AIActionFailure({
           </>
         )}
       </p>
-      <div>
-        <LemonButton variant="secondary" size="sm" onClick={onRetry}>
-          {retryLabel}
-        </LemonButton>
-      </div>
+      {showRetry ? (
+        <div>
+          <LemonButton variant="secondary" size="sm" onClick={onRetry}>
+            {retryLabel}
+          </LemonButton>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import AIActionFailure from "../../shared/AIActionFailure";
+import {
+  classifyClientError,
+  type ClientFailureClassification,
+} from "../../lib/api";
 import Thinking from "../../shared/Thinking";
 import {
   approvePlan,
@@ -96,9 +100,9 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
   // planner while it is still proposing (the spec's rigor-#3 edit-while-streaming
   // edge — handled by construction, not left as a free-for-all).
   const [phase, setPhase] = useState<"proposing" | "ready" | "launching">("proposing");
-  const [failed, setFailed] = useState<string | null>(null);
-  // null until the failure carries no engine reason (the no-key case); a
-  // string when the engine said why.
+  const [failure, setFailure] = useState<ClientFailureClassification | null>(
+    null,
+  );
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [perResearchCost, setPerResearchCost] = useState<number | null>(null);
@@ -109,19 +113,16 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
 
   const propose = useCallback(async () => {
     setPhase("proposing");
-    setFailed(null);
+    setFailure(null);
     try {
       const r = await createPlan({ problem });
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
       setPhase("ready");
     } catch (e) {
-      // ApiError carries the HTTP body; we don't surface a stack trace. A
-      // 5xx with the propose call almost always means the decomposer's model
-      // provider isn't configured — let <AIActionFailure>'s no-reason branch
-      // say that honestly rather than guessing here.
-      setFailed("");
+      // Classify the backend envelope (or network throw) — never collapse to
+      // setFailed("") which masked every failure as "no provider configured".
+      setFailure(classifyClientError(e));
       setPhase("ready");
-      void e;
     }
   }, [problem]);
 
@@ -163,8 +164,8 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       await approvePlan(plan.rootNodeId);
       const r = await launchPlan(plan.rootNodeId);
       onLaunched(r.session_id);
-    } catch {
-      setFailed("");
+    } catch (e) {
+      setFailure(classifyClientError(e));
       setPhase("ready");
     }
   }, [plan, onLaunched]);
@@ -182,12 +183,14 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
   }
 
   // ── Honest failure: no tree came back (most often: no provider keys). ──
-  if (failed !== null) {
+  if (failure !== null) {
     return (
       <div className="flex flex-col gap-3 py-4">
         <AIActionFailure
           title="Couldn’t break this into sub-questions"
-          reason={failed || null}
+          code={failure.code}
+          retryable={failure.retryable}
+          reason={failure.message ?? null}
           onRetry={() => void propose()}
         />
         <div>

@@ -36,12 +36,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+
+from interfaces.research.api.dispatch_failure import classify_dispatch_failure
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -294,9 +299,20 @@ async def create_plan(req: CreatePlanRequest) -> dict:
         try:
             report = _decompose(req.problem, req.max_depth)
         except Exception as exc:
+            c = classify_dispatch_failure(exc)
+            logger.warning(
+                "create_plan decompose failed: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
+            # Status per docs/decisions/drw-plan-failure-contract.md §3.
             raise HTTPException(
-                status_code=502,
-                detail=f"decompose_failed: {type(exc).__name__}: {exc}",
+                status_code=c.status,
+                detail={
+                    "code": c.code,
+                    "message": c.message,
+                    "retryable": c.retryable,
+                },
             ) from exc
     tree = report.tree
     with _write("create_plan") as con:
