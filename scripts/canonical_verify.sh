@@ -70,8 +70,14 @@ cmd_handoff() {
 cmd_agent_gates() {
   echo "== agent-gates: vitest handoff linter =="
   (cd apps/reading && npm run test:handoff)
-  echo "== agent-gates: pytest audit + canonical wrapper =="
-  "${PY}" -m pytest tests/test_audit_agent_session.py tests/test_canonical_verify.py -q --tb=no
+  echo "== agent-gates: duckdb funnel (L5) =="
+  "${PY}" scripts/check_duckdb_funnel.py
+  echo "== agent-gates: harness graph boundary (§10) =="
+  "${PY}" scripts/check_harness_graph_boundary.py
+  echo "== agent-gates: duckdb plane pytest slice =="
+  "${PY}" -m pytest tests/test_audit_agent_session.py tests/test_canonical_verify.py \
+    tests/test_check_duckdb_funnel.py tests/test_agent_write_purposes.py \
+    tests/test_corpuscrawl_plane_snapshot.py -q --tb=no
   echo "CANONICAL_VERIFY_OK: agent-gates"
 }
 
