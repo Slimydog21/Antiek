@@ -5854,6 +5854,11 @@ def create_app(
     from interfaces.research.api.distill_routes import distill_router
     app.include_router(distill_router)
 
+    # ResearchArtifact HTML transport (ANT-AHT SPR-AHT-06). Export, outline
+    # blocks, and agent-note import — same one-line inclusion discipline.
+    from interfaces.research.api.artifact_routes import artifact_router
+    app.include_router(artifact_router)
+
     return app
 
 

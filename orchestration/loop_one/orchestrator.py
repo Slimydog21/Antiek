@@ -1124,6 +1124,7 @@ async def run_synthesis_tail_from_pack(
         role="orchestrator",
         policy_id="orchestrator-cascade-tail",
     )
+    _maybe_export_research_artifact_after_complete(ctx.investigation_id)
     return ctx
 
 
@@ -1227,6 +1228,19 @@ async def _run_investigation(
         role="orchestrator",
         policy_id="orchestrator-deterministic",
     )
+    _maybe_export_research_artifact_after_complete(ctx.investigation_id)
+
+
+def _maybe_export_research_artifact_after_complete(investigation_id: str) -> None:
+    """ANT-AHT-02: env-gated HTML export; must not fail Loop 1 terminal emit."""
+    try:
+        from substrate.research_artifact.hooks import (
+            maybe_export_after_investigation_complete,
+        )
+
+        maybe_export_after_investigation_complete(investigation_id)
+    except Exception:  # pragma: no cover — artifact is optional lens
+        pass
 
 
 # ---------------------------------------------------------------------------

@@ -153,6 +153,7 @@ class IngestUrlResult:
     skipped_reason: str | None = None
     title: str | None = None
     author: str | None = None
+    reader_snapshot_path: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -467,6 +468,33 @@ def ingest_url(
             )
             node_ids.append(node_id)
 
+    reader_snapshot_path: str | None = None
+    if os.environ.get("ANTIEK_READER_SNAPSHOT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        from acquisition.snapshot.reader_html import (  # noqa: E402
+            build_reader_snapshot,
+            reader_snapshot_path_for,
+            write_reader_snapshot,
+        )
+
+        snap_path = reader_snapshot_path_for(document_id)
+        ingested_at = datetime.now(UTC).isoformat()
+        raw_html = page.body
+        if isinstance(raw_html, bytes):
+            raw_html = raw_html.decode(page.charset or "utf-8", errors="replace")
+        snap_html = build_reader_snapshot(
+            source_url=page.final_url,
+            document_id=document_id,
+            ip_holder_id=None,
+            main_html=raw_html,
+            ingested_at=ingested_at,
+        )
+        write_reader_snapshot(snap_path, snap_html)
+        reader_snapshot_path = str(snap_path)
+
     return IngestUrlResult(
         document_id=document_id,
         final_url=page.final_url,
@@ -476,4 +504,5 @@ def ingest_url(
         chunks_written=chunks_written,
         title=md_doc.title,
         author=md_doc.author,
+        reader_snapshot_path=reader_snapshot_path,
     )

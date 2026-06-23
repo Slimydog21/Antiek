@@ -1,0 +1,62 @@
+{
+  "project_root": "/Users/slimydog/Desktop/Antiek",
+  "spec_root": "/Users/slimydog/Desktop/Antiek/docs/htmlspec/antiek-html-transport/index.html",
+  "phase": "done",
+  "cycle": 1,
+  "max_cycles": 3,
+  "skip_ship": true,
+  "target_branch": "main",
+  "hatch_registry_path": "/Users/slimydog/Desktop/Antiek/docs/htmlspec/antiek-html-transport/.caffenagent/hatch-registry.json",
+  "open_questions": [
+    {
+      "id": "aht-book-ingest",
+      "question": "Book/EPUB reader HTML ingest (SPR extension beyond URL snapshot)?",
+      "confidence": "moderate",
+      "owner": "master",
+      "resolved": false,
+      "resolution": "Deferred per P-18 Not proved row; new ledger if operator prioritizes."
+    },
+    {
+      "id": "aht-write-tab",
+      "question": "Full Write canvas tab-complete + drag across entire Write UI?",
+      "confidence": "moderate",
+      "owner": "master",
+      "resolved": false,
+      "resolution": "DistillView ArtifactOutlineShelf ships Lego drag; full Write mock in redesign.html not wired."
+    }
+  ],
+  "dynamic_task_mods": [
+    {
+      "executor_id": "exec-6-resume",
+      "reason": "P-18 hermetic failed: artifact_router not included in create_app",
+      "new_scope": "Wire artifact_router in interfaces/research/api/app.py",
+      "htmlspec_ref": "sprint-06-write-bridge-api.html"
+    }
+  ],
+  "phase_artifacts": {
+    "egghead-1": "2026-06-23T00:00:00Z",
+    "htmlspec-1": "2026-06-23T00:00:00Z",
+    "exec-1": "2026-06-23T00:00:00Z",
+    "hardenx-1": "2026-06-23T00:00:00Z",
+    "egghead-2": "2026-06-23T00:00:00Z",
+    "htmlspec-2": "2026-06-23T00:00:00Z",
+    "exec-2": "2026-06-23T00:00:00Z",
+    "hardenx-2": "2026-06-23T00:00:00Z",
+    "egghead-3": "2026-06-24T00:00:00Z",
+    "exec-5": "2026-06-24T00:00:00Z",
+    "exec-6": "2026-06-24T21:45:00Z"
+  },
+  "egghead_verdicts": [
+    {
+      "phase": "egghead-3",
+      "verdict": "done-no-ship",
+      "confidence": "high",
+      "loop_decision": "done-no-ship",
+      "residualRisks": [
+        "Large uncommitted ANT-AHT tree on main — operator must PRcrouch to land",
+        "create_app import latency makes html-transport bundle ~5min wall time"
+      ],
+      "openQuestions": ["book/EPUB ingest", "full Write tab-complete"]
+    }
+  ]
+}
