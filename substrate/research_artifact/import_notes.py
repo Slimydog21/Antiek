@@ -12,7 +12,7 @@ from pathlib import Path
 from substrate.event_log import emit_typed, trajectory
 from substrate.schemas.events import ActionType, ArtifactGeneratedPayload
 
-from .schema import ResearchArtifactBody, SCHEMA_VERSION
+from .schema import SCHEMA_VERSION, ResearchArtifactBody
 
 _JSON_BLOCK_RE = re.compile(
     r'<script\s+type="application/json"\s+id="antiek-artifact-v1"\s*>([\s\S]*?)</script>',
@@ -99,7 +99,8 @@ def import_agent_notes(
             source_event_ids=body.source_event_ids or [iid],
         )
         eid = emit_typed(iid, payload, role=generating_role, events_dir=events_dir)
-        event_ids.append(eid)
+        if eid is not None:
+            event_ids.append(eid)
         existing.add(intent)
         imported += 1
 

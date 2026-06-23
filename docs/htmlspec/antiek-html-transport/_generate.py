@@ -311,7 +311,7 @@ def main() -> None:
         "05-compose-merge",
         "06-write-bridge-api",
     ]
-    for slug, html in zip(slugs, pages):
+    for slug, html in zip(slugs, pages, strict=True):
         path = ROOT / f"sprint-{slug}.html"
         path.write_text(html)
         print(f"Wrote {path}")

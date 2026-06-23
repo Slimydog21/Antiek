@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from substrate.event_log import trajectory
 from substrate.schemas.events import ActionType
 

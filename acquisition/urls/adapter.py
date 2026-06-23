@@ -482,9 +482,13 @@ def ingest_url(
 
         snap_path = reader_snapshot_path_for(document_id)
         ingested_at = datetime.now(UTC).isoformat()
-        raw_html = page.body
-        if isinstance(raw_html, bytes):
-            raw_html = raw_html.decode(page.charset or "utf-8", errors="replace")
+        body_raw = page.body
+        if isinstance(body_raw, bytes):
+            raw_html: str = body_raw.decode(
+                page.charset or "utf-8", errors="replace"
+            )
+        else:
+            raw_html = str(body_raw)
         snap_html = build_reader_snapshot(
             source_url=page.final_url,
             document_id=document_id,

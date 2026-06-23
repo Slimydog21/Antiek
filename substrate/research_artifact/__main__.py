@@ -38,15 +38,16 @@ def main(argv: list[str] | None = None) -> int:
             f"investigation={res.investigation_id}"
         )
         return 0
-    if not args.investigation_ids:
+    investigation_ids: list[str] = list(args.investigation_ids)
+    if not investigation_ids:
         p.error("investigation_ids required unless --import-notes is set")
-    if len(args.investigation_ids) > 1 and args.compose:
-        res = compose_artifacts(args.investigation_ids)
-        print(res.path)
+    if len(investigation_ids) > 1 and args.compose:
+        compose_res = compose_artifacts(investigation_ids)
+        print(compose_res.path)
         return 0
-    for iid in args.investigation_ids:
-        res = export_research_artifact(iid, emit_event=not args.no_event)
-        print(res.path)
+    for iid in investigation_ids:
+        export_res = export_research_artifact(iid, emit_event=not args.no_event)
+        print(export_res.path)
     return 0
 
 

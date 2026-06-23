@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -42,13 +43,13 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.urls import (
+from acquisition.urls import (  # noqa: E402
     fetch,
     html_to_markdown,
     ingest_url,
     url_doc_id,
 )
-from acquisition.urls.client import _detect_charset
+from acquisition.urls.client import _detect_charset  # noqa: E402
 
 _HTML_ARTICLE = b"""<!DOCTYPE html>
 <html lang="en">
@@ -292,7 +293,7 @@ def test_ingest_reader_snapshot_when_flag_set(temp_substrate, monkeypatch):
     )
     assert res.reader_snapshot_path is not None
     assert os.path.isfile(res.reader_snapshot_path)
-    text = open(res.reader_snapshot_path, encoding="utf-8").read()
+    text = Path(res.reader_snapshot_path).read_text(encoding="utf-8")
     assert res.document_id in text
     assert "Article Heading" in text or "substantive" in text
     assert "<script>" not in text.lower() or "alert" not in text
