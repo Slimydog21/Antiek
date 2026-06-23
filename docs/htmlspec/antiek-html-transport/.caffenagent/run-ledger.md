@@ -2,7 +2,7 @@
 
 **Spec:** `docs/htmlspec/antiek-html-transport/index.html`  
 **Gate:** P-18 `./scripts/canonical_verify.sh html-transport`  
-**Cycle:** 1 · **Phase:** `done` · **Verdict:** `done-no-ship`  
+**Cycle:** 1 · **Phase:** `done` · **Verdict:** `done-no-ship` → **committed** `d3f30c42` on `main` (local; push/PR = operator)  
 **exec-7 (2026-06-24):** Re-invoked `/caffenagent-cycle` — no new sprint scope; fast proof 6 pytest + 3 vitest green; landscape rebuilt (75 rows).  
 **exec-8 (2026-06-24):** Added `docs/html/ant-aht-vision-map.html` — answers “is agent form factor in htmlspec?” with tabbed vision→spec→code map + copy handoff.
 

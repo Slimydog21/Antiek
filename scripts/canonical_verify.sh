@@ -82,6 +82,7 @@ cmd_html_transport() {
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
+    tests/test_research_artifact_hooks.py \
     tests/test_research_artifact_compose.py \
     tests/test_research_artifact_blocks.py \
     tests/test_research_artifact_import.py \
