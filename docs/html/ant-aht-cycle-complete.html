@@ -24,12 +24,12 @@
   </div>
 </nav>
 <main><article>
-<p class="kicker">Caffenagent · ANT-AHT · <span class="mono">f6e27e03</span></p>
+<p class="kicker">Caffenagent · ANT-AHT · <span class="mono">53fa2de1</span></p>
 <h1>Master ledger: no pending sprints</h1>
 <div class="banner">
-<p><strong>SPR-AHT-01 through SPR-AHT-06 are executed.</strong> Re-invoking <code>/caffenagent-cycle</code> on this htmlspec does not schedule more work. Profile B (AI-agent-friendly HTML) is in <a href="../htmlspec/antiek-html-transport/index.html">ANT-AHT index</a>.</p>
+<p><strong>SPR-AHT-01 through SPR-AHT-07 are executed.</strong> PDF book reader HTML (SPR-AHT-07) shares the URL snapshot flag. Profile B is in <a href="../htmlspec/antiek-html-transport/index.html">ANT-AHT index</a>.</p>
 </div>
-<p class="stop">If your goal is book ingest, full Write Lego, or RL audit — that is a <em>new</em> htmlspec, not this cycle.</p>
+<p class="stop">Full Write Lego, EPUB-native ingest, and RL audit — separate ledgers.</p>
 <table class="check">
 <thead><tr><th>Sprint</th><th>Status</th><th>Gate</th></tr></thead>
 <tbody>
@@ -39,18 +39,19 @@
 <tr><td>04 Reader snapshot</td><td>done</td><td class="mono">test_reader_snapshot</td></tr>
 <tr><td>05 Compose</td><td>done</td><td class="mono">test_research_artifact_compose</td></tr>
 <tr><td>06 Write bridge</td><td>done</td><td class="mono">test_artifact_routes + ArtifactOutlineShelf</td></tr>
+<tr><td>07 Book snapshot</td><td>done</td><td class="mono">test_acquisition_books reader_snapshot</td></tr>
 </tbody>
 </table>
-<p>P-18 bundle: <code class="mono">./scripts/canonical_verify.sh html-transport</code> (14 pytest targets after hook test).</p>
+<p>P-18 bundle: <code class="mono">./scripts/canonical_verify.sh html-transport</code> (16 pytest targets).</p>
 <p>Explore assets: <a href="html-landscape.html">html-landscape.html</a> · Thariq examples: <a href="https://thariqs.github.io/html-effectiveness/">external catalog</a></p>
 <script type="application/json" id="antiek-cycle-status-v1">{
   "ledger": "ANT-AHT",
-  "sprints": ["SPR-AHT-01","SPR-AHT-02","SPR-AHT-03","SPR-AHT-04","SPR-AHT-05","SPR-AHT-06"],
+  "sprints": ["SPR-AHT-01","SPR-AHT-02","SPR-AHT-03","SPR-AHT-04","SPR-AHT-05","SPR-AHT-06","SPR-AHT-07"],
   "phase": "done",
-  "head": "f6e27e03",
+  "head": "53fa2de1",
   "gate": "P-18",
   "reinvoke_caffenagent_cycle_on_this_ledger": false,
-  "next_ledgers": ["ANT-AHT-07-book-epub","Write-bridge-v2","RL-html-audit"]
+  "next_ledgers": ["Write-bridge-v2","EPUB-native-ingest","RL-html-audit"]
 }</script>
 </article></main>
 </body>

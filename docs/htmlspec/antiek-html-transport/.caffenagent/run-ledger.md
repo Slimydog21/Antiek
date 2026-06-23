@@ -2,11 +2,12 @@
 
 **Spec:** `docs/htmlspec/antiek-html-transport/index.html`  
 **Gate:** P-18 `./scripts/canonical_verify.sh html-transport`  
-**Cycle:** 1 · **Phase:** `done` · **Verdict:** `done-no-ship` → **committed** `d3f30c42` on `main` (local; push/PR = operator)  
+**Cycle:** 1 · **Phase:** `done` · **Verdict:** `done` — **pushed** `d3f30c42` + `23913d25` to `origin/main` (2026-06-24)  
 **exec-7 (2026-06-24):** Re-invoked `/caffenagent-cycle` — no new sprint scope; fast proof 6 pytest + 3 vitest green; landscape rebuilt (75 rows).  
-**exec-8 (2026-06-24):** Added `docs/html/ant-aht-vision-map.html` — answers “is agent form factor in htmlspec?” with tabbed vision→spec→code map + copy handoff.
+**exec-8 (2026-06-24):** Added `docs/html/ant-aht-vision-map.html` — answers “is agent form factor in htmlspec?” with tabbed vision→spec→code map + copy handoff.  
+**exec-9 (2026-06-24):** **SPR-AHT-07** — PDF `ingest_pdf` reader snapshot (`markdown_to_safe_html`, `IngestBookResult.reader_snapshot_path`); htmlspec sprint-07 generated; P-18 +1 test.
 
-## Sprint closure (SPR-AHT-01…06)
+## Sprint closure (SPR-AHT-01…07)
 
 | Sprint | Deliverable | Proof |
 |--------|-------------|-------|
@@ -16,6 +17,7 @@
 | 04 | Reader snapshot on URL ingest | `tests/test_reader_snapshot.py`, env `ANTIEK_READER_SNAPSHOT` |
 | 05 | Compose / merge index | `tests/test_research_artifact_compose.py` |
 | 06 | FastAPI routes + Write shelf | `tests/test_artifact_routes.py`, `ArtifactOutlineShelf.tsx` |
+| 07 | Book/PDF reader HTML snapshot | `tests/test_acquisition_books.py::test_ingest_reader_snapshot_when_flag_set` |
 
 ## exec-6 (2026-06-24) — resume fix
 
@@ -41,9 +43,9 @@
 ## Not proved (P-18 matrix)
 
 - Full Write canvas tab-complete
-- Book/EPUB reader HTML ingest
+- EPUB-native reader HTML (PD epub → PDF path only)
 
 ## Operator next
 
-1. **PRcrouch** — commit uncommitted ANT-AHT + exec-6 router fix; CI must pass P-18.
-2. **New ledger** — if book ingest or full Write UI is priority, spawn new htmlspec subtree (not re-grind 01–06).
+1. **PRcrouch** — commit SPR-AHT-07 + htmlspec regen; CI must pass P-18.
+2. **New ledger** — Write bridge v2 or RL html audit when prioritized.

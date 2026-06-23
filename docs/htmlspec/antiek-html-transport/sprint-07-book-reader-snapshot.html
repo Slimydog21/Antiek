@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SPR-AHT-04 · Ingest reader snapshot</title>
+<title>SPR-AHT-07 · Book reader snapshot</title>
 <style>
 /* htmlspec — Lemon UI inspired style system
  * Inline this entire file into <style> of every output HTML file.
@@ -582,48 +582,44 @@ hr.divider {
 <body>
 <main class="page">
 <header class="hero">
-<p class="eyebrow"><a href="index.html">&larr; Antiek HTML Transport</a> · Sprint 04</p>
-<h1>Ingest reader snapshot</h1><p class="tagline">Optional sanitized HTML when ingesting URLs.</p>
+<p class="eyebrow"><a href="index.html">&larr; Antiek HTML Transport</a> · Sprint 07</p>
+<h1>Book reader snapshot</h1><p class="tagline">Readable HTML when ingesting PDF books (textbook / PD corpus).</p>
 <div class="meta-row">
 <span class="tag tag--blue"><span class="dot"></span>Wave 2</span>
 <span class="tag tag--green"><span class="dot"></span>done</span>
-<span class="tag tag--grey">Budget: 3 milestones</span></div></header>
-<section class="block"><h2>Parent context</h2><p>Reading a web article should produce a human-readable HTML snapshot alongside chunks.</p><p>Derivative of fetched HTML — not a second ingest path.</p>
-<div class="callout callout--info"><strong>Position:</strong> Wire behind ANTIEK_READER_SNAPSHOT flag.</div></section>
-<section class="block"><h2>Goal</h2><p><strong>Optional sanitized HTML when ingesting URLs.</strong></p><p>Strips script/style; metadata header with document_id and source URL.</p></section>
+<span class="tag tag--grey">Budget: 2 milestones</span></div></header>
+<section class="block"><h2>Parent context</h2><p>Books and textbooks should be reviewable as HTML lenses like web articles.</p><p>Reuses ANTIEK_READER_SNAPSHOT flag and ~/.antiek/reader-snapshots store.</p>
+<div class="callout callout--info"><strong>Position:</strong> Wave 2 extension of SPR-AHT-04 — markdown body from PDF extraction.</div></section>
+<section class="block"><h2>Goal</h2><p><strong>Readable HTML when ingesting PDF books (textbook / PD corpus).</strong></p><p>markdown_to_safe_html + ingest_pdf hook; title/author in meta header.</p></section>
 <section class="block"><h2>Technical milestones</h2>
 <div class="milestone"><div class="num">1</div><div>
-<div class="title">reader_html module</div><p class="desc">build_reader_snapshot + sanitize.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>test_reader_snapshot.py</li></ul></div>
+<div class="title">markdown_to_safe_html</div><p class="desc">Escape-first minimal heading/paragraph render.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>test_reader_snapshot markdown tests</li></ul></div>
 <div class="files"><span class="file">acquisition/snapshot/reader_html.py</span></div></div></div>
 <div class="milestone"><div class="num">2</div><div>
-<div class="title">Adapter hook</div><p class="desc">ingest_url sets reader_snapshot_path when flag on.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>test_acquisition_urls snapshot test</li></ul></div>
-<div class="files"><span class="file">acquisition/urls/adapter.py</span></div></div></div>
-<div class="milestone"><div class="num">3</div><div>
-<div class="title">Decision</div><p class="desc">docs/decisions/ingest-reader-snapshot.md</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>flag documented</li></ul></div>
-<div class="files"><span class="file">docs/decisions/ingest-reader-snapshot.md</span></div></div></div>
+<div class="title">ingest_pdf hook</div><p class="desc">IngestBookResult.reader_snapshot_path when flag on.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>test_acquisition_books snapshot test</li></ul></div>
+<div class="files"><span class="file">acquisition/books/adapter.py</span></div></div></div>
 </section>
 <section class="block"><h2>Rigor — operating manual for this sprint</h2>
 <div class="rigor">
-<div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>Default flag off in prod.</p></div>
-<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman always snapshot; rejected for disk churn until operator opts in.</p></div>
-<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>pytest with ANTIEK_READER_SNAPSHOTS_DIR temp dir.</p></div>
-<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read ingest_url return sites before field add.</p></div>
-<div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>Handoff documents env vars.</p></div>
+<div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>EPUB-native deferred; PD epub still becomes PDF at ingest.</p></div>
+<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman separate book HTML store; rejected — one reader-snapshots dir.</p></div>
+<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>P-18 includes book snapshot test.</p></div>
+<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read SPR-AHT-04 before wiring.</p></div>
+<div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>Decision doc ingest-reader-snapshot.md updated.</p></div>
 </div></section>
 <section class="block"><h2>Dependencies</h2><div class="two-col">
-<div><h3>Upstream</h3><ul><li>SPR-AHT-01</li></ul></div>
+<div><h3>Upstream</h3><ul><li>SPR-AHT-04</li></ul></div>
 <div><h3>External</h3><ul></ul></div></div></section>
-<section class="block"><h2>Out of scope</h2><ul><li>EPUB/PDF reader HTML</li><li>Automatic snapshot without flag</li></ul></section>
+<section class="block"><h2>Out of scope</h2><ul><li>EPUB direct HTML ingest</li><li>Servable-book gate changes</li></ul></section>
 <section class="block"><h2>Verification gates</h2>
-<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Snapshot</strong></td><td><code>./.venv/bin/python -m pytest tests/test_reader_snapshot.py tests/test_acquisition_urls.py -k reader_snapshot -q</code></td><td>pass</td></tr></tbody></table></section>
+<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Book snapshot</strong></td><td><code>./.venv/bin/python -m pytest tests/test_reader_snapshot.py tests/test_acquisition_books.py -k reader_snapshot -q</code></td><td>pass</td></tr></tbody></table></section>
 <section class="block" id="harness-hint" data-harness-pattern="inline"
- data-harness-fanout-unit="adapter.py tail" data-harness-verifier-lenses="sanitization|xss-strip"
+ data-harness-fanout-unit="books/adapter.py" data-harness-verifier-lenses="markdown-escape|same-flag"
  data-harness-rounds-floor="1" data-harness-rounds-cap="2">
-<h2>Harness hint</h2><p>Pattern <code>inline</code> · adapter.py tail</p></section>
-<footer class="spec-footer">SPR-AHT-04 · <a href="index.html">Master spec</a> · 2026-06-24</footer>
+<h2>Harness hint</h2><p>Pattern <code>inline</code> · books/adapter.py</p></section>
+<footer class="spec-footer">SPR-AHT-07 · <a href="index.html">Master spec</a> · 2026-06-24</footer>
 </main>
 </body>
 </html>

@@ -46,6 +46,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -445,3 +446,28 @@ def test_ingest_nodes_carry_source_book(temp_substrate, stub_reader_factory):
     metas = [json.loads(r[0]) if isinstance(r[0], str) else r[0] for r in rows]
     assert all(m.get("source") == "book" for m in metas)
     assert all(m.get("document_id") == res.document_id for m in metas)
+
+
+def test_ingest_reader_snapshot_when_flag_set(
+    temp_substrate, stub_reader_factory, monkeypatch
+):
+    snap_dir = os.path.join(temp_substrate["tmpdir"], "reader-snaps")
+    monkeypatch.setenv("ANTIEK_READER_SNAPSHOT", "1")
+    monkeypatch.setenv("ANTIEK_READER_SNAPSHOTS_DIR", snap_dir)
+    stub_reader_factory(
+        pages=[_LONG_PAGE],
+        meta={"/Title": "Snap Title", "/Author": "Snap Author"},
+    )
+    res = ingest_pdf(
+        b"snapshot-pdf-bytes",
+        investigation_id="inv-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        source_uri="https://example.com/book.pdf",
+    )
+    assert res.reader_snapshot_path is not None
+    assert os.path.isfile(res.reader_snapshot_path)
+    text = Path(res.reader_snapshot_path).read_text(encoding="utf-8")
+    assert res.document_id in text
+    assert "Snap Title" in text
+    assert "book" in text

@@ -89,6 +89,7 @@ cmd_html_transport() {
     tests/test_reader_snapshot.py \
     tests/test_artifact_routes.py \
     tests/test_acquisition_urls.py::test_ingest_reader_snapshot_when_flag_set \
+    tests/test_acquisition_books.py::test_ingest_reader_snapshot_when_flag_set \
     -q --tb=short
   echo "CANONICAL_VERIFY_OK: html-transport"
 }
