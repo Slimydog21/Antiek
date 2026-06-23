@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ANT-AHT — AI-agent-friendly HTML transport</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin: 1.5rem 0; }
+.guide-grid .card { min-height: 140px; }
+code.block { display: block; background: var(--stone-100); padding: 12px 14px; font-size: 13px;
+  border-radius: 4px; margin: 12px 0; overflow-x: auto; }
+.flow { font-family: var(--font-mono); font-size: 13px; line-height: 1.8; background: var(--stone-100);
+  padding: 16px; border-left: 3px solid var(--stone-700); }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="topnav-inner">
+    <span class="topnav-title">Antiek docs</span>
+    <a href="index.html">Index</a>
+    <a href="html-landscape.html">HTML landscape</a>
+    <a href="ant-aht-operator-guide.html" class="active">ANT-AHT guide</a>
+    <a href="../htmlspec/antiek-html-transport/index.html">Master spec</a>
+  </div>
+</nav>
+<main>
+<article>
+<p class="kicker">Profile B · agent transport · 2026-06-23</p>
+<h1>AI-agent-friendly HTML in Antiek</h1>
+<p>This page is the operator-facing form-factor spec for the Thariq thesis: HTML as the
+<strong>efficient transport layer</strong> between agents and humans. DuckDB + the typed event log
+remain canonical; HTML is how you read, share, merge, and hand off work across context windows.</p>
+
+<h2>Form factor (machine + human)</h2>
+<p>Every deep research export is one self-contained file:</p>
+<ul>
+<li><strong>Human channel</strong> — findings, gaps, synthesis excerpt, agent-notes UI (add note + copy JSON).</li>
+<li><strong>Machine channel</strong> — <code>&lt;script type="application/json" id="antiek-artifact-v1"&gt;</code> with schema v1 body + <code>content_hash</code>.</li>
+<li><strong>Audit</strong> — <code>artifact.generated</code> on export; per-note import emits deduped <code>research_artifact_agent_note_v1:</code> intents.</li>
+</ul>
+
+<div class="flow">
+graph (insights/questions) → distill → ResearchArtifactBody → render HTML → ~/.antiek/research-artifacts/<br>
+ingest URL → chunks + optional reader snapshot (ANTIEK_READER_SNAPSHOT)<br>
+merge investigations → compose-*.html index (hash conflicts surfaced)<br>
+Write (partial) → GET /research/{id}/artifact/blocks → ArtifactOutlineShelf in DistillView
+</div>
+
+<h2>Thariq use-case map</h2>
+<div class="guide-grid wide">
+<div class="card"><h3>Specs &amp; planning</h3><p>Profile A htmlspecs under <code>docs/htmlspec/</code>.</p></div>
+<div class="card"><h3>Research reports</h3><p>One HTML file per investigation; compose for multi-merge review.</p></div>
+<div class="card"><h3>Two-way interaction</h3><p>In-artifact add-note + copy JSON → <code>--import-notes</code>.</p></div>
+<div class="card"><h3>Knowledge graph</h3><p>Findings/gaps are graph nodes; HTML never replaces promotion.</p></div>
+<div class="card"><h3>On-policy RL trace</h3><p>Training signal = what agents wrote into HTML + events, not markdown chat alone.</p></div>
+<div class="card"><h3>Share</h3><p>Open locally or upload; landscape catalog lists all repo HTML assets.</p></div>
+</div>
+
+<h2>Commands</h2>
+<code class="block"># Export
+python -m substrate.research_artifact &lt;investigation_id&gt;
+
+# Compose index
+python -m substrate.research_artifact id1 id2 --compose
+
+# Import agent notes from saved HTML
+python -m substrate.research_artifact --import-notes ~/.antiek/research-artifacts/&lt;id&gt;.html
+
+# Gates
+./scripts/canonical_verify.sh html-transport</code>
+
+<h2>Environment</h2>
+<table class="asset-table" style="width:100%; font-size:14px;">
+<tr><td><code>ANTIEK_RESEARCH_ARTIFACTS_DIR</code></td><td>Export directory</td></tr>
+<tr><td><code>ANTIEK_EXPORT_RESEARCH_ARTIFACT</code></td><td>Auto-export after investigation.completed</td></tr>
+<tr><td><code>ANTIEK_READER_SNAPSHOT</code></td><td>Sanitized HTML on URL ingest</td></tr>
+<tr><td><code>ANTIEK_READER_SNAPSHOTS_DIR</code></td><td>Reader snapshot store</td></tr>
+</table>
+
+<h2>Ledger status</h2>
+<p>SPR-AHT-01 through SPR-AHT-06 are <strong>done</strong> and bound by platform row <strong>P-18</strong>.
+Product follow-ons (Write drag-drop UI, book/EPUB reader HTML) are documented as not proved in
+<code>PLATFORM_EXEC_MATRIX.md</code>.</p>
+<p>Further reading: <a href="../agent-execution/RESEARCH_ARTIFACT_TRANSPORT.md">RESEARCH_ARTIFACT_TRANSPORT.md</a>
+(protocol); decisions under <code>docs/decisions/research-artifact-*.md</code>.</p>
+</article>
+</main>
+</body>
+</html>

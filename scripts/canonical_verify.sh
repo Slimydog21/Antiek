@@ -7,6 +7,7 @@
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #   deep-research        — ANT-DRL P-11..P-17 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-18 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -29,7 +30,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates|deep-research}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -76,6 +77,21 @@ cmd_agent_gates() {
   echo "CANONICAL_VERIFY_OK: agent-gates"
 }
 
+cmd_html_transport() {
+  echo "== html-transport: P-18 ANT-AHT bundle =="
+  "${PY}" -m pytest \
+    tests/test_research_artifact_template.py \
+    tests/test_research_artifact_export.py \
+    tests/test_research_artifact_compose.py \
+    tests/test_research_artifact_blocks.py \
+    tests/test_research_artifact_import.py \
+    tests/test_reader_snapshot.py \
+    tests/test_artifact_routes.py \
+    tests/test_acquisition_urls.py::test_ingest_reader_snapshot_when_flag_set \
+    -q --tb=short
+  echo "CANONICAL_VERIFY_OK: html-transport"
+}
+
 cmd_deep_research() {
   echo "== deep-research: P-11 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
@@ -103,6 +119,7 @@ main() {
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
+    html-transport) cmd_html_transport ;;
     *) usage ;;
   esac
 }
