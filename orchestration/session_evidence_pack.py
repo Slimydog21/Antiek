@@ -162,9 +162,9 @@ def _load_problem_question(
     from substrate.event_log import trajectory
 
     if plan_root_node_id:
-        import duckdb
+        from runtime.db_lock import connect_read
 
-        con = duckdb.connect(db_path, read_only=True)
+        con = connect_read(db_path)
         try:
             row = con.execute(
                 "SELECT canonical_label FROM nodes WHERE node_id = ?",
@@ -216,9 +216,9 @@ def build_session_evidence_pack(
     chunks: list[PackChunk] = []
     leaf_ids: list[str] = []
 
-    import duckdb
+    from runtime.db_lock import connect_read
 
-    con = duckdb.connect(db_path, read_only=True)
+    con = connect_read(db_path)
     try:
         for iid, sub_q in researches:
             leaf_ids.append(iid)
