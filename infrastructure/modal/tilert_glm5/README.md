@@ -78,4 +78,4 @@ Default HF repo is **`zai-org/GLM-5.2-FP8`**. TileRT backend remains **`glm5`** 
 
 ## Codex (personal)
 
-Point mimo2codex `providers.json` generic upstream at this Modal URL (Bearer), or add a dedicated profile mirroring `~/.codex` Modal GLM wiring — same OpenAI-compat contract.
+See [CODEX.md](./CODEX.md) for mimo2codex / Codex CLI wiring (SPR-06).
