@@ -34,7 +34,7 @@ import pytest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
-from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
+from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from orchestration.invariants.deep_research_complete import (  # noqa: E402
     check_deep_research_complete,
 )
@@ -339,6 +339,8 @@ _KNOWLEDGE_EXTRACTION_RESPONSE = json.dumps({
 
 @pytest.fixture
 def app_and_bus():
+    from interfaces.research.api.app import create_app
+
     bus = EventBroadcaster()
     app = create_app(broadcaster=bus, cors_origins=[])
     return app, bus

@@ -43,13 +43,10 @@ from contextlib import contextmanager
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-
-from interfaces.research.api.dispatch_failure import classify_dispatch_failure
-
-logger = logging.getLogger(__name__)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from interfaces.research.api.dispatch_failure import classify_dispatch_failure
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
 from roles.cascade_planner import (
     PlanNotApproved,
@@ -74,6 +71,8 @@ from runtime.research_runner import (
     make_exa_gather_loop,
 )
 from substrate.graph import default_db_path, ensure_initialized
+
+logger = logging.getLogger(__name__)
 
 cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
