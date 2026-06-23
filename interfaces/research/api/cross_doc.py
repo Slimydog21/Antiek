@@ -43,7 +43,7 @@ from __future__ import annotations
 import math
 import os
 import sys
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 # Direct import — interfaces/research/api/ depends on substrate + processing.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -65,7 +65,6 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster
-
 
 # Default similarity threshold. Tuned for the sentence-transformers
 # production embedder. For the HashEmbedding fallback used in dev/tests,
@@ -119,8 +118,8 @@ Answered = dict[str, set[str]]
 def make_cross_doc_handler(
     broadcaster: EventBroadcaster,
     *,
-    embedder: Optional[EmbeddingProvider] = None,
-    threshold: Optional[float] = None,
+    embedder: EmbeddingProvider | None = None,
+    threshold: float | None = None,
 ):
     """Build the async handler closed over the broadcaster + embedder
     + threshold. Same handler is registered for question.identified,
@@ -266,8 +265,8 @@ async def _on_note_emerged(
 def register_handlers(
     broadcaster: EventBroadcaster,
     *,
-    embedder: Optional[EmbeddingProvider] = None,
-    threshold: Optional[float] = None,
+    embedder: EmbeddingProvider | None = None,
+    threshold: float | None = None,
 ) -> None:
     """Wire the cross-doc watcher. Single handler registered for all
     three subscribed action types so the per-investigation state is

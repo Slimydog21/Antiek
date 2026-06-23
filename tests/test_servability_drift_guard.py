@@ -27,12 +27,12 @@ import pytest
 from runtime.db_lock import connect_read, connect_write
 from substrate.books import ingest as bingest
 from substrate.books.model import BookAsset, get_book_asset
-from substrate.books.serve import serve_full_text
 from substrate.books.servability import (
     ServabilityStatus,
     is_servable_full_text,
     servability_of,
 )
+from substrate.books.serve import serve_full_text
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 from substrate.graph.ops import insert_document
 

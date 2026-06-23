@@ -15,7 +15,8 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
-from substrate.speak import consent as consent_mod, project
+from substrate.speak import consent as consent_mod
+from substrate.speak import project
 from substrate.speak.consent import ConsentScope
 from substrate.speak.interviewer_context import build_conditioning_context
 from substrate.speak.schema import ensure_speak_schema

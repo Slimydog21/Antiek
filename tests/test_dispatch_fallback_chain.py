@@ -33,20 +33,18 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from substrate.dispatch import (  # noqa: E402
+    register_provider,
+    reset_provider_registry,
+)
 from substrate.dispatch.base import (
     NormalizedUsage,
     ProviderError,
     RawProviderResponse,
 )
 from substrate.dispatch.router import DispatchConfig, dispatch
-from substrate.event_log import default_events_dir, trajectory
+from substrate.event_log import trajectory
 from substrate.schemas import Event
-
-from substrate.dispatch import (  # noqa: E402
-    register_provider,
-    reset_provider_registry,
-)
-
 
 # Sprint 17 dispatch tier measurement (master-spec §14.4, 2026-05-19):
 # synthesis is inverted to OpenRouter-primary with Hermes fallback for

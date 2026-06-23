@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FEEL-S1 · Elevation contract · PostHog Feel</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wordmark">ANTIEK / POSTHOG-FEEL</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint-feel-s1.html">S1</a>
+    <a href="sprint-feel-s2.html">S2</a>
+    <a href="sprint-feel-s3.html">S3</a>
+    <a href="sprint-feel-s4.html">S4</a>
+    <a href="sprint-feel-s5.html">S5</a>
+    <a href="sprint-feel-s6.html">S6</a>
+  </nav>
+</header>
+<div class="shell">
+<h1><span class="sprint-tag">FEEL-S1</span>Elevation contract + dual-store map</h1>
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~3 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">UI S0–S12 + AMS-v2 green</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S2, S3</div></div>
+  <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>Author the single elevation contract both stores consume: <code>shadowForStackDepth</code>, <code>cascadeOffset</code>, and explicit exemptions (glass windows, dense Research IDE). No mandatory visual change beyond Storybook reference + unit tests.</p>
+
+<h2>2 · Work packages</h2>
+<div class="wp"><div class="wp-id">WP-1.1</div><h3>FEEL_CONTRACT.md</h3><p>Primitives table, layer diagram, honest PostHog OSS footnote (pattern-only, not floating OS clone).</p></div>
+<div class="wp"><div class="wp-id">WP-1.2</div><h3>elevation.ts + tests</h3><p><code>apps/reading/src/design/elevation.ts</code> — map depth 0→3 to <code>shadow-z1…z3</code> / night variants; <code>cascadeOffset(i)</code> aligned with <code>windowsStore</code> (28px step) and panel open jitter (22px).</p></div>
+<div class="wp"><div class="wp-id">WP-1.3</div><h3>Cross-link READMEs</h3><p>Update <code>src/workspace/README.md</code> and <code>src/components/windows/README.md</code> with chrome mode table.</p></div>
+<div class="wp"><div class="wp-id">WP-1.4</div><h3>Storybook Elevation reference</h3><p><code>Elevation.stories.tsx</code> — side-by-side opaque-chunky vs glass-scene samples.</p></div>
+
+<h2>3 · Acceptance criteria</h2>
+<ul class="ac-list">
+  <li><code>shadowForStackDepth(0) !== shadowForStackDepth(3)</code> for <code>opaque-chunky</code>.</li>
+  <li><code>glass-scene</code> mode returns minimal title-bar shadow only (documented).</li>
+  <li>Contract lists ResearchWorkstation IDE as <strong>exempt</strong>.</li>
+  <li><code>npm run test -- elevation</code> passes.</li>
+  <li><code>npm run e2e:ams</code> still green (no prod visual regression required).</li>
+</ul>
+
+<h2>4 · Rigor (sprint-specific)</h2>
+<ul>
+  <li><strong>Intellectual honesty:</strong> The contract must state plainly that PostHog <code>panel-layout/</code> is not a floating window manager — cite GitHub paths, not marketing copy.</li>
+  <li><strong>Fairness:</strong> Steelman merging the two stores; document why AMS-v2 would break if attempted.</li>
+  <li><strong>Rigor:</strong> Every depth tier has a Vitest assertion with expected class string — no “looks right.”</li>
+  <li><strong>Diligence:</strong> Read <code>PanelLayoutPanel.tsx:158–165</code> and <code>WorkspaceWindow.tsx:235–260</code> before writing the map.</li>
+  <li><strong>Defensibility:</strong> Handoff lists files touched; no claim of operator-visible change until S2/S3.</li>
+</ul>
+
+<h2>5 · Rejected alternatives</h2>
+<ul>
+  <li>Merge <code>windowsStore</code> into <code>WorkspaceStore</code> — breaks AMS ownership.</li>
+  <li>CSS-only depth (no TS helper) — untestable store↔shadow coupling.</li>
+</ul>
+
+<div class="sprint-nav">
+  <a href="index.html"><span class="label">←</span>Overview</a>
+  <a class="next" href="sprint-feel-s2.html"><span class="label">Next →</span>FEEL-S2</a>
+</div>
+</div>
+</body>
+</html>

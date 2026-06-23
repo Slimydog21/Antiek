@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
-
 
 SemanticJudge = Callable[[str, str], bool]
 
@@ -26,7 +25,7 @@ def SubstringJudge(extracted: str, labelled: str) -> bool:
 @dataclass(frozen=True)
 class EvalReportRow:
     document_id: str
-    operator_label: Optional[str]
+    operator_label: str | None
     insight_precision: float
     insight_recall: float
     insight_matched: int

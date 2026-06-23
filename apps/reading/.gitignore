@@ -5,6 +5,10 @@ storybook-static/
 *.log
 .DS_Store
 
+# TypeScript incremental build cache — a per-machine artifact (tsc -b),
+# never meant to be committed. One leaked into a prior commit; this stops it.
+*.tsbuildinfo
+
 # Lost-Pixel — baseline IS checked in; current + diff are not.
 .lostpixel/current/
 .lostpixel/diff/
@@ -15,3 +19,6 @@ playwright-report/
 # `node_modules/` pattern above matches a real dir but NOT a symlink to
 # one, so match it bare too (keeps `git add -A` from staging the link).
 node_modules
+
+# Playwright debug screenshot output (page.screenshot path=), not a baseline
+e2e/**/.artifacts/

@@ -32,7 +32,7 @@ from typing import Any, Optional
 from urllib.parse import urlparse
 
 
-def _normalize_isbn(isbn: Optional[str]) -> Optional[str]:
+def _normalize_isbn(isbn: str | None) -> str | None:
     """Strip hyphens + whitespace; uppercase. Returns None for empty."""
     if not isbn:
         return None
@@ -42,7 +42,7 @@ def _normalize_isbn(isbn: Optional[str]) -> Optional[str]:
     return cleaned
 
 
-def _normalize_host(uri: Optional[str]) -> Optional[str]:
+def _normalize_host(uri: str | None) -> str | None:
     """Extract lowercase host from a URL; strip ``www.``."""
     if not uri:
         return None
@@ -79,7 +79,7 @@ def _load_holder_metadata(con: Any) -> list[tuple[str, dict, str]]:
 
 def _resolve_by_isbn(
     holders: list[tuple[str, dict, str]], target_isbn: str,
-) -> Optional[str]:
+) -> str | None:
     for ip_holder_id, md, _display in holders:
         isbns = md.get("isbns") or []
         if not isinstance(isbns, list):
@@ -92,7 +92,7 @@ def _resolve_by_isbn(
 
 def _resolve_by_host(
     holders: list[tuple[str, dict, str]], target_host: str,
-) -> Optional[str]:
+) -> str | None:
     for ip_holder_id, md, _display in holders:
         domains = md.get("domains") or []
         if not isinstance(domains, list):
@@ -113,7 +113,7 @@ def _resolve_by_host(
 
 def _resolve_by_author(
     holders: list[tuple[str, dict, str]], target_author: str,
-) -> Optional[str]:
+) -> str | None:
     target = target_author.strip().lower()
     if not target:
         return None
@@ -126,10 +126,10 @@ def _resolve_by_author(
 def resolve_ip_holder(
     con: Any,
     *,
-    source_uri: Optional[str] = None,
-    isbn: Optional[str] = None,
-    author: Optional[str] = None,
-) -> Optional[str]:
+    source_uri: str | None = None,
+    isbn: str | None = None,
+    author: str | None = None,
+) -> str | None:
     """Resolve a document's ip_holder_id from its metadata.
 
     Args:
@@ -198,10 +198,10 @@ def resolve_and_apply(
     con: Any,
     *,
     document_id: str,
-    source_uri: Optional[str] = None,
-    isbn: Optional[str] = None,
-    author: Optional[str] = None,
-) -> Optional[str]:
+    source_uri: str | None = None,
+    isbn: str | None = None,
+    author: str | None = None,
+) -> str | None:
     """Resolve + persist in one call. Returns the resolved
     ip_holder_id (or None). Skips persistence if no match (the
     document's ip_holder_id stays NULL = unattributable)."""

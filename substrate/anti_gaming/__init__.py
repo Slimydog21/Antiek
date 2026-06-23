@@ -20,24 +20,24 @@ external red-team report at docs/sprint23_red_team.md (see the Sprint
 23-24 §1 callout in docs/sprint-breakdown.html).
 """
 
-from .verdict import FraudSignal, FraudVerdict, FraudVerdictKind
-from .click_fraud import (
-    ClickFraudScorer,
-    score_click_event,
-    ua_entropy,
-    ip_subnet_entropy,
-)
-from .view_fraud import (
-    ViewFraudScorer,
-    score_view_event,
-    SessionBurstWindow,
-)
 from .attribution_fraud import (
     AttributionFraudScorer,
-    score_attribution_payout,
     detect_creator_cluster_collusion,
+    score_attribution_payout,
+)
+from .click_fraud import (
+    ClickFraudScorer,
+    ip_subnet_entropy,
+    score_click_event,
+    ua_entropy,
 )
 from .detector import AntiGamingDetector, run_full_check
+from .verdict import FraudSignal, FraudVerdict, FraudVerdictKind
+from .view_fraud import (
+    SessionBurstWindow,
+    ViewFraudScorer,
+    score_view_event,
+)
 
 __all__ = [
     "AntiGamingDetector",

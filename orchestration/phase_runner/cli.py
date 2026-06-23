@@ -31,14 +31,13 @@ import argparse
 import importlib
 import json
 import sys
-from typing import Optional
 
 from orchestration.phase_log import PhaseAssertionError
 
 from . import runner as _runner
 
 
-def _load_postcondition_check(module_path: Optional[str]):
+def _load_postcondition_check(module_path: str | None):
     """Resolve a ``PostconditionCheck`` callable from a dotted module
     path. The module is expected to expose ``run_check(phase,
     investigation_id) -> (passed, reason)``. Falls back to the
@@ -202,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     return args.func(args)

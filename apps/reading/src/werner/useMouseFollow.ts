@@ -3,8 +3,26 @@ import { useEffect, useRef } from "react";
 /**
  * useMouseFollow (SPR-05 / WERNER-ICE) — sample-delay lagged hook + live bait read.
  *
- * Lag budget (honest): LAG_MS sample delay in this hook; mascot reel closes the
- * gap in PenguinMascot (REEL_TAU_MS). Idle roam uses ROAM_STROLL_MS / REST_* only.
+ * Lag budget (honest): TWO axes combine into the felt lag.
+ *   1. LAG_MS — the sample delay in THIS hook: how STALE the hook is (Werner
+ *      chases where the cursor was ~0.5s ago).
+ *   2. the REEL — how the mascot CLOSES that gap, in PenguinMascot. As of
+ *      SPR-03 the reel is a critically-damped SPRING (REEL_SPRING_OMEGA_RAD_PER_S),
+ *      with the first-order exponential (REEL_TAU_MS, now 950ms) kept as a
+ *      documented fallback. The spring is the "slower, weightier pull": it
+ *      accelerates off the mark then decelerates as it nears, settling without
+ *      overshoot — a line with mass.
+ * SPR-03 deliberately left LAG_MS at 500: the operator's ask ("the pull should
+ * get slower as it closes") is about axis 2, the reel approach — NOT axis 1, the
+ * trailing staleness. Raising LAG_MS would make Werner trail FARTHER behind
+ * (a different feel) rather than pull SLOWER, so the change went into the reel.
+ * Idle roam uses ROAM_STROLL_MS / REST_* only.
+ *
+ * Tab-return (M4): sampling pauses while hidden (visibilitychange below) and we
+ * never backfill a straight-line jump, so the lagged TARGET picks up where it
+ * left off. The matching guard against a catch-up LURCH lives in the reel
+ * integrator (reelPursuit.ts clamps dtMs to REEL_MAX_DT_MS), so even a giant
+ * post-stall frame advances Werner by at most one clamped slice.
  *
  * It is a SAMPLE-DELAY pursuit, not an ease-time-constant chase. We record
  * the pointer into a small ring buffer stamped with the (fake-clock-aware)

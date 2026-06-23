@@ -20,36 +20,32 @@ Coverage:
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
 
 import httpx
 import pytest
 
-from acquisition.urls.adapter import _try_browserbase_escalation, ingest_url
+from acquisition.urls.adapter import ingest_url
 from acquisition.urls.budget_browserbase import (
-    BrowserbaseBudgetExceeded,
     DEFAULT_DAILY_BUDGET_USD,
+    BrowserbaseBudgetExceeded,
+    BudgetState,
     check_and_reserve,
     read_state,
     record_actual,
     write_state,
-    BudgetState,
 )
+from acquisition.urls.client import FetchedHtml
 from acquisition.urls.client_browserbase import (
+    MAX_CONCURRENT_SESSIONS,
     BrowserbaseFetchError,
     BrowserbaseRobotsDisallowed,
     BrowserbaseUnavailable,
-    DEFAULT_SESSION_COST_USD,
-    MAX_CONCURRENT_SESSIONS,
     fetch_via_browserbase,
 )
-from acquisition.urls.client import FetchedHtml
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -96,9 +92,9 @@ def _fake_session_factory(*, fail: bool = False):
 
 def _make_page_runner(
     body: bytes = b"<html><body>" + b"hello world " * 30 + b"</body></html>",
-    final_url: Optional[str] = None,
+    final_url: str | None = None,
     status: int = 200,
-    raise_exc: Optional[Exception] = None,
+    raise_exc: Exception | None = None,
 ):
     def runner(*, session, url, wait_for, wait_timeout_s, user_agent):
         if raise_exc is not None:
@@ -237,7 +233,7 @@ def test_fetch_via_browserbase_session_closed(isolated_env, monkeypatch):
     import acquisition.urls.client_browserbase as cb_mod
     monkeypatch.setattr(cb_mod, "_robots_allows", lambda *a, **k: True)
 
-    sessions: List[_FakeSession] = []
+    sessions: list[_FakeSession] = []
 
     def factory():
         s = _FakeSession()

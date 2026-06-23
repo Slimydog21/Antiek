@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -53,7 +53,7 @@ class DailyAcquisitionBudgetExceeded(RuntimeError):
     """
 
 
-def _resolve_total_cap_usd(cap_override: Optional[float]) -> float:
+def _resolve_total_cap_usd(cap_override: float | None) -> float:
     if cap_override is not None:
         return float(cap_override)
     v = os.environ.get("ANTIEK_TOTAL_ACQUISITION_BUDGET_USD")
@@ -77,10 +77,10 @@ def _budget_dir() -> Path:
 
 
 def _utc_date_stamp() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
-def current_total_spend_usd(date_stamp: Optional[str] = None) -> float:
+def current_total_spend_usd(date_stamp: str | None = None) -> float:
     """Sum spend across every provider sidecar for the current UTC
     day. Format-driven: any file matching
     ``<provider>_<date>.json`` with a numeric ``spent_usd`` field
@@ -104,7 +104,7 @@ def current_total_spend_usd(date_stamp: Optional[str] = None) -> float:
 def assert_total_budget_ok(
     next_call_cost_usd: float,
     *,
-    cap_override: Optional[float] = None,
+    cap_override: float | None = None,
 ) -> float:
     """Pre-call check enforced at the package level. Sums today's
     spend across all provider sidecars; if the next call would push

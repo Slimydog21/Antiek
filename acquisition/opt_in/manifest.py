@@ -22,9 +22,10 @@ the (network-free in tests) ingest.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
-from typing import Any, Mapping, Optional, Sequence
+from datetime import UTC, date, datetime
+from typing import Any
 
 # The manifest schema version. Bump on a breaking field change so a stored
 # manifest records which schema it was authored against (defensibility).
@@ -46,7 +47,7 @@ class PublisherIdentity:
 
     publisher_id: str
     display_name: str
-    legal_contact_email: Optional[str] = None
+    legal_contact_email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -62,12 +63,12 @@ class ManifestEntry:
     """
 
     title: str
-    author: Optional[str] = None
-    isbn: Optional[str] = None
-    doi: Optional[str] = None
-    body_path: Optional[str] = None
-    body_text: Optional[str] = None
-    grant: Optional[Mapping[str, Any]] = None
+    author: str | None = None
+    isbn: str | None = None
+    doi: str | None = None
+    body_path: str | None = None
+    body_text: str | None = None
+    grant: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -83,7 +84,7 @@ class Manifest:
     schema_version: str
     publisher: PublisherIdentity
     entries: tuple[ManifestEntry, ...]
-    catalog_grant: Optional[Mapping[str, Any]] = None
+    catalog_grant: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -99,12 +100,12 @@ class GrantValidation:
 
     valid: bool
     reason: str
-    grant: Optional[Mapping[str, Any]] = None
-    grant_text: Optional[str] = None
-    rights_holder: Optional[str] = None
+    grant: Mapping[str, Any] | None = None
+    grant_text: str | None = None
+    rights_holder: str | None = None
 
 
-def _coerce_grant(value: Any) -> Optional[Mapping[str, Any]]:
+def _coerce_grant(value: Any) -> Mapping[str, Any] | None:
     """Accept a grant only as a mapping. A bare ``True`` boolean is REJECTED
     here (returns None) — rigor #2: a boolean is not a recorded basis."""
     if isinstance(value, Mapping):
@@ -112,7 +113,7 @@ def _coerce_grant(value: Any) -> Optional[Mapping[str, Any]]:
     return None
 
 
-def _parse_grant_date(value: Any) -> Optional[date]:
+def _parse_grant_date(value: Any) -> date | None:
     """Parse an ISO ``YYYY-MM-DD`` (or full ISO datetime) date, or None when
     absent/unparseable. An unparseable expiry is treated as 'no expiry stated'
     by the caller — but a MALFORMED required field (granted_at) gates."""
@@ -130,8 +131,8 @@ def _parse_grant_date(value: Any) -> Optional[date]:
 
 
 def _effective_grant(
-    entry: ManifestEntry, catalog_grant: Optional[Mapping[str, Any]]
-) -> Optional[Mapping[str, Any]]:
+    entry: ManifestEntry, catalog_grant: Mapping[str, Any] | None
+) -> Mapping[str, Any] | None:
     """The grant that applies to ``entry``: a per-work grant overrides the
     catalog grant. A per-work grant scoped ``per_work`` covers exactly this
     work; a ``full_catalog``-scoped catalog grant covers every work."""
@@ -144,8 +145,8 @@ def _effective_grant(
 def validate_grant(
     entry: ManifestEntry,
     *,
-    catalog_grant: Optional[Mapping[str, Any]] = None,
-    today: Optional[date] = None,
+    catalog_grant: Mapping[str, Any] | None = None,
+    today: date | None = None,
 ) -> GrantValidation:
     """Decide whether ``entry`` carries a VALID serving grant.
 
@@ -161,7 +162,7 @@ def validate_grant(
         the work it is attached to; ``full_catalog`` covers every work);
       - it is not flagged ``withdrawn`` and not past its ``expires_at``.
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or datetime.now(UTC).date()
     grant = _effective_grant(entry, catalog_grant)
 
     if grant is None:
@@ -320,7 +321,7 @@ def parse_manifest(data: Mapping[str, Any]) -> Manifest:
 
 def load_manifest(path: str) -> Manifest:
     """Read + parse a manifest JSON file from ``path``."""
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, Mapping):
         raise ValueError("manifest root must be a JSON object")

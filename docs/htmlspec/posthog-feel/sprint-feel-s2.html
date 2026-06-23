@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>FEEL-S2 · WorkspaceStore opaque parity · PostHog Feel</title>
+  <link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="wordmark">ANTIEK / POSTHOG-FEEL</div>
+  <nav>
+    <a href="index.html">Overview</a>
+    <a href="sprint-feel-s1.html">S1</a>
+    <a href="sprint-feel-s2.html">S2</a>
+    <a href="sprint-feel-s3.html">S3</a>
+    <a href="sprint-feel-s4.html">S4</a>
+    <a href="sprint-feel-s5.html">S5</a>
+    <a href="sprint-feel-s6.html">S6</a>
+  </nav>
+</header>
+<div class="shell">
+<h1><span class="sprint-tag">FEEL-S2</span>WorkspaceStore opaque parity</h1>
+<div class="meta-strip">
+  <div class="cell"><div class="label">Duration</div><div class="value">~5 days</div></div>
+  <div class="cell"><div class="label">Depends on</div><div class="value">FEEL-S1</div></div>
+  <div class="cell"><div class="label">Blocks</div><div class="value">S4, S5</div></div>
+  <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+</div>
+
+<h2>1 · Goal</h2>
+<p>Deliver the S3 goal that never landed: floating <code>PanelLayoutPanel</code> instances use <strong>z-proportional</strong> chunky shadows, <strong>hover-lift</strong> on the handle, and a <strong>visible cascade</strong> so three panels read as a stack — not flat cards with only focus swap.</p>
+
+<h2>2 · Implementation</h2>
+<pre><code>// PanelLayoutPanel.tsx — floating branch (conceptual)
+const depth = panel.zIndex - zBase;
+const shadow = shadowForStackDepth(depth, "opaque-chunky");
+const hoverLift = "hover:-translate-x-[2px] hover:-translate-y-[2px] hover:shadow-z3 dark:hover:shadow-z3-night";
+// focused: +1 tier cap at z3 + outline-sun (existing)
+</code></pre>
+<p>Wire <code>motion.press</code> on <code>PanelHandle</code> title bar (not panel body — avoids drag thrash). Docked panels: <strong>no</strong> shadow tiers (dock is the frame).</p>
+
+<h2>3 · Work packages</h2>
+<div class="wp"><div class="wp-id">WP-2.1</div><h3>PanelLayoutPanel shadow + hover</h3><p>Import <code>elevation.ts</code>; replace binary z2/z3 with depth map; add hover classes on floating container.</p></div>
+<div class="wp"><div class="wp-id">WP-2.2</div><h3>PanelHandle press</h3><p>Apply <code>press</code> from <code>motion.ts</code> to drag handle strip.</p></div>
+<div class="wp"><div class="wp-id">WP-2.3</div><h3>Cascade alignment</h3><p><code>WorkspaceStore.open</code> + <code>initialFloatingRect</code> use <code>cascadeOffset</code> from S1.</p></div>
+<div class="wp"><div class="wp-id">WP-2.4</div><h3>E2E panel stack</h3><p><code>NEW: e2e/feel-panels-cascade.spec.ts</code> — authed harness opens 3 floating panels (palette or test route); assert 3 <code>role=region</code> + non-overlapping corners.</p></div>
+
+<h2>4 · Acceptance criteria</h2>
+<ul class="ac-list">
+  <li>Storybook <em>Workspace / Demo</em>: three floating fakes show stair-step edges + deeper shadow on top after click.</li>
+  <li>Hover a floating panel handle: shadow grows / −2px lift (unless reduced-motion).</li>
+  <li>Docked panels unchanged (flat, no hover-lift on dock chrome).</li>
+  <li><code>feel-panels-cascade.spec.ts</code> green in <code>ams-real</code> project.</li>
+  <li>No edits to <code>WorkspaceWindow.tsx</code> glass body.</li>
+</ul>
+
+<h2>5 · Rigor</h2>
+<ul>
+  <li><strong>Intellectual honesty:</strong> If e2e uses palette-only path, say so in handoff — do not claim “default click opens three panels.”</li>
+  <li><strong>Fairness:</strong> Steelman hover-lift on entire panel (rejected: fights pdf resize / drag).</li>
+  <li><strong>Rigor:</strong> Vitest: given mock snapshot with zIndex 3 vs 7, shadow class string strictly increases.</li>
+  <li><strong>Diligence:</strong> Re-read <code>sprint_03_panel_layout.html:52</code> acceptance before sign-off.</li>
+  <li><strong>Defensibility:</strong> Before/after screenshot in <code>e2e/_ams/.artifacts/feel-panels-cascade.png</code>.</li>
+</ul>
+
+<h2>6 · Rejected</h2>
+<ul><li>Framer hover on panel position during drag.</li><li>Opaque panels over scene via windowsStore (wrong store).</li></ul>
+
+<div class="sprint-nav">
+  <a href="sprint-feel-s1.html"><span class="label">←</span>S1</a>
+  <a class="next" href="sprint-feel-s3.html"><span class="label">Next →</span>S3</a>
+</div>
+</div>
+</body>
+</html>

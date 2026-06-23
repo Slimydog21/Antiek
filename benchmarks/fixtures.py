@@ -27,7 +27,6 @@ Three goals for the corpus:
 
 from __future__ import annotations
 
-import json
 import random
 from dataclasses import dataclass
 from pathlib import Path

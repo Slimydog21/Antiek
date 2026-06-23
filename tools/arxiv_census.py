@@ -55,9 +55,9 @@ import argparse
 import os
 import sys
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Iterable, List, Optional
+from datetime import UTC, datetime
 
 import httpx
 
@@ -109,8 +109,8 @@ def build_census_result(
     records: Iterable[ArxivOaiRecord],
     *,
     metadata_prefix: str,
-    from_date: Optional[str],
-    until_date: Optional[str],
+    from_date: str | None,
+    until_date: str | None,
     harvested_at: datetime,
 ) -> CensusResult:
     """Fold one record stream into BOTH the raw license distribution and the
@@ -123,7 +123,7 @@ def build_census_result(
     tallied as ``census.deleted``), so the raw distribution and the rollup share
     the live-paper denominator.
     """
-    materialized: List[ArxivOaiRecord] = list(records)
+    materialized: list[ArxivOaiRecord] = list(records)
 
     license_counts: Counter = Counter()
     for record in materialized:
@@ -172,7 +172,7 @@ def render_report(result: CensusResult) -> str:
     )
     harvested = c.harvested_at.isoformat()
 
-    lines: List[str] = []
+    lines: list[str] = []
     lines.append("# arXiv corpus rights-tier census")
     lines.append("")
     lines.append(
@@ -264,7 +264,7 @@ def render_report(result: CensusResult) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _sorted_distribution(counts: Counter) -> List[tuple[str, int]]:
+def _sorted_distribution(counts: Counter) -> list[tuple[str, int]]:
     """Count desc, then URI asc — a stable total order so the report is
     byte-deterministic across runs with identical counts."""
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -291,7 +291,7 @@ def _tier_for_key(key: str) -> RightsTier:
 # real export.arxiv.org/oai2 ListRecords envelope (see tests/test_arxiv_oai_records.py).
 _SEED_FROM = "2024-01-01"
 _SEED_UNTIL = "2024-01-31"
-_SEED_HARVESTED_AT = datetime(2026, 5, 29, 0, 0, 0, tzinfo=timezone.utc)
+_SEED_HARVESTED_AT = datetime(2026, 5, 29, 0, 0, 0, tzinfo=UTC)
 
 _CC_BY = "http://creativecommons.org/licenses/by/4.0/"
 _CC_BY_SA = "http://creativecommons.org/licenses/by-sa/4.0/"
@@ -304,7 +304,7 @@ _ARXIV_BODY_NS = 'xmlns="http://arxiv.org/OAI/arXiv/"'
 _OAI_NS = 'xmlns="http://www.openarchives.org/OAI/2.0/"'
 
 
-def _seed_record(arxiv_id: str, license_uri: Optional[str]) -> str:
+def _seed_record(arxiv_id: str, license_uri: str | None) -> str:
     lic = (
         f"<license>{license_uri}</license>"
         if license_uri is not None
@@ -327,7 +327,7 @@ def _seed_record(arxiv_id: str, license_uri: Optional[str]) -> str:
       </record>"""
 
 
-def _seed_envelope(*records: str, token: Optional[str] = None) -> bytes:
+def _seed_envelope(*records: str, token: str | None = None) -> bytes:
     rt = f"<resumptionToken>{token}</resumptionToken>" if token else ""
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <OAI-PMH {_OAI_NS}>
@@ -336,7 +336,7 @@ def _seed_envelope(*records: str, token: Optional[str] = None) -> bytes:
     {''.join(records)}
     {rt}
   </ListRecords>
-</OAI-PMH>""".encode("utf-8")
+</OAI-PMH>""".encode()
 
 
 # Page 1 (carries metadataPrefix + window) -> resumption token -> page 2 (final,
@@ -426,9 +426,9 @@ def seeded_census() -> CensusResult:
 
 def live_census(
     *,
-    from_date: Optional[str],
-    until_date: Optional[str],
-    base_url: Optional[str] = None,
+    from_date: str | None,
+    until_date: str | None,
+    base_url: str | None = None,
 ) -> CensusResult:
     """OPERATOR-ONLY (M5): harvest the real export.arxiv.org/oai2 and census it.
 
@@ -446,7 +446,7 @@ def live_census(
         metadata_prefix=harvester._metadata_prefix,  # same instance built above
         from_date=from_date,
         until_date=until_date,
-        harvested_at=datetime.now(timezone.utc),
+        harvested_at=datetime.now(UTC),
     )
 
 
@@ -482,7 +482,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.live:

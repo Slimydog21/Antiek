@@ -27,12 +27,13 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Optional, Tuple
+from typing import Any
 
 try:
-    from ...runtime.db_lock import LockedConnection, connect_read, connect_write
     from ...event_log import default_events_dir, trajectory
+    from ...runtime.db_lock import LockedConnection, connect_read, connect_write
     from ...schemas.events import ActionType
     from .insight_question import (
         graph_db_path,
@@ -45,9 +46,12 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection, connect_read, connect_write  # type: ignore[no-redef]
+    from runtime.db_lock import (  # type: ignore[no-redef]
+        LockedConnection,
+        connect_read,
+        connect_write,
+    )
     from substrate.event_log import default_events_dir, trajectory  # type: ignore[no-redef]
-    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
     from substrate.graph.insight_question import (  # type: ignore[no-redef]
         graph_db_path,
         insight_node_id,
@@ -56,6 +60,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         promote_from_question_event,
         question_node_id,
     )
+    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
 
 _NOTE_ACTION = ActionType.NOTE_EMERGED.value
 _QUESTION_ACTION = ActionType.QUESTION_IDENTIFIED.value
@@ -112,7 +117,7 @@ def _investigation_ids(events_dir: str) -> list[str]:
     return sorted(set(out))
 
 
-def _iter_candidates(events_dir: str) -> Iterator[Tuple[str, dict]]:
+def _iter_candidates(events_dir: str) -> Iterator[tuple[str, dict]]:
     """Yield ``(kind, event)`` for every note.emerged / question.identified
     event across all investigations. ``kind`` is ``"note"`` or
     ``"question"``."""
@@ -127,7 +132,7 @@ def _iter_candidates(events_dir: str) -> Iterator[Tuple[str, dict]]:
                 yield "marginalia", event
 
 
-def _candidate_node_id(kind: str, event: dict) -> Optional[str]:
+def _candidate_node_id(kind: str, event: dict) -> str | None:
     payload = event.get("payload")
     if isinstance(payload, str):
         import json
@@ -160,8 +165,8 @@ def _existing_node_ids(read_con, node_ids: set[str]) -> set[str]:
 
 def backfill(
     *,
-    db_path: Optional[str] = None,
-    events_dir: Optional[str] = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
     dry_run: bool = False,
     embedding_provider: Any = None,
 ) -> BackfillReport:
@@ -255,7 +260,7 @@ def backfill(
     return report
 
 
-def main(argv: Optional[list] = None) -> int:  # pragma: no cover — CLI
+def main(argv: list | None = None) -> int:  # pragma: no cover — CLI
     import argparse
     import json
 

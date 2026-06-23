@@ -27,8 +27,8 @@ the un-converging status is captured in the archived synthesis
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional
-
+from collections.abc import Iterable
+from typing import Any
 
 # Statuses that warrant escalation (mapping to the orchestrate.py
 # vocabulary preserved verbatim from Researchmaxx so a migrated
@@ -45,11 +45,11 @@ NON_CONVERGING_STATUSES: frozenset[str] = frozenset({
 def build_constraint_check_result(
     *,
     status: str,
-    history: Optional[Iterable[Dict[str, Any]]] = None,
-    final_violations: Optional[Iterable[Dict[str, Any]]] = None,
+    history: Iterable[dict[str, Any]] | None = None,
+    final_violations: Iterable[dict[str, Any]] | None = None,
     total_iterations: int = 0,
-    preflight_result: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    preflight_result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Produce the structured ``constraint_check_result`` blob to embed
     in the archived synthesis metadata. Shape matches the Researchmaxx
     spec verbatim so a downstream query knows exactly what to expect

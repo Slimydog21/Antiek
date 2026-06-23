@@ -20,8 +20,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence
+from typing import Any
 
 try:
     from ..graph.search import cosine_similarity_sql
@@ -49,8 +50,8 @@ def retrieve_project_notes(
     embedding_provider: Any,
     node_types: Sequence[str] = ("insight", "question"),
     limit: int = 500,
-    restrict_node_ids: Optional[Sequence[str]] = None,
-) -> List[RetrievedNote]:
+    restrict_node_ids: Sequence[str] | None = None,
+) -> list[RetrievedNote]:
     """Return project notes ranked by similarity to ``task_text``.
 
     Embedding-less nodes (should not exist post-SPR-01, but handled) are

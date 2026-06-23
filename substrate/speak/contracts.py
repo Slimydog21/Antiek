@@ -31,8 +31,7 @@ change to Speak's call sites.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Protocol, runtime_checkable
-
+from typing import Protocol, runtime_checkable
 
 # ---------------------------------------------------------------------------
 # DRW SPR-07 — structural gap detection (ABSENT; Protocol + default)
@@ -52,7 +51,7 @@ class OpenQuestion:
     # Centrality / importance in [0, 1]; higher = chase sooner.
     salience: float = 0.5
     # The node/claim this gap hangs off, for provenance.
-    anchor_id: Optional[str] = None
+    anchor_id: str | None = None
 
 
 @runtime_checkable
@@ -88,7 +87,7 @@ class OutlineBlock:
     # Interviewees whose contributions this block draws on — consumed by
     # SPR-06 to attribute the contribution split. Empty for operator notes.
     contributor_interview_ids: tuple[str, ...] = ()
-    source_tier: Optional[int] = None
+    source_tier: int | None = None
 
 
 @runtime_checkable

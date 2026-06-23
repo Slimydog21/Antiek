@@ -20,24 +20,22 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Any, List, Optional
+from datetime import UTC
+from typing import Any
 
 from .adapter import (
     DiscoveryBudgetExceeded,
     DiscoveryProposed,
     discover,
-    promote_discovery,
-    reject_discovery,
 )
 from .budget import read_state
 from .client import ExaClientError
 from .lookup import exa_lookup_claim
 
-
 # ── Rendering ────────────────────────────────────────────────────
 
 
-def _truncate(s: Optional[str], n: int) -> str:
+def _truncate(s: str | None, n: int) -> str:
     if not s:
         return ""
     s = s.replace("\n", " ").strip()
@@ -45,7 +43,7 @@ def _truncate(s: Optional[str], n: int) -> str:
 
 
 def _render_proposals_table(
-    proposals: List[DiscoveryProposed], *, out=sys.stdout
+    proposals: list[DiscoveryProposed], *, out=sys.stdout
 ) -> None:
     if not proposals:
         print("(no results)", file=out)
@@ -71,7 +69,7 @@ def _render_proposals_table(
         print(fmt.format(*r), file=out)
 
 
-def _render_lookup_table(results: List[Any], *, out=sys.stdout) -> None:
+def _render_lookup_table(results: list[Any], *, out=sys.stdout) -> None:
     if not results:
         print("(no results)", file=out)
         return
@@ -190,7 +188,6 @@ def _cmd_retention_rollup(args: argparse.Namespace, *, out=sys.stdout) -> int:
     legal-gate audit CLI.
     """
     from acquisition.search.retention import (
-        DEFAULT_RETENTION_DAYS,
         rollup_expired,
     )
 
@@ -198,13 +195,14 @@ def _cmd_retention_rollup(args: argparse.Namespace, *, out=sys.stdout) -> int:
     if args.dry_run:
         # Read-only enumeration: walk the events dir and report what
         # would be rolled up without touching the substrate.
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
         from pathlib import Path
+
         from acquisition.search import default_discovery_events_dir
         from acquisition.search.retention import _parse_event_ts
 
         edir = Path(default_discovery_events_dir())
-        cutoff = (datetime.now(timezone.utc).replace(tzinfo=None)
+        cutoff = (datetime.now(UTC).replace(tzinfo=None)
                   - timedelta(days=retention_days))
         files_examined = 0
         files_would_rollup = 0
@@ -426,7 +424,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     return args.func(args)
 

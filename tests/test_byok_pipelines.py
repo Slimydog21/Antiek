@@ -25,7 +25,7 @@ from runtime.byok.pipelines import (  # noqa: E402
 
 
 def test_pipeline_kinds_frozenset():
-    assert PIPELINE_KINDS == frozenset({"general_feed", "thread_specific"})
+    assert frozenset({"general_feed", "thread_specific"}) == PIPELINE_KINDS
 
 
 def test_register_both_kinds_and_reject_unknown():

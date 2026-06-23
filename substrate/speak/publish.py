@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from substrate.books.servability import is_servable_full_text, servability_of
 
@@ -48,7 +48,7 @@ class PublishResult:
     visibility: str            # 'private' | 'public'
     served: bool
     servability: str           # ServabilityStatus value
-    content_class: Optional[str]
+    content_class: str | None
     accrual_lines: tuple[AccrualLine, ...] = field(default_factory=tuple)
 
 
@@ -56,11 +56,11 @@ def publish(
     con: Any,
     *,
     project_id: str,
-    deliverable_id: Optional[str] = None,
-    subject_ref: Optional[str] = None,
+    deliverable_id: str | None = None,
+    subject_ref: str | None = None,
     ad_revenue_usd: Decimal = Decimal("0"),
-    quality_scores: Optional[dict[str, float]] = None,
-    impression_ref: Optional[str] = None,
+    quality_scores: dict[str, float] | None = None,
+    impression_ref: str | None = None,
 ) -> PublishResult:
     """Publish a finished biography per its economics mode.
 
@@ -127,7 +127,7 @@ def publish(
     )
 
 
-def get_publication(con: Any, publication_id: str) -> Optional[dict]:
+def get_publication(con: Any, publication_id: str) -> dict | None:
     row = con.execute(
         "SELECT publication_id, project_id, visibility, content_class, served, taken_down "
         "FROM speak_publications WHERE publication_id = ?",

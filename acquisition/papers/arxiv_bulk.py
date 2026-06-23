@@ -26,7 +26,8 @@ with the same paper from CORE/S2 on a shared DOI.
 
 from __future__ import annotations
 
-from typing import IO, Any, Iterator, Optional
+from collections.abc import Iterator
+from typing import IO, Any
 
 from acquisition.arxiv.bulk import (
     bulk_candidates_from_path,
@@ -74,8 +75,8 @@ def paper_to_record(paper: ArxivPaper) -> PaperRecord:
 def iter_bulk_records(
     snapshot: IO[str],
     *,
-    category: Optional[str] = None,
-    limit: Optional[int] = None,
+    category: str | None = None,
+    limit: int | None = None,
 ) -> Iterator[PaperRecord]:
     """Stream PaperRecords from an open JSON-Lines snapshot via the SPR-03 bulk
     reader. NO export-API request is ever made on this path — discovery is the
@@ -87,8 +88,8 @@ def iter_bulk_records(
 def bulk_records_from_path(
     snapshot_path: str,
     *,
-    category: Optional[str] = None,
-    limit: Optional[int] = None,
+    category: str | None = None,
+    limit: int | None = None,
 ) -> list[PaperRecord]:
     """Open the snapshot at ``snapshot_path`` and materialize up to ``limit``
     PaperRecords. Composes the SPR-03 ``bulk_candidates_from_path`` (which

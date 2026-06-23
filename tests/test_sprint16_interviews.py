@@ -68,6 +68,7 @@ def test_insert_interview_project_returns_id(temp_substrate):
 
 def test_append_interview_turn_promotes_status_on_first(temp_substrate):
     import duckdb
+
     from runtime.db_lock import connect_write
     from substrate.graph import (
         append_interview_turn,

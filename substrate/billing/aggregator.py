@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Optional
 
 from tools.stripe_connect.pricing import (
-    MARGIN_RATES,
     PricingTier,
     apply_margin,
 )
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _billing_period_for(iso_ts: str) -> str:
@@ -30,8 +28,8 @@ class UsageRecord:
 
     record_id: str
     user_id: str
-    investigation_id: Optional[str]
-    notebook_id: Optional[str]
+    investigation_id: str | None
+    notebook_id: str | None
     tier: PricingTier
     raw_token_cost_usd: Decimal
     margin_usd: Decimal
@@ -76,8 +74,8 @@ def record_dispatch_for_billing(
     tier: PricingTier,
     raw_token_cost_usd: Decimal,
     token_count: int,
-    investigation_id: Optional[str] = None,
-    notebook_id: Optional[str] = None,
+    investigation_id: str | None = None,
+    notebook_id: str | None = None,
 ) -> UsageRecord:
     """Record one dispatch.call event for billing aggregation.
 

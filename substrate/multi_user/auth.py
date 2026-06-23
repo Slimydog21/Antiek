@@ -9,8 +9,8 @@ layer (interfaces/research/api/app.py middleware), not at substrate.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional, Protocol
+from datetime import UTC, datetime
+from typing import Protocol
 
 
 class AuthError(Exception):
@@ -27,7 +27,7 @@ class UserClaims:
     """
 
     user_id: str
-    email: Optional[str]
+    email: str | None
     scopes: frozenset[str]
     issued_at: str  # ISO 8601
 
@@ -54,7 +54,7 @@ class MockAuthProvider:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def decode_token(provider: AuthProvider, bearer_token: str) -> UserClaims:

@@ -15,7 +15,8 @@ invent a gap or change the ranking.
 
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any, List, Optional
 
 from .candidates import (
     GapCandidate,
@@ -23,10 +24,10 @@ from .candidates import (
     dedupe_candidates,
     template_phraser,
 )
-from .unanswered import find_unanswered_questions
-from .unsupported import find_unsupported_claims
 from .contradiction import Verifier, find_contradictions
 from .ranking import rank_node_ids
+from .unanswered import find_unanswered_questions
+from .unsupported import find_unsupported_claims
 
 __all__ = [
     "GapCandidate", "UngroundedGapError", "template_phraser", "dedupe_candidates",
@@ -42,9 +43,9 @@ Phraser = Callable[..., str]
 def detect_gaps(
     con: Any,
     *,
-    phraser: Optional[Phraser] = None,
-    verifier: Optional[Verifier] = None,
-) -> List[GapCandidate]:
+    phraser: Phraser | None = None,
+    verifier: Verifier | None = None,
+) -> list[GapCandidate]:
     """Run all structural detectors, rank by graph metrics, and emit deduped
     spin-research candidates. Deterministic given a deterministic phraser +
     verifier (defaults are deterministic). Never launches; never writes.
@@ -54,7 +55,7 @@ def detect_gaps(
     GapCandidate constructor refuses to exist without them.
     """
     phrase = phraser or template_phraser
-    candidates: List[GapCandidate] = []
+    candidates: list[GapCandidate] = []
 
     # Collect backing node ids first so ranking is one metric pass.
     open_qs = find_unanswered_questions(con)

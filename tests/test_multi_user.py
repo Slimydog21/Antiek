@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
-
-import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
@@ -26,7 +22,6 @@ from substrate.multi_user import (
     validate_partition,
 )
 from substrate.multi_user.auth import operator_claims
-
 
 # ── Auth tests ───────────────────────────────────────────────────────
 

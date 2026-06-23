@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import httpx
-import pytest
 
 from substrate.cross_graph.federation import (
     CrossGraphReference,
@@ -13,7 +12,6 @@ from substrate.cross_graph.outbound_transport import (
     INBOUND_CITATION_PATH,
     HttpxOutboundTransport,
     MockOutboundTransport,
-    OutboundTransmitResult,
 )
 
 

@@ -7,6 +7,7 @@ import "./design/feel-focus.css";
 import "./design/motion.css";
 import App from "./App";
 import AppLegacy from "./AppLegacy";
+import { PostHogRoot } from "./lib/PostHogRoot";
 
 /**
  * S12 cutover flag.
@@ -31,8 +32,10 @@ if (import.meta.env.DEV) {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      {uiVersion === "v1" ? <AppLegacy /> : <App />}
-    </BrowserRouter>
+    <PostHogRoot>
+      <BrowserRouter>
+        {uiVersion === "v1" ? <AppLegacy /> : <App />}
+      </BrowserRouter>
+    </PostHogRoot>
   </React.StrictMode>,
 );

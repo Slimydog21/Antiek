@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -43,6 +44,10 @@ export default function Billing() {
   const [data, setData] = useState<BillingSummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    track("billing_viewed");
+  }, []);
 
   const reload = useCallback(async () => {
     setLoading(true);

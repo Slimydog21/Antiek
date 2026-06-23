@@ -13,7 +13,6 @@ import io
 import os
 import sys
 import tempfile
-from typing import Optional
 
 import pytest
 
@@ -38,19 +37,19 @@ class FakeFetcher:
         self.text_calls: list[str] = []
         self.bytes_calls: list[str] = []
 
-    def get_json(self, url: str, *, params: Optional[dict] = None) -> dict:
+    def get_json(self, url: str, *, params: dict | None = None) -> dict:
         self.json_calls.append(url)
         if url not in self._json:
             raise FetchError(f"no canned json for {url}")
         return self._json[url]
 
-    def get_text(self, url: str, *, params: Optional[dict] = None) -> str:
+    def get_text(self, url: str, *, params: dict | None = None) -> str:
         self.text_calls.append(url)
         if url not in self._text:
             raise FetchError(f"no canned text for {url}")
         return self._text[url]
 
-    def get_bytes(self, url: str, *, params: Optional[dict] = None) -> bytes:
+    def get_bytes(self, url: str, *, params: dict | None = None) -> bytes:
         self.bytes_calls.append(url)
         if url not in self._bytes:
             raise FetchError(f"download failed (no canned bytes) for {url}")

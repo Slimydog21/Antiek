@@ -36,7 +36,8 @@ test.describe("Speak — biography flow", () => {
     // copyable links (the supply side of the biography).
     await expect(page.getByText(/invitations/i)).toBeVisible();
     await expect(page.getByText(/uncle\.fawzi@example\.com/i)).toBeVisible();
-    await expect(page.getByText(/completed/i)).toBeVisible();
+    // SPR-02 humanizes the lifecycle word: a "completed" invite reads "Shared".
+    await expect(page.getByText(/shared/i)).toBeVisible();
   });
 
   test("transcript correction surface renders a pending turn", async ({ page }) => {

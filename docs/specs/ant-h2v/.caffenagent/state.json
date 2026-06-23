@@ -1,23 +1,7 @@
 {
   "spec_dir": "docs/specs/ant-h2v",
-  "target_branch": "main",
-  "started": "2026-06-02",
-  "completed": "2026-06-02",
-  "merge_sha": "4c082fa",
-  "sprints": {
-    "SPR-01": {"status": "done", "rounds": 2, "gate_results": {"doc_lint": "pass"}, "merge_sha": "4c082fa"},
-    "SPR-02": {"status": "done", "rounds": 2, "gate_results": {"repro": "pass"}, "merge_sha": "4c082fa"},
-    "SPR-03": {"status": "done", "rounds": 2, "gate_results": {"dispatch_decomposer_test": "pass"}, "merge_sha": "4c082fa"},
-    "SPR-04": {"status": "done", "rounds": 2, "gate_results": {"api_auto_decompose": "pass"}, "merge_sha": "4c082fa"},
-    "SPR-05": {"status": "done", "rounds": 2, "gate_results": {"api_502": "pass"}, "merge_sha": "4c082fa"},
-    "SPR-06": {"status": "done", "rounds": 2, "gate_results": {"audit": "pass"}, "merge_sha": "4c082fa"},
-    "SPR-07": {"status": "done", "rounds": 2, "merge_sha": "4c082fa"},
-    "SPR-08": {"status": "done", "rounds": 2, "merge_sha": "4c082fa"}
-  },
-  "critic_round_2": "SEND_BACK resolved: staged+committed untracked deliverables; tsbuildinfo reverted",
-  "deferred_nits": [
-    "SPR-07 live LLM operator verify not run in CI",
-    "PLATFORM_MATRIX reading UI sub_questions row open",
-    "audit script requires host rg"
-  ]
+  "platform_spec_dir": "docs/htmlspec/antiek-hard-to-vary-execution",
+  "pr": 52,
+  "consolidation_branch": "prcrouch/ant-exec-platform",
+  "status": "ready_for_operator_merge"
 }

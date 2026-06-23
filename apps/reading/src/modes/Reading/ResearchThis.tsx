@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
+import { track } from "../../lib/analytics";
 
 /**
  * ResearchThis (Read SPR-08) — spin a deep research from the current
@@ -38,6 +39,11 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
     setError(null);
     try {
       const res = await spinResearch(documentId, pageIndex, passageText);
+      track("reading_research_spun", {
+        document_id: documentId,
+        page_index: pageIndex,
+        has_passage: Boolean(passageText),
+      });
       // Hand off to the Research workflow. Return-to-reading is handled by
       // usePosition persisting this page.
       navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);

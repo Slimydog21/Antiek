@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 try:
     from ...graph.insight_question import canonical_text
@@ -59,7 +60,7 @@ def notes_for_step(
     deduper: RunNoteDeduper,
     seq_start: int = 0,
     source_event_ids: Sequence[str] = (),
-) -> List[Any]:
+) -> list[Any]:
     """Distil one step's content into ``note`` / ``question`` StepEvents,
     suppressing within-run duplicates. Returns the list of StepEvents for
     the runner to yield (and the funnel to promote). Synchronous — the
@@ -67,7 +68,7 @@ def notes_for_step(
     if StepEvent is None:  # pragma: no cover — runner not importable
         raise RuntimeError("runtime.research_runner.protocol.StepEvent unavailable")
     distillation = distiller.distill(step_text, source_event_ids=source_event_ids)
-    out: List[Any] = []
+    out: list[Any] = []
     seq = seq_start
     for note in distillation.insights:
         if not deduper.is_new(note.text):

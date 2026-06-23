@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
 import type { EconomicsView, PayoutReleaseView } from "../../lib/speakApi";
+import { GATE_PHRASES, PAYOUT_COPY } from "../../lib/speakVocab";
 
 /**
  * SpeakSettings — the one calm tap (Product Depth SPR-08 M4).
@@ -67,7 +68,12 @@ export default function SpeakSettings({
   // Read-only gate state. Deny-by-default; the surface shows these gated and
   // never offers to close them — closing is an operator action, not a click.
   const publishingGated = !(economics?.publicPublishingAllowed ?? false);
-  const disbursementGated = !(economics?.disbursementAllowed ?? false);
+  // M2 — read disbursement state LIVE from economics (deny-by-default). The
+  // share FRACTION accrues now; the $ amount is honestly $0 with no buyers; and
+  // nothing is paid until G2/G3 clears. The inline split copy below branches on
+  // this — gated today vs (hypothetically) allowed — with NO close affordance.
+  const disbursementAllowed = economics?.disbursementAllowed ?? false;
+  const disbursementGated = !disbursementAllowed;
 
   // M3 — the requester's information goal + budget + cap. Numbers come from
   // the requester here, never from the air.
@@ -163,17 +169,43 @@ export default function SpeakSettings({
               who contributed their voices — divided by how much each one
               shaped the story.
             </p>
+            {/* M3 — HOW the share is decided, in human words. §9.3 Option-B
+                basis (shared verbatim with the public lane via PAYOUT_COPY),
+                the slop-earns-$0 rule, and verifier-not-requester. No formula,
+                no per-second/airtime model. */}
+            <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              {PAYOUT_COPY.basis}
+            </p>
+            <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              {PAYOUT_COPY.slopEarnsZero}
+            </p>
+            <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+              {PAYOUT_COPY.verifierNotRequester}
+            </p>
+            {/* M2 — the share FRACTION accrues now; the $ AMOUNT is honestly $0
+                with no buyers (shown as $0, never a projection). */}
             <p className="mt-2 font-serif text-[13px] text-ink dark:text-bright">
-              Earned so far:{" "}
+              Each voice's share accrues now. Earned so far:{" "}
               <span className="font-mono font-semibold">$0.00</span>
               <span className="ml-2 text-ink-mute dark:text-moonlight">
                 — no buyers or ad revenue yet
               </span>
             </p>
-            <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
-              This is what each voice is owed, not a payment. Payouts open once
-              the legal review is complete; nothing is paid out before then.
-            </p>
+            {/* M2 — owed-not-paid, branched on the LIVE disbursement gate. The
+                allowed branch is hypothetical today (deny-by-default); neither
+                branch offers a close/enable affordance. */}
+            {disbursementAllowed ? (
+              <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                This is what each voice is owed. Payouts are open — money routes
+                to contributors as a public story earns.
+              </p>
+            ) : (
+              <p className="mt-2 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+                This is what each voice is owed, not a payment. The share accrues
+                now; nothing is paid out until the legal review (G2/G3) is
+                complete.
+              </p>
+            )}
           </>
         ) : (
           <p className="mt-1 font-serif text-[13px] text-ink dark:text-bright">
@@ -197,11 +229,26 @@ export default function SpeakSettings({
           />
           <GatePill label="Payouts" gated={disbursementGated} />
         </div>
-        <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
-          {publishingGated
-            ? "Going public — and any earnings with it — is on hold until the legal review is complete. You can try; we'll tell you plainly if it's not ready yet."
-            : "Publishing is open. Going public shares the assembled story and routes the contributor split."}
-        </p>
+        {publishingGated ? (
+          // Single-sourced from speakVocab.GATE_PHRASES so the gateHonesty
+          // contract test covers exactly what this surface renders (and the
+          // copy can't drift from the lanes). publicSharing = going public;
+          // disbursement = the earnings that ride on it.
+          <>
+            <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+              {GATE_PHRASES.publicSharing.whenGated}
+            </p>
+            <p className="mt-1 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+              {GATE_PHRASES.disbursement.whenGated} You can try; we'll tell you
+              plainly if it's not ready yet.
+            </p>
+          </>
+        ) : (
+          <p className="mt-2 font-serif text-[13px] text-ink-mute dark:text-moonlight">
+            Publishing is open. Going public shares the assembled story and
+            routes the contributor split.
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap gap-2">
           <LemonButton variant="secondary" size="sm" disabled={busy} onClick={onPublish}>
             Try to publish
@@ -228,11 +275,19 @@ export default function SpeakSettings({
           <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
             What you're hoping to learn (and the budget for it)
           </h3>
+          {/* M3 — the §9.3 Option-B basis, slop-earns-$0, and
+              verifier-not-requester, single-sourced from PAYOUT_COPY so this
+              surface and the public lane cannot drift. No formula, no
+              per-second/airtime model. */}
           <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
-            Each contribution is graded on how well it answers this — by the
-            system, not by you. You can't withhold pay from a good answer; that
-            protects the people who shared. Nothing is paid out before the legal
-            review — this only sets aside what's owed.
+            {PAYOUT_COPY.verifierNotRequester}
+          </p>
+          <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            {PAYOUT_COPY.basis} {PAYOUT_COPY.slopEarnsZero}
+          </p>
+          <p className="mt-1 font-serif text-[12px] text-ink-mute dark:text-moonlight">
+            Nothing is paid out before the legal review — this only sets aside
+            what's owed.
           </p>
           <div className="mt-3 space-y-2">
             <textarea

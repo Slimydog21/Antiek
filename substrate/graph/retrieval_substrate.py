@@ -30,11 +30,10 @@ What's here:
 
 §9.0 gate (CRITICAL — composed, never re-implemented): every impl delegates
 the restricted-content gate to the *same* ``search()`` call (or, for VSS, the
-*same* ``PRIVILEGED_POLICY_TAGS`` / ``RESTRICTED_CONTENT_CLASSES`` predicate
-that ``search()`` applies). On main the gate is still the fail-open DENYLIST
-(``content_class IS NULL OR NOT IN (...)``) — the §9.0 allowlist unification
-is staged separately (PR #38, unmerged). This seam composes *whatever is on
-main*; it does not assume the fix landed.
+*same* ``retrieval_gate.non_privileged_chunk_sql_clause`` helper that
+``search()`` applies). On non-privileged paths the gate is a fail-closed DENYLIST
+(``content_class NOT IN (...)``; NULL excluded). This seam composes the
+canonical ``retrieval_gate`` helper; it does not re-implement gate SQL.
 
 §16 single-writer (CRITICAL): no substrate is a writer. Every impl reads
 through a read-only connection (``runtime.db_lock.connect_read``); the
@@ -43,26 +42,28 @@ non-default adapters MUST open read-only and change no row count.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
-from typing import Any, Optional, Protocol, Sequence, runtime_checkable
+from collections.abc import Sequence
+from typing import Any, Protocol, runtime_checkable
 
 try:
+    from .retrieval_gate import non_privileged_chunk_sql_clause
     from .search import (
         EmbeddingModel,
-        PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
         search,
         search_nodes_by_label,
     )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.graph.search import (  # type: ignore[no-redef]
+    from substrate.graph.retrieval_gate import (
+        non_privileged_chunk_sql_clause,
+    )
+    from substrate.graph.search import (
         EmbeddingModel,
-        PRIVILEGED_POLICY_TAGS,
-        RESTRICTED_CONTENT_CLASSES,
         search,
         search_nodes_by_label,
     )
@@ -105,8 +106,8 @@ class RetrievalSubstrate(Protocol):
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
     ) -> dict: ...
 
@@ -132,7 +133,7 @@ class BruteForceSubstrate:
         self._model = model
 
     @classmethod
-    def open(cls, db_path: str, *, model: EmbeddingModel) -> "BruteForceSubstrate":
+    def open(cls, db_path: str, *, model: EmbeddingModel) -> BruteForceSubstrate:
         return cls(connect_read(db_path), model=model)
 
     def query(
@@ -140,8 +141,8 @@ class BruteForceSubstrate:
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
     ) -> dict:
         return search(
@@ -155,10 +156,8 @@ class BruteForceSubstrate:
         )
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +168,7 @@ class BruteForceSubstrate:
 # Process-level memo for the vss-loadable probe. The probe runs AT MOST ONCE
 # per process (None = not yet probed), so neither the interface tests nor the
 # bench re-pay the cost per call. Reset only via _reset_vss_probe (tests).
-_VSS_PROBE_RESULT: Optional[bool] = None
+_VSS_PROBE_RESULT: bool | None = None
 _VSS_PROBE_COUNT = 0  # observability: proves the probe runs once, not per-test.
 
 # Explicit opt-in env flag for the NETWORK install of the vss extension. Unset
@@ -307,7 +306,7 @@ class DuckDbVssSubstrate:
         self._emb_col = self._VSS_COL if vss_active else "embedding"
 
     @classmethod
-    def open(cls, db_path: str, *, model: EmbeddingModel) -> "DuckDbVssSubstrate":
+    def open(cls, db_path: str, *, model: EmbeddingModel) -> DuckDbVssSubstrate:
         """Open the substrate. Tries to build an HNSW index over a temp copy
         of the graph; falls back to a read-only brute-force connection if vss
         is unavailable or the index cannot be built.
@@ -374,10 +373,10 @@ class DuckDbVssSubstrate:
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         if not self.vss_active:
             # Fallback path — identical to the brute-force reference.
             return search(
@@ -391,14 +390,14 @@ class DuckDbVssSubstrate:
         )
 
     def _vss_query(
-        self, text: str, *, top_k: int, source_tier_max: Optional[int],
-        document_ids: Optional[Sequence[str]], policy_tag: str,
-    ) -> dict:
+        self, text: str, *, top_k: int, source_tier_max: int | None,
+        document_ids: Sequence[str] | None, policy_tag: str,
+    ) -> dict[str, Any]:
         if top_k < 1:
             raise ValueError(f"top_k must be >= 1, got {top_k}")
 
         # Honest empty for an explicitly-empty document scope (mirrors search()).
-        scoped_ids: Optional[list[str]] = None
+        scoped_ids: list[str] | None = None
         if document_ids is not None:
             scoped_ids = list(dict.fromkeys(document_ids))
             if not scoped_ids:
@@ -435,19 +434,18 @@ class DuckDbVssSubstrate:
         if source_tier_max is not None:
             sql += " AND d.source_tier <= ?"
             params.append(int(source_tier_max))
-        # §9.0 gate — composed from search.py's CANONICAL constants + the
-        # SAME predicate main applies (fail-open denylist on main; the §9.0
-        # allowlist unification is staged separately in PR #38, unmerged).
-        if policy_tag not in PRIVILEGED_POLICY_TAGS:
-            restricted = list(RESTRICTED_CONTENT_CLASSES)
-            placeholders = ",".join("?" for _ in restricted)
-            sql += f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
-            params.extend(restricted)
+        # §9.0 gate — composed from retrieval_gate (same helper as search()).
+        gate_sql, gate_params = non_privileged_chunk_sql_clause(
+            table_alias="d",
+            policy_tag=policy_tag,
+        )
+        sql += gate_sql
+        params.extend(gate_params)
         sql += " ORDER BY array_cosine_distance(" + emb + ", " + vec_str + ") ASC LIMIT ?"
         params.append(int(top_k))
 
         rows = self._con.execute(sql, params).fetchall()
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         for (
             chunk_id, section, ctext, tokens, doc_id, chunk_index,
             title, tier, dtype, sim,
@@ -472,10 +470,8 @@ class DuckDbVssSubstrate:
         }
 
     def close(self) -> None:
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover
             self._con.close()
-        except Exception:  # pragma: no cover
-            pass
 
 
 def _exists(path: str) -> bool:
@@ -496,7 +492,7 @@ def make_substrate(
     *,
     model: EmbeddingModel,
     **adapter_kwargs: Any,
-):
+) -> RetrievalSubstrate:
     """Construct a ``RetrievalSubstrate`` for ``kind``.
 
     ``kind`` ∈ {"vss" (default winner), "brute_force" (reference),

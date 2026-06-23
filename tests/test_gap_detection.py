@@ -13,9 +13,7 @@ import tempfile
 
 import pytest
 
-from substrate.graph.schema import init_database_at_path
-from substrate.graph.insight_question import promote_insight, promote_question
-from substrate.graph import ops
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from runtime.db_lock import connect_read, connect_write
 from substrate.gap_detection import (
     GapCandidate,
@@ -26,7 +24,9 @@ from substrate.gap_detection import (
     find_unsupported_claims,
 )
 from substrate.gap_detection.contradiction import negation_verifier
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
+from substrate.graph import ops
+from substrate.graph.insight_question import promote_insight, promote_question
+from substrate.graph.schema import init_database_at_path
 
 
 class _ConstEmbedding:
@@ -220,7 +220,7 @@ def test_empty_graph_returns_no_gaps(db):
 
 
 def test_candidate_feeds_cascade_planner_seed(db):
-    from roles.cascade_planner import plan_from_gap, SubQuestion
+    from roles.cascade_planner import SubQuestion, plan_from_gap
 
     class _Dec:
         def decompose(self, q, *, context=""):

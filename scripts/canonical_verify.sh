@@ -16,9 +16,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-PY="${ROOT}/.venv/bin/python"
-if [[ ! -x "$PY" ]]; then
-  echo "FAIL: missing ${PY} — create .venv and install deps" >&2
+# Prefer repo .venv (operator dev); fall back to active interpreter (CI pip install).
+if [[ -x "${ROOT}/.venv/bin/python" ]]; then
+  PY="${ROOT}/.venv/bin/python"
+elif [[ -n "${PYTHON:-}" && -x "${PYTHON}" ]]; then
+  PY="${PYTHON}"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="$(command -v python3)"
+else
+  echo "FAIL: no python — create .venv or set PYTHON" >&2
   exit 2
 fi
 

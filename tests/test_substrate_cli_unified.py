@@ -15,10 +15,11 @@ import pytest
 # merges.
 pytest.importorskip("substrate.conversation")
 
+from substrate.harness.fork import create_fork
+
 from substrate.cli import __main__ as unified
 from substrate.cli.compact import main as compact_main
 from substrate.cli.hooks import main as hooks_main
-from substrate.harness.fork import create_fork
 
 
 def test_no_args_prints_usage_and_returns_zero(capsys: pytest.CaptureFixture) -> None:

@@ -32,12 +32,14 @@ deterministic and never actually sleep 3 seconds.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping, Optional, Protocol
+from typing import Protocol
 
 # arXiv API terms of use: at most one request per three seconds. We honor
 # the ceiling, not a fraction of it, because the ban is IP-scoped and the
@@ -64,10 +66,18 @@ def default_state_path() -> str:
 class _ResponseLike(Protocol):
     """The minimal response surface ``request`` inspects — exactly what
     ``httpx.Response`` exposes. Declared structurally so the throttle stays
-    free of an httpx import (it is a pure timing/state module)."""
+    free of an httpx import (it is a pure timing/state module).
+
+    ``headers`` is a read-only ``@property`` (not a bare mutable attribute) so
+    a concrete response whose attribute is a covariant subtype —
+    ``httpx.Response.headers`` is ``httpx.Headers``, a ``MutableMapping[str,
+    str]`` — still satisfies the protocol. A mutable attribute would force
+    invariant matching and reject ``httpx.Response``."""
 
     status_code: int
-    headers: Mapping[str, str]
+
+    @property
+    def headers(self) -> Mapping[str, str]: ...
 
 
 class ArxivBanned(RuntimeError):
@@ -84,19 +94,31 @@ class ArxivBanned(RuntimeError):
         )
 
 
+def _coerce_float(value: object) -> float:
+    """Coerce a JSON-loaded state value to ``float``, defaulting falsy/absent
+    values (``None``, ``0``, ``""``) to ``0.0`` — the exact ``or 0.0`` semantics
+    the state file has always used, made type-safe (``json.loads`` hands back
+    ``object`` cells)."""
+    if not value:
+        return 0.0
+    if isinstance(value, (int, float, str)):
+        return float(value)
+    return 0.0
+
+
 @dataclass
 class _State:
     last_request_at: float = 0.0
     banned_until: float = 0.0
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, object]) -> "_State":
+    def from_dict(cls, d: Mapping[str, object]) -> _State:
         return cls(
-            last_request_at=float(d.get("last_request_at", 0.0) or 0.0),
-            banned_until=float(d.get("banned_until", 0.0) or 0.0),
+            last_request_at=_coerce_float(d.get("last_request_at")),
+            banned_until=_coerce_float(d.get("banned_until")),
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, float]:
         return {
             "last_request_at": self.last_request_at,
             "banned_until": self.banned_until,
@@ -122,7 +144,7 @@ class ArxivThrottle:
     def __init__(
         self,
         *,
-        state_path: Optional[str] = None,
+        state_path: str | None = None,
         min_spacing_s: float = MIN_REQUEST_SPACING_S,
         default_ban_backoff_s: float = DEFAULT_BAN_BACKOFF_S,
         now: Callable[[], float] = time.time,
@@ -187,7 +209,7 @@ class ArxivThrottle:
         self._write_state(state)
 
     def note_response(
-        self, status_code: int, headers: Optional[Mapping[str, str]] = None
+        self, status_code: int, headers: Mapping[str, str] | None = None
     ) -> None:
         """Record the outcome of a request. On 429, set ``banned_until``.
 
@@ -201,21 +223,19 @@ class ArxivThrottle:
         if headers:
             retry_after = headers.get("Retry-After") or headers.get("retry-after")
             if retry_after:
-                try:
-                    # Only the integer-seconds form is honored; the HTTP-date
-                    # form is rare here and parsing it adds surface for little
-                    # gain — the default back-off covers it safely.
+                # Only the integer-seconds form is honored; the HTTP-date form
+                # is rare here and parsing it adds surface for little gain — the
+                # default back-off covers it safely.
+                with contextlib.suppress(ValueError, TypeError):
                     backoff = max(backoff, float(int(retry_after.strip())))
-                except (ValueError, TypeError):
-                    pass
         state = self._read_state()
         state.banned_until = self._now() + backoff
         self._write_state(state)
 
     def request(
         self,
-        send: "Callable[[], _ResponseLike]",
-    ) -> "_ResponseLike":
+        send: Callable[[], _ResponseLike],
+    ) -> _ResponseLike:
         """Issue one throttled request and record its outcome.
 
         ``send`` performs the actual HTTP GET and returns a response exposing

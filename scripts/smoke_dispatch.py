@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -62,8 +61,7 @@ from substrate.dispatch import (  # noqa: E402
     register_provider,
 )
 from substrate.event_log import trajectory  # noqa: E402
-from substrate.schemas import ActionType, DispatchCallPayload, Event  # noqa: E402
-
+from substrate.schemas import DispatchCallPayload, Event  # noqa: E402
 
 # Tier → role used to exercise that tier. Picked to match the
 # role_tiers mapping in substrate/dispatch/config.yaml.

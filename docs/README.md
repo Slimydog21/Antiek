@@ -14,10 +14,12 @@ individual implementation.
   closing Research/cascade bugs. AMS ref-lint (Phase E):
   [`agent-execution/AMS_BRIDGE.md`](agent-execution/AMS_BRIDGE.md);
   cascade case study:
-  [`agent-execution/cascade-case-study.md`](agent-execution/cascade-case-study.md).
+  [`agent-execution/cascade-case-study.md`](agent-execution/cascade-case-study.md);
   platform matrix:
   [`agent-execution/PLATFORM_EXEC_MATRIX.md`](agent-execution/PLATFORM_EXEC_MATRIX.md).
-  Program index:
+  Product spec envelope:
+  [`docs/specs/ant-h2v/index.html`](specs/ant-h2v/index.html).
+  Platform program index:
   [`docs/htmlspec/antiek-hard-to-vary-execution/index.html`](htmlspec/antiek-hard-to-vary-execution/index.html).
 
 Additional docs land here as the build proceeds:

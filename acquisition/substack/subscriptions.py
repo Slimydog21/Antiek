@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Optional
 
 from .adapter import (
     DEFAULT_SUBSTACK_SOURCE_TIER,
@@ -106,7 +105,7 @@ def load_subscriptions(path: str) -> list[Subscription]:
     bare ``KeyError`` — on a malformed entry, naming the offending entry by
     index and name. Returns the resolved ``Subscription`` list.
     """
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
     if not isinstance(data, dict) or "publications" not in data:
         raise SubscriptionManifestError(
@@ -124,8 +123,8 @@ def ingest_subscriptions(
     path: str,
     *,
     investigation_id: str,
-    db_path: Optional[str] = None,
-    max_posts: Optional[int] = None,
+    db_path: str | None = None,
+    max_posts: int | None = None,
     embedder=None,
     client=None,
 ) -> list[PublicationIngestSummary]:

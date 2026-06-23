@@ -53,7 +53,6 @@ import re
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Optional
 
 # CC / license semantics live in exactly ONE place (a legal determination). We
 # read the resolution they already computed; we never re-encode "is CC-BY more
@@ -164,14 +163,14 @@ class IdentityRecord:
 
     ref_id: str
     source: str
-    doi: Optional[str] = None
-    isbn: Optional[str] = None  # ISBN-10 or ISBN-13, any hyphenation
-    arxiv_id: Optional[str] = None
-    source_id: Optional[str] = None  # source-local id (gutenberg/archive)
-    title: Optional[str] = None
-    author: Optional[str] = None
-    body: Optional[str] = None
-    license: Optional[LicenseResolution] = None
+    doi: str | None = None
+    isbn: str | None = None  # ISBN-10 or ISBN-13, any hyphenation
+    arxiv_id: str | None = None
+    source_id: str | None = None  # source-local id (gutenberg/archive)
+    title: str | None = None
+    author: str | None = None
+    body: str | None = None
+    license: LicenseResolution | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +191,7 @@ _DOI_PREFIXES: tuple[str, ...] = (
 )
 
 
-def normalize_doi(doi: Optional[str]) -> Optional[str]:
+def normalize_doi(doi: str | None) -> str | None:
     """Bare, lowercased DOI, or None when absent.
 
     A DOI is case-insensitive (the registration is, by spec), so two sources
@@ -223,7 +222,7 @@ def _isbn13_check_digit(twelve: str) -> str:
     return str((10 - (total % 10)) % 10)
 
 
-def normalize_isbn(isbn: Optional[str]) -> Optional[str]:
+def normalize_isbn(isbn: str | None) -> str | None:
     """ISBN-13 form (13 digits, no hyphens), converting valid ISBN-10s, or
     None when the value is not a structurally valid ISBN.
 
@@ -267,7 +266,7 @@ _ARXIV_VERSION_RE = re.compile(r"v\d+$", re.IGNORECASE)
 _ARXIV_PREFIXES: tuple[str, ...] = ("arxiv:", "arxiv.org/abs/", "abs/")
 
 
-def normalize_arxiv_id(arxiv_id: Optional[str]) -> Optional[str]:
+def normalize_arxiv_id(arxiv_id: str | None) -> str | None:
     """Canonical arXiv id: scheme/prefix stripped, version suffix dropped,
     lowercased, or None when absent.
 
@@ -287,7 +286,7 @@ def normalize_arxiv_id(arxiv_id: Optional[str]) -> Optional[str]:
     return a.strip() or None
 
 
-def normalize_source_id(source_id: Optional[str]) -> Optional[str]:
+def normalize_source_id(source_id: str | None) -> str | None:
     """Casefolded, stripped source-local id, or None when absent.
 
     A Gutenberg book id / archive.org identifier is already stable; we only
@@ -328,7 +327,7 @@ def _normalize_prose(value: str) -> str:
 MIN_CONTENT_HASH_CHARS = 200
 
 
-def normalize_content_hash(body: Optional[str]) -> Optional[str]:
+def normalize_content_hash(body: str | None) -> str | None:
     """Stable hash of normalized body text, or None when there is too little
     body to fingerprint.
 
@@ -346,18 +345,18 @@ def normalize_content_hash(body: Optional[str]) -> Optional[str]:
     return hashlib.sha256(norm.encode("utf-8")).hexdigest()
 
 
-def _title_author_key(title: Optional[str], author: Optional[str]) -> Optional[str]:
+def _title_author_key(title: str | None, author: str | None) -> str | None:
     """The LOW-confidence fallback: a hash of normalized title (+author), or
     None when there is no title to key on."""
     nt = _normalize_prose(title or "")
     if not nt:
         return None
     na = _normalize_prose(author or "")
-    digest = hashlib.sha256(f"{nt}\x00{na}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{nt}\x00{na}".encode()).hexdigest()
     return digest[:32]
 
 
-def dedup_key(record: IdentityRecord, key_type: KeyType) -> Optional[str]:
+def dedup_key(record: IdentityRecord, key_type: KeyType) -> str | None:
     """The record's normalized value for one precedence level, or None.
 
     This is the single per-level normalizer. ``identity_key`` walks the whole
@@ -470,8 +469,8 @@ class CanonicalWork:
     identity: IdentityKey
     contributing_sources: tuple[str, ...]
     members: tuple[IdentityRecord, ...]
-    reconciled_license: Optional[LicenseResolution] = None
-    license_basis: Optional[str] = None
+    reconciled_license: LicenseResolution | None = None
+    license_basis: str | None = None
 
 
 def _metadata_completeness(record: IdentityRecord) -> int:
@@ -520,7 +519,7 @@ def _select_canonical(
 # is the §9.0 deny-by-default invariant expressed as a comparison.
 
 
-def _permissiveness(resolution: Optional[LicenseResolution]) -> int:
+def _permissiveness(resolution: LicenseResolution | None) -> int:
     """A total order over license resolutions, more-permissive = higher.
 
     0  — no/unknown/unverified resolution: redistributable=False, OR None.
@@ -546,7 +545,7 @@ def _permissiveness(resolution: Optional[LicenseResolution]) -> int:
 
 def reconcile_license(
     members: Sequence[IdentityRecord],
-) -> tuple[Optional[LicenseResolution], Optional[str]]:
+) -> tuple[LicenseResolution | None, str | None]:
     """Pick the most-permissive POSITIVELY-VERIFIED license across collapsed
     members and compose the audit ``license_basis``.
 
@@ -565,7 +564,7 @@ def reconcile_license(
     if not members:
         return None, None
 
-    winner: Optional[IdentityRecord] = None
+    winner: IdentityRecord | None = None
     winner_rank = -1
     for record in members:
         rank = _permissiveness(record.license)

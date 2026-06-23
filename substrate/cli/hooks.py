@@ -102,7 +102,7 @@ def _cmd_disable(args: argparse.Namespace) -> int:
 
 def _cmd_enable(args: argparse.Namespace) -> int:
     if ":" not in args.extension_id:
-        sys.stderr.write(f"error: extension_id must be scope:name\n")
+        sys.stderr.write("error: extension_id must be scope:name\n")
         return 2
     scope, name = args.extension_id.split(":", 1)
     base = (

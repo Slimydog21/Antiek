@@ -30,7 +30,7 @@ Read to Speak internals.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -82,9 +82,9 @@ assert FULL_TEXT_SERVABLE <= _CONTENT_CLASS_MEMBERS, (
     "class the §9.0 classifier recognises MUST be recordable on a "
     "ServabilityTag — add it to the ContentClass Literal."
 )
-assert FULL_TEXT_SERVABLE == frozenset(
+assert frozenset(
     s.value for s in _CLASSIFIER_SERVABLE_STATUSES
-), (
+) == FULL_TEXT_SERVABLE, (
     "servable allowlist drifted from the §9.0 classifier: "
     f"contract={set(FULL_TEXT_SERVABLE)!r} "
     f"classifier={set(s.value for s in _CLASSIFIER_SERVABLE_STATUSES)!r}. "
@@ -108,16 +108,16 @@ class ServableEntryContract(BaseModel):
     document_id: str
     content_class: ContentClass
     # every document carries an ip_holder_id, even null (provenance chain).
-    ip_holder_id: Optional[str] = None
+    ip_holder_id: str | None = None
     taken_down: bool = False
     # meaningful only for platform_authored; None otherwise.
-    provenance_class: Optional[ProvenanceClass] = None
+    provenance_class: ProvenanceClass | None = None
     # set True by Speak's publish gate; Read serves a speak_derived doc full
     # text only when this is True. operator_authored is auto-servable.
     speak_publish_gate_passed: bool = False
 
     @model_validator(mode="after")
-    def _provenance_scoped_to_platform_authored(self) -> "ServableEntryContract":
+    def _provenance_scoped_to_platform_authored(self) -> ServableEntryContract:
         if self.content_class != "platform_authored" and self.provenance_class is not None:
             raise ValueError(
                 "provenance_class is meaningful only for content_class="

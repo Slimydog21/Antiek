@@ -22,7 +22,6 @@ The bridge produces both blocks from the typed ``KeywordMapping`` /
 
 from __future__ import annotations
 
-
 CONNECTOR_PROMPT_VERSION = "1.0.0"
 CONNECTOR_TARGET_MODEL = "deepseek/deepseek-v4-pro"
 CONNECTOR_TEMPERATURE = 0.0

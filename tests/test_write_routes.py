@@ -29,7 +29,11 @@ from interfaces.research.api import create_app
 from runtime.db_lock import connect_write
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.ops import (
-    insert_chunk, insert_deliverable, insert_document, insert_node, insert_section,
+    insert_chunk,
+    insert_deliverable,
+    insert_document,
+    insert_node,
+    insert_section,
 )
 
 
@@ -280,10 +284,14 @@ def test_persist_section_draft_round_trips_provenance_and_emits_event(seed, tmp_
     persisted to the section row AND emitted as a SECTION_DRAFT_GENERATED
     event, both through the single-writer funnel. The X-ray reads it back."""
     import json
-    from substrate.write.draft_generation import (
-        CitationReport, GateResult, GenerationResult, persist_section_draft,
-    )
+
     from substrate.event_log import trajectory as read_trajectory
+    from substrate.write.draft_generation import (
+        CitationReport,
+        GateResult,
+        GenerationResult,
+        persist_section_draft,
+    )
 
     sec, node = seed["section_id"], seed["node"]
     result = GenerationResult(
@@ -345,9 +353,11 @@ def test_persist_refuses_gate_failed_draft(seed):
 def test_xray_reads_persisted_provenance_via_get_deliverable(client, seed):
     """After persistence, GET /deliverables/{id} surfaces prose_provenance on
     the section — the contract the X-ray view consumes."""
-    import json
     from substrate.write.draft_generation import (
-        CitationReport, GateResult, GenerationResult, persist_section_draft,
+        CitationReport,
+        GateResult,
+        GenerationResult,
+        persist_section_draft,
     )
     sec, node = seed["section_id"], seed["node"]
     result = GenerationResult(

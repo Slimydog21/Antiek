@@ -223,14 +223,14 @@ def test_invariant_6_no_duplicate_thread() -> None:
     """Composes SPR-06 ``test_thread_no_duplicate``: a reconstructed thread
     holds one canonical id at every hop, and a deliberately copied entity FAILS
     the guard. We import the owning fixtures + assertion directly."""
+    from substrate.seams.thread import (
+        assert_single_canonical_entity,
+        reconstruct_thread,
+    )
     from tests.test_thread_no_duplicate import (
         CANONICAL_INSIGHT,
         _copy_corrupted_events,
         _full_flywheel_events_by_reference,
-    )
-    from substrate.seams.thread import (
-        assert_single_canonical_entity,
-        reconstruct_thread,
     )
 
     clean = reconstruct_thread(

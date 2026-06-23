@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
-
 import pytest
 
 from substrate.advertisers import (
-    Advertiser,
-    AdvertiserCampaign,
     CampaignStatus,
     InMemoryAdvertiserStore,
     SqliteAdvertiserStore,
@@ -19,7 +14,6 @@ from substrate.advertisers import (
     list_campaigns_for_advertiser,
     update_campaign_status,
 )
-
 
 # ── InMemory store ─────────────────────────────────────────────
 

@@ -38,23 +38,20 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.books import ingest_servable_book  # noqa: E402
-from runtime.db_lock import connect_read, connect_write  # noqa: E402
-from runtime.staging_db import prepare_staging_db, resolve_ingest_target  # noqa: E402
-from substrate.graph.schema import init_database, init_database_at_path  # noqa: E402
-from substrate.graph.migrate_v9_insight_question import (  # noqa: E402
-    _already_has_insight_question,
-)
-from tools.merge_staging import SchemaDivergence, merge_staging  # noqa: E402
-
-
 # ---------------------------------------------------------------------------
 # Stubs mirroring tests/test_acquisition_books.py so the ingest path is real
 # but PDF-extraction + embedding are deterministic and offline.
 # ---------------------------------------------------------------------------
-
-
 from types import SimpleNamespace
+
+from acquisition.books import ingest_servable_book  # noqa: E402
+from runtime.db_lock import connect_read, connect_write  # noqa: E402
+from runtime.staging_db import prepare_staging_db, resolve_ingest_target  # noqa: E402
+from substrate.graph.migrate_v9_insight_question import (  # noqa: E402
+    _already_has_insight_question,
+)
+from substrate.graph.schema import init_database, init_database_at_path  # noqa: E402
+from tools.merge_staging import SchemaDivergence, merge_staging  # noqa: E402
 
 
 class _StubPage:
@@ -491,7 +488,7 @@ def test_no_embedding_call_in_merge_module():
     """Grep-assert: the merge module imports/calls no embedding model — vectors
     are copied as data, never recomputed at merge."""
     path = os.path.join(_REPO, "tools", "merge_staging.py")
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         src = f.read().lower()
     for needle in ("sentence_transformers", "default_embedding_provider", ".encode(", "model.encode"):
         assert needle not in src, f"merge module unexpectedly references {needle!r}"

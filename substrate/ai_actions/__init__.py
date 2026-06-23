@@ -27,9 +27,9 @@ from substrate.ai_actions.actions import (
     undo_ai_action,
 )
 from substrate.ai_actions.handlers import (
+    HANDLERS,
     InverseHandler,
     register_handler,
-    HANDLERS,
 )
 
 __all__ = [

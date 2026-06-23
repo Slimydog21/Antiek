@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from substrate import ip_holders
 from substrate.ad_inventory.payout import (
@@ -78,7 +78,7 @@ class AccrualResult:
     reason: str
 
 
-def _resolve_ip_holder(con: Any, document_id: str) -> Optional[str]:
+def _resolve_ip_holder(con: Any, document_id: str) -> str | None:
     row = con.execute(
         "SELECT ip_holder_id FROM documents WHERE document_id = ?", [document_id]
     ).fetchone()
@@ -175,7 +175,7 @@ def accrue_reading_session(
     document_id: str,
     impressions: list[ReaderImpression],
     session_id: str,
-    router: Optional[PayoutRouter] = None,
+    router: PayoutRouter | None = None,
 ) -> AccrualResult:
     """Accrue a book reading session's ad revenue into the book's rights-
     holder escrow. ``con`` must be a write-locked connection (escrow write

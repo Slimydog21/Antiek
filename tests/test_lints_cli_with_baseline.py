@@ -21,7 +21,6 @@ from tools.lints.cli_with_baseline import (
     main,
 )
 
-
 FIXTURE_RAISE = (
     Path(__file__).parent / "fixtures" / "lints" / "raise_violation_sample.py"
 )

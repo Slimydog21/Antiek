@@ -37,11 +37,15 @@ once guarded):
    a NEW SQL read of ``documents.raw_text`` (the materialized body) outside the
    serve gate — invoked programmatically here (clean on the tree) and proven to
    have teeth against an injected violation.
+
+4. **The retrieval-gate drift scanner.** ``tools/lint/retrieval_gate_check.py``
+   reds a RESTRICTED-only chunk-gate reimplementation on the VSS substrate and
+   ``GET /chunks`` surfaces — invoked programmatically here (clean on the tree)
+   and proven to have teeth against an injected violation.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 import tempfile
@@ -68,7 +72,7 @@ from substrate.constants import (  # noqa: E402
 from substrate.graph.ops import insert_document  # noqa: E402
 from substrate.graph.schema import init_database  # noqa: E402
 from substrate.rights import RightsTier, body_servable, resolve_tier  # noqa: E402
-from tools.lint import serve_invariants_check  # noqa: E402
+from tools.lint import retrieval_gate_check, serve_invariants_check  # noqa: E402
 
 _T1_LICENSE = "http://creativecommons.org/licenses/by/4.0/"
 _T3_LICENSE = "http://arxiv.org/licenses/nonexclusive-distrib/1.0/"
@@ -563,3 +567,98 @@ def test_raw_body_scanner_does_not_flag_an_insert_or_update(monkeypatch):
             encoding="utf-8",
         )
         assert serve_invariants_check.find_violations(root=root) == []
+
+
+# ════════════════════════════════════════════════════════════════════
+# 4. retrieval-gate drift scanner — clean on the tree + has teeth
+# ════════════════════════════════════════════════════════════════════
+
+
+def test_retrieval_gate_scanner_reports_zero_violations_on_the_current_tree():
+    """RG-04: ZERO RESTRICTED-only chunk-gate drift on the watched surfaces."""
+    violations = retrieval_gate_check.find_violations()
+    assert violations == [], (
+        "RESTRICTED-only chunk-gate reimplementation:\n" + "\n".join(violations)
+    )
+
+
+def test_retrieval_gate_scanner_catches_vss_restricted_only_sql():
+    """RIGOR #3 — VSS regression shape: hand-rolled NOT IN restricted only."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        offender = root / "substrate" / "graph" / "retrieval_substrate.py"
+        offender.parent.mkdir(parents=True)
+        offender.write_text(
+            textwrap.dedent(
+                '''\
+                def _vss_query(self, policy_tag):
+                    excluded = list(RESTRICTED_CONTENT_CLASSES)
+                    sql = (
+                        " AND (d.content_class IS NULL OR "
+                        "d.content_class NOT IN (?,?))"
+                    )
+                    return sql, excluded
+                '''
+            ),
+            encoding="utf-8",
+        )
+        clean = root / "interfaces" / "research" / "api" / "app.py"
+        clean.parent.mkdir(parents=True)
+        clean.write_text(
+            textwrap.dedent(
+                '''\
+                from substrate.graph.retrieval_gate import is_chunk_body_withheld
+
+                def get_chunk(content_class, taken_down):
+                    withheld, _ = is_chunk_body_withheld(
+                        content_class, taken_down=taken_down,
+                    )
+                    return withheld
+                '''
+            ),
+            encoding="utf-8",
+        )
+
+        violations = retrieval_gate_check.find_violations(root=root)
+
+    assert len(violations) >= 1, violations
+    flagged = {line.split(":", 1)[0] for line in violations}
+    assert "substrate/graph/retrieval_substrate.py" in flagged, violations
+    assert "interfaces/research/api/app.py" not in flagged, violations
+
+
+def test_retrieval_gate_scanner_catches_http_restricted_only_withhold():
+    """RIGOR #3 — HTTP regression shape: content_class in RESTRICTED only."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        substrate = root / "substrate" / "graph" / "retrieval_substrate.py"
+        substrate.parent.mkdir(parents=True)
+        substrate.write_text(
+            textwrap.dedent(
+                '''\
+                from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+
+                def _vss_query(self, policy_tag):
+                    return non_privileged_chunk_sql_clause(policy_tag=policy_tag)
+                '''
+            ),
+            encoding="utf-8",
+        )
+        offender = root / "interfaces" / "research" / "api" / "app.py"
+        offender.parent.mkdir(parents=True)
+        offender.write_text(
+            textwrap.dedent(
+                '''\
+                from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
+
+                def withhold(content_class):
+                    return content_class in RESTRICTED_CONTENT_CLASSES
+                '''
+            ),
+            encoding="utf-8",
+        )
+
+        violations = retrieval_gate_check.find_violations(root=root)
+
+    assert len(violations) == 1, violations
+    assert violations[0].startswith("interfaces/research/api/app.py:"), violations

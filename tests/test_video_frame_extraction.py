@@ -7,12 +7,10 @@ import pytest
 from acquisition.video import (
     DEFAULT_MAX_FRAMES,
     DEFAULT_UNIFORM_INTERVAL_S,
-    ExtractedFrame,
     StubFrameExtractor,
     extract_uniform,
     plan_uniform_timestamps,
 )
-
 
 # ── plan_uniform_timestamps ───────────────────────────────────────
 

@@ -51,15 +51,15 @@ import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # --- compose imports -------------------------------------------------------
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.research_bridge.eval.scoring import _safe_div  # noqa: E402
 from substrate.graph.retrieval_substrate import make_substrate  # noqa: E402
+from substrate.research_bridge.eval.scoring import _safe_div  # noqa: E402
 
 MIN_QUERIES = 20  # NOTE: §1 dropped Q15 ⇒ 19 operator queries; see _load_fixture.
 DEFAULT_TOP_K = 5
@@ -94,8 +94,8 @@ def _real_embedder_or_none():
         from substrate.graph.search import SentenceTransformerEmbedding
 
         emb = SentenceTransformerEmbedding("all-MiniLM-L6-v2")
-        setattr(emb, "name", "all-MiniLM-L6-v2")
-        setattr(emb, "semantic", True)
+        emb.name = "all-MiniLM-L6-v2"
+        emb.semantic = True
         return emb
     except Exception:
         return None
@@ -121,9 +121,9 @@ class LabeledQuery:
     label_provenance: str  # fixture | author-asserted | structural
     load_bearing: bool
     top_k: int = DEFAULT_TOP_K
-    source_tier_max: Optional[int] = None
+    source_tier_max: int | None = None
     policy_tag: str = "attribution_eligible"
-    paired_positive: Optional[str] = None
+    paired_positive: str | None = None
     must_not_return: tuple[str, ...] = ()
 
 
@@ -233,6 +233,12 @@ _SEED_CHUNKS = [
     ("doc-restricted", 2, "restricted_pending_opt_in", "c-restricted-1",
      "Restricted Big-Five book chunk discussing quantum computing milestones "
      "pending publisher opt-in."),
+    # Personal-Reading Lane — owner-only content (RG-02). Same topical hook as
+    # c-restricted-1; must be withheld on attribution_eligible, retrievable on
+    # operator_only / private_research.
+    ("doc-personal", 2, "personal_reading", "c-personal-1",
+     "Personal reading chunk discussing quantum computing milestones "
+     "from the owner's private third-party essay."),
 ]
 
 # Insight / question nodes for the node-retrieval queries (Q08/Q10/Q11). Their
@@ -250,8 +256,8 @@ def seed_graph(db_path: str, embedder: Any) -> dict:
     """Seed the deterministic synthetic graph. Returns baseline row counts so
     the §16 read-only test can assert they are unchanged after a query run."""
     from runtime.db_lock import connect_write
-    from substrate.graph.schema import init_database
     from substrate.graph.insight_question import promote_insight, promote_question
+    from substrate.graph.schema import init_database
 
     parent = os.path.dirname(db_path)
     if parent:
@@ -315,7 +321,7 @@ def _retrieved_ids(result: dict, target: str) -> list[str]:
     return [r.get("chunk_id", "") for r in result.get("results", [])]
 
 
-def recall_at_k(retrieved: list[str], relevant: tuple[str, ...], k: int) -> Optional[float]:
+def recall_at_k(retrieved: list[str], relevant: tuple[str, ...], k: int) -> float | None:
     """|top-k ∩ relevant| / |relevant|. None when there is no relevant set
     (negative / gate controls are scored separately, not by recall)."""
     if not relevant:
@@ -331,7 +337,7 @@ class QueryResult:
     domain: str
     load_bearing: bool
     label_provenance: str
-    recall: Optional[float]
+    recall: float | None
     retrieved: list[str] = field(default_factory=list)
     note: str = ""
 
@@ -372,10 +378,10 @@ def run_candidate(
 
     skipped_status = getattr(sub, "status", None)
     if skipped_status:
-        try:
+        import contextlib
+
+        with contextlib.suppress(Exception):
             sub.close()
-        except Exception:
-            pass
         return {
             "substrate": kind,
             "status": skipped_status,
@@ -386,7 +392,7 @@ def run_candidate(
 
     per_query: list[QueryResult] = []
     latencies_ms: list[float] = []
-    gate_leak: Optional[str] = None
+    gate_leak: str | None = None
     neg_control_violations: list[str] = []
 
     # First pass: correctness (recall + gate + capture retrieved for rank ctrl).
@@ -454,10 +460,10 @@ def run_candidate(
                       policy_tag=q.policy_tag)
             latencies_ms.append((time.perf_counter() - t0) * 1000.0)
 
-    try:
+    import contextlib
+
+    with contextlib.suppress(Exception):
         sub.close()
-    except Exception:
-        pass
 
     return _aggregate(
         kind, per_query, latencies_ms, build_ms,
@@ -472,15 +478,15 @@ def _aggregate(
     latencies_ms: list[float],
     build_ms: float,
     *,
-    vss_active: Optional[bool],
-    gate_leak: Optional[str],
+    vss_active: bool | None,
+    gate_leak: str | None,
     neg_control_violations: list[str],
 ) -> dict:
     scored = [q for q in per_query if q.recall is not None]
     lb = [q for q in scored if q.load_bearing]
     nlb = [q for q in scored if not q.load_bearing]
 
-    def _mean(rows: list[QueryResult]) -> Optional[float]:
+    def _mean(rows: list[QueryResult]) -> float | None:
         vals = [q.recall for q in rows if q.recall is not None]
         return round(statistics.fmean(vals), 4) if vals else None
 
@@ -533,8 +539,8 @@ def _aggregate(
 def run_benchmark(
     substrates: list[str],
     *,
-    fixture_path: Optional[Path] = None,
-    out_path: Optional[Path] = None,
+    fixture_path: Path | None = None,
+    out_path: Path | None = None,
     latency_repeats: int = LATENCY_REPEATS,
     prefer_real_embedder: bool = True,
 ) -> dict:
@@ -563,7 +569,7 @@ def run_benchmark(
 
     artifact = {
         "spike": "retrieval-substrate-spike",
-        "generated_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+        "generated_at": _dt.datetime.now(_dt.UTC).isoformat(),
         "embedder": {
             "name": embedder_name,
             "dimension": getattr(embedder, "dimension", None),
@@ -619,7 +625,7 @@ def _print_summary(artifact: dict) -> None:
     print(f"\nartifact: {artifact.get('_artifact_path')}")
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="SPR-05 retrieval-substrate benchmark")
     ap.add_argument("--substrate", action="append", dest="substrates",
                     help="candidate kind (vss|brute_force|turbopuffer|ducklake); "

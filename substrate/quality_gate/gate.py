@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import enum
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Callable, Optional
+from datetime import UTC, datetime
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -109,9 +109,9 @@ def run_quality_gate(
     note: CandidateNote,
     *,
     verification_check: Check,
-    voice_style_check: Optional[Check] = None,
-    source_tier_check: Optional[Check] = None,
-    extraction_quality_check: Optional[Check] = None,
+    voice_style_check: Check | None = None,
+    source_tier_check: Check | None = None,
+    extraction_quality_check: Check | None = None,
 ) -> QualityGateResult:
     """Compose the checks. verification is REQUIRED; the others are
     optional — when omitted they're treated as PASS so callers can ship a

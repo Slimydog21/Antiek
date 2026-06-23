@@ -10,8 +10,15 @@ Built on ``roles/decomposer`` (reuses its parse contract via an injected
 explicit approval. See ``program.md`` for the operator-editable conventions.
 """
 
-from .tree_contract import ApprovalState, PlanNode, PlanTree
+from .approval import (
+    PlanNotApproved,
+    approve_plan,
+    assert_launchable,
+    is_plan_launchable,
+    load_approval,
+)
 from .focus import MAX_BRANCHES, FocusVerdict, focus_check, is_over_broad
+from .persist import TREE_RELATION, load_tree, persist_tree
 from .planner import (
     DEFAULT_MAX_DEPTH,
     Decomposer,
@@ -22,14 +29,7 @@ from .planner import (
     plan_from_gap,
     plan_from_note_challenge,
 )
-from .persist import TREE_RELATION, load_tree, persist_tree
-from .approval import (
-    PlanNotApproved,
-    approve_plan,
-    assert_launchable,
-    is_plan_launchable,
-    load_approval,
-)
+from .tree_contract import ApprovalState, PlanNode, PlanTree
 
 __all__ = [
     "ApprovalState", "PlanNode", "PlanTree",

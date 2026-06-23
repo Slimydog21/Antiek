@@ -32,8 +32,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Iterable, List, Optional
+from typing import Any
 
 try:
     from ...constants import ANTIEK_PARAM_VERSION
@@ -74,7 +75,7 @@ class DecomposerExampleProposal:
     source_synthesis_id: str
     source_investigation_id: str
     param_version: str
-    admitted_at: Optional[str]
+    admitted_at: str | None
     admission_reason: str
     synthesis_timestamp: str
     input_raw: dict
@@ -98,7 +99,7 @@ def _safe_load_json(value: Any) -> Any:
         return None
 
 
-def extract_decomposer_io(agent_trace_json: Any) -> Optional[dict]:
+def extract_decomposer_io(agent_trace_json: Any) -> dict | None:
     """Pull the Decomposer's user prompt + parsed output from a trace
     blob. Returns the first matching record, or None when the trace
     contains no decomposer step (criterion 4 fails)."""
@@ -148,7 +149,7 @@ def propose_examples_from_rows(
     rows: Iterable[CandidateRow],
     *,
     limit: int = 50,
-) -> List[DecomposerExampleProposal]:
+) -> list[DecomposerExampleProposal]:
     """Pure mining function. Takes pre-loaded LEFT-JOIN rows, returns
     proposals in synthesis_timestamp-descending order (newest first).
 
@@ -170,7 +171,7 @@ def propose_examples_from_rows(
         })
         rec["confirmed"] += count_confirmed(r.thesis_outcomes_json)
 
-    proposals: List[DecomposerExampleProposal] = []
+    proposals: list[DecomposerExampleProposal] = []
     for sid, rec in sorted(by_synth.items(),
                            key=lambda kv: kv[1]["ts"] or "",
                            reverse=True):

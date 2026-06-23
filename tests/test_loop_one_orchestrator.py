@@ -378,7 +378,6 @@ async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
     """Wait for INVESTIGATION_COMPLETED or _FAILED to appear in the
     trajectory. The orchestrator runs as a detached asyncio.Task —
     we poll the trajectory rather than register another handler."""
-    import asyncio
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
         await bus.wait_for_handlers(timeout=2.0)

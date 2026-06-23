@@ -51,7 +51,7 @@ from __future__ import annotations
 import os
 import tomllib
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 PROFILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles")
 
@@ -71,7 +71,7 @@ class BenchmarkProfile:
     name: str
     mock_run: bool
     dispatch_mode: str  # "real" | "mock"
-    model_tiers: Dict[str, str] = field(default_factory=dict)
+    model_tiers: dict[str, str] = field(default_factory=dict)
     n: int = _MOCK_N
     material_floor: float = 0.0
     control_tolerance: float = 0.0
@@ -110,7 +110,7 @@ DEV_PROFILE = BenchmarkProfile(
 )
 
 
-def _coerce_profile(name: str, data: Dict[str, Any]) -> BenchmarkProfile:
+def _coerce_profile(name: str, data: dict[str, Any]) -> BenchmarkProfile:
     """Build a BenchmarkProfile from a parsed TOML table. Unknown keys are
     rejected loudly so a typo in prod.toml can never silently fall back to a
     mock default (that would be a vacuous prod run — rigor #3)."""
@@ -151,7 +151,7 @@ def _coerce_profile(name: str, data: Dict[str, Any]) -> BenchmarkProfile:
     )
 
 
-def load_profile(name: str, *, profiles_dir: Optional[str] = None) -> BenchmarkProfile:
+def load_profile(name: str, *, profiles_dir: str | None = None) -> BenchmarkProfile:
     """Load a profile by name. ``dev`` is the built-in mock profile; any other
     name is read from ``profiles/{name}.toml``. Raises ``FileNotFoundError`` for
     an unknown profile name (never silently mock-defaults)."""
@@ -172,7 +172,7 @@ def load_profile(name: str, *, profiles_dir: Optional[str] = None) -> BenchmarkP
     return _coerce_profile(name, data)
 
 
-def available_profiles(*, profiles_dir: Optional[str] = None) -> List[str]:
+def available_profiles(*, profiles_dir: str | None = None) -> list[str]:
     """The TOML-backed profile names discoverable in ``profiles/`` (excludes
     the built-in ``dev``)."""
     base = profiles_dir or PROFILES_DIR

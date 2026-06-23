@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 import os
 import sys
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 try:
     from ...constants import (
@@ -56,7 +56,7 @@ TraversalScope = Literal["depth", "cross_domain", "constraint", "all"]
 # ---------------------------------------------------------------------------
 
 
-def resolve_node(con: Any, label: str, scope: Optional[str] = None) -> str:
+def resolve_node(con: Any, label: str, scope: str | None = None) -> str:
     """Resolve a node by ID exact match → canonical_label exact match →
     fuzzy ILIKE. Raises ValueError if nothing matches.
 
@@ -406,7 +406,7 @@ def traverse(
     algorithm: TraversalAlgorithm = "top_n",
     n: int = TRAVERSAL_TOP_N_PATHS,
     depth: int = TRAVERSAL_MAX_DEPTH,
-    waypoint: Optional[str] = None,
+    waypoint: str | None = None,
     scope: TraversalScope = "cross_domain",
     min_confidence: float = 0.0,
     normalize_degree: bool = True,

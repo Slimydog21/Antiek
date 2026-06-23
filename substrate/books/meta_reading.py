@@ -38,8 +38,9 @@ research tier choosing the provider. No new runtime, no internet retrieval.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Literal, Optional, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from substrate.dispatch.research_tier import resolve_research_tier
 from substrate.dispatch.router import dispatch
@@ -158,7 +159,7 @@ def resolve_owned_corpus(
     con: Any,
     *,
     scope: CorpusScope = "hard",
-    document_ids: Optional[Sequence[str]] = None,
+    document_ids: Sequence[str] | None = None,
     limit: int = 200,
 ) -> list[str]:
     """The owned-corpus document-id set the synthesis is scoped to.
@@ -187,10 +188,10 @@ def generate_meta_reading(
     model: EmbeddingModel,
     investigation_id: str,
     scope: CorpusScope = "hard",
-    document_ids: Optional[Sequence[str]] = None,
+    document_ids: Sequence[str] | None = None,
     research_tier: str = "deep",
     top_k: int = DEFAULT_SYNTHESIS_TOP_K,
-    config: Optional[Any] = None,
+    config: Any | None = None,
 ) -> MetaReading:
     """Generate the meta-reading deliverable over the owned corpus ONLY.
 

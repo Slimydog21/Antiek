@@ -30,16 +30,17 @@ Two invariants are load-bearing and honest:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Callable, Optional
+from typing import Any
 
+from substrate import ip_holders
 from substrate.ad_inventory.attribution import (
     AttributionAlgorithm,
     compute_attribution_option_b,
 )
 from substrate.ad_inventory.payout import CREATOR_REV_SHARE
-from substrate import ip_holders
 
 from . import gate_status
 from .events import (
@@ -73,7 +74,7 @@ class DisbursementBlocked(Exception):
 class ContributorMapping:
     interview_id: str
     project_id: str
-    ip_holder_id: Optional[str]
+    ip_holder_id: str | None
     holding_bucket: bool
 
 
@@ -82,9 +83,9 @@ def map_contributor(
     *,
     interview_id: str,
     project_id: str,
-    ip_holder_id: Optional[str] = None,
-    display_name: Optional[str] = None,
-    legal_contact_email: Optional[str] = None,
+    ip_holder_id: str | None = None,
+    display_name: str | None = None,
+    legal_contact_email: str | None = None,
 ) -> ContributorMapping:
     """Map an interviewee to a pre-onboarded escrow payee.
 
@@ -117,7 +118,7 @@ def map_contributor(
     return ContributorMapping(interview_id, project_id, ip_holder_id, holding)
 
 
-def get_payee(con: Any, interview_id: str) -> Optional[ContributorMapping]:
+def get_payee(con: Any, interview_id: str) -> ContributorMapping | None:
     row = con.execute(
         "SELECT interview_id, project_id, ip_holder_id, holding_bucket "
         "FROM speak_contributors WHERE interview_id = ?",
@@ -144,9 +145,9 @@ def measure_contribution(
     con: Any,
     *,
     project_id: str,
-    quality_scores: Optional[dict[str, float]] = None,
+    quality_scores: dict[str, float] | None = None,
     slop_threshold: float = DEFAULT_SLOP_THRESHOLD,
-    tier_for: Optional[Callable[[str], int]] = None,
+    tier_for: Callable[[str], int] | None = None,
     publishable_only: bool = True,
 ) -> ContributionResult:
     """Per-interviewee contribution shares for a project's published
@@ -215,7 +216,7 @@ def measure_contribution(
 @dataclass(frozen=True)
 class AccrualLine:
     interview_id: str
-    ip_holder_id: Optional[str]
+    ip_holder_id: str | None
     share_fraction: float
     amount_usd: Decimal           # what ACTUALLY accrued to escrow (post-clamp)
     slop_gated: bool
@@ -233,13 +234,13 @@ def accrue_contributions(
     *,
     project_id: str,
     ad_revenue_usd: Decimal,
-    publication_id: Optional[str] = None,
-    page_id: Optional[str] = None,
-    impression_ref: Optional[str] = None,
-    quality_scores: Optional[dict[str, float]] = None,
+    publication_id: str | None = None,
+    page_id: str | None = None,
+    impression_ref: str | None = None,
+    quality_scores: dict[str, float] | None = None,
     slop_threshold: float = DEFAULT_SLOP_THRESHOLD,
-    budget_usd: Optional[Decimal] = None,
-    per_interview_cap_usd: Optional[Decimal] = None,
+    budget_usd: Decimal | None = None,
+    per_interview_cap_usd: Decimal | None = None,
 ) -> list[AccrualLine]:
     """Accrue each interviewee's share of the 70% contributor slice to
     escrow. Zero-buyer safe: ``ad_revenue_usd == 0`` accrues $0 but still

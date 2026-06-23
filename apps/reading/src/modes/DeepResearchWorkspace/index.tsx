@@ -33,6 +33,7 @@ import {
   type PlanTree,
   type SteerKind,
 } from "../../api/research";
+import { track } from "../../lib/analytics";
 import type { DistilledNode } from "../../lib/api";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
@@ -86,6 +87,9 @@ function Workspace() {
       const q = problem.trim();
       if (!q) return;
       const r = await createPlan({ problem: q });
+      track("deep_research_cascade_created", {
+        problem_length: q.length,
+      });
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
       setSessionId(null);
     });
@@ -102,6 +106,7 @@ function Workspace() {
       if (!plan) return;
       await approvePlan(plan.rootNodeId);
       const r = await getPlan(plan.rootNodeId); // refresh tree + launchable
+      track("deep_research_plan_approved");
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
     });
 
@@ -109,6 +114,9 @@ function Workspace() {
     guard(async () => {
       if (!plan || !plan.launchable) return;
       const r = await launchPlan(plan.rootNodeId);
+      track("deep_research_cascade_launched", {
+        session_id: r.session_id,
+      });
       setSessionId(r.session_id);
     });
 
@@ -256,7 +264,10 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
               size="sm"
               onClick={() => {
                 const done = session.researches.find((r) => r.state === "done");
-                if (done) setCanvasFor(done.investigation_id);
+                if (done) {
+                  track("deep_research_canvas_opened", { investigation_id: done.investigation_id });
+                  setCanvasFor(done.investigation_id);
+                }
               }}
             >
               view as canvas

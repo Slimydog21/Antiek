@@ -8,7 +8,7 @@ from acquisition.books.pd_connector_base import (
     classify_and_ingest,
 )
 
-from .conftest import FakeFetcher, StubEmbedder, book_asset_row
+from .conftest import FakeFetcher, book_asset_row
 
 # A small SE OPDS feed: two entries, each with an epub acquisition link + a
 # rights dedication. SE publishes only US-PD works.
@@ -112,8 +112,9 @@ def test_license_basis_names_standard_ebooks(temp_substrate, stub_embedder):
 def test_no_raw_requests_uses_throttled_fetcher():
     """The real fetcher consults the SPR-03 throttle before each request — a
     banned source raises rather than hitting the network."""
-    from substrate.source_throttle import SourceBanned, SourceThrottle
     import time
+
+    from substrate.source_throttle import SourceBanned, SourceThrottle
 
     class _BannedThrottle(SourceThrottle):
         def __init__(self):

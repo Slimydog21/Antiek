@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -50,7 +49,7 @@ def log_paste_event(
 
 
 def list_paste_events(
-    con, *, document_id: Optional[str] = None, limit: int = 100,
+    con, *, document_id: str | None = None, limit: int = 100,
 ) -> list[PasteEvent]:
     if document_id is None:
         rows = con.execute(

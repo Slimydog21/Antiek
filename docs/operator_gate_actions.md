@@ -404,15 +404,21 @@ DO NOT propose more engineering until the bottlenecks below clear.
 4. **§15.3 — Rate the voice-interview latency 1-5** on a real interview.
    No infrastructure change needed; just run the interview surface end-to-end.
 
-5. **MCP server external registration** — Claude Desktop registration per
+5. **D17 ingest — retrieval spot-check per connector** — after each live ingest
+   batch passes `personal-lane.md` + `corpus_audit`, run
+   `infrastructure/runbooks/retrieval-gate-closure.md` §2 (VSS +
+   `GET /chunks` withhold). Halt ingest on failure. RG-06 verified 2026-06-02;
+   `docs/decisions/retrieval-gate-closure.md`.
+
+6. **MCP server external registration** — Claude Desktop registration per
    `infrastructure/runbooks/antiek-memory-mcp.md`. Single config-file edit.
 
-6. **AgentMail custom-domain upgrade** — deferred per
+7. **AgentMail custom-domain upgrade** — deferred per
    `docs/decisions/agentmail-custom-domain-deferral.md` until the same day
    as G2 closure (no point spending $20/mo on cosmetics for operator-only
    email).
 
-7. **Re-publish Trust Center** with G2-cleared compliance copy — scaffold
+8. **Re-publish Trust Center** with G2-cleared compliance copy — scaffold
    at `docs/trust_center_public.md` has `[OPERATOR + LAWYER]` brackets.
 
 ### After G2 + G3 close
@@ -544,6 +550,13 @@ to `main` as **PR #43 (merge `9aeb2c9`, `EVENT_SCHEMA_VERSION` 24→27)** and wa
   PG · SPR-06 real Substack subscriptions · SPR-08 X BYOK live smoke). The lane
   is dormant-correct + auditable-empty on prod until then; go-live procedure is
   `infrastructure/runbooks/personal-lane.md` (audit-gated).
+- **Retrieval spot-check after each connector ingest (RG-06, 2026-06-02):**
+  after `corpus_audit` exits 0 for that batch, run
+  `infrastructure/runbooks/retrieval-gate-closure.md` §2 — VSS @
+  `attribution_eligible` must not return `personal_reading`; `GET /chunks/{id}`
+  must withhold body. **Halt ingest** on failure (do not note-and-continue).
+  Preflight lint + RG-05 tests: same runbook §0. Evidence:
+  `docs/decisions/retrieval-gate-closure.md`.
 - **Standing mechanical backstops** (no operator action): the
   `corpus_audit.py` lane checks (`third_party_servable`,
   `personal_reading_nonattributable`, `personal_reading_not_in_training`) + the

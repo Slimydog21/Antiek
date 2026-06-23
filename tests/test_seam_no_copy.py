@@ -30,7 +30,6 @@ from substrate.seams import (
     WriteToReadSeam,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fakes standing in for the products' seam implementations (real impls live in
 # Read SPR-03 / Write SPR-03/07 / Speak SPR-08 — out of scope here). Each one

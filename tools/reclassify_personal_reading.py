@@ -95,9 +95,9 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional, Sequence
+from datetime import UTC, datetime
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -148,10 +148,10 @@ class SweepPlan:
 def _now_iso_z() -> str:
     """ISO-8601 UTC with a trailing ``Z`` (matches the event-log emitted_at
     convention)."""
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _source_domain(source_uri: Optional[str]) -> str:
+def _source_domain(source_uri: str | None) -> str:
     """Best-effort domain extraction from a source_uri for the dry-run breakdown.
     Falls back to ``(none)`` / ``(unparsed)`` rather than raising — the breakdown
     is a report aid, never a gate."""
@@ -183,7 +183,7 @@ def _offending_where_and_params() -> tuple[str, list[str]]:
     return where, params
 
 
-def _scan(con) -> tuple[SweepPlan, list[tuple[str, str, Optional[str]]]]:
+def _scan(con) -> tuple[SweepPlan, list[tuple[str, str, str | None]]]:
     """Read the offending set. Returns the SweepPlan + the list of
     ``(document_id, prior_content_class, metadata_json)`` rows to sweep.
 
@@ -202,7 +202,7 @@ def _scan(con) -> tuple[SweepPlan, list[tuple[str, str, Optional[str]]]]:
 
     by_type: dict[str, int] = {}
     by_domain: dict[str, int] = {}
-    sweep: list[tuple[str, str, Optional[str]]] = []
+    sweep: list[tuple[str, str, str | None]] = []
     for document_id, document_type, content_class, source_uri, metadata in rows:
         by_type[document_type] = by_type.get(document_type, 0) + 1
         dom = _source_domain(source_uri)
@@ -217,7 +217,7 @@ def _scan(con) -> tuple[SweepPlan, list[tuple[str, str, Optional[str]]]]:
     return plan, sweep
 
 
-def _load_metadata(metadata_json: Optional[str]) -> dict:
+def _load_metadata(metadata_json: str | None) -> dict:
     """Parse a row's metadata TEXT JSON into a dict (``{}`` for NULL / unparsable
     — a non-dict metadata blob is treated as absent rather than crashing the
     sweep)."""
@@ -240,7 +240,7 @@ def _write_metadata(con, document_id: str, meta: dict) -> None:
     )
 
 
-def _apply(con, sweep: Sequence[tuple[str, str, Optional[str]]]) -> int:
+def _apply(con, sweep: Sequence[tuple[str, str, str | None]]) -> int:
     """Sweep the offending rows on the held write connection. For each row:
 
       1. stamp the prior class into metadata under PRIOR_CLASS_KEY (ONLY if
@@ -271,7 +271,7 @@ def _apply(con, sweep: Sequence[tuple[str, str, Optional[str]]]) -> int:
     return swept
 
 
-def _scan_rollback(con) -> list[tuple[str, str, Optional[str]]]:
+def _scan_rollback(con) -> list[tuple[str, str, str | None]]:
     """Find every row carrying a PRIOR_CLASS_KEY stamp — the rows a prior sweep
     moved. Returns ``(document_id, prior_class, metadata_json)``. JSON-extracts
     in SQL via ``json_extract_string`` so we only touch stamped rows.
@@ -302,7 +302,7 @@ def _scan_rollback(con) -> list[tuple[str, str, Optional[str]]]:
     return [(r[0], r[1], r[2]) for r in rows]
 
 
-def _rollback(con, rows: Sequence[tuple[str, str, Optional[str]]]) -> int:
+def _rollback(con, rows: Sequence[tuple[str, str, str | None]]) -> int:
     """Restore each stamped row's content_class from
     metadata.reclassify_prior_content_class, then delete the reclassify_* keys.
     Returns the number of rows rolled back."""
@@ -442,7 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if _is_prod_db(args.db_path):

@@ -20,15 +20,18 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional, Sequence
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from typing import Any
 
 try:
-    from .document_pass import PassResult, run_document_pass
     from .distill import Distiller
+    from .document_pass import PassResult, run_document_pass
 except ImportError:  # pragma: no cover
-    from roles.note_taker.document_pass import PassResult, run_document_pass  # type: ignore[no-redef]
     from roles.note_taker.distill import Distiller  # type: ignore[no-redef]
+    from roles.note_taker.document_pass import (  # type: ignore[no-redef]
+        run_document_pass,
+    )
 
 
 DEFAULT_DEBOUNCE_S = 2.0
@@ -62,16 +65,16 @@ class AsyncNoteScheduler:
         debounce_s: float = DEFAULT_DEBOUNCE_S,
         budget_ok: Callable[[], bool] = lambda: True,
         embedding_provider: Any = None,
-        events_dir: Optional[str] = None,
+        events_dir: str | None = None,
     ):
         self._distiller = distiller
         self._debounce_s = debounce_s
         self._budget_ok = budget_ok
         self._embedding_provider = embedding_provider
         self._events_dir = events_dir
-        self._pending: Dict[str, _Job] = {}     # doc_id -> latest job (coalesces)
+        self._pending: dict[str, _Job] = {}     # doc_id -> latest job (coalesces)
         self._cond = asyncio.Condition()
-        self._worker: Optional[asyncio.Task] = None
+        self._worker: asyncio.Task | None = None
         self._stop = False
         self._seq = 0
         self.stats = SchedulerStats()
@@ -115,7 +118,7 @@ class AsyncNoteScheduler:
                 if not self._pending:
                     try:
                         await asyncio.wait_for(self._cond.wait(), timeout=self._debounce_s)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         pass
                 if self._stop:
                     return

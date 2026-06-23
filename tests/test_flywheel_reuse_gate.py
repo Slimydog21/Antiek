@@ -32,24 +32,22 @@ import os
 
 import pytest
 
-from processing.embedding.embed import HashEmbedding
-from runtime.db_lock import connect_write
-from substrate.eval.groundedness import DEFAULT_SCORER_ID, DEFAULT_SUPPORTED_THRESHOLD
-from substrate.graph.insight_question import knowledge_unit_of, promote_insight
-from substrate.graph.ops import insert_node
-from substrate.graph.retrieval_substrate import make_substrate
-from substrate.graph.schema import init_database
-from substrate.event_log.events import trajectory
-
 import substrate.context_pack.knowledge_reuse as kr
 import substrate.flywheel.reuse_gate as rg
+from processing.embedding.embed import HashEmbedding
+from runtime.db_lock import connect_write
+from substrate.context_pack.assembler import LayerSource
 from substrate.contracts.nodes import (
     KnowledgeUnitContract,
     ProvenanceLink,
     ServabilityTag,
 )
-from substrate.context_pack.assembler import LayerSource
-
+from substrate.eval.groundedness import DEFAULT_SCORER_ID, DEFAULT_SUPPORTED_THRESHOLD
+from substrate.event_log.events import trajectory
+from substrate.graph.insight_question import knowledge_unit_of, promote_insight
+from substrate.graph.ops import insert_node
+from substrate.graph.retrieval_substrate import make_substrate
+from substrate.graph.schema import init_database
 
 # ---------------------------------------------------------------------------
 # Fixtures — point the event log at a temp dir; deterministic embedder.

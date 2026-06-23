@@ -120,6 +120,17 @@
   --werner-bill:  var(--sun);
   --werner-foot:  var(--sun);
   --werner-eye:   #0F1419;
+  /* werner-rod (SPR-04): the fishing rod's shaft. A weathered-wood ochre so
+     the rod reads as a HELD prop with contrast against the near-black coat AND
+     the page, on both themes — like --foot/--bill, it leans on the brand
+     weathered-sun family rather than inventing a new hue. */
+  --werner-rod:   var(--sun-deep);
+  /* werner-fish (SPR-05): Werner's OWN little fish in the endless never-catch
+     loop — NOT the cursor, NOT the ice-fishing bait worm. A brand-aurora teal
+     so the fish reads as a cool little catch against the warm rod + near-black
+     coat, on both themes; it leans on the existing --aurora accent rather than
+     inventing a new hue (same restraint as --rod/--foot). */
+  --werner-fish:  var(--aurora);
 
   /* accent (reserved) */
   --aurora:  #16C2C2;
@@ -284,6 +295,15 @@
     --werner-bill:  var(--sun);
     --werner-foot:  var(--sun);
     --werner-eye:   #DCE2EA;
+    /* werner-rod (SPR-04), night: the day --sun-deep darkens to #84722F at
+       night, which reads dim against the deep-slate scene; lift the rod to the
+       weathered-straw --sun-light so the held rod stays legible after dark. */
+    --werner-rod:   var(--sun-light);
+    /* werner-fish (SPR-05), night: --aurora brightens to #3FE0DC after dark
+       (see the night --aurora below), which keeps the little fish legible
+       against the deep-slate scene; the var(--aurora) reference above already
+       resolves to that brighter teal here. */
+    --werner-fish:  var(--aurora);
 
     --aurora:  #3FE0DC;
     --emperor: #FF6155;

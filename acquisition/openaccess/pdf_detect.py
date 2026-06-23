@@ -31,8 +31,6 @@ a document.
 
 from __future__ import annotations
 
-from typing import Optional
-
 
 class NotAPdf(ValueError):
     """The fetched bytes are not a usable PDF (HTML landing page, paywall, or
@@ -98,8 +96,8 @@ def _parses_as_pdf(content: bytes) -> bool:
 def assert_pdf(
     content: bytes,
     *,
-    content_type: Optional[str] = None,
-    url: Optional[str] = None,
+    content_type: str | None = None,
+    url: str | None = None,
     parse_check: bool = True,
 ) -> None:
     """Run all three layers; raise ``NotAPdf`` (with a specific reason) on the
@@ -144,7 +142,7 @@ def assert_pdf(
 def is_pdf(
     content: bytes,
     *,
-    content_type: Optional[str] = None,
+    content_type: str | None = None,
     parse_check: bool = True,
 ) -> bool:
     """Boolean form of :func:`assert_pdf` for callers that want a predicate

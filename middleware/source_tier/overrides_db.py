@@ -15,8 +15,8 @@ history into a single number when a consumer needs it.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 
 def record_chunk_tier_override(
@@ -26,8 +26,8 @@ def record_chunk_tier_override(
     original_tier: int,
     override_tier: int,
     reason: str,
-    set_by: Optional[str] = None,
-    set_at: Optional[datetime] = None,
+    set_by: str | None = None,
+    set_at: datetime | None = None,
 ) -> None:
     """Append one override row. Requires a ``LockedConnection``.
 
@@ -49,11 +49,11 @@ def record_chunk_tier_override(
         raise ValueError(
             f"override_tier must be 1..5, got {override_tier}"
         )
-    ts = set_at or datetime.now(timezone.utc)
+    ts = set_at or datetime.now(UTC)
     # DuckDB TIMESTAMP is tz-naive; normalize to naive UTC at the
     # boundary so backtest's `valid_until > ?` comparisons match.
     if ts.tzinfo is not None:
-        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        ts = ts.astimezone(UTC).replace(tzinfo=None)
     con.execute(
         "INSERT INTO chunk_tier_overrides "
         "(chunk_id, original_tier, override_tier, reason, set_at, set_by) "

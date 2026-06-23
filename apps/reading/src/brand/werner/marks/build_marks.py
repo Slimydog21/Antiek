@@ -17,7 +17,6 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-
 HERE = Path(__file__).parent
 SRC = HERE.parent / "poses" / "anchor" / "werner_default_v5_nano_corrected.png"
 

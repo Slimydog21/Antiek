@@ -26,7 +26,7 @@ encodes a defensible default and records the basis for audit.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from .events import SPEAK_SUBJECT_CONSENT_RECORDED, record_speak_event
 from .schema import ensure_speak_schema
@@ -49,7 +49,7 @@ def record_subject_consent(
     subject_ref: str,
     subject_status: str,
     consent_granted: bool,
-    rationale: Optional[str] = None,
+    rationale: str | None = None,
 ) -> None:
     """Record the subject's consent (or the documented rule applied for a
     deceased / non-identifiable subject). Idempotent per (project,

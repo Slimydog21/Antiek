@@ -20,7 +20,6 @@ dedup keys on the catalog slug / ISBN (SPR-04, in the orchestrator).
 from __future__ import annotations
 
 import logging
-from typing import Optional, Sequence
 
 from ._common import SourceError, TextbookWork, ThrottledClient, ingest_textbook
 
@@ -33,7 +32,7 @@ logger = logging.getLogger("acquisition.textbooks.openstax")
 OPENSTAX_CATALOG_URL = "https://openstax.org/apps/cms/api/v2/pages/?type=books.Book&fields=*"
 
 
-def _author(book: dict) -> Optional[str]:
+def _author(book: dict) -> str | None:
     """Best-effort author/editor string from the catalog record."""
     authors = book.get("authors") or book.get("senior_authors") or []
     if isinstance(authors, list):
@@ -49,7 +48,7 @@ def _author(book: dict) -> Optional[str]:
     return None
 
 
-def _declared_license(book: dict) -> Optional[str]:
+def _declared_license(book: dict) -> str | None:
     """Read the book's DECLARED license string from the catalog record.
 
     Prefers the canonical CC URI (``license.url``); falls back to a license
@@ -74,7 +73,7 @@ def _declared_license(book: dict) -> Optional[str]:
     return str(name) if name else None
 
 
-def _pdf_url(book: dict) -> Optional[str]:
+def _pdf_url(book: dict) -> str | None:
     """The book's full-text PDF URL from the catalog record."""
     for key in ("high_resolution_pdf_url", "low_resolution_pdf_url", "pdf_url"):
         url = book.get(key)
@@ -83,7 +82,7 @@ def _pdf_url(book: dict) -> Optional[str]:
     return None
 
 
-def _to_work(book: dict) -> Optional[TextbookWork]:
+def _to_work(book: dict) -> TextbookWork | None:
     title = (book.get("title") or book.get("book_title") or "").strip()
     if not title:
         logger.info("openstax book %s skipped: no title", book.get("id"))

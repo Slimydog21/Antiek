@@ -15,13 +15,13 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from acquisition.arxiv.client import ArxivPaper  # noqa: E402
 from acquisition.papers import classify_paper, paper_candidate_ref  # noqa: E402
 from acquisition.papers.arxiv_bulk import (  # noqa: E402
     bulk_records_from_path,
     iter_bulk_records,
     paper_to_record,
 )
-from acquisition.arxiv.client import ArxivPaper  # noqa: E402
 from substrate.constants import (  # noqa: E402
     GATED_DEFAULT_CONTENT_CLASS,
     SERVABLE_CONTENT_CLASSES,
@@ -145,7 +145,7 @@ def test_bulk_path_makes_no_export_api_call():
     PDF-host fetch."""
     import acquisition.papers.arxiv_bulk as mod
 
-    src = open(mod.__file__, "r", encoding="utf-8").read()
+    src = open(mod.__file__, encoding="utf-8").read()
     assert "export.arxiv.org" not in src
     # The discovery surface composes the bulk reader, not the export search.
     assert "iter_bulk_candidates" in src

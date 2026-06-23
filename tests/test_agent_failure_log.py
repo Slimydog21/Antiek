@@ -19,9 +19,8 @@ Spec: ~/specs/antiek-hashimoto-engineering/sprint-e2-harness.html
 from __future__ import annotations
 
 import json
-import os
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -32,10 +31,9 @@ from orchestration.agent_failure_log import (
     _archive_dir_for,
     iter_records,
     log_path,
-    record,
     recent_failures,
+    record,
 )
-
 
 # ---------------------------------------------------------------------------
 # AgentFailure serialization
@@ -196,7 +194,7 @@ def test_iter_records_yields_typed_AgentFailure(tmp_path: Path) -> None:
 
 def test_recent_failures_filters_by_window(tmp_path: Path) -> None:
     p = tmp_path / "log.jsonl"
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     old = (now - timedelta(days=30)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     recent = (now - timedelta(hours=2)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     p.write_text(
@@ -222,10 +220,10 @@ def test_recent_failures_rejects_negative_window(tmp_path: Path) -> None:
 
 def test_rotation_archives_yesterday_file_on_first_write_today(tmp_path: Path) -> None:
     p = tmp_path / "log.jsonl"
-    yesterday = (datetime.now(timezone.utc) - timedelta(days=2)).date()
+    yesterday = (datetime.now(UTC) - timedelta(days=2)).date()
     yesterday_iso = (
         datetime.combine(yesterday, datetime.min.time())
-        .replace(tzinfo=timezone.utc)
+        .replace(tzinfo=UTC)
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
@@ -259,10 +257,10 @@ def test_rotation_appends_to_existing_archive_if_present(tmp_path: Path) -> None
     """If the rotation target already exists (clock skew, manual
     restore), the rotator appends rather than overwrites."""
     p = tmp_path / "log.jsonl"
-    yesterday = (datetime.now(timezone.utc) - timedelta(days=2)).date()
+    yesterday = (datetime.now(UTC) - timedelta(days=2)).date()
     yesterday_iso = (
         datetime.combine(yesterday, datetime.min.time())
-        .replace(tzinfo=timezone.utc)
+        .replace(tzinfo=UTC)
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )

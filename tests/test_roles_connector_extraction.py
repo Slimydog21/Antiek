@@ -41,16 +41,15 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from roles.connector import (  # noqa: E402
     CONNECTOR_SYSTEM_PROMPT,
-    ConnectorValidationError,
     LOW_CONFIDENCE_THRESHOLD,
     TRAVERSAL_ALGORITHMS,
+    ConnectorValidationError,
     parse_connector_response,
     render_full_prompt,
     render_mappings_block,
     render_paths_block,
 )
 from substrate.schemas import TraversalAlgorithm  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # A. Prompt + render helpers
@@ -266,7 +265,7 @@ def test_parser_empty_paths_with_empty_nl_relationships_ok():
 
 
 def test_traversal_algorithms_match_schema_literal():
-    assert TRAVERSAL_ALGORITHMS == set(typing.get_args(TraversalAlgorithm))
+    assert set(typing.get_args(TraversalAlgorithm)) == TRAVERSAL_ALGORITHMS
 
 
 def test_low_confidence_threshold_documented():

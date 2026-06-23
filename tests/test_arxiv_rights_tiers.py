@@ -36,7 +36,6 @@ from substrate.rights import (  # noqa: E402
 )
 from substrate.schemas.documents import classify_tier  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # The EXHAUSTIVE diligence table. Every (license_string, expected_tier) the
 # SPR-02 diligence pre-pass observed/enumerated, plus the absent case. The

@@ -44,10 +44,10 @@ import json
 import secrets
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
-
+from datetime import UTC, datetime
+from typing import Any
 
 # Optional hook fired after EVERY partner state transition. Signature:
 # (newly-landed record). The audit-event bridge in event_emit.py uses
@@ -78,7 +78,7 @@ def _now_unix() -> int:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class PartnerTrustState(str, enum.Enum):
@@ -109,7 +109,7 @@ class PartnerSubstrate:
     registered_at: str
     last_state_change_at: str
     operator_notes: str = ""
-    revocation_reason: Optional[str] = None
+    revocation_reason: str | None = None
 
 
 @dataclass
@@ -125,7 +125,7 @@ class PartnerRegistry:
 
     records: list[PartnerSubstrate] = field(default_factory=list)
 
-    def latest(self, partner_id: str) -> Optional[PartnerSubstrate]:
+    def latest(self, partner_id: str) -> PartnerSubstrate | None:
         """Return the most recent record for a partner, or None."""
         for r in reversed(self.records):
             if r.partner_id == partner_id:
@@ -159,9 +159,9 @@ def register_partner(
     display_name: str,
     substrate_url: str,
     shared_secret_hex: str,
-    partner_id: Optional[str] = None,
+    partner_id: str | None = None,
     operator_notes: str = "",
-    on_state_change: Optional[PartnerStateChangeHook] = None,
+    on_state_change: PartnerStateChangeHook | None = None,
 ) -> PartnerSubstrate:
     """Register a new partner substrate. Lands in PENDING_HANDSHAKE.
 
@@ -197,7 +197,7 @@ def trust_partner(
     *,
     partner_id: str,
     operator_notes: str = "",
-    on_state_change: Optional[PartnerStateChangeHook] = None,
+    on_state_change: PartnerStateChangeHook | None = None,
 ) -> PartnerSubstrate:
     """Promote PENDING_HANDSHAKE → TRUSTED. Operator-driven."""
     current = registry.latest(partner_id)
@@ -229,7 +229,7 @@ def revoke_partner(
     *,
     partner_id: str,
     revocation_reason: str,
-    on_state_change: Optional[PartnerStateChangeHook] = None,
+    on_state_change: PartnerStateChangeHook | None = None,
 ) -> PartnerSubstrate:
     """REVOKED is terminal."""
     current = registry.latest(partner_id)
@@ -270,7 +270,7 @@ def generate_partner_token(
     shared_secret_hex: str,
     payload: dict[str, Any],
     ttl_seconds: int = DEFAULT_TOKEN_TTL_SECONDS,
-    issued_at_unix: Optional[int] = None,
+    issued_at_unix: int | None = None,
 ) -> str:
     """Produce an HMAC-SHA256-signed token over the payload.
 
@@ -311,9 +311,9 @@ def verify_partner_token(
     *,
     shared_secret_hex: str,
     token: str,
-    now_unix: Optional[int] = None,
+    now_unix: int | None = None,
     clock_skew_seconds: int = DEFAULT_CLOCK_SKEW_SECONDS,
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Verify a token and return the payload, or None if invalid.
 
     Returns None for: malformed token, bad version, tampered payload,

@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Literal
 
 try:
     from ...runtime.db_lock import LockedConnection
@@ -47,8 +47,8 @@ class ContextBlockSpec:
 
     block_kind: str
     provenance_kind: Literal["graph_node", "user_authored", "synthesized", "brainstorm"]
-    node_id: Optional[str] = None
-    content: Optional[str] = None
+    node_id: str | None = None
+    content: str | None = None
 
 
 @dataclass

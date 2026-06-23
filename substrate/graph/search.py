@@ -32,14 +32,26 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Optional, Protocol, Sequence
+from collections.abc import Sequence
+from typing import Any, Protocol
+
+from substrate.graph import retrieval_gate as _retrieval_gate
+from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+
+# Back-compat re-exports (tests / attribution import these from search).
+PRIVILEGED_POLICY_TAGS = _retrieval_gate.PRIVILEGED_POLICY_TAGS
+PERSONAL_ONLY_CONTENT_CLASSES = _retrieval_gate.PERSONAL_ONLY_CONTENT_CLASSES
+RESTRICTED_CONTENT_CLASSES = _retrieval_gate.RESTRICTED_CONTENT_CLASSES
+_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = (
+    _retrieval_gate._NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES
+)
 
 try:
-    from ...runtime.db_lock import connect_read
+    from ...runtime.db_lock import connect_read  # type: ignore[import-not-found]
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_read  # type: ignore[no-redef]
+    from runtime.db_lock import connect_read
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +79,7 @@ class SentenceTransformerEmbedding:
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         try:
-            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+            from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "sentence-transformers not installed. Run "
@@ -110,58 +122,8 @@ def cosine_similarity_sql(
 # ---------------------------------------------------------------------------
 # Public search API
 # ---------------------------------------------------------------------------
-
-
-# Policy tags privileged to bypass the restricted-content gate.
-# Per master-spec §9.0 retrieval-time gating: restricted content (i.e.
-# content_class='restricted_pending_opt_in') is retrievable only on
-# private-research or operator-only paths where fair use is robust.
-# The default policy_tag for any ad-attributable surface is
-# 'attribution_eligible' — which explicitly does NOT bypass the gate.
-PRIVILEGED_POLICY_TAGS: frozenset[str] = frozenset({
-    "private_research",
-    "operator_only",
-})
-
-# Content classes that the substrate may withhold from retrieval
-# depending on policy_tag. Per master-spec §9.0 §9.10.
-#
-# RESTRICTED_CONTENT_CLASSES is the GATED-BUT-PUBLIC class
-# (restricted_pending_opt_in): a copyrighted-but-public work whose body is
-# withheld pending a rights-holder opt-in, but which DOES accrue ad revenue to
-# escrow. It is the exact mirror of constants.GATED_DEFAULT_CONTENT_CLASS (the
-# write side names the same gate state) — do NOT add personal_reading here.
-RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "restricted_pending_opt_in",
-})
-
-# Content classes that are OWNER-ONLY: the owner reads them in full on a
-# privileged path, but they NEVER surface on a non-privileged (public /
-# attribution-eligible) retrieval. personal_reading (the Personal-Reading Lane
-# SPR-01 fourth rights state) is the only member: it is the owner's private
-# third-party reading (a fetched essay / transcript / tweet) with no rights basis
-# to serve publicly and — unlike restricted_pending_opt_in — no escrow economics
-# at all (it never earns). It is kept as a SEPARATE set from
-# RESTRICTED_CONTENT_CLASSES on purpose: the two gate states have OPPOSITE
-# monetization semantics (restricted EARNS to escrow; personal_reading earns
-# nothing), and RESTRICTED_CONTENT_CLASSES carries the documented contract that
-# it equals the write-side GATED_DEFAULT_CONTENT_CLASS. Both sets are excluded on
-# the same non-privileged branch below, so personal_reading is filtered out of
-# the public chunk-search gate while remaining retrievable on the privileged
-# (private_research / operator_only) owner path. What would reverse this choice:
-# if personal_reading ever needed distinct policy_tag gating from
-# restricted_pending_opt_in (e.g. a tag privileged for one but not the other),
-# the separate set already supports it; folding them together would not.
-PERSONAL_ONLY_CONTENT_CLASSES: frozenset[str] = frozenset({
-    "personal_reading",
-})
-
-# The full set of content classes withheld from a non-privileged retrieval —
-# the union of the gated-but-public class and the owner-only class. Both are
-# excluded on the public branch; only the PRIVILEGED_POLICY_TAGS bypass.
-_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
-    RESTRICTED_CONTENT_CLASSES | PERSONAL_ONLY_CONTENT_CLASSES
-)
+# (Gate constants + helper are imported and re-exported at the top of this
+# module — see the back-compat re-export block after the imports.)
 
 
 def search(
@@ -170,12 +132,12 @@ def search(
     *,
     model: EmbeddingModel,
     top_k: int = 5,
-    source_tier_max: Optional[int] = None,
-    document_id: Optional[str] = None,
-    document_ids: Optional[Sequence[str]] = None,
+    source_tier_max: int | None = None,
+    document_id: str | None = None,
+    document_ids: Sequence[str] | None = None,
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
-) -> dict:
+) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
 
@@ -230,7 +192,7 @@ def search(
     # scope" — return nothing rather than silently widening to the whole
     # corpus (the meta-reading owned-corpus scope must never leak past its
     # bound). `document_ids is None` ⇒ no set filter at all.
-    scoped_ids: Optional[list[str]] = None
+    scoped_ids: list[str] | None = None
     if document_ids is not None:
         scoped_ids = list(dict.fromkeys(document_ids))  # de-dup, keep order
         if document_id is not None and document_id not in scoped_ids:
@@ -275,31 +237,19 @@ def search(
         sql += " AND d.source_tier <= ?"
         params.append(int(source_tier_max))
     # Sprint 18 retrieval-time gate (master-spec §9.0) + Personal-Reading Lane
-    # SPR-01. On a NON-privileged policy_tag the gate excludes BOTH the
-    # gated-but-public class (restricted_pending_opt_in) AND the owner-only class
-    # (personal_reading) — the union _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES.
-    # personal_reading (the owner's private third-party reading) must never
-    # surface on the public / attribution-eligible read path; it remains
-    # retrievable on the privileged (private_research / operator_only) owner path
-    # below. NULL content_class is still treated as legacy/grandfathered and
-    # passes — that legacy carve-out is unchanged here; the write-side
-    # insert_document deny-by-default guard (substrate/graph/ops.py) is what now
-    # stops fresh third-party ingests from landing NULL, so the NULL-passes hole
-    # is closed at the source rather than by reclassifying legacy rows (that
-    # sweep is SPR-03).
-    if policy_tag not in PRIVILEGED_POLICY_TAGS:
-        excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
-        placeholders = ",".join("?" for _ in excluded)
-        sql += (
-            f" AND (d.content_class IS NULL OR d.content_class NOT IN ({placeholders}))"
-        )
-        params.extend(excluded)
+    # SPR-01 — emitted only via retrieval_gate.non_privileged_chunk_sql_clause.
+    gate_sql, gate_params = non_privileged_chunk_sql_clause(
+        table_alias="d",
+        policy_tag=policy_tag,
+    )
+    sql += gate_sql
+    params.extend(gate_params)
     sql += " ORDER BY similarity DESC LIMIT ?"
     params.append(int(top_k))
 
     rows = con.execute(sql, params).fetchall()
 
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     for (
         chunk_id, section, text, tokens, doc_id, chunk_index,
         title, tier, dtype, sim,
@@ -332,7 +282,9 @@ def search(
     }
 
 
-def _fetch_edges_and_nodes(con: Any, chunk_id: str) -> tuple[list[dict], list[dict]]:
+def _fetch_edges_and_nodes(
+    con: Any, chunk_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Helper for ``with_edges=True``: returns the edges sourced from
     a chunk and the nodes those edges connect."""
     edge_rows = con.execute(
@@ -363,7 +315,7 @@ def _fetch_edges_and_nodes(con: Any, chunk_id: str) -> tuple[list[dict], list[di
     ]
 
     node_ids = {e[1] for e in edge_rows} | {e[2] for e in edge_rows}
-    nodes: list[dict] = []
+    nodes: list[dict[str, Any]] = []
     if node_ids:
         placeholders = ",".join(["?"] * len(node_ids))
         node_rows = con.execute(
@@ -382,7 +334,9 @@ def _fetch_edges_and_nodes(con: Any, chunk_id: str) -> tuple[list[dict], list[di
     return edges, nodes
 
 
-def search_nodes_by_label(con: Any, query: str, limit: int = 10) -> list[dict]:
+def search_nodes_by_label(
+    con: Any, query: str, limit: int = 10,
+) -> list[dict[str, Any]]:
     """ILIKE search over ``nodes.canonical_label``. Used as a companion
     to vector search for label-direct hits — "PsiQuantum" as a query
     should find the PsiQuantum node even if no chunk embedding is

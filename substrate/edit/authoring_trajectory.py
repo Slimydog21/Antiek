@@ -21,7 +21,6 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Optional
 
 try:
     from ..event_log import trajectory as _read_trajectory
@@ -49,8 +48,8 @@ class AuthoringStep:
 
     kind: str
     action_type: str
-    event_id: Optional[str]
-    emitted_at: Optional[str]
+    event_id: str | None
+    emitted_at: str | None
     payload: dict
     reverted: bool = False
 
@@ -73,7 +72,7 @@ class AuthoringTrajectory:
         return [s for s in self.steps if s.kind == "edit"]
 
 
-def _payload_deliverable_id(payload: dict) -> Optional[str]:
+def _payload_deliverable_id(payload: dict) -> str | None:
     return payload.get("deliverable_id") if isinstance(payload, dict) else None
 
 
@@ -117,8 +116,8 @@ def reconstruct_from_events(
 def load_authoring_trajectory(
     deliverable_id: str,
     *,
-    investigation_ids: Optional[list[str]] = None,
-    events_dir: Optional[str] = None,
+    investigation_ids: list[str] | None = None,
+    events_dir: str | None = None,
 ) -> AuthoringTrajectory:
     """Read the event log and reconstruct ``deliverable_id``'s trajectory.
 

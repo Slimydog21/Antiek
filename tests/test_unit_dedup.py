@@ -31,30 +31,28 @@ module docstring + the handoff; it is NOT claimed solved here.
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
 
-from runtime.db_lock import connect_write
-from substrate.graph.schema import init_database
-from substrate.graph.ops import insert_node
-from substrate.graph.insight_question import promote_insight, promote_question
-from substrate.graph import insight_question as iq
+from interfaces.research.api.cross_doc import _cosine
 from processing.embedding import (
     HashEmbedding,
-    set_default_embedding_provider,
     _reset_default_provider,
+    set_default_embedding_provider,
 )
-from interfaces.research.api.cross_doc import _cosine
+from runtime.db_lock import connect_write
+from substrate.corpus_audit import CHECK_DEDUP_RATE, run_audit, unit_dedup_rate
+from substrate.graph import insight_question as iq
+from substrate.graph.insight_question import promote_insight, promote_question
+from substrate.graph.ops import insert_node
+from substrate.graph.schema import init_database
 from substrate.unit_dedup import (
-    CandidateUnit,
-    ExistingUnit,
-    DedupRate,
-    find_near_duplicate,
     UNIT_DEDUP_COSINE_THRESHOLD,
+    CandidateUnit,
+    DedupRate,
+    ExistingUnit,
+    find_near_duplicate,
 )
-from substrate.corpus_audit import unit_dedup_rate, run_audit, CHECK_DEDUP_RATE
-
 
 # ---------------------------------------------------------------------------
 # Seeded claim texts — one duplicate cluster, one genuinely-distinct claim.

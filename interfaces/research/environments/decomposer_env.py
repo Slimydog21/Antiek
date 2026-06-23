@@ -41,8 +41,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -50,19 +51,17 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from skills.verification.rubric import (  # noqa: E402
+    VERIFIABLE,
+    ParaphraseGuardRubric,
+    RubricResult,
+)
 from substrate.constants import (  # noqa: E402
     KEYWORDS_MAX,
     KEYWORDS_MIN,
     SUB_QUESTIONS_MAX,
     SUB_QUESTIONS_MIN,
 )
-from skills.verification.rubric import (  # noqa: E402
-    JUDGED,
-    VERIFIABLE,
-    ParaphraseGuardRubric,
-    RubricResult,
-)
-
 
 # ---------------------------------------------------------------------------
 # Task / rollout / reward shapes (stdlib-only; mirrors verifiers's API)
@@ -79,7 +78,7 @@ class DecomposerTask:
 
     task_id: str
     top_question: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -92,9 +91,9 @@ class DecomposerRollout:
 
     task: DecomposerTask
     raw_output: str
-    parsed_output: Optional[Dict[str, Any]]
+    parsed_output: dict[str, Any] | None
     policy_id: str
-    error: Optional[str] = None  # parse/validation error, None on success
+    error: str | None = None  # parse/validation error, None on success
 
 
 @dataclass
@@ -108,8 +107,8 @@ class DecomposerReward:
 
     total: float
     passed_all_verifiable: bool
-    breakdown: List[RubricResult] = field(default_factory=list)
-    weights: Dict[str, float] = field(default_factory=dict)
+    breakdown: list[RubricResult] = field(default_factory=list)
+    weights: dict[str, float] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +117,7 @@ class DecomposerReward:
 
 
 PolicyFn = Callable[
-    ["DecomposerTask", Dict[str, Any]], Tuple[str, str]
+    ["DecomposerTask", dict[str, Any]], tuple[str, str]
 ]
 
 
@@ -144,7 +143,7 @@ class DecomposerEnvironment:
     judge bias.
     """
 
-    DEFAULT_WEIGHTS: Dict[str, float] = {
+    DEFAULT_WEIGHTS: dict[str, float] = {
         "verifiable.decomposer.paraphrase_guard": 0.35,
         "verifiable.decomposer.schema_validity": 0.20,
         "verifiable.decomposer.subq_count_bounds": 0.20,
@@ -155,22 +154,22 @@ class DecomposerEnvironment:
 
     def __init__(
         self,
-        policy_fn: Optional[PolicyFn] = None,
-        tasks: Optional[List[DecomposerTask]] = None,
-        weights: Optional[Dict[str, float]] = None,
+        policy_fn: PolicyFn | None = None,
+        tasks: list[DecomposerTask] | None = None,
+        weights: dict[str, float] | None = None,
     ):
         self.policy_fn = policy_fn
-        self._tasks: List[DecomposerTask] = list(tasks or [])
+        self._tasks: list[DecomposerTask] = list(tasks or [])
         self.weights = dict(weights or self.DEFAULT_WEIGHTS)
         self.paraphrase_rubric = ParaphraseGuardRubric()
-        self._extra_rubrics: List[Any] = []
+        self._extra_rubrics: list[Any] = []
 
     # ── Task surface ──
 
     def add_task(self, task: DecomposerTask) -> None:
         self._tasks.append(task)
 
-    def tasks(self) -> List[DecomposerTask]:
+    def tasks(self) -> list[DecomposerTask]:
         return list(self._tasks)
 
     # ── Rollout ──
@@ -186,8 +185,8 @@ class DecomposerEnvironment:
                 "Inject one when constructing the env."
             )
         raw, policy_id = self.policy_fn(task, {"task_id": task.task_id})
-        parsed: Optional[Dict[str, Any]] = None
-        err: Optional[str] = None
+        parsed: dict[str, Any] | None = None
+        err: str | None = None
         try:
             parsed = json.loads(raw)
         except (TypeError, ValueError) as e:
@@ -203,7 +202,7 @@ class DecomposerEnvironment:
     # ── Reward ──
 
     def reward(self, rollout: DecomposerRollout) -> DecomposerReward:
-        breakdown: List[RubricResult] = []
+        breakdown: list[RubricResult] = []
 
         # 1. Paraphrase guard (only meaningful when parsed_output is valid)
         if (
@@ -345,8 +344,8 @@ def _smoke() -> DecomposerReward:
     env = DecomposerEnvironment()
 
     def fake_policy(
-        task: DecomposerTask, ctx: Dict[str, Any],
-    ) -> Tuple[str, str]:
+        task: DecomposerTask, ctx: dict[str, Any],
+    ) -> tuple[str, str]:
         payload = {
             "decomposition": [
                 {

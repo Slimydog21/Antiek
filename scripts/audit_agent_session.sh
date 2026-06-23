@@ -20,10 +20,21 @@ usage() {
 
 [[ $# -gt 0 ]] || usage
 
+# ripgrep on dev machines; POSIX grep on ubuntu-latest CI (no rg in PATH by default).
+file_matches() {
+  local pattern="$1" file="$2"
+  if command -v rg >/dev/null 2>&1; then
+    rg -q "$pattern" "$file"
+  else
+    grep -qE "$pattern" "$file"
+  fi
+}
+
 has_scope_map() {
   local f="$1"
-  rg -q '^(###|##) Scope Map$' "$f" \
-    || rg -q 'PLATFORM_EXEC_MATRIX' "$f"
+  file_matches '^### Scope Map$' "$f" \
+    || file_matches '^## Scope Map$' "$f" \
+    || file_matches 'PLATFORM_EXEC_MATRIX' "$f"
 }
 
 audit_file() {
@@ -35,13 +46,13 @@ audit_file() {
   fi
 
   # F1 — pytest piped to tail (verification theater; egghead lineage)
-  if rg -n 'pytest\b[^|\n]*\|\s*tail\b' "$f" >/dev/null 2>&1; then
+  if file_matches 'pytest[^|]*\|[[:space:]]*tail' "$f"; then
     echo "FAIL [$f] F1: pytest piped to tail — retain full log path (HARD_TO_VARY F1)" >&2
     FAIL=1
   fi
 
   # F3 — unbounded platform OK without Scope Map / PLATFORM_EXEC_MATRIX
-  if rg -ni 'platform\s+ok|engine\s+fine(\s+across|\s+on)?\s+(the\s+)?platform' "$f" >/dev/null 2>&1; then
+  if file_matches '[Pp]latform[[:space:]]+ok|[Ee]ngine[[:space:]]+fine' "$f"; then
     if ! has_scope_map "$f"; then
       echo "FAIL [$f] F3: platform OK / engine fine without ### Scope Map or PLATFORM_EXEC_MATRIX (F3)" >&2
       FAIL=1

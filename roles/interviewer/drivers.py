@@ -21,7 +21,6 @@ them unverified rather than minting them as fact.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
 
 from .._json_decode import extract_json_object
 
@@ -40,9 +39,9 @@ class DriverSet:
       treated as claims to verify, NOT established data.
     """
 
-    insights: List[str] = field(default_factory=list)
-    questions: List[str] = field(default_factory=list)
-    data_points: List[str] = field(default_factory=list)
+    insights: list[str] = field(default_factory=list)
+    questions: list[str] = field(default_factory=list)
+    data_points: list[str] = field(default_factory=list)
 
     def is_empty(self) -> bool:
         return not (self.insights or self.questions or self.data_points)
@@ -66,11 +65,11 @@ return an empty list for it. Return JSON only:
 """
 
 
-def _string_list(data: dict, key: str) -> List[str]:
+def _string_list(data: dict, key: str) -> list[str]:
     raw = data.get(key) or []
     if not isinstance(raw, list):
         raise DriverValidationError(f"{key} must be a list, got {type(raw).__name__}")
-    out: List[str] = []
+    out: list[str] = []
     for item in raw:
         if not isinstance(item, str):
             raise DriverValidationError(f"{key} entries must be strings, got {item!r}")

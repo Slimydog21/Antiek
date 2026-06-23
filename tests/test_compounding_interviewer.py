@@ -16,13 +16,13 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
+from substrate.loop_3.unlock_gate import Loop3UnlockRequired
 from substrate.speak import async_interview as ai
 from substrate.speak import corroboration, interviewer_capture, invitations, project
 from substrate.speak.consent import ConsentScope, record_consent
 from substrate.speak.interviewer_context import build_conditioning_context
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
-from substrate.loop_3.unlock_gate import Loop3UnlockRequired
 
 
 class StubEmbedding:

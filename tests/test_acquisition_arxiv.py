@@ -61,7 +61,6 @@ from acquisition.arxiv import (
 )
 from acquisition.arxiv.client import _build_search_url, _parse_response
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

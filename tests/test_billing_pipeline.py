@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
 from decimal import Decimal
-
-import pytest
 
 from substrate.billing import (
     BillingAggregate,
@@ -58,8 +57,8 @@ def test_aggregate_period_sums_correctly():
         raw_token_cost_usd=Decimal("0.50"), token_count=500,
     )
     # All records this month.
-    from datetime import datetime, timezone
-    this_month = datetime.now(timezone.utc).strftime("%Y-%m")
+    from datetime import datetime
+    this_month = datetime.now(UTC).strftime("%Y-%m")
     summary = aggregate_period(agg, user_id="user-1", period=this_month)
     assert summary.record_count == 4
     assert summary.paid_private_token_cost_usd == Decimal("3.00")

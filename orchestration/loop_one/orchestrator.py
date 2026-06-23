@@ -57,10 +57,9 @@ import asyncio
 import json
 import logging
 import os
-import re
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -69,26 +68,7 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from substrate.schemas import (  # noqa: E402
-    ActionType,
-    ConnectorRequestedPayload,
-    DecomposeQuestionDeliveredPayload,
-    DecomposeQuestionRequestedPayload,
-    EvidenceRetrieveDeliveredPayload,
-    EvidenceRetrieveRequestedPayload,
-    Event,
-    InvestigationChaseHaltedPayload,
-    InvestigationCompletedPayload,
-    InvestigationFailedPayload,
-    InvestigationSpawnedFromPayload,
-    InvestigationStartRequestedPayload,
-    ParameterExtractDeliveredPayload,
-    ParameterExtractRequestedPayload,
-    SubQuestion,
-    SupportingClaim,
-    SynthesizeDeliveredPayload,
-    SynthesizeRequestedPayload,
-)
+from datetime import UTC
 
 from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from orchestration.audit import audit_phase_log  # noqa: E402
@@ -102,8 +82,24 @@ from skills.domain import (  # noqa: E402
     extract_and_patch,
     generate_master_md,
 )
-
-from orchestration.session_evidence_pack import SessionEvidencePack  # noqa: E402
+from substrate.schemas import (  # noqa: E402
+    ActionType,
+    ConnectorRequestedPayload,
+    DecomposeQuestionDeliveredPayload,
+    DecomposeQuestionRequestedPayload,
+    Event,
+    EvidenceRetrieveDeliveredPayload,
+    EvidenceRetrieveRequestedPayload,
+    InvestigationChaseHaltedPayload,
+    InvestigationCompletedPayload,
+    InvestigationFailedPayload,
+    InvestigationSpawnedFromPayload,
+    InvestigationStartRequestedPayload,
+    ParameterExtractDeliveredPayload,
+    ParameterExtractRequestedPayload,
+    SynthesizeDeliveredPayload,
+    SynthesizeRequestedPayload,
+)
 
 from .coordinator import InvestigationCoordinator, broadcast_emit
 
@@ -158,7 +154,7 @@ def _keyword_search_chunks(con, keywords: list[str], top_k: int) -> list[dict]:
     where = " OR ".join(["LOWER(c.text) LIKE ?" for _ in keywords])
     params = [f"%{k}%" for k in keywords]
     score_expr = " + ".join([
-        f"(CASE WHEN LOWER(c.text) LIKE ? THEN 1 ELSE 0 END)" for _ in keywords
+        "(CASE WHEN LOWER(c.text) LIKE ? THEN 1 ELSE 0 END)" for _ in keywords
     ])
     params_full = params + params + [top_k]
     rows = con.execute(
@@ -193,9 +189,10 @@ def _render_chunks_block_for_sub_question(
     locality is too weak to drive useful retrieval on its own)."""
     try:
         import duckdb
+
+        from processing.embedding.embed import default_embedding_provider
         from substrate.graph import default_db_path
         from substrate.graph.search import search as graph_search
-        from processing.embedding.embed import default_embedding_provider
 
         db_path = default_db_path()
         embedder = default_embedding_provider()
@@ -255,22 +252,6 @@ def _render_chunks_block_for_sub_question(
     return "\n---\n".join(blocks)
 
 
-def _prior_graph_knowledge_section(question: str) -> str:
-    """Phase 1 orientation cites seeded graph chunks when provenance
-    exists; falls back to structural seed markers for empty graphs."""
-    block = _render_chunks_block_for_sub_question(question, top_k=3)
-    chunk_ids = re.findall(r"chunk_id:\s*(\S+)", block)
-    if chunk_ids:
-        return "\n".join(
-            f"- {cid} cited from substrate graph search for orientation."
-            for cid in chunk_ids
-        )
-    return (
-        "chunk_orientation_marker and node_orchestrator_start seed the "
-        "connector substrate when the graph has no servable hits yet.\n"
-    )
-
-
 # Per-phase await timeout for role bridges. DeepSeek V4 Pro under
 # OpenRouter load empirically takes 200-250s on a long-output role
 # (decomposer producing 8 sub-questions with rationale was 226s on
@@ -281,13 +262,6 @@ def _prior_graph_knowledge_section(question: str) -> str:
 DEFAULT_ROLE_TIMEOUT = 600.0
 SYNTHESIZER_TIMEOUT = 900.0
 PER_EVIDENCE_TIMEOUT = 300.0
-
-# ANT-DRL-03: bounded parallel Phase 2 retrieves (default 4 per spec
-# open question). Override via ANTIEK_PHASE_2_CONCURRENCY for profiling.
-PHASE_2_MAX_CONCURRENCY = max(
-    1,
-    int(os.environ.get("ANTIEK_PHASE_2_CONCURRENCY", "4")),
-)
 
 
 @dataclass
@@ -301,17 +275,17 @@ class InvestigationContext:
     investigation_id: str
     question: str
     context: str = ""
-    topic_slug: Optional[str] = None
+    topic_slug: str | None = None
     max_sub_questions: int = 8
-    decomposition: Optional[DecomposeQuestionDeliveredPayload] = None
+    decomposition: DecomposeQuestionDeliveredPayload | None = None
     evidence: list[EvidenceRetrieveDeliveredPayload] = field(default_factory=list)
-    parameters: Optional[ParameterExtractDeliveredPayload] = None
-    connector_result: Optional[Any] = None  # ConnectorDeliveredPayload
-    synthesis: Optional[SynthesizeDeliveredPayload] = None
-    master_md_path: Optional[str] = None
+    parameters: ParameterExtractDeliveredPayload | None = None
+    connector_result: Any | None = None  # ConnectorDeliveredPayload
+    synthesis: SynthesizeDeliveredPayload | None = None
+    master_md_path: str | None = None
     patched_domains: list[str] = field(default_factory=list)
     last_completed_phase: int = 0
-    failed_phase: Optional[int] = None
+    failed_phase: int | None = None
     fail_reason: str = ""
     # Sprint 12: continuous-chase parameters threaded from the start
     # payload. When chase_mode != "off", the orchestrator hooks
@@ -319,7 +293,7 @@ class InvestigationContext:
     chase_mode: str = "off"
     chase_value: int = 0
     chase_budget_usd: float = 2.0
-    parent_investigation_id: Optional[str] = None
+    parent_investigation_id: str | None = None
     # SPR-01 M3: the curated fast/deep research tier the operator chose at
     # the research entry, threaded from the start payload. "fast" → MiMo
     # V2.5 Pro, "deep" → DeepSeek V4 Pro (see
@@ -363,7 +337,7 @@ async def _drive_phase(
 
     try:
         await work
-    except asyncio.TimeoutError:
+    except TimeoutError:
         ctx.failed_phase = phase
         ctx.fail_reason = f"phase {phase} timed out waiting for role delivery"
         return False
@@ -458,7 +432,9 @@ async def _run_phase_1(
             f"Question: {ctx.question}\n\n"
             + ("Loop 1 orchestrator orienting on the cold question. " * 30)
             + "\n\n## Prior Graph Knowledge\n\n"
-            + _prior_graph_knowledge_section(ctx.question)
+            "Initial decomposition complete. Downstream phases cite "
+            "chunk_orientation_marker and node_orchestrator_start as "
+            "the orchestrator's structural seeds.\n"
         )
         _write_marker(ctx, "orientation.md", body)
     return await _drive_phase(ctx, phase=1, work=work())
@@ -470,10 +446,14 @@ async def _run_phase_2(
     coordinator: InvestigationCoordinator,
 ) -> bool:
     """Phase 2 (Round 1) — one evidence_retrieve per sub-question,
-    bounded parallel (``PHASE_2_MAX_CONCURRENCY``). Coordinator
-    correlates ``evidence.retrieve.delivered`` on ``sub_question`` so
-    N concurrent bridge completions do not steal each other's futures.
-    Evidence list order follows decomposition order (deterministic)."""
+    sequential. We bound parallelism at the dispatch layer (the
+    dispatch router is sync per call); the orchestrator drives them
+    one at a time so each post's wait_for sees a clean future slot
+    for its (inv_id, evidence.retrieve.delivered) key.
+
+    A future optimization could parallelize by interleaving with
+    multiple futures keyed on sub_question — but that requires a
+    coordinator change. Sequential is the safe Day-3 baseline."""
     if ctx.decomposition is None:
         ctx.failed_phase = 2
         ctx.fail_reason = "phase 2 entered without decomposition (precondition bug)"
@@ -486,46 +466,32 @@ async def _run_phase_2(
         return False
 
     async def work():
-        sem = asyncio.Semaphore(PHASE_2_MAX_CONCURRENCY)
-        delivered_action = _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED)
-
-        async def _retrieve_one(sq) -> EvidenceRetrieveDeliveredPayload:
-            async with sem:
-                chunks_block = _render_chunks_block_for_sub_question(
-                    sq.sub_question, top_k=5,
-                )
-                await broadcast_emit(
-                    broadcaster,
-                    ctx.investigation_id,
-                    EvidenceRetrieveRequestedPayload(
-                        sub_question=sq.sub_question,
-                        category=sq.category,
-                        evidence_type_required=sq.evidence_type_required,
-                        top_k=5,
-                        chunks_block=chunks_block,
-                        subgraph_block="(subgraph search not yet wired)",
-                    ),
-                    role="orchestrator",
-                    policy_id="orchestrator-deterministic",
-                    phase=2,
-                )
-                delivered = await coordinator.wait_for(
-                    ctx.investigation_id,
-                    delivered_action,
-                    timeout=PER_EVIDENCE_TIMEOUT,
-                    correlation=sq.sub_question,
-                )
-                if not isinstance(
-                    delivered.payload, EvidenceRetrieveDeliveredPayload,
-                ):
-                    raise RuntimeError(
-                        f"evidence bridge returned unexpected payload "
-                        f"for {sq.sub_question!r}"
-                    )
-                return delivered.payload
-
-        results = await asyncio.gather(*(_retrieve_one(sq) for sq in sub_qs))
-        ctx.evidence.extend(results)
+        for sq in sub_qs:
+            chunks_block = _render_chunks_block_for_sub_question(
+                sq.sub_question, top_k=5,
+            )
+            await broadcast_emit(
+                broadcaster,
+                ctx.investigation_id,
+                EvidenceRetrieveRequestedPayload(
+                    sub_question=sq.sub_question,
+                    category=sq.category,
+                    evidence_type_required=sq.evidence_type_required,
+                    top_k=5,
+                    chunks_block=chunks_block,
+                    subgraph_block="(subgraph search not yet wired)",
+                ),
+                role="orchestrator",
+                policy_id="orchestrator-deterministic",
+                phase=2,
+            )
+            delivered = await coordinator.wait_for(
+                ctx.investigation_id,
+                _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED),
+                timeout=PER_EVIDENCE_TIMEOUT,
+            )
+            if isinstance(delivered.payload, EvidenceRetrieveDeliveredPayload):
+                ctx.evidence.append(delivered.payload)
         # Write the three round-1 dimension markers so the file-
         # artifact postcondition for Phase 2 passes. The markers
         # carry the evidence summaries the orchestrator already has.
@@ -935,174 +901,6 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Path A — synthesis tail from SessionEvidencePack (SPR-DRL-06)
-# ---------------------------------------------------------------------------
-
-
-def _investigation_context_from_pack(pack: SessionEvidencePack) -> InvestigationContext:
-    """Hydrate Loop 1 state for phases 6–9 from a DRW merge pack."""
-    by_sub_q: dict[str, list] = {}
-    for chunk in pack.chunks:
-        by_sub_q.setdefault(chunk.sub_question, []).append(chunk)
-
-    decomposition = [
-        SubQuestion(
-            sub_question=sq,
-            category="technology_risk",
-            rationale="DRW gather leaf — independent sub-question from cascade.",
-            evidence_type_required="mixed",
-        )
-        for sq in sorted(by_sub_q.keys())
-    ]
-    if not decomposition and pack.leaf_investigation_ids:
-        decomposition = [
-            SubQuestion(
-                sub_question=f"Evidence from {pack.session_id}",
-                category="technology_risk",
-                rationale="Empty chunk pack — honest insufficient-evidence path.",
-                evidence_type_required="mixed",
-            ),
-        ]
-
-    evidence: list[EvidenceRetrieveDeliveredPayload] = []
-    for sq, chunks in sorted(by_sub_q.items()):
-        chunk_ids = [c.chunk_id for c in chunks]
-        answer = "\n".join(c.text for c in chunks)
-        evidence.append(
-            EvidenceRetrieveDeliveredPayload(
-                sub_question=sq,
-                answer=answer or "(no gathered evidence)",
-                supporting_claims=[
-                    SupportingClaim(
-                        claim=c.text[:500],
-                        evidence_type="direct",
-                        chunk_ids=[c.chunk_id],
-                        edge_ids=[],
-                        source_tier_min=3,
-                        confidence="moderate",
-                        confidence_basis=(
-                            f"DRW gather from {c.source_investigation_id}"
-                        ),
-                    )
-                    for c in chunks
-                ],
-                evidentiary_gaps=[],
-                insufficient_evidence=not chunks,
-            ),
-        )
-
-    if not evidence:
-        evidence.append(
-            EvidenceRetrieveDeliveredPayload(
-                sub_question=pack.problem_question,
-                answer="(no gathered evidence)",
-                supporting_claims=[],
-                evidentiary_gaps=[],
-                insufficient_evidence=True,
-            ),
-        )
-
-    return InvestigationContext(
-        investigation_id=pack.session_id,
-        question=pack.problem_question,
-        context="DRW cascade synthesis tail (Path A)",
-        decomposition=DecomposeQuestionDeliveredPayload(
-            decomposition=decomposition,
-            keywords=[],
-        ),
-        evidence=evidence,
-        parameters=ParameterExtractDeliveredPayload(
-            parameters=[],
-            constraints=[],
-        ),
-        chase_mode="off",
-    )
-
-
-async def run_synthesis_tail_from_pack(
-    pack: SessionEvidencePack,
-    *,
-    broadcaster: EventBroadcaster,
-    coordinator: InvestigationCoordinator,
-) -> InvestigationContext:
-    """Run Loop 1 phases 6–9 only — DRW gather already happened."""
-    ctx = _investigation_context_from_pack(pack)
-    phases = [
-        lambda: _run_phase_6(ctx, broadcaster, coordinator),
-        lambda: _run_phase_7(ctx),
-        lambda: _run_phase_8(ctx),
-    ]
-    for run in phases:
-        ok = await run()
-        if not ok:
-            await broadcast_emit(
-                broadcaster,
-                ctx.investigation_id,
-                InvestigationFailedPayload(
-                    phase=ctx.failed_phase or 6,
-                    reason=ctx.fail_reason or "(unknown)",
-                    last_completed_phase=(
-                        ctx.last_completed_phase
-                        if ctx.last_completed_phase > 0 else None
-                    ),
-                ),
-                role="orchestrator",
-                policy_id="orchestrator-cascade-tail",
-            )
-            try:
-                audit_phase_log(ctx.investigation_id, emit=True)
-            except Exception:  # pragma: no cover
-                pass
-            return ctx
-
-    try:
-        from orchestration.invariants.deep_research_complete import (
-            assert_deep_research_complete,
-        )
-        from orchestration.phase_runner import assert_ready_for_completion
-        from orchestration.phase_runner.postconditions import default_research_dir
-
-        assert_ready_for_completion(ctx.investigation_id)
-        assert_deep_research_complete(
-            ctx.investigation_id,
-            research_dir=default_research_dir(ctx.investigation_id),
-            require_terminal_event=False,
-        )
-    except Exception as e:
-        ctx.failed_phase = 9
-        ctx.fail_reason = f"assert_ready_for_completion failed: {e!r}"
-        await broadcast_emit(
-            broadcaster,
-            ctx.investigation_id,
-            InvestigationFailedPayload(
-                phase=9, reason=ctx.fail_reason,
-                last_completed_phase=8,
-            ),
-            role="orchestrator",
-            policy_id="orchestrator-cascade-tail",
-        )
-        return ctx
-
-    assert ctx.synthesis is not None
-    await broadcast_emit(
-        broadcaster,
-        ctx.investigation_id,
-        InvestigationCompletedPayload(
-            thesis_summary=ctx.synthesis.thesis_summary,
-            implicit_recommendation=ctx.synthesis.implicit_recommendation,
-            constraint_loop_status=ctx.synthesis.constraint_loop_status,
-            constraint_loop_iterations=ctx.synthesis.constraint_loop_iterations,
-            master_md_path=ctx.master_md_path,
-            domains_patched=ctx.patched_domains,
-            total_phases_verified=ctx.last_completed_phase,
-        ),
-        role="orchestrator",
-        policy_id="orchestrator-cascade-tail",
-    )
-    return ctx
-
-
-# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -1149,20 +947,10 @@ async def _run_investigation(
                 pass
             return
 
-    # Phase 9: assert completion-ready + DeepResearchComplete contract.
+    # Phase 9: assert completion-ready.
     try:
-        from orchestration.invariants.deep_research_complete import (
-            assert_deep_research_complete,
-        )
         from orchestration.phase_runner import assert_ready_for_completion
-        from orchestration.phase_runner.postconditions import default_research_dir
-
         assert_ready_for_completion(ctx.investigation_id)
-        assert_deep_research_complete(
-            ctx.investigation_id,
-            research_dir=default_research_dir(ctx.investigation_id),
-            require_terminal_event=False,
-        )
     except Exception as e:
         ctx.failed_phase = 9
         ctx.fail_reason = f"assert_ready_for_completion failed: {e!r}"
@@ -1263,7 +1051,7 @@ def _walk_chase_chain(investigation_id: str) -> tuple[int, str]:
     seen: set[str] = {current}
     for _ in range(32):
         rows = trajectory(current)
-        parent: Optional[str] = None
+        parent: str | None = None
         for r in rows:
             if r.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value:
                 p = (r.get("payload") or {}).get("parent_investigation_id")
@@ -1287,14 +1075,14 @@ def _accumulated_chase_cost_usd(investigation_id: str) -> float:
     from substrate.event_log import trajectory
 
     total = 0.0
-    current: Optional[str] = investigation_id
+    current: str | None = investigation_id
     seen: set[str] = set()
     for _ in range(32):
         if not current or current in seen:
             break
         seen.add(current)
         rows = trajectory(current)
-        parent: Optional[str] = None
+        parent: str | None = None
         for r in rows:
             at = r.get("action_type")
             if at == ActionType.DISPATCH_CALL.value:
@@ -1308,7 +1096,7 @@ def _accumulated_chase_cost_usd(investigation_id: str) -> float:
     return total
 
 
-def _select_chase_question(ctx: InvestigationContext) -> Optional[str]:
+def _select_chase_question(ctx: InvestigationContext) -> str | None:
     """Pick the strongest open question from this investigation's
     accumulated evidentiary_gaps. v0: first non-empty gap from the
     first evidence_retrieve.delivered that has any gaps. Later
@@ -1320,9 +1108,9 @@ def _select_chase_question(ctx: InvestigationContext) -> Optional[str]:
             # Pydantic EvidentiaryGap carries gap_description; dict
             # fallback for parser-produced records that haven't been
             # validated yet.
-            text: Optional[str] = None
+            text: str | None = None
             if hasattr(gap, "gap_description"):
-                text = getattr(gap, "gap_description")
+                text = gap.gap_description
             elif isinstance(gap, dict):
                 text = (
                     gap.get("gap_description")
@@ -1349,15 +1137,16 @@ async def _maybe_spawn_chase_child(
     depth, root_id = _walk_chase_chain(ctx.investigation_id)
     cost_total = _accumulated_chase_cost_usd(ctx.investigation_id)
 
-    halt_reason: Optional[str] = None
+    halt_reason: str | None = None
     if ctx.chase_mode == "depth":
         if depth + 1 > ctx.chase_value:
             halt_reason = "depth_reached"
     elif ctx.chase_mode == "duration":
         # Estimate elapsed via the root start event timestamp.
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from substrate.event_log import trajectory
-        root_started_at: Optional[str] = None
+        root_started_at: str | None = None
         for r in trajectory(root_id):
             if r.get("action_type") == ActionType.INVESTIGATION_START_REQUESTED.value:
                 root_started_at = r.get("emitted_at")
@@ -1367,7 +1156,7 @@ async def _maybe_spawn_chase_child(
                 t0 = datetime.fromisoformat(
                     root_started_at.replace("Z", "+00:00")
                 )
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 elapsed_hours = (now - t0).total_seconds() / 3600.0
                 if elapsed_hours >= ctx.chase_value:
                     halt_reason = "duration_reached"
@@ -1377,7 +1166,7 @@ async def _maybe_spawn_chase_child(
     if halt_reason is None and cost_total >= ctx.chase_budget_usd:
         halt_reason = "budget_exceeded"
 
-    next_question: Optional[str] = None
+    next_question: str | None = None
     if halt_reason is None:
         next_question = _select_chase_question(ctx)
         if next_question is None:
@@ -1439,7 +1228,7 @@ async def _maybe_spawn_chase_child(
 
 def register_handlers(
     broadcaster: EventBroadcaster,
-    coordinator: Optional[InvestigationCoordinator] = None,
+    coordinator: InvestigationCoordinator | None = None,
 ) -> InvestigationCoordinator:
     """Wire the Loop 1 orchestrator into the broadcaster. Returns the
     coordinator (created if not supplied) so the caller can hold a

@@ -110,16 +110,16 @@ def test_constants_personal_reading_not_servable():
     assert PERSONAL_READING_CONTENT_CLASS == "personal_reading"
     assert PERSONAL_READING_CONTENT_CLASS not in SERVABLE_CONTENT_CLASSES
     # strict superset by exactly one element
-    assert PERSONAL_READABLE_CONTENT_CLASSES == (
+    assert (
         SERVABLE_CONTENT_CLASSES | {PERSONAL_READING_CONTENT_CLASS}
-    )
+    ) == PERSONAL_READABLE_CONTENT_CLASSES
     assert len(PERSONAL_READABLE_CONTENT_CLASSES) == len(SERVABLE_CONTENT_CLASSES) + 1
 
 
 def test_constants_third_party_document_types_exact():
-    assert THIRD_PARTY_DOCUMENT_TYPES == frozenset(
+    assert frozenset(
         {"web_article", "video_transcript", "social_thread", "newsletter_post"}
-    )
+    ) == THIRD_PARTY_DOCUMENT_TYPES
 
 
 def test_non_trainable_denylist_members():
@@ -207,8 +207,10 @@ def _seed_chunk(db_path: str, document_id: str, content_class, text: str):
 
 
 def test_search_gate_excludes_personal_reading_on_default_policy(env):
-    _seed_chunk(env["db_path"], "doc-pd", "public_domain", "quantum optics review")
-    _seed_chunk(env["db_path"], "doc-pr", "personal_reading", "quantum optics review")
+    # Distinct chunk bodies so content-addressed chunk_id does not collide —
+    # identical text would dedupe to one row and vacuously hide gate leaks.
+    _seed_chunk(env["db_path"], "doc-pd", "public_domain", "quantum optics public domain review")
+    _seed_chunk(env["db_path"], "doc-pr", "personal_reading", "quantum optics personal lane review")
     con = connect_write(env["db_path"], purpose="search")
     try:
         res = search(con, "quantum", model=StubEmbedding(), top_k=10)
@@ -234,8 +236,8 @@ def test_search_gate_includes_personal_reading_on_operator_only(env):
 
 def test_search_gate_personal_only_set_is_separate_from_restricted():
     """The two gate states are kept distinct (opposite economics)."""
-    assert PERSONAL_ONLY_CONTENT_CLASSES == frozenset({"personal_reading"})
-    assert RESTRICTED_CONTENT_CLASSES == frozenset({"restricted_pending_opt_in"})
+    assert frozenset({"personal_reading"}) == PERSONAL_ONLY_CONTENT_CLASSES
+    assert frozenset({"restricted_pending_opt_in"}) == RESTRICTED_CONTENT_CLASSES
     assert PERSONAL_ONLY_CONTENT_CLASSES.isdisjoint(RESTRICTED_CONTENT_CLASSES)
 
 

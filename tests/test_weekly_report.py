@@ -29,9 +29,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -39,8 +37,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from runtime.weekly_report import (  # noqa: E402
-    KEYSTONE_VERIFY_FLOOR,
-    WeeklyReport,
     build_report,
     collect_constraint_distribution,
     collect_cross_doc_link_rate,
@@ -55,7 +51,6 @@ from runtime.weekly_report import (  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     AutoPatchAppliedPayload,
-    ConfidenceLevel,
     ConstraintCompliance,
     CrossDocQuestionAnsweredPayload,
     DispatchCallPayload,
@@ -83,7 +78,7 @@ def log_dir(tmp_path, monkeypatch):
 
 @pytest.fixture
 def now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 @pytest.fixture

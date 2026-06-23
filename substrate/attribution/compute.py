@@ -176,7 +176,7 @@ def compute_attribution_for_synthesis(
         # _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES = RESTRICTED ∪ PERSONAL_ONLY)
         # so the two surfaces can never drift apart. (SPR-01 M2 defense-in-depth;
         # supersedes the RESTRICTED-only filter from SPR-10 M1.)
-        from substrate.graph.search import (
+        from substrate.graph.retrieval_gate import (
             _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
         )
 

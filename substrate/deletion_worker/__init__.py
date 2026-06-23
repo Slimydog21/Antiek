@@ -16,16 +16,16 @@ Discipline:
 """
 
 from .worker import (
+    CANCELLATION_WINDOW_DAYS,
+    CASCADE_TARGETS,
+    SLA_DAYS,
     CascadeDeleteStrategy,
     DeletionRequest,
     DeletionRequestStatus,
     DeletionResult,
     DeletionResultKind,
-    CASCADE_TARGETS,
-    CANCELLATION_WINDOW_DAYS,
-    SLA_DAYS,
-    run_one_cycle,
     process_request,
+    run_one_cycle,
 )
 
 __all__ = [

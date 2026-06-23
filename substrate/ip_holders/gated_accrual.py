@@ -21,7 +21,7 @@ rights holder to pay) accrues nothing.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from . import accrue_escrow, create_pre_onboarded, list_all
 
@@ -32,7 +32,7 @@ def accrue_gated_escrow(
     *,
     rights_holder_name: str,
     amount_usd: Decimal,
-) -> Optional[str]:
+) -> str | None:
     """Accrue escrow for a GATED in-copyright work to its pre-onboarded rights
     holder. The thin seam a connector calls after classification.
 

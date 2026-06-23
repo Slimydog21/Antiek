@@ -46,7 +46,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import List
 
 import pytest
 
@@ -201,7 +200,7 @@ def test_extracted_values_empty_list_empty_dict():
 # ---------------------------------------------------------------------------
 
 
-def _never_called(violations, iteration) -> List[Claim]:
+def _never_called(violations, iteration) -> list[Claim]:
     raise AssertionError("synthesizer_callable should not be invoked")
 
 

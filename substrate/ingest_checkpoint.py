@@ -45,9 +45,9 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Mapping, Optional
 
 # The dedup-key set per source is bounded so the checkpoint file cannot grow
 # without limit over a long-running continuous engine (a source with millions
@@ -84,12 +84,12 @@ class SourceCheckpoint:
     already enqueued-to-staging or merged for this source.
     """
 
-    cursor: Optional[str] = None
+    cursor: str | None = None
     last_run_ts: float = 0.0
     ingested_ids_seen: set[str] = field(default_factory=set)
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, object]) -> "SourceCheckpoint":
+    def from_dict(cls, d: Mapping[str, object]) -> SourceCheckpoint:
         seen = d.get("ingested_ids_seen") or []
         return cls(
             cursor=(str(d["cursor"]) if d.get("cursor") is not None else None),
@@ -114,7 +114,7 @@ class _AllCheckpoints:
     sources: dict[str, SourceCheckpoint] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, d: Mapping[str, object]) -> "_AllCheckpoints":
+    def from_dict(cls, d: Mapping[str, object]) -> _AllCheckpoints:
         raw = d.get("sources") if isinstance(d, Mapping) else None
         sources: dict[str, SourceCheckpoint] = {}
         if isinstance(raw, Mapping):
@@ -145,7 +145,7 @@ class CheckpointStore:
     def __init__(
         self,
         *,
-        path: Optional[str] = None,
+        path: str | None = None,
         max_seen_per_source: int = DEFAULT_MAX_SEEN_PER_SOURCE,
         now: Callable[[], float] = None,  # type: ignore[assignment]
     ) -> None:
@@ -190,7 +190,7 @@ class CheckpointStore:
         Reads the file each call so a restarted process sees committed state."""
         return self._read_all().sources.get(source, SourceCheckpoint())
 
-    def cursor(self, source: str) -> Optional[str]:
+    def cursor(self, source: str) -> str | None:
         return self.get(source).cursor
 
     def all_sources(self) -> dict[str, SourceCheckpoint]:
@@ -209,8 +209,8 @@ class CheckpointStore:
         self,
         source: str,
         *,
-        cursor: Optional[str] = None,
-        new_bases: Optional[set[str]] = None,
+        cursor: str | None = None,
+        new_bases: set[str] | None = None,
     ) -> SourceCheckpoint:
         """Atomically advance ``source``'s checkpoint after one unit of work.
 
@@ -245,7 +245,7 @@ class CheckpointStore:
         self._write_all(all_state)
         return cp
 
-    def reset(self, source: Optional[str] = None) -> None:
+    def reset(self, source: str | None = None) -> None:
         """Clear one source's checkpoint, or (source=None) the whole store.
         Operator/test affordance — never called on the hot path."""
         all_state = self._read_all()

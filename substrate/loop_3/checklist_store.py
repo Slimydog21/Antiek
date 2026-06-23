@@ -14,10 +14,10 @@ criterion. The store is single-writer per the canonical
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from .unlock_gate import ALL_CRITERIA, Loop3UnlockCriterion, UnlockChecklist
+from .unlock_gate import Loop3UnlockCriterion, UnlockChecklist
 
 
 @dataclass(frozen=True)

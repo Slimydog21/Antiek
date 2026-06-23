@@ -18,8 +18,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 from processing.embedding.embed import EmbeddingProvider
 
@@ -38,7 +38,7 @@ _ARXIV_PDF_ID_RE = re.compile(
 )
 
 
-def _arxiv_id_from_pdf_url(pdf_url: str) -> Optional[str]:
+def _arxiv_id_from_pdf_url(pdf_url: str) -> str | None:
     """Extract the arXiv id from an ``arxiv.org/pdf/<id>`` (or ``/abs/<id>``) URL,
     or ``None`` when the URL is not an arXiv host. The id keeps its version suffix
     (``2401.00001v2``) — the same surface ``trace`` is keyed by. Used only to
@@ -53,7 +53,7 @@ def _arxiv_id_from_pdf_url(pdf_url: str) -> Optional[str]:
 
 def _record_oa_arxiv_fetch_audit(
     *,
-    db_path: Optional[str],
+    db_path: str | None,
     arxiv_id: str,
     document_id: str,
     source_url: str,
@@ -120,8 +120,8 @@ class OAIngestResult:
     redistributable: bool
     servability: str
     servable_full_text: bool
-    doi: Optional[str]
-    license_uri: Optional[str]
+    doi: str | None
+    license_uri: str | None
     license_basis: str
 
 
@@ -139,16 +139,16 @@ def build_license_basis(
 def ingest_oa_item(
     *,
     investigation_id: str,
-    doi: Optional[str],
+    doi: str | None,
     pdf_url: str,
     resolution: LicenseResolution,
     license_basis: str,
-    source_uri: Optional[str] = None,
-    pdf_bytes: Optional[bytes] = None,
-    fetch_pdf: Optional[PdfUrlFetcher] = None,
+    source_uri: str | None = None,
+    pdf_bytes: bytes | None = None,
+    fetch_pdf: PdfUrlFetcher | None = None,
     source_tier: int = DEFAULT_OA_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> OAIngestResult:
     """Ingest one resolved OA item's full text through the shared servable
     path, gated on ``resolution``.

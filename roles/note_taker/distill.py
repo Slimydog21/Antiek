@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, Protocol, Sequence
+from typing import Protocol
 
 try:
     from .parser import ExtractedNote, parse_notes_response
@@ -32,7 +33,10 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from roles.note_taker.parser import ExtractedNote, parse_notes_response  # type: ignore[no-redef]
+    from roles.note_taker.parser import (  # type: ignore[no-redef]
+        ExtractedNote,
+        parse_notes_response,
+    )
     from roles.note_taker.prompt import NOTE_TAKER_SYSTEM_PROMPT  # type: ignore[no-redef]
 
 
@@ -45,13 +49,13 @@ class DistilledQuestion:
 
     text: str
     asks_about: tuple[str, ...] = ()
-    anchor_region_id: Optional[str] = None
+    anchor_region_id: str | None = None
 
 
 @dataclass(frozen=True)
 class Distillation:
-    insights: List[ExtractedNote] = field(default_factory=list)
-    questions: List[DistilledQuestion] = field(default_factory=list)
+    insights: list[ExtractedNote] = field(default_factory=list)
+    questions: list[DistilledQuestion] = field(default_factory=list)
 
 
 class Distiller(Protocol):
@@ -82,10 +86,11 @@ class DispatchDistiller:
 
     def _build_prompt(self, text: str, context: str, source_event_ids: Sequence[str]) -> str:
         ids = ", ".join(source_event_ids) if source_event_ids else "(none)"
+        context_block = f"Project context:\n{context}\n\n" if context else ""
         return (
             f"{self._system_prompt}\n\n"
             f"Source event ids you may attribute to: {ids}\n"
-            f"{('Project context:\n' + context) if context else ''}\n\n"
+            f"{context_block}"
             f"Distill the following into insights + questions:\n\n{text}"
         )
 
@@ -93,7 +98,7 @@ class DispatchDistiller:
     def _parse(response_text: str) -> Distillation:
         notes = parse_notes_response(response_text)
         # Questions ride in the same JSON object under a "questions" key.
-        questions: List[DistilledQuestion] = []
+        questions: list[DistilledQuestion] = []
         from roles._json_decode import extract_json_object
         obj = extract_json_object(response_text) or {}
         for q in obj.get("questions", []) if isinstance(obj, dict) else []:

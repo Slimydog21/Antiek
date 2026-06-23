@@ -27,7 +27,6 @@ edit adds itself to the canonical source, not a fifth copy.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 INTERVIEWER_PROMPT_VERSION = "1.0.0"
 INTERVIEWER_TIER = "pro"  # multi-turn reasoning, not bulk
@@ -126,18 +125,18 @@ class InterviewerContext:
     project_title: str
     topic_description: str
     framing: str
-    must_cover: List[str] = field(default_factory=list)
+    must_cover: list[str] = field(default_factory=list)
     consent_recorded: bool = False
-    transcript: List[TranscriptTurn] = field(default_factory=list)
+    transcript: list[TranscriptTurn] = field(default_factory=list)
 
 
-def _format_must_cover(items: List[str]) -> str:
+def _format_must_cover(items: list[str]) -> str:
     if not items:
         return "_No must-cover questions configured. Drive the conversation toward the topic naturally._"
     return "\n".join(f"{i}. {q}" for i, q in enumerate(items))
 
 
-def _format_transcript(turns: List[TranscriptTurn]) -> str:
+def _format_transcript(turns: list[TranscriptTurn]) -> str:
     if not turns:
         return "_No turns yet — this is the first interviewer utterance._"
     return "\n\n".join(

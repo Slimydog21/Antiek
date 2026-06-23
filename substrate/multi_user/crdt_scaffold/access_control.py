@@ -38,7 +38,7 @@ monotonic per-actor.
 from __future__ import annotations
 
 import enum
-from typing import Iterable, Optional, Sequence
+from collections.abc import Iterable, Sequence
 
 from .interfaces import (
     AccessControlOp,
@@ -72,8 +72,8 @@ def _latest(
     subject: str,
     doc_id: str,
     kind: type,
-    bounded_by: Optional[VectorClock] = None,
-) -> Optional[AccessControlOp]:
+    bounded_by: VectorClock | None = None,
+) -> AccessControlOp | None:
     """Return the latest op of ``kind`` whose subject == ``subject``
     and doc_id == ``doc_id``, optionally only counting ops that
     causally-precede ``bounded_by``. "Latest" by counter within actor;

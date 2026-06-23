@@ -18,12 +18,11 @@ from __future__ import annotations
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
 from substrate.event_log import emit_typed
-
 
 # Status state machine per master-spec §9.10.
 VALID_STATUSES: frozenset[str] = frozenset({
@@ -49,27 +48,27 @@ FIRST_COHORT_PUBLISHERS: tuple[str, ...] = (
 class IpHolder:
     ip_holder_id: str
     display_name: str
-    legal_contact_email: Optional[str]
+    legal_contact_email: str | None
     status: str
     escrow_balance_usd: Decimal
-    escrow_account_ref: Optional[str]
-    notification_sent_at: Optional[str]
-    claimed_at: Optional[str]
-    opted_out_at: Optional[str]
+    escrow_account_ref: str | None
+    notification_sent_at: str | None
+    claimed_at: str | None
+    opted_out_at: str | None
     created_at: str
     metadata: dict = field(default_factory=dict)
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def create_pre_onboarded(
     con: Any,
     *,
     display_name: str,
-    legal_contact_email: Optional[str] = None,
-    metadata: Optional[dict] = None,
+    legal_contact_email: str | None = None,
+    metadata: dict | None = None,
 ) -> str:
     """Create a pre-onboarded IP holder account.
 
@@ -112,7 +111,7 @@ def claim(
     con: Any,
     ip_holder_id: str,
     *,
-    stripe_connect_account_id: Optional[str] = None,
+    stripe_connect_account_id: str | None = None,
 ) -> None:
     """Publisher claims their account. Transitions invited → claimed.
     Unlocks the Stripe Connect payout path; the escrow balance can
@@ -180,7 +179,7 @@ def accrue_escrow(con: Any, ip_holder_id: str, amount_usd: Decimal) -> None:
     )
 
 
-def get(con: Any, ip_holder_id: str) -> Optional[IpHolder]:
+def get(con: Any, ip_holder_id: str) -> IpHolder | None:
     """Read a single IP holder. Returns None if not found."""
     row = con.execute(
         """
@@ -197,7 +196,7 @@ def get(con: Any, ip_holder_id: str) -> Optional[IpHolder]:
     return _row_to_holder(row)
 
 
-def list_all(con: Any, status: Optional[str] = None) -> list[IpHolder]:
+def list_all(con: Any, status: str | None = None) -> list[IpHolder]:
     """List IP holders, optionally filtered by status."""
     if status is not None:
         if status not in VALID_STATUSES:

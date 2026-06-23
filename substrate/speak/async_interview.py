@@ -32,17 +32,17 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
-
-from orchestration.interview.orchestrator import ConsentRequired
-from runtime.db_lock import connect_write
-from .schema import ensure_speak_schema
+from datetime import UTC, datetime
+from typing import Any
 
 # Reused, NOT forked: the voice substrate + interviewer role.
 from acquisition.voice import ingest_voice_note  # noqa: E402
+from orchestration.interview.orchestrator import ConsentRequired
+from runtime.db_lock import connect_write
 
+from .schema import ensure_speak_schema
 
 # ---------------------------------------------------------------------------
 # Errors
@@ -67,9 +67,9 @@ class PendingTranscript:
 
     question_id: str
     raw_text: str
-    corrected_text: Optional[str] = None
+    corrected_text: str | None = None
 
-    def correct(self, text: str) -> "PendingTranscript":
+    def correct(self, text: str) -> PendingTranscript:
         return PendingTranscript(self.question_id, self.raw_text, text)
 
     @property
@@ -138,7 +138,7 @@ class AsyncInterviewSession:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _load_turns(con: Any, interview_id: str) -> list[dict]:
@@ -156,7 +156,7 @@ def _load_turns(con: Any, interview_id: str) -> list[dict]:
         return []
 
 
-def _save_turns(con: Any, interview_id: str, turns: list[dict], *, status: Optional[str] = None) -> None:
+def _save_turns(con: Any, interview_id: str, turns: list[dict], *, status: str | None = None) -> None:
     if status is not None:
         con.execute(
             "UPDATE interviews SET transcript_turns = ?, status = ?, "
@@ -201,9 +201,9 @@ def start_async_interview(
     db_path: str,
     *,
     project_id: str,
-    interview_guide: Optional[dict] = None,
-    informant_handle: Optional[str] = None,
-    interview_id: Optional[str] = None,
+    interview_guide: dict | None = None,
+    informant_handle: str | None = None,
+    interview_id: str | None = None,
 ) -> AsyncInterviewSession:
     """Create an async interview under a project. If ``interview_guide``
     is given and the project has none, persist it on the project (the
@@ -250,8 +250,8 @@ def transcribe(
     audio_bytes: bytes,
     *,
     filename: str,
-    transcriber: Optional[Any] = None,
-    language: Optional[str] = None,
+    transcriber: Any | None = None,
+    language: str | None = None,
 ) -> str:
     """Transcribe a voice note to RAW text (reuse WhisperTranscriber).
     Raises ``AsrError`` on failure — the caller surfaces it for retry,
@@ -270,8 +270,8 @@ def transcribe(
 class AnswerResult:
     interview_id: str
     question_id: str
-    document_id: Optional[str]
-    skipped_reason: Optional[str]
+    document_id: str | None
+    skipped_reason: str | None
     distilled_text: str
 
 
@@ -281,9 +281,9 @@ def submit_answer(
     interview_id: str,
     question_id: str,
     transcript: str,
-    recorded_at: Optional[datetime] = None,
+    recorded_at: datetime | None = None,
     duration_seconds: float = 0.0,
-    embedder: Optional[Any] = None,
+    embedder: Any | None = None,
     min_word_count: int = 1,
 ) -> AnswerResult:
     """Submit a (corrected) transcript as the answer to ``question_id``.
@@ -356,7 +356,7 @@ def next_followups(
     db_path: str,
     *,
     interview_id: str,
-    dispatch_fn: Optional[Callable[..., Any]] = None,
+    dispatch_fn: Callable[..., Any] | None = None,
     max_followups: int = 3,
 ) -> list[FollowupQuestion]:
     """Generate the next async follow-up question(s) from accumulated

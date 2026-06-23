@@ -10,8 +10,8 @@ for the SPR-10 audit. Importing this module imports all five connectors, so the
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from . import (
     hathitrust,

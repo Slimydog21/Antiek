@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
 
 try:
     from ...constants import DECOMPOSER_PARAPHRASE_COSINE_MAX
@@ -72,8 +72,8 @@ def check_paraphrases(
     sub_questions: Sequence[str],
     *,
     threshold: float = DECOMPOSER_PARAPHRASE_COSINE_MAX,
-    embedder: Optional[EmbeddingModel] = None,
-) -> List[ParaphraseFlag]:
+    embedder: EmbeddingModel | None = None,
+) -> list[ParaphraseFlag]:
     """Return the list of flagged sub-questions (cosine ≥ threshold).
 
     Empty list ⇒ decomposition is acceptable. The threshold is the
@@ -83,7 +83,7 @@ def check_paraphrases(
         return []
     emb = embedder or _load_default_embedder()
     q_vec = emb.encode(question)
-    flagged: List[ParaphraseFlag] = []
+    flagged: list[ParaphraseFlag] = []
     for i, sq in enumerate(sub_questions):
         sq_vec = emb.encode(sq)
         cos = _cosine(q_vec, sq_vec)

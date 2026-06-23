@@ -16,20 +16,20 @@ import tempfile
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.schema import init_database
 from substrate.graph import ops
 from substrate.graph.insight_question import promote_question
+from substrate.graph.schema import init_database
 from substrate.speak import invitations, project
 from substrate.speak.consent import ConsentScope, record_consent
+from substrate.speak.drw_gap_source import (
+    SPEAK_PROJECT_NODE_KEY,
+    CompositeGapSource,
+    DRWGapSource,
+    default_gap_source,
+)
 from substrate.speak.interviewer_context import SpeakGraphGapSource, build_conditioning_context
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
-from substrate.speak.drw_gap_source import (
-    CompositeGapSource,
-    DRWGapSource,
-    SPEAK_PROJECT_NODE_KEY,
-    default_gap_source,
-)
 
 
 class StubEmbedding:

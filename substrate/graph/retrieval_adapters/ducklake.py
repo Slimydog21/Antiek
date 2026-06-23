@@ -27,7 +27,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 try:
     from ..search import EmbeddingModel
@@ -64,7 +65,7 @@ class DuckLakeSubstrate:
     def __init__(self, con: Any, *, model: EmbeddingModel, has_creds: bool):
         self._con = con
         self._model = model
-        self.status: Optional[str] = None if has_creds else _SKIPPED
+        self.status: str | None = None if has_creds else _SKIPPED
 
     @classmethod
     def open(
@@ -72,8 +73,8 @@ class DuckLakeSubstrate:
         db_path: str,
         *,
         model: EmbeddingModel,
-        has_creds: Optional[bool] = None,
-    ) -> "DuckLakeSubstrate":
+        has_creds: bool | None = None,
+    ) -> DuckLakeSubstrate:
         # §16: read-only against the local source-of-truth file.
         creds = _has_object_store_creds() if has_creds is None else has_creds
         con = connect_read(db_path)
@@ -88,8 +89,8 @@ class DuckLakeSubstrate:
         text: str,
         *,
         top_k: int = 5,
-        source_tier_max: Optional[int] = None,
-        document_ids: Optional[Sequence[str]] = None,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
     ) -> dict:
         if self.skipped:

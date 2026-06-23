@@ -10,7 +10,6 @@ the right contract from day one.
 from __future__ import annotations
 
 import math
-import os
 import random
 from dataclasses import dataclass
 

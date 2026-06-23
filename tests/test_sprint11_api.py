@@ -22,12 +22,11 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from substrate.schemas import (
+    TYPED_PAYLOAD_ACTION_TYPES,
     ActionType,
     InvestigationSpawnedFromPayload,
     InvestigationStartRequestedPayload,
-    TYPED_PAYLOAD_ACTION_TYPES,
 )
-
 
 # ── 1. Schema additions ─────────────────────────────────────────────
 
@@ -207,6 +206,24 @@ def test_get_chunk_servable_source_returns_body(temp_substrate):
     assert body["text"] == "The open chunk text."
     # The named-source label resolves either way.
     assert body["document_title"] == "Title of doc-public"
+
+
+def test_get_chunk_personal_reading_withholds_body(temp_substrate):
+    """RG-03: personal_reading is owner-only — the HTTP chunk path must
+    withhold the body on the same non-privileged gate as search/VSS."""
+    chunk_id = _seed_chunk(
+        temp_substrate, document_id="doc-personal",
+        content_class="personal_reading",
+        text="SECRET owner-only essay body that must not be served.",
+    )
+    client = _client(temp_substrate)
+    body = client.get(f"/chunks/{chunk_id}").json()
+    assert body["servable"] is False
+    # Canonical ASR SR-09 label (consolidation unified #53's "personal_only").
+    assert body["servability"] == "personal_readable"
+    assert body["text"] == ""
+    assert "SECRET" not in body["text"]
+    assert body["document_title"] == "Title of doc-personal"
 
 
 def test_get_chunk_restricted_source_not_opened(temp_substrate):

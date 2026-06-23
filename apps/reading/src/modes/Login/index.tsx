@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import wernerDefault from "../../brand/werner/poses/anchor/werner_default_v5_nano_corrected.png";
 import { LemonButton, LemonInput } from "../../components/lemon";
-import { requestMagicLink, useAuth } from "../../lib/auth";
+import {
+  authCallbackErrorDisplay,
+  authLoginErrorDisplay,
+  requestMagicLink,
+  useAuth,
+} from "../../lib/auth";
+import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
+
+import { track, trackException } from "../../lib/analytics";
 
 /**
  * Login surface — Antiek's owned login page (H6 ship, 2026-05-21
@@ -28,6 +36,8 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [errorHint, setErrorHint] = useState<string | null>(null);
+  const [diagnosticCode, setDiagnosticCode] = useState<AuthDiagnosticCode | null>(null);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -45,17 +55,47 @@ export default function Login() {
     (location.state as { from?: string } | null)?.from ??
     "/";
 
+  // Callback failures redirect here from api.antiek.ai (SPR-03).
+  useEffect(() => {
+    const callbackError = searchParams.get("error");
+    const display = authCallbackErrorDisplay(callbackError);
+    if (!display) return;
+    setStatus("error");
+    setErrorMsg(display.message);
+    setErrorHint(display.hint);
+    setDiagnosticCode(
+      callbackError === "magic_link_expired"
+        ? "B-POLICY-CALLBACK-EXPIRED"
+        : callbackError === "magic_link_invalid"
+          ? "B-POLICY-CALLBACK-INVALID"
+          : callbackError === "not_authorized"
+            ? "B-POLICY-CALLBACK-NOT-AUTH"
+            : null,
+    );
+    const next = new URLSearchParams(searchParams);
+    next.delete("error");
+    navigate({ pathname: "/login", search: next.toString() ? `?${next}` : "" }, { replace: true });
+  }, [searchParams, navigate]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email) return;
     setStatus("sending");
     setErrorMsg("");
+    setErrorHint(null);
+    setDiagnosticCode(null);
+    track("login_requested");
     const result = await requestMagicLink(email, nextPath);
     if (result.kind === "sent") {
       setStatus("sent");
+      track("login_link_sent");
     } else {
       setStatus("error");
-      setErrorMsg(result.message);
+      const { message, hint } = authLoginErrorDisplay(result);
+      setErrorMsg(message);
+      setErrorHint(hint);
+      setDiagnosticCode(result.diagnostic_code);
+      trackException(new Error(`Magic link failed: ${message}`));
     }
   }
 
@@ -142,7 +182,12 @@ export default function Login() {
                   {status === "sending" ? "Sending…" : "Send sign-in link"}
                 </LemonButton>
                 {status === "error" && (
-                  <p className="text-[12px] text-emperor mt-1">{errorMsg}</p>
+                  <div className="mt-1 space-y-1" data-auth-diagnostic={diagnosticCode ?? undefined}>
+                    <p className="text-[12px] text-emperor">{errorMsg}</p>
+                    {errorHint ? (
+                      <p className="text-[11px] text-shadow-2 dark:text-starlight leading-relaxed">{errorHint}</p>
+                    ) : null}
+                  </div>
                 )}
               </form>
             </>

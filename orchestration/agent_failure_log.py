@@ -57,17 +57,17 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Iterator
 
 DEFAULT_LOG_PATH = Path.home() / ".antiek" / "agent_failures.jsonl"
 
 
 def _now_iso() -> str:
     """Wall-clock UTC ISO-8601 with millisecond precision."""
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -208,7 +208,7 @@ def recent_failures(*, since_days: int, path: Path | None = None) -> list[AgentF
     """Return failures from the last ``since_days`` (UTC)."""
     if since_days < 0:
         raise ValueError("since_days must be non-negative")
-    cutoff = datetime.now(timezone.utc).timestamp() - since_days * 86400
+    cutoff = datetime.now(UTC).timestamp() - since_days * 86400
     out: list[AgentFailure] = []
     for record_ in iter_records(path):
         try:

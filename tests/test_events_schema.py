@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from substrate.constants import CONFIDENCE_LEVELS  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
+    WRESTLING_ACTION_TYPES,
     ActionType,
     ArtifactGeneratedPayload,
     ArtifactInteractedPayload,
@@ -57,9 +58,7 @@ from substrate.schemas import (  # noqa: E402
     UserAcceptDistillationPayload,
     UserEditDistillationPayload,
     UserRejectDistillationPayload,
-    WRESTLING_ACTION_TYPES,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers — one valid instance per variant.
@@ -324,7 +323,7 @@ def test_emitted_at_serializes_with_z_suffix():
 
 def test_emitted_at_serializes_aware_datetime_as_z():
     # tz-aware UTC datetime should also serialize as 'Z'.
-    aware = datetime(2026, 5, 16, 12, 0, 0, tzinfo=timezone.utc)
+    aware = datetime(2026, 5, 16, 12, 0, 0, tzinfo=UTC)
     payload = _make_payload(ActionType.DISPATCH_CALL)
     e = Event(
         event_id="evt-aware", investigation_id="inv-1",

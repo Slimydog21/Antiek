@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 from .pd_connector_base import BookCandidate, ThrottledFetcher
 
@@ -84,7 +83,7 @@ def _rights_strings(item: dict) -> list[str]:
     return out
 
 
-def loc_rights_input(item: dict) -> tuple[Optional[str], Optional[str]]:
+def loc_rights_input(item: dict) -> tuple[str | None, str | None]:
     """THE one LoC rights-statement → classify-input mapping. Returns
     (license_uri, pd_signal); both None when PD is NOT established → classify()
     gates. Deny-by-default: an explicit copyright claim / negated-PD phrase /
@@ -110,7 +109,7 @@ def loc_rights_input(item: dict) -> tuple[Optional[str], Optional[str]]:
     return None, None
 
 
-def _pdf_url(item: dict) -> Optional[str]:
+def _pdf_url(item: dict) -> str | None:
     """Find a PDF resource URL on a loc.gov item record."""
     for res in item.get("resources") or []:
         if not isinstance(res, dict):
@@ -123,7 +122,7 @@ def _pdf_url(item: dict) -> Optional[str]:
     return pdf if isinstance(pdf, str) and pdf else None
 
 
-def item_to_candidate(item: dict) -> Optional[BookCandidate]:
+def item_to_candidate(item: dict) -> BookCandidate | None:
     """Build a candidate from one loc.gov item record. A non-PD/unclear rights
     statement still yields a candidate (gated by classify at ingest) so the
     negative branch is testable; an item with no PDF resource is skipped."""

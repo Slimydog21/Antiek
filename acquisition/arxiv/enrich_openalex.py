@@ -53,8 +53,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
 
 import httpx
 
@@ -146,7 +145,7 @@ class _CoverageTally:
 # ---------------------------------------------------------------------------
 
 
-def build_enrichment(raw_work: dict, *, fetched_at: Optional[datetime] = None) -> dict:
+def build_enrichment(raw_work: dict, *, fetched_at: datetime | None = None) -> dict:
     """Build the ``openalex_enrichment`` metadata payload from a raw work dict.
 
     PURE: no network, no DB. ``raw_work`` is the full OpenAlex work JSON (as
@@ -156,7 +155,7 @@ def build_enrichment(raw_work: dict, *, fetched_at: Optional[datetime] = None) -
     "just store the edges in metadata" — id + DOI per reference, NOT minted as
     graph nodes.
     """
-    when = (fetched_at or datetime.now(timezone.utc)).isoformat()
+    when = (fetched_at or datetime.now(UTC)).isoformat()
 
     authors = [
         {
@@ -220,7 +219,7 @@ def merge_enrichment(existing_metadata: dict, enrichment: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _load_metadata(con: LockedConnection, document_id: str) -> Optional[dict]:
+def _load_metadata(con: LockedConnection, document_id: str) -> dict | None:
     """Read + parse the existing ``documents.metadata`` JSON for a row.
 
     Returns the parsed dict, or ``None`` when the row is absent. Raises
@@ -247,12 +246,12 @@ def enrich_one(
     con: LockedConnection,
     *,
     arxiv_id: str,
-    doi: Optional[str] = None,
-    client: Optional[httpx.Client] = None,
-    throttle: Optional[OAThrottle] = None,
-    base_url: Optional[str] = None,
+    doi: str | None = None,
+    client: httpx.Client | None = None,
+    throttle: OAThrottle | None = None,
+    base_url: str | None = None,
     mailto: str = POLITE_POOL_MAILTO,
-    fetched_at: Optional[datetime] = None,
+    fetched_at: datetime | None = None,
 ) -> bool:
     """Enrich ONE arXiv row in place. Returns ``True`` on a match (row updated),
     ``False`` on a miss (no OpenAlex result; row left UNTOUCHED).
@@ -299,10 +298,10 @@ class _ArxivRow:
     """An arXiv row to enrich, read off the documents table."""
 
     arxiv_id: str
-    doi: Optional[str] = None
+    doi: str | None = None
 
 
-def _arxiv_rows_to_enrich(con: LockedConnection) -> List[_ArxivRow]:
+def _arxiv_rows_to_enrich(con: LockedConnection) -> list[_ArxivRow]:
     """Find the arXiv OAI rows in the corpus that are candidates for enrichment.
 
     Selects rows whose metadata names ``source == "arxiv_oai_pmh"`` and carries an
@@ -311,7 +310,7 @@ def _arxiv_rows_to_enrich(con: LockedConnection) -> List[_ArxivRow]:
     idempotency is at the metadata-merge level (the key is replaced, not
     duplicated)."""
     rows = con.execute("SELECT document_id, metadata FROM documents").fetchall()
-    out: List[_ArxivRow] = []
+    out: list[_ArxivRow] = []
     for _doc_id, raw in rows:
         if raw is None:
             continue
@@ -330,13 +329,13 @@ def _arxiv_rows_to_enrich(con: LockedConnection) -> List[_ArxivRow]:
 
 def enrich_corpus(
     *,
-    arxiv_ids: Optional[List[str]] = None,
-    db_path: Optional[str] = None,
-    client: Optional[httpx.Client] = None,
-    throttle: Optional[OAThrottle] = None,
-    base_url: Optional[str] = None,
+    arxiv_ids: list[str] | None = None,
+    db_path: str | None = None,
+    client: httpx.Client | None = None,
+    throttle: OAThrottle | None = None,
+    base_url: str | None = None,
     mailto: str = POLITE_POOL_MAILTO,
-    fetched_at: Optional[datetime] = None,
+    fetched_at: datetime | None = None,
 ) -> EnrichmentCoverage:
     """Enrich a corpus of arXiv rows with OpenAlex, under ONE write lock.
 
@@ -391,9 +390,9 @@ def enrich_corpus(
 def render_coverage_report(
     coverage: EnrichmentCoverage,
     *,
-    db_path: Optional[str] = None,
-    generated_at: Optional[datetime] = None,
-    provisional_note: Optional[str] = None,
+    db_path: str | None = None,
+    generated_at: datetime | None = None,
+    provisional_note: str | None = None,
 ) -> str:
     """Render the markdown coverage report (matches ``reports/arxiv_census.md``
     style). Every % is COMPUTED from the counts via ``EnrichmentCoverage.coverage``,
@@ -405,11 +404,11 @@ def render_coverage_report(
     operator run passes ``provisional_note=None`` and gets no banner. The note
     never alters any count — the %'s stay computed from the tally.
     """
-    when = (generated_at or datetime.now(timezone.utc)).isoformat()
+    when = (generated_at or datetime.now(UTC)).isoformat()
     pct = coverage.coverage * 100.0
     miss_pct = (coverage.missed / coverage.attempted * 100.0) if coverage.attempted else 0.0
 
-    lines: List[str] = []
+    lines: list[str] = []
     lines.append("# arXiv → OpenAlex enrichment coverage")
     lines.append("")
     if provisional_note:
@@ -498,9 +497,9 @@ def write_coverage_report(
     coverage: EnrichmentCoverage,
     out_path: str,
     *,
-    db_path: Optional[str] = None,
-    generated_at: Optional[datetime] = None,
-    provisional_note: Optional[str] = None,
+    db_path: str | None = None,
+    generated_at: datetime | None = None,
+    provisional_note: str | None = None,
 ) -> None:
     """Write the coverage report to ``out_path``. ``provisional_note`` (when set)
     renders the PROVISIONAL banner — pass it for a seeded/fixture pass, leave it

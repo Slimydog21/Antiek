@@ -41,12 +41,12 @@ investigations, which also are not a table.
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any
 
 from substrate.event_log.events import default_events_dir, trajectory
 from substrate.graph.search import EmbeddingModel
-
 
 # ---------------------------------------------------------------------------
 # Event-log enumeration helpers (mirror the daemon / list_investigations scan)
@@ -87,11 +87,11 @@ class PersonalAsset:
     kind: str  # "meta_reading" | "saved_read"
     title: str
     # The reader's prompt (meta_reading) or null (saved_read).
-    prompt: Optional[str]
+    prompt: str | None
     # The owned doc(s) the asset is about — meta_reading's corpus, or the single
     # read document for a saved_read. The §9 provenance anchor.
     document_ids: list[str]
-    emitted_at: Optional[str]
+    emitted_at: str | None
     open_route: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -117,9 +117,9 @@ def _title_for_meta_reading(payload: dict[str, Any]) -> str:
 
 def list_personal_assets(
     *,
-    events_dir: Optional[str] = None,
+    events_dir: str | None = None,
     include_saved_reads: bool = True,
-    book_title_resolver: Optional[Any] = None,
+    book_title_resolver: Any | None = None,
 ) -> list[PersonalAsset]:
     """Enumerate the personal-space assets from the event log, newest first.
 
@@ -456,7 +456,7 @@ def _list_candidate_projects(events_dir: str) -> list[tuple[str, str]]:
     are skipped (nothing to match against — honest, not a 0-score candidate)."""
     out: list[tuple[str, str]] = []
     for iid in _list_investigation_ids(events_dir):
-        question: Optional[str] = None
+        question: str | None = None
         for ev in trajectory(iid, events_dir=events_dir):
             if ev.get("action_type") != "investigation.start_requested":
                 continue
@@ -474,10 +474,10 @@ def match_document_to_investigations(
     *,
     doc_text: str,
     model: EmbeddingModel,
-    events_dir: Optional[str] = None,
+    events_dir: str | None = None,
     threshold: float = MATCH_SUGGESTION_THRESHOLD,
     top_k: int = 3,
-    exclude_investigation_id: Optional[str] = None,
+    exclude_investigation_id: str | None = None,
 ) -> list[ProjectMatch]:
     """Rank candidate research projects by how well ``doc_text`` matches each
     project's question. Returns the matches AT OR ABOVE ``threshold``, best

@@ -11,6 +11,19 @@ from .adapter import (
     ingest_pdf,
     ingest_servable_book,
 )
+
+# SPR-06 Wave-2 PD connectors + their shared spine glue. Imported here so the
+# "connectors importable/registered" gate is a single package import and SPR-09
+# can rotate over the registry.
+from .pd_connector_base import (
+    BookCandidate,
+    FetchError,
+    ThrottledFetcher,
+    classify_and_ingest,
+)
+from .pd_connector_base import (
+    IngestOutcome as PdConnectorIngestOutcome,
+)
 from .public_domain import (
     IngestOutcome,
     PublicDomainWork,
@@ -23,17 +36,6 @@ from .public_domain import (
     text_to_pdf,
 )
 from .reader import PdfPage, ReadResult, read_pdf
-
-# SPR-06 Wave-2 PD connectors + their shared spine glue. Imported here so the
-# "connectors importable/registered" gate is a single package import and SPR-09
-# can rotate over the registry.
-from .pd_connector_base import (
-    BookCandidate,
-    FetchError,
-    IngestOutcome as PdConnectorIngestOutcome,
-    ThrottledFetcher,
-    classify_and_ingest,
-)
 
 __all__ = [
     "IngestBookResult",

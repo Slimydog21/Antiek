@@ -27,10 +27,8 @@ observations may ride without a region but get marked "low".
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from .._json_decode import extract_json_object
-
 
 _VALID_CONFIDENCE: frozenset[str] = frozenset({"low", "moderate", "high"})
 

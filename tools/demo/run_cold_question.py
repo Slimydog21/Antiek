@@ -52,7 +52,7 @@ import argparse
 import json
 import sys
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -61,9 +61,9 @@ def _post_investigation(
     base_url: str, *,
     question: str,
     context: str,
-    topic_slug: Optional[str],
+    topic_slug: str | None,
     max_sub_questions: int,
-    investigation_id: Optional[str],
+    investigation_id: str | None,
     timeout: float = 10.0,
 ) -> dict[str, Any]:
     """POST /investigations. Returns the response body on 202."""
@@ -147,9 +147,9 @@ def run(
     base_url: str,
     question: str,
     context: str,
-    topic_slug: Optional[str],
+    topic_slug: str | None,
     max_sub_questions: int,
-    investigation_id: Optional[str],
+    investigation_id: str | None,
     poll_interval: float,
     timeout_seconds: float,
     print_trajectory: bool,
@@ -172,7 +172,7 @@ def run(
     print(f"Polling every {poll_interval}s; timeout {timeout_seconds}s …")
 
     deadline = time.monotonic() + timeout_seconds
-    last_status_str: Optional[str] = None
+    last_status_str: str | None = None
     while time.monotonic() < deadline:
         try:
             status = _get_status(base_url, inv_id)
@@ -208,7 +208,7 @@ def run(
     return 2
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         description=(
             "Run a cold question through the Antiek Loop 1 orchestrator "

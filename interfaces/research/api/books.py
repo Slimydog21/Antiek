@@ -25,16 +25,100 @@ with the single writer.
 from __future__ import annotations
 
 import logging
-from typing import Literal, Optional
+from typing import Literal, cast
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
+from substrate.books.serve import ServeResult
 
+from .operator_allowlist import operator_allowlist_from_env
 from .serve_guard import serve_full_text_guarded
 
 logger = logging.getLogger("antiek.interfaces.books")
+
+# §9.0 owner-read policy tags. The owner's OWN-corpus read path (talk-to-book +
+# corpus search) passes the PRIVILEGED ``operator_only`` tag so the retrieval
+# gate admits the owner's gated/personal content; everything else stays on the
+# non-privileged default. The string is the canonical privileged tag from
+# ``substrate.graph.retrieval_gate.PRIVILEGED_POLICY_TAGS`` — kept here as a
+# named local so the owner-read intent is legible at the call site (the gate
+# module remains the single source of which tags are privileged).
+_OWNER_READ_POLICY_TAG = "operator_only"
+_PUBLIC_READ_POLICY_TAG = "attribution_eligible"
+
+# Auth methods the middleware (``app.py::_operator_auth_middleware``) stamps on
+# ``request.state.auth_method`` once a caller has PROVEN owner identity with a
+# real credential. These four are the ONLY paths past the middleware when
+# enforcement is ON (an unauthenticated caller is 401'd and never reaches the
+# endpoint), so each one is a positive proof that THIS request is the owner.
+#
+# ``unauthenticated_local`` is deliberately EXCLUDED: it means enforcement is
+# OFF (no ANTIEK_OPERATOR_EMAIL / _TOKEN / _SECRET set). The §9.0 gated-content
+# bypass must bind to a real credential, never to "auth happened to be disabled"
+# — otherwise a box accidentally deployed without auth would serve the owner's
+# gated/personal corpus to any caller. Fail-closed by construction: the bypass
+# is granted only on an explicit authenticated method, never by default. (The
+# rest of the app gives ``unauthenticated_local`` full operator SCOPES for
+# local dev convenience; the §9.0 retrieval bypass is held to the stricter
+# bar deliberately — see the handoff steelman.)
+#
+# ── SINGLE-OPERATOR ENFORCEMENT (CLAUDE.md invariant #5) ─────────────────────
+# ``authenticated ⇒ owner`` holds ONLY under the single-operator invariant.
+# ``ANTIEK_OPERATOR_EMAIL`` is parsed as a COMMA-SEPARATED allowlist
+# (app.py:1215), and this helper keys on ``auth_method`` — it never consults
+# ``request.state``'s ``user_id`` / ``user_email``, and ``search()`` applies no
+# ``owner_user_id`` filter (the column exists, schema.py:81). So with TWO+
+# operator emails, two distinct tenants would both authenticate and a shared
+# ``operator_only`` could read each other's ``personal_reading`` corpus.
+# ``_owner_read_policy_tag`` therefore grants the privilege ONLY when the
+# deployment is provably single-operator (``operator_allowlist_from_env``
+# resolves ≤ 1 operator); a multi-operator config FAILS CLOSED to the
+# non-privileged tag, so the cross-tenant path is STRUCTURALLY IMPOSSIBLE, not
+# merely documented. When Sprint-22 multi-user lands, restoring multi-operator
+# owner-read requires scoping retrieval by ``request.state.user_id`` against
+# ``owner_user_id``; ``operator_only`` alone is not sufficient.
+_OWNER_AUTH_METHODS: frozenset[str] = frozenset({
+    "antiek_session_cookie",
+    "cloudflare_access_email",
+    "cloudflare_service_token",
+    "bearer_token",
+})
+
+
+def _owner_read_policy_tag(request: Request) -> str:
+    """Resolve the §9.0 retrieval policy_tag for an OWNER read endpoint.
+
+    Returns the PRIVILEGED ``operator_only`` tag ONLY when the auth middleware
+    has stamped ``request.state.auth_method`` with one of the four AUTHENTICATED
+    methods (a real credential proven: session cookie, Cloudflare Access email,
+    Cloudflare service token, or operator bearer). For ANY other value — see the
+    ``_OWNER_AUTH_METHODS`` comment above for why ``unauthenticated_local`` and
+    absent state are EXCLUDED (the fail-closed, bind-to-a-real-credential rule) —
+    it returns the non-privileged default, so the §9.0 gate keeps excluding
+    gated/personal content. The privileged bypass requires a positive,
+    middleware-set authenticated signal; it is NEVER the default.
+
+    The signal is SERVER-DERIVED: ``auth_method`` is written only by the auth
+    middleware on the request object; a caller cannot set ``request.state`` or
+    spoof it via a header/param. When enforcement is on, a non-owner caller is
+    rejected with 401 BEFORE this runs, so it can only ever see owner requests.
+
+    PRIVILEGE == OWNER is ENFORCED, not merely assumed: the bypass is granted
+    only when the deployment is single-operator (``operator_allowlist_from_env``
+    resolves ≤ 1 operator); a multi-operator config FAILS CLOSED to the
+    non-privileged tag. See the SINGLE-OPERATOR ENFORCEMENT note above
+    ``_OWNER_AUTH_METHODS``.
+    """
+    auth_method = getattr(getattr(request, "state", None), "auth_method", None)
+    # SINGLE-OPERATOR ENFORCEMENT: the privilege is owner-scoped only when the
+    # deployment has ≤ 1 operator. With 2+ operator emails the bypass would be
+    # cross-tenant (this helper keys on auth_method, not user_id), so it FAILS
+    # CLOSED to the non-privileged tag.
+    if auth_method in _OWNER_AUTH_METHODS and len(operator_allowlist_from_env()) <= 1:
+        return _OWNER_READ_POLICY_TAG
+    return _PUBLIC_READ_POLICY_TAG
 
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
@@ -50,7 +134,7 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _record_arxiv_serve_audit(db_path: str, document_id: str, result) -> None:
+def _record_arxiv_serve_audit(db_path: str, document_id: str, result: ServeResult) -> None:
     """SPR-09 M4 — record an ``arxiv.serve`` leg for an arXiv full-text serve.
 
     Defensively isolated: a failure here must NEVER break the serve, so the whole
@@ -98,23 +182,23 @@ def _record_arxiv_serve_audit(db_path: str, document_id: str, result) -> None:
 
 class TocItemResponse(BaseModel):
     title: str
-    page_index: Optional[int]
+    page_index: int | None
     level: int
 
 
 class BookSummary(BaseModel):
     document_id: str
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
     servability: str
     servable_full_text: bool
     page_count: int
-    cover_uri: Optional[str]
-    ip_holder_id: Optional[str]
+    cover_uri: str | None
+    ip_holder_id: str | None
     taken_down: bool
 
     @classmethod
-    def from_asset(cls, a: BookAsset) -> "BookSummary":
+    def from_asset(cls, a: BookAsset) -> BookSummary:
         return cls(
             document_id=a.document_id,
             title=a.title,
@@ -130,12 +214,12 @@ class BookSummary(BaseModel):
 
 class BookDetail(BookSummary):
     pagination_scheme: str
-    provenance: Optional[str]
-    license_basis: Optional[str]
+    provenance: str | None
+    license_basis: str | None
     toc: list[TocItemResponse]
 
     @classmethod
-    def from_asset(cls, a: BookAsset) -> "BookDetail":
+    def from_asset(cls, a: BookAsset) -> BookDetail:
         return cls(
             **BookSummary.from_asset(a).model_dump(),
             pagination_scheme=a.pagination_scheme,
@@ -155,8 +239,8 @@ class BookListResponse(BaseModel):
 
 class CuratedBookResponse(BaseModel):
     document_id: str
-    title: Optional[str]
-    author: Optional[str]
+    title: str | None
+    author: str | None
     score: float
 
 
@@ -170,7 +254,7 @@ class SpinResearchRequest(BaseModel):
     # The reader's selected text. For a gated book it is IGNORED server-
     # side and replaced by the bounded snippet — the seed can never carry
     # gated full text, even if the client sends it (defense in depth).
-    passage_text: Optional[str] = None
+    passage_text: str | None = None
 
 
 class SpinResearchResponse(BaseModel):
@@ -206,11 +290,11 @@ class RecordImpressionsResponse(BaseModel):
 class FullTextResponse(BaseModel):
     document_id: str
     servable: bool
-    servability: Optional[str]
-    full_text: Optional[str]
-    snippet: Optional[str]
-    title: Optional[str]
-    author: Optional[str]
+    servability: str | None
+    full_text: str | None
+    snippet: str | None
+    title: str | None
+    author: str | None
     reason: str
     # Rights context (Read SPR-05) — the data the reader renders off the
     # backend response instead of a local flag. ``tier`` is the arXiv
@@ -218,10 +302,10 @@ class FullTextResponse(BaseModel):
     # ``ad_eligible`` is the ad-rail gate (T1-only for arXiv; == servable for
     # non-arXiv, preserving today's behaviour); ``canonical_url`` is the
     # arxiv.org/abs link or None; ``license`` is the license_uri or None.
-    tier: Optional[str] = None
+    tier: str | None = None
     ad_eligible: bool = False
-    canonical_url: Optional[str] = None
-    license: Optional[str] = None
+    canonical_url: str | None = None
+    license: str | None = None
 
 
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
@@ -251,7 +335,7 @@ class CitationResponse(BaseModel):
     # chunk's section_path did not resolve to a page marker (then
     # ``page_resolved`` is False and the surface shows an honest "page not
     # pinpointed" — never a fabricated page).
-    page_index: Optional[int] = None
+    page_index: int | None = None
     page_resolved: bool = False
     snippet: str
 
@@ -271,8 +355,8 @@ class AskBookResponse(BaseModel):
 class CorpusSearchHit(BaseModel):
     chunk_id: str
     document_id: str
-    document_title: Optional[str]
-    page_index: Optional[int] = None
+    document_title: str | None
+    page_index: int | None = None
     page_resolved: bool = False
     snippet: str
     similarity: float
@@ -299,7 +383,7 @@ class MetaReadingRequest(BaseModel):
     corpus_scope: Literal["hard", "soft"] = "hard"
     # An explicit pick of owned document ids (intersected with the owned set
     # under "hard" scope). Omit to scope to the whole owned servable corpus.
-    document_ids: Optional[list[str]] = None
+    document_ids: list[str] | None = None
 
 
 class MetaReadingResponse(BaseModel):
@@ -328,9 +412,9 @@ class PersonalAssetResponse(BaseModel):
     asset_id: str
     kind: Literal["meta_reading", "saved_read"]
     title: str
-    prompt: Optional[str]
+    prompt: str | None
     document_ids: list[str]
-    emitted_at: Optional[str]
+    emitted_at: str | None
     # The in-app route that re-opens the item (the meta-doc view / the reader).
     open_route: str
 
@@ -629,18 +713,26 @@ def register_book_routes(app: FastAPI) -> None:
         response_model=AskBookResponse,
         tags=["books"],
     )
-    async def ask_book(document_id: str, req: AskBookRequest) -> AskBookResponse:
+    async def ask_book(
+        document_id: str, req: AskBookRequest, request: Request,
+    ) -> AskBookResponse:
         """Answer one talk-to-book turn, page-cited, over THIS book only.
 
-        Retrieval is scoped to ``document_id`` through the §9.0 gate, so a
-        withheld book's body never reaches the model context or a citation. A
-        book with no extractable text returns an honest ungrounded answer
-        WITHOUT dispatching a model (no hallucination). The model is dispatched
-        through the ONE Hermes-routed path (§16); 503 when no provider is keyed.
+        Retrieval is scoped to ``document_id`` through the §9.0 gate. For the
+        AUTHENTICATED OWNER (resolved server-side from the auth middleware via
+        ``_owner_read_policy_tag``) the gate runs on the PRIVILEGED
+        ``operator_only`` tag, so the owner can talk to HIS OWN gated/personal
+        book in full. For any non-owner / unauthenticated caller (which, when
+        enforcement is on, is 401'd by the middleware before reaching here) the
+        gate stays non-privileged, so a withheld book's body never reaches the
+        model context or a citation. A book with no extractable text (or one the
+        gate fully withholds) returns an honest ungrounded answer WITHOUT
+        dispatching a model (no hallucination). The model is dispatched through
+        the ONE Hermes-routed path (§16); 503 when no provider is keyed.
         """
         from runtime.db_lock import connect_read
         from substrate.books.book_qa import Turn, answer_book_question
-        from substrate.dispatch.router import ProviderError
+        from substrate.dispatch.base import ProviderError
         from substrate.graph.search import SentenceTransformerEmbedding
 
         # Confirm the book exists (honest 404 rather than an empty answer).
@@ -669,6 +761,9 @@ def register_book_routes(app: FastAPI) -> None:
                     investigation_id=f"read-{document_id}",
                     history=[Turn(question=t.question, answer=t.answer) for t in req.history],
                     research_tier=req.research_tier,
+                    # §9.0: privileged ONLY for the authenticated owner (resolved
+                    # server-side); non-owner / unauth callers stay gated.
+                    policy_tag=_owner_read_policy_tag(request),
                 )
             except ProviderError as exc:
                 # No keyed provider — honest 503, never a fabricated answer.
@@ -699,15 +794,22 @@ def register_book_routes(app: FastAPI) -> None:
         tags=["books"],
     )
     async def corpus_search(
+        request: Request,
         q: str,
         limit: int = 20,
-        document_id: Optional[str] = None,
+        document_id: str | None = None,
     ) -> CorpusSearchResponse:
         """Search the owned corpus by a natural-language query. Wraps
-        ``substrate.graph.search.search`` with the DEFAULT (non-privileged)
-        policy_tag, so the §9.0 gate excludes restricted content. ``document_id``
-        optionally scopes to one document. The Library's typed query + file-drop
-        bias both POST text here (file = a query SIGNAL, never ingested)."""
+        ``substrate.graph.search.search`` through the §9.0 gate. For the
+        AUTHENTICATED OWNER (resolved server-side from the auth middleware via
+        ``_owner_read_policy_tag``) the gate runs on the PRIVILEGED
+        ``operator_only`` tag, so the owner can search across HIS OWN
+        gated/personal corpus. For any non-owner / unauthenticated caller (401'd
+        by the middleware before reaching here when enforcement is on) the gate
+        stays non-privileged and excludes restricted/personal content.
+        ``document_id`` optionally scopes to one document. The Library's typed
+        query + file-drop bias both POST text here (file = a query SIGNAL, never
+        ingested)."""
         from runtime.db_lock import connect_read
         from substrate.books.page_anchor import page_index_from_section_path
         from substrate.graph.search import SentenceTransformerEmbedding, search
@@ -722,7 +824,12 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            res = search(con, q, model=model, top_k=max(1, limit), document_id=document_id)
+            res = search(
+                con, q, model=model, top_k=max(1, limit), document_id=document_id,
+                # §9.0: privileged ONLY for the authenticated owner (resolved
+                # server-side); non-owner / unauth callers stay gated.
+                policy_tag=_owner_read_policy_tag(request),
+            )
         finally:
             con.close()
 
@@ -763,7 +870,7 @@ def register_book_routes(app: FastAPI) -> None:
 
         from runtime.db_lock import connect_read
         from substrate.books.meta_reading import MetaReadingError, generate_meta_reading
-        from substrate.dispatch.router import ProviderError
+        from substrate.dispatch.base import ProviderError
         from substrate.event_log import emit_typed
         from substrate.graph.search import SentenceTransformerEmbedding
         from substrate.schemas.events import (
@@ -869,7 +976,7 @@ def register_book_routes(app: FastAPI) -> None:
     # live in substrate/books/personal_space.py and reuse the SAME embedding
     # model SPR-04 curate + §7 search use (no new embedder).
 
-    def _book_title_resolver(document_id: str) -> Optional[str]:
+    def _book_title_resolver(document_id: str) -> str | None:
         """Map a read document_id → its book title so a saved read shows the
         book's name, not its id. Best-effort: a non-book / missing doc resolves
         to None and the caller falls back to the id (honest, never fabricated)."""
@@ -920,7 +1027,7 @@ def register_book_routes(app: FastAPI) -> None:
         try:
             from substrate.graph.search import SentenceTransformerEmbedding
 
-            model: Optional[object] = SentenceTransformerEmbedding()
+            model: object | None = SentenceTransformerEmbedding()
         except RuntimeError:
             model = None
 
@@ -957,11 +1064,11 @@ def register_book_routes(app: FastAPI) -> None:
                     category_id=c.category_id,
                     label=c.label,
                     asset_ids=c.asset_ids,
-                    ordering=c.ordering,
+                    ordering=cast(Literal["theme", "recency"], c.ordering),
                 )
                 for c in space.categories
             ],
-            ordering=space.ordering,
+            ordering=cast(Literal["theme", "recency"], space.ordering),
             stability_bound=space.stability_bound,
         )
 

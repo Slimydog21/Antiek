@@ -31,7 +31,10 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import httpx
 
 # Repo root on path for direct invocation (mirrors podcasts/urls adapters).
 _PKG_ROOT = os.path.dirname(
@@ -50,6 +53,7 @@ from processing.embedding.embed import (  # noqa: E402
     default_embedding_provider,
 )
 from runtime.db_lock import connect_write  # noqa: E402
+from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
     default_db_path,
@@ -61,9 +65,18 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .client import Post, Publication, fetch_feed, substack_doc_id
+from .client import (  # noqa: E402  # sys.path bootstrap
+    Post,
+    Publication,
+    fetch_feed,
+    substack_doc_id,
+)
 
 # General-web tier (4), consistent with acquisition/urls' DEFAULT_URL_SOURCE_TIER
 # for unranked web — a subscribed newsletter is general-web trust, not a curated
@@ -83,12 +96,12 @@ class IngestResult:
     document_id: str
     guid: str
     status: str  # "ingested" | "skipped"
-    chunk_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
     truncated: bool = False
     truncation_reason: str = "none"
-    title: Optional[str] = None
+    title: str | None = None
 
 
 def ingest_post(
@@ -96,9 +109,9 @@ def ingest_post(
     *,
     publication: Publication,
     investigation_id: str,
-    db_path: Optional[str] = None,
+    db_path: str | None = None,
     source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER,
-    embedder: Optional[EmbeddingProvider] = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> IngestResult:
     """Ingest a single Substack post into documents + chunks + nodes.
 
@@ -131,8 +144,8 @@ def ingest_post(
     )
 
     ensure_initialized(resolved_db_path)
-    chunks: List[Chunk] = chunk_markdown(full_text)
-    chunk_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(full_text)
+    chunk_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -180,6 +193,13 @@ def ingest_post(
             # (personal_reading accrues zero attribution; author→holder
             # resolution is an explicit open question — see README/handoff).
         )
+        if not already_present:
+            register_source_document(
+                con,
+                document_id=document_id,
+                source_kind=SourceKind.WEB,
+                content_class=PERSONAL_READING_CONTENT_CLASS,
+            )
         if already_present:
             return IngestResult(
                 document_id=document_id,
@@ -270,11 +290,11 @@ def ingest_publication_feed(
     feed_url: str,
     *,
     investigation_id: str,
-    db_path: Optional[str] = None,
-    max_posts: Optional[int] = None,
+    db_path: str | None = None,
+    max_posts: int | None = None,
     source_tier: int = DEFAULT_SUBSTACK_SOURCE_TIER,
-    embedder: Optional[EmbeddingProvider] = None,
-    client=None,
+    embedder: EmbeddingProvider | None = None,
+    client: httpx.Client | None = None,
 ) -> PublicationIngestSummary:
     """Fetch one publication feed and ingest every post.
 

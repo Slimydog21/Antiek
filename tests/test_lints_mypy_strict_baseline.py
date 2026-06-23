@@ -15,7 +15,6 @@ from tools.lints.mypy_strict_baseline import (
     parse_mypy_output,
 )
 
-
 SAMPLE_MYPY_OUTPUT = """\
 runtime/db_lock.py:217: error: Function is missing a type annotation  [no-untyped-def]
 runtime/db_lock.py:225: error: Call to untyped function "close" in typed context  [no-untyped-call]

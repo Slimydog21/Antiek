@@ -23,8 +23,8 @@ import hashlib
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from substrate.ai_actions.handlers import HANDLERS
 
@@ -55,7 +55,7 @@ class _BuiltEvent:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _hash_prev(target_kind: str, target_id: str, prev_state: dict) -> str:
@@ -78,7 +78,7 @@ def apply_ai_action(
     prev_state: dict,
     next_state: dict,
     summary: str = "",
-    emit_event_fn: Optional[Any] = None,
+    emit_event_fn: Any | None = None,
 ) -> ApplyResult:
     """Record an AI-driven UI action.
 
@@ -135,7 +135,7 @@ def undo_ai_action(
     con: Any,
     *,
     applied_event: dict,
-    emit_event_fn: Optional[Any] = None,
+    emit_event_fn: Any | None = None,
 ) -> str:
     """Invert an ``ai.action.applied`` event.
 

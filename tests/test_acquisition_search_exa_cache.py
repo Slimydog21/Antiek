@@ -14,11 +14,7 @@ Coverage:
 
 from __future__ import annotations
 
-import os
-import tempfile
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -29,7 +25,6 @@ from acquisition.search.exa import (
 )
 from acquisition.search.exa.adapter import _hydrate_proposed
 from acquisition.search.exa.cache import (
-    DEFAULT_TTL_SECONDS,
     cache_key,
     lookup,
     purge_expired,
@@ -37,7 +32,6 @@ from acquisition.search.exa.cache import (
 )
 from acquisition.search.exa.client import ExaClient
 from substrate.graph import ensure_initialized
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
@@ -66,7 +60,7 @@ def isolated_env(tmp_path, monkeypatch, db_path):
 
 
 def _mock_exa_client(
-    responses: List[dict], *, status: int = 200,
+    responses: list[dict], *, status: int = 200,
 ) -> ExaClient:
     it = iter(responses)
     last = [None]
@@ -193,7 +187,7 @@ def test_store_is_idempotent_upsert(db_path):
 
 def test_lookup_expired_returns_none(db_path):
     k = cache_key(query="q", investigation_id="inv-1")
-    past = datetime.now(timezone.utc) - timedelta(hours=25)
+    past = datetime.now(UTC) - timedelta(hours=25)
     # Store with negative ttl so the entry is born expired.
     store(
         k, proposals=[{"discovery_id": "d", "url": "u",

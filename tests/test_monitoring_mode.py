@@ -27,15 +27,15 @@ import uuid
 
 import pytest
 
+from orchestration.monitoring import monitor as mon
 from runtime.db_lock import connect_write
-from substrate.graph.schema import init_database_at_path
-from substrate.graph import ops
-from substrate.graph.search import search
 from substrate.collective_graph.eligibility import (
     CollectiveGraphDocument,
     is_attribution_eligible,
 )
-from orchestration.monitoring import monitor as mon
+from substrate.graph import ops
+from substrate.graph.schema import init_database_at_path
+from substrate.graph.search import search
 
 
 class _StubEmbedding:
@@ -107,13 +107,13 @@ def _seed_doc(
 
 def _ts(offset_seconds: int) -> str:
     """A deterministic ISO timestamp relative to a fixed base (in the past)."""
-    base = _dt.datetime(2026, 1, 1, 0, 0, 0, tzinfo=_dt.timezone.utc)
+    base = _dt.datetime(2026, 1, 1, 0, 0, 0, tzinfo=_dt.UTC)
     return (base + _dt.timedelta(seconds=offset_seconds)).isoformat()
 
 
 def _future(offset_seconds: int = 0) -> str:
     """A timestamp guaranteed to be AFTER a just-created monitor's checkpoint."""
-    base = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(hours=1)
+    base = _dt.datetime.now(_dt.UTC) + _dt.timedelta(hours=1)
     return (base + _dt.timedelta(seconds=offset_seconds)).isoformat()
 
 

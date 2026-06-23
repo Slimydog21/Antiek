@@ -65,7 +65,6 @@
 import { create } from "zustand";
 
 import { cascadeOffset } from "../design/elevation";
-import { zIndex } from "../design/zIndex";
 
 /** A window hosts a product page identified by its route kind. The kind is a
  *  free string (the route key); openWindow.ts maps each to a renderer. We do
@@ -146,11 +145,8 @@ type Store = WindowsSnapshot & WindowsActions;
 export const MAX_WINDOWS = 8;
 
 /** Base z so a window always paints over the scene (z≈0) but under the
- *  in-page modal/toast stack (LemonModal z=100). Sourced from the named
- *  z-index ladder (`zIndex.windowBase`) — re-exported under this name for
- *  back-compat (windowsStore.test.ts and callers import `WINDOW_Z_BASE`).
- *  Value is unchanged: still 40. */
-export const WINDOW_Z_BASE = zIndex.windowBase;
+ *  in-page modal/toast stack (LemonModal z=100). */
+export const WINDOW_Z_BASE = 40;
 
 /** Initial (and reset) state. With no persist middleware this is also the
  *  state every page LOAD starts in — a reload = zero windows, by design (see

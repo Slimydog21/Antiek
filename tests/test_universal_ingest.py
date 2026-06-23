@@ -15,17 +15,19 @@ import tempfile
 
 import pytest
 
-from substrate.research_bridge.extractors import extract_text
-from substrate.research_bridge.detect_external import detect_external_research
-from substrate.research_bridge.ingest_file import (
-    UnsupportedFileError, distill_ingested_document, ingest_file,
-)
-from substrate.research_bridge.versioning import create_document_version, document_versions
-from substrate.graph.schema import init_database_at_path
-from runtime.db_lock import connect_read, connect_write
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
 from roles.note_taker import Distillation, DistilledQuestion
 from roles.note_taker.parser import ExtractedNote
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
+from runtime.db_lock import connect_read, connect_write
+from substrate.graph.schema import init_database_at_path
+from substrate.research_bridge.detect_external import detect_external_research
+from substrate.research_bridge.extractors import extract_text
+from substrate.research_bridge.ingest_file import (
+    UnsupportedFileError,
+    distill_ingested_document,
+    ingest_file,
+)
+from substrate.research_bridge.versioning import create_document_version, document_versions
 
 
 class _FakeEmbedding:

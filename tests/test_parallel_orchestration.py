@@ -17,18 +17,26 @@ import tempfile
 import pytest
 
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
+from roles.cascade_planner import (
+    PlanNotApproved,
+    SubQuestion,
+    approve_plan,
+    build_plan,
+    persist_tree,
+)
+from roles.cascade_planner.persist import load_tree
+from runtime.db_lock import connect_read
 from runtime.research_runner import (
-    BudgetCap, Command, CommandKind, HostLocalRunner, PromotionFunnel, RunState,
+    Command,
+    CommandKind,
+    HostLocalRunner,
+    PromotionFunnel,
+    RunState,
     make_demo_loop,
 )
 from runtime.research_runner.host_local import LoopContext
-from roles.cascade_planner import (
-    PlanNotApproved, approve_plan, build_plan, persist_tree, SubQuestion,
-)
-from roles.cascade_planner.persist import load_tree
 from substrate.graph.schema import init_database_at_path
-from runtime.db_lock import connect_read
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:

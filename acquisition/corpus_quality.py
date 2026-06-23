@@ -42,7 +42,6 @@ import enum
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Optional
 
 # Identity — the precedence ladder AND the per-level normalizers — lives in
 # exactly one place. This module owns the cross-source CLUSTERING engine and
@@ -270,10 +269,10 @@ def check_ocr_garbage(text: str) -> CheckResult:
 
 def check_metadata_completeness(
     *,
-    title: Optional[str],
-    author: Optional[str],
-    source_id: Optional[str],
-    allow_null_author_reason: Optional[str] = None,
+    title: str | None,
+    author: str | None,
+    source_id: str | None,
+    allow_null_author_reason: str | None = None,
 ) -> CheckResult:
     """Title present + non-empty, author present (or an explicit allowed-null
     reason), and a source identifier present.
@@ -335,7 +334,7 @@ class QualityVerdict:
     passed: bool
     checks: tuple[CheckResult, ...]
     body_assessed: bool = True
-    rejection_reason: Optional[str] = None
+    rejection_reason: str | None = None
 
     @property
     def failed_checks(self) -> tuple[CheckResult, ...]:
@@ -345,10 +344,10 @@ class QualityVerdict:
 def assess_corpus_quality(
     text: str,
     *,
-    title: Optional[str],
-    author: Optional[str],
-    source_id: Optional[str],
-    allow_null_author_reason: Optional[str] = None,
+    title: str | None,
+    author: str | None,
+    source_id: str | None,
+    allow_null_author_reason: str | None = None,
     assess_body: bool = True,
 ) -> QualityVerdict:
     """Run the corpus-quality checks and compose a single verdict.
@@ -495,13 +494,13 @@ class CandidateRef:
     """
 
     ref_id: str
-    doi: Optional[str] = None
-    arxiv_id: Optional[str] = None
-    source_id: Optional[str] = None  # gutenberg/archive identifier
-    isbn: Optional[str] = None  # ISBN-10 or ISBN-13, any hyphenation
-    title: Optional[str] = None
-    author: Optional[str] = None
-    body: Optional[str] = None  # extracted body, when available at discovery
+    doi: str | None = None
+    arxiv_id: str | None = None
+    source_id: str | None = None  # gutenberg/archive identifier
+    isbn: str | None = None  # ISBN-10 or ISBN-13, any hyphenation
+    title: str | None = None
+    author: str | None = None
+    body: str | None = None  # extracted body, when available at discovery
 
     def identity_record(self) -> IdentityRecord:
         """Project into the single ``substrate.dedup`` identity record so dedup
@@ -521,7 +520,7 @@ class CandidateRef:
         )
 
 
-def _ref_key(ref: CandidateRef, kind: KeyType) -> Optional[str]:
+def _ref_key(ref: CandidateRef, kind: KeyType) -> str | None:
     """The candidate's normalized value for one precedence level, or None —
     via the single ``substrate.dedup`` normalizer, never a local copy."""
     return dedup_key(ref.identity_record(), kind)
@@ -583,7 +582,7 @@ class _Cluster:
 
 def _cluster_decision(
     ref: CandidateRef, cluster: _Cluster
-) -> Optional[tuple[KeyType, str]]:
+) -> tuple[KeyType, str] | None:
     """Is ``ref`` the SAME work as everything already in ``cluster``?
 
     Walk precedence high→low. The first kind where the candidate carries a
@@ -662,7 +661,7 @@ def dedup_candidates(candidates: Iterable[CandidateRef]) -> DedupResult:
     drops_by_key: dict[KeyType, int] = {}
 
     for cand in candidates:
-        matched: Optional[tuple[_Cluster, KeyType, str]] = None
+        matched: tuple[_Cluster, KeyType, str] | None = None
         for cluster in clusters:
             decision = _cluster_decision(cand, cluster)
             if decision is not None:

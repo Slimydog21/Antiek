@@ -12,7 +12,6 @@ from typing import Any
 
 from substrate.seams.thread import (
     Thread,
-    ThreadHop,
     reconstruct_thread,
 )
 

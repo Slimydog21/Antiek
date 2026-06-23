@@ -23,18 +23,14 @@ Attack classes covered (all four from sprint23_red_team.md §2):
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from .attribution_fraud import (
-    AttributionFraudScorer,
     detect_creator_cluster_collusion,
     score_attribution_payout,
 )
-from .click_fraud import ClickFraudScorer, score_click_event
 from .detector import AntiGamingDetector, run_full_check
-from .verdict import FraudVerdict, FraudVerdictKind
-from .view_fraud import ViewFraudScorer, score_view_event
+from .verdict import FraudVerdictKind
 
 
 class AttackClass(str, enum.Enum):

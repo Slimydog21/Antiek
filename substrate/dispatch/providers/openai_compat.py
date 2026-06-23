@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -107,9 +107,9 @@ class OpenAICompatProvider:
         name: str,
         base_url: str,
         api_key_env: str = "OPENAI_API_KEY",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
-        client: Optional[httpx.Client] = None,
+        client: httpx.Client | None = None,
         chat_completions_path: str = "/v1/chat/completions",
     ):
         """

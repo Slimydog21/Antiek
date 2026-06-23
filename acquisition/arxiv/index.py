@@ -25,8 +25,6 @@ re-fetch) is a no-op rather than a duplicate-key error.
 
 from __future__ import annotations
 
-from typing import List
-
 from processing.chunking.chunker import Chunk, chunk_markdown
 from processing.embedding.embed import EmbeddingProvider
 from runtime.db_lock import LockedConnection
@@ -39,7 +37,7 @@ def index_body(
     document_id: str,
     body: str,
     embedder: EmbeddingProvider,
-) -> List[str]:
+) -> list[str]:
     """Chunk ``body`` and write each chunk (embedded) for ``document_id``.
 
     Runs on the caller's already-held ``LockedConnection`` so it joins the SAME
@@ -54,8 +52,8 @@ def index_body(
     if not body or not body.strip():
         return []
 
-    chunks: List[Chunk] = chunk_markdown(body)
-    chunk_ids: List[str] = []
+    chunks: list[Chunk] = chunk_markdown(body)
+    chunk_ids: list[str] = []
     for i, chunk in enumerate(chunks):
         chunk_id = insert_chunk(
             con,

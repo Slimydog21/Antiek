@@ -5,8 +5,6 @@ from __future__ import annotations
 import uuid
 
 from compounding.skill_growth import (
-    BridgeOutcome,
-    GepaToPhase8Bridge,
     PatchDecision,
     SkillPatchGate,
     bridge_gepa_result_to_phase8,

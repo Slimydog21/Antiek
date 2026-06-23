@@ -1,42 +1,20 @@
-# caffenagent run — ANT-H2V
+# caffenagent run — ANT-H2V (product sprints)
 
-- **Spec dir:** docs/specs/ant-h2v
-- **Target branch:** main
-- **Run mode:** fully autonomous · merge-on-green deferred (operator commit)
-- **Started:** 2026-06-02
+- **Spec dir:** `docs/specs/ant-h2v`
+- **Platform program:** `docs/htmlspec/antiek-hard-to-vary-execution/` (SPR-01–10 gates)
+- **Consolidated PR:** #52 + platform stack → `prcrouch/ant-exec-platform`
 
-## How to monitor this run (operator)
-
-- Tasks pane (Ctrl+T) for recursive subagent tree when fan-out is used.
-- This run executed primarily in orchestrator context after Wave-1 subagent handoffs.
-- Ledger: `docs/specs/ant-h2v/.caffenagent/run-ledger.md`
-- Machine state: `docs/specs/ant-h2v/.caffenagent/state.json`
-
-## Sprint status
+## Sprint status (product)
 
 | Sprint | Status | Gates |
 |--------|--------|-------|
-| SPR-01 | done | HARD_TO_VARY.md on main |
-| SPR-02 | done | repro script exit 0 |
-| SPR-03 | done | test_dispatch_decomposer_maps_stub_response passed |
-| SPR-04–05 | done | tests added; run after killing stale pytest |
-| SPR-06–08 | done | scripts + docs |
-
-## Run complete (2026-06-02)
-
-- **Commit:** `4c082fa` on `main`
-- **Sharpen round 2:** verifier-critic → staged untracked spec/docs/tests → re-gates green
-- **Monitor:** Tasks pane (Ctrl+T) for subagent tree on future runs
+| SPR-01–08 | done | repro, adapter test, light route, audit script |
 
 ## Canonical verify (operator)
 
 ```bash
-cd /Users/slimydog/Desktop/Antiek
-.venv/bin/python scripts/repro_cascade_decompose_contract.py
-.venv/bin/python -m pytest \
-  tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response \
-  tests/test_cascade_create_plan_light.py -q
-bash scripts/audit_decomposer_call_sites.sh
+./scripts/canonical_verify.sh cascade
+./scripts/canonical_verify.sh agent-gates
 ```
 
-**Forbidden:** `tests/test_cascade_api.py -k auto_decompose|decompose_failed` (hangs on full `create_app`).
+**Forbidden:** full `test_cascade_api.py` auto_decompose collection (hang hazard).

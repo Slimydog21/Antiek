@@ -35,6 +35,7 @@ from substrate.cross_graph.partner_identity import (
     trust_partner,
 )
 from substrate.schemas.events import (
+    TYPED_PAYLOAD_ACTION_TYPES,
     ActionType,
     Event,
     FederationInboundCitationAcceptedPayload,
@@ -43,9 +44,7 @@ from substrate.schemas.events import (
     FederationPartnerRegisteredPayload,
     FederationPartnerRevokedPayload,
     FederationPartnerTrustedPayload,
-    TYPED_PAYLOAD_ACTION_TYPES,
 )
-
 
 # ── ActionType registration ────────────────────────────────────────
 

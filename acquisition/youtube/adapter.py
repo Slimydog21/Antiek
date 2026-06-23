@@ -14,11 +14,9 @@ timestamps fall back to opening the watch URL.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -52,6 +50,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_chunk,
     insert_document,
     insert_node,
+)
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
@@ -104,19 +106,19 @@ DEFAULT_CHUNK_TARGET_WORDS = 250
 class IngestYouTubeResult:
     document_id: str
     video_id: str
-    chunk_ids: List[str] = field(default_factory=list)
-    node_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    node_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
     transcript_source: str = "missing"
     # SPR-07: caption provenance surfaced to the reader/caller.
     caption_kind: str = CAPTION_KIND_MISSING
     # SPR-07: the resolved rights class actually persisted (None on a
     # skipped ingest that wrote no row). personal_reading by default;
     # source_declared_open only on an operator-confirmed CC-BY video.
-    content_class: Optional[str] = None
+    content_class: str | None = None
 
 
 def youtube_doc_id(video_id: str) -> str:
@@ -139,16 +141,16 @@ def _format_timestamp(seconds: float) -> str:
 
 
 def _group_transcript_into_chunks(
-    segments: List[TranscriptSegment],
+    segments: list[TranscriptSegment],
     target_words: int,
-) -> List[Chunk]:
+) -> list[Chunk]:
     """Walk transcript segments, accumulate ~target_words of text per
     chunk, emit Chunk objects with timestamp-range section_path."""
-    chunks: List[Chunk] = []
-    cur_words: List[str] = []
-    cur_start: Optional[float] = None
+    chunks: list[Chunk] = []
+    cur_words: list[str] = []
+    cur_start: float | None = None
     cur_end: float = 0.0
-    cur_text_lines: List[str] = []
+    cur_text_lines: list[str] = []
 
     def flush() -> None:
         if not cur_words:
@@ -218,13 +220,13 @@ def ingest_youtube(
     *,
     investigation_id: str,
     source_tier: int = DEFAULT_YOUTUBE_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
     chunk_target_words: int = DEFAULT_CHUNK_TARGET_WORDS,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
-    video: Optional[YouTubeVideo] = None,
-    content_class: Optional[str] = None,
-    license_basis: Optional[str] = None,
+    video: YouTubeVideo | None = None,
+    content_class: str | None = None,
+    license_basis: str | None = None,
     operator_confirmed_cc_by: bool = False,
 ) -> IngestYouTubeResult:
     """Fetch + ingest a YouTube video. Pass ``video=`` to reuse an
@@ -283,7 +285,7 @@ def ingest_youtube(
                 f"operator_confirmed_cc_by=True for the CC-BY hatch."
             )
         resolved_content_class = content_class
-        resolved_license_basis: Optional[str] = (
+        resolved_license_basis: str | None = (
             license_basis if content_class in SERVABLE_CONTENT_CLASSES else None
         )
     elif operator_confirmed_cc_by:
@@ -348,14 +350,14 @@ def ingest_youtube(
     # If a transcript is present, chunk by timestamp range. Otherwise
     # fall back to markdown chunking on the description-only body.
     if v.transcript:
-        chunks: List[Chunk] = _group_transcript_into_chunks(
+        chunks: list[Chunk] = _group_transcript_into_chunks(
             v.transcript, chunk_target_words,
         )
     else:
         chunks = chunk_markdown(full_text)
 
-    chunk_ids: List[str] = []
-    node_ids: List[str] = []
+    chunk_ids: list[str] = []
+    node_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -400,6 +402,12 @@ def ingest_youtube(
                 "caption_kind": getattr(v, "caption_kind", CAPTION_KIND_MISSING),
             },
             on_conflict="ignore",
+        )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.WEB,
+            content_class=resolved_content_class,
         )
         # M3: when (and only when) this transcript was promoted to a servable
         # class on an operator-confirmed CC-BY assertion, record the truthful

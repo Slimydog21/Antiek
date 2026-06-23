@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import List, Optional
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -50,6 +49,13 @@ if _PKG_ROOT not in sys.path:
 from middleware.constraint_check import (  # noqa: E402
     ConstraintLoopResult,
     run_constraint_loop,
+)
+from roles.synthesizer import (  # noqa: E402
+    SynthesizerValidationError,
+    ThesisResult,
+    build_revision_prefix,
+    parse_synthesizer_response,
+    render_full_prompt,
 )
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
@@ -66,16 +72,8 @@ from substrate.schemas import (  # noqa: E402
     ThesisComponent,
     ViolationJustification,
 )
-from roles.synthesizer import (  # noqa: E402
-    SynthesizerValidationError,
-    ThesisResult,
-    build_revision_prefix,
-    parse_synthesizer_response,
-    render_full_prompt,
-)
 
 from .broadcast import EventBroadcaster
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -143,12 +141,12 @@ def _result_to_reasoning_paths(result: ThesisResult) -> list[ReasoningPathUsed]:
     ]
 
 
-def _result_to_claims(result: ThesisResult) -> List[Claim]:
+def _result_to_claims(result: ThesisResult) -> list[Claim]:
     """Convert the parsed thesis components into ``Claim`` Pydantic
     models the constraint-loop evaluator reads. ``attribution_region_ids``
     is populated from ``supporting_chunk_ids`` (the chunk acts as the
     attribution anchor for the ``must_attribute`` checker)."""
-    claims: List[Claim] = []
+    claims: list[Claim] = []
     for i, c in enumerate(result.thesis_components):
         claims.append(Claim(
             claim_id=f"synth-{i}",
@@ -280,7 +278,7 @@ def _research_tier_override(investigation_id: str):
     return None, None
 
 
-def _dispatch_once(prompt: str, event: Event) -> tuple[Optional[str], str]:
+def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
     """One dispatch attempt. Returns (response_text, policy_id) or
     (None, fallback_policy_id) on ProviderError / KeyError."""
     provider_override, model_override = _research_tier_override(
@@ -310,7 +308,7 @@ def _dispatch_and_parse(
     event: Event,
     *,
     rerender_with_prefix=None,
-) -> tuple[Optional[ThesisResult], str]:
+) -> tuple[ThesisResult | None, str]:
     """Dispatch + parse with one self-repair retry on parse failure.
 
     When the model produces structurally-malformed output (typically:
@@ -492,7 +490,7 @@ async def _emit_delivered(
 
 async def _broadcast_emitted(
     event: Event,
-    emitted_event_id: Optional[str],
+    emitted_event_id: str | None,
     broadcaster: EventBroadcaster,
 ) -> None:
     if emitted_event_id is None:

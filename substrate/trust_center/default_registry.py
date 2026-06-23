@@ -12,13 +12,11 @@ Tests call `reset_default_registry()` to get a fresh baseline.
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 from substrate.dp_shuffler.epsilon_registry import (
     EpsilonRegistry,
     SurfaceConfig,
 )
-
 
 DEFAULT_DELETION_SLA_DAYS = 30  # per master-spec §13.3
 DEFAULT_CANCELLATION_WINDOW_DAYS = 7  # per master-spec §13.3
@@ -61,7 +59,7 @@ _BASELINE_SURFACES: tuple[SurfaceConfig, ...] = (
 
 
 _lock = threading.Lock()
-_singleton: Optional[EpsilonRegistry] = None
+_singleton: EpsilonRegistry | None = None
 
 
 def _build_baseline() -> EpsilonRegistry:

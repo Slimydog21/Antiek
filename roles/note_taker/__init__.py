@@ -22,26 +22,28 @@ a higher threshold), ``note.refined`` (rewrite a prior note as
 understanding grows).
 """
 
-from .prompt import NOTE_TAKER_SYSTEM_PROMPT
-from .parser import ExtractedNote, parse_notes_response
-
 # DRW SPR-03 — the always-on, asynchronous note-taking surface. These turn
 # the wrestling-only note-taker into a pass over every document and every
 # research step, plus living notes that update in place. The pure role
 # logic above (prompt/parser/ExtractedNote) is unchanged and reused.
-from .distill import Distillation, DistilledQuestion, Distiller, DispatchDistiller
-from .document_pass import PassResult, run_document_pass
-from .step_pass import RunNoteDeduper, notes_for_step
-from .living_note import ChallengeResult, apply_refinement, challenge_note
-from .scheduler import AsyncNoteScheduler, SchedulerStats, DEFAULT_DEBOUNCE_S
+from .distill import DispatchDistiller, Distillation, DistilledQuestion, Distiller
+from .distill_query import (
+    Distillation as DistilledView,
+)
+
 # DRW SPR-03 M2 — read seam: surface an investigation's distilled nodes.
 # Aliased (the distill.py Distillation is the *write*-side shape; this is the
 # *read*-side shape) so a caller imports the one it means.
 from .distill_query import (
     DistilledNode,
-    Distillation as DistilledView,
     distillation_for,
 )
+from .document_pass import PassResult, run_document_pass
+from .living_note import ChallengeResult, apply_refinement, challenge_note
+from .parser import ExtractedNote, parse_notes_response
+from .prompt import NOTE_TAKER_SYSTEM_PROMPT
+from .scheduler import DEFAULT_DEBOUNCE_S, AsyncNoteScheduler, SchedulerStats
+from .step_pass import RunNoteDeduper, notes_for_step
 
 __all__ = [
     "NOTE_TAKER_SYSTEM_PROMPT",

@@ -21,20 +21,20 @@ Activation discipline:
 """
 
 from .proposal import (
+    CohortWindow,
     ConfigProposal,
     OperatorVerdict,
     OperatorVerdictKind,
-    SweepAxes,
-    CohortWindow,
     ProposalLedger,
+    SweepAxes,
 )
 from .wedge3_sweep import (
     COHORT_MIN_OUTCOMES,
+    SweepCandidate,
     SweepInput,
     SweepResult,
-    SweepCandidate,
-    run_sweep,
     rank_candidates,
+    run_sweep,
 )
 
 __all__ = [

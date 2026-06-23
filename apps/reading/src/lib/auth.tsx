@@ -14,6 +14,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 
 import { API_BASE, apiFetch } from "./api";
+import {
+  authDiagnosticLayer,
+  type AuthDiagnosticCode,
+  type AuthDiagnosticLayer,
+} from "./authDiagnosticCodes";
+import { posthog, posthogEnabled } from "./posthogClient";
+
+/** Layer A transport — never surface raw browser "Failed to fetch" to users. */
+export const AUTH_TRANSPORT_FETCH_MESSAGE = "Cannot reach Antiek API";
 
 // Every helper prepends API_BASE so the fetch goes to api.antiek.ai
 // (the FastAPI), not antiek.ai (the Pages bundle). In dev, API_BASE
@@ -81,6 +90,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // Link the PostHog person to the substrate session as auth state resolves.
+  // distinct_id is the substrate user_id (never PII); email + auth_method are
+  // set as person properties on purpose (person-level analysis on a
+  // GDPR-resident, identified_only project), with first-touch auth method as
+  // $set_once. reset() on sign-out. No-op without a token. Lives here rather
+  // than a component mounted in App.tsx so the route tree stays untouched.
+  useEffect(() => {
+    if (!posthogEnabled || state.status === "loading") return;
+    if (state.status === "authenticated") {
+      const { user_id, email, auth_method } = state.identity;
+      posthog.identify(
+        user_id,
+        { email: email ?? undefined, auth_method },
+        { first_seen_auth_method: auth_method },
+      );
+      return;
+    }
+    posthog.reset();
+  }, [state]);
+
   const value = useMemo<AuthContextValue>(
     () => ({ state, refresh, signOut }),
     [state, refresh, signOut],
@@ -95,8 +124,28 @@ export function useAuth(): AuthContextValue {
 }
 
 export type AuthRequestResult =
-  | { kind: "sent" }
-  | { kind: "error"; code: string; message: string };
+  | { kind: "sent"; diagnostic_code: null; layer: null }
+  | {
+      kind: "error";
+      code: string;
+      message: string;
+      diagnostic_code: AuthDiagnosticCode | null;
+      layer: AuthDiagnosticLayer | null;
+    };
+
+function authRequestError(
+  code: string,
+  message: string,
+  diagnostic_code: AuthDiagnosticCode | null = null,
+): AuthRequestResult {
+  return {
+    kind: "error",
+    code,
+    message,
+    diagnostic_code,
+    layer: diagnostic_code ? authDiagnosticLayer(diagnostic_code) : null,
+  };
+}
 
 export async function requestMagicLink(email: string, nextPath: string = "/"): Promise<AuthRequestResult> {
   try {
@@ -106,7 +155,7 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
       body: JSON.stringify({ email, next: nextPath }),
     });
     if (r.ok) {
-      return { kind: "sent" };
+      return { kind: "sent", diagnostic_code: null, layer: null };
     }
     let detail: { code?: string; message?: string } = {};
     try {
@@ -115,16 +164,74 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
     } catch {
       // fall through to generic
     }
-    return {
-      kind: "error",
-      code: detail.code ?? `http_${r.status}`,
-      message: detail.message ?? "Couldn't send the sign-in link.",
-    };
-  } catch (err) {
-    return {
-      kind: "error",
-      code: "network_error",
-      message: err instanceof Error ? err.message : "Network error.",
-    };
+    if (r.status === 503) {
+      return authRequestError(
+        detail.code ?? "email_delivery_failed",
+        detail.message ?? "Couldn't send the sign-in link.",
+        "B-POLICY-EMAIL-503",
+      );
+    }
+    return authRequestError(
+      detail.code ?? `http_${r.status}`,
+      detail.message ?? "Couldn't send the sign-in link.",
+    );
+  } catch {
+    return authRequestError("transport_fetch_failed", AUTH_TRANSPORT_FETCH_MESSAGE, "A-TRANSPORT-FETCH");
   }
+}
+
+/** Login surface copy keyed by matrix failure_id (SPR-02). */
+export function authLoginErrorDisplay(
+  result: Extract<AuthRequestResult, { kind: "error" }>,
+): { message: string; hint: string | null } {
+  switch (result.diagnostic_code) {
+    case "A-TRANSPORT-FETCH":
+      return {
+        message: AUTH_TRANSPORT_FETCH_MESSAGE,
+        hint:
+          "Check your connection, VPN, or browser extensions. If curl to the API works from your machine, the browser path may be blocked.",
+      };
+    case "B-POLICY-EMAIL-503":
+      return {
+        message: result.message,
+        hint:
+          "Sign-in email delivery failed. Ask your operator to verify Resend or AgentMail configuration on the server.",
+      };
+    default:
+      return { message: result.message, hint: null };
+  }
+}
+
+/** Closed set for ``/login?error=`` from callback redirects (SPR-03). */
+export type AuthCallbackErrorCode =
+  | "magic_link_expired"
+  | "magic_link_invalid"
+  | "not_authorized";
+
+const CALLBACK_ERROR_COPY: Record<
+  AuthCallbackErrorCode,
+  { message: string; hint: string }
+> = {
+  magic_link_expired: {
+    message: "This sign-in link expired.",
+    hint: "Request a new link from the form below. Links expire in 15 minutes.",
+  },
+  magic_link_invalid: {
+    message: "This sign-in link is not valid.",
+    hint: "The link may be incomplete or already used. Request a new one below.",
+  },
+  not_authorized: {
+    message: "This email is not authorized for Antiek.",
+    hint: "Ask your operator to add your address to the server allowlist.",
+  },
+};
+
+export function authCallbackErrorDisplay(
+  code: string | null,
+): { message: string; hint: string } | null {
+  if (!code) return null;
+  if (code === "magic_link_expired" || code === "magic_link_invalid" || code === "not_authorized") {
+    return CALLBACK_ERROR_COPY[code];
+  }
+  return null;
 }

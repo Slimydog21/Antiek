@@ -26,9 +26,8 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import threading
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import pytest

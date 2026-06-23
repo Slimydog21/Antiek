@@ -20,8 +20,8 @@ import hashlib
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,6 +48,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.rights.register import (  # noqa: E402
+    SourceKind,
+    register_source_document,
+)
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
 DEFAULT_TWITTER_SOURCE_TIER = 4  # social_media tier in the master spec
@@ -63,10 +67,10 @@ class Tweet:
     text: str
     author_handle: str  # without leading @
     author_verified: bool = False
-    posted_at: Optional[datetime] = None
-    reply_to: Optional[str] = None  # tweet_id this replies to
-    quote_of: Optional[str] = None  # tweet_id quoted-rt'd
-    media_urls: List[str] = field(default_factory=list)
+    posted_at: datetime | None = None
+    reply_to: str | None = None  # tweet_id this replies to
+    quote_of: str | None = None  # tweet_id quoted-rt'd
+    media_urls: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -76,21 +80,21 @@ class TwitterThread:
     thread_url: str
     root_tweet_id: str
     author_handle: str  # without leading @
-    tweets: List[Tweet]
+    tweets: list[Tweet]
     captured_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
     )
 
 
 @dataclass(frozen=True)
 class IngestTwitterResult:
     document_id: str
-    chunk_ids: List[str] = field(default_factory=list)
-    node_ids: List[str] = field(default_factory=list)
-    document_loaded_event_id: Optional[str] = None
+    chunk_ids: list[str] = field(default_factory=list)
+    node_ids: list[str] = field(default_factory=list)
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
 
 
 def twitter_doc_id(root_tweet_id: str) -> str:
@@ -132,10 +136,10 @@ def _format_thread_markdown(thread: TwitterThread) -> str:
 
 def _chunk_per_tweet(
     thread: TwitterThread, full_text: str,
-) -> List[Chunk]:
+) -> list[Chunk]:
     """Each tweet → one chunk. This preserves tweet boundaries for
     later attribution rather than chunking by paragraph."""
-    chunks: List[Chunk] = []
+    chunks: list[Chunk] = []
     for i, tw in enumerate(thread.tweets):
         section = f"Tweet {i + 1} (@{tw.author_handle})"
         body = f"@{tw.author_handle}: {tw.text.strip()}"
@@ -153,8 +157,8 @@ def ingest_twitter_thread(
     investigation_id: str,
     content_class: str = PERSONAL_READING_CONTENT_CLASS,
     source_tier: int = DEFAULT_TWITTER_SOURCE_TIER,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
     min_word_count: int = MIN_INGEST_WORD_COUNT,
 ) -> IngestTwitterResult:
     """Ingest a captured Twitter thread. Each tweet becomes its own
@@ -225,9 +229,9 @@ def ingest_twitter_thread(
 
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
-    chunks: List[Chunk] = _chunk_per_tweet(thread, full_text)
-    chunk_ids: List[str] = []
-    node_ids: List[str] = []
+    chunks: list[Chunk] = _chunk_per_tweet(thread, full_text)
+    chunk_ids: list[str] = []
+    node_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
 
@@ -268,7 +272,13 @@ def ingest_twitter_thread(
             },
             on_conflict="ignore",
         )
-        for i, (chunk, tw) in enumerate(zip(chunks, thread.tweets)):
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.USER_CONTENT,
+            content_class=content_class,
+        )
+        for i, (chunk, tw) in enumerate(zip(chunks, thread.tweets, strict=True)):
             chunk_id = insert_chunk(
                 con,
                 document_id=document_id,
@@ -316,12 +326,12 @@ def ingest_twitter_thread(
 
 
 def ingest_thread_payload(
-    payload: dict,
+    payload: dict[str, Any],
     *,
     investigation_id: str,
     content_class: str = PERSONAL_READING_CONTENT_CLASS,
-    db_path: Optional[str] = None,
-    embedder: Optional[EmbeddingProvider] = None,
+    db_path: str | None = None,
+    embedder: EmbeddingProvider | None = None,
 ) -> IngestTwitterResult:
     """Convenience: convert the browser extension's POST payload into
     a ``TwitterThread`` and run ``ingest_twitter_thread``.
@@ -354,7 +364,7 @@ def ingest_thread_payload(
     }
     ```
     """
-    tweets: List[Tweet] = []
+    tweets: list[Tweet] = []
     for raw in payload.get("tweets", []):
         posted_at = None
         if raw.get("posted_at"):

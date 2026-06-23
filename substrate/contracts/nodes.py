@@ -30,7 +30,7 @@ embedding's storage representation.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -95,7 +95,7 @@ class QuestionNodeContract(BaseModel):
     has_embedding: bool = True
     asks_about: tuple[str, ...] = ()
     resolved_by: tuple[str, ...] = ()
-    anchor_region_id: Optional[str] = None
+    anchor_region_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +152,7 @@ class ServabilityTag(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    content_class: Optional[ContentClass] = Field(
+    content_class: ContentClass | None = Field(
         default=None,
         description="§9.0 content class from servable.py; None/unknown ⇒ non-servable.",
     )
@@ -162,7 +162,7 @@ class ServabilityTag(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _deny_by_default(self) -> "ServabilityTag":
+    def _deny_by_default(self) -> ServabilityTag:
         # Deny-by-default guard: a class outside the full-text allowlist (incl.
         # None/unknown) can NEVER be servable. We never assert servability — we
         # only refuse to let a non-allowlisted class claim it. The positive
@@ -235,13 +235,13 @@ class KnowledgeUnitContract(BaseModel):
     servability: ServabilityTag
 
     # — added (4): nullable groundedness slot, None until SPR-08. —
-    groundedness_score: Optional[float] = Field(
+    groundedness_score: float | None = Field(
         default=None,
         description="Nullable; stays None until SPR-08 populates it. Not yet required.",
     )
 
     @model_validator(mode="after")
-    def _retrieval_key_is_node_id(self) -> "KnowledgeUnitContract":
+    def _retrieval_key_is_node_id(self) -> KnowledgeUnitContract:
         if self.retrieval_key != self.node_id:
             raise ValueError(
                 "retrieval_key must equal node_id (the content-addressed key); "

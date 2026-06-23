@@ -29,12 +29,28 @@ generated types in ``apps/reading/src/generated/types.ts`` (produced by
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
-from typing import Annotated, Literal, Optional
+from collections.abc import Awaitable, Callable
+from datetime import UTC
+from typing import TYPE_CHECKING, Annotated, Any, Literal
+
+if TYPE_CHECKING:
+    from substrate.attribution.compute import AttributionResult
+    from substrate.auth import SessionClaims
+    from substrate.ip_holders import IpHolder
+    from substrate.notebooks import Notebook
 
 from fastapi import (
-    Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect,
+    Body,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -48,13 +64,12 @@ from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
+    WRESTLING_ACTION_TYPES,
     Event,
     TypedPayload,
-    WRESTLING_ACTION_TYPES,
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -68,12 +83,12 @@ class TypedEventEnvelope(BaseModel):
 
     investigation_id: str = Field(..., min_length=1)
     payload: TypedPayload
-    document_id: Optional[str] = None
-    synthesis_id: Optional[str] = None
-    phase: Optional[int] = Field(default=None, ge=1, le=9)
-    role: Optional[str] = None
-    policy_id: Optional[str] = None
-    parent_event_id: Optional[str] = None
+    document_id: str | None = None
+    synthesis_id: str | None = None
+    phase: int | None = Field(default=None, ge=1, le=9)
+    role: str | None = None
+    policy_id: str | None = None
+    parent_event_id: str | None = None
 
 
 class EmittedEventResponse(BaseModel):
@@ -217,11 +232,11 @@ class InvestigationStartRequest(BaseModel):
 
     question: str = Field(..., min_length=3)
     context: str = ""
-    topic_slug: Optional[str] = None
+    topic_slug: str | None = None
     max_sub_questions: int = Field(default=8, ge=1, le=20)
-    investigation_id: Optional[str] = None
-    parent_investigation_id: Optional[str] = None
-    spawn_context: Optional[str] = None
+    investigation_id: str | None = None
+    parent_investigation_id: str | None = None
+    spawn_context: str | None = None
     # SPR-01 M3: curated fast/deep research tier from the research entry.
     # CLOSED set; recorded on the start event so the chosen tier is
     # queryable. "fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro (the
@@ -242,7 +257,7 @@ class InvestigationStartRequest(BaseModel):
     # override is gated on an explicit choice. Reconsider-if: once the §14.4
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
-    research_tier: Optional[Literal["fast", "deep"]] = None
+    research_tier: Literal["fast", "deep"] | None = None
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -257,8 +272,9 @@ class ChunkResponse(BaseModel):
     so the reader's "open this source" affordance and the data layer
     cannot disagree. The gate applied here is the SAME one
     ``substrate/graph/search.py`` applies to chunk retrieval on a
-    non-privileged path: content in ``RESTRICTED_CONTENT_CLASSES``
-    (restricted-pending-opt-in) or under a takedown is withheld; a NULL /
+    non-privileged path: content in the canonical non-privileged denylist
+    (``restricted_pending_opt_in`` + ``personal_reading`` via
+    ``retrieval_gate``) or under a takedown is withheld; a NULL /
     legacy research chunk passes (grandfathered) exactly as it does in
     chunk search — this is the operator reading their own research
     chunks, not the public "Spotify for books" full-text serve path
@@ -271,10 +287,10 @@ class ChunkResponse(BaseModel):
 
     chunk_id: str
     text: str
-    section_path: Optional[str] = None
+    section_path: str | None = None
     token_count: int = 0
     document_id: str
-    document_title: Optional[str] = None
+    document_title: str | None = None
     source_tier: int = Field(ge=1, le=5)
     # §9.0: whether this source may be opened on the reading surface.
     # False ⇒ ``text`` is withheld and the surface shows "not available
@@ -288,12 +304,12 @@ class ChunkResponse(BaseModel):
     # word (pre_onboarded … claimed) rides alongside so the surface frames
     # escrow as opt-in-only (§9.10), never "money waiting" against an
     # unconsenting rights holder.
-    ip_holder_name: Optional[str] = None
-    ip_holder_status: Optional[str] = None
+    ip_holder_name: str | None = None
+    ip_holder_status: str | None = None
     # A presentation label for WHY a source is withheld
     # ("restricted" | "taken_down"); null when servable. Lets the surface
     # distinguish the two without re-deriving the gate.
-    servability: Optional[str] = None
+    servability: str | None = None
 
 
 class InvestigationSummary(BaseModel):
@@ -302,12 +318,12 @@ class InvestigationSummary(BaseModel):
     investigations."""
 
     investigation_id: str
-    question: Optional[str] = None
+    question: str | None = None
     status: str  # "in_progress" | "completed" | "failed" | "not_found"
-    started_at: Optional[str] = None  # ISO8601
-    completed_at: Optional[str] = None  # ISO8601, terminal events only
+    started_at: str | None = None  # ISO8601
+    completed_at: str | None = None  # ISO8601, terminal events only
     cost_usd_total: float = 0.0
-    parent_investigation_id: Optional[str] = None
+    parent_investigation_id: str | None = None
     # SPR-09 (the compounding flywheel): True when this research was spawned by
     # the §7 continuous daemon (its start event carried the daemon's
     # ``spawn_policy_id``), False for an operator-launched one. The surface
@@ -332,9 +348,9 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Optional[Literal["arxiv", "youtube", "podcast", "twitter", "url"]] = None
+    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url"] | None = None
     investigation_id: str = Field(default="__operator__", min_length=1)
-    source_tier: Optional[int] = Field(default=None, ge=1, le=5)
+    source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
 
 
@@ -348,12 +364,12 @@ class IngestSourceResponse(BaseModel):
 
     status: Literal["ingested", "skipped", "error"]
     detected_kind: str
-    document_id: Optional[str] = None
-    document_loaded_event_id: Optional[str] = None
+    document_id: str | None = None
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    error_message: Optional[str] = None
-    title: Optional[str] = None
+    skipped_reason: str | None = None
+    error_message: str | None = None
+    title: str | None = None
     # For podcast-feed bulk ingest: per-episode summaries
     episodes_processed: int = 0
     episodes_ingested: int = 0
@@ -386,10 +402,10 @@ class RubricScore(BaseModel):
     fabricated one (rigor #1)."""
 
     composite: float = Field(ge=0.0, le=1.0)
-    voice_style: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    conviction: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    citation_density: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    constraint_compliance: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    voice_style: float | None = Field(default=None, ge=0.0, le=1.0)
+    conviction: float | None = Field(default=None, ge=0.0, le=1.0)
+    citation_density: float | None = Field(default=None, ge=0.0, le=1.0)
+    constraint_compliance: float | None = Field(default=None, ge=0.0, le=1.0)
     notes: str = ""
 
 
@@ -413,17 +429,17 @@ class InvestigationStatusResponse(BaseModel):
 
     investigation_id: str
     status: str
-    current_phase: Optional[int] = None
-    last_delivered_action_type: Optional[str] = None
-    terminal_payload: Optional[dict] = None
-    rubric_score: Optional[RubricScore] = None
+    current_phase: int | None = None
+    last_delivered_action_type: str | None = None
+    terminal_payload: dict[str, Any] | None = None
+    rubric_score: RubricScore | None = None
     # SPR-01 M3: the curated fast/deep research tier recorded on this
     # investigation's start event ("fast" → MiMo V2.5 Pro, "deep" →
     # DeepSeek V4 Pro). READ from the persisted start payload — this is
     # the "chosen tier is queryable after the fact" acceptance. Null when
     # the start event has no tier (legacy / daemon-spawned runs predate
     # the field); the surface treats null as the default, never fabricates.
-    research_tier: Optional[str] = None
+    research_tier: str | None = None
 
 
 # ── Sprint 13: deliverables + voice notes ─────────────────────────────
@@ -435,17 +451,17 @@ class CreateDeliverableRequest(BaseModel):
         "research_memo", "book_chapter", "biography_section",
         "investor_brief", "general_essay",
     ]
-    investigation_root_id: Optional[str] = None
+    investigation_root_id: str | None = None
 
 
 class DeliverableSummary(BaseModel):
     deliverable_id: str
     title: str
     deliverable_kind: str
-    investigation_root_id: Optional[str]
+    investigation_root_id: str | None
     status: str
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    created_at: str | None
+    updated_at: str | None
     section_count: int = 0
 
 
@@ -457,8 +473,8 @@ class DeliverableListResponse(BaseModel):
 class CreateSectionRequest(BaseModel):
     deliverable_id: str
     section_index: int = Field(..., ge=0)
-    title: Optional[str] = None
-    parent_section_id: Optional[str] = None
+    title: str | None = None
+    parent_section_id: str | None = None
 
 
 class AttachBlockRequest(BaseModel):
@@ -471,11 +487,11 @@ class AttachBlockRequest(BaseModel):
 class SectionResponse(BaseModel):
     section_id: str
     deliverable_id: str
-    parent_section_id: Optional[str]
+    parent_section_id: str | None
     section_index: int
-    title: Optional[str]
-    prose_text: Optional[str]
-    prose_provenance: Optional[dict]
+    title: str | None
+    prose_text: str | None
+    prose_provenance: dict[str, Any] | None
     block_count: int = 0
 
 
@@ -488,7 +504,7 @@ class DeliverableDetailResponse(BaseModel):
     # header can show the active connection and the canvas can import the
     # linked research's blocks. Reading it back here is how M1 verifies the
     # link EXISTS (not a UI claim) — see docs/decisions/spr-09-*.md (D-1).
-    investigation_root_id: Optional[str] = None
+    investigation_root_id: str | None = None
     sections: list[SectionResponse] = Field(default_factory=list)
 
 
@@ -499,18 +515,18 @@ class VoiceNoteIngestRequest(BaseModel):
 
     transcript: str = Field(..., min_length=1)
     investigation_id: str = Field(default="__operator__", min_length=1)
-    title: Optional[str] = None
+    title: str | None = None
     duration_seconds: float = 0.0
-    language: Optional[str] = None
+    language: str | None = None
 
 
 class VoiceNoteIngestResponse(BaseModel):
     status: Literal["ingested", "skipped"]
     document_id: str
-    document_loaded_event_id: Optional[str] = None
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
 
 
 # ── Sprint 14: twitter thread ingest + block search + reorder ─────────
@@ -523,9 +539,9 @@ class TwitterTweetPayload(BaseModel):
     text: str = Field(default="", max_length=10_000)
     author_handle: str = Field(default="", max_length=64)
     author_verified: bool = False
-    posted_at: Optional[str] = None  # ISO 8601
-    reply_to: Optional[str] = None
-    quote_of: Optional[str] = None
+    posted_at: str | None = None  # ISO 8601
+    reply_to: str | None = None
+    quote_of: str | None = None
     media_urls: list[str] = Field(default_factory=list)
 
 
@@ -542,10 +558,10 @@ class TwitterThreadIngestRequest(BaseModel):
 class TwitterThreadIngestResponse(BaseModel):
     status: Literal["ingested", "skipped"]
     document_id: str
-    document_loaded_event_id: Optional[str] = None
+    document_loaded_event_id: str | None = None
     chunks_written: int = 0
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
 
 
 class BlockSearchHit(BaseModel):
@@ -555,8 +571,8 @@ class BlockSearchHit(BaseModel):
     block_kind: Literal["insight", "open_question", "operator_note", "claim"]
     label: str
     body: str
-    source_tier: Optional[int] = None
-    document_title: Optional[str] = None
+    source_tier: int | None = None
+    document_title: str | None = None
 
 
 class BlockSearchResponse(BaseModel):
@@ -570,7 +586,7 @@ class ReorderBlockRequest(BaseModel):
     section_id: str = Field(..., min_length=1)
     block_kind: Literal["insight", "open_question", "operator_note", "claim"]
     block_id: str = Field(..., min_length=1)
-    new_section_id: Optional[str] = None  # if None, reorder within section
+    new_section_id: str | None = None  # if None, reorder within section
     new_block_index: int = Field(..., ge=0)
 
 
@@ -583,7 +599,7 @@ class UpdateSectionProseRequest(BaseModel):
     node + CLAIM_ASSERTED_BY_OPERATOR event."""
 
     prose_text: str = Field(..., min_length=1)
-    original_text: Optional[str] = None  # what creative_writer produced
+    original_text: str | None = None  # what creative_writer produced
     promote_to_graph: bool = False
     cited_chunk_ids: list[str] = Field(default_factory=list)
     investigation_id: str = Field(default="__operator__", min_length=1)
@@ -592,8 +608,8 @@ class UpdateSectionProseRequest(BaseModel):
 class UpdateSectionProseResponse(BaseModel):
     status: Literal["saved", "saved_and_promoted"]
     section_id: str
-    claim_node_id: Optional[str] = None
-    claim_event_id: Optional[str] = None
+    claim_node_id: str | None = None
+    claim_event_id: str | None = None
 
 
 class ExportFormat(BaseModel):
@@ -639,7 +655,7 @@ class ProviderRatioResponse(BaseModel):
     hermes_success_fraction: float = 0.0
     openrouter_fraction: float = 0.0
     alert_recommended: bool = False
-    alert_reason: Optional[str] = None
+    alert_reason: str | None = None
 
 
 # ── Sprint 16 partial: IP attribution telemetry ───────────────────────
@@ -656,7 +672,7 @@ class AttributionAlgorithmShares(BaseModel):
     # an ip_holder_id → its lifecycle word (pre_onboarded … claimed), so the
     # surface can frame escrow as opt-in-only (§9.10). A restricted source never
     # appears here at all — the §9.0 gate excludes it upstream in compute.py.
-    document_ip_holders: dict[str, Optional[str]] = Field(default_factory=dict)
+    document_ip_holders: dict[str, str | None] = Field(default_factory=dict)
     document_ip_holder_status: dict[str, str] = Field(default_factory=dict)
 
 
@@ -673,56 +689,56 @@ class AttributionReportResponse(BaseModel):
 
 class CreateInterviewProjectRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=300)
-    topic_description: Optional[str] = Field(default=None, max_length=4000)
-    deliverable_id: Optional[str] = None
+    topic_description: str | None = Field(default=None, max_length=4000)
+    deliverable_id: str | None = None
     must_cover: list[str] = Field(default_factory=list)
-    framing: Optional[str] = Field(default=None, max_length=4000)
+    framing: str | None = Field(default=None, max_length=4000)
 
 
 class InterviewProjectSummary(BaseModel):
     project_id: str
     title: str
-    topic_description: Optional[str]
-    deliverable_id: Optional[str]
+    topic_description: str | None
+    deliverable_id: str | None
     must_cover: list[str] = Field(default_factory=list)
-    framing: Optional[str] = None
+    framing: str | None = None
     interview_count: int = 0
     completed_count: int = 0
-    created_at: Optional[str] = None
+    created_at: str | None = None
 
 
 class InviteInterviewRequest(BaseModel):
     project_id: str
-    informant_handle: Optional[str] = Field(default=None, max_length=200)
-    informant_email: Optional[str] = Field(default=None, max_length=320)
+    informant_handle: str | None = Field(default=None, max_length=200)
+    informant_email: str | None = Field(default=None, max_length=320)
 
 
 class InterviewSummary(BaseModel):
     interview_id: str
     project_id: str
-    informant_handle: Optional[str]
-    informant_email: Optional[str]
+    informant_handle: str | None
+    informant_email: str | None
     status: Literal[
         "invited", "in_progress", "completed", "declined", "incomplete",
     ]
-    invited_at: Optional[str] = None
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    invited_at: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
     turn_count: int = 0
 
 
 class InterviewTurnPayload(BaseModel):
     role: Literal["interviewer", "informant"]
     text: str
-    ts: Optional[str] = None
+    ts: str | None = None
 
 
 class InterviewDetailResponse(BaseModel):
     interview_id: str
     project_id: str
     project_title: str
-    topic_description: Optional[str]
-    framing: Optional[str]
+    topic_description: str | None
+    framing: str | None
     must_cover: list[str]
     status: str
     consent_recorded: bool
@@ -741,7 +757,7 @@ class InterviewTurnResponse(BaseModel):
 
 
 class CompleteInterviewRequest(BaseModel):
-    transcript_document_id: Optional[str] = None
+    transcript_document_id: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -750,8 +766,8 @@ class CompleteInterviewRequest(BaseModel):
 
 
 def _detect_source_kind(
-    url: str, explicit: Optional[str] = None,
-) -> Optional[str]:
+    url: str, explicit: str | None = None,
+) -> str | None:
     """Auto-detect a source kind from the URL pattern. Operator can
     override via the ``kind`` field on the request. Returns the kind
     name or None if unrecognized (caller treats as URL fallback or
@@ -780,7 +796,7 @@ def _detect_source_kind(
     return "url"
 
 
-def _rubric_score_from_trajectory(rows: list[dict]) -> Optional["RubricScore"]:
+def _rubric_score_from_trajectory(rows: list[dict[str, Any]]) -> RubricScore | None:
     """READ the §14.4 inline-rubric verdict from a trajectory (SPR-11 M3).
 
     Walks newest-first for the most recent ``rubric.scored`` event and
@@ -815,7 +831,7 @@ def _rubric_score_from_trajectory(rows: list[dict]) -> Optional["RubricScore"]:
         notes = payload.get("notes")
         notes_str = notes if isinstance(notes, str) else ""
 
-        def _sub(key: str) -> Optional[float]:
+        def _sub(key: str, notes_str: str = notes_str) -> float | None:
             m = re.search(rf"\b{re.escape(key)}=([01](?:\.\d+)?)", notes_str)
             if not m:
                 return None
@@ -837,7 +853,7 @@ def _rubric_score_from_trajectory(rows: list[dict]) -> Optional["RubricScore"]:
     return None
 
 
-def _extract_arxiv_id(url: str) -> Optional[str]:
+def _extract_arxiv_id(url: str) -> str | None:
     """Pull the arXiv id out of a URL like
     ``https://arxiv.org/abs/2402.03300`` (or variations)."""
     import re
@@ -866,21 +882,21 @@ def _extract_arxiv_id(url: str) -> Optional[str]:
 
 class PublisherCreateRequest(BaseModel):
     display_name: str
-    legal_contact_email: Optional[str] = None
-    metadata: dict = {}
+    legal_contact_email: str | None = None
+    metadata: dict[str, Any] = {}
 
 
 class NotebookCreateRequest(BaseModel):
     title: str
-    investigation_id: Optional[str] = None
-    document_id: Optional[str] = None
+    investigation_id: str | None = None
+    document_id: str | None = None
     content_class: str = "user_owned"
 
 
 class NotebookAppendBlockRequest(BaseModel):
     block_type: str
-    content: dict
-    ref_id: Optional[str] = None
+    content: dict[str, Any]
+    ref_id: str | None = None
 
 
 class NotebookReorderBlocksRequest(BaseModel):
@@ -899,7 +915,7 @@ class NotebookPutContentRequest(BaseModel):
     localStorage-only persistence.
     """
 
-    doc: dict
+    doc: dict[str, Any]
 
 
 class AIUndoRequest(BaseModel):
@@ -922,8 +938,8 @@ class NotebookUpdateBlockRequest(BaseModel):
       - ``clear_ref_id=True`` → NULL the column
     """
 
-    content: Optional[dict] = None
-    ref_id: Optional[str] = None
+    content: dict[str, Any] | None = None
+    ref_id: str | None = None
     clear_ref_id: bool = False
 
 
@@ -936,13 +952,13 @@ class QualityGateEvaluationRequest(BaseModel):
     # ``quality_gate.evaluated`` event so the audit log captures the
     # verdict. Generic ad-hoc evaluations (no target identified) skip
     # event emission to avoid polluting the trajectory.
-    target_id: Optional[str] = None
-    target_kind: Optional[str] = None  # "notebook" | "synthesis_page" | "creator_note"
+    target_id: str | None = None
+    target_kind: str | None = None  # "notebook" | "synthesis_page" | "creator_note"
 
 
 class AskExpertsRequest(BaseModel):
     topic_query: str
-    investigation_id: Optional[str] = None
+    investigation_id: str | None = None
     limit: int = 5
 
 
@@ -953,7 +969,7 @@ class DeletionRequestBody(BaseModel):
     a 7-day cancellation window lets the user un-request before the
     delete fires."""
 
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class FederationConfigUpdateRequest(BaseModel):
@@ -995,8 +1011,8 @@ class ThoughtPartnerRequest(BaseModel):
     so the client contract is stable before the model wiring."""
 
     prompt: str
-    investigation_id: Optional[str] = None
-    system_context: Optional[str] = None
+    investigation_id: str | None = None
+    system_context: str | None = None
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -1007,7 +1023,7 @@ class CrossGraphCitationRequest(BaseModel):
     referencing_investigation_id: str
     referenced_user_id: str
     referenced_note_id: str
-    federated_substrate_id: Optional[str] = None
+    federated_substrate_id: str | None = None
 
 
 class OutcomeRecordRequest(BaseModel):
@@ -1020,11 +1036,11 @@ class OutcomeRecordRequest(BaseModel):
 
     synthesis_id: str
     observer: str = "__operator__"
-    thesis_outcomes: list[dict] = []
-    falsification_outcomes: list[dict] = []
-    execution_risk_outcomes: list[dict] = []
-    decision_alignment: Optional[dict] = None
-    notes: Optional[str] = None
+    thesis_outcomes: list[dict[str, Any]] = []
+    falsification_outcomes: list[dict[str, Any]] = []
+    execution_risk_outcomes: list[dict[str, Any]] = []
+    decision_alignment: dict[str, Any] | None = None
+    notes: str | None = None
 
 
 class AttributionComputeRequest(BaseModel):
@@ -1044,10 +1060,10 @@ class AttributionComputeRequest(BaseModel):
 
 def create_app(
     *,
-    broadcaster: Optional[EventBroadcaster] = None,
-    cors_origins: Optional[list[str]] = None,
+    broadcaster: EventBroadcaster | None = None,
+    cors_origins: list[str] | None = None,
     register_wrestling: bool = True,
-    wrestling_db_path: Optional[str] = None,
+    wrestling_db_path: str | None = None,
     wrestling_embedder: Any = None,
     register_providers: bool = True,
 ) -> FastAPI:
@@ -1172,6 +1188,12 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        # Temporary agent / computer-use access (Codex + Hermes
+        # computer-use): a logged-out browser must reach the dev-login
+        # bootstrap to acquire its session, same as /auth/callback. The
+        # route itself 404s unless ANTIEK_DEV_LOGIN_TOKEN is set, so this
+        # is inert on any box that hasn't opted in. See auth.py.
+        "/auth/dev-login",
         # MCP rug-pull defense per §13.8 — the well-known manifest is
         # public by design so any MCP client can verify the tool
         # hashes without an account.
@@ -1185,13 +1207,16 @@ def create_app(
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
     @app.middleware("http")
-    async def _operator_auth_middleware(request, call_next):
+    async def _operator_auth_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        expected_email = os.environ.get(_OPERATOR_EMAIL_ENV, "").strip().lower()
+        operator_emails = frozenset(p.strip().lower() for p in os.environ.get(_OPERATOR_EMAIL_ENV, "").split(",") if p.strip())
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
-        if not expected_token and not expected_email and not expected_st_client_id:
+        if not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
@@ -1222,7 +1247,9 @@ def create_app(
         # request.state. (Endpoint-side calls back into operator_claims()
         # are still safe; they fall through to the static operator
         # identity when state is absent.)
-        def _attach_operator(req, *, method: str, email: str | None = None):
+        def _attach_operator(
+            req: Request, *, method: str, email: str | None = None
+        ) -> None:
             from substrate.multi_user.auth import operator_claims as _oc
             claims = _oc()
             req.state.user_id = claims.user_id
@@ -1238,27 +1265,28 @@ def create_app(
         if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
+                cookie_claims: SessionClaims | None
                 try:
                     from substrate.auth import verify_session_cookie
-                    claims = verify_session_cookie(session_value)
+                    cookie_claims = verify_session_cookie(session_value)
                 except Exception:  # noqa: BLE001 — invalid cookie falls through
-                    claims = None
-                if claims is not None:
-                    expected = expected_email.strip().lower()
-                    if not expected or claims.email.lower() == expected:
+                    cookie_claims = None
+                if cookie_claims is not None:
+                    cookie_email = cookie_claims.email.strip().lower()
+                    if not operator_emails or cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
-                            email=claims.email,
+                            email=cookie_claims.email,
                         )
                         return await call_next(request)
 
         # Path 2: Cloudflare Access — browser SSO (email header)
-        if expected_email:
+        if operator_emails:
             cf_email = request.headers.get(
                 _CF_ACCESS_EMAIL_HEADER, "",
             ).strip().lower()
-            if cf_email and cf_email == expected_email:
+            if cf_email and cf_email in operator_emails:
                 _attach_operator(request, method="cloudflare_access_email")
                 return await call_next(request)
 
@@ -1718,7 +1746,7 @@ def create_app(
         )
 
     @app.get("/.well-known/mcp-tools.json", tags=["mcp"])
-    async def mcp_well_known_manifest() -> dict:
+    async def mcp_well_known_manifest() -> dict[str, Any]:
         """Antiek Memory MCP server tool manifest (§13.8 rug-pull
         defense). Clients fetch this from
         ``https://api.antiek.ai/.well-known/mcp-tools.json`` and
@@ -1734,8 +1762,8 @@ def create_app(
     @app.get("/trajectory/{investigation_id}")
     async def get_trajectory(
         investigation_id: str,
-        limit: Annotated[Optional[int], Query(ge=1, le=10_000)] = None,
-    ) -> dict:
+        limit: Annotated[int | None, Query(ge=1, le=10_000)] = None,
+    ) -> dict[str, Any]:
         rows = trajectory(investigation_id)
         if limit is not None:
             rows = rows[-limit:]
@@ -1770,11 +1798,12 @@ def create_app(
         # at module import time so test setups that monkey-patch the
         # schema layer (drift tests) don't see a partially-initialized
         # module.
+        import uuid as _uuid
+
         from substrate.schemas import (
             InvestigationSpawnedFromPayload,
             InvestigationStartRequestedPayload,
         )
-        import uuid as _uuid
 
         investigation_id = (
             req.investigation_id or f"inv-{_uuid.uuid4().hex[:12]}"
@@ -1810,7 +1839,7 @@ def create_app(
         # Non-fatal if it fails; the start event already encodes the
         # lineage in its own payload.
         if req.parent_investigation_id:
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
                 emit_typed(
                     investigation_id,
                     InvestigationSpawnedFromPayload(
@@ -1821,8 +1850,6 @@ def create_app(
                     policy_id="operator-cli",
                     parent_event_id=event_id,
                 )
-            except Exception:  # pragma: no cover — diagnostic
-                pass
 
         # Broadcast the start event so the orchestrator handler
         # subscribed to it spawns the per-investigation coroutine.
@@ -1865,9 +1892,9 @@ def create_app(
 
         # Walk newest-first to find the latest phase, latest delivered,
         # and any terminal verdict.
-        last_phase: Optional[int] = None
-        last_delivered: Optional[str] = None
-        terminal_row: Optional[dict] = None
+        last_phase: int | None = None
+        last_delivered: str | None = None
+        terminal_row: dict[str, Any] | None = None
 
         for r in reversed(rows):
             at = r.get("action_type")
@@ -1896,7 +1923,7 @@ def create_app(
         # walk oldest-first and stop at the first match. Null when absent
         # (legacy/daemon runs predate the field) — never fabricated.
         start_action = ActionType.INVESTIGATION_START_REQUESTED.value
-        research_tier: Optional[str] = None
+        research_tier: str | None = None
         for r in rows:
             if r.get("action_type") == start_action:
                 payload = r.get("payload")
@@ -1941,7 +1968,7 @@ def create_app(
     async def list_investigations(
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
         status_filter: Annotated[
-            Optional[str], Query(alias="status")
+            str | None, Query(alias="status")
         ] = None,
     ) -> InvestigationListResponse:
         """List recent investigations. Walks the events directory to
@@ -1971,9 +1998,10 @@ def create_app(
         ``completed``, ``failed``, ``stopped``). Default limit 50, sorted
         newest first."""
         import os as _os
+
+        from orchestration.continuous.suggestions import policy_is_daemon
         from substrate.event_log import default_events_dir
         from substrate.schemas import ActionType
-        from orchestration.continuous.suggestions import policy_is_daemon
 
         events_dir = default_events_dir()
         if not _os.path.isdir(events_dir):
@@ -2014,12 +2042,12 @@ def create_app(
             ):
                 continue
 
-            question: Optional[str] = None
-            started_at: Optional[str] = None
-            completed_at: Optional[str] = None
+            question: str | None = None
+            started_at: str | None = None
+            completed_at: str | None = None
             cost_total = 0.0
             terminal_status = "in_progress"
-            parent_inv_id: Optional[str] = None
+            parent_inv_id: str | None = None
             # A pure session container has cascade.launched but never starts or
             # terminates a research of its own.
             saw_launched = False
@@ -2033,9 +2061,8 @@ def create_app(
             for r in rows:
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
-                if at in (start_action, spawned_action):
-                    if policy_is_daemon(r.get("policy_id")):
-                        spawned_by_daemon = True
+                if at in (start_action, spawned_action) and policy_is_daemon(r.get("policy_id")):
+                    spawned_by_daemon = True
                 if at in (start_action, spawned_action, completed_action,
                           failed_action, halted_action):
                     saw_own_lifecycle = True
@@ -2080,10 +2107,8 @@ def create_app(
                     terminal_status = "stopped"
                     completed_at = r.get("emitted_at")
                 elif at == "dispatch.call":
-                    try:
+                    with contextlib.suppress(TypeError, ValueError):
                         cost_total += float(payload.get("cost_usd", 0.0))
-                    except (TypeError, ValueError):
-                        pass
 
             if saw_launched and not saw_own_lifecycle:
                 session_containers.add(inv_id)
@@ -2146,8 +2171,9 @@ def create_app(
         modal + SPR-04's named-source render to surface the chunk text +
         source document title for any cited chunk_id.
 
-        §9.0 retrieval gate: a chunk whose source is RESTRICTED
-        (content_class in ``RESTRICTED_CONTENT_CLASSES``) or under a
+        §9.0 retrieval gate: a chunk whose source is on the canonical
+        non-privileged denylist (``retrieval_gate`` union:
+        ``restricted_pending_opt_in`` + ``personal_reading``) or under a
         takedown has its body WITHHELD here, at the query layer — the
         same gate ``substrate/graph/search.py`` applies to chunk
         retrieval — so a frontend that calls this directly still cannot
@@ -2161,8 +2187,9 @@ def create_app(
         ``servable`` / ``servability`` so the surface need not re-derive
         it."""
         import duckdb as _duckdb
+
         from substrate.graph import default_db_path
-        from substrate.graph.search import RESTRICTED_CONTENT_CLASSES
+        from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
         db_path = default_db_path()
         try:
@@ -2204,14 +2231,15 @@ def create_app(
 
         content_class = row[7]
         taken_down = bool(row[8])
-        # Takedown wins over everything; otherwise withhold only the
-        # named restricted classes (NULL/legacy passes — same as search).
-        if taken_down:
-            servable, label = False, "taken_down"
-        elif content_class in RESTRICTED_CONTENT_CLASSES:
-            servable, label = False, "restricted"
+        # Takedown wins over everything; otherwise delegate to the single
+        # canonical helper (RG-04 forbids reimplementing the denylist here).
+        # NULL/unknown fails closed (SR-07), consistent with the search path.
+        withheld, label = is_chunk_body_withheld(content_class, taken_down=taken_down)
+        if withheld:
+            servable, label = False, label
         else:
             servable, label = True, None
+
         return ChunkResponse(
             chunk_id=row[0],
             # Withhold the body for a non-servable source. The whole point
@@ -2255,8 +2283,8 @@ def create_app(
         detected = _detect_source_kind(req.url, req.kind)
         try:
             if detected == "arxiv":
-                from acquisition.arxiv import ingest_paper as _ip
                 from acquisition.arxiv import fetch_by_id as _fbi
+                from acquisition.arxiv import ingest_paper as _ip
                 # Extract the arXiv id from the URL if needed
                 arxiv_id = _extract_arxiv_id(req.url)
                 if not arxiv_id:
@@ -2268,45 +2296,51 @@ def create_app(
                     raise ValueError(
                         f"arXiv paper {arxiv_id!r} not found"
                     )
-                kwargs = {"investigation_id": req.investigation_id}
+                arxiv_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id
+                }
                 if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                r = _ip(paper, **kwargs)
-                return IngestSourceResponse(
-                    status="ingested" if r.chunks_written > 0 else "skipped",
-                    detected_kind="arxiv",
-                    document_id=r.document_id,
-                    document_loaded_event_id=r.document_loaded_event_id,
-                    chunks_written=r.chunks_written,
-                    title=paper.title,
-                )
-            elif detected == "youtube":
-                from acquisition.youtube import ingest_youtube
-                kwargs = {"investigation_id": req.investigation_id}
-                if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                r = ingest_youtube(req.url, **kwargs)
+                    arxiv_kwargs["source_tier"] = req.source_tier
+                arxiv_r = _ip(paper, **arxiv_kwargs)
                 return IngestSourceResponse(
                     status=(
-                        "ingested" if r.chunks_written > 0
+                        "ingested" if arxiv_r.chunks_written > 0 else "skipped"
+                    ),
+                    detected_kind="arxiv",
+                    document_id=arxiv_r.document_id,
+                    document_loaded_event_id=arxiv_r.document_loaded_event_id,
+                    chunks_written=arxiv_r.chunks_written,
+                    title=paper.title,
+                )
+            if detected == "youtube":
+                from acquisition.youtube import ingest_youtube
+                yt_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id
+                }
+                if req.source_tier is not None:
+                    yt_kwargs["source_tier"] = req.source_tier
+                yt_r = ingest_youtube(req.url, **yt_kwargs)
+                return IngestSourceResponse(
+                    status=(
+                        "ingested" if yt_r.chunks_written > 0
                         else "skipped"
                     ),
                     detected_kind="youtube",
-                    document_id=r.document_id,
-                    document_loaded_event_id=r.document_loaded_event_id,
-                    chunks_written=r.chunks_written,
-                    skipped_reason=r.skipped_reason,
-                    title=r.title,
+                    document_id=yt_r.document_id,
+                    document_loaded_event_id=yt_r.document_loaded_event_id,
+                    chunks_written=yt_r.chunks_written,
+                    skipped_reason=yt_r.skipped_reason,
+                    title=yt_r.title,
                 )
-            elif detected == "podcast":
+            if detected == "podcast":
                 from acquisition.podcasts import ingest_feed
-                kwargs = {
+                podcast_kwargs: dict[str, Any] = {
                     "investigation_id": req.investigation_id,
                     "max_episodes": req.max_episodes,
                 }
                 if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                results = ingest_feed(req.url, **kwargs)
+                    podcast_kwargs["source_tier"] = req.source_tier
+                results = ingest_feed(req.url, **podcast_kwargs)
                 ingested = sum(1 for r in results if r.chunks_written > 0)
                 total_chunks = sum(r.chunks_written for r in results)
                 # Report the most recent ingested episode's title as
@@ -2326,7 +2360,7 @@ def create_app(
                     episodes_processed=len(results),
                     episodes_ingested=ingested,
                 )
-            elif detected == "twitter":
+            if detected == "twitter":
                 # The URL alone is insufficient for X — the auth wall
                 # blocks direct fetch. Tell the operator to use the
                 # browser extension's POST /sources/twitter endpoint
@@ -2342,26 +2376,27 @@ def create_app(
                         "/sources/twitter with the captured thread."
                     ),
                 )
-            elif detected == "url":
+            if detected == "url":
                 from acquisition.urls import ingest_url
-                kwargs = {"investigation_id": req.investigation_id}
+                url_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id
+                }
                 if req.source_tier is not None:
-                    kwargs["source_tier"] = req.source_tier
-                r = ingest_url(req.url, **kwargs)
+                    url_kwargs["source_tier"] = req.source_tier
+                url_r = ingest_url(req.url, **url_kwargs)
                 return IngestSourceResponse(
                     status=(
-                        "ingested" if r.chunks_written > 0
+                        "ingested" if url_r.chunks_written > 0
                         else "skipped"
                     ),
                     detected_kind="url",
-                    document_id=r.document_id,
-                    document_loaded_event_id=r.document_loaded_event_id,
-                    chunks_written=r.chunks_written,
-                    skipped_reason=r.skipped_reason,
-                    title=r.title,
+                    document_id=url_r.document_id,
+                    document_loaded_event_id=url_r.document_loaded_event_id,
+                    chunks_written=url_r.chunks_written,
+                    skipped_reason=url_r.skipped_reason,
+                    title=url_r.title,
                 )
-            else:
-                raise ValueError(f"unsupported source kind: {detected!r}")
+            raise ValueError(f"unsupported source kind: {detected!r}")
         except Exception as exc:
             return IngestSourceResponse(
                 status="error",
@@ -2434,8 +2469,9 @@ def create_app(
 
     @app.get("/deliverables/{deliverable_id}", response_model=DeliverableDetailResponse)
     async def get_deliverable(deliverable_id: str) -> DeliverableDetailResponse:
-        import duckdb
         import json as _json
+
+        import duckdb
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
@@ -2506,7 +2542,7 @@ def create_app(
         )
 
     @app.post("/sections/attach-block", status_code=202)
-    async def post_attach_block(req: AttachBlockRequest) -> dict:
+    async def post_attach_block(req: AttachBlockRequest) -> dict[str, Any]:
         from runtime.db_lock import connect_write
         from substrate.graph.ops import attach_block_to_section
 
@@ -2574,7 +2610,7 @@ def create_app(
         return BlockSearchResponse(count=len(hits), hits=hits)
 
     @app.post("/sections/reorder-block", status_code=202)
-    async def post_reorder_block(req: ReorderBlockRequest) -> dict:
+    async def post_reorder_block(req: ReorderBlockRequest) -> dict[str, Any]:
         """Move a block within a section, or to a new section.
 
         Implementation note: section_blocks has a composite PK
@@ -2678,7 +2714,7 @@ def create_app(
             update_section_prose(
                 con, section_id=section_id, prose_text=req.prose_text,
             )
-            claim_node_id: Optional[str] = None
+            claim_node_id: str | None = None
             if req.promote_to_graph:
                 # Use the section title + first line of the prose as
                 # the claim's canonical label (keeps it indexable).
@@ -2701,7 +2737,7 @@ def create_app(
                     on_conflict="ignore",
                 )
 
-        claim_event_id: Optional[str] = None
+        claim_event_id: str | None = None
         if req.promote_to_graph and claim_node_id is not None:
             # Source tier: default 5 (unsupported) unless the operator
             # explicitly attached chunk citations. Even with citations
@@ -2750,8 +2786,9 @@ def create_app(
                     f"got {format!r}"
                 ),
             )
-        import duckdb
         import json as _json
+
+        import duckdb
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
@@ -2792,7 +2829,7 @@ def create_app(
             # verbatim (Substack's editor renders them correctly) and
             # use ``> `` blockquote for the deliverable kind label so
             # Substack's reader UI distinguishes metadata from prose.
-            lines: list[str] = [f"> _{kind}_", ""]
+            lines = [f"> _{kind}_", ""]
             for idx, sec_title, prose in secs:
                 lines.append(f"## {sec_title or f'Section {idx + 1}'}")
                 lines.append("")
@@ -2804,7 +2841,8 @@ def create_app(
                 filename=f"{deliverable_id}.substack.md",
             )
         if format == "html":
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s: str | None) -> str:
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             parts = [
                 "<!doctype html>",
                 f"<html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>",
@@ -2835,7 +2873,8 @@ def create_app(
             # rather than crashing on import — operator installs via
             # ``pip install -e '.[export]'`` and retries.
             try:
-                from xhtml2pdf import pisa  # type: ignore[import-untyped]
+                # optional 'export' extra; not installed in the lint env
+                from xhtml2pdf import pisa  # type: ignore[import-not-found]
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -2846,7 +2885,8 @@ def create_app(
                 ) from e
             import base64
             import io
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s: str | None) -> str:
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             # Researcher's-notebook print stylesheet per master-spec §5.
             # Serif body font; generous line-height; no SaaS-dashboard
             # primary blues; @page margins set for A4 with title block.
@@ -2895,7 +2935,8 @@ def create_app(
             # nav.xhtml. Base64-encoded bytes follow the same pattern
             # as PDF. Same 503 fallback when the extra isn't installed.
             try:
-                from ebooklib import epub  # type: ignore[import-untyped]
+                # optional 'export' extra; not installed in the lint env
+                from ebooklib import epub  # type: ignore[import-not-found]
             except ImportError as e:
                 raise HTTPException(
                     status_code=503,
@@ -2906,7 +2947,8 @@ def create_app(
                 ) from e
             import base64
             import tempfile
-            esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            def esc(s: str | None) -> str:
+                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             book = epub.EpubBook()
             book.set_identifier(deliverable_id)
             book.set_title(title)
@@ -2947,10 +2989,8 @@ def create_app(
                     epub_bytes = fh.read()
             finally:
                 import os
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
             return ExportFormat(
                 format="epub",
                 content=base64.b64encode(epub_bytes).decode("ascii"),
@@ -2988,9 +3028,10 @@ def create_app(
         polls this endpoint and routes to a webhook when
         ``alert_recommended=True`` — typical signal that the bridge has
         gone silent and OpenRouter is silently carrying inference."""
-        import os as _os
         import json as _json
-        from datetime import datetime, timezone, timedelta
+        import os as _os
+        from datetime import datetime, timedelta
+
         from substrate.event_log import default_events_dir
 
         events_dir = default_events_dir()
@@ -2998,7 +3039,7 @@ def create_app(
             return ProviderRatioResponse(
                 window_minutes=window_minutes, total_dispatches=0,
             )
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
 
         per_provider: dict[str, dict[str, int]] = {}
         total = 0
@@ -3008,7 +3049,7 @@ def create_app(
             path = _os.path.join(events_dir, filename)
             try:
                 stat_mtime = datetime.fromtimestamp(
-                    _os.path.getmtime(path), tz=timezone.utc,
+                    _os.path.getmtime(path), tz=UTC,
                 )
             except OSError:
                 continue
@@ -3017,7 +3058,7 @@ def create_app(
             if stat_mtime < cutoff:
                 continue
             try:
-                with open(path, "r") as fp:
+                with open(path) as fp:
                     for line in fp:
                         line = line.strip()
                         if not line:
@@ -3035,7 +3076,7 @@ def create_app(
                                     ts_str.replace("Z", "+00:00")
                                 )
                                 if ts.tzinfo is None:
-                                    ts = ts.replace(tzinfo=timezone.utc)
+                                    ts = ts.replace(tzinfo=UTC)
                                 if ts < cutoff:
                                     continue
                             except (ValueError, TypeError):
@@ -3077,7 +3118,7 @@ def create_app(
         )
 
         alert = False
-        reason: Optional[str] = None
+        reason: str | None = None
         # Two trigger shapes the operator cares about:
         # 1. Heavy openrouter usage (bridge silently failing) — primary
         #    signal that Hermes-primary has dropped out.
@@ -3126,9 +3167,11 @@ def create_app(
                 synthesis_id, emit_event=emit_event,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc))
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-        def _to_resp(algo, result) -> AttributionAlgorithmShares:
+        def _to_resp(
+            algo: Literal["A", "B", "C"], result: AttributionResult
+        ) -> AttributionAlgorithmShares:
             return AttributionAlgorithmShares(
                 algorithm=algo,
                 shares=dict(result.shares),
@@ -3157,9 +3200,9 @@ def create_app(
     async def post_interview_project(
         req: CreateInterviewProjectRequest,
     ) -> InterviewProjectSummary:
+
         from runtime.db_lock import connect_write
         from substrate.graph.ops import insert_interview_project
-        import json as _json
 
         db = _resolve_db_path()
         guide = {
@@ -3190,8 +3233,9 @@ def create_app(
         response_model=list[InterviewProjectSummary],
     )
     async def list_interview_projects() -> list[InterviewProjectSummary]:
-        import duckdb
         import json as _json
+
+        import duckdb
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
@@ -3308,8 +3352,9 @@ def create_app(
         response_model=InterviewDetailResponse,
     )
     async def get_interview(interview_id: str) -> InterviewDetailResponse:
-        import duckdb
         import json as _json
+
+        import duckdb
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
@@ -3327,10 +3372,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="interview not found")
         guide = {}
         if row[7]:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 guide = _json.loads(row[7])
-            except (ValueError, TypeError):
-                pass
         turns = []
         if row[4]:
             try:
@@ -3371,7 +3414,7 @@ def create_app(
                     text=req.text,
                 )
             except ValueError as exc:
-                raise HTTPException(status_code=404, detail=str(exc))
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
             (status,) = con.execute(
                 "SELECT status FROM interviews WHERE interview_id = ?",
                 [interview_id],
@@ -3464,7 +3507,7 @@ def create_app(
     @app.websocket("/ws/events")
     async def ws_events(
         ws: WebSocket,
-        investigation_id: Optional[str] = Query(default=None),
+        investigation_id: str | None = Query(default=None),
     ) -> None:
         await ws.accept()
         sub = await bus.subscribe(ws, investigation_id=investigation_id)
@@ -3472,7 +3515,7 @@ def create_app(
             while True:
                 try:
                     event = await asyncio.wait_for(sub.queue.get(), timeout=30.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Keepalive — send a ping frame the client can ignore.
                     # FastAPI's WebSocket doesn't have ping built in for
                     # arbitrary clients, so send a no-op JSON object.
@@ -3499,10 +3542,10 @@ def create_app(
         question_id: str
         question_text: str
         source_investigation_id: str
-        source_document_id: Optional[str] = None
-        anchor_region_id: Optional[str] = None
+        source_document_id: str | None = None
+        anchor_region_id: str | None = None
         parked_at: str
-        parent_event_id: Optional[str] = None
+        parent_event_id: str | None = None
 
     class WatchForLaterResponse(BaseModel):
         count: int
@@ -3516,6 +3559,7 @@ def create_app(
         Renders as the watch-for-later folder in the Brainstorming
         Workstation (master-spec §4.5)."""
         import os as _os
+
         from substrate.event_log import default_events_dir
         from substrate.schemas import ActionType
 
@@ -3577,6 +3621,7 @@ def create_app(
         the next refresh because it is now sharpened."""
         import os as _os
         import uuid as _uuid
+
         from substrate.event_log import default_events_dir
         from substrate.schemas import (
             ActionType,
@@ -3588,8 +3633,8 @@ def create_app(
         if not _os.path.isdir(events_dir):
             raise HTTPException(status_code=404, detail="No events directory")
 
-        found_text: Optional[str] = None
-        found_source_inv: Optional[str] = None
+        found_text: str | None = None
+        found_source_inv: str | None = None
         qi_action = ActionType.QUESTION_IDENTIFIED.value
         for filename in _os.listdir(events_dir):
             if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
@@ -3640,7 +3685,7 @@ def create_app(
 
         # Emit the escalation event into the SOURCE investigation so
         # subsequent /watch-for-later calls correctly hide this question.
-        try:
+        with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
             emit_typed(
                 found_source_inv,
                 QuestionEscalatedToResearchPayload(
@@ -3650,8 +3695,6 @@ def create_app(
                 role="operator",
                 policy_id="operator/brainstorm",
             )
-        except Exception:  # pragma: no cover — diagnostic
-            pass
 
         # Broadcast the start event so the Loop 1 orchestrator picks it up.
         for row in reversed(trajectory(child_inv_id)):
@@ -3680,18 +3723,18 @@ def create_app(
     class PublisherResponse(BaseModel):
         ip_holder_id: str
         display_name: str
-        legal_contact_email: Optional[str]
+        legal_contact_email: str | None
         status: str
         escrow_balance_usd: str
-        notification_sent_at: Optional[str]
-        claimed_at: Optional[str]
-        opted_out_at: Optional[str]
+        notification_sent_at: str | None
+        claimed_at: str | None
+        opted_out_at: str | None
 
     class PublisherListResponse(BaseModel):
         count: int
         publishers: list[PublisherResponse]
 
-    def _holder_to_response(h) -> PublisherResponse:  # noqa: ANN001 (internal)
+    def _holder_to_response(h: IpHolder) -> PublisherResponse:
         return PublisherResponse(
             ip_holder_id=h.ip_holder_id,
             display_name=h.display_name,
@@ -3715,9 +3758,9 @@ def create_app(
         notification email + claim flow are operator-driven steps
         OUTSIDE this endpoint (lawyer-involved gate per §15.9
         binding before first notification sends)."""
-        from substrate.ip_holders import create_pre_onboarded, get
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.ip_holders import create_pre_onboarded, get
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:create_publisher") as con:
@@ -3734,11 +3777,11 @@ def create_app(
 
     @app.get("/publishers", response_model=PublisherListResponse)
     async def list_publishers(
-        status: Annotated[Optional[str], Query()] = None,
+        status: Annotated[str | None, Query()] = None,
     ) -> PublisherListResponse:
-        from substrate.ip_holders import list_all
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.ip_holders import list_all
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:list_publishers") as con:
@@ -3750,9 +3793,9 @@ def create_app(
 
     @app.get("/publishers/{ip_holder_id}", response_model=PublisherResponse)
     async def get_publisher(ip_holder_id: str) -> PublisherResponse:
-        from substrate.ip_holders import get
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.ip_holders import get
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:get_publisher") as con:
@@ -3768,9 +3811,9 @@ def create_app(
         this endpoint (record-of-delivery is the operator's
         responsibility); this endpoint records the timestamp + state
         transition once the email has been confirmed sent."""
-        from substrate.ip_holders import get, mark_invited
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.ip_holders import get, mark_invited
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:notify_publisher") as con:
@@ -3781,7 +3824,7 @@ def create_app(
         return _holder_to_response(h)
 
     class PublisherClaimRequest(BaseModel):
-        stripe_connect_account_id: Optional[str] = None
+        stripe_connect_account_id: str | None = None
 
     @app.post("/publishers/{ip_holder_id}/claim", response_model=PublisherResponse)
     async def claim_publisher(
@@ -3789,9 +3832,9 @@ def create_app(
     ) -> PublisherResponse:
         """Publisher claims account via documented process. Unlocks
         the Stripe Connect payout path per §9.10."""
-        from substrate.ip_holders import claim, get
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.ip_holders import claim, get
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:claim_publisher") as con:
@@ -3808,9 +3851,9 @@ def create_app(
     async def opt_out_publisher(ip_holder_id: str) -> PublisherResponse:
         """Publisher opts out. Triggers content-removal background
         process within 30 days (§9.10 implementation requirements 4)."""
-        from substrate.ip_holders import get, opt_out
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.ip_holders import get, opt_out
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:opt_out_publisher") as con:
@@ -3830,15 +3873,15 @@ def create_app(
         block_id: str
         block_index: int
         block_type: str
-        ref_id: Optional[str]
-        content_json: dict
+        ref_id: str | None
+        content_json: dict[str, Any]
         created_at: str
 
     class NotebookResponse(BaseModel):
         notebook_id: str
         title: str
-        investigation_id: Optional[str]
-        document_id: Optional[str]
+        investigation_id: str | None
+        document_id: str | None
         content_class: str
         created_at: str
         updated_at: str
@@ -3848,7 +3891,7 @@ def create_app(
         count: int
         notebooks: list[NotebookResponse]
 
-    def _notebook_to_response(nb) -> NotebookResponse:  # noqa: ANN001
+    def _notebook_to_response(nb: Notebook) -> NotebookResponse:
         return NotebookResponse(
             notebook_id=nb.notebook_id,
             title=nb.title,
@@ -3878,9 +3921,9 @@ def create_app(
     async def post_notebook(
         req: NotebookCreateRequest = Body(...),
     ) -> NotebookResponse:
-        from substrate.notebooks import create_notebook, get_notebook
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import create_notebook, get_notebook
 
         db_path = default_db_path()
         try:
@@ -3901,13 +3944,13 @@ def create_app(
 
     @app.get("/notebooks", response_model=NotebookListResponse)
     async def list_notebooks_endpoint(
-        investigation_id: Annotated[Optional[str], Query()] = None,
-        document_id: Annotated[Optional[str], Query()] = None,
+        investigation_id: Annotated[str | None, Query()] = None,
+        document_id: Annotated[str | None, Query()] = None,
         limit: Annotated[int, Query(ge=1, le=500)] = 50,
     ) -> NotebookListResponse:
-        from substrate.notebooks import list_notebooks
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import list_notebooks
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:list_notebooks") as con:
@@ -3924,9 +3967,9 @@ def create_app(
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)
     async def get_notebook_endpoint(notebook_id: str) -> NotebookResponse:
-        from substrate.notebooks import get_notebook
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import get_notebook
 
         db_path = default_db_path()
         with connect_write(db_path, purpose="api:get_notebook") as con:
@@ -3944,9 +3987,9 @@ def create_app(
         notebook_id: str,
         req: NotebookAppendBlockRequest = Body(...),
     ) -> NotebookResponse:
-        from substrate.notebooks import append_block, get_notebook
-        from substrate.graph import default_db_path
         from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import append_block, get_notebook
 
         db_path = default_db_path()
         try:
@@ -4185,13 +4228,18 @@ def create_app(
             # Emit the typed quality_gate.evaluated event for the
             # promotion attempt — both success and failure paths.
             try:
+                import uuid as _uuid
+                from datetime import datetime as _dt
+
                 from substrate.schemas.events import (
                     ActionType as _AT,
-                    QualityGateEvaluatedPayload,
+                )
+                from substrate.schemas.events import (
                     Event as _TypedEvent,
                 )
-                import uuid as _uuid
-                from datetime import datetime as _dt, timezone as _tz
+                from substrate.schemas.events import (
+                    QualityGateEvaluatedPayload,
+                )
 
                 payload = QualityGateEvaluatedPayload(
                     target_kind="notebook",
@@ -4215,7 +4263,7 @@ def create_app(
                     action_type=_AT.QUALITY_GATE_EVALUATED,
                     payload=payload,
                     param_version="api-v0",
-                    emitted_at=_dt.now(_tz.utc),
+                    emitted_at=_dt.now(UTC),
                 )
                 bus_obj = getattr(app.state, "broadcaster", None)
                 if bus_obj is not None:
@@ -4284,13 +4332,16 @@ def create_app(
             and req.target_kind in {"notebook", "synthesis_page", "creator_note"}
         ):
             try:
+                import uuid as _uuid
+                from datetime import datetime as _dt
+
                 from substrate.schemas.events import (
                     ActionType,
                     QualityGateEvaluatedPayload,
+                )
+                from substrate.schemas.events import (
                     Event as TypedEvent,
                 )
-                import uuid as _uuid
-                from datetime import datetime as _dt, timezone as _tz
 
                 payload = QualityGateEvaluatedPayload(
                     target_kind=req.target_kind,  # type: ignore[arg-type]
@@ -4312,7 +4363,7 @@ def create_app(
                     action_type=ActionType.QUALITY_GATE_EVALUATED,
                     payload=payload,
                     param_version="api-v0",
-                    emitted_at=_dt.now(_tz.utc),
+                    emitted_at=_dt.now(UTC),
                 )
                 bus_obj = getattr(app.state, "broadcaster", None)
                 if bus_obj is not None:
@@ -4391,7 +4442,7 @@ def create_app(
     # Request model lives at module scope (see top of file).
     class ExpertCandidateResponse(BaseModel):
         candidate_user_id: str
-        display_name: Optional[str]
+        display_name: str | None
         public_note_count: int
         estimated_topic_authority: float
 
@@ -4498,7 +4549,7 @@ def create_app(
 
     class OutcomeListResponse(BaseModel):
         synthesis_id: str
-        outcomes: list[dict]
+        outcomes: list[dict[str, Any]]
 
     @app.post(
         "/outcomes",
@@ -4551,48 +4602,61 @@ def create_app(
         # canonical schema (mirrors the outcomes table 1:1 per the
         # drift test in tests/test_middleware_outcomes.py).
         try:
+            from datetime import datetime as _dt
+
             from substrate.schemas.events import (
                 ActionType as _AT,
+            )
+            from substrate.schemas.events import (
                 DecisionAlignment as _DA,
-                ExecutionRiskOutcome as _ERO,
-                FalsificationOutcome as _FO,
-                OutcomeRecordedPayload as _ORP,
-                ThesisOutcome as _TO,
+            )
+            from substrate.schemas.events import (
                 Event as _TypedEvent,
             )
-            from datetime import datetime as _dt, timezone as _tz
+            from substrate.schemas.events import (
+                ExecutionRiskOutcome as _ERO,
+            )
+            from substrate.schemas.events import (
+                FalsificationOutcome as _FO,
+            )
+            from substrate.schemas.events import (
+                OutcomeRecordedPayload as _ORP,
+            )
+            from substrate.schemas.events import (
+                ThesisOutcome as _TO,
+            )
 
-            def _coerce_thesis(items):
-                out: list = []
+            def _coerce_thesis(
+                items: list[dict[str, Any]] | None,
+            ) -> list[Any]:
+                out: list[Any] = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_TO(**item))
-                        except Exception:
-                            pass
                 return out
 
-            def _coerce_falsification(items):
-                out: list = []
+            def _coerce_falsification(
+                items: list[dict[str, Any]] | None,
+            ) -> list[Any]:
+                out: list[Any] = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_FO(**item))
-                        except Exception:
-                            pass
                 return out
 
-            def _coerce_risk(items):
-                out: list = []
+            def _coerce_risk(
+                items: list[dict[str, Any]] | None,
+            ) -> list[Any]:
+                out: list[Any] = []
                 for item in items or []:
                     if isinstance(item, dict):
-                        try:
+                        with contextlib.suppress(Exception):
                             out.append(_ERO(**item))
-                        except Exception:
-                            pass
                 return out
 
-            decision_alignment_obj: Optional[_DA] = None
+            decision_alignment_obj: _DA | None = None
             if isinstance(req.decision_alignment, dict):
                 try:
                     decision_alignment_obj = _DA(**req.decision_alignment)
@@ -4617,7 +4681,7 @@ def create_app(
                 action_type=_AT.OUTCOME_RECORDED,
                 payload=payload,
                 param_version="api-v0",
-                emitted_at=_dt.now(_tz.utc),
+                emitted_at=_dt.now(UTC),
             )
             bus_obj = getattr(app.state, "broadcaster", None)
             if bus_obj is not None:
@@ -4649,7 +4713,7 @@ def create_app(
     )
     async def list_recent_outcomes(
         limit: int = Query(default=50, ge=1, le=500),
-        observer: Optional[str] = Query(default=None),
+        observer: str | None = Query(default=None),
     ) -> OutcomeRecentListResponse:
         """Cross-investigation outcomes listing, newest first.
         Operator-facing audit surface; per master-spec §13.8 the
@@ -4658,7 +4722,7 @@ def create_app(
         from substrate.graph import default_db_path
 
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if observer is not None:
             clauses.append("observer = ?")
             params.append(observer)
@@ -4711,7 +4775,7 @@ def create_app(
         referencing_investigation_id: str
         referenced_user_id: str
         referenced_note_id: str
-        federated_substrate_id: Optional[str]
+        federated_substrate_id: str | None
         cited_at: str
 
     @app.post(
@@ -4743,13 +4807,16 @@ def create_app(
         # attached at app boot; absence of a bus is a no-op (e.g.
         # tests without broadcaster wiring).
         try:
+            import uuid as _uuid
+            from datetime import datetime as _dt
+
             from substrate.schemas.events import (
                 ActionType,
                 CrossGraphCitationRecordedPayload,
+            )
+            from substrate.schemas.events import (
                 Event as TypedEvent,
             )
-            import uuid as _uuid
-            from datetime import datetime as _dt, timezone as _tz
 
             payload = CrossGraphCitationRecordedPayload(
                 reference_id=ref.reference_id,
@@ -4765,7 +4832,7 @@ def create_app(
                 action_type=ActionType.CROSS_GRAPH_CITATION_RECORDED,
                 payload=payload,
                 param_version="api-v0",
-                emitted_at=_dt.now(_tz.utc),
+                emitted_at=_dt.now(UTC),
             )
             bus_obj = getattr(app.state, "broadcaster", None)
             if bus_obj is not None:
@@ -4872,7 +4939,7 @@ def create_app(
         session_id: str
         bytes_received: int
         duration_seconds: int
-        audio_url: Optional[str]
+        audio_url: str | None
 
     @app.post(
         "/voice/sessions/{session_id}/upload",
@@ -4987,7 +5054,7 @@ def create_app(
                     "message": str(exc),
                     "valid": [c.value for c in Loop3UnlockCriterion],
                 },
-            )
+            ) from exc
 
         with connect_write(
             default_db_path(), purpose="loop_3:set_criterion",
@@ -5008,12 +5075,12 @@ def create_app(
     class PayoutTransferResponse(BaseModel):
         transfer_attempt_id: str
         decision_id: str
-        stripe_transfer_id: Optional[str]
-        recipient_account_id: Optional[str]
+        stripe_transfer_id: str | None
+        recipient_account_id: str | None
         amount_usd_cents: int
         status: str
-        note: Optional[str]
-        initiated_at: Optional[str]
+        note: str | None
+        initiated_at: str | None
 
     class PayoutTransferListResponse(BaseModel):
         transfers: list[PayoutTransferResponse]
@@ -5023,8 +5090,8 @@ def create_app(
         response_model=PayoutTransferListResponse,
     )
     async def list_payout_transfers(
-        status: Optional[str] = Query(default=None),
-        recipient_account_id: Optional[str] = Query(default=None),
+        status: str | None = Query(default=None),
+        recipient_account_id: str | None = Query(default=None),
         limit: int = Query(default=200, ge=1, le=2000),
     ) -> PayoutTransferListResponse:
         """Audit query — every transfer attempt the substrate has
@@ -5035,7 +5102,7 @@ def create_app(
         from substrate.graph import default_db_path
 
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
@@ -5115,6 +5182,7 @@ def create_app(
         validated against ``[a-zA-Z0-9_-]+`` to keep them path-safe
         for any downstream substrate-id-as-path uses."""
         import re
+
         from runtime.db_lock import connect_write
         from substrate.cross_graph.federation import FederationConfig
         from substrate.cross_graph.federation_config_store import (
@@ -5169,7 +5237,7 @@ def create_app(
         synthesis_timestamp: str
         target_question: str
         status: str
-        implicit_recommendation: Optional[str]
+        implicit_recommendation: str | None
         substrate_manifest_counts: dict[str, int]
         added_edges_since: int
         superseded_edges_since: int
@@ -5177,9 +5245,9 @@ def create_app(
         chunks_retired_downward_count: int
         outcomes_recorded: int
         # Detail rows for the UI; clipped to reasonable bounds.
-        cited_edges_now_superseded: list[dict]
-        chunks_retired_downward: list[dict]
-        outcomes: list[dict]
+        cited_edges_now_superseded: list[dict[str, Any]]
+        chunks_retired_downward: list[dict[str, Any]]
+        outcomes: list[dict[str, Any]]
 
     @app.get(
         "/backtest/{synthesis_id}",
@@ -5192,6 +5260,7 @@ def create_app(
         recorded' — load-bearing for operator-graded outcomes and the
         Phase 8 skill-growth gate."""
         import dataclasses
+
         from runtime.db_lock import connect_read
         from substrate.graph import default_db_path
 
@@ -5201,7 +5270,7 @@ def create_app(
             raise HTTPException(
                 status_code=503,
                 detail=f"backtest module unavailable: {exc!r}",
-            )
+            ) from exc
 
         try:
             with connect_read(default_db_path()) as con:
@@ -5210,13 +5279,13 @@ def create_app(
             raise HTTPException(
                 status_code=404,
                 detail=f"synthesis not archived: {exc!r}",
-            )
+            ) from exc
         except Exception as exc:
             # Most likely: synthesis_id doesn't exist in archives.
             raise HTTPException(
                 status_code=404,
                 detail=f"backtest unavailable for {synthesis_id!r}: {exc!r}",
-            )
+            ) from exc
 
         return BacktestReportResponse(
             synthesis_id=report.synthesis_id,
@@ -5246,14 +5315,16 @@ def create_app(
         status: str
         requested_at: str
         updated_at: str
-        reason: Optional[str]
+        reason: str | None
         cancellation_window_days: int = 7
         deletion_sla_days: int = 30
 
     class DeletionRequestListResponse(BaseModel):
         requests: list[DeletionRequestResponse]
 
-    def _deletion_request_row_to_response(row) -> "DeletionRequestResponse":
+    def _deletion_request_row_to_response(
+        row: Any,
+    ) -> DeletionRequestResponse:
         return DeletionRequestResponse(
             request_id=row[0],
             user_id=row[1],
@@ -5282,6 +5353,7 @@ def create_app(
         spec §13.3: 30-day SLA, 7-day cancellation window. Identity
         comes from the auth middleware via request.state."""
         import uuid as _uuid
+
         from runtime.db_lock import connect_write
         from substrate.graph import default_db_path
 
@@ -5457,13 +5529,13 @@ def create_app(
     # ── Sprint 30+ documents listing (§4.1) ──
     class DocumentSummary(BaseModel):
         document_id: str
-        title: Optional[str]
-        source_uri: Optional[str]
-        document_type: Optional[str]
+        title: str | None
+        source_uri: str | None
+        document_type: str | None
         source_tier: int
-        investigation_id: Optional[str]
-        content_class: Optional[str]
-        ip_holder_id: Optional[str]
+        investigation_id: str | None
+        content_class: str | None
+        ip_holder_id: str | None
 
     class DocumentListResponse(BaseModel):
         documents: list[DocumentSummary]
@@ -5473,8 +5545,8 @@ def create_app(
         response_model=DocumentListResponse,
     )
     async def list_documents(
-        source_tier: Optional[int] = Query(default=None, ge=1, le=5),
-        investigation_id: Optional[str] = Query(default=None),
+        source_tier: int | None = Query(default=None, ge=1, le=5),
+        investigation_id: str | None = Query(default=None),
         limit: int = Query(default=200, ge=1, le=2000),
     ) -> DocumentListResponse:
         """List documents in the substrate. Filterable by source_tier
@@ -5484,7 +5556,7 @@ def create_app(
         from substrate.graph import default_db_path
 
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if source_tier is not None:
             clauses.append("source_tier = ?")
             params.append(source_tier)
@@ -5529,7 +5601,7 @@ def create_app(
         epsilon_budget_consumed: float
         source_user_count: int
         confidence: str
-        extracted_at: Optional[str] = None
+        extracted_at: str | None = None
 
     class SkillRuleListResponse(BaseModel):
         rules: list[SkillRuleResponse]
@@ -5576,9 +5648,9 @@ def create_app(
         response_model=SkillRuleListResponse,
     )
     async def list_skill_rules(
-        domain: Optional[str] = Query(default=None),
-        confidence: Optional[str] = Query(default=None),
-        q: Optional[str] = Query(default=None, max_length=500),
+        domain: str | None = Query(default=None),
+        confidence: str | None = Query(default=None),
+        q: str | None = Query(default=None, max_length=500),
         limit: int = Query(default=100, ge=1, le=1000),
     ) -> SkillRuleListResponse:
         """List promoted skill rules from the shared substrate. Per
@@ -5591,7 +5663,7 @@ def create_app(
 
         # Build the WHERE clause from optional filters.
         clauses: list[str] = []
-        params: list = []
+        params: list[Any] = []
         if domain is not None:
             clauses.append("domain = ?")
             params.append(domain)

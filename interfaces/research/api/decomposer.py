@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -47,6 +46,15 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from roles.decomposer import (  # noqa: E402
+    DecomposerValidationError,
+    DecompositionResult,
+    ParaphraseFlag,
+    check_paraphrases,
+    parse_decomposer_response,
+    regenerate_instruction,
+    render_full_prompt,
+)
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph.search import EmbeddingModel  # noqa: E402
@@ -61,18 +69,8 @@ from substrate.schemas import (  # noqa: E402
     ParaphraseFlagRecord,
     SubQuestion,
 )
-from roles.decomposer import (  # noqa: E402
-    DecomposerValidationError,
-    DecompositionResult,
-    ParaphraseFlag,
-    check_paraphrases,
-    parse_decomposer_response,
-    regenerate_instruction,
-    render_full_prompt,
-)
 
 from .broadcast import EventBroadcaster
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -123,7 +121,7 @@ def _safe_check_paraphrases(
     question: str,
     sub_questions: list[str],
     *,
-    embedder: Optional[EmbeddingModel],
+    embedder: EmbeddingModel | None,
 ) -> list[ParaphraseFlag]:
     """Wrap ``check_paraphrases`` with the upstream's defensive guard:
     embedder/model failures degrade to "no flags" rather than killing
@@ -146,7 +144,7 @@ def _safe_check_paraphrases(
 def make_decomposer_handler(
     broadcaster: EventBroadcaster,
     *,
-    embedder: Optional[EmbeddingModel] = None,
+    embedder: EmbeddingModel | None = None,
 ):
     """Build the handler closed over a broadcaster + embedder.
     Registered against ``ActionType.DECOMPOSE_QUESTION_REQUESTED``.
@@ -279,7 +277,7 @@ def _dispatch_and_parse(
     event: Event,
     *,
     label: str,
-) -> tuple[Optional[DecompositionResult], str]:
+) -> tuple[DecompositionResult | None, str]:
     """Run one decomposer dispatch + parse. Returns
     ``(DecompositionResult, policy_id)`` on success, ``(None, fallback_id)``
     when the call or the parse failed. The fallback policy_id marks
@@ -335,7 +333,7 @@ async def _emit_delivered(
 
 async def _broadcast_emitted(
     event: Event,
-    emitted_event_id: Optional[str],
+    emitted_event_id: str | None,
     broadcaster: EventBroadcaster,
 ) -> None:
     """Look up the just-emitted event in the trajectory and broadcast
@@ -360,7 +358,7 @@ async def _broadcast_emitted(
 def register_handlers(
     broadcaster: EventBroadcaster,
     *,
-    embedder: Optional[EmbeddingModel] = None,
+    embedder: EmbeddingModel | None = None,
 ) -> None:
     """Wire the decomposer handler into the broadcaster. Called once at
     app startup from ``app.create_app``."""

@@ -37,13 +37,17 @@ What's deferred:
 
 from .auto_patch import (
     AUTO_PATCH_DOMAIN_KEYWORDS,
-    SECTION_MARKER as AUTO_PATCH_SECTION_MARKER,
-    SECTION_PREAMBLE as AUTO_PATCH_SECTION_PREAMBLE,
     already_patched,
     patch_from_synthesis,
     patch_skill_file,
     render_patch,
     route_domains,
+)
+from .auto_patch import (
+    SECTION_MARKER as AUTO_PATCH_SECTION_MARKER,
+)
+from .auto_patch import (
+    SECTION_PREAMBLE as AUTO_PATCH_SECTION_PREAMBLE,
 )
 from .extract import (
     ExtractionResult,
@@ -51,15 +55,6 @@ from .extract import (
     default_llm_call_factory,
     extract_and_patch,
     extract_findings,
-)
-from .master_md import (
-    DEFAULT_FILENAME as MASTER_MD_DEFAULT_FILENAME,
-    SYNTHESIS_ID_MARKER,
-    build_master_md,
-    default_research_base,
-    existing_marker_matches,
-    generate_master_md,
-    slugify,
 )
 from .extraction_prompt import (
     EXTRACTION_CONFIDENCE_TIERS,
@@ -69,6 +64,17 @@ from .extraction_prompt import (
     make_extraction_prompt,
 )
 from .keywords import DOMAIN_KEYWORDS, classify_domains
+from .master_md import (
+    DEFAULT_FILENAME as MASTER_MD_DEFAULT_FILENAME,
+)
+from .master_md import (
+    SYNTHESIS_ID_MARKER,
+    build_master_md,
+    default_research_base,
+    existing_marker_matches,
+    generate_master_md,
+    slugify,
+)
 from .patch import (
     PLACEHOLDER_TEXT,
     apply_finding_to_section,

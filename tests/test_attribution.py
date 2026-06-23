@@ -21,8 +21,7 @@ from substrate.attribution import (
     attribution_option_c,
     compute_attribution_for_synthesis,
 )
-from substrate.schemas import ActionType, TYPED_PAYLOAD_ACTION_TYPES
-
+from substrate.schemas import TYPED_PAYLOAD_ACTION_TYPES, ActionType
 
 # ─────────────────────────────────────────────────────────────────────
 # 1. Schema lock-in
@@ -239,7 +238,7 @@ def test_compute_attribution_emit_event_writes_to_log(seeded_substrate):
         os.path.join(seeded_substrate["events_dir"], "**", "*.jsonl"),
         recursive=True,
     ):
-        with open(ef, "r") as f:
+        with open(ef) as f:
             for line in f:
                 if not line.strip():
                     continue

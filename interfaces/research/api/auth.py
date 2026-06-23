@@ -27,13 +27,14 @@ middleware's job is verify-on-every-request.
 from __future__ import annotations
 
 import os
-from typing import Optional, Sequence
+import re
+import secrets
+from collections.abc import Sequence
+from typing import Any
 from urllib.parse import urlencode, urljoin
 
-import re
-
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 from substrate.auth import (
@@ -47,6 +48,7 @@ from substrate.auth import (
     verify_magic_link_token,
 )
 
+from .operator_allowlist import operator_allowlist_from_env
 
 SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
@@ -87,7 +89,7 @@ class AuthMeResponse(BaseModel):
     """``GET /auth/me`` response."""
 
     user_id: str
-    email: Optional[str]
+    email: str | None
     auth_method: str
 
 
@@ -95,16 +97,12 @@ class AuthMeResponse(BaseModel):
 
 
 def _allowlist() -> frozenset[str]:
-    """Comma-separated list in ``ANTIEK_OPERATOR_EMAIL`` (single
-    email today; multi-user later). Falls back to the empty set,
-    which means "deny everything" — the operator must configure the
-    env var before the login flow can succeed."""
-    raw = os.environ.get("ANTIEK_OPERATOR_EMAIL", "").strip()
-    if not raw:
-        return frozenset()
-    return frozenset(
-        part.strip().lower() for part in raw.split(",") if part.strip()
-    )
+    """Comma-separated list in ``ANTIEK_OPERATOR_EMAIL``.
+
+    Empty set means deny magic-link sends until the operator configures
+    the env var.
+    """
+    return operator_allowlist_from_env()
 
 
 def _api_base_url() -> str:
@@ -170,14 +168,28 @@ def _resolve_redirect(next_path: str) -> str:
     return f"{fe}{safe}" if fe else safe
 
 
-def _cookie_kwargs() -> dict:
+def _redirect_login_error(*, error_code: str, next_path: str = "/") -> RedirectResponse:
+    """Send the browser to the frontend Login surface with a closed error enum.
+
+    Email magic links land on the API host; JSON error bodies are hostile
+    to operators. When a frontend base is configured, redirect there.
+    Otherwise fall back to a relative ``/login`` (same-origin dev).
+    """
+    safe_next = next_path if _is_safe_relative(next_path) else "/"
+    qs = urlencode({"error": error_code, "next": safe_next})
+    fe = _frontend_base_url()
+    target = f"{fe}/login?{qs}" if fe else f"/login?{qs}"
+    return RedirectResponse(url=target, status_code=302)
+
+
+def _cookie_kwargs() -> dict[str, Any]:
     """HttpOnly + Secure + SameSite=Lax. ``Secure`` is unconditional
     on production; tests work because the test client doesn't
     enforce the flag. ``Domain`` is set in cross-origin deployments
     so the cookie is visible to both Pages (antiek.ai) and the API
     (api.antiek.ai)."""
     secure = os.environ.get("ANTIEK_COOKIE_INSECURE", "").strip() != "1"
-    kwargs: dict = dict(
+    kwargs: dict[str, Any] = dict(
         httponly=True,
         secure=secure,
         samesite="lax",
@@ -209,13 +221,44 @@ def _format_magic_link_email(*, email: str, link: str) -> OutboundEmail:
     )
 
 
+# ── Dev-login (temporary agent / computer-use access) ─────────────────
+# A single env-gated token that lets a browser-driving agent (Codex /
+# Hermes computer-use) acquire an operator session by navigating to ONE
+# URL — no inbox round-trip, no header injection. The magic-link path
+# needs an email click; a Bearer token needs a header the browser can't
+# attach to a page load; this fills the gap for computer-use agents that
+# only know how to visit a URL and click.
+#
+# Disabled by default: the route 404s unless BOTH ``ANTIEK_DEV_LOGIN_TOKEN``
+# and ``ANTIEK_AUTH_SECRET`` are set, so it is invisible (not merely
+# forbidden) on any box that hasn't opted in. Kill it by unsetting the
+# token var — no redeploy needed — or rotate its value to invalidate a
+# leaked link.
+#
+# Scope: this grants FULL operator access. It is a development /
+# verification convenience, NOT the scoped read-only public API (that is
+# the later, separate build). Treat the token like a password; rotate it
+# after a verification session. Rationale + reconsider-if:
+# docs/decisions/agent-dev-login.md.
+
+_DEV_LOGIN_TOKEN_ENV = "ANTIEK_DEV_LOGIN_TOKEN"
+# Shorter-lived than the 30-day magic-link session: a dev grant should
+# age out on its own even if the operator forgets to unset the token.
+_DEV_LOGIN_SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+
+
+def _dev_login_token() -> str:
+    """The configured dev-login token, or ``""`` when the feature is off."""
+    return os.environ.get(_DEV_LOGIN_TOKEN_ENV, "").strip()
+
+
 # ── Registration ─────────────────────────────────────────────────────
 
 
 def register_auth_routes(
     app: FastAPI,
     *,
-    extra_allowlist: Optional[Sequence[str]] = None,
+    extra_allowlist: Sequence[str] | None = None,
 ) -> None:
     """Mount the four auth routes onto ``app``.
 
@@ -266,38 +309,14 @@ def register_auth_routes(
         try:
             email = verify_magic_link_token(token)
         except TokenExpired:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "code": "magic_link_expired",
-                        "message": "This sign-in link expired. Request a new one.",
-                    }
-                },
-            )
+            return _redirect_login_error(error_code="magic_link_expired", next_path=next)
         except InvalidToken:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": {
-                        "code": "magic_link_invalid",
-                        "message": "This sign-in link is not valid.",
-                    }
-                },
-            )
+            return _redirect_login_error(error_code="magic_link_invalid", next_path=next)
         if email not in _resolve_allowlist():
             # Defensive: token was valid but the allowlist changed
             # between request and click. Reject without leaking which
             # case we're in.
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "error": {
-                        "code": "not_authorized",
-                        "message": "This email is not authorized for Antiek.",
-                    }
-                },
-            )
+            return _redirect_login_error(error_code="not_authorized", next_path=next)
         cookie = mint_session_cookie(
             user_id="__operator__",
             email=email,
@@ -307,6 +326,37 @@ def register_auth_routes(
             key=SESSION_COOKIE_NAME,
             value=cookie,
             max_age=60 * 60 * 24 * 30,  # 30 days
+            **_cookie_kwargs(),
+        )
+        return response
+
+    @app.get("/auth/dev-login", tags=["auth"])
+    async def auth_dev_login(token: str = "", next: str = "/") -> Response:
+        # Disabled unless the operator opted in by setting both the
+        # dev-login token AND the auth secret (the secret is what makes
+        # the minted cookie verifiable by the middleware). 404 — not
+        # 401/403 — so the route is indistinguishable from "does not
+        # exist" to anyone probing a box that hasn't opted in.
+        configured = _dev_login_token()
+        secret_set = bool(os.environ.get("ANTIEK_AUTH_SECRET", "").strip())
+        if not configured or not secret_set:
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Constant-time compare; an empty/incorrect token is also a 404 so
+        # a probe can't distinguish "feature off" from "wrong token".
+        if not token or not secrets.compare_digest(token.strip(), configured):
+            raise HTTPException(status_code=404, detail="Not Found")
+        # Mint under the operator identity so the existing cookie path in
+        # the middleware (which checks cookie-email == ANTIEK_OPERATOR_EMAIL)
+        # accepts the resulting session unchanged. Single-operator
+        # invariant — same assumption the magic-link path already makes.
+        allow = sorted(_resolve_allowlist())
+        email = allow[0] if allow else "__operator__"
+        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=cookie,
+            max_age=_DEV_LOGIN_SESSION_MAX_AGE,
             **_cookie_kwargs(),
         )
         return response

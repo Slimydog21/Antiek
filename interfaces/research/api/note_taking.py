@@ -33,13 +33,16 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Optional
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from roles.note_taker import (  # noqa: E402
+    NOTE_TAKER_SYSTEM_PROMPT,
+    parse_notes_response,
+)
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
@@ -49,13 +52,8 @@ from substrate.schemas import (  # noqa: E402
     Event,
     NoteEmergedPayload,
 )
-from roles.note_taker import (  # noqa: E402
-    NOTE_TAKER_SYSTEM_PROMPT,
-    parse_notes_response,
-)
 
 from .broadcast import EventBroadcaster
-
 
 # Action types the note-taker subscribes to. Tightened to the events
 # that ACTUALLY reflect substantive wrestling movement — distillations
@@ -109,7 +107,7 @@ def _format_recent_events_for_prompt(rows: list[dict]) -> str:
         at = r.get("action_type", "?")
         payload = r.get("payload") or {}
         if at == ActionType.DISTILLATION_DELIVERED.value:
-            claim_count = len((payload.get("claims") or []))
+            claim_count = len(payload.get("claims") or [])
             rendered = (payload.get("rendered_text") or "")[:160]
             lines.append(
                 f"[{eid}] {at}: {claim_count} claims; \"{rendered}\""
@@ -146,7 +144,7 @@ def _format_recent_events_for_prompt(rows: list[dict]) -> str:
 def make_note_taker_handler(
     broadcaster: EventBroadcaster,
     *,
-    threshold: Optional[int] = None,
+    threshold: int | None = None,
 ):
     """Build the async handler closed over a broadcaster. Maintains a
     per-investigation event counter and triggers a synthesis pass
@@ -292,7 +290,7 @@ async def _run_note_synthesis(
 def register_handlers(
     broadcaster: EventBroadcaster,
     *,
-    threshold: Optional[int] = None,
+    threshold: int | None = None,
 ) -> None:
     """Wire the note-taker into the broadcaster. Same handler instance
     is registered for all three subscribed action types so a single

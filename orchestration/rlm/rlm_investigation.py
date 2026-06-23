@@ -14,9 +14,9 @@ Sprint 19+ (RLM track, ratification-gated)."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Callable, Optional
 
 from .session import (
     RLMSession,

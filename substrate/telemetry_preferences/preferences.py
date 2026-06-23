@@ -6,12 +6,12 @@ import os
 import sqlite3
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Optional, Protocol
+from datetime import UTC, datetime
+from typing import Protocol
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -26,7 +26,7 @@ class UserTelemetryPreferences:
 
 class PreferenceStore(Protocol):
     def upsert(self, pref: UserTelemetryPreferences) -> None: ...
-    def get(self, *, user_id: str, surface_name: str) -> Optional[UserTelemetryPreferences]: ...
+    def get(self, *, user_id: str, surface_name: str) -> UserTelemetryPreferences | None: ...
     def list_for_user(self, user_id: str) -> list[UserTelemetryPreferences]: ...
     def delete_for_user(self, user_id: str) -> int: ...
 
@@ -44,7 +44,7 @@ class InMemoryPreferenceStore:
 
     def get(
         self, *, user_id: str, surface_name: str,
-    ) -> Optional[UserTelemetryPreferences]:
+    ) -> UserTelemetryPreferences | None:
         with self._lock:
             return self.rows.get((user_id, surface_name))
 
@@ -69,7 +69,7 @@ class SqlitePreferenceStore:
     by re-pointing the connection."""
 
     db_path: str
-    _conn: Optional[sqlite3.Connection] = None
+    _conn: sqlite3.Connection | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self) -> None:
@@ -104,7 +104,7 @@ class SqlitePreferenceStore:
 
     def get(
         self, *, user_id: str, surface_name: str,
-    ) -> Optional[UserTelemetryPreferences]:
+    ) -> UserTelemetryPreferences | None:
         assert self._conn is not None
         with self._lock:
             row = self._conn.execute("""

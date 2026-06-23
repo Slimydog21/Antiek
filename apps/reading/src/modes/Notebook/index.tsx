@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { track } from "../../lib/analytics";
 import {
   appendNotebookBlock,
   deleteNotebookBlock,
@@ -58,6 +59,7 @@ export default function Notebook() {
       if (!notebookId) return;
       try {
         const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
+        track("notebook_block_appended", { block_type: req.block_type });
         setNotebook(data);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
@@ -71,6 +73,7 @@ export default function Notebook() {
       if (!notebookId) return;
       try {
         const data = (await deleteNotebookBlock(notebookId, blockId)) as NotebookResponse;
+        track("notebook_block_deleted");
         setNotebook(data);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));

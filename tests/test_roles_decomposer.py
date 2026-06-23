@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from typing import Sequence
+from collections.abc import Sequence
 
 import pytest
 
@@ -40,7 +40,6 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from roles.decomposer import (  # noqa: E402
     CandidateRow,
-    DecomposerExampleProposal,
     ParaphraseFlag,
     check_paraphrases,
     count_confirmed,
@@ -53,7 +52,6 @@ from substrate.constants import (  # noqa: E402
     ANTIEK_PARAM_VERSION,
     DECOMPOSER_PARAPHRASE_COSINE_MAX,
 )
-
 
 # ---------------------------------------------------------------------------
 # Stub embedder — deterministic, no sentence-transformers dependency

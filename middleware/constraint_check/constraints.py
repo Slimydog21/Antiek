@@ -20,8 +20,7 @@ spec §B + the operator's surfaced vocabulary in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
-
+from typing import Any
 
 # Closed sets — must agree with the schemas-side Literal types.
 # Validated by named test in tests/test_middleware_constraint_check.py.
@@ -83,4 +82,4 @@ class Violation:
     constraint_kind: str  # mirrors the Constraint.kind
     strictness: str
     reason: str
-    target_claim_id: Optional[str] = None
+    target_claim_id: str | None = None

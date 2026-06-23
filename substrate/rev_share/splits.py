@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-
 PLATFORM_CUT = Decimal("0.30")  # per master-spec §9.0.1
 IP_HOLDER_CUT = Decimal("0.70")
 CREATOR_PAYOUT_RATIO = Decimal("0.70")  # per §13.9 — of the IP-holder share

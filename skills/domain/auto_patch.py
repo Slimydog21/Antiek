@@ -41,9 +41,9 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from ...event_log import emit_typed
@@ -62,7 +62,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 from .patch import default_skills_root
 
-
 # ---------------------------------------------------------------------------
 # Domain routing — DISTINCT from skills/domain/keywords.DOMAIN_KEYWORDS
 # ---------------------------------------------------------------------------
@@ -75,7 +74,7 @@ from .patch import default_skills_root
 # Specific phrases ("h100", "ai chip", "training run") avoid generic
 # drift ("ai" alone would route every macro-finance investigation to
 # ai-infrastructure).
-AUTO_PATCH_DOMAIN_KEYWORDS: Dict[str, List[str]] = {
+AUTO_PATCH_DOMAIN_KEYWORDS: dict[str, list[str]] = {
     "quantum-computing-knowledge": [
         "quantum comput", "qubit", "psiquantum", "photonic qubit",
         "rydberg", "neutral atom", "trapped ion", "superconducting qubit",
@@ -119,13 +118,13 @@ SECTION_PREAMBLE = (
 # ---------------------------------------------------------------------------
 
 
-def route_domains(question: str, thesis_summary: str = "") -> List[str]:
+def route_domains(question: str, thesis_summary: str = "") -> list[str]:
     """Return every domain whose vocabulary matches. Lowercase substring
     match; an investigation may land in zero, one, or several domains.
     Distinct from ``skills.domain.classify_domains`` — see module
     docstring for the precision-vs-recall trade-off."""
     haystack = ((question or "") + " " + (thesis_summary or "")).lower()
-    matched: List[str] = []
+    matched: list[str] = []
     for domain, keywords in AUTO_PATCH_DOMAIN_KEYWORDS.items():
         if any(kw in haystack for kw in keywords):
             matched.append(domain)
@@ -152,7 +151,7 @@ def _truncate(s: str, n: int) -> str:
     return s[:n].rstrip() + "…"
 
 
-def render_patch(syn: Dict[str, Any]) -> str:
+def render_patch(syn: dict[str, Any]) -> str:
     """Render one per-synthesis subsection. All fields pulled directly
     from the synthesis row — no enrichment, no LLM call.
 
@@ -171,9 +170,9 @@ def render_patch(syn: Dict[str, Any]) -> str:
     falsifications = thesis.get("falsification_conditions") or []
     risks = thesis.get("execution_risks") or []
     rpu = thesis.get("reasoning_paths_used") or []
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
 
-    out: List[str] = []
+    out: list[str] = []
     out.append(f"### From investigation `{iid}` ({today})")
     out.append("")
     out.append(f"<!-- synthesis_id: {syn_id} -->")
@@ -271,8 +270,8 @@ def patch_skill_file(skill_path: Path, patch_md: str) -> None:
 
 def _safe_emit_applied(
     *,
-    investigation_id: Optional[str],
-    result: Dict[str, Any],
+    investigation_id: str | None,
+    result: dict[str, Any],
 ) -> None:
     """Best-effort AUTO_PATCH_APPLIED emit. Failures must never break
     the patch path."""
@@ -309,7 +308,7 @@ def _safe_emit_applied(
 
 def _safe_emit_skipped(
     *,
-    investigation_id: Optional[str],
+    investigation_id: str | None,
     synthesis_id: str,
     domain: str,
     skill_path: str,
@@ -339,10 +338,10 @@ def _safe_emit_skipped(
 
 
 def patch_from_synthesis(
-    syn: Dict[str, Any],
+    syn: dict[str, Any],
     *,
-    skills_root: Optional[Path] = None,
-) -> Dict[str, Any]:
+    skills_root: Path | None = None,
+) -> dict[str, Any]:
     """Core entry point. ``syn`` is a dict with keys::
 
         synthesis_id, investigation_id, target_question,
@@ -373,7 +372,7 @@ def patch_from_synthesis(
     summary = thesis.get("thesis_summary") or ""
 
     domains = route_domains(question, summary)
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "synthesis_id": syn_id,
         "investigation_id": syn.get("investigation_id"),
         "matched_domains": domains,

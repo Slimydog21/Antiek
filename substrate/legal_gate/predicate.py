@@ -21,11 +21,10 @@ negative is worse than a false positive on a curated registry.
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
 from urllib.parse import urlparse
 
 from . import registry
-
 
 # ── URL / domain matching ─────────────────────────────────────────
 
@@ -42,7 +41,7 @@ def _normalize_host(host: str) -> str:
 
 def host_matches_banned_domain(
     host: str, banned: Iterable[str] = None,
-) -> Optional[str]:
+) -> str | None:
     """Return the matching banned-domain entry if ``host`` is on
     or below any banned suffix. None otherwise.
 
@@ -69,7 +68,7 @@ def url_blocked_reason(
     url: str,
     *,
     banned_domains: Iterable[str] = None,
-) -> Optional[str]:
+) -> str | None:
     """Return a human-readable rejection reason if the URL's host
     is on the banned list. None if allowed.
 
@@ -93,7 +92,7 @@ def url_blocked_reason(
 
 def _ci_substring_match(
     needle: str, haystacks: Iterable[str],
-) -> Optional[str]:
+) -> str | None:
     """Case-insensitive substring search. Returns the matching
     needle (the banned entry) on hit, None otherwise."""
     if not needle:
@@ -109,7 +108,7 @@ def _ci_substring_match(
 
 def author_blocked_reason(
     author: str, banned: Iterable[str] = None,
-) -> Optional[str]:
+) -> str | None:
     """Author substring match against `BANNED_AUTHORS`. Returns
     the matching banned entry on hit (so the audit trail records
     which registry entry triggered)."""
@@ -123,7 +122,7 @@ def author_blocked_reason(
 
 def title_blocked_reason(
     title: str, banned: Iterable[str] = None,
-) -> Optional[str]:
+) -> str | None:
     """Title substring match against `BANNED_TITLE_SUBSTRINGS`."""
     if banned is None:
         banned = registry.BANNED_TITLE_SUBSTRINGS
@@ -135,7 +134,7 @@ def title_blocked_reason(
 
 def corpus_blocked_reason(
     source_corpus: str, banned: Iterable[str] = None,
-) -> Optional[str]:
+) -> str | None:
     """Exact (case-folded) match against `BANNED_CORPUS_IDS`.
     Source-corpus identifiers are programmatic; exact match avoids
     accidental over-blocking on naming variations."""
@@ -154,7 +153,7 @@ def corpus_blocked_reason(
 
 def content_hash_blocked_reason(
     content_hash: str, banned: Iterable[str] = None,
-) -> Optional[str]:
+) -> str | None:
     """Hex-prefix match. Strips any ``"sha256:"`` algorithm prefix
     so callers can pass the raw payload field unchanged."""
     if banned is None:
@@ -175,12 +174,12 @@ def content_hash_blocked_reason(
 
 def document_blocked_reason(
     *,
-    url: Optional[str] = None,
-    author: Optional[str] = None,
-    title: Optional[str] = None,
-    source_corpus: Optional[str] = None,
-    content_hash: Optional[str] = None,
-) -> Optional[str]:
+    url: str | None = None,
+    author: str | None = None,
+    title: str | None = None,
+    source_corpus: str | None = None,
+    content_hash: str | None = None,
+) -> str | None:
     """Compose all matchers. Returns the FIRST matching reason in
     a stable order (domain → corpus → author → title → hash) so
     the audit trail is deterministic.

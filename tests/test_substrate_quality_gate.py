@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from substrate.quality_gate import (
     CandidateNote,
     CheckResultKind,

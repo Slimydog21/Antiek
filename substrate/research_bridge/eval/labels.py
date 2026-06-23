@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass(frozen=True)
 class LabelledPaste:
     document_id: str
-    operator_label: Optional[str]
+    operator_label: str | None
     expected_insights: tuple[str, ...] = ()
     expected_open_questions: tuple[str, ...] = ()
 

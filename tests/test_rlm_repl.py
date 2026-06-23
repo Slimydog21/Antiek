@@ -60,8 +60,8 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.rlm_repl import (  # noqa: E402
     FunctionRegistry,
-    RLMRepl,
     ReplSummary,
+    RLMRepl,
     SandboxSecurityError,
     _check_recursion_depth,
     _validate_code,
@@ -73,7 +73,6 @@ from substrate.constants import (  # noqa: E402
     RLM_ANSWER_CONTENT_MAX,
     RLM_MAX_RECURSION_DEPTH,
 )
-
 
 # ---------------------------------------------------------------------------
 # A. FunctionRegistry

@@ -185,6 +185,32 @@ jobs:
         run: |
           python tools/lint/serve_invariants_check.py
 
+      - name: Retrieval gate drift check
+        # RG-04 + ASR SR-03: forbid RESTRICTED-only chunk-gate reimplementation
+        # on the VSS substrate and GET /chunks — must delegate to retrieval_gate
+        # helpers (non_privileged_chunk_sql_clause / is_chunk_body_withheld).
+        # Catches VSS + HTTP regressions that omit personal_reading from the
+        # non-privileged denylist.
+        run: |
+          python tools/lint/retrieval_gate_check.py
+
+      - name: Owner-privilege boundary check
+        # Activation SPR-owner-read: forbid a PRIVILEGED policy_tag literal
+        # ("operator_only" / "private_research", or the _OWNER_READ_POLICY_TAG
+        # constant) reaching search(...) / answer_book_question(...) outside the
+        # auth-checked allowlist (interfaces/research/api/books.py, where the two
+        # owner-read endpoints resolve the tag via _owner_read_policy_tag(request)).
+        # A privileged tag is the §9.0 retrieval BYPASS — it admits the owner's
+        # gated/personal corpus through the deny-by-default gate — so handing it in
+        # as a bare literal at a non-allowlisted site (a careless new endpoint /
+        # worker / script) would leak that corpus to an unauthenticated caller
+        # (the Hachette/Bartz §9.0 leak; CLAUDE.md invariant #4). Sibling of
+        # retrieval_gate_check.py: that one guards the gate SQL; this guards the
+        # privileged-tag axis. Models tools/lint/serve_guard_check.py (same
+        # path:line output, same exit-code contract). Sub-second on the full tree.
+        run: |
+          python tools/lint/owner_privilege_check.py
+
       - name: arXiv contact-guard check
         # SPR-09 M3: forbid a NEW provider.send( / OutboundEmail( site outside
         # the allowlist (operator magic-link auth.py + the deny-by-default

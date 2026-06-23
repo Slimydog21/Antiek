@@ -78,13 +78,13 @@ def db_with_chunks():
 def test_privileged_policy_tags_are_canonical():
     """Master-spec §9.0 names the two privileged tags. The substrate
     must not silently extend this set."""
-    assert PRIVILEGED_POLICY_TAGS == frozenset({"private_research", "operator_only"})
+    assert frozenset({"private_research", "operator_only"}) == PRIVILEGED_POLICY_TAGS
 
 
 def test_restricted_content_classes_canonical():
     """The set of content classes the substrate withholds from
     attribution-eligible retrieval. Drift here = silent gate hole."""
-    assert RESTRICTED_CONTENT_CLASSES == frozenset({"restricted_pending_opt_in"})
+    assert frozenset({"restricted_pending_opt_in"}) == RESTRICTED_CONTENT_CLASSES
 
 
 def test_default_policy_excludes_restricted(db_with_chunks):
@@ -97,7 +97,9 @@ def test_default_policy_excludes_restricted(db_with_chunks):
     assert "doc-restricted" not in doc_ids, (
         "default policy_tag exposed restricted content; legal gate broken"
     )
-    # Legacy null-content_class is grandfathered (passes the gate).
+    # NULL content_class is grandfathered (legacy rows stay searchable); the
+    # SR-07 fail-closed flip was rejected for #65 — new ingest writes an explicit
+    # class via register_source_document, so NULL denotes only legacy content.
     assert "doc-legacy" in doc_ids
     # Public + licensed both pass.
     assert "doc-public" in doc_ids

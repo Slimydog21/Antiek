@@ -33,15 +33,15 @@ import dataclasses
 import os
 import re
 import sys
-from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 try:
     from ..graph.ops import content_addressed_id, new_random_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.graph.ops import content_addressed_id, new_random_id  # type: ignore[no-redef]
+    from substrate.graph.ops import content_addressed_id  # type: ignore[no-redef]
 
 from substrate.voice_style.rubric import score_voice_style
 
@@ -159,7 +159,7 @@ def assemble_style_profile(
     exemplars: Sequence[str],
     name: str,
     source: str = "accepted_edits",
-    profile_id: Optional[str] = None,
+    profile_id: str | None = None,
 ) -> StyleProfile:
     """Assemble a style profile by retrieval from exemplars. No training,
     no weights — the profile is the exemplar set + aggregated voice_style

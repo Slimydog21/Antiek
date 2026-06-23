@@ -37,7 +37,6 @@ from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     NormalizedUsage,
-    ProviderError,
     RawProviderResponse,
     TierConfig,
     TierPricing,
@@ -46,7 +45,6 @@ from substrate.dispatch import (  # noqa: E402
 )
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.schemas import ActionType, Event  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Per-investigation tag-based stub provider

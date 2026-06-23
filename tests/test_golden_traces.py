@@ -19,10 +19,8 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
-import pytest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
@@ -38,7 +36,6 @@ from tools.golden_traces import (  # noqa: E402
 from tools.golden_traces.capture import (  # noqa: E402
     capture_from_researchmaxx_trajectory,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. stable_json_hash
@@ -88,7 +85,7 @@ def _make_trace(*, num_calls: int = 2) -> GoldenTrace:
     ]
     return GoldenTrace(
         trace_id="gt-test",
-        captured_at=datetime(2026, 5, 17, tzinfo=timezone.utc),
+        captured_at=datetime(2026, 5, 17, tzinfo=UTC),
         investigation_id="inv-test",
         target_question="Test question?",
         role_calls=calls,

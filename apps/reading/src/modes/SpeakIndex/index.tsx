@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
 import { LemonButton } from "../../components/lemon";
+import { track } from "../../lib/analytics";
 import {
   createPerson,
   listPeople,
@@ -10,6 +11,8 @@ import {
   type FeedItem,
   type RememberedPerson,
 } from "../../lib/speakApi";
+import PublicLane from "../Speak/lanes/PublicLane";
+import YoursLane from "../Speak/lanes/YoursLane";
 import AIActionFailure from "../../shared/AIActionFailure";
 
 /**
@@ -29,6 +32,13 @@ import AIActionFailure from "../../shared/AIActionFailure";
  *
  * No engineering string is shown: the substrate enums are translated at the
  * UI edge (lib/speakApi.ts); a person is named by their name, never an id.
+ *
+ * SPR-02 owns YoursLane; SPR-03 owns PublicLane; do not edit this shell.
+ * (SPR-01 M2 froze the tab scaffold — the Tab type, the role="tablist" +
+ * two buttons, the create header/form, the active-tab state, and the
+ * data-fetching — and extracted each tab's body into its own lane file so
+ * the two Wave-2 builders never collide on this file. The lanes receive
+ * state as PROPS; they do not fetch.)
  */
 type Tab = "yours" | "public";
 
@@ -93,6 +103,7 @@ export default function SpeakIndex() {
     setCreateFailed(false);
     try {
       const id = await createPerson(name);
+      track("speak_project_created");
       navigate(`/speak/${id}`);
     } catch {
       setCreateFailed(true);
@@ -185,89 +196,13 @@ export default function SpeakIndex() {
           </button>
         </div>
 
+        {/* The tab BODIES are extracted into lane files (SPR-01 M2). The
+            shell keeps the data-fetching above and passes state down as
+            props; YoursLane is SPR-02's, PublicLane is SPR-03's. */}
         {tab === "yours" ? (
-          loading ? (
-            <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
-              Loading…
-            </p>
-          ) : people.length === 0 ? (
-            <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
-              No one yet — name the first person above.
-            </p>
-          ) : (
-            <section>
-              <ul className="space-y-2">
-                {people.map((p) => (
-                  <li key={p.id}>
-                    <Link
-                      to={`/speak/${p.id}`}
-                      className="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-serif text-[16px] text-ink dark:text-bright">
-                          {p.name}
-                        </span>
-                        <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
-                          {p.voiceCount === 0
-                            ? "no voices yet"
-                            : `${p.voiceCount} voice${p.voiceCount === 1 ? "" : "s"}`}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
-                        {p.willBePublic ? "Will be shared publicly" : "Kept private"}
-                      </p>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )
+          <YoursLane loading={loading} people={people} />
         ) : (
-          // The browsable PUBLIC feed: each item has an "add your memory"
-          // entry — the in-feed chime-in. Honest when empty.
-          <section>
-            {feedLoading ? (
-              <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
-                Loading…
-              </p>
-            ) : feed.length === 0 ? (
-              <p className="font-serif text-sm italic text-ink-mute dark:text-moonlight">
-                No public remembrances yet. When someone shares a story
-                publicly, it'll appear here — and you'll be able to add what you
-                remember.
-              </p>
-            ) : (
-              <ul className="space-y-2">
-                {feed.map((f) => (
-                  <li
-                    key={f.id}
-                    className="rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <Link
-                        to={`/speak/${f.id}`}
-                        className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
-                      >
-                        {f.name}
-                      </Link>
-                      <span className="shrink-0 font-mono text-[10px] text-ink-mute dark:text-moonlight">
-                        {f.voiceCount === 0
-                          ? "no voices yet"
-                          : `${f.voiceCount} voice${f.voiceCount === 1 ? "" : "s"}`}
-                      </span>
-                    </div>
-                    <div className="mt-2">
-                      <Link to={`/speak/${f.id}`}>
-                        <LemonButton variant="secondary" size="sm">
-                          Add your memory
-                        </LemonButton>
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <PublicLane feedLoading={feedLoading} feed={feed} />
         )}
       </div>
     </div>

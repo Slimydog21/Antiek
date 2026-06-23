@@ -142,14 +142,38 @@ packages = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+# SPR-03 initial-floor re-baseline (2026-06-02): bumped py311 -> py314 to
+# match the CI runner + dev interpreter (both CPython 3.14). At py311 ruff
+# emitted a PHANTOM `invalid-syntax` on a valid 3.12+ backslash-in-f-string
+# (roles/note_taker/distill.py) and could abort `match` parsing — neither is
+# a real defect on the 3.14 interpreter the code actually runs on. This is a
+# tooling-target alignment, NOT a scope narrowing: no files=/exclude= added,
+# the ruff `select` below is unchanged (G5).
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RET"]
 ignore = ["E501"]  # line length handled by formatter
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency-injection markers are idiomatic call-in-default usage,
+# not the mutable-default bug B008 targets. Treat them as immutable calls.
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Cookie",
+]
+
 [tool.mypy]
-python_version = "3.11"
+# SPR-03 initial-floor re-baseline (2026-06-02): bumped 3.11 -> 3.14 to match
+# the CI runner + dev interpreter. Tooling-target alignment only; `strict`
+# below is UNCHANGED and no files=/exclude= is added (G5).
+python_version = "3.14"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true

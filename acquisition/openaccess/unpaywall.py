@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -45,7 +45,7 @@ __all__ = [
 ]
 
 
-def _looks_like_pdf(content: bytes, content_type: Optional[str]) -> bool:
+def _looks_like_pdf(content: bytes, content_type: str | None) -> bool:
     """Header-only PDF predicate (content-type + ``%PDF-`` magic bytes), kept
     as a thin wrapper over the shared ``pdf_detect`` so existing references
     resolve. The download path uses ``assert_pdf`` (all three layers); this
@@ -64,15 +64,15 @@ class OAFullText:
 
     doi: str
     is_oa: bool
-    oa_status: Optional[str]
-    pdf_url: Optional[str]
-    landing_url: Optional[str]
-    license_uri: Optional[str]
+    oa_status: str | None
+    pdf_url: str | None
+    landing_url: str | None
+    license_uri: str | None
     resolution: LicenseResolution
     source: str = "unpaywall"
 
 
-def _build_url(doi: str, *, email: str, base_url: Optional[str]) -> str:
+def _build_url(doi: str, *, email: str, base_url: str | None) -> str:
     base = base_url or os.environ.get("ANTIEK_UNPAYWALL_BASE_URL", DEFAULT_BASE_URL)
     return f"{base}/{urllib.parse.quote(doi)}?email={urllib.parse.quote(email)}"
 
@@ -102,9 +102,9 @@ def resolve_doi(
     doi: str,
     *,
     email: str = POLITE_POOL_MAILTO,
-    client: Optional[httpx.Client] = None,
-    base_url: Optional[str] = None,
-    throttle: Optional[OAThrottle] = None,
+    client: httpx.Client | None = None,
+    base_url: str | None = None,
+    throttle: OAThrottle | None = None,
 ) -> OAFullText:
     """Resolve a DOI to its best OA full-text location + license verdict.
 
@@ -143,9 +143,9 @@ def resolve_doi(
 def download_pdf(
     pdf_url: str,
     *,
-    client: Optional[httpx.Client] = None,
-    throttle: Optional[OAThrottle] = None,
-    _arxiv_throttle: Optional["object"] = None,
+    client: httpx.Client | None = None,
+    throttle: OAThrottle | None = None,
+    _arxiv_throttle: object | None = None,
 ) -> bytes:
     """Download PDF bytes from a resolved OA URL. Transient errors retry via
     the (non-arXiv) ``OAThrottle``. The bytes are verified through the shared
