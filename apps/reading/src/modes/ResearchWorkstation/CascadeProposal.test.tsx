@@ -286,18 +286,54 @@ describe("CascadeProposal — renders the planner's REAL output, no placeholders
   });
 });
 
-describe("CascadeProposal — honest no-key state (M4)", () => {
-  it("renders the shared AIActionFailure when the propose call fails (no provider keys)", async () => {
-    createPlanMock.mockRejectedValue(new Error("HTTP 500"));
+describe("CascadeProposal — honest failure surface (M4)", () => {
+  it("renders backend_unreachable when fetch throws", async () => {
+    createPlanMock.mockRejectedValue(new TypeError("Failed to fetch"));
     renderProposal();
-    // Same honest sentence the one-shot path uses on a no-result failure.
-    expect(await screen.findByText(/Couldn’t break this into sub-questions/i)).toBeTruthy();
-    expect(screen.getByText(/model provider isn’t configured/i)).toBeTruthy();
-    // No fake tree.
-    expect(screen.queryByText(/critical-mineral supply/i)).toBeNull();
-    // A retry and a one-shot escape hatch are both offered.
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(await screen.findByText(/research engine isn't running/i)).toBeTruthy();
+    expect(screen.queryByText(/model provider isn’t configured/i)).toBeNull();
+  });
+
+  it("renders provider_unconfigured from structured 503 envelope", async () => {
+    const { ApiError } = await import("../../lib/api");
+    createPlanMock.mockRejectedValue(
+      new ApiError(
+        "fail",
+        503,
+        JSON.stringify({
+          detail: {
+            code: "provider_unconfigured",
+            message:
+              "No model provider is configured. Set a provider key and restart.",
+            retryable: false,
+          },
+        }),
+      ),
+    );
+    renderProposal();
+    expect(await screen.findByText(/No model provider is configured/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
     expect(screen.getByRole("button", { name: /Ask it as one question instead/i })).toBeTruthy();
+  });
+
+  it("renders provider_upstream_error from structured 502 envelope", async () => {
+    const { ApiError } = await import("../../lib/api");
+    createPlanMock.mockRejectedValue(
+      new ApiError(
+        "fail",
+        502,
+        JSON.stringify({
+          detail: {
+            code: "provider_upstream_error",
+            message: "The model provider returned an error. Retry, or check your key's quota.",
+            retryable: true,
+          },
+        }),
+      ),
+    );
+    renderProposal();
+    expect(await screen.findByText(/model provider returned an error/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
 
   it("falls back to one-shot when the AI can't split the problem (no sub-questions)", async () => {

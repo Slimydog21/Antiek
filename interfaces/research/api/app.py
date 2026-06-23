@@ -104,6 +104,8 @@ class HealthResponse(BaseModel):
     schema_version: int
     subscriber_count: int
     registered_providers: list[str] = Field(default_factory=list)
+    # DRW honest-failure: True when at least one dispatch provider registered.
+    providers_ready: bool = False
     # SPR-07 (antiek-foundation-v2): the commit SHA the running process was
     # built from, so the prod-parity check (tools/prod_parity/check.py) can
     # assert deployed-SHA == main-SHA. Sourced (in order) from the
@@ -1416,6 +1418,11 @@ def create_app(
     if register_providers:
         from substrate.dispatch.providers import register_default_providers
         app.state.registered_providers = register_default_providers(quiet=True)
+        from interfaces.research.api.boot_providers import (
+            log_zero_providers_warning_if_needed,
+        )
+
+        log_zero_providers_warning_if_needed(app.state.registered_providers)
     else:
         app.state.registered_providers = set()
 
@@ -1536,6 +1543,9 @@ def create_app(
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,
             registered_providers=sorted(
+                getattr(app.state, "registered_providers", set())
+            ),
+            providers_ready=bool(
                 getattr(app.state, "registered_providers", set())
             ),
             build_sha=getattr(app.state, "build_sha", "unknown"),
@@ -5811,6 +5821,9 @@ def create_app(
     # inside roles.note_taker.living_note; this router adds no second writer.
     from interfaces.research.api.distill_routes import distill_router
     app.include_router(distill_router)
+
+    from interfaces.research.api.artifact_routes import artifact_router
+    app.include_router(artifact_router)
 
     return app
 
