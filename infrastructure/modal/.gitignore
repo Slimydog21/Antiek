@@ -1,0 +1,5 @@
+# Modal local scratch (never commit secrets or weight caches)
+.env
+.env.*
+__pycache__/
+*.pyc

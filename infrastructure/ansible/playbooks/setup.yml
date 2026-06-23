@@ -520,6 +520,26 @@
         cron_file: antiek-backup
       tags: [backup]
 
+    - name: install analytics plane script
+      ansible.builtin.template:
+        src: ../templates/analytics-plane.sh.j2
+        dest: /usr/local/bin/antiek-analytics-plane
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [analytics]
+
+    - name: install analytics plane cron job
+      ansible.builtin.cron:
+        name: antiek weekly analytics plane
+        user: root
+        minute: "{{ analytics_cron_minute }}"
+        hour: "{{ analytics_cron_hour }}"
+        weekday: "{{ analytics_cron_weekday }}"
+        job: "/usr/local/bin/antiek-analytics-plane >> /var/log/antiek-analytics.log 2>&1"
+        cron_file: antiek-analytics
+      tags: [analytics]
+
     # ──────────────────────────────────────────────────────────────────────
     # 12. Completion message
     # ──────────────────────────────────────────────────────────────────────

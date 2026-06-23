@@ -1,0 +1,2 @@
+# hardenx exemptions — one JSON object per accepted finding. git-track this file.
+{"added_at": "2026-06-23", "added_by": "Antiek Operator", "fingerprint": "0255d56d4b6b0a9f", "reason": "HF_TOKEN from Modal secret antiek-hf-hub only; huggingface_hub snapshot_download token param is env-backed, not a literal key"}

@@ -106,3 +106,8 @@ backup_cron_hour: "3"
 # script. Increase if you have evidence-of-substantive-loss concerns;
 # decrease to save R2 storage cost (~$0.015/GB/month).
 backup_retention_days: 14
+
+# Analytics plane cron (read-only export + analytics.duckdb rebuild). Sunday 04:00 UTC.
+analytics_cron_minute: "0"
+analytics_cron_hour: "4"
+analytics_cron_weekday: "0"

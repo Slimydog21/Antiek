@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Antiek analytics plane — curated Parquet + rebuild analytics.duckdb (read-only export).
+set -euo pipefail
+
+readonly STATE_DIR="{{ antiek_state_dir }}"
+readonly PY="{{ antiek_install_dir }}/.venv/bin/python3"
+readonly STAMP="$(date -u +%Y%m%d)"
+readonly EXPORT_DIR="${STATE_DIR}/exports/parquet/${STAMP}"
+readonly ANALYTICS_DB="${STATE_DIR}/analytics.duckdb"
+readonly SCRIPTS="{{ antiek_install_dir }}/scripts"
+
+export ANTIEK_DUCKDB_PATH="${STATE_DIR}/antiek.duckdb"
+
+readonly EVENTS_DIR="${STATE_DIR}/research_events"
+
+sudo -u {{ antiek_user }} env ANTIEK_DUCKDB_PATH="${ANTIEK_DUCKDB_PATH}" \
+  "${PY}" "${SCRIPTS}/export_analytics_parquet.py" \
+  --db "${ANTIEK_DUCKDB_PATH}" --out "${EXPORT_DIR}"
+
+sudo -u {{ antiek_user }} \
+  "${PY}" "${SCRIPTS}/export_dispatch_events_parquet.py" \
+  --events-dir "${EVENTS_DIR}" \
+  --out "${EXPORT_DIR}/dispatch_calls.parquet"
+
+sudo -u {{ antiek_user }} \
+  "${PY}" "${SCRIPTS}/rebuild_analytics_duckdb.py" \
+  --parquet-dir "${EXPORT_DIR}" --out "${ANALYTICS_DB}"
+
+echo "analytics-plane ok export=${EXPORT_DIR} db=${ANALYTICS_DB}"
