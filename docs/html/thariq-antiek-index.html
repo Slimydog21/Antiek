@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thariq use cases × Antiek HTML assets</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 1.25rem 0; }
+.tab { font-size: 13px; padding: 6px 12px; border: 1px solid var(--stone-300); background: var(--stone-100); border-radius: 4px; cursor: pointer; }
+.tab.active { background: var(--stone-900); color: var(--stone-50); }
+.panel { display: none; }
+.panel.active { display: block; }
+.asset-list { list-style: none; padding: 0; margin: 0; }
+.asset-list li { padding: 10px 0; border-bottom: 1px solid var(--stone-200); font-size: 15px; }
+.asset-list code { font-size: 12px; color: var(--stone-600); }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #d9efe2; margin-left: 8px; }
+.pill--partial { background: #fdf1cf; }
+.pill--spec { background: #e5ecff; }
+.banner { background: #d9efe2; border: 2px solid #151515; padding: 14px 18px; margin: 1rem 0; border-radius: 4px; font-size: 15px; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="topnav-inner">
+    <span class="topnav-title">Antiek docs</span>
+    <a href="index.html">Index</a>
+    <a href="thariq-antiek-index.html" class="active">Thariq × Antiek</a>
+    <a href="html-landscape.html">Landscape</a>
+    <a href="ant-aht-vision-map.html">Vision map</a>
+    <a href="../htmlspec/antiek-html-transport/index.html">ANT-AHT</a>
+  </div>
+</nav>
+<main><article>
+<p class="kicker">ANT-AHT · Profile B · <a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html">Claude blog</a></p>
+<h1>Thariq use cases mapped to Antiek HTML</h1>
+<p>Every path below is a first-party HTML file you can open in a browser. DuckDB + events stay canonical; these are lenses for humans and agents.</p>
+<div class="banner"><strong>Agent-friendly form factor:</strong> <code>ResearchArtifactBody</code> v1 + <code>#antiek-artifact-v1</code> JSON — see <a href="../htmlspec/antiek-html-transport/sprint-01-research-artifact-contract.html">SPR-AHT-01</a>.</div>
+
+<div class="tabs" role="tablist">
+  <button type="button" class="tab active" data-panel="specs">Specs &amp; planning</button>
+  <button type="button" class="tab" data-panel="research">Research reports</button>
+  <button type="button" class="tab" data-panel="ingest">Ingest reader</button>
+  <button type="button" class="tab" data-panel="agent">Agent transport</button>
+  <button type="button" class="tab" data-panel="write">Write Lego</button>
+  <button type="button" class="tab" data-panel="deferred">Deferred</button>
+</div>
+
+<section id="specs" class="panel active">
+<h2>Specs, planning &amp; exploration</h2>
+<ul class="asset-list">
+<li><a href="../htmlspec/antiek-html-transport/index.html">ANT-AHT master spec</a> <span class="pill pill--spec">Profile A+B</span><br><code>docs/htmlspec/antiek-html-transport/index.html</code></li>
+<li><a href="../htmlspec/antiek-html-transport/sprint-03-agent-transport-protocol.html">SPR-AHT-03 agent transport protocol</a><br><code>…/sprint-03-agent-transport-protocol.html</code></li>
+<li><a href="ant-aht-vision-map.html">Vision map (tabs: vision → htmlspec → code)</a><br><code>docs/html/ant-aht-vision-map.html</code></li>
+<li><a href="../htmlspec/ui_redesign_posthog/index.html">UI redesign htmlspec (design exploration)</a> <span class="pill pill--spec">Profile A</span></li>
+</ul>
+</section>
+
+<section id="research" class="panel">
+<h2>Reports, research &amp; learning</h2>
+<ul class="asset-list">
+<li><a href="ant-aht-operator-guide.html">ANT-AHT operator guide</a><br><code>docs/html/ant-aht-operator-guide.html</code></li>
+<li><a href="html-landscape.html">HTML landscape (search + SVG flow)</a><br><code>docs/html/html-landscape.html</code></li>
+<li><a href="../../tests/fixtures/research_artifact/minimal.html">Research artifact fixture (dual-channel)</a> <span class="pill">Profile B</span><br><code>tests/fixtures/research_artifact/minimal.html</code></li>
+<li>Live export: <code>python -m substrate.research_artifact &lt;investigation_id&gt;</code> → <code>~/.antiek/research-artifacts/</code></li>
+</ul>
+</section>
+
+<section id="ingest" class="panel">
+<h2>Read website, book, article as HTML</h2>
+<ul class="asset-list">
+<li><a href="../htmlspec/antiek-html-transport/sprint-04-ingest-reader-snapshot.html">SPR-AHT-04 URL reader snapshot</a></li>
+<li><a href="../htmlspec/antiek-html-transport/sprint-07-book-reader-snapshot.html">SPR-AHT-07 PDF book reader snapshot</a></li>
+<li>Runtime: <code>ANTIEK_READER_SNAPSHOT=1</code> on <code>ingest_url</code> and <code>ingest_pdf</code> → <code>~/.antiek/reader-snapshots/&lt;document_id&gt;.html</code></li>
+</ul>
+</section>
+
+<section id="agent" class="panel">
+<h2>Cross-window agent workflow</h2>
+<ul class="asset-list">
+<li><a href="../htmlspec/antiek-html-transport/sprint-02-export-pipeline.html">SPR-AHT-02 export + artifact.generated</a></li>
+<li><a href="../htmlspec/antiek-html-transport/sprint-05-compose-merge.html">SPR-AHT-05 compose / merge index</a></li>
+<li><code>docs/agent-execution/RESEARCH_ARTIFACT_TRANSPORT.md</code> — protocol; HTML sprint pages are the rigor layer</li>
+<li><a href="ant-aht-cycle-complete.html">Cycle complete JSON</a> — <code>#antiek-cycle-status-v1</code></li>
+</ul>
+</section>
+
+<section id="write" class="panel">
+<h2>Write outline (Lego blocks)</h2>
+<ul class="asset-list">
+<li><a href="../htmlspec/antiek-html-transport/sprint-06-write-bridge-api.html">SPR-AHT-06 Write bridge + API</a></li>
+<li>UI: <code>ArtifactOutlineShelf</code> in DistillView — drag <code>application/x-antiek-block</code></li>
+<li><span class="pill pill--partial">Partial</span> Full Write canvas + tab-complete → ledger <strong>Write-bridge-v2</strong></li>
+</ul>
+</section>
+
+<section id="deferred" class="panel">
+<h2>Not in ANT-AHT master ledger</h2>
+<ul class="asset-list">
+<li>EPUB-native HTML ingest (PD epub → PDF today)</li>
+<li>Knowledge graph / notebook as full HTML lens</li>
+<li>On-policy RL: html.commit audit events — ledger <strong>RL-html-audit</strong></li>
+<li>Per-PR HTML diff explainers — optional; no sprint yet</li>
+</ul>
+</section>
+
+<p style="margin-top:2rem"><button type="button" id="copy">Copy agent handoff</button></p>
+</article></main>
+<script>
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.panel).classList.add('active');
+  });
+});
+document.getElementById('copy').addEventListener('click', () => {
+  const t = [
+    'ANT-AHT master ledger DONE (SPR-AHT-01..07). Profile B = agent HTML transport.',
+    'Open docs/html/thariq-antiek-index.html for Thariq use-case → file map.',
+    'P-18: ./scripts/canonical_verify.sh html-transport',
+    'reinvoke_caffenagent_cycle_on_this_ledger: false',
+    'Next: Write-bridge-v2 | EPUB-native | RL-html-audit'
+  ].join('\n');
+  navigator.clipboard.writeText(t).then(() => { document.getElementById('copy').textContent = 'Copied'; });
+});
+</script>
+</body>
+</html>

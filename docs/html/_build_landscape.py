@@ -112,6 +112,7 @@ def main() -> None:
     <span class="topnav-title">Antiek docs</span>
     <a href="index.html">Index</a>
     <a href="html-landscape.html" class="active">HTML landscape</a>
+    <a href="thariq-antiek-index.html">Thariq × Antiek</a>
     <a href="ant-aht-vision-map.html">Vision map</a>
     <a href="ant-aht-operator-guide.html">ANT-AHT guide</a>
     <a href="ant-aht-cycle-complete.html">Ledger complete</a>
