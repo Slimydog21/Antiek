@@ -1192,7 +1192,9 @@ if __name__ == "__main__":
     p.add_argument("--db-path", required=True, help="Path to DuckDB file")
     args = p.parse_args()
     init_database_at_path(args.db_path)
-    con = duckdb.connect(args.db_path, read_only=True)
+    from runtime.db_lock import connect_read
+
+    con = connect_read(args.db_path)
     try:
         for t in list_tables(con):
             print(f"  {t}")
