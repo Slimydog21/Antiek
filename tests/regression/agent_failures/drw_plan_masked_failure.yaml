@@ -37,7 +37,7 @@ harness_check_that_now_catches: |
   create_plan → dispatch path and asserts detail.code per failure mode;
   tests/interfaces/test_cascade_plan_failure.py covers route wiring.
 
-fix_commit: f3ef2292
+fix_commit: 3b166798
 
 notes: |
   Mitigation: docs/decisions/drw-plan-failure-contract.md,
