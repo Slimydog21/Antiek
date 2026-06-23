@@ -15,11 +15,10 @@ import tempfile
 import time
 
 import pytest
+
 from fastapi.testclient import TestClient
 
 import interfaces.research.api.cascade_routes as cr
-
-
 class _StubEmbedding:
     dimension = 8
 
@@ -142,9 +141,9 @@ def test_launch_watch_and_cost(client):
     assert len(body["researches"]) == 3
     final = _poll_until_terminal(client, sid)
     assert all(x["state"] == "done" for x in final["researches"])
-    # Cost meter reflects the runner's numbers (3 researches × 3 steps × 0.01).
+    # Cost meter reflects contract gather stub (3 researches × 2 steps × 0.01).
     cost = client.get(f"/research/sessions/{sid}/cost").json()
-    assert cost["session_total_usd"] == pytest.approx(0.09)
+    assert cost["session_total_usd"] == pytest.approx(0.06)
     assert cost["session_total_usd"] == pytest.approx(sum(cost["per_research"].values()))
 
 
@@ -327,3 +326,13 @@ def test_session_stream_emits_events(client):
                 break
     assert "session_done" in kinds
     assert any(k in ("plan", "step", "note", "status") for k in kinds)
+
+
+def test_prod_research_loop_factory_uses_contract_gather_stub():
+    """ANT-DRL-04: prod factory must not return make_demo_loop."""
+    import inspect
+
+    src = inspect.getsource(cr._research_loop_factory)
+    assert "make_contract_gather_stub" in src
+    assert "make_demo_loop" not in src
+    assert callable(cr._research_loop_factory())

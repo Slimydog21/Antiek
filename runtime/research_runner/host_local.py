@@ -474,3 +474,149 @@ def make_demo_loop(
             yield ctx.question(f"open question from {ctx.investigation_id}?")
 
     return _loop
+
+
+# ---------------------------------------------------------------------------
+# Contract gather stub — prod factory default until Exa adapter (ANT-DRL-04).
+# ---------------------------------------------------------------------------
+
+
+def make_contract_gather_stub(
+    *,
+    steps: int = 2,
+    cost_per_step: float = 0.01,
+    delay_s: float = 0.0,
+):
+    """Honest production gather placeholder — not real research.
+
+    Unlike ``make_demo_loop`` (benchmark/test MOCK, reuse-blind), this stub
+    is the default in ``cascade_routes._research_loop_factory``. It emits
+    real ``StepEvent``s and promotes notes through ``PromotionFunnel``,
+    but performs no retrieval or synthesis. It does **not** satisfy
+    ``DeepResearchComplete`` — gather-only by design until Exa lands.
+    """
+
+    async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
+        yield ctx.plan_event(f"[gather-stub] plan: {ctx.sub_question}")
+        for i in range(steps):
+            sub_q = await ctx.checkpoint()
+            if delay_s:
+                await asyncio.sleep(delay_s)
+            yield ctx.step(
+                f"[gather-stub] pass {i} on '{sub_q}'",
+                cost_usd=cost_per_step,
+                tokens=0,
+                gather_mode="contract_stub",
+            )
+        yield ctx.note(
+            f"[gather-stub] provisional note from {ctx.investigation_id}: "
+            f"{ctx.sub_question}",
+            gather_mode="contract_stub",
+        )
+
+    return _loop
+
+
+# ---------------------------------------------------------------------------
+# Exa gather loop — real retrieval, env-gated (ANTIEK_DRW_GATHER=exa).
+# ---------------------------------------------------------------------------
+
+
+def make_exa_gather_loop(
+    *,
+    top_k: int = 3,
+    client: Optional[object] = None,
+    legal_gate: Optional[object] = None,
+    events_dir: Optional[str] = None,
+    daily_budget_usd: Optional[float] = None,
+    db_path: Optional[str] = None,
+    embedder: Optional[object] = None,
+):
+    """Real DRW gather, wired to the Exa Wedge-1 discovery layer.
+
+    Unlike ``make_contract_gather_stub`` (which retrieves nothing), this
+    loop runs an Exa ``discover`` against the (possibly redirected)
+    sub-question, then ``promote_discovery`` for the top-``top_k``
+    proposals. Promotion routes through the single substrate-write seam
+    (``ingest_url``) and consults the legal gate — this loop adds **no**
+    new graph-write path. Each ingested proposal yields a provenance
+    ``note`` carrying the real ``doc-url-*`` ``document_id``; the
+    ``PromotionFunnel`` threads that onto the insight node as
+    ``source_document_id`` so ``session_evidence_pack`` emits ``doc-url-*``
+    chunks (not the ``doc-gather-*`` placeholder).
+
+    Env-gated: prod stays on the stub by default. This loop fires only
+    when ``cascade_routes._research_loop_factory`` reads
+    ``ANTIEK_DRW_GATHER=exa``. In CI the ``client`` is an injected
+    ``ExaClient(client=httpx.MockTransport(...))`` — there is never a live
+    ``EXA_API_KEY`` in the gate.
+
+    Two distinct ledgers are charged, deliberately not conflated:
+    ``discover`` reserves against the Exa **daily** spend cap inside
+    ``check_and_reserve`` (the provider-side sidecar), while each promoted
+    proposal's ``p.cost_usd_estimate`` is charged to the runner's
+    **per-research step budget** via ``ctx.step(cost_usd=...)``. The Exa
+    daily cap and the per-research step budget are separate accounting
+    paths by design; the loop touches both, each exactly once per event.
+    """
+    # Lazy import: keep the Exa stack off the import path for the stub-only
+    # prod default (and for tests that never touch this factory).
+    from acquisition.search.exa import discover, promote_discovery
+
+    async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
+        yield ctx.plan_event(f"[exa] plan: {ctx.sub_question}", gather_mode="exa")
+        sub_q = await ctx.checkpoint()
+
+        proposals = discover(
+            query=sub_q,
+            investigation_id=ctx.investigation_id,
+            client=client,
+            events_dir=events_dir,
+            daily_budget_usd=daily_budget_usd,
+            db_path=db_path,
+        )
+
+        ingested_any = False
+        for p in proposals[:top_k]:
+            await ctx.checkpoint()
+            result = promote_discovery(
+                p,
+                investigation_id=ctx.investigation_id,
+                legal_gate=legal_gate,
+                events_dir=events_dir,
+                db_path=db_path,
+                embedder=embedder,
+            )
+            yield ctx.step(
+                f"[exa] {result.decision}: {p.url}",
+                cost_usd=(p.cost_usd_estimate or 0.0),
+                gather_mode="exa",
+                discovery_id=p.discovery_id,
+                document_id=result.document_id,
+                promotion_decision=result.decision,
+            )
+            if result.decision == "ingested":
+                ingested_any = True
+                # This note becomes a promoted insight node. The
+                # ``document_id`` rides ``StepEvent.data`` → the funnel
+                # threads it onto the node as ``source_document_id`` →
+                # the pack emits a ``doc-url-*`` chunk. This is the
+                # provenance the pack reads.
+                yield ctx.note(
+                    f"[exa] source for '{sub_q}': "
+                    f"{p.title or p.url}",
+                    gather_mode="exa",
+                    document_id=result.document_id,
+                )
+
+        if not ingested_any:
+            # Honest: no servable source was promoted. Do NOT fabricate a
+            # document_id — this note carries none, so the pack records no
+            # doc-url-* chunk for it.
+            yield ctx.note(
+                f"[exa] gather found no servable source for "
+                f"'{sub_q}'",
+                gather_mode="exa",
+            )
+
+    return _loop

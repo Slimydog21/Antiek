@@ -47,6 +47,9 @@ from substrate.dispatch import (  # noqa: E402
     reset_provider_registry,
 )
 from substrate.event_log import trajectory  # noqa: E402
+from orchestration.invariants.deep_research_complete import (  # noqa: E402
+    check_deep_research_complete,
+)
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
@@ -435,6 +438,9 @@ async def test_loop_one_happy_path_emits_completed(
     assert Path(p.master_md_path).exists()
     assert p.total_phases_verified == 8
     assert "quantum-computing-knowledge" in p.domains_patched
+
+    ok, reason = check_deep_research_complete(inv)
+    assert ok is True, reason
 
 
 @pytest.mark.asyncio
