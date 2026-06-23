@@ -7,7 +7,6 @@ investigation_id but omits dispatch_routing_kwargs (or explicit brain/latency).
 from __future__ import annotations
 
 import ast
-import os
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
