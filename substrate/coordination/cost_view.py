@@ -55,6 +55,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
 
+from substrate.coordination.workflow_taxonomy import (
+    Workflow,
+    is_remote_exec_provider,
+    workflow_for_role,
+)
 from substrate.event_log.events import (
     default_events_dir,
 )
@@ -67,74 +72,7 @@ from substrate.speak.economics_mode import (
     MARGIN_PUBLIC,
 )
 
-# ── Workflow enum (mirrors the SPR-04 taxonomy's four workflows) ─────────────
-
-class Workflow(str, Enum):
-    """The four product workflows, plus an honest ``UNMAPPED`` bucket for a
-    dispatch role the taxonomy does not yet classify. ``UNMAPPED`` is the
-    rigor-#3 guard: an unclassified role's cost is still summed into the
-    aggregate (so spend is never understated), but it is shown apart so the
-    operator can see classification is incomplete rather than silently wrong."""
-
-    RESEARCH = "research"
-    READ = "read"
-    WRITE = "write"
-    SPEAK = "speak"
-    UNMAPPED = "unmapped"
-
-
-# ── role → workflow map (the Python mirror of workflowTaxonomy.ts) ───────────
-#
-# The frontend taxonomy classifies MODES; dispatch events carry ROLES. This map
-# is the role-level mirror of that same product decision, grounded in
-# substrate/constants.py::ROLES + the one out-of-catalog role Speak emits
-# (``interviewer``, used in substrate/speak/interviewer_capture.py with
-# role='interviewer'). Each entry is editorial (which workflow story does this
-# role serve?), exactly as the frontend map is editorial; the *coverage* is
-# mechanical — a role not here lands in UNMAPPED and the cost is still counted.
-#
-#   • RESEARCH — the investigation pipeline (decompose → retrieve → connect →
-#     synthesize → verify), the user agent driving it, and the rule-based
-#     tier_assigner / constraint_checker that gate it. This is the bulk of
-#     today's spend.
-#   • READ — the wrestling-loop roles that bring sources INTO the substrate and
-#     think about them: note_taker (background note-emergence during wrestling),
-#     challenger (adversarial questioner during wrestling), grounder
-#     (grounding-check). The frontend taxonomy puts the wrestling surface in
-#     Read; these are its inference roles.
-#   • SPEAK — interview-as-acquisition. ``interviewer`` is the capture role
-#     (out of the ROLES catalog by design — it is a Speak product role).
-#   • WRITE — has no distinct dispatch role in the current substrate (the Write
-#     composer reuses synthesis-shaped dispatch); intentionally absent here so a
-#     future Write role lands in UNMAPPED and is surfaced, not mis-attributed.
-
-_ROLE_WORKFLOW: dict[str, Workflow] = {
-    # Research investigation pipeline.
-    "decomposer": Workflow.RESEARCH,
-    "evidence_retriever": Workflow.RESEARCH,
-    "parameter_extractor": Workflow.RESEARCH,
-    "connector": Workflow.RESEARCH,
-    "synthesizer": Workflow.RESEARCH,
-    "user_agent": Workflow.RESEARCH,
-    "tier_assigner": Workflow.RESEARCH,
-    "constraint_checker": Workflow.RESEARCH,
-    "verifier": Workflow.RESEARCH,
-    # Read wrestling-loop roles.
-    "note_taker": Workflow.READ,
-    "challenger": Workflow.READ,
-    "grounder": Workflow.READ,
-    # Speak interview-as-acquisition.
-    "interviewer": Workflow.SPEAK,
-}
-
-
-def workflow_for_role(role: str | None) -> Workflow:
-    """Classify a dispatch ``target_role`` to a workflow. An unknown or missing
-    role → :attr:`Workflow.UNMAPPED` (counted, not dropped)."""
-    if role is None:
-        return Workflow.UNMAPPED
-    return _ROLE_WORKFLOW.get(role, Workflow.UNMAPPED)
-
+# Workflow + role map: substrate.coordination.workflow_taxonomy (single source).
 
 # ── Margin status (honesty #1 — stub the economics you can't compute) ────────
 
@@ -195,17 +133,8 @@ class CostView:
         return self.workflow(Workflow.UNMAPPED).raw_cost_usd > 0
 
 
-# ── Provider classification ──────────────────────────────────────────────────
-
-# Providers the SPR-02 remote-exec path stamps onto its DispatchCall events.
-# Matched against ``payload.provider`` to slice out remote-exec spend. Kept a
-# small reviewed set; the default remote sentinel is "remote_exec" and the one
-# implemented provider is "daytona" (per the §16 research-fanout exemption).
-_REMOTE_EXEC_PROVIDERS: frozenset[str] = frozenset({"remote_exec", "daytona"})
-
-
 def _is_remote_exec(provider: str | None) -> bool:
-    return bool(provider) and provider in _REMOTE_EXEC_PROVIDERS
+    return is_remote_exec_provider(provider)
 
 
 # ── The reader ────────────────────────────────────────────────────────────────
