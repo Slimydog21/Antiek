@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STYLE_PATH = Path("/Users/slimydog/.grok/skills/htmlspec/templates/style.css")
-DATE = "2026-06-12"
+DATE = "2026-06-23"
 CSS_BLOCK = f"<style>\n{STYLE_PATH.read_text()}\n</style>"
 
 
@@ -321,10 +321,40 @@ def main() -> None:
          [("Exa gather", "./.venv/bin/python -m pytest tests/test_exa_gather_loop.py -q", "all passed"),
           ("Deep-research profile", "./scripts/canonical_verify.sh deep-research", "CANONICAL_VERIFY_OK: deep-research")],
          ("adversarial-verification", "exa-loop+pack", "attribution-chain|legal-gate|stub-default", "2", "5")),
+        ("09", "dogfood-readiness", "Pack fidelity + parent terminal observability",
+         "Gate prod dogfood: real doc-url-* in pack; session parent terminal visible.", 7, "5 milestones",
+         "SPR-DRL-08 Exa mock E2E (P-16) does not alone prove parent DeepResearchComplete observability; synthesis-tail failures must surface on session status.",
+         "Depends SPR-DRL-08. Engineering slice before trusted operator smoke DRW #1.",
+         "Wave 7 — dogfood readiness.",
+         "Hermetic P-17 only; live smoke is operator checklist.",
+         [
+             ("Pack fidelity E2E", "Exa gather (mock ingest) → build_evidence_pack yields doc-url-* chunks.",
+              ["test_exa_gather_pack_uses_doc_url_not_placeholder green", "no doc-gather-* only"],
+              ["tests/test_exa_gather_loop.py", "orchestration/session_evidence_pack.py"]),
+             ("Insight metadata bridge", "Promotion funnel carries source_document_id for pack builder.",
+              ["StepEvent document_id on graph metadata"],
+              ["runtime/research_runner/promotion_funnel.py"]),
+             ("Parent terminal observability", "session_status exposes deep_research_complete + synthesis_tail_error; no silent swallow.",
+              ["tests/test_drw_parent_terminal.py green"],
+              ["interfaces/research/api/cascade_routes.py", "orchestration/cascade_session.py"]),
+             ("P-17 harness", "PLATFORM_EXEC_MATRIX P-17 + canonical_verify deep-research.",
+              ["P-17 row", "CANONICAL_VERIFY_OK"],
+              ["docs/agent-execution/PLATFORM_EXEC_MATRIX.md", "scripts/canonical_verify.sh"]),
+             ("Operator smoke checklist", "deep-research-smoke-checklist.md for DRW #1 (Exa gather path).",
+              ["parent investigation.completed", "G2 parallel track noted"],
+              ["docs/decisions/deep-research-smoke-checklist.md"]),
+         ],
+         ("Thin-pack and silent synthesis stay Not proved until smoke DRW #1.", "Steelman full HTTP cascade E2E in CI — rejected; pack+parent observability is binding.",
+          "Zero live EXA_API_KEY in CI.", "Read cascade_routes _run_to_completion before edits.",
+          "Handoff separates P-17 hermetic vs operator-live smoke."),
+         ["SPR-DRL-08"], ["orchestration/cascade_session.py", "tests/test_cascade_convergence.py"],
+         ["Full HTTP TestClient profile", "Live Exa in CI", "10-session dogfood automation"],
+         [("Parent terminal", "./.venv/bin/python -m pytest tests/test_drw_parent_terminal.py -q", "all passed"),
+          ("Deep-research profile", "./scripts/canonical_verify.sh deep-research", "CANONICAL_VERIFY_OK: deep-research")],
+         ("adversarial-verification", "pack-fidelity+parent-terminal", "split-brain|thin-pack|silent-synthesis", "2", "5")),
     ]
 
-    statuses = {f"{n:02d}": "done" for n in range(1, 8)}
-    statuses["08"] = "pending"
+    statuses = {f"{n:02d}": "done" for n in range(1, 10)}
 
     for spec in specs:
         num, slug, title, tag, wave, budget, p1, p2, pos, extra, ms, rig, deps, ext, oos, gates, harness = spec
@@ -335,7 +365,7 @@ def main() -> None:
         )
         (ROOT / f"sprint-{num}-{slug}.html").write_text(html)
 
-    cards = {1: "", 2: "", 3: "", 4: "", 5: "", 6: ""}
+    cards = {1: "", 2: "", 3: "", 4: "", 5: "", 6: "", 7: ""}
     meta = [
         ("01", "terminal-contract", "DeepResearchComplete terminal contract", "Define falsifiable terminal state.", 1, "4 milestones", "done"),
         ("02", "harness-p11-p15", "PLATFORM_EXEC P-11..P-15", "Harness proves E2E + reconstruct + reuse.", 2, "5 milestones", "done"),
@@ -344,7 +374,8 @@ def main() -> None:
         ("05", "evidence-pack", "SessionEvidencePack", "Typed DRW→Loop1 bridge.", 4, "4 milestones", "done"),
         ("06", "convergence", "Path A convergence", "DRW gather → Loop 1 synthesis tail.", 4, "5 milestones", "done"),
         ("07", "flywheel-e2e", "Flywheel E2E", "P-11..P-15 green in CI.", 5, "4 milestones", "done"),
-        ("08", "exa-gather", "Exa gather loop", "Wedge 1 discovery → pack chunks → synthesis.", 6, "5 milestones", "pending"),
+        ("08", "exa-gather", "Exa gather loop", "Wedge 1 discovery → pack chunks → synthesis.", 6, "5 milestones", "done"),
+        ("09", "dogfood-readiness", "Parent terminal + P-17", "Pack fidelity + session parent observability.", 7, "5 milestones", "done"),
     ]
     for num, slug, title, goal, wave, budget, st in meta:
         sid = f"SPR-DRL-{num}"
@@ -357,9 +388,9 @@ def main() -> None:
     index_body = f"""<header class="hero"><p class="eyebrow">Master spec · ANT-DRL</p>
 <h1>Perfect Deep Research Loop</h1>
 <p class="tagline">One terminal contract, Path A convergence, real gather via Exa Wedge 1.</p>
-<div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>draft</span>
-<span class="tag tag--green"><span class="dot"></span>Waves 1–5 done</span>
-<span class="tag tag--grey">8 sprints · 6 waves · {DATE}</span></div></header>
+<div class="meta-row"><span class="tag tag--green"><span class="dot"></span>engineering complete (P-17)</span>
+<span class="tag tag--yellow"><span class="dot"></span>not deployed / smoke pending</span>
+<span class="tag tag--grey">9 sprints · 7 waves · {DATE}</span></div></header>
 <section class="block"><h2>Goal</h2>
 <p>Converge DRW gather with Loop 1 synthesis under <code>DeepResearchComplete</code>, then wire <strong>Exa Wedge 1</strong> so gather promotes real documents into <code>SessionEvidencePack</code> chunks.</p>
 <h3>Success criteria</h3><ul>
@@ -367,32 +398,35 @@ def main() -> None:
 <li><code>canonical_verify.sh deep-research</code> green — <strong>shipped SPR-DRL-07</strong></li>
 <li>Prod factory uses <code>make_contract_gather_stub</code>, not <code>make_demo_loop</code> — <strong>shipped SPR-DRL-04</strong></li>
 <li>P-15 <code>knowledge.reused</code> on second hermetic run — <strong>shipped SPR-DRL-07</strong></li>
-<li>P-16 Exa gather mock E2E: discover → ingest → pack chunk — <strong>SPR-DRL-08</strong></li></ul>
+<li>P-16 Exa gather mock E2E — <strong>shipped SPR-DRL-08</strong></li>
+<li>P-17 parent-terminal observability — <strong>shipped SPR-DRL-09</strong></li>
+<li>Operator smoke DRW #1 with <code>ANTIEK_DRW_GATHER=exa</code> — <strong>SPR-LEDGER-05</strong> (ledger)</li></ul>
 <h3>Failure mode</h3><p><strong>Split-brain</strong> — two terminals, one product name. <strong>Attribution collapse</strong> — Exa <code>/answer</code> or direct graph writes bypassing <code>ingest_url</code>.</p></section>
 <section class="block"><h2>Context</h2>
 <p>Loop 1: <code>orchestration/loop_one</code> → synthesis tail on session parent → <code>investigation.completed</code>.
-DRW: <code>cascade_routes._research_loop_factory</code> → <code>make_contract_gather_stub</code> (honest placeholder).
-Discovery layer: <code>acquisition/search/exa/</code> (<code>discover</code> + <code>promote_discovery</code>) — exists, not yet wired into browse loop.
-Harness: P-11..P-15 in <code>PLATFORM_EXEC_MATRIX.md</code>; P-16 added in SPR-DRL-08.</p>
-<p>Interview ratified <strong>Path A</strong>, reviewer <strong>canonical_verify</strong>. Waves 1–5 executed 2026-06-12.</p></section>
+DRW factory: <code>ANTIEK_DRW_GATHER=exa|stub</code> (stub default for CI); Exa Wedge 1 wired via <code>make_exa_gather_loop</code>.
+Harness: P-11..P-17 green via <code>canonical_verify.sh deep-research</code>.</p>
+<p>Program ledger: <code>~/specs/antiek-drw-master-ledger/</code> (deploy + prod keys + smoke).</p></section>
 <section class="block"><h2>Architecture</h2>
 <div class="dep-graph">W1: SPR-DRL-01 contract ✓
 W2: SPR-DRL-02 harness ✓
 W3: SPR-DRL-03 engine ✓ || SPR-DRL-04 evict demo ✓
 W4: SPR-DRL-05 pack ✓ → SPR-DRL-06 converge ✓
 W5: SPR-DRL-07 flywheel E2E ✓
-W6: SPR-DRL-08 Exa gather loop (env-gated factory)</div></section>
+W6: SPR-DRL-08 Exa gather loop ✓
+W7: SPR-DRL-09 parent terminal + P-17 ✓</div></section>
 <section class="block"><h2>Sprint roster</h2>
 <div class="wave-band">Wave 1</div><div class="sprint-grid">{cards[1]}</div>
 <div class="wave-band">Wave 2</div><div class="sprint-grid">{cards[2]}</div>
 <div class="wave-band">Wave 3 parallel</div><div class="sprint-grid">{cards[3]}</div>
 <div class="wave-band">Wave 4 convergence</div><div class="sprint-grid">{cards[4]}</div>
 <div class="wave-band">Wave 5</div><div class="sprint-grid">{cards[5]}</div>
-<div class="wave-band">Wave 6 — real gather</div><div class="sprint-grid">{cards[6]}</div></section>
+<div class="wave-band">Wave 6 — real gather</div><div class="sprint-grid">{cards[6]}</div>
+<div class="wave-band">Wave 7 — dogfood readiness</div><div class="sprint-grid">{cards[7]}</div></section>
 <section class="block" id="harness-hint-run" data-harness-default-pattern="fan-out-and-synthesize"
  data-harness-inline-only-sprints="SPR-DRL-01,SPR-DRL-02,SPR-DRL-03,SPR-DRL-04,SPR-DRL-07"
- data-harness-sharpen-sprints="SPR-DRL-08">
-<h2>Harness hint (run)</h2><p>Waves 1–5 complete. Execute <strong>SPR-DRL-08</strong> with adversarial-verification on attribution chain (mock Exa only). Parallel web APIs deferred to open question / SPR-DRL-09.</p></section>
+ data-harness-sharpen-sprints="">
+<h2>Harness hint (run)</h2><p>ANT-DRL engineering complete through P-17. Do <strong>not</strong> re-grind 01–09 unless gates regress. Next: <code>/caffenagent-cycle ~/specs/antiek-drw-master-ledger</code> — SPR-LEDGER-03 ship (Exa-first), 04 prod keys, 05 smoke DRW #1.</p></section>
 <section class="block"><h2>Decision log</h2>
 <table class="spec"><thead><tr><th>Decision</th><th>Why</th><th>Reconsider if</th></tr></thead><tbody>
 <tr><td>Path A converge</td><td>Interview: split-brain = waste</td><td>Loop 1 deprecated</td></tr>

@@ -584,10 +584,9 @@ hr.divider {
 <header class="hero"><p class="eyebrow">Master spec · ANT-DRL</p>
 <h1>Perfect Deep Research Loop</h1>
 <p class="tagline">One terminal contract, Path A convergence, real gather via Exa Wedge 1.</p>
-<div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>draft</span>
-<span class="tag tag--green"><span class="dot"></span>Waves 1–5 done</span>
-<span class="tag tag--green"><span class="dot"></span>in-scope done</span>
-<span class="tag tag--grey">8 sprints · 6 waves · 2026-06-12</span></div></header>
+<div class="meta-row"><span class="tag tag--green"><span class="dot"></span>engineering complete (P-17)</span>
+<span class="tag tag--yellow"><span class="dot"></span>not deployed / smoke pending</span>
+<span class="tag tag--grey">9 sprints · 7 waves · 2026-06-23</span></div></header>
 <section class="block"><h2>Goal</h2>
 <p>Converge DRW gather with Loop 1 synthesis under <code>DeepResearchComplete</code>, then wire <strong>Exa Wedge 1</strong> so gather promotes real documents into <code>SessionEvidencePack</code> chunks.</p>
 <h3>Success criteria</h3><ul>
@@ -595,21 +594,23 @@ hr.divider {
 <li><code>canonical_verify.sh deep-research</code> green — <strong>shipped SPR-DRL-07</strong></li>
 <li>Prod factory uses <code>make_contract_gather_stub</code>, not <code>make_demo_loop</code> — <strong>shipped SPR-DRL-04</strong></li>
 <li>P-15 <code>knowledge.reused</code> on second hermetic run — <strong>shipped SPR-DRL-07</strong></li>
-<li>P-16 Exa gather mock E2E: discover → ingest → pack chunk — <strong>SPR-DRL-08</strong></li></ul>
+<li>P-16 Exa gather mock E2E — <strong>shipped SPR-DRL-08</strong></li>
+<li>P-17 parent-terminal observability — <strong>shipped SPR-DRL-09</strong></li>
+<li>Operator smoke DRW #1 with <code>ANTIEK_DRW_GATHER=exa</code> — <strong>SPR-LEDGER-05</strong> (ledger)</li></ul>
 <h3>Failure mode</h3><p><strong>Split-brain</strong> — two terminals, one product name. <strong>Attribution collapse</strong> — Exa <code>/answer</code> or direct graph writes bypassing <code>ingest_url</code>.</p></section>
 <section class="block"><h2>Context</h2>
 <p>Loop 1: <code>orchestration/loop_one</code> → synthesis tail on session parent → <code>investigation.completed</code>.
-DRW: <code>cascade_routes._research_loop_factory</code> → <code>make_contract_gather_stub</code> (honest placeholder).
-Discovery layer: <code>acquisition/search/exa/</code> (<code>discover</code> + <code>promote_discovery</code>) — exists, not yet wired into browse loop.
-Harness: P-11..P-15 in <code>PLATFORM_EXEC_MATRIX.md</code>; P-16 added in SPR-DRL-08.</p>
-<p>Interview ratified <strong>Path A</strong>, reviewer <strong>canonical_verify</strong>. Waves 1–5 executed 2026-06-12.</p></section>
+DRW factory: <code>ANTIEK_DRW_GATHER=exa|stub</code> (stub default for CI); Exa Wedge 1 wired via <code>make_exa_gather_loop</code>.
+Harness: P-11..P-17 green via <code>canonical_verify.sh deep-research</code>.</p>
+<p>Program ledger: <code>~/specs/antiek-drw-master-ledger/</code> (deploy + prod keys + smoke).</p></section>
 <section class="block"><h2>Architecture</h2>
 <div class="dep-graph">W1: SPR-DRL-01 contract ✓
 W2: SPR-DRL-02 harness ✓
 W3: SPR-DRL-03 engine ✓ || SPR-DRL-04 evict demo ✓
 W4: SPR-DRL-05 pack ✓ → SPR-DRL-06 converge ✓
 W5: SPR-DRL-07 flywheel E2E ✓
-W6: SPR-DRL-08 Exa gather loop (env-gated factory)</div></section>
+W6: SPR-DRL-08 Exa gather loop ✓
+W7: SPR-DRL-09 parent terminal + P-17 ✓</div></section>
 <section class="block"><h2>Sprint roster</h2>
 <div class="wave-band">Wave 1</div><div class="sprint-grid"><a class="sprint-card" href="sprint-01-terminal-contract.html">
 <span class="id">SPR-DRL-01</span><span class="title">DeepResearchComplete terminal contract</span><span class="goal">Define falsifiable terminal state.</span>
@@ -640,11 +641,15 @@ W6: SPR-DRL-08 Exa gather loop (env-gated factory)</div></section>
 <div class="wave-band">Wave 6 — real gather</div><div class="sprint-grid"><a class="sprint-card" href="sprint-08-exa-gather.html">
 <span class="id">SPR-DRL-08</span><span class="title">Exa gather loop</span><span class="goal">Wedge 1 discovery → pack chunks → synthesis.</span>
 <span class="footer"><span class="tag tag--blue">Wave 6</span>
-<span class="tag tag--grey">5 milestones</span><span class="tag tag--red"><span class="dot"></span>deferred</span></span></a></div></section>
+<span class="tag tag--grey">5 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a></div>
+<div class="wave-band">Wave 7 — dogfood readiness</div><div class="sprint-grid"><a class="sprint-card" href="sprint-09-dogfood-readiness.html">
+<span class="id">SPR-DRL-09</span><span class="title">Parent terminal + P-17</span><span class="goal">Pack fidelity + session parent observability.</span>
+<span class="footer"><span class="tag tag--blue">Wave 7</span>
+<span class="tag tag--grey">5 milestones</span><span class="tag tag--green"><span class="dot"></span>done</span></span></a></div></section>
 <section class="block" id="harness-hint-run" data-harness-default-pattern="fan-out-and-synthesize"
  data-harness-inline-only-sprints="SPR-DRL-01,SPR-DRL-02,SPR-DRL-03,SPR-DRL-04,SPR-DRL-07"
- data-harness-sharpen-sprints="SPR-DRL-08">
-<h2>Harness hint (run)</h2><p><strong>Run complete (in-scope).</strong> Waves 1–5 verified green 2026-06-12. <strong>SPR-DRL-08 deferred</strong> per operator — Exa/parallel web APIs out of scope. Re-invoke <code>/caffenagent</code> when operator re-scopes Wave 6.</p></section>
+ data-harness-sharpen-sprints="">
+<h2>Harness hint (run)</h2><p>ANT-DRL engineering complete through P-17. Do <strong>not</strong> re-grind 01–09 unless gates regress. Next: <code>/caffenagent-cycle ~/specs/antiek-drw-master-ledger</code> — SPR-LEDGER-03 ship (Exa-first), 04 prod keys, 05 smoke DRW #1.</p></section>
 <section class="block"><h2>Decision log</h2>
 <table class="spec"><thead><tr><th>Decision</th><th>Why</th><th>Reconsider if</th></tr></thead><tbody>
 <tr><td>Path A converge</td><td>Interview: split-brain = waste</td><td>Loop 1 deprecated</td></tr>
@@ -676,7 +681,7 @@ W6: SPR-DRL-08 Exa gather loop (env-gated factory)</div></section>
 <tr><td><strong>make_exa_gather_loop</strong></td><td>Browse loop factory: <code>discover</code> → <code>promote_discovery</code> → funnel; replaces stub when env-gated.</td></tr>
 <tr><td><strong>DiscoveryProposed</strong></td><td>Typed event: URL considered, not ingested. Promotion via <code>DiscoverySelected</code>.</td></tr>
 </tbody></table></section>
-<footer class="spec-footer">htmlspec ANT-DRL · 2026-06-12</footer>
+<footer class="spec-footer">htmlspec ANT-DRL · 2026-06-23</footer>
 </main>
 </body>
 </html>

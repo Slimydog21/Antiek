@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SPR-DRL-04 · Evict make_demo_loop from prod</title>
+<title>SPR-DRL-08 · Parallel Search gather loop</title>
 <style>
 /* htmlspec — Lemon UI inspired style system
  * Inline this entire file into <style> of every output HTML file.
@@ -582,50 +582,54 @@ hr.divider {
 <body>
 <main class="page">
 <header class="hero">
-<p class="eyebrow"><a href="index.html">&larr; Perfect Deep Research Loop</a> · Sprint 04</p>
-<h1>Evict make_demo_loop from prod</h1><p class="tagline">Contract-faithful gather stub in _research_loop_factory.</p>
+<p class="eyebrow"><a href="index.html">&larr; Perfect Deep Research Loop</a> · Sprint 08</p>
+<h1>Parallel Search gather loop</h1><p class="tagline">Wire Parallel Search API into DRW browse loop; real chunks in pack.</p>
 <div class="meta-row">
-<span class="tag tag--blue"><span class="dot"></span>Wave 3</span>
+<span class="tag tag--blue"><span class="dot"></span>Wave 6</span>
 <span class="tag tag--green"><span class="dot"></span>done</span>
-<span class="tag tag--grey">Budget: 4 milestones</span></div></header>
-<section class="block"><h2>Parent context</h2><p>Prod factory returns make_demo_loop — reuse-blind MOCK per compounding/benchmark.</p><p>Parallel with SPR-DRL-03.</p>
-<div class="callout callout--info"><strong>Position:</strong> Wave 3 gather track.</div></section>
-<section class="block"><h2>Goal</h2><p><strong>Contract-faithful gather stub in _research_loop_factory.</strong></p><p>Stub is not real research; honest placeholder until Exa.</p></section>
+<span class="tag tag--grey">Budget: 5 milestones</span></div></header>
+<section class="block"><h2>Parent context</h2><p>Operator ratified Parallel-first (not Exa-first). Path A convergence (SPR-DRL-06) is green; cascade_routes still defaults to make_contract_gather_stub.</p><p>Mirror acquisition/search/exa/ shape for parallel/. Reuse promote_discovery pattern via ingest_url. Depends SPR-DRL-06 + SPR-DRL-07.</p>
+<div class="callout callout--info"><strong>Position:</strong> Wave 6 gather adapter — Parallel Search only.</div></section>
+<section class="block"><h2>Goal</h2><p><strong>Wire Parallel Search API into DRW browse loop; real chunks in pack.</strong></p><p>No Parallel Task API one-call research; no Exa in this sprint; no Browserbase.</p></section>
 <section class="block"><h2>Technical milestones</h2>
 <div class="milestone"><div class="num">1</div><div>
-<div class="title">Contract stub loop</div><p class="desc">Real StepEvents + PromotionFunnel under db_lock.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>deterministic cost</li><li>funnel append</li></ul></div>
-<div class="files"><span class="file">runtime/research_runner/host_local.py</span></div></div></div>
+<div class="title">acquisition/search/parallel/</div><p class="desc">client.py: POST https://api.parallel.ai/v1/search (x-api-key, objective + search_queries). adapter.py: discover() → DiscoveryProposed with provider=parallel.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>MockTransport hermetic test</li><li>DiscoveryProvider includes parallel</li><li>disc-parallel- id prefix</li></ul></div>
+<div class="files"><span class="file">acquisition/search/parallel/client.py</span><span class="file">acquisition/search/parallel/adapter.py</span><span class="file">substrate/schemas/events.py</span></div></div></div>
 <div class="milestone"><div class="num">2</div><div>
-<div class="title">Swap factory</div><p class="desc">cascade_routes uses stub not make_demo_loop(steps=3).</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>grep confirms</li></ul></div>
-<div class="files"><span class="file">interfaces/research/api/cascade_routes.py</span></div></div></div>
+<div class="title">make_parallel_gather_loop</div><p class="desc">Browse loop: discover(sub_question) → promote_discovery top-k → StepEvents with discovery_id + document_id.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>gather_mode=parallel on steps</li><li>budget sidecar or cost estimate on proposal</li></ul></div>
+<div class="files"><span class="file">runtime/research_runner/host_local.py</span><span class="file">acquisition/search/parallel/adapter.py</span></div></div></div>
 <div class="milestone"><div class="num">3</div><div>
-<div class="title">Benchmark README</div><p class="desc">Distinguish MOCK demo vs contract stub vs future Exa.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>README updated</li></ul></div>
-<div class="files"><span class="file">compounding/benchmark/README.md</span></div></div></div>
+<div class="title">Factory seam</div><p class="desc">ANTIEK_DRW_GATHER=parallel|stub (default stub); PARALLEL_API_KEY from env only.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>grep shows env gate</li><li>test_cascade_api asserts stub default</li></ul></div>
+<div class="files"><span class="file">interfaces/research/api/cascade_routes.py</span><span class="file">.env</span></div></div></div>
 <div class="milestone"><div class="num">4</div><div>
-<div class="title">Boundary doc</div><p class="desc">spr-08-meta-reading-boundary.md note.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>doc mentions stub</li></ul></div>
-<div class="files"><span class="file">docs/decisions/spr-08-meta-reading-boundary.md</span></div></div></div>
+<div class="title">Pack chunks from ingest</div><p class="desc">Ingested docs → doc-url-* in SessionEvidencePack (not doc-gather-* placeholders).</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>pack test with mocked parallel discover + ingest</li><li>content_hash stable</li></ul></div>
+<div class="files"><span class="file">orchestration/session_evidence_pack.py</span><span class="file">runtime/research_runner/promotion_funnel.py</span></div></div></div>
+<div class="milestone"><div class="num">5</div><div>
+<div class="title">P-16 harness + decision</div><p class="desc">Matrix row + tests/test_parallel_gather_loop.py; deep-research-exa-gather.md → parallel-first decision doc.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>P-16 row with command</li><li>docs/decisions/deep-research-parallel-gather.md exists</li></ul></div>
+<div class="files"><span class="file">docs/agent-execution/PLATFORM_EXEC_MATRIX.md</span><span class="file">scripts/canonical_verify.sh</span><span class="file">tests/test_parallel_gather_loop.py</span><span class="file">docs/decisions/deep-research-parallel-gather.md</span></div></div></div>
 </section>
 <section class="block"><h2>Rigor — operating manual for this sprint</h2>
 <div class="rigor">
-<div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>Do not claim stub is real research.</p></div>
-<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman keep demo loop for UX; rejected — prod lying blocks Path A.</p></div>
-<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>cascade + remote_exec tests stay green.</p></div>
-<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read host_local make_demo_loop first.</p></div>
-<div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>Handoff states behavioral delta demo vs stub.</p></div>
+<div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>Report Parallel index/cache blind spots in Not proved.</p></div>
+<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman Exa-first — rejected; operator chose Parallel. Steelman Parallel Task API as gather — rejected; collapses attribution like /answer.</p></div>
+<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>Zero live PARALLEL_API_KEY in CI; httpx.MockTransport only.</p></div>
+<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read exa/adapter.py as template; Parallel API needs objective + 2-3 search_queries per call.</p></div>
+<div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>Handoff diagrams parallel search → ingest_url → funnel → pack chunk chain.</p></div>
 </div></section>
 <section class="block"><h2>Dependencies</h2><div class="two-col">
-<div><h3>Upstream</h3><ul><li>SPR-DRL-01</li></ul></div>
-<div><h3>External</h3><ul><li>promotion_funnel.py</li><li>compounding/benchmark/</li></ul></div></div></section>
-<section class="block"><h2>Out of scope</h2><ul><li>Exa</li><li>Removing MOCK from benchmark null path</li></ul></section>
+<div><h3>Upstream</h3><ul><li>SPR-DRL-06</li><li>SPR-DRL-07</li></ul></div>
+<div><h3>External</h3><ul><li>acquisition/urls/adapter.py</li><li>substrate/legal_gate/</li><li>https://docs.parallel.ai/api-reference/search/search</li></ul></div></div></section>
+<section class="block"><h2>Out of scope</h2><ul><li>Exa gather (SPR-DRL-10)</li><li>Parallel Task/FindAll APIs</li><li>Browserbase</li><li>SerpAPI</li><li>Live Parallel in CI</li></ul></section>
 <section class="block"><h2>Verification gates</h2>
-<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Cascade</strong></td><td><code>./scripts/canonical_verify.sh cascade</code></td><td>CANONICAL_VERIFY_OK: cascade</td></tr></tbody></table></section>
+<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Parallel gather</strong></td><td><code>./.venv/bin/python -m pytest tests/test_parallel_gather_loop.py -q</code></td><td>all passed</td></tr><tr><td><strong>Deep-research profile</strong></td><td><code>./scripts/canonical_verify.sh deep-research</code></td><td>CANONICAL_VERIFY_OK: deep-research</td></tr></tbody></table></section>
 <section class="block"><h2>Handoff packet</h2>
 <p class="lede">Paste this block at the end of your final message when the sprint is done.</p>
-<pre><code>## Sprint SPR-DRL-04 — Handoff
+<pre><code>## Sprint SPR-DRL-08 — Handoff
 
 ### Status
 done | blocked | partial — one line why
@@ -658,11 +662,11 @@ done | blocked | partial — one line why
 ### Out-of-scope temptations encountered
 - wanted X; did Y instead
 </code></pre></section>
-<section class="block" id="harness-hint" data-harness-pattern="inline"
- data-harness-fanout-unit="factory+host_local" data-harness-verifier-lenses="prod-honesty|promotion-path"
- data-harness-rounds-floor="1" data-harness-rounds-cap="3">
-<h2>Harness hint</h2><p>Pattern <code>inline</code> · factory+host_local</p></section>
-<footer class="spec-footer">SPR-DRL-04 · <a href="index.html">Master spec</a> · 2026-06-23</footer>
+<section class="block" id="harness-hint" data-harness-pattern="adversarial-verification"
+ data-harness-fanout-unit="parallel-loop+pack" data-harness-verifier-lenses="attribution-chain|legal-gate|stub-default"
+ data-harness-rounds-floor="2" data-harness-rounds-cap="5">
+<h2>Harness hint</h2><p>Pattern <code>adversarial-verification</code> · parallel-loop+pack</p></section>
+<footer class="spec-footer">SPR-DRL-08 · <a href="index.html">Master spec</a> · 2026-06-12</footer>
 </main>
 </body>
 </html>

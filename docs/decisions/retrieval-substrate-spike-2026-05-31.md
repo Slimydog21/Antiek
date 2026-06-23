@@ -162,7 +162,23 @@ Until a trigger fires, **DuckDB-VSS is the substrate and turbopuffer/DuckLake
 stay un-adopted spike modules.** A future operator should be able to re-decide
 from this record's numbers + triggers without re-running the spike.
 
-## 6. What landed (M5)
+## 6. Addendum — 2026-06-23 (DRW-LEDGER SPR-LEDGER-07)
+
+`TURBOPUFFER_API_KEY` is present in the operator environment, but
+`TurbopufferSubstrate.query` still raises `NotImplementedError` on the
+credentialed path (SDK wire + §9.0 mirror not shipped). Re-run:
+
+`python -m benchmarks.retrieval_bench --substrate vss --substrate turbopuffer`
+
+**failed** at adapter query with that error — **turbopuffer remains
+UN-MEASURED**; Wedge 1 stays **DEFER** per §13.1. No hybrid_search prod
+wiring until a credentialed spike records numbers in
+`benchmarks/out/retrieval_spike_<date>.json` and clears the bar.
+
+**TPF-W1 ledger status:** `deferred` (adapter wire is a separate engineering
+slice, not DRW gather).
+
+## 7. What landed (M5)
 
 - **Interface (the open seam):** `substrate/graph/retrieval_substrate.py` —
   the `RetrievalSubstrate` Protocol (one `query` method, the `search()` return

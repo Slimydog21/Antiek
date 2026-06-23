@@ -1,15 +1,14 @@
-## Sprint ANT-DRL — Handoff (SPR-DRL-01..07 complete)
+## Sprint ANT-DRL — Handoff (SPR-DRL-01..09 complete, P-17)
 
 ### Env Card
 
 | Field | Value |
 |-------|-------|
-| Date (UTC) | 2026-06-12 |
+| Date (UTC) | 2026-06-23 |
 | Repo root (`pwd`) | `/Users/slimydog/Desktop/Antiek` |
 | Branch | `main` |
-| Commit SHA | `6fdde98` (local; uncommitted DRL work may extend) |
+| Commit SHA | `a5e3094733c2e6d8b4cafc3d47be5927176bfe97` |
 | Python | `/Users/slimydog/Desktop/Antiek/.venv/bin/python` |
-| Python version | `3.12.13` |
 | LLM contacted this session | `no` |
 | Network required for gates | `no` |
 
@@ -18,68 +17,56 @@
 | Row | Hermetic | Operator-live gap |
 |-----|----------|-------------------|
 | P-11 Loop 1 E2E | stub providers | live LLM on all 5 roles |
-| P-12 negative | fixture trajectory | prod DRW with Exa adapter |
+| P-12 negative | fixture trajectory | prod DRW with live Exa |
 | P-13 reconstruct | JSONL hermetic | SSE transport reconnect E2E |
 | P-14 funnel | 20 concurrent promotions | remote-exec fan-out under load |
 | P-15 reuse | two-run `knowledge.reused` event | dispatch cost delta > 0 on reuse-consuming loop |
+| P-16 Exa gather | MockTransport E2E | live `EXA_API_KEY` discover + ingest |
+| P-17 parent terminal | `test_drw_parent_terminal.py` | smoke DRW #1 `deep_research_complete` on real session |
 
 MOCK / contract-stub economics do **not** compound — documented in `compounding/benchmark/README.md`.
 
 ### Status
 
-`done` — Path A convergence shipped; P-11..P-15 green via `canonical_verify deep-research`.
+`done` — Path A convergence + Exa Wedge 1 gather + parent-terminal observability; P-11..P-17 green via `canonical_verify deep-research`. **Prod deploy and smoke DRW #1 are ledger work (DRW-LEDGER), not ANT-DRL code gaps.**
 
 ### Architecture (ratified)
 
 - **Path A:** DRW gather → `SessionEvidencePack` → Loop 1 phases 6–9 on `session_id`
 - **Terminal:** `DeepResearchComplete` on session parent (not per leaf)
-- **Exa:** out of scope — `make_contract_gather_stub` in prod factory seam
+- **Gather:** `ANTIEK_DRW_GATHER=exa|stub` (stub default CI); Exa-first on prod per operator + `deep-research-exa-gather.md`
 
 ### Files touched
 
 | Sprint | Key paths |
 |--------|-----------|
-| SPR-DRL-01 | `orchestration/invariants/deep_research_complete.py` |
-| SPR-DRL-02 | `scripts/canonical_verify.sh deep-research`, `PLATFORM_EXEC_MATRIX.md` |
-| SPR-DRL-03 | `orchestration/loop_one/orchestrator.py` (bounded Phase 2) |
-| SPR-DRL-04 | `make_contract_gather_stub` in `cascade_routes` |
-| SPR-DRL-05 | `orchestration/session_evidence_pack.py` |
-| SPR-DRL-06 | `run_synthesis_tail_from_pack`, cascade synthesis hook |
-| SPR-DRL-07 | `tests/test_flywheel_reuse.py`, P-15 matrix update |
+| SPR-DRL-08 | `make_exa_gather_loop`, `cascade_routes.py`, `tests/test_exa_gather_loop.py`, P-16 matrix |
+| SPR-DRL-09 | `cascade_routes.py` session_status + synthesis_tail_error, `tests/test_drw_parent_terminal.py`, P-17, `docs/decisions/deep-research-smoke-checklist.md` |
 
 ### Milestones (checkboxes)
 
-- [x] SPR-DRL-01: DeepResearchComplete contract
-- [x] SPR-DRL-02: P-11..P-15 harness
-- [x] SPR-DRL-03: Loop 1 engine hardening
-- [x] SPR-DRL-04: Evict `make_demo_loop` from prod
-- [x] SPR-DRL-05: SessionEvidencePack
-- [x] SPR-DRL-06: Path A convergence
-- [x] SPR-DRL-07: Flywheel E2E gates
+- [x] SPR-DRL-01..07 (prior handoff)
+- [x] SPR-DRL-08: Exa gather loop + P-16
+- [x] SPR-DRL-09: Parent terminal + P-17 + smoke checklist doc
 
 ### Gate results
 
 | gate | command | exit |
 |------|---------|------|
 | deep-research | `./scripts/canonical_verify.sh deep-research` | 0 |
-| agent-gates | `./scripts/canonical_verify.sh agent-gates` | 0 |
-| handoff | `./scripts/canonical_verify.sh handoff docs/htmlspec/deep-research-loop/SPR-DRL-handoff.md` | 0 |
+| handoff | `./scripts/canonical_verify.sh handoff docs/htmlspec/deep-research-loop/SPR-DRL-handoff.md` | 0 (when run) |
 
 ### Steelman rejected alternative
 
-**Skip P-15 two-run gate** — rejected; flywheel observability is the moat even when MOCK economics stay null.
+**Re-grind SPR-DRL-08/09 or switch to Parallel-first gather (PR #79)** — rejected; P-11..P-17 already green on Exa-first main; parallel-first conflicts with operator Exa embedding for DRW.
 
 ### Open questions
 
-- Exa adapter drops into `_research_loop_factory` with zero route changes when operator provisions it.
+- Live smoke DRW #1 — operator, `~/specs/antiek-drw-master-ledger` SPR-LEDGER-05
+- Turbopuffer wedge — SPIKE in SPR-LEDGER-07 (retrieval, not gather)
 
 ### Scope Map
 
 **Investigation ID:** ANT-DRL
 
-| Entry | Production hook | Test |
-|-------|-----------------|------|
-| Cascade launch | `POST /research/plans/{id}/launch` | `test_cascade_convergence.py` |
-| Synthesis tail | `CascadeSession.run_synthesis_tail` | `test_cascade_convergence.py` |
-| Terminal check | `check_deep_research_complete` | `test_deep_research_complete.py` |
-| Reuse flywheel | `HostLocalRunner.start` + substrate | `test_flywheel_reuse.py` |
+**Next program:** `~/specs/antiek-drw-master-ledger/` (ship, keys, smoke, `drw-honest-failure` delegate)

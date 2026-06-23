@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SPR-DRL-04 · Evict make_demo_loop from prod</title>
+<title>SPR-DRL-09 · Pack fidelity + parent terminal observability</title>
 <style>
 /* htmlspec — Lemon UI inspired style system
  * Inline this entire file into <style> of every output HTML file.
@@ -582,50 +582,54 @@ hr.divider {
 <body>
 <main class="page">
 <header class="hero">
-<p class="eyebrow"><a href="index.html">&larr; Perfect Deep Research Loop</a> · Sprint 04</p>
-<h1>Evict make_demo_loop from prod</h1><p class="tagline">Contract-faithful gather stub in _research_loop_factory.</p>
+<p class="eyebrow"><a href="index.html">&larr; Perfect Deep Research Loop</a> · Sprint 09</p>
+<h1>Pack fidelity + parent terminal observability</h1><p class="tagline">Gate prod dogfood: real doc-url-* in pack; session parent terminal visible.</p>
 <div class="meta-row">
-<span class="tag tag--blue"><span class="dot"></span>Wave 3</span>
+<span class="tag tag--blue"><span class="dot"></span>Wave 7</span>
 <span class="tag tag--green"><span class="dot"></span>done</span>
-<span class="tag tag--grey">Budget: 4 milestones</span></div></header>
-<section class="block"><h2>Parent context</h2><p>Prod factory returns make_demo_loop — reuse-blind MOCK per compounding/benchmark.</p><p>Parallel with SPR-DRL-03.</p>
-<div class="callout callout--info"><strong>Position:</strong> Wave 3 gather track.</div></section>
-<section class="block"><h2>Goal</h2><p><strong>Contract-faithful gather stub in _research_loop_factory.</strong></p><p>Stub is not real research; honest placeholder until Exa.</p></section>
+<span class="tag tag--grey">Budget: 5 milestones</span></div></header>
+<section class="block"><h2>Parent context</h2><p>SPR-DRL-08 Exa mock E2E (P-16) does not alone prove parent DeepResearchComplete observability; synthesis-tail failures must surface on session status.</p><p>Depends SPR-DRL-08. Engineering slice before trusted operator smoke DRW #1.</p>
+<div class="callout callout--info"><strong>Position:</strong> Wave 7 — dogfood readiness.</div></section>
+<section class="block"><h2>Goal</h2><p><strong>Gate prod dogfood: real doc-url-* in pack; session parent terminal visible.</strong></p><p>Hermetic P-17 only; live smoke is operator checklist.</p></section>
 <section class="block"><h2>Technical milestones</h2>
 <div class="milestone"><div class="num">1</div><div>
-<div class="title">Contract stub loop</div><p class="desc">Real StepEvents + PromotionFunnel under db_lock.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>deterministic cost</li><li>funnel append</li></ul></div>
-<div class="files"><span class="file">runtime/research_runner/host_local.py</span></div></div></div>
+<div class="title">Pack fidelity E2E</div><p class="desc">Exa gather (mock ingest) → build_evidence_pack yields doc-url-* chunks.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>test_exa_gather_pack_uses_doc_url_not_placeholder green</li><li>no doc-gather-* only</li></ul></div>
+<div class="files"><span class="file">tests/test_exa_gather_loop.py</span><span class="file">orchestration/session_evidence_pack.py</span></div></div></div>
 <div class="milestone"><div class="num">2</div><div>
-<div class="title">Swap factory</div><p class="desc">cascade_routes uses stub not make_demo_loop(steps=3).</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>grep confirms</li></ul></div>
-<div class="files"><span class="file">interfaces/research/api/cascade_routes.py</span></div></div></div>
+<div class="title">Insight metadata bridge</div><p class="desc">Promotion funnel carries source_document_id for pack builder.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>StepEvent document_id on graph metadata</li></ul></div>
+<div class="files"><span class="file">runtime/research_runner/promotion_funnel.py</span></div></div></div>
 <div class="milestone"><div class="num">3</div><div>
-<div class="title">Benchmark README</div><p class="desc">Distinguish MOCK demo vs contract stub vs future Exa.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>README updated</li></ul></div>
-<div class="files"><span class="file">compounding/benchmark/README.md</span></div></div></div>
+<div class="title">Parent terminal observability</div><p class="desc">session_status exposes deep_research_complete + synthesis_tail_error; no silent swallow.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>tests/test_drw_parent_terminal.py green</li></ul></div>
+<div class="files"><span class="file">interfaces/research/api/cascade_routes.py</span><span class="file">orchestration/cascade_session.py</span></div></div></div>
 <div class="milestone"><div class="num">4</div><div>
-<div class="title">Boundary doc</div><p class="desc">spr-08-meta-reading-boundary.md note.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>doc mentions stub</li></ul></div>
-<div class="files"><span class="file">docs/decisions/spr-08-meta-reading-boundary.md</span></div></div></div>
+<div class="title">P-17 harness</div><p class="desc">PLATFORM_EXEC_MATRIX P-17 + canonical_verify deep-research.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>P-17 row</li><li>CANONICAL_VERIFY_OK</li></ul></div>
+<div class="files"><span class="file">docs/agent-execution/PLATFORM_EXEC_MATRIX.md</span><span class="file">scripts/canonical_verify.sh</span></div></div></div>
+<div class="milestone"><div class="num">5</div><div>
+<div class="title">Operator smoke checklist</div><p class="desc">deep-research-smoke-checklist.md for DRW #1 (Exa gather path).</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>parent investigation.completed</li><li>G2 parallel track noted</li></ul></div>
+<div class="files"><span class="file">docs/decisions/deep-research-smoke-checklist.md</span></div></div></div>
 </section>
 <section class="block"><h2>Rigor — operating manual for this sprint</h2>
 <div class="rigor">
-<div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>Do not claim stub is real research.</p></div>
-<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman keep demo loop for UX; rejected — prod lying blocks Path A.</p></div>
-<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>cascade + remote_exec tests stay green.</p></div>
-<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read host_local make_demo_loop first.</p></div>
-<div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>Handoff states behavioral delta demo vs stub.</p></div>
+<div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>Thin-pack and silent synthesis stay Not proved until smoke DRW #1.</p></div>
+<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman full HTTP cascade E2E in CI — rejected; pack+parent observability is binding.</p></div>
+<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>Zero live EXA_API_KEY in CI.</p></div>
+<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read cascade_routes _run_to_completion before edits.</p></div>
+<div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>Handoff separates P-17 hermetic vs operator-live smoke.</p></div>
 </div></section>
 <section class="block"><h2>Dependencies</h2><div class="two-col">
-<div><h3>Upstream</h3><ul><li>SPR-DRL-01</li></ul></div>
-<div><h3>External</h3><ul><li>promotion_funnel.py</li><li>compounding/benchmark/</li></ul></div></div></section>
-<section class="block"><h2>Out of scope</h2><ul><li>Exa</li><li>Removing MOCK from benchmark null path</li></ul></section>
+<div><h3>Upstream</h3><ul><li>SPR-DRL-08</li></ul></div>
+<div><h3>External</h3><ul><li>orchestration/cascade_session.py</li><li>tests/test_cascade_convergence.py</li></ul></div></div></section>
+<section class="block"><h2>Out of scope</h2><ul><li>Full HTTP TestClient profile</li><li>Live Exa in CI</li><li>10-session dogfood automation</li></ul></section>
 <section class="block"><h2>Verification gates</h2>
-<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Cascade</strong></td><td><code>./scripts/canonical_verify.sh cascade</code></td><td>CANONICAL_VERIFY_OK: cascade</td></tr></tbody></table></section>
+<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Parent terminal</strong></td><td><code>./.venv/bin/python -m pytest tests/test_drw_parent_terminal.py -q</code></td><td>all passed</td></tr><tr><td><strong>Deep-research profile</strong></td><td><code>./scripts/canonical_verify.sh deep-research</code></td><td>CANONICAL_VERIFY_OK: deep-research</td></tr></tbody></table></section>
 <section class="block"><h2>Handoff packet</h2>
 <p class="lede">Paste this block at the end of your final message when the sprint is done.</p>
-<pre><code>## Sprint SPR-DRL-04 — Handoff
+<pre><code>## Sprint SPR-DRL-09 — Handoff
 
 ### Status
 done | blocked | partial — one line why
@@ -658,11 +662,11 @@ done | blocked | partial — one line why
 ### Out-of-scope temptations encountered
 - wanted X; did Y instead
 </code></pre></section>
-<section class="block" id="harness-hint" data-harness-pattern="inline"
- data-harness-fanout-unit="factory+host_local" data-harness-verifier-lenses="prod-honesty|promotion-path"
- data-harness-rounds-floor="1" data-harness-rounds-cap="3">
-<h2>Harness hint</h2><p>Pattern <code>inline</code> · factory+host_local</p></section>
-<footer class="spec-footer">SPR-DRL-04 · <a href="index.html">Master spec</a> · 2026-06-23</footer>
+<section class="block" id="harness-hint" data-harness-pattern="adversarial-verification"
+ data-harness-fanout-unit="pack-fidelity+parent-terminal" data-harness-verifier-lenses="split-brain|thin-pack|silent-synthesis"
+ data-harness-rounds-floor="2" data-harness-rounds-cap="5">
+<h2>Harness hint</h2><p>Pattern <code>adversarial-verification</code> · pack-fidelity+parent-terminal</p></section>
+<footer class="spec-footer">SPR-DRL-09 · <a href="index.html">Master spec</a> · 2026-06-23</footer>
 </main>
 </body>
 </html>
