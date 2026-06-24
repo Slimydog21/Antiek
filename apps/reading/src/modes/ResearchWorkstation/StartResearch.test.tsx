@@ -21,9 +21,16 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { Event } from "../../generated/types";
 
-const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
+const { startInvestigationMock, getHealthMock, navigateMock, eventStreamState } = vi.hoisted(
   () => ({
     startInvestigationMock: vi.fn(),
+    getHealthMock: vi.fn().mockResolvedValue({
+      status: "ok",
+      param_version: "test",
+      schema_version: 1,
+      subscriber_count: 0,
+      registered_providers: ["openai", "tilert"],
+    }),
     navigateMock: vi.fn(),
     eventStreamState: {
       current: {
@@ -37,7 +44,11 @@ const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, startInvestigation: startInvestigationMock };
+  return {
+    ...actual,
+    startInvestigation: startInvestigationMock,
+    getHealth: getHealthMock,
+  };
 });
 
 // Mock the stream at the hook boundary — useStartInvestigation reads it.
@@ -104,6 +115,14 @@ function renderStart() {
 beforeEach(() => {
   installMatchMedia(false);
   startInvestigationMock.mockReset();
+  getHealthMock.mockReset();
+  getHealthMock.mockResolvedValue({
+    status: "ok",
+    param_version: "test",
+    schema_version: 1,
+    subscriber_count: 0,
+    registered_providers: ["openai", "tilert"],
+  });
   navigateMock.mockReset();
   eventStreamState.current = { events: [], status: "closed", reconnects: 0 };
 });
@@ -193,6 +212,20 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
         expect.objectContaining({ brain_choice: "glm" }),
       ),
     );
+  });
+
+  it("shows degraded GLM banner when tilert is absent from /health (ATSB SPR-03)", async () => {
+    getHealthMock.mockResolvedValue({
+      status: "ok",
+      param_version: "test",
+      schema_version: 1,
+      subscriber_count: 0,
+      registered_providers: ["openai"],
+    });
+    renderStart();
+    await waitFor(() => expect(getHealthMock).toHaveBeenCalled());
+    expect(screen.getByText(/GLM speed \(TileRT\)/i)).toBeTruthy();
+    expect(screen.getByText(/OA-022/)).toBeTruthy();
   });
 
   it("selecting Premium submits brain_choice premium (ATSB SPR-03)", async () => {

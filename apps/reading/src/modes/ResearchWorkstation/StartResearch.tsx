@@ -9,7 +9,7 @@ import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
-import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
+import { ApiError, getHealth, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { BrainChoice, ResearchTier } from "../../lib/api";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
@@ -152,6 +152,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
   const [brain, setBrain] = useState<BrainChoice>(DEFAULT_BRAIN);
   const [deliverableSpeed, setDeliverableSpeed] = useState(false);
+  /** ATSB SPR-03 rigor — honest when GLM is selected but gateway has no tilert provider. */
+  const [tilertRegistered, setTilertRegistered] = useState<boolean | null>(null);
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -182,6 +184,22 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     submit,
     reset,
   } = start;
+
+  useEffect(() => {
+    let cancelled = false;
+    getHealth()
+      .then((h) => {
+        if (cancelled) return;
+        const providers = h.registered_providers ?? [];
+        setTilertRegistered(providers.includes("tilert"));
+      })
+      .catch(() => {
+        if (!cancelled) setTilertRegistered(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onSubmit = useCallback(async () => {
     const id = await submit({
@@ -688,6 +706,18 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               Prefer speed for this deliverable when running in background
             </label>
           </div>
+
+          {brain === "glm" && tilertRegistered === false ? (
+            <p
+              role="status"
+              className="text-[11px] font-serif text-ink-mute dark:text-moonlight border-l-2 border-sun pl-2"
+            >
+              GLM speed (TileRT) is not registered on this gateway yet — driving
+              roles use the configured fallback until the operator wires{" "}
+              <span className="font-mono text-[10px]">ANTIEK_TILERT_*</span>{" "}
+              (OA-022).
+            </p>
+          ) : null}
 
           <div className="flex items-center justify-between gap-3">
             <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
