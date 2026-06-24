@@ -28,6 +28,17 @@ from substrate.graph import retrieval_substrate as _rs
 _VSS_LOADABLE = _rs._vss_loadable_probe()
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_vendor_retrieval_creds(monkeypatch):
+    for key in (
+        "TURBOPUFFER_API_KEY",
+        "DUCKLAKE_CATALOG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
 # ---------------------------------------------------------------------------
 # Known-answer recall arithmetic (non-vacuity)
 # ---------------------------------------------------------------------------

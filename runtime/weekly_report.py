@@ -563,7 +563,9 @@ def collect_acquisition_cost(
     for f in sorted(budget_path.glob("exa_*.json")):
         try:
             stem_date = f.stem.replace("exa_", "")
-            day = datetime.strptime(stem_date, "%Y-%m-%d")
+            day_naive = datetime.strptime(stem_date, "%Y-%m-%d")
+            tz = start.tzinfo or end.tzinfo
+            day = day_naive.replace(tzinfo=tz) if tz else day_naive
         except ValueError:
             continue
         start_floor = start.replace(hour=0, minute=0, second=0, microsecond=0)

@@ -244,18 +244,22 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
     """Ingest the five rosters + SPR-01's DAG; reconcile the count; compute the
     unblocked set from dependency state. Reads only — authors nothing."""
     root = specs_root or _specs_root()
+    # Explicit ``specs_root`` (tests/fixtures) must not invent sprints from the
+    # manifest — absent dirs honestly contribute 0. Only the default operator
+    # root backfills empty dirs from ``sprint_rosters.json``.
+    explicit_root = specs_root is not None
     crit = set(dependency_map.critical_path())
 
     rosters: list[SpecRoster] = []
-    # The live specs/ root takes precedence (the operator's current view). Only
-    # when the root itself is absent — CI and prod, where the untracked planning
-    # specs do not ship — fall back to the committed manifest, so the roadmap is
-    # portable rather than empty. When a root IS present (the real dir or a test
-    # fixture), an absent per-spec dir honestly contributes 0 (no backfill).
     root_present = root.is_dir()
-    manifest = {} if root_present else _manifest_rosters()
+    manifest = _manifest_rosters()
     for spec, dirname, label in _SPEC_DIRS:
-        files = _read_roster_files(root / dirname) if root_present else manifest.get(spec, [])
+        if root_present:
+            files = _read_roster_files(root / dirname)
+            if not files and not explicit_root:
+                files = manifest.get(spec, [])
+        else:
+            files = manifest.get(spec, [])
         rows: list[SprintRow] = []
         for sprint, slug in files:
             node_id = f"{spec}:{sprint}"
@@ -285,11 +289,12 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
             SpecRoster(spec=spec, label=label, directory=dirname, sprints=tuple(rows))
         )
 
-    superseded_files = (
-        _read_roster_files(root / _SUPERSEDED_DIR)
-        if root_present
-        else manifest.get(_SUPERSEDED_DIR, [])
-    )
+    if root_present:
+        superseded_files = _read_roster_files(root / _SUPERSEDED_DIR)
+        if not superseded_files and not explicit_root:
+            superseded_files = manifest.get(_SUPERSEDED_DIR, [])
+    else:
+        superseded_files = manifest.get(_SUPERSEDED_DIR, [])
 
     return Roadmap(
         rosters=tuple(rosters),

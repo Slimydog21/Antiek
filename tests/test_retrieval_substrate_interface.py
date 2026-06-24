@@ -39,6 +39,19 @@ _requires_vss = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_vendor_retrieval_creds(monkeypatch):
+    """Credential-gated spike adapters must skip in CI/hermetic runs even when
+    the operator shell exports vendor keys."""
+    for key in (
+        "TURBOPUFFER_API_KEY",
+        "DUCKLAKE_CATALOG",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
 @pytest.fixture
 def seeded_db():
     emb = HashEmbedding()
