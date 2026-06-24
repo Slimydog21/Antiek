@@ -17,8 +17,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Prefer repo .venv (operator dev); fall back to active interpreter (CI pip install).
-if [[ -x "${ROOT}/.venv/bin/python" ]]; then
+# Prefer .venv314 (py3.14 + dev extras, matches CI); then .venv; then PYTHON.
+if [[ -x "${ROOT}/.venv314/bin/python" ]]; then
+  PY="${ROOT}/.venv314/bin/python"
+elif [[ -x "${ROOT}/.venv/bin/python" ]]; then
   PY="${ROOT}/.venv/bin/python"
 elif [[ -n "${PYTHON:-}" && -x "${PYTHON}" ]]; then
   PY="${PYTHON}"
