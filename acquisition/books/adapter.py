@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+from datetime import UTC, datetime
 from dataclasses import dataclass, field
 from typing import Union
 
@@ -100,6 +101,7 @@ class IngestBookResult:
     skipped_reason: str | None = None
     title: str | None = None
     author: str | None = None
+    reader_snapshot_path: str | None = None
     # Flattened bookmark outline from the PDF (Read SPR-01). Carried on
     # the result so the servable-book orchestrator doesn't re-read the PDF
     # just to recover the TOC.
@@ -244,6 +246,34 @@ def ingest_pdf(
             )
             node_ids.append(node_id)
 
+    reader_snapshot_path: str | None = None
+    if os.environ.get("ANTIEK_READER_SNAPSHOT", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        from acquisition.snapshot.reader_html import (  # noqa: E402
+            build_reader_snapshot,
+            markdown_to_safe_html,
+            reader_snapshot_path_for,
+            write_reader_snapshot,
+        )
+
+        snap_path = reader_snapshot_path_for(document_id)
+        ingested_at = datetime.now(UTC).isoformat()
+        snap_html = build_reader_snapshot(
+            source_url=source_uri or f"book:{document_id}",
+            document_id=document_id,
+            ip_holder_id=None,
+            main_html=markdown_to_safe_html(text),
+            ingested_at=ingested_at,
+            title=result.title,
+            author=result.author,
+            source_kind="book",
+        )
+        write_reader_snapshot(snap_path, snap_html)
+        reader_snapshot_path = str(snap_path)
+
     return IngestBookResult(
         document_id=document_id,
         chunk_ids=chunk_ids,
@@ -255,6 +285,7 @@ def ingest_pdf(
         title=result.title,
         author=result.author,
         toc=list(result.toc),
+        reader_snapshot_path=reader_snapshot_path,
     )
 
 

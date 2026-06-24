@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ANT-AHT — Master ledger complete</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+.banner { background: #d9efe2; border: 2px solid #151515; padding: 16px 20px; margin: 1rem 0; border-radius: 4px; }
+.check { width: 100%; border-collapse: collapse; font-size: 14px; margin: 1rem 0; }
+.check th, .check td { border: 1px solid var(--stone-300); padding: 8px 10px; text-align: left; }
+.check th { background: var(--stone-100); }
+.mono { font-family: var(--font-mono); font-size: 12px; }
+.stop { color: #c63d24; font-weight: 600; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="topnav-inner">
+    <span class="topnav-title">Antiek docs</span>
+    <a href="index.html">Index</a>
+    <a href="ant-aht-vision-map.html">Vision map</a>
+    <a href="ant-aht-cycle-complete.html" class="active">Ledger complete</a>
+  </div>
+</nav>
+<main><article>
+<p class="kicker">Caffenagent · ANT-AHT · <span class="mono">5cbd69ad</span></p>
+<h1>Master ledger: no pending sprints</h1>
+<div class="banner">
+<p><strong>SPR-AHT-01 through SPR-AHT-07 are executed.</strong> PDF book reader HTML (SPR-AHT-07) shares the URL snapshot flag. Profile B is in <a href="../htmlspec/antiek-html-transport/index.html">ANT-AHT index</a>.</p>
+</div>
+<p class="stop">Full Write Lego, EPUB-native ingest, and RL audit — separate ledgers.</p>
+<table class="check">
+<thead><tr><th>Sprint</th><th>Status</th><th>Gate</th></tr></thead>
+<tbody>
+<tr><td>01 Contract</td><td>done</td><td class="mono">test_research_artifact_template</td></tr>
+<tr><td>02 Export</td><td>done</td><td class="mono">test_research_artifact_export + hooks</td></tr>
+<tr><td>03 Transport</td><td>done</td><td class="mono">RESEARCH_ARTIFACT_TRANSPORT.md</td></tr>
+<tr><td>04 Reader snapshot</td><td>done</td><td class="mono">test_reader_snapshot</td></tr>
+<tr><td>05 Compose</td><td>done</td><td class="mono">test_research_artifact_compose</td></tr>
+<tr><td>06 Write bridge</td><td>done</td><td class="mono">test_artifact_routes + ArtifactOutlineShelf</td></tr>
+<tr><td>07 Book snapshot</td><td>done</td><td class="mono">test_acquisition_books reader_snapshot</td></tr>
+</tbody>
+</table>
+<p>P-18 bundle: <code class="mono">./scripts/canonical_verify.sh html-transport</code> (16 pytest targets).</p>
+<p>Explore assets: <a href="html-landscape.html">html-landscape.html</a> · Thariq examples: <a href="https://thariqs.github.io/html-effectiveness/">external catalog</a></p>
+<script type="application/json" id="antiek-cycle-status-v1">{
+  "ledger": "ANT-AHT",
+  "sprints": ["SPR-AHT-01","SPR-AHT-02","SPR-AHT-03","SPR-AHT-04","SPR-AHT-05","SPR-AHT-06","SPR-AHT-07"],
+  "phase": "done",
+  "head": "5cbd69ad",
+  "gate": "P-18",
+  "reinvoke_caffenagent_cycle_on_this_ledger": false,
+  "next_ledgers": ["Write-bridge-v2","EPUB-native-ingest","RL-html-audit"]
+}</script>
+</article></main>
+</body>
+</html>

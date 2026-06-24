@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate ANT-AHT htmlspec (master + six sprint pages). Idempotent."""
+"""Generate ANT-AHT htmlspec (master + seven sprint pages). Idempotent."""
 from __future__ import annotations
 
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 STYLE_PATH = Path("/Users/slimydog/.grok/skills/htmlspec/templates/style.css")
-DATE = "2026-06-23"
+DATE = "2026-06-24"
 CSS_BLOCK = f"<style>\n{STYLE_PATH.read_text()}\n</style>" if STYLE_PATH.is_file() else "<style></style>"
 
 
@@ -114,6 +114,7 @@ def master_index() -> str:
         ("04", "ingest-reader-snapshot", "Ingest reader snapshot", "Sanitized HTML beside URL ingest.", 2, "3 milestones", "done"),
         ("05", "compose-merge", "Compose / merge index", "Multi-investigation HTML index.", 3, "2 milestones", "done"),
         ("06", "write-bridge-api", "Write bridge + API", "Outline blocks + FastAPI routes.", 3, "3 milestones", "done"),
+        ("07", "book-reader-snapshot", "Book reader snapshot", "PDF ingest → readable HTML beside chunks.", 2, "2 milestones", "done"),
     ]
     by_wave: dict[int, list[str]] = {1: [], 2: [], 3: []}
     for num, slug, title, goal, wave, budget, st in cards:
@@ -122,7 +123,7 @@ def master_index() -> str:
 <h1>Antiek HTML Transport</h1>
 <p class="tagline">Profile B — agent-friendly HTML lenses on DuckDB truth (Thariq thesis).</p>
 <div class="meta-row"><span class="tag tag--green"><span class="dot"></span>exec-2 complete</span>
-<span class="tag tag--grey">6 sprints · 3 waves · {DATE}</span></div></header>
+<span class="tag tag--grey">7 sprints · 3 waves · {DATE}</span></div></header>
 <section class="block"><h2>Architectural fork (ratified)</h2>
 <ul>
 <li><strong>Canonical truth:</strong> DuckDB graph + typed event log — never HTML-primary.</li>
@@ -135,7 +136,7 @@ def master_index() -> str:
 </section>
 <section class="block"><h2>Sprint roster</h2>
 <div class="wave-band">Wave 1 — contract + export</div><div class="sprint-grid">{''.join(by_wave[1])}</div>
-<div class="wave-band">Wave 2 — protocol + ingest</div><div class="sprint-grid">{''.join(by_wave[2])}</div>
+<div class="wave-band">Wave 2 — protocol + ingest (URL + book)</div><div class="sprint-grid">{''.join(by_wave[2])}</div>
 <div class="wave-band">Wave 3 — compose + Write bridge</div><div class="sprint-grid">{''.join(by_wave[3])}</div>
 </section>
 <section class="block" id="harness-hint-run" data-harness-default-pattern="inline">
@@ -301,6 +302,29 @@ def main() -> None:
              ("Blocks", "./.venv/bin/python -m pytest tests/test_research_artifact_blocks.py -q", "pass")],
             ("inline", "artifact_routes.py", "api-contract|write-bridge", "1", "2"),
         ),
+        sprint_page(
+            "SPR-AHT-07", "07", "book-reader-snapshot",
+            "Book reader snapshot",
+            "Readable HTML when ingesting PDF books (textbook / PD corpus).",
+            2, "2 milestones",
+            "Books and textbooks should be reviewable as HTML lenses like web articles.",
+            "Reuses ANTIEK_READER_SNAPSHOT flag and ~/.antiek/reader-snapshots store.",
+            "Wave 2 extension of SPR-AHT-04 — markdown body from PDF extraction.",
+            "markdown_to_safe_html + ingest_pdf hook; title/author in meta header.",
+            [
+                ("markdown_to_safe_html", "Escape-first minimal heading/paragraph render.",
+                 ["test_reader_snapshot markdown tests"], ["acquisition/snapshot/reader_html.py"]),
+                ("ingest_pdf hook", "IngestBookResult.reader_snapshot_path when flag on.",
+                 ["test_acquisition_books snapshot test"], ["acquisition/books/adapter.py"]),
+            ],
+            ("EPUB-native deferred; PD epub still becomes PDF at ingest.", "Steelman separate book HTML store; rejected — one reader-snapshots dir.",
+             "P-18 includes book snapshot test.", "Read SPR-AHT-04 before wiring.",
+             "Decision doc ingest-reader-snapshot.md updated."),
+            ["SPR-AHT-04"], [],
+            ["EPUB direct HTML ingest", "Servable-book gate changes"],
+            [("Book snapshot", "./.venv/bin/python -m pytest tests/test_reader_snapshot.py tests/test_acquisition_books.py -k reader_snapshot -q", "pass")],
+            ("inline", "books/adapter.py", "markdown-escape|same-flag", "1", "2"),
+        ),
     ]
 
     slugs = [
@@ -310,6 +334,7 @@ def main() -> None:
         "04-ingest-reader-snapshot",
         "05-compose-merge",
         "06-write-bridge-api",
+        "07-book-reader-snapshot",
     ]
     for slug, html in zip(slugs, pages, strict=True):
         path = ROOT / f"sprint-{slug}.html"

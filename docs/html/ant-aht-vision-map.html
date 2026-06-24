@@ -66,7 +66,8 @@ Canonical truth stays DuckDB + events; HTML is the lens agents and humans share.
 <tr><td>One HTML per deep research</td><td class="status-shipped">Shipped</td><td>SPR-AHT-02 export + hook</td></tr>
 <tr><td>Merge HTML like dev merge (substrate wins)</td><td class="status-shipped">Shipped</td><td>SPR-AHT-05 compose + hash conflicts</td></tr>
 <tr><td>Read website/article as HTML</td><td class="status-shipped">Shipped</td><td>SPR-AHT-04 reader snapshot</td></tr>
-<tr><td>Book / textbook / EPUB as HTML</td><td class="status-deferred">Deferred</td><td>P-18 “not proved”; needs new sprint</td></tr>
+<tr><td>PDF book / textbook as HTML</td><td class="status-shipped">Shipped</td><td>SPR-AHT-07; same <code>ANTIEK_READER_SNAPSHOT</code> flag</td></tr>
+<tr><td>EPUB-native HTML ingest</td><td class="status-deferred">Deferred</td><td>PD epub → PDF at ingest today</td></tr>
 <tr><td>Knowledge graph / notebook as HTML lens</td><td class="status-partial">Partial</td><td>Blocks from graph; not full KG UI</td></tr>
 <tr><td>Write: drag HTML Lego into outline</td><td class="status-partial">Partial</td><td>DistillView shelf; not full Write canvas</td></tr>
 <tr><td>Tab-complete outline sections</td><td class="status-deferred">Deferred</td><td>Write product + RL loop — new ledger</td></tr>
@@ -114,6 +115,7 @@ Canonical truth stays DuckDB + events; HTML is the lens agents and humans share.
 <tr><td>01–03</td><td class="mono">substrate/research_artifact/{schema,render,import_notes}.py</td></tr>
 <tr><td>02</td><td class="mono">substrate/research_artifact/export.py · hooks.py</td></tr>
 <tr><td>04</td><td class="mono">acquisition/snapshot/reader_html.py</td></tr>
+<tr><td>07</td><td class="mono">acquisition/books/adapter.py · markdown_to_safe_html</td></tr>
 <tr><td>05</td><td class="mono">substrate/research_artifact/compose.py</td></tr>
 <tr><td>06</td><td class="mono">interfaces/research/api/artifact_routes.py · ArtifactOutlineShelf.tsx</td></tr>
 </tbody>
@@ -122,8 +124,8 @@ Canonical truth stays DuckDB + events; HTML is the lens agents and humans share.
 
 <section id="panel-gates" class="panel" role="tabpanel" hidden>
 <h2>Master ledger gate</h2>
-<p><strong>P-18</strong> — <code class="mono">./scripts/canonical_verify.sh html-transport</code> (13 pytest targets).</p>
-<p>Cycle verdict: <strong>done-no-ship</strong> — engineering on SPR-AHT-01…06 is complete; tree may be uncommitted until PRcrouch.</p>
+<p><strong>P-18</strong> — <code class="mono">./scripts/canonical_verify.sh html-transport</code> (16 pytest targets incl. book snapshot).</p>
+<p>Cycle verdict: <strong>SPR-AHT-01…07</strong> on master ledger; Write tab-complete and RL audit remain new ledgers.</p>
 <p>Further reading: <a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html">Claude blog</a> ·
 <a href="https://thariqs.github.io/html-effectiveness/">Thariq examples</a></p>
 </section>
@@ -132,7 +134,6 @@ Canonical truth stays DuckDB + events; HTML is the lens agents and humans share.
 <h2>Not in this master ledger</h2>
 <p>Re-invoking <code>/caffenagent-cycle</code> on ANT-AHT does not re-open 01–06. Pick a <strong>new</strong> htmlspec:</p>
 <ol>
-<li><strong>ANT-AHT-07</strong> — book/EPUB → reader HTML beside chunks</li>
 <li><strong>Write bridge v2</strong> — full Write canvas drag + tab-complete</li>
 <li><strong>RL audit</strong> — typed events for “committed to HTML” training signal</li>
 </ol>
@@ -165,7 +166,7 @@ Canonical truth stays DuckDB + events; HTML is the lens agents and humans share.
       'Master ledger SPR-AHT-01..06 DONE. Profile B: dual-channel HTML + #antiek-artifact-v1 JSON.',
       'Gate: ./scripts/canonical_verify.sh html-transport',
       'Read: docs/html/ant-aht-vision-map.html, docs/htmlspec/antiek-html-transport/index.html',
-      'Deferred: book ingest, full Write tab-complete, RL audit schema.',
+      'Deferred: EPUB-native ingest, full Write tab-complete, RL audit schema.',
     ].join('\n');
     navigator.clipboard.writeText(text).then(() => {
       const b = document.getElementById('copy-handoff');

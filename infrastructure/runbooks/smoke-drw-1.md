@@ -3,6 +3,21 @@
 Companion to `docs/decisions/deep-research-smoke-checklist.md`. Record results in
 `~/specs/antiek-drw-master-ledger/.caffenagent/evidence/smoke-drw-1-live.md`.
 
+## Automated script (VM or laptop with token)
+
+```bash
+# On Hetzner (sources /etc/antiek/secrets.env):
+set -a; source /etc/antiek/secrets.env; set +a
+bash /opt/antiek/tools/ops/smoke_drw_1.sh   # after deploy copies script
+```
+
+From repo: `tools/ops/smoke_drw_1.sh` (same contract).
+
+**Prod note (2026-06-24):** if `POST /research/plans` returns 500 with
+`RuntimeError: could not create a primitive` in embeddings, set
+`ANTIEK_EMBEDDING_PROVIDER=hash` in `/etc/antiek/secrets.env` and restart
+`antiek.service`. DRW gather + synthesis still run; semantic match is degraded.
+
 ## Preconditions (mechanical)
 
 ```bash

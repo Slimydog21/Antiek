@@ -1,0 +1,34 @@
+id: drw_smoke_phase8_skill_patch
+observed_at: 2026-06-24
+source: SPR-LEDGER-05 live smoke on api.antiek.ai (session-question-082df28d8da06917)
+agent: smoke_drw_1.sh
+phase: cascade_synthesis_tail
+failure_type: phase_postcondition
+
+context_summary: |
+  Live DRW #1: Exa gather ingested doc-url-* documents and leaves completed,
+  synthesize.delivered fired, but parent session ended investigation.failed
+  because Phase 8 postcondition required non-empty auto_patch_applied.patched
+  or a knowledge_skills mtime bump — neither occurred on prod.
+
+input:
+  prompt: |
+    POST /research/plans (2 sub-questions) → approve → launch with
+    ANTIEK_DRW_GATHER=exa on prod build babcdccf.
+  env:
+    ANTIEK_DRW_GATHER: exa
+    ANTIEK_EMBEDDING_PROVIDER: hash
+
+expected_behavior: |
+  Parent session reaches DeepResearchComplete: investigation.completed on
+  session_id, deep_research_complete true, synthesis_tail_error null.
+
+actual_failure: |
+  skill.auto_patch_applied status=failed patched=[] then investigation.failed
+  at phase 8 postcondition.
+
+harness_check_that_now_catches: |
+  tools/ops/smoke_drw_1.sh exit 1; parent event log;
+  tests/regression/agent_failures/README.md onboarding.
+
+status: open

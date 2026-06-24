@@ -112,7 +112,10 @@ def main() -> None:
     <span class="topnav-title">Antiek docs</span>
     <a href="index.html">Index</a>
     <a href="html-landscape.html" class="active">HTML landscape</a>
+    <a href="thariq-antiek-index.html">Thariq × Antiek</a>
+    <a href="ant-aht-vision-map.html">Vision map</a>
     <a href="ant-aht-operator-guide.html">ANT-AHT guide</a>
+    <a href="ant-aht-cycle-complete.html">Ledger complete</a>
     <a href="../htmlspec/antiek-html-transport/index.html">ANT-AHT spec</a>
   </div>
 </nav>
@@ -136,9 +139,9 @@ Canonical truth stays DuckDB + events; HTML is the lens operators and agents act
 <div class="card-grid wide">
 <div class="card"><h3>Specs &amp; planning</h3><p>Profile A htmlspecs under <code>docs/htmlspec/</code> — tabs, rigor, sprint grids.</p></div>
 <div class="card"><h3>Research reports</h3><p>Profile B <code>ResearchArtifact</code> — export per investigation, compose merge index.</p></div>
-<div class="card"><h3>Ingest reader view</h3><p>URL reader snapshots (<code>ANTIEK_READER_SNAPSHOT</code>) beside substrate chunks.</p></div>
+<div class="card"><h3>Ingest reader view</h3><p>URL + PDF book reader snapshots (<code>ANTIEK_READER_SNAPSHOT</code>) beside substrate chunks — SPR-AHT-04/07.</p></div>
 <div class="card"><h3>Agent handoff</h3><p>Copy-as-prompt + <code>agent_notes[]</code> import → audited <code>artifact.generated</code> events.</p></div>
-<div class="card"><h3>Write Lego outline</h3><p><code>GET /research/{{id}}/artifact/blocks</code> — future drag-drop in Write product.</p></div>
+<div class="card"><h3>Write Lego outline</h3><p><code>GET /research/{{id}}/artifact/blocks</code> + DistillView shelf — full Write canvas deferred.</p></div>
 <div class="card"><h3>On-policy RL audit</h3><p>What lands in HTML + events is the training trace (human research workflow).</p></div>
 </div>
 
@@ -176,7 +179,7 @@ Canonical truth stays DuckDB + events; HTML is the lens operators and agents act
 <table class="asset-table">
 <tr><td><code>ANTIEK_RESEARCH_ARTIFACTS_DIR</code></td><td>Profile B export directory</td></tr>
 <tr><td><code>ANTIEK_EXPORT_RESEARCH_ARTIFACT</code></td><td>Post <code>investigation.completed</code> auto-export</td></tr>
-<tr><td><code>ANTIEK_READER_SNAPSHOT</code></td><td>Write sanitized HTML on <code>ingest_url</code></td></tr>
+<tr><td><code>ANTIEK_READER_SNAPSHOT</code></td><td>Reader HTML on <code>ingest_url</code> and <code>ingest_pdf</code></td></tr>
 <tr><td><code>ANTIEK_READER_SNAPSHOTS_DIR</code></td><td>Reader snapshot store (default <code>~/.antiek/reader-snapshots</code>)</td></tr>
 </table>
 </article>
