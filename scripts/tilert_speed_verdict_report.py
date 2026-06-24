@@ -27,18 +27,39 @@ sys.path.insert(0, str(_REPO))
 from substrate.analytics.dispatch_rows import iter_dispatch_call_rows  # noqa: E402
 
 
+def _sorted_investigation_ids(events_dir: str) -> list[str]:
+    import os
+
+    if not os.path.isdir(events_dir):
+        return []
+    ids: list[str] = []
+    for fn in sorted(os.listdir(events_dir)):
+        if fn.endswith(".jsonl"):
+            ids.append(fn[: -len(".jsonl")])
+        elif fn.endswith(".parquet"):
+            ids.append(fn[: -len(".parquet")])
+    return sorted(set(ids))
+
+
 def _p50(values: list[int | float]) -> float | None:
     if not values:
         return None
     return float(statistics.median(values))
 
 
-def _aggregate(events_dir: str) -> dict:
+def _aggregate(events_dir: str, *, max_investigations: int | None) -> dict:
     by_key: dict[tuple[str, str], list[dict]] = defaultdict(list)
     investigation_ids: set[str] = set()
     speed_synth_investigations: set[str] = set()
 
-    for row in iter_dispatch_call_rows(events_dir=events_dir):
+    inv_filter: list[str] | None = None
+    if max_investigations is not None and max_investigations > 0:
+        inv_filter = _sorted_investigation_ids(events_dir)[:max_investigations]
+
+    for row in iter_dispatch_call_rows(
+        events_dir=events_dir,
+        investigation_ids=inv_filter,
+    ):
         iid = row.get("investigation_id")
         if isinstance(iid, str) and iid:
             investigation_ids.add(iid)
@@ -99,12 +120,19 @@ def main() -> int:
         default=10,
         help="SPR-07 rigor: verdict needs at least this many investigations with data.",
     )
+    parser.add_argument(
+        "--max-investigations",
+        type=int,
+        default=500,
+        help="Cap event-log scan for CLI responsiveness (0 = no cap).",
+    )
     args = parser.parse_args()
 
     from substrate.event_log.events import default_events_dir
 
     events_dir = args.events_dir or default_events_dir()
-    agg = _aggregate(events_dir)
+    cap = args.max_investigations if args.max_investigations > 0 else None
+    agg = _aggregate(events_dir, max_investigations=cap)
 
     ss = agg["synthesizer_speed"]
     sp = agg["synthesizer_synthesis"]
@@ -117,6 +145,8 @@ def main() -> int:
 
     print("# TileRT speed verdict report (generated)\n")
     print(f"- events_dir: `{agg['events_dir']}`")
+    if cap is not None:
+        print(f"- scan cap: **{cap}** investigations (use --max-investigations 0 for full scan)")
     print(f"- investigations (any dispatch): **{agg['n_investigations']}**")
     print(f"- investigations with synthesizer tier=speed: **{n}**")
     print(f"- verdict: **{verdict}** (min_investigations={min_n})\n")
