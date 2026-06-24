@@ -12,6 +12,27 @@ from fastapi.testclient import TestClient
 import interfaces.research.api.cascade_routes as cr
 from interfaces.research.api.cascade_routes import cascade_router
 from substrate.dispatch.base import ProviderError
+from substrate.dispatch.providers import register_default_providers
+from substrate.dispatch.router import reset_provider_registry
+
+# Must match substrate.dispatch.providers.bootstrap env gates (see test_dispatch_bootstrap).
+_PROVIDER_ENV_KEYS = (
+    "DEEPSEEK_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "XIAOMI_API_KEY",
+    "HERMES_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTIEK_TILERT_API_KEY",
+)
+
+
+def _isolate_empty_provider_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hermetic empty registry — runner env keys must not register live providers."""
+    reset_provider_registry()
+    for key in _PROVIDER_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    register_default_providers(quiet=True)
 
 
 class _StubEmbedding:
@@ -36,13 +57,7 @@ def cascade_client(monkeypatch):
 
 def test_empty_registry_yields_provider_unconfigured(cascade_client, monkeypatch):
     """Genuine _decompose → dispatch path with no provider keys in env."""
-    for key in (
-        "OPENROUTER_API_KEY",
-        "ANTHROPIC_API_KEY",
-        "HERMES_API_KEY",
-        "OPENAI_API_KEY",
-    ):
-        monkeypatch.delenv(key, raising=False)
+    _isolate_empty_provider_registry(monkeypatch)
     r = cascade_client.post(
         "/research/plans",
         json={"problem": "What drives critical mineral supply chains?"},
