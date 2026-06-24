@@ -28,7 +28,10 @@ actual_failure: |
   at phase 8 postcondition.
 
 harness_check_that_now_catches: |
-  tools/ops/smoke_drw_1.sh exit 1; parent event log;
-  tests/regression/agent_failures/README.md onboarding.
+  orchestration/loop_one/orchestrator.py (_run_phase_8 patch_from_synthesis
+  fallback when extract_and_patch patches nothing);
+  tools/ops/smoke_drw_1.sh gates live DRW #1 terminal contract on prod.
+
+fix_commit: 93098fd5
 
 status: open
