@@ -55,12 +55,12 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.books import (
+from acquisition.books import (  # noqa: E402
     book_doc_id,
     ingest_pdf,
     read_pdf,
 )
-from acquisition.books.reader import (
+from acquisition.books.reader import (  # noqa: E402
     PdfPage,
     _clean_page_text,
     _join_pages_to_markdown,

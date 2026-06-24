@@ -963,7 +963,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                 "patched" if result.any_patched
                 else ("no_match" if not result.domains_matched else "failed")
             )
-            try:
+            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic only
                 _emit(
                     ctx.investigation_id,
                     AutoPatchAppliedPayload(
@@ -978,8 +978,6 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                     role="auto_patch",
                     policy_id="orchestrator-deterministic",
                 )
-            except Exception:  # pragma: no cover — diagnostic only
-                pass
     return await _drive_phase(ctx, phase=8, work=work())
 
 
