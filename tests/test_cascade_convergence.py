@@ -198,6 +198,54 @@ async def test_pack_only_synthesis_tail_completes(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_pack_synthesis_tail_mechanical_phase8_when_skill_templates_missing(
+    tmp_path, monkeypatch,
+):
+    """Prod smoke regression: extract_and_patch without SKILL.md → mechanical fallback."""
+    empty_skills = tmp_path / "no_templates"
+    empty_skills.mkdir()
+    monkeypatch.setenv("ANTIEK_KNOWLEDGE_SKILLS_DIR", str(empty_skills))
+    _patch_dispatch(monkeypatch)
+    bus = EventBroadcaster()
+    from interfaces.research.api.synthesizer import register_handlers as _register_synth
+    _register_synth(bus)
+    coordinator = register_handlers(bus)
+
+    from orchestration.session_evidence_pack import SessionEvidencePack, PackChunk, PackDocument
+
+    pack = SessionEvidencePack(
+        session_id="session-hbm-fallback",
+        problem_question=(
+            "Will high-bandwidth memory supply constraints limit GPU datacenter "
+            "deployments through 2027?"
+        ),
+        chunks=[
+            PackChunk(
+                chunk_id="chunk-hbm",
+                document_id="doc-url-hbm1",
+                ip_holder_id=None,
+                text="HBM capacity trails AI accelerator demand.",
+                source_investigation_id="leaf-0",
+                sub_question="HBM supply vs demand",
+            ),
+        ],
+        documents=[PackDocument(document_id="doc-url-hbm1", title="HBM", ip_holder_id=None)],
+        leaf_investigation_ids=["leaf-0"],
+    )
+
+    ctx = await run_synthesis_tail_from_pack(
+        pack, broadcaster=bus, coordinator=coordinator,
+    )
+    assert ctx.failed_phase is None, ctx.fail_reason
+    assert ctx.patched_domains
+    assert (empty_skills / "semiconductor-knowledge" / "SKILL.md").exists()
+    ok, _ = check_deep_research_complete(
+        "session-hbm-fallback", require_terminal_event=True,
+    )
+    assert ok is True
+
+
+@pytest.mark.asyncio
 async def test_cascade_gather_then_synthesis_tail_on_parent(tmp_path, monkeypatch):
     """M2: leaves gather-only; session parent reaches DeepResearchComplete."""
     _patch_dispatch(monkeypatch)

@@ -900,37 +900,59 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             investigation_id=ctx.investigation_id,
         )
         ctx.patched_domains = list(result.patched_skills.keys())
-        # Emit AUTO_PATCH_APPLIED so the Phase 8 postcondition's
-        # primary (event-based) check passes. extract_and_patch
-        # mutates files on disk but doesn't emit the typed event
-        # itself; auto_patch.patch_from_synthesis is the alternate
-        # entry point that does. We surface the same event here so
-        # the trajectory carries the keystone signal.
-        # emit_typed (not broadcast_emit) is sufficient: no bridge
-        # subscribes to AUTO_PATCH_APPLIED — it's a terminal record.
-        from substrate.event_log import emit_typed as _emit
-        from substrate.schemas import AutoPatchAppliedPayload
-        status = (
-            "patched" if result.any_patched
-            else ("no_match" if not result.domains_matched else "failed")
-        )
-        try:
-            _emit(
-                ctx.investigation_id,
-                AutoPatchAppliedPayload(
-                    synthesis_id=f"syn-{ctx.investigation_id}",
-                    matched_domains=list(result.domains_matched),
-                    patched=ctx.patched_domains,
-                    skipped=[],
-                    errors=[],
-                    status=status,
-                ),
-                synthesis_id=f"syn-{ctx.investigation_id}",
-                role="auto_patch",
-                policy_id="orchestrator-deterministic",
+
+        # When LLM extraction succeeded but SKILL.md templates are absent
+        # on the host (common on fresh prod — only general-knowledge is
+        # seeded), fall back to the mechanical patch_from_synthesis path
+        # which mkdirs domain dirs and appends under ## Auto-patched
+        # findings. That path emits AUTO_PATCH_APPLIED itself.
+        emitted_by_fallback = False
+        if not result.any_patched and ctx.synthesis is not None:
+            from skills.domain.auto_patch import patch_from_synthesis
+
+            fb = patch_from_synthesis(
+                {
+                    "synthesis_id": f"syn-{ctx.investigation_id}",
+                    "investigation_id": ctx.investigation_id,
+                    "target_question": ctx.question,
+                    "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+                    "thesis": thesis,
+                },
             )
-        except Exception:  # pragma: no cover — diagnostic only
-            pass
+            if fb.get("patched"):
+                ctx.patched_domains = list(fb["patched"])
+                emitted_by_fallback = True
+
+        if not emitted_by_fallback:
+            # Emit AUTO_PATCH_APPLIED so the Phase 8 postcondition's
+            # primary (event-based) check passes. extract_and_patch
+            # mutates files on disk but doesn't emit the typed event
+            # itself; patch_from_synthesis is the alternate entry point
+            # that does (handled above when it patches).
+            from substrate.event_log import emit_typed as _emit
+            from substrate.schemas import AutoPatchAppliedPayload
+
+            status = (
+                "patched" if result.any_patched
+                else ("no_match" if not result.domains_matched else "failed")
+            )
+            try:
+                _emit(
+                    ctx.investigation_id,
+                    AutoPatchAppliedPayload(
+                        synthesis_id=f"syn-{ctx.investigation_id}",
+                        matched_domains=list(result.domains_matched),
+                        patched=ctx.patched_domains,
+                        skipped=[],
+                        errors=[],
+                        status=status,
+                    ),
+                    synthesis_id=f"syn-{ctx.investigation_id}",
+                    role="auto_patch",
+                    policy_id="orchestrator-deterministic",
+                )
+            except Exception:  # pragma: no cover — diagnostic only
+                pass
     return await _drive_phase(ctx, phase=8, work=work())
 
 
