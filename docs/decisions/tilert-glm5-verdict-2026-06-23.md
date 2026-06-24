@@ -10,13 +10,22 @@
 synthesizer has been recorded yet. SPR-01 Modal prod gate and live traffic
 are prerequisites before any keep / partial-revert / rollback decision.
 
-## Metrics (to fill)
+## Local baseline snapshot (2026-06-24, pre-OA-022)
 
-| Metric | GLM (`speed`, brain=glm, interactive) | Premium (`synthesis`) | N investigations |
-|--------|----------------------------------------|-------------------------|------------------|
-| p50 `latency_ms` (synthesizer) | _TBD_ | _TBD_ | _TBD_ |
-| Verifier pass rate | _TBD_ | _TBD_ | _TBD_ |
-| $/investigation (dispatch.call sum) | _TBD_ | _TBD_ | _TBD_ |
+From `uv run python scripts/tilert_speed_verdict_report.py --max-investigations 200`
+on operator event dir (`~/.antiek/research_events`). **Not a ship verdict** — zero
+`synthesizer` + `speed` rows (TileRT not wired on gateway).
+
+| Metric | GLM (`speed`, synthesizer) | Premium (`synthesis`) | N investigations |
+|--------|----------------------------|-------------------------|------------------|
+| p50 `latency_ms` (synthesizer) | _no samples_ | **850** | **77** (any dispatch) |
+| dispatch.call count (synthesizer tier) | **0** | **85** | speed-synth inv: **0** |
+| sum `cost_usd` (synthesizer tier) | _TBD_ | **1.40** | — |
+| Verifier pass rate | _TBD_ | _TBD_ | milestone 2 |
+
+Script verdict line: **`insufficient_data`** (min_investigations=10 for speed-synth cohort).
+
+## Metrics (production — fill after OA-022)
 
 ## Sample investigation ids
 
