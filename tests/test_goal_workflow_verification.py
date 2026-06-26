@@ -1,4 +1,7 @@
-"""Goal harness — deep research protocol, HTML KB projection, reading surface."""
+"""Goal harness — deep research protocol, HTML KB projection, reading surface.
+
+Complements ``tests/test_goal_harness_deliverables.py`` (entrypoint registry).
+"""
 
 from __future__ import annotations
 

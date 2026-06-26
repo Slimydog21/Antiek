@@ -3,10 +3,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { condenseKbArtifactHtml, hasExecutableScripts } from "./kbArtifactCondense";
+import {
+  condenseKbArtifactHtml,
+  hasExecutableScripts,
+  KB_ARTIFACT_MINIMAL_FIXTURE,
+} from "./kbArtifactCondense";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const FIXTURE_PATH = join(__dir, "../../../../tests/fixtures/kb_artifact_minimal.html");
+const FIXTURE_PATH = join(__dir, "../../../../", KB_ARTIFACT_MINIMAL_FIXTURE);
 const FIXTURE = readFileSync(FIXTURE_PATH, "utf-8");
 
 describe("kbArtifactCondense", () => {

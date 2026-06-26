@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Emit full deep-research + phase_log evidence for goal verification (stdout)."""
+"""Emit full deep-research + phase_log evidence for goal verification (stdout).
+
+Registered in ``scripts/goal_harness_deliverables.py`` (plan step 2).
+"""
 
 from __future__ import annotations
 

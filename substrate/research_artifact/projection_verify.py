@@ -1,4 +1,7 @@
-"""Mechanical checks for ResearchArtifact HTML KB projections."""
+"""Mechanical checks for ResearchArtifact HTML KB projections.
+
+Used by goal harness step 3 and ``scripts/goal_harness_deliverables.py``.
+"""
 
 from __future__ import annotations
 

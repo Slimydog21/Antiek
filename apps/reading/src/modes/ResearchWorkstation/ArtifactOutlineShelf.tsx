@@ -17,6 +17,7 @@ import { condenseKbArtifactHtml } from "../../lib/kbArtifactCondense";
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
  * GET /research/{id}/artifact/blocks. Drops use the same palette envelope
  * as Repository / BlockPalette so Write outline preserves graph_node provenance.
+ * After export, fetches ``/research/{id}/artifact/html`` and condenses via ``condenseKbArtifactHtml``.
  */
 export interface ArtifactOutlineShelfProps {
   investigationId: string;

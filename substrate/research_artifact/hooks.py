@@ -1,4 +1,4 @@
-"""Optional hooks (env-gated) — ANT-AHT."""
+"""Optional hooks (env-gated) — ANT-AHT. ``ANTIEK_KB_STATIC_HTML`` selects script-free export."""
 
 from __future__ import annotations
 

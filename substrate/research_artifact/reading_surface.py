@@ -10,6 +10,12 @@ from .projection_verify import has_executable_scripts, has_provenance_markers
 from .schema import ResearchArtifactBody
 
 
+def kb_artifact_minimal_fixture_path() -> Path:
+    """Cross-language contract fixture (pytest + vitest)."""
+    root = Path(__file__).resolve().parents[2]
+    return root / "tests" / "fixtures" / "kb_artifact_minimal.html"
+
+
 @dataclass(frozen=True)
 class ReadingCondensedView:
     """Substrate-faithful condensation for reading UI and graph navigation."""

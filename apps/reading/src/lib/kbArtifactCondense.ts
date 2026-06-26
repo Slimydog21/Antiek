@@ -4,6 +4,9 @@
  * Goal harness deliverable 2026-06-26.
  */
 
+/** Repo-relative path shared with Python ``kb_artifact_minimal_fixture_path``. */
+export const KB_ARTIFACT_MINIMAL_FIXTURE = "tests/fixtures/kb_artifact_minimal.html";
+
 export interface ReadingCondensedFinding {
   nodeId: string;
   text: string;

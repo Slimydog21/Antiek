@@ -1,4 +1,7 @@
-"""Render ResearchArtifactBody to self-contained HTML (human + machine channel)."""
+"""Render ResearchArtifactBody to self-contained HTML (human + machine channel).
+
+``interactive=False`` omits executable UI scripts for KB-static projections.
+"""
 
 from __future__ import annotations
 

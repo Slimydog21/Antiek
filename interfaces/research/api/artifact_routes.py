@@ -1,4 +1,7 @@
-"""ResearchArtifact export + outline blocks (ANT-AHT)."""
+"""ResearchArtifact export + outline blocks (ANT-AHT).
+
+``GET /research/{id}/artifact/html`` returns KB-static HTML when ``ANTIEK_KB_STATIC_HTML=1``.
+"""
 
 from __future__ import annotations
 

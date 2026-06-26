@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""antiek check — unified verification CLI (substrate + research workflows)."""
+"""antiek check — unified verification CLI (substrate + research workflows).
+
+Goal harness on ``~/Antiek`` delegates ``all`` to ``scripts/run_goal_verification_plan.sh``.
+"""
 
 from __future__ import annotations
 
@@ -69,6 +72,7 @@ def run_workflows(py: str) -> bool:
             py,
             "-m",
             "pytest",
+            "tests/test_goal_harness_deliverables.py",
             "tests/test_goal_workflow_verification.py",
             "tests/test_reading_kb_artifact.py",
             "tests/test_research_artifact_kb_static.py",
