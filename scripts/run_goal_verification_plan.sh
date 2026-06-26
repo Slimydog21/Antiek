@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Goal verification plan — full stdout (no tail truncation). Usage:
+# Goal verification plan — canonical root only (see docs/WORKFLOW_SINGLE_ROOT.md).
+# Full stdout (no tail truncation). Usage:
 #   ./scripts/run_goal_verification_plan.sh /path/to/scratch
 set -euo pipefail
 SCRATCH="${1:?scratch dir required}"
