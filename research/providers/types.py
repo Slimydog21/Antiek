@@ -50,7 +50,19 @@ We map BOTH onto a single ``float`` in ``[0.0, 1.0]`` so the router
         "high"   → 0.9
         "medium" → 0.6
         "low"    → 0.3
-        (unknown / missing) → 0.3   # conservative: treat as low
+        (unknown / missing) → 0.3   # DELIBERATELY aliased to low (see note)
+
+    NOTE on the unknown→0.3 alias (grok co-CEO D8): unknown/missing Exa
+    confidence is mapped to the SAME value as "low". This is a deliberate
+    conservative conflation, not an accident: a single ``float`` cannot
+    distinguish "provider asserted low" from "provider returned no
+    confidence", so we route both as the lowest actionable tier (do not
+    trust the answer without corroboration). A downstream consumer that
+    needs to distinguish them cannot do so from ``confidence`` alone —
+    that distinguishability is deferred to SPR-07's ``confidence_kind``
+    capability metadata (grok co-CEO D2), which will let the router mark
+    ordinal-mapped scores as non-comparable to calibrated ones. Until
+    then, treat 0.3 as "low-or-missing", not "calibrated 0.3".
 
     Parallel numeric → numeric:
         pass through, clamped to [0.0, 1.0].
