@@ -31,11 +31,12 @@ def export_research_artifact(
     events_dir: str | None = None,
     emit_event: bool = True,
     generating_role: str = "note_taker",
+    kb_static: bool = False,
 ) -> ExportResult:
     body = build_body(
         investigation_id, db_path=db_path, events_dir=events_dir
     )
-    html_text = render_html(body)
+    html_text = render_html(body, interactive=not kb_static)
     out_dir = research_artifacts_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     path = artifact_path_for(investigation_id)
@@ -75,8 +76,9 @@ def build_html_only(
     *,
     db_path: str | None = None,
     events_dir: str | None = None,
+    kb_static: bool = False,
 ) -> tuple[ResearchArtifactBody, str]:
     body = build_body(
         investigation_id, db_path=db_path, events_dir=events_dir
     )
-    return body, render_html(body)
+    return body, render_html(body, interactive=not kb_static)

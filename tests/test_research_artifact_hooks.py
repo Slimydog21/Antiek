@@ -18,4 +18,4 @@ def test_hook_exports_when_env_set(monkeypatch):
     monkeypatch.setenv("ANTIEK_EXPORT_RESEARCH_ARTIFACT", "1")
     with patch("substrate.research_artifact.export.export_research_artifact") as m:
         maybe_export_after_investigation_complete("inv-y")
-        m.assert_called_once_with("inv-y", emit_event=True)
+        m.assert_called_once_with("inv-y", emit_event=True, kb_static=False)

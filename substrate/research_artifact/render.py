@@ -37,7 +37,7 @@ def _esc(s: str) -> str:
     return html.escape(s, quote=True)
 
 
-def render_html(body: ResearchArtifactBody) -> str:
+def render_html(body: ResearchArtifactBody, *, interactive: bool = True) -> str:
     insights_html = ""
     if body.insights:
         for ins in body.insights:
@@ -70,6 +70,66 @@ def render_html(body: ResearchArtifactBody) -> str:
 
     json_blob = json.dumps(body.model_dump(mode="json"), indent=2).replace("<", "\\u003c")
     ch = body.content_hash()
+    notes_items = (
+        "".join(f"<li>{_esc(n)}</li>" for n in body.agent_notes if (n or "").strip())
+        or '<li class="empty">(none yet)</li>'
+    )
+
+    if interactive:
+        notes_section = f"""<section id="agent-notes"><h2>Agent notes</h2>
+<ul id="agent-notes-list">{notes_items}</ul>
+<label for="note-input">Add cross-window note (Thariq two-way)</label>
+<textarea id="note-input" placeholder="Insight for the next agent session…"></textarea>
+<p class="tag">Findings/gaps stay graph-sourced. Notes import via <code>--import-notes</code> or API.</p></section>
+<button type="button" class="copy" id="copy-prompt">Copy as agent handoff</button>
+<button type="button" class="copy secondary" id="add-note">Add note to artifact</button>
+<button type="button" class="copy secondary" id="copy-json">Copy JSON for import</button>"""
+        ui_script = """<script>
+(function() {
+  var el = document.getElementById("antiek-artifact-v1");
+  var list = document.getElementById("agent-notes-list");
+  var input = document.getElementById("note-input");
+  function payload() { return JSON.parse(el.textContent); }
+  function syncList(notes) {
+    list.innerHTML = "";
+    if (!notes.length) {
+      var li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "(none yet)";
+      list.appendChild(li);
+      return;
+    }
+    notes.forEach(function(t) {
+      var li = document.createElement("li");
+      li.textContent = t;
+      list.appendChild(li);
+    });
+  }
+  document.getElementById("add-note").addEventListener("click", function() {
+    var t = (input.value || "").trim();
+    if (!t) return;
+    var p = payload();
+    p.agent_notes = p.agent_notes || [];
+    p.agent_notes.push(t);
+    el.textContent = JSON.stringify(p, null, 2);
+    syncList(p.agent_notes);
+    input.value = "";
+  });
+  document.getElementById("copy-prompt").addEventListener("click", function() {
+    var body = el.textContent;
+    var prompt = "Continue research using this artifact (graph is canonical):\\n\\n" + body;
+    navigator.clipboard.writeText(prompt);
+  });
+  document.getElementById("copy-json").addEventListener("click", function() {
+    navigator.clipboard.writeText(el.textContent);
+  });
+})();
+</script>"""
+    else:
+        notes_section = f"""<section id="agent-notes"><h2>Agent notes</h2>
+<ul>{notes_items}</ul>
+<p class="tag">KB projection (script-free). Canonical JSON in <code>#antiek-artifact-v1</code>.</p></section>"""
+        ui_script = ""
 
     return f"""<!doctype html>
 <html lang="en">
@@ -86,56 +146,9 @@ def render_html(body: ResearchArtifactBody) -> str:
 <section id="findings"><h2>Findings</h2>{insights_html}</section>
 <section id="gaps"><h2>Open gaps</h2>{questions_html}</section>
 <section id="synthesis"><h2>Synthesis excerpt</h2>{synth_block}</section>
-<section id="agent-notes"><h2>Agent notes</h2>
-<ul id="agent-notes-list">{"".join(f'<li>{_esc(n)}</li>' for n in body.agent_notes if (n or "").strip()) or '<li class="empty">(none yet)</li>'}</ul>
-<label for="note-input">Add cross-window note (Thariq two-way)</label>
-<textarea id="note-input" placeholder="Insight for the next agent session…"></textarea>
-<p class="tag">Findings/gaps stay graph-sourced. Notes import via <code>--import-notes</code> or API.</p></section>
-<button type="button" class="copy" id="copy-prompt">Copy as agent handoff</button>
-<button type="button" class="copy secondary" id="add-note">Add note to artifact</button>
-<button type="button" class="copy secondary" id="copy-json">Copy JSON for import</button>
+{notes_section}
 <script type="application/json" id="antiek-artifact-v1">{json_blob}</script>
-<script>
-(function() {{
-  var el = document.getElementById("antiek-artifact-v1");
-  var list = document.getElementById("agent-notes-list");
-  var input = document.getElementById("note-input");
-  function payload() {{ return JSON.parse(el.textContent); }}
-  function syncList(notes) {{
-    list.innerHTML = "";
-    if (!notes.length) {{
-      var li = document.createElement("li");
-      li.className = "empty";
-      li.textContent = "(none yet)";
-      list.appendChild(li);
-      return;
-    }}
-    notes.forEach(function(t) {{
-      var li = document.createElement("li");
-      li.textContent = t;
-      list.appendChild(li);
-    }});
-  }}
-  document.getElementById("add-note").addEventListener("click", function() {{
-    var t = (input.value || "").trim();
-    if (!t) return;
-    var p = payload();
-    p.agent_notes = p.agent_notes || [];
-    p.agent_notes.push(t);
-    el.textContent = JSON.stringify(p, null, 2);
-    syncList(p.agent_notes);
-    input.value = "";
-  }});
-  document.getElementById("copy-prompt").addEventListener("click", function() {{
-    var body = el.textContent;
-    var prompt = "Continue research using this artifact (graph is canonical):\\n\\n" + body;
-    navigator.clipboard.writeText(prompt);
-  }});
-  document.getElementById("copy-json").addEventListener("click", function() {{
-    navigator.clipboard.writeText(el.textContent);
-  }});
-}})();
-</script>
+{ui_script}
 <footer>content_hash {_esc(ch[:16])}… · investigation {_esc(body.investigation_id)}</footer>
 </main>
 </body>

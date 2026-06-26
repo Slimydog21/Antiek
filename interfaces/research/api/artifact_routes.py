@@ -65,7 +65,16 @@ class ImportNotesOut(BaseModel):
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)
 async def post_export_artifact(investigation_id: str) -> ExportOut:
     try:
-        res = export_research_artifact(investigation_id, db_path=_db())
+        import os
+
+        kb_static = os.environ.get("ANTIEK_KB_STATIC_HTML", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        res = export_research_artifact(
+            investigation_id, db_path=_db(), kb_static=kb_static
+        )
     except Exception as exc:  # pragma: no cover — surface as 500 with message
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return ExportOut(

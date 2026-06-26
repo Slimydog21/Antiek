@@ -15,4 +15,11 @@ def maybe_export_after_investigation_complete(investigation_id: str) -> None:
         return
     from .export import export_research_artifact
 
-    export_research_artifact(investigation_id, emit_event=True)
+    kb_static = os.environ.get("ANTIEK_KB_STATIC_HTML", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    export_research_artifact(
+        investigation_id, emit_event=True, kb_static=kb_static
+    )
