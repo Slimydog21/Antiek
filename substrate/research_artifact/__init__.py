@@ -4,6 +4,7 @@ from .blocks import OutlineBlockRef, list_outline_blocks
 from .compose import ComposeResult, compose_artifacts
 from .export import ExportResult, build_html_only, export_research_artifact
 from .import_notes import ImportNotesResult, import_agent_notes, parse_body_from_html
+from .reading_surface import ReadingCondensedView, consume_kb_artifact
 from .schema import SCHEMA_VERSION, ResearchArtifactBody
 
 __all__ = [
@@ -19,4 +20,6 @@ __all__ = [
     "import_agent_notes",
     "list_outline_blocks",
     "parse_body_from_html",
+    "ReadingCondensedView",
+    "consume_kb_artifact",
 ]

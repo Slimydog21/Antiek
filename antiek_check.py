@@ -70,6 +70,7 @@ def run_workflows(py: str) -> bool:
             "-m",
             "pytest",
             "tests/test_goal_workflow_verification.py",
+            "tests/test_reading_kb_artifact.py",
             "tests/test_research_artifact_kb_static.py",
             "tests/test_research_artifact_hooks.py",
             "-q",
