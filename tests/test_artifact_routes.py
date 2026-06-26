@@ -50,6 +50,21 @@ def test_post_export_artifact(api_env):
     assert os.path.isfile(body["path"])
 
 
+def test_get_artifact_html(api_env):
+    promote_insight(
+        text="HTML route insight.",
+        investigation_id="inv-html",
+        confidence="moderate",
+        source_document_id="doc-1",
+    )
+    client = _client()
+    resp = client.get("/research/inv-html/artifact/html")
+    assert resp.status_code == 200
+    assert "inv-html" in resp.text
+    assert 'id="antiek-artifact-v1"' in resp.text
+    assert "<script>" not in resp.text.replace('type="application/json"', "")
+
+
 def test_get_artifact_blocks_empty(api_env):
     client = _client()
     resp = client.get("/research/inv-empty/artifact/blocks")

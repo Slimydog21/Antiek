@@ -16,10 +16,12 @@ from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from pathlib import Path
 
 from substrate.research_artifact import (  # noqa: E402
+    build_html_only,
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
 )
+from substrate.research_artifact.paths import artifact_path_for  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -84,6 +86,23 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
         size_bytes=res.size_bytes,
         event_id=res.event_id,
     )
+
+
+@artifact_router.get("/{investigation_id}/artifact/html")
+async def get_artifact_html(investigation_id: str) -> str:
+    """KB-static HTML for reading surface (`kbArtifactCondense`). Goal harness 2026-06-26."""
+    kb_static = os.environ.get("ANTIEK_KB_STATIC_HTML", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    path = artifact_path_for(investigation_id)
+    if path.is_file():
+        return path.read_text(encoding="utf-8")
+    _, html = build_html_only(
+        investigation_id, db_path=_db(), kb_static=kb_static
+    )
+    return html
 
 
 @artifact_router.post(

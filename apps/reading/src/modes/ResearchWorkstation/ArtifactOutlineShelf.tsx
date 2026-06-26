@@ -11,6 +11,7 @@ import {
   type PaletteDragPayload,
 } from "../CreationStudio/BlockPalette";
 import LemonButton from "../../components/lemon/LemonButton";
+import { condenseKbArtifactHtml } from "../../lib/kbArtifactCondense";
 
 /**
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
@@ -37,6 +38,7 @@ export default function ArtifactOutlineShelf({
 }: ArtifactOutlineShelfProps) {
   const [blocks, setBlocks] = useState<ResearchArtifactBlock[]>([]);
   const [exportPath, setExportPath] = useState<string | null>(null);
+  const [condensedTitle, setCondensedTitle] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -61,6 +63,17 @@ export default function ArtifactOutlineShelf({
     try {
       const res = await exportResearchArtifact(investigationId);
       setExportPath(res.path);
+      try {
+        const html = await fetch(
+          `/research/${encodeURIComponent(investigationId)}/artifact/html`,
+        ).then((r) => (r.ok ? r.text() : ""));
+        if (html) {
+          const view = condenseKbArtifactHtml(html);
+          setCondensedTitle(view.problemQuestion);
+        }
+      } catch {
+        setCondensedTitle(null);
+      }
       await reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -92,6 +105,11 @@ export default function ArtifactOutlineShelf({
         {exportPath ? (
           <span className="truncate font-mono text-[10px] text-ink-mute" title={exportPath}>
             {exportPath}
+          </span>
+        ) : null}
+        {condensedTitle ? (
+          <span className="text-xs text-ink" data-testid="artifact-condensed-title">
+            {condensedTitle}
           </span>
         ) : null}
       </div>

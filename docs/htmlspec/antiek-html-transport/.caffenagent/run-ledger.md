@@ -5,7 +5,8 @@
 **Cycle:** 1 · **Phase:** `done` · **Verdict:** `done` — **pushed** `d3f30c42` + `23913d25` to `origin/main` (2026-06-24)  
 **exec-7 (2026-06-24):** Re-invoked `/caffenagent-cycle` — no new sprint scope; fast proof 6 pytest + 3 vitest green; landscape rebuilt (75 rows).  
 **exec-8 (2026-06-24):** Added `docs/html/ant-aht-vision-map.html` — answers “is agent form factor in htmlspec?” with tabbed vision→spec→code map + copy handoff.  
-**exec-9 (2026-06-24):** **SPR-AHT-07** — PDF `ingest_pdf` reader snapshot (`markdown_to_safe_html`, `IngestBookResult.reader_snapshot_path`); htmlspec sprint-07 generated; P-18 +1 test.
+**exec-9 (2026-06-24):** **SPR-AHT-07** — PDF `ingest_pdf` reader snapshot (`markdown_to_safe_html`, `IngestBookResult.reader_snapshot_path`); htmlspec sprint-07 generated; P-18 +1 test.  
+**exec-10 (2026-06-24):** Pushed `a80d6a06`; `thariq-antiek-index.html`; repeated `/caffenagent-cycle` → **no new master sprints** (ledger frozen at 01…07).
 
 ## Sprint closure (SPR-AHT-01…07)
 

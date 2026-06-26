@@ -620,3 +620,99 @@ def make_exa_gather_loop(
             )
 
     return _loop
+
+
+# ---------------------------------------------------------------------------
+# Provider gather loop — the ResearchProvider seam (SPR-01 M6).
+#
+# This is the thin, ADDITIVE seam that lets the runner drive a research
+# engine through the normalized ``ResearchProvider`` interface WITHOUT
+# importing any engine SDK or branching on a provider name. It is the
+# proof-of-seam for INV-1/INV-4: the runner can call a provider behind
+# the interface and receive a normalized ``ResearchResult`` whose
+# identity flows through ``StepEvent.data`` as labels, never as branch
+# keys.
+#
+# It does NOT replace ``make_exa_gather_loop`` (that is SPR-03's job).
+# It coexists with it so the existing exa path stays green while the
+# new interface lands.
+# ---------------------------------------------------------------------------
+
+
+def make_provider_gather_loop(
+    provider: "object",
+    *,
+    output_schema: "object | None" = None,
+):
+    """Build a ``BrowseLoop`` that drives a ``ResearchProvider``.
+
+    The loop calls ``provider.answer(sub_question, output_schema)`` once
+    per (possibly redirected) sub-question and emits the normalized
+    result as ``StepEvent``s:
+
+    * one ``step`` per non-null result field, carrying the field value,
+      its citation URLs, and the normalized ``confidence`` / ``cost`` /
+      ``tier`` as labels (NOT branch keys);
+    * one ``note`` carrying the field values joined, for the promotion
+      funnel to thread onto an insight node.
+
+    The provider identity (``result.provider``) rides ``StepEvent.data``
+    under ``provider`` for audit/routing telemetry — it is a LABEL, not
+    a branch key: this loop never reads ``result.provider`` to decide
+    behavior. That is the INV-4 property: the runner's call path does
+    not branch on a raw provider payload or a provider name.
+
+    ``provider`` is typed ``object`` (not ``ResearchProvider``) so this
+    module does not import ``research.providers`` at module load — the
+    provider contract is a structural Protocol, and importing it here
+    would couple the runner's import graph to the adapter package. The
+    loop calls ``.answer(...)`` structurally. This is the same
+    dependency-direction choice the runner already makes for
+    ``BudgetManager`` and ``retrieval_substrate`` (injected, not imported).
+    """
+
+    async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
+        sub_q = await ctx.checkpoint()
+        yield ctx.plan_event(
+            f"[provider] plan: {sub_q}",
+            gather_mode="provider",
+        )
+        # Structural call — no provider name in a conditional, no SDK
+        # import. The provider decides how to answer.
+        result = provider.answer(sub_q, output_schema)
+
+        # Emit one step per non-null field with its citations. The
+        # field name + value + citation URLs are the payload; the
+        # provider/tier/confidence/cost ride as audit labels.
+        for fname, fval in result.fields.items():
+            if fval is None or (isinstance(fval, str) and fval == ""):
+                continue
+            cites = result.field_citations.get(fname, [])
+            yield ctx.step(
+                f"[provider] {fname}: {fval}",
+                cost_usd=float(result.cost),
+                gather_mode="provider",
+                field_name=fname,
+                field_value=fval,
+                citation_urls=[s.url for s in cites],
+                confidence=float(result.confidence),
+                tier=result.tier,
+                provider=result.provider,
+                raw_handle=result.raw_ref.handle,
+            )
+
+        # One note carrying the joined answer — the promotion funnel
+        # threads this onto an insight node.
+        answer_parts = [
+            f"{k}: {v}" for k, v in result.fields.items()
+            if v is not None and not (isinstance(v, str) and v == "")
+        ]
+        yield ctx.note(
+            f"[provider] answer for '{sub_q}': " + "; ".join(answer_parts),
+            gather_mode="provider",
+            confidence=float(result.confidence),
+            tier=result.tier,
+            provider=result.provider,
+        )
+
+    return _loop
