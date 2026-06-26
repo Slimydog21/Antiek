@@ -50,7 +50,8 @@ def test_post_export_artifact(api_env):
     assert os.path.isfile(body["path"])
 
 
-def test_get_artifact_html(api_env):
+def test_get_artifact_html(api_env, monkeypatch):
+    monkeypatch.setenv("ANTIEK_KB_STATIC_HTML", "1")
     promote_insight(
         text="HTML route insight.",
         investigation_id="inv-html",
@@ -62,7 +63,9 @@ def test_get_artifact_html(api_env):
     assert resp.status_code == 200
     assert "inv-html" in resp.text
     assert 'id="antiek-artifact-v1"' in resp.text
-    assert "<script>" not in resp.text.replace('type="application/json"', "")
+    from substrate.research_artifact.projection_verify import has_executable_scripts
+
+    assert has_executable_scripts(resp.text) is False
 
 
 def test_get_artifact_blocks_empty(api_env):

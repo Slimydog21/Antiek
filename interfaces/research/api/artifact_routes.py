@@ -6,6 +6,7 @@ import os
 import sys
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -88,8 +89,10 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
     )
 
 
-@artifact_router.get("/{investigation_id}/artifact/html")
-async def get_artifact_html(investigation_id: str) -> str:
+@artifact_router.get(
+    "/{investigation_id}/artifact/html", response_class=HTMLResponse
+)
+async def get_artifact_html(investigation_id: str) -> HTMLResponse:
     """KB-static HTML for reading surface (`kbArtifactCondense`). Goal harness 2026-06-26."""
     kb_static = os.environ.get("ANTIEK_KB_STATIC_HTML", "").strip().lower() in (
         "1",
@@ -98,11 +101,11 @@ async def get_artifact_html(investigation_id: str) -> str:
     )
     path = artifact_path_for(investigation_id)
     if path.is_file():
-        return path.read_text(encoding="utf-8")
+        return HTMLResponse(content=path.read_text(encoding="utf-8"))
     _, html = build_html_only(
         investigation_id, db_path=_db(), kb_static=kb_static
     )
-    return html
+    return HTMLResponse(content=html)
 
 
 @artifact_router.post(
