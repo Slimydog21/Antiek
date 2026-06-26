@@ -43,8 +43,23 @@ done (grok co-CEO review pending — see Open questions)
 - Duck-typed dict contract (no formal interface; each adapter returns a dict the runner reads). Steelman: less ceremony, faster to add a third provider. Why it lost: INV-4 forbids the runner branching on raw payloads, and the router needs typed capability metadata to choose provider/tier without importing adapters — a dict provides neither. A formal `Protocol` is the minimum that satisfies both.
 
 ### Open questions discovered
-- **grok co-CEO review pending.** The goal explicitly names Grok/Composer 2.5 as co-CEO critic. Two blockers: (a) the harness classifier denies piping full source files to Grok (data-exfiltration — a correct guardrail); (b) a persistent classifier outage ("glm-5.2 temporarily unavailable") blocked even a source-free design-sketch review across multiple attempts. Resolution ready: run `grok --single` with a SOURCE-FREE prose sketch of the design (no file contents cross the trust boundary) once the classifier recovers. Three independent Claude lenses already CLEAN.
+- **grok co-CEO review COMPLETE** (Composer 2.5, source-free prose sketch — the harness data-exfiltration guardrail correctly denies piping source files to Grok, so the review used a design description with no file contents crossing the trust boundary). Verdict: **DEFECTS** — 2 blockers + 4 major + 4 minor. The review found a real defect all 4 Claude lenses missed (D4: nested mutability — `@dataclass(frozen=True)` does not freeze nested dicts/lists; a caller could mutate citations post-return and break INV-4). **D4 FIXED** (commit `5fe7f662`: `fields`/`field_citations` typed as `Mapping`, `__post_init__` freezes to `MappingProxyType`/`tuple`, immutability red test added). D1 (allowlist — intentional transitional debt, SPR-03 removes), D2 (confidence_kind metadata — SPR-07 router scope), D5/D6 (router/resilience metadata — SPR-05/06/07 scope) judged out-of-SPR-01-scope by orchestrator. D3 (generic lint rule for all engines, not just Exa) and D8 (unknown confidence aliased to low — undefended) noted for follow-up. Full verdict at `/tmp/grok-spr01-verdict.txt`.
 - Task-class taxonomy (SPR-02 M3) is DRAFT pending operator ratification — does the operator want `structured_extract`/`broad_gather`/`needle_in_haystack`/`multi_hop`/`unclassified`, or a different cut?
+
+## Grok co-CEO review — defect disposition (2026-06-27)
+
+| # | Severity | Defect (Composer 2.5) | Disposition |
+|---|----------|----------------------|-------------|
+| D1 | blocker | INV-1 not held while runner allowlist exists | **Out of scope (transitional).** The allowlisted `host_local.py:564` exa import is the documented pre-existing violation SPR-01 explicitly defers to SPR-03 (the real adapter wires behind the interface and removes it). Intentional transitional debt, not a violation. |
+| D2 | blocker | Cross-provider confidence treated as comparable float without semantics | **Out of scope (SPR-07).** The design documented the mapping as an UNVERIFIED ASSUMPTION; encoding `confidence_kind` in capability metadata is the router's (SPR-07) job. The assumption is surfaced, not hidden. |
+| D3 | major | Lint only covers Exa, not Parallel/symmetric | **Noted for follow-up.** Parallel SDK doesn't exist yet (operator deferred live calls). The lint rule should be generic (any engine SDK) when Parallel lands. |
+| D4 | major | Frozen result still mutable nested dicts | **FIXED** (`5fe7f662`). `fields`/`field_citations` → `Mapping`/`tuple`, frozen in `__post_init__`, immutability red test added. |
+| D5 | major | Router metadata too thin for accuracy/$ | **Out of scope (SPR-07).** SPR-01 is the contract; the router enriches metadata (p50/p95 latency, cost bands, rate limits, schema limits) in its own sprint. |
+| D6 | major | answer() vs async engine semantics underspecified | **Out of scope (SPR-05/06).** Resilience/async/poll-loop is the resilience sprint's job; the interface defines the call, it does not wrap it. |
+| D7 | minor | tier strings provider-native | Noted — normalize to internal tier enum in SPR-07 metadata. |
+| D8 | minor | unknown Exa confidence → 0.3 aliases to low | **Noted for follow-up.** Undefended choice; should use a distinct sentinel. |
+| D9 | minor | Conformance round-trip vague | Noted — spec `adapter.resolve_raw(raw_ref)` in SPR-03. |
+| D10 | minor | No INV-4 control-flow guard | Noted — style test that runner doesn't branch on `result.provider` (beyond logging) in a follow-up. |
 
 ### Next sprint can start when
 - SPR-02 (trajectory/measurement schema) can begin: interface + conformance harness exported and importable from `research.providers` — DONE. SPR-02 builds the measurement event that records the normalized `ResearchResult` (M1 already verified: `EVENT_SCHEMA_VERSION = 27` at `substrate/schemas/events.py:711`, bumps to v28).
