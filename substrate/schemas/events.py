@@ -480,6 +480,20 @@ class ActionType(str, Enum):
     #    (§9.0: events carry no body).
     DOCUMENT_CONTENT_CLASS_DEFAULTED = "document.content_class_defaulted"
 
+    # ── Deep-Research Hardening SPR-02 — per-provider-call measurement.
+    #    One normalized record per ``ResearchProvider.answer`` call: the
+    #    OBSERVED cost / latency / confidence / outcome of that call, so the
+    #    provider trajectory is fully reconstructable from the log (INV-2) and
+    #    the router (SPR-07) has per-call telemetry to learn from. The record
+    #    carries only NORMALIZED fields (provider, tier, cost, latency,
+    #    confidence, outcome) — it does NOT embed raw provider payload shape
+    #    (INV-4). The record is written by ``research/measurement/log.py`` to a
+    #    measurement-specific JSONL (NOT as a TypedPayload variant of this
+    #    envelope — an additive change that touches no existing payload). This
+    #    enum member exists so the action vocabulary acknowledges the event;
+    #    the storage path is owned by the measurement package.
+    RESEARCH_PROVIDER_MEASURED = "research.provider.measured"
+
 
 # Schema version stamped into every emitted row. Bump when any payload
 # shape changes or when a new action_type is added to the typed union.
@@ -708,7 +722,23 @@ class ActionType(str, Enum):
 #     at the read side. The payload carries document_id + document_type + the
 #     applied content_class ONLY — NEVER raw_text (§9.0: events carry no body).
 #     specs/antiek-personal-lane/ SPR-01. 2026-05-31.
-EVENT_SCHEMA_VERSION: int = 27
+# v28: Deep-Research Hardening SPR-02 — per-provider-call measurement event.
+#     ADDITIVE: one new ActionType member (RESEARCH_PROVIDER_MEASURED =
+#     "research.provider.measured"). No existing field removed or retyped;
+#     no new TypedPayload variant added to the discriminated union (the
+#     measurement record is its own JSONL shape, written by
+#     research/measurement/log.py, not an Event envelope payload). The
+#     member exists so the action vocabulary acknowledges the event; the
+#     storage + validation is owned by the research.measurement package.
+#     Records one normalized ``ResearchProvider.answer`` call per line:
+#     {schema_version, investigation_id, sub_question_id, task_class,
+#     provider, tier, cost_usd, latency_ms, confidence, outcome,
+#     correlation_id, emitted_at} — OBSERVED cost/latency (post-call), not
+#     SPR-01's CostModel estimates; only normalized fields (INV-4), never
+#     raw provider payload. INV-2: every provider call is a discrete
+#     measurement event so the trajectory is fully reconstructable from the
+#     log. specs/antiek-deep-research-hardening/ SPR-02. 2026-06-26.
+EVENT_SCHEMA_VERSION: int = 28
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this

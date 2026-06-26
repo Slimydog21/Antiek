@@ -43,6 +43,11 @@ Critic rounds: floor=1 cap=4. Lenses: leak / rubber-stamp / smuggled-precision /
 **Storage:** append-only JSONL per investigation at `{ANTIEK_RESEARCH_EVENTS_DIR}/{investigation_id}.jsonl` → sealed to Parquet. `~/.antiek/research_events/`. `ANTIEK_EVENTS_DISABLED` toggle.
 **SPR-02 scope (5 milestones):** M2 measurement record `{schema_version, investigation_id, sub_question_id, task_class, provider, tier, cost_usd(observed), latency_ms(observed), confidence, outcome, correlation_id}` in `research/measurement/schema.py`; M3 task-class enum (`structured_extract`/`broad_gather`/`needle_in_haystack`/`multi_hop`/`unclassified`) DRAFT; M4 validated writer + fwd/back-compat reader `research/measurement/log.py`; M5 reconstruction query. `research/measurement/` does not exist yet (clean target).
 
+## SPR-02 build progress (workflow wf_b9c3bfa1-8ec, branch adrh/spr02-measurement-schema)
+
+Builder round 1 (still finalizing at 19:52): all 5 files on disk — `research/measurement/{schema,task_class,log,reconstruct,__init__}.py`. `EVENT_SCHEMA_VERSION` bumped v27→v28 (additive, comment at `substrate/schemas/events.py:726`); new ActionType `RESEARCH_PROVIDER_MEASURED = "research.provider.measured"` (`:495`). Builder reports 67 research + 28 regression green. Orchestrator-verified: 95 passed in scope (48 measurement + 19 SPR-01 + 28 regression). 2 pre-existing collection errors (`test_substrate_cli_unified.py` → missing `substrate.harness.fork`; `test_substrate_end_to_end.py` → missing `substrate.conversation.compaction`) are STALE tests from unrelated prior work (pi-execution/unified-main), NOT a v28 regression — modules don't exist in tree, SPR-02 didn't touch them.
+Awaiting builder BUILD_SCHEMA return → 4-lens verify panel (schema-leak-compat / writer-rejects / reconstruction / determinism-atomicity) → sharpen if blocking.
+
 ## Critic verdicts (workflow wf_37eaa7e8-662, 2026-06-26)
 
 - **leak:** CLEAN on the leak test (ResearchResult embeds NO provider-specific structure: fields=dict[str,str|None], field_citations=dict[str,list[Source]], confidence=float, cost=float, latency=int, provider=str (label), tier=str, raw_ref=opaque RawRef). 1 MINOR doc defect — types.py didn't restate INV-1/INV-4 verbatim. **FIXED by orchestrator** (added verbatim Invariants block to types.py, mirroring base.py). Re-verify: 19 research tests green.
@@ -57,9 +62,9 @@ Critic rounds: floor=1 cap=4. Lenses: leak / rubber-stamp / smuggled-precision /
 - Total: **47 passed**. Builder also fixed 2 real bugs in a prior partial attempt (cost("inv-seam") passing str not Handle; SDK-import test tripping on allowlisted pre-existing exa import) + removed a fictional "proven to fire" lint comment.
 
 ## Outstanding before SPR-01 close
-- Retry grok co-CEO review when classifier recovers (goal explicitly names Grok/Composer 2.5 as co-CEO critic). **Approach refined:** the harness classifier correctly denies piping full source files to Grok (data-exfiltration). Use a SOURCE-FREE design sketch (prose description of the interface, no actual file contents) so no source crosses the trust boundary — respects the guardrail while still getting Composer 2.5's independent verdict. Workflow `wf_37eaa7e8-662` stopped (its grok lens + a sharpen agent were chasing a bypass; cached CLEAN verdicts preserved in journal).
-- Commit on branch `adrh/spr01-provider-contract` + write formal handoff packet (after grok co-CEO sign-off, or with an explicit "grok review pending classifier recovery" note if outage persists).
-- **Classifier status (2026-06-26 ~19:00):** harness Bash classifier persistently flapping ("glm-5.2 temporarily unavailable") on substantial commands; trivial probes pass. Load-related external outage. Not a code issue.
+- ~~Retry grok co-CEO review~~ → **SPR-01 COMMITTED** on branch `adrh/spr01-provider-contract` (commit: feat(ADRH SPR-01): ResearchProvider interface + normalized contract, 9 files +778). Handoff at `SPR-01-handoff.md`. 47 tests green. 3/4 lenses CLEAN; grok-co-CEO pending classifier recovery (source-free sketch approach ready).
+- **Latent defect found & fixed during commit:** `/research/` top-level dir is gitignored (operator's local-artifacts scratch). Prior half-committed attempt had tests + runner seam tracked but `research/providers/` SOURCE gitignored — untracked. Fixed via `.gitignore` negation (`/research/*` + `!/research/providers/` + `!/research/__init__.py`). Source now tracked for the first time.
+- grok co-CEO review remains queued for when the harness Bash classifier recovers (persistent "glm-5.2 temporarily unavailable" outage on substantial commands). Use the SOURCE-FREE prose sketch (no file contents cross the trust boundary) per the data-exfiltration guardrail.
 
 ## M1 seam findings (verified path:line, 2026-06-26)
 
