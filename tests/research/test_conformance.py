@@ -341,3 +341,42 @@ def test_null_field_exempt_from_citation():
     fixture["expected_fields"] = {"answer": "Paris", "population": None}
     # Must not raise — None fields are exempt.
     conformance(provider, fixture)
+
+
+def test_result_fields_and_citations_are_immutable_post_construction():
+    """grok co-CEO D4: a frozen dataclass does not freeze nested dicts/lists.
+
+    A caller must NOT be able to mutate ``result.fields`` or
+    ``result.field_citations`` after the adapter returns — otherwise the
+    "every non-null field has >=1 citation" invariant (INV-4) could be
+    broken without the adapter knowing (delete a citation, mutate a field
+    value to empty). The ResearchResult constructor defensively freezes
+    caller-supplied dicts/lists into read-only MappingProxyType / tuple.
+    This test proves post-construction mutation raises TypeError — the
+    integrity guarantee INV-4 audits rely on.
+    """
+    import pytest
+
+    r = _good_result("q")
+    # fields is a read-only Mapping — assignment and item-set raise.
+    assert not isinstance(r.fields, dict), (
+        "fields must not be a mutable dict — the frozen ResearchResult "
+        "should expose a read-only Mapping (MappingProxyType)"
+    )
+    with pytest.raises(TypeError):
+        r.fields["answer"] = "tampered"
+    with pytest.raises(TypeError):
+        r.fields["new_key"] = "injected"
+    # field_citations is read-only; its values are tuples (not lists).
+    assert not isinstance(r.field_citations, dict)
+    with pytest.raises(TypeError):
+        r.field_citations["answer"] = []
+    citations = r.field_citations["answer"]
+    assert isinstance(citations, tuple), (
+        "citation lists must be frozen to tuple, not left as a mutable list"
+    )
+    with pytest.raises(TypeError):
+        citations[0] = Source(url="https://injected.example")  # tuples are immutable
+    with pytest.raises(AttributeError):
+        r.confidence = 0.0  # frozen dataclass: top-level field also immutable
+

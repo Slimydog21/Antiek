@@ -44,6 +44,7 @@ What the harness asserts
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from research.providers.base import ResearchProvider
@@ -152,8 +153,14 @@ def _check_capability_metadata(p: ResearchProvider) -> None:
 
 
 def _check_result_shape(r: ResearchResult, p: ResearchProvider) -> None:
-    if not isinstance(r.fields, dict):
-        _fail("INV-4", f"fields must be dict, got {type(r.fields).__name__}")
+    # fields/field_citations are ``Mapping`` (not ``dict``) so the result can
+    # be frozen against post-return mutation (grok co-CEO D4: a frozen
+    # dataclass does not freeze nested dicts/lists; a caller mutating
+    # citations after return would break the citation invariant without the
+    # adapter knowing). Accept any Mapping; the ResearchResult constructor
+    # freezes caller dicts into a read-only MappingProxyType.
+    if not isinstance(r.fields, Mapping):
+        _fail("INV-4", f"fields must be a Mapping, got {type(r.fields).__name__}")
     # fields values are typed ``str | None`` (the contract). Enforce it so a
     # non-string, non-None value (e.g. an int or a nested dict smuggling
     # provider structure) cannot pass the harness — that would be both a
@@ -169,15 +176,15 @@ def _check_result_shape(r: ResearchResult, p: ResearchProvider) -> None:
             _fail("INV-4", f"fields[{k!r}] must be str or None, got "
                             f"{type(v).__name__} — non-string field values are "
                             f"not part of the normalized contract")
-    if not isinstance(r.field_citations, dict):
-        _fail("INV-4", f"field_citations must be dict, got "
+    if not isinstance(r.field_citations, Mapping):
+        _fail("INV-4", f"field_citations must be a Mapping, got "
                         f"{type(r.field_citations).__name__}")
     for k, v in r.field_citations.items():
         if not isinstance(k, str):
             _fail("INV-4", f"field_citations key {k!r} must be a string")
-        if not isinstance(v, list):
-            _fail("INV-4", f"field_citations[{k!r}] must be a list, got "
-                            f"{type(v).__name__}")
+        if not isinstance(v, Sequence) or isinstance(v, (str, bytes)):
+            _fail("INV-4", f"field_citations[{k!r}] must be a sequence of "
+                            f"Source, got {type(v).__name__}")
         for s in v:
             if not isinstance(s, Source):
                 _fail("INV-4", f"field_citations[{k!r}] contains a non-Source: "

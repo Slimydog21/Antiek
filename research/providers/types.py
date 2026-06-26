@@ -69,7 +69,9 @@ would itself be an INV-4 smell).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
 
 
 @dataclass(frozen=True)
@@ -118,12 +120,18 @@ class ResearchResult:
         ``None`` value denotes "the provider could not populate this
         field"; an empty string ``""`` is treated as unpopulated too
         (both are exempt from the citation requirement). Non-null,
-        non-empty values MUST cite at least one source (INV-4).
+        non-empty values MUST cite at least one source (INV-4). Typed
+        as ``Mapping`` and frozen at construction (``__post_init__``
+        wraps caller-supplied dicts in a read-only ``MappingProxyType``)
+        so a caller cannot mutate fields post-return — the citation
+        invariant cannot be broken without the adapter knowing.
     field_citations:
-        Maps each non-null field name → the list of ``Source`` objects
+        Maps each non-null field name → the tuple of ``Source`` objects
         supporting it. A field with a value MUST have ≥1 citation; a
         null/empty field may have none. The conformance harness
-        enforces this invariant.
+        enforces this invariant. Frozen at construction (citation lists
+        become immutable ``tuple``) for the same integrity reason as
+        ``fields``.
     confidence:
         Normalized float in ``[0.0, 1.0]``. See the confidence-
         normalization rule in this module's docstring — the mapping is
@@ -151,14 +159,35 @@ class ResearchResult:
         for audit. See ``RawRef`` — never a provider-specific dict.
     """
 
-    fields: dict[str, str | None]
-    field_citations: dict[str, list[Source]]
+    fields: Mapping[str, str | None]
+    field_citations: Mapping[str, tuple[Source, ...]]
     confidence: float
     cost: float
     latency: int
     provider: str
     tier: str
     raw_ref: RawRef
+
+    def __post_init__(self) -> None:
+        # Defensive deep-freeze (grok co-CEO D4): ``@dataclass(frozen=True)``
+        # freezes the field *bindings* but NOT nested ``dict``/``list`` — a
+        # caller could mutate ``fields`` or ``field_citations`` after return
+        # and break the "every non-null field has >=1 citation" invariant
+        # without the adapter knowing. Wrap caller-supplied mutable mappings
+        # in read-only ``MappingProxyType`` and freeze citation lists to
+        # ``tuple`` so post-construction mutation raises ``TypeError``. This
+        # is the integrity guarantee INV-4 audits rely on. ``object.__setattr__``
+        # bypasses the frozen-dataclass setter guard for these fields.
+        object.__setattr__(
+            self, "fields", MappingProxyType(dict(self.fields))
+        )
+        object.__setattr__(
+            self,
+            "field_citations",
+            MappingProxyType(
+                {k: tuple(v) for k, v in self.field_citations.items()}
+            ),
+        )
 
 
 @dataclass(frozen=True)
