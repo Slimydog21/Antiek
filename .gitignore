@@ -75,5 +75,12 @@ node_modules/
 # scratch dirs that the substrate writes. NOT source code; should not
 # be in version control. Anchored to top-level so it doesn't also
 # catch interfaces/research/ (the substrate API package).
-/research/
+#
+# EXCEPTION: research/providers/ IS source code (the ADRH SPR-01
+# ResearchProvider contract + conformance harness). Un-ignore the
+# directory chain then re-ignore everything else under /research/ so
+# the provider package is tracked while local artifacts stay ignored.
+/research/*
+!/research/providers/
+!/research/__init__.py
 docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/

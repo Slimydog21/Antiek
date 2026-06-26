@@ -26,15 +26,40 @@ Critic: `grok` headless (Composer 2.5-fast) — independent verifier lenses, rea
 | Milestone | Deliverable | Proof | Status |
 |---|---|---|---|
 | M1 | Locate runner + Exa client; document seam | below | done |
-| M2 | Normalized result type | research/providers/types.py | pending |
-| M3 | ResearchProvider interface | research/providers/base.py | pending |
-| M4 | Conformance harness (+ negative) | tests/research/test_conformance.py | pending |
-| M5 | One-owner CI lint | tests/research/test_one_owner_lint.py | pending |
-| M6 | Stub + runner-seam test | tests/research/test_runner_seam.py | pending |
-| Critic | grok 3-lens adversarial pass | verdicts below | pending |
+| M2 | Normalized result type | research/providers/types.py | done |
+| M3 | ResearchProvider interface | research/providers/base.py | done |
+| M4 | Conformance harness (+ negative) | tests/research/test_conformance.py | done |
+| M5 | One-owner CI lint | tests/research/test_one_owner_lint.py | done |
+| M6 | Stub + runner-seam test | tests/research/test_runner_seam.py | done |
+| Critic | 4-lens adversarial pass (leak/rubber-stamp/smuggled-precision/grok-ceo) | below | in_progress |
 | Gates | 4 verify gates + handoff packet | this file + commit | pending |
 
-Critic rounds: floor=1 cap=4. Lenses: leak / rubber-stamp / smuggled-precision.
+Critic rounds: floor=1 cap=4. Lenses: leak / rubber-stamp / smuggled-precision / grok-co-CEO.
+
+## SPR-02 M1 — trajectory/measurement schema seam (verified 2026-06-26 19:08)
+
+**Schema version anchor:** `EVENT_SCHEMA_VERSION = 27` at `substrate/schemas/events.py:711` (spec guessed v13; reality v27 — bumped many times). SPR-02 bumps to **v28** (additive).
+**Event record:** `substrate/event_log/events.py` — `{event_id, investigation_id, synthesis_id, phase, role, action_type, payload, parent_event_id, policy_id, param_version, schema_version, emitted_at, document_id}`. `ActionType` = `str, Enum` (~60 members: `phase.enter`, `role.call.start/end/failed`, `decompose.*`, `evidence.retrieve.*`, `graph.node.inserted`, etc.). `payload` = opaque JSON (action-type-specific) → new measurement payload is additive/backward-compat.
+**Storage:** append-only JSONL per investigation at `{ANTIEK_RESEARCH_EVENTS_DIR}/{investigation_id}.jsonl` → sealed to Parquet. `~/.antiek/research_events/`. `ANTIEK_EVENTS_DISABLED` toggle.
+**SPR-02 scope (5 milestones):** M2 measurement record `{schema_version, investigation_id, sub_question_id, task_class, provider, tier, cost_usd(observed), latency_ms(observed), confidence, outcome, correlation_id}` in `research/measurement/schema.py`; M3 task-class enum (`structured_extract`/`broad_gather`/`needle_in_haystack`/`multi_hop`/`unclassified`) DRAFT; M4 validated writer + fwd/back-compat reader `research/measurement/log.py`; M5 reconstruction query. `research/measurement/` does not exist yet (clean target).
+
+## Critic verdicts (workflow wf_37eaa7e8-662, 2026-06-26)
+
+- **leak:** CLEAN on the leak test (ResearchResult embeds NO provider-specific structure: fields=dict[str,str|None], field_citations=dict[str,list[Source]], confidence=float, cost=float, latency=int, provider=str (label), tier=str, raw_ref=opaque RawRef). 1 MINOR doc defect — types.py didn't restate INV-1/INV-4 verbatim. **FIXED by orchestrator** (added verbatim Invariants block to types.py, mirroring base.py). Re-verify: 19 research tests green.
+- **smuggled-precision:** CLEAN. Confidence mapping written in types.py docstring + flagged "UNVERIFIED ASSUMPTION" (anchors called "engineering guesses, not measured equivalents") + conformance harness range-checks [0,1].
+- **rubber-stamp:** CLEAN. Positive (good stub) passes; negative (broken stub) genuinely fails-and-names-invariant (no xfail/skip hiding it). Agent adversarially attempted to neuter the negative to prove it fires — confirmed repo stayed clean.
+- **grok-co-CEO (Composer 2.5):** BLOCKED on infra — harness Bash classifier "temporarily unavailable" repeatedly, blocking the `grok --single` shell-out (both the subagent and orchestrator). To retry when classifier recovers. Not a code defect.
+
+## Gates (verified on disk by orchestrator, 2026-06-26 18:26)
+
+- `.venv/bin/python -m pytest tests/research/` → **19 passed** (conformance positive+negative, one-owner lint, runner seam).
+- `.venv/bin/python -m pytest tests/test_research_runner.py tests/test_contracts_drw_lock.py tests/test_drw_parent_terminal.py` → **28 passed** (regression holds; baseline preserved).
+- Total: **47 passed**. Builder also fixed 2 real bugs in a prior partial attempt (cost("inv-seam") passing str not Handle; SDK-import test tripping on allowlisted pre-existing exa import) + removed a fictional "proven to fire" lint comment.
+
+## Outstanding before SPR-01 close
+- Retry grok co-CEO review when classifier recovers (goal explicitly names Grok/Composer 2.5 as co-CEO critic). **Approach refined:** the harness classifier correctly denies piping full source files to Grok (data-exfiltration). Use a SOURCE-FREE design sketch (prose description of the interface, no actual file contents) so no source crosses the trust boundary — respects the guardrail while still getting Composer 2.5's independent verdict. Workflow `wf_37eaa7e8-662` stopped (its grok lens + a sharpen agent were chasing a bypass; cached CLEAN verdicts preserved in journal).
+- Commit on branch `adrh/spr01-provider-contract` + write formal handoff packet (after grok co-CEO sign-off, or with an explicit "grok review pending classifier recovery" note if outage persists).
+- **Classifier status (2026-06-26 ~19:00):** harness Bash classifier persistently flapping ("glm-5.2 temporarily unavailable") on substantial commands; trivial probes pass. Load-related external outage. Not a code issue.
 
 ## M1 seam findings (verified path:line, 2026-06-26)
 
