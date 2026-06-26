@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
+_SHARED_KB_HTML = _FIXTURES / "kb_artifact_minimal.html"
+
 from interfaces.reading.kb_artifact import (
     condense_body_for_reading,
     consume_kb_artifact,
@@ -28,3 +31,14 @@ def test_load_and_condense_preserves_graph_node_ids(tmp_path: Path):
     assert condensed.findings[0][0] == "ins-9"
     direct = condense_body_for_reading(body)
     assert direct.content_hash == condensed.content_hash
+
+
+def test_consume_shared_kb_fixture_contract():
+    """Same HTML file as vitest kbArtifactCondense (cross-language contract)."""
+    assert _SHARED_KB_HTML.is_file()
+    condensed = consume_kb_artifact(_SHARED_KB_HTML)
+    assert condensed.investigation_id == "inv-ui"
+    assert condensed.findings[0][0] == "n-1"
+    assert condensed.findings[0][1] == "Finding"
+    assert condensed.synthesis_excerpt == "Synth"
+    assert condensed.script_free is True

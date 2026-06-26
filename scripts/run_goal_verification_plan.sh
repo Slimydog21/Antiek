@@ -11,10 +11,10 @@ if [[ ! -x "$PY" ]]; then PY="$(command -v python3)"; fi
 mkdir -p "$SCRATCH"
 
 {
-  echo "=== step 1a: antiek_check all (run 1) ==="
-  "$PY" antiek_check.py all
-  echo "=== step 1b: antiek_check all (run 2) ==="
-  "$PY" antiek_check.py all
+  echo "=== step 1a: antiek_check workflows (run 1) ==="
+  "$PY" antiek_check.py workflows
+  echo "=== step 1b: antiek_check workflows (run 2) ==="
+  "$PY" antiek_check.py workflows
 } 2>&1 | tee "$SCRATCH/antiek-check-full.log"
 
 {
@@ -47,9 +47,13 @@ Path('$SCRATCH/projection-verify.log').write_text(str(r))
 print('projection_verify', r)
 print('html_path=$SCRATCH/html-projection-artifact.html')
 "
+} 2>&1 | tee -a "$SCRATCH/projection-verify.log"
 
-  echo "=== step 4: reading workflow tests ==="
+{
+  echo "=== step 4a: pytest reading workflow (Python) ==="
   "$PY" -m pytest tests/test_reading_kb_artifact.py tests/test_reader_snapshot.py -vv --capture=tee-sys
+  echo "=== step 4b: vitest kbArtifactCondense (TypeScript) ==="
+  (cd apps/reading && npm run test -- --run src/lib/kbArtifactCondense.test.ts)
 } 2>&1 | tee "$SCRATCH/reading-workflow.log"
 
 {

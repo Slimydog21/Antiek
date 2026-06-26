@@ -1,19 +1,13 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { condenseKbArtifactHtml, hasExecutableScripts } from "./kbArtifactCondense";
 
-const FIXTURE = `<!doctype html><html><body>
-<section id="findings"><div data-node-id="n-1">Finding</div></section>
-<script type="application/json" id="antiek-artifact-v1">{
-  "schema_version": 1,
-  "investigation_id": "inv-ui",
-  "problem_question": "Q",
-  "insights": [{"node_id": "n-1", "text": "Finding", "confidence": "high"}],
-  "open_questions": [],
-  "synthesis_excerpt": "Synth",
-  "agent_notes": []
-}</script>
-</body></html>`;
+const __dir = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_PATH = join(__dir, "../../../../tests/fixtures/kb_artifact_minimal.html");
+const FIXTURE = readFileSync(FIXTURE_PATH, "utf-8");
 
 describe("kbArtifactCondense", () => {
   it("rejects executable scripts", () => {
