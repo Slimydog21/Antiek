@@ -20,7 +20,7 @@ import logging
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from services.html_projection.adapters.synthesis import (
     Claim,
@@ -172,6 +172,98 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
             headers={
                 "Content-Disposition": (
                     f'attachment; filename="synthesis-{synthesis_id}.html"'
+                )
+            },
+        )
+
+    @app.get("/api/syntheses/{synthesis_id}/artifact", tags=["syntheses"])
+    async def synthesis_artifact_format(synthesis_id: str, format: str = "html"):
+        """Export a synthesis as html / antiek / antiek_html through the SPR-06
+        M4 routing map. The rights filter is applied in adapt_synthesis (the
+        doc-model is already cite-only-filtered before emission); the signed
+        formats are gate-clean by SPR-04 construction. 403 on a synthesis-level
+        restriction; 404 missing; 400 unknown format."""
+        from services.html_projection.routing_map import EXPORT_FORMATS, ExportItem, emit
+
+        export = resolve_synthesis_export(synthesis_id)
+        if export is None:
+            raise HTTPException(
+                status_code=404, detail=f"synthesis {synthesis_id!r} not found"
+            )
+        if format not in EXPORT_FORMATS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown format {format!r}; valid: {list(EXPORT_FORMATS)}",
+            )
+        try:
+            doc_model = adapt_synthesis(export)
+        except RightsRefusal as refusal:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error": "export_refused",
+                    "reason": refusal.reason,
+                    "synthesis_id": synthesis_id,
+                },
+            )
+
+        if format == "html":
+            ctx = RenderContext(
+                provenance=Provenance(
+                    document_id=export.synthesis_id,
+                    title=export.target_question,
+                    content_class="synthesis",
+                    schema_version="1",
+                )
+            )
+            html = render(doc_model, ctx)
+            try:
+                assert_script_free(html)
+            except ScriptViolation:
+                raise HTTPException(
+                    status_code=500,
+                    detail="artifact failed the zero-script gate; refused",
+                )
+            return HTMLResponse(
+                content=html,
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="synthesis-{synthesis_id}.html"'
+                    )
+                },
+            )
+
+        # Signed formats — emit the rights-filtered doc-model through the routing
+        # map. (Operator keypair: created-on-first-call; in prod pre-create it so
+        # this read route does not take the keypair write lock at serve time.)
+        from services.antiek_format.signature import ensure_keypair
+
+        keypair = ensure_keypair("operator", db_path=_resolve_db_path())
+        item = ExportItem(
+            content_tiptap={"type": "doc", "content": doc_model.get("content", [])},
+            title=export.target_question,
+            document_id=synthesis_id,
+            user_id="operator",
+            notebook_id=synthesis_id,
+            content_class="deliverable",
+        )
+        artifact = emit(item, format, keypair=keypair)
+        if format == "antiek":
+            return Response(
+                content=artifact,
+                media_type="application/zip",
+                headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="synthesis-{synthesis_id}.antiek"'
+                    )
+                },
+            )
+        # antiek_html — a signed single-file HTML
+        return HTMLResponse(
+            content=artifact,
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="synthesis-{synthesis_id}.antiek.html"'
                 )
             },
         )

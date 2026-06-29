@@ -106,3 +106,64 @@ def test_poisoned_render_is_refused(monkeypatch):
     r = _client().get("/api/syntheses/s4/artifact.html")
     assert r.status_code == 500
     assert "gate" in r.text.lower()  # refused with the gate reason
+
+
+# ── multi-format export via the SPR-06 M4 routing map ──
+
+
+def test_export_antiek_format_is_a_valid_signed_container(monkeypatch, tmp_path):
+    from services.antiek_format import read_antiek
+
+    exp = SynthesisExport(synthesis_id="s10", target_question="Q?", claims=[Claim("A", [SERVABLE])])
+    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "graph.duckdb"))
+    r = _client().get("/api/syntheses/s10/artifact?format=antiek")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/zip")
+    assert "s10.antiek" in r.headers["content-disposition"]
+    assert read_antiek(r.content).signature_valid is True
+
+
+def test_export_antiek_html_verifies(monkeypatch, tmp_path):
+    from services.antiek_format.single_file import verify_single_file_html
+
+    exp = SynthesisExport(synthesis_id="s11", target_question="Q?", claims=[Claim("A", [SERVABLE])])
+    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "g.duckdb"))
+    r = _client().get("/api/syntheses/s11/artifact?format=antiek_html")
+    assert r.status_code == 200
+    assert ".antiek.html" in r.headers["content-disposition"]
+    assert verify_single_file_html(r.text) is True
+
+
+def test_export_default_html_via_routing_route(monkeypatch):
+    exp = SynthesisExport(synthesis_id="s12", target_question="Q?", claims=[Claim("A", [SERVABLE])])
+    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    r = _client().get("/api/syntheses/s12/artifact?format=html")
+    assert r.status_code == 200 and "PUBLIC DOMAIN TEXT" in r.text
+
+
+def test_export_unknown_format_is_400(monkeypatch):
+    exp = SynthesisExport(synthesis_id="s13", target_question="Q?")
+    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    assert _client().get("/api/syntheses/s13/artifact?format=pdf").status_code == 400
+
+
+def test_export_restricted_is_403_for_any_format(monkeypatch, tmp_path):
+    exp = SynthesisExport(
+        synthesis_id="s14", target_question="Q?", restricted=True, restriction_reason="withheld"
+    )
+    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "g.duckdb"))
+    assert _client().get("/api/syntheses/s14/artifact?format=antiek").status_code == 403
+
+
+def test_antiek_export_does_not_leak_personal_reading(monkeypatch, tmp_path):
+    # The rights filter must hold through the .antiek container path: the
+    # secret passage must not be in the signed container bytes.
+    exp = SynthesisExport(synthesis_id="s15", target_question="Q?", claims=[Claim("A", [PERSONAL])])
+    monkeypatch.setattr(mod, "resolve_synthesis_export", lambda sid, **kw: exp)
+    monkeypatch.setattr(mod, "_resolve_db_path", lambda: str(tmp_path / "g.duckdb"))
+    r = _client().get("/api/syntheses/s15/artifact?format=antiek")
+    assert r.status_code == 200
+    assert b"SECRET THIRD PARTY TEXT" not in r.content
