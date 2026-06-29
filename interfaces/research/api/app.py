@@ -1392,6 +1392,11 @@ def create_app(
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
     register_library_routes(app)
+    # HPRJ SPR-05 — synthesis-artifact export: GET /api/syntheses/{id}/artifact.html.
+    # Rights filter lives in the adapter (reuses SERVABLE_CONTENT_CLASSES); the
+    # route wires the in-path zero-script gate + 403-with-reason on refusal.
+    from .synthesis_artifact import register_synthesis_artifact_routes
+    register_synthesis_artifact_routes(app)
     # Read SPR-09 — ad-border surfaces: per-window frame-attention telemetry
     # (composes the SPR-05 accrual engine + the one escrow seam; accrues, never
     # disburses) + reader slot fill (house fill is the zero-buyer default).
