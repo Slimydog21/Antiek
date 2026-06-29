@@ -83,3 +83,6 @@ docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
 # loosely so it catches the dirs at any depth.
 .caffenagent/
 .conclave/
+
+# hardenx scratch output (triage layer; never source)
+.harden/
