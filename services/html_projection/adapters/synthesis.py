@@ -124,6 +124,27 @@ def _note(body: str) -> dict:
     return {"type": "antiek_note", "attrs": {"body": body}}
 
 
+_RECOMMENDATION_TONE = {
+    "proceed": "success",
+    "pass": "danger",
+    "conditional": "warning",
+    "undetermined": "neutral",
+    "insufficient_evidence": "neutral",
+}
+
+
+def _stat_chip(label: str, value: str, tone: str) -> dict:
+    # An SPR-03 widget via the wired antiek_widget seam.
+    return {
+        "type": "antiek_widget",
+        "attrs": {"kind": "stat_chip", "label": label, "value": value, "tone": tone},
+    }
+
+
+def _recommendation_tone(rec: str) -> str:
+    return _RECOMMENDATION_TONE.get(str(rec).lower(), "neutral")
+
+
 def _source_label(src: SourceRef) -> str:
     """A citation label built ONLY from non-text provenance — title, owner,
     locator. NEVER the chunk text (that would defeat cite-only)."""
@@ -156,6 +177,18 @@ def adapt_synthesis(export: SynthesisExport) -> dict:
     if not complete and total > 0:
         content.append(
             _prose(f"Provenance incomplete — {fully} of {total} claims fully sourced.")
+        )
+
+    # A recommendation stat-chip (SPR-03 widget via the wired antiek_widget
+    # seam) — the synthesis's OWN output, rights-safe (metadata, never
+    # third-party passage text).
+    if export.recommendation:
+        content.append(
+            _stat_chip(
+                "Recommendation",
+                export.recommendation,
+                _recommendation_tone(export.recommendation),
+            )
         )
 
     # The synthesis's own output (operator-authored; not third-party text).
