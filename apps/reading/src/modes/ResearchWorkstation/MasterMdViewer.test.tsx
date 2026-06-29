@@ -13,16 +13,26 @@
  *     "source unavailable", never a fabricated title (rigor #1).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
-const { getChunkMock } = vi.hoisted(() => ({ getChunkMock: vi.fn() }));
+const { getChunkMock, apiFetchMock } = vi.hoisted(() => ({
+  getChunkMock: vi.fn(),
+  apiFetchMock: vi.fn(),
+}));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, getChunk: getChunkMock };
+  return { ...actual, getChunk: getChunkMock, apiFetch: apiFetchMock };
 });
 // Workspace actions + toast are side-effectful; stub them so the render is
 // pure. We assert on what the reader SEES, not on panel side effects.
@@ -85,6 +95,7 @@ function chunk(over: Partial<ChunkResponse>): ChunkResponse {
 
 function synth(over: Partial<ParsedSynthesis> = {}): ParsedSynthesis {
   return {
+    synthesisId: null,
     thesisSummary: "A thesis.",
     components: [
       {
@@ -877,5 +888,44 @@ describe("MasterMdViewer — review-due default-off byte-equivalence (SPR-08 M5)
       // default-off declares none, so no claim span carries one.
       expect(span.getAttribute("title")).toBeNull();
     }
+  });
+});
+
+describe("MasterMdViewer — artifact-export affordance (SPR-05 M5)", () => {
+  // Claim-free fixtures: the export affordance is in the header and does not
+  // depend on claims; empty components avoid the chunk-resolution augmentation
+  // (which would call the unmocked getChunk) so we test the button in isolation.
+  const exportSynth = (id: string | null): ParsedSynthesis =>
+    synth({ synthesisId: id, components: [], chunkCitations: {} });
+
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+  });
+
+  it("shows the Export artifact action only when a synthesis id is present", () => {
+    render(<MasterMdViewer synthesis={exportSynth("syn-1")} />);
+    expect(screen.getByText("Export artifact")).toBeTruthy();
+    cleanup();
+    render(<MasterMdViewer synthesis={exportSynth(null)} />);
+    expect(screen.queryByText("Export artifact")).toBeNull();
+  });
+
+  it("calls the artifact route and surfaces the SPECIFIC 403 reason", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ reason: "owner withheld this synthesis" }),
+    } as unknown as Response);
+
+    render(<MasterMdViewer synthesis={exportSynth("syn-9")} />);
+    fireEvent.click(screen.getByText("Export artifact"));
+
+    await waitFor(() =>
+      expect(screen.getByText(/owner withheld this synthesis/)).toBeTruthy(),
+    );
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(String(apiFetchMock.mock.calls[0][0])).toContain(
+      "/api/syntheses/syn-9/artifact.html",
+    );
   });
 });

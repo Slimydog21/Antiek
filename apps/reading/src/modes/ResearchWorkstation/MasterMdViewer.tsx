@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { toast } from "../../components/lemon/LemonToast";
-import { getChunk } from "../../lib/api";
+import { API_BASE, apiFetch, getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 import type {
   CompoundingStat,
@@ -195,6 +195,49 @@ export default function MasterMdViewer({
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
+  // HPRJ SPR-05 M5 — the artifact-export affordance. The rights filter is
+  // enforced server-side (the route returns 403 with a reason on a synthesis-
+  // level restriction); this UI only calls it and surfaces the SPECIFIC reason,
+  // never a generic error.
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const synthesisId = synthesis.synthesisId;
+
+  async function handleExportArtifact(): Promise<void> {
+    if (!synthesisId || exporting) return;
+    setExporting(true);
+    setExportError(null);
+    try {
+      const resp = await apiFetch(
+        `${API_BASE}/api/syntheses/${encodeURIComponent(synthesisId)}/artifact.html`,
+      );
+      if (resp.status === 403) {
+        const body = (await resp.json().catch(() => null)) as
+          | { reason?: string }
+          | null;
+        setExportError(
+          body?.reason ?? "Export refused under the source's rights.",
+        );
+        return;
+      }
+      if (!resp.ok) {
+        setExportError(`Export failed (HTTP ${resp.status}).`);
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `synthesis-${synthesisId}.html`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setExportError("Export failed — the server could not be reached.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   // SPR-08 M5 — the review-due decorations pass (default-off; empty map unless
   // the toggle is flipped AND review-state is wired). Computed once per render,
   // threaded into each ClaimBlock. Off ⇒ empty ⇒ byte-equivalent to today.
@@ -286,6 +329,23 @@ export default function MasterMdViewer({
             <h1 className="text-2xl leading-tight mb-3">
               {synthesis.question}
             </h1>
+          )}
+          {synthesisId && (
+            <div className="mb-3">
+              <button
+                type="button"
+                onClick={handleExportArtifact}
+                disabled={exporting}
+                className="text-xs font-mono underline decoration-dotted underline-offset-2 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
+              >
+                {exporting ? "Exporting…" : "Export artifact"}
+              </button>
+              {exportError && (
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  Export refused: {exportError}
+                </p>
+              )}
+            </div>
           )}
           <div className="flex items-center gap-3 text-xs font-mono text-shadow-1 dark:text-moonlight">
             <RecommendationBadge rec={synthesis.recommendation} />
