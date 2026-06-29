@@ -104,6 +104,7 @@ _PARTIAL_MODULES: dict[str, Any] = {
     ),
     "image": importlib.import_module(".partials.image", package=__package__),
     "latex": importlib.import_module(".partials.latex", package=__package__),
+    "widget": importlib.import_module(".partials.widget", package=__package__),
 }
 
 

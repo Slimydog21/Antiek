@@ -164,6 +164,18 @@ CONTRACT_TABLE: Final[tuple[BlockContract, ...]] = (
         partial="cite_link",
     ),
     BlockContract(
+        block_type="widget",
+        tiptap_types=("antiek_widget", "widget"),
+        source=(
+            "services/html_projection/tokens.py:323 "
+            "(render_widget seam); "
+            "services/html_projection/partials/widget.py:1 "
+            "(renders antiek_widget through the SPR-03 widgets)"
+        ),
+        partial="widget",
+        widget=True,
+    ),
+    BlockContract(
         block_type="cross_doc_jump",
         tiptap_types=("antiek_cross_doc_jump", "cross_doc_jump"),
         source=(
