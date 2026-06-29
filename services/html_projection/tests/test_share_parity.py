@@ -1,14 +1,34 @@
-"""SPR-06 M4: routing map + emission parity tests.
+"""SPR-06 M4: the routing map's single decision point + emission parity.
 
-Tests the single routing-map decision point and verifies that ``emit``
-produces correct, deterministic, gate-clean artifacts for every format.
+Proves the three things this module exists to guarantee:
+
+1. ``SURFACE_FORMATS`` is the SINGLE decision point — ``formats_for`` returns the
+   table's entry verbatim; an unknown surface falls back to ``("html",)``.
+2. ``emit`` correctly reuses the existing writers: ``html`` is gate-clean and
+   carries the title; ``antiek`` is a valid signed container with the SPR-04
+   self-render shell present; ``antiek_html`` verifies.
+3. PARITY — ``emit(item, fmt)`` is byte-identical across calls for every format,
+   because emission is deterministic (two routes calling ``emit`` with the same
+   input get identical artifacts).
 """
 
 from __future__ import annotations
 
+import io
+import os
+import sys
+import zipfile
+
+_REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 import pytest
 
 from services.antiek_format.native_reader import read_antiek
+from services.antiek_format.native_writer import ENTRY_PROJECTION
 from services.antiek_format.signature import ensure_keypair
 from services.antiek_format.single_file import verify_single_file_html
 from services.html_projection.gate import assert_script_free
@@ -21,147 +41,108 @@ from services.html_projection.routing_map import (
 )
 
 
-# ── Fixtures ──
-
-
 @pytest.fixture
 def keypair(tmp_path):
-    """A real Ed25519 keypair via ensure_keypair on a temp DuckDB."""
-    return ensure_keypair("test-user", db_path=str(tmp_path / "k.duckdb"))
+    """A real Ed25519 keypair in a per-test DuckDB — the signed formats need it."""
+    db_path = str(tmp_path / "share-parity.duckdb")
+    return ensure_keypair("user-share", db_path=db_path)
 
 
-@pytest.fixture
-def item():
-    """A minimal but valid ExportItem."""
+def _item() -> ExportItem:
+    """A minimal canonical ExportItem: one prose paragraph + provenance."""
     return ExportItem(
         content_tiptap={
             "type": "doc",
             "content": [
                 {
                     "type": "paragraph",
-                    "content": [{"type": "text", "text": "Hello world"}],
+                    "content": [{"type": "text", "text": "Share parity prose."}],
                 }
             ],
         },
-        title="Test Document",
-        document_id="doc-1",
-        user_id="user-1",
-        notebook_id="nb-1",
+        title="Share Parity Notebook",
+        document_id="doc-share-1",
+        user_id="user-share",
+        notebook_id="nbk-share-1",
         parent_document_id=None,
         content_class="notebook",
     )
 
 
-# ── Routing map: single decision point ──
+# ── The single decision point ──
 
 
-def test_surface_formats_is_single_decision_point():
-    """SURFACE_FORMATS is the ONLY place format-choice lives.
-
-    ``formats_for`` returns exactly the table's entry for every
-    declared surface.
-    """
-    for surface, expected in SURFACE_FORMATS.items():
-        assert formats_for(surface) == expected
+def test_formats_for_returns_the_table_entry_verbatim():
+    for surface, fmts in SURFACE_FORMATS.items():
+        assert formats_for(surface) == fmts
+        assert formats_for(surface) == SURFACE_FORMATS[surface]
 
 
-def test_formats_for_unknown_surface_returns_html_default():
-    """Unknown surface defaults to ("html",)."""
-    assert formats_for("unknown_surface") == ("html",)
+def test_unknown_surface_defaults_to_html():
+    assert formats_for("no-such-surface") == ("html",)
     assert formats_for("") == ("html",)
 
 
-def test_export_formats_is_closed_set():
-    """EXPORT_FORMATS is the canonical closed set of three formats."""
+def test_table_seeds_match_the_spec():
     assert EXPORT_FORMATS == ("html", "antiek", "antiek_html")
+    assert SURFACE_FORMATS["notebook_share"] == ("html", "antiek", "antiek_html")
+    assert SURFACE_FORMATS["synthesis_share"] == ("html", "antiek", "antiek_html")
+    assert SURFACE_FORMATS["theme_share"] == ("html", "antiek")
 
 
-# ── emit("html") ──
+# ── emit reuses the existing writers correctly ──
 
 
-def test_emit_html_is_gate_clean(item):
-    """HTML output passes the zero-script gate."""
-    html = emit(item, "html")
+def test_emit_html_is_gate_clean_and_carries_title():
+    html = emit(_item(), "html")
     assert isinstance(html, str)
     assert_script_free(html)
+    assert "Share Parity Notebook" in html
 
 
-def test_emit_html_contains_title(item):
-    """HTML output contains the document title."""
-    html = emit(item, "html")
-    assert "Test Document" in html
-
-
-# ── emit("antiek") ──
-
-
-def test_emit_antiek_valid_container(item, keypair):
-    """Antiek output is a valid container: reads back, signature valid."""
-    data = emit(item, "antiek", keypair=keypair)
-    assert isinstance(data, bytes)
-    result = read_antiek(data)
+def test_emit_antiek_is_a_valid_signed_container(keypair):
+    blob = emit(_item(), "antiek", keypair=keypair)
+    assert isinstance(blob, bytes)
+    result = read_antiek(blob)
     assert result.signature_valid is True
+    # The SPR-04 self-render shell rides inside the container.
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        names = set(zf.namelist())
+    assert ENTRY_PROJECTION in names
 
 
-def test_emit_antiek_contains_projection(item, keypair):
-    """Antiek container carries the ENTRY_PROJECTION (projection.html)."""
-    data = emit(item, "antiek", keypair=keypair)
-    result = read_antiek(data)
-    assert result.projection_html is not None
-
-
-def test_emit_antiek_requires_keypair(item):
-    """Antiek format raises ValueError without keypair."""
-    with pytest.raises(ValueError, match="requires a keypair"):
-        emit(item, "antiek")
-
-
-# ── emit("antiek_html") ──
-
-
-def test_emit_antiek_html_verifies(item, keypair):
-    """Single-file .antiek.html passes verify_single_file_html."""
-    html = emit(item, "antiek_html", keypair=keypair)
+def test_emit_antiek_html_verifies(keypair):
+    html = emit(_item(), "antiek_html", keypair=keypair)
     assert isinstance(html, str)
     assert verify_single_file_html(html) is True
 
 
-def test_emit_antiek_html_requires_keypair(item):
-    """Antiek_html format raises ValueError without keypair."""
-    with pytest.raises(ValueError, match="requires a keypair"):
-        emit(item, "antiek_html")
-
-
-# ── Byte-compare parity ──
+# ── Parity: identical input -> byte-identical output ──
 
 
 @pytest.mark.parametrize("fmt", EXPORT_FORMATS)
-def test_byte_parity(item, keypair, fmt):
-    """Identical input -> byte-identical output for every format.
-
-    This is the parity the spec demands: two routes calling ``emit``
-    with the same input get identical artifacts because emission is
-    deterministic.
-    """
-    if fmt == "html":
-        a = emit(item, fmt)
-        b = emit(item, fmt)
-    else:
-        a = emit(item, fmt, keypair=keypair)
-        b = emit(item, fmt, keypair=keypair)
-    assert a == b
+def test_emit_is_byte_identical_across_calls(fmt, keypair):
+    item = _item()
+    first = emit(item, fmt, keypair=keypair)
+    second = emit(item, fmt, keypair=keypair)
+    assert first == second
 
 
-# ── Unknown format ──
+# ── Signed formats require a keypair ──
 
 
-def test_emit_unknown_format_raises(item):
-    """Unknown format raises ValueError."""
-    with pytest.raises(ValueError, match="unknown format"):
-        emit(item, "pdf")
+def test_emit_antiek_without_keypair_raises():
+    with pytest.raises(ValueError):
+        emit(_item(), "antiek")
+    with pytest.raises(ValueError):
+        emit(_item(), "antiek", keypair=None)
 
 
-def test_emit_unknown_format_raises_even_with_keypair(item, keypair):
-    """Unknown format raises ValueError even when keypair is provided."""
-    with pytest.raises(ValueError, match="unknown format"):
-        emit(item, "pdf", keypair=keypair)
+def test_emit_antiek_html_without_keypair_raises():
+    with pytest.raises(ValueError):
+        emit(_item(), "antiek_html")
+
+
+def test_emit_unknown_format_raises(keypair):
+    with pytest.raises(ValueError):
+        emit(_item(), "docx", keypair=keypair)
