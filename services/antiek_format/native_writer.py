@@ -22,8 +22,20 @@ those tests off and you've broken the invariant.
 Wire shape
 ----------
 See ``SPEC.md``. In short: a deterministic zip with manifest.json +
-content.tiptap.json (+ optional edges.jsonl + blocks/*.audio) +
-signature.bin.
+content.tiptap.json + projection.html (the self-render shell, SPR-04) +
+(optional edges.jsonl + blocks/*.audio) + signature.bin.
+
+Self-render shell (SPR-04)
+--------------------------
+``projection.html`` is a DERIVED projection: the canonical doc-model
+payload rendered through the SPR-02 HTML renderer at write time. It is
+never canonical, never executable (zero-script), never parsed back —
+the doc-model in ``content.tiptap.json`` stays the source of truth. Its
+integrity is bound to the signature the same way audio is: its sha256
+lives in the signed manifest (``projection_sha256``), so a mutated shell
+is caught on read without widening the Ed25519 signing scope. Adding it
+is a MINOR version bump (1.0.0 -> 1.1.0): old readers ignore the entry,
+new readers verify its hash; pre-shell containers still read.
 
 Determinism
 -----------
@@ -42,6 +54,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import sys
 import zipfile
 from dataclasses import dataclass
@@ -70,14 +83,17 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 # ── Format constants ──
 
-SCHEMA_VERSION: str = "1.0.0"
+SCHEMA_VERSION: str = "1.1.0"
 """Writer-side schema version. Bump the MAJOR component on incompatible
 shape changes; bump MINOR on additive changes a reader can fall back
-from; bump PATCH on docs/test-only fixes."""
+from; bump PATCH on docs/test-only fixes. 1.0.0 -> 1.1.0 (SPR-04): the
+additive projection.html self-render shell; old readers ignore it, new
+readers verify its hash, pre-shell containers still read."""
 
 # Zip entry-name constants. Cross-checked by the reader.
 ENTRY_MANIFEST: str = "manifest.json"
 ENTRY_CONTENT: str = "content.tiptap.json"
+ENTRY_PROJECTION: str = "projection.html"
 ENTRY_EDGES: str = "edges.jsonl"
 ENTRY_SIGNATURE: str = "signature.bin"
 BLOCKS_PREFIX: str = "blocks/"
@@ -265,6 +281,32 @@ def write_antiek(
         timezone.utc
     ).isoformat()
 
+    # Canonicalise the TipTap body ONCE — it is both the signed content
+    # bytes and the doc-model the self-render shell projects.
+    canonical_tiptap = _canonical_tiptap_node(inp.content_tiptap)
+    content_bytes = canonical_json_bytes(canonical_tiptap)
+    edges_bytes = canonical_edges_bytes(inp.edges)
+
+    # ── Self-render shell (SPR-04 M2) ──
+    # Render the canonical doc-model through the SPR-02 renderer at write
+    # time. Deterministic: same inputs -> byte-identical shell (the
+    # renderer is pure; the context carries no wall-clock).
+    projection_bytes = _render_shell(
+        canonical_tiptap=canonical_tiptap,
+        edges=inp.edges,
+        title=inp.title,
+        document_id=inp.document_id,
+        notebook_id=inp.notebook_id,
+        content_class=inp.content_class,
+        creator_user_id=inp.user_id,
+        created_at_iso=created_at_iso,
+    )
+    # M4: forbidden-substrate byte-grep over the rendered shell, at write
+    # time, BEFORE bytes hit disk. Mirrors _assert_no_forbidden_fields
+    # (JSON keys) for an entry whose structure is opaque HTML bytes.
+    _assert_no_forbidden_bytes(projection_bytes, where=ENTRY_PROJECTION)
+    projection_sha256 = hashlib.sha256(projection_bytes).hexdigest()
+
     manifest: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "content_class": inp.content_class,
@@ -277,14 +319,16 @@ def write_antiek(
         "title": inp.title,
         "format_version": inp.format_version,
         "edges_present": bool(inp.edges),
+        # SPR-04: shell integrity rides in the SIGNED manifest (same
+        # mechanism as audio_sha256) — mutating the shell breaks this hash
+        # on read; mutating this field breaks the Ed25519 signature.
+        "projection_sha256": projection_sha256,
         "blocks_index": sorted_blocks,
     }
 
     # ── Canonical bytes for signing ──
 
     manifest_bytes = canonical_json_bytes(manifest)
-    content_bytes = canonical_json_bytes(_canonical_tiptap_node(inp.content_tiptap))
-    edges_bytes = canonical_edges_bytes(inp.edges)
 
     signing_input = build_signing_input(
         manifest_bytes=manifest_bytes,
@@ -296,12 +340,14 @@ def write_antiek(
     # ── Assemble the zip ──
 
     # Build (name, payload) list in canonical order.
-    # Order: manifest → content → edges (if any) → blocks/* sorted →
-    # signature. Last so a streaming reader can verify after collecting
-    # everything before it; ordering is also deterministic.
+    # Order: manifest → content → projection.html → edges (if any) →
+    # blocks/* sorted → signature. The shell sits right after the content
+    # it is derived from; signature stays last so a streaming reader can
+    # verify after collecting everything before it. Order is deterministic.
     entries: list[tuple[str, bytes]] = [
         (ENTRY_MANIFEST, manifest_bytes),
         (ENTRY_CONTENT, content_bytes),
+        (ENTRY_PROJECTION, projection_bytes),
     ]
     if edges_bytes:
         entries.append((ENTRY_EDGES, edges_bytes))
@@ -396,6 +442,104 @@ def _assert_no_forbidden_fields(obj: Any, *, where: str) -> None:
             _assert_no_forbidden_fields(v, where=f"{where}[{i}]")
 
 
+def _render_shell(
+    *,
+    canonical_tiptap: Any,
+    edges: list[dict],
+    title: Optional[str],
+    document_id: str,
+    notebook_id: str,
+    content_class: str,
+    creator_user_id: str,
+    created_at_iso: str,
+) -> bytes:
+    """Render the canonical doc-model to the ``projection.html`` shell (SPR-04).
+
+    The shell is a DERIVED projection — the SPR-02 renderer's output for
+    this container's doc-model — never canonical and never parsed back.
+    Determinism: the renderer is pure and the context carries only
+    substrate-derived DATA (the ``created_at`` timestamp), no wall-clock,
+    so two writes of the same input produce byte-identical shells. Refs to
+    substrate content resolve to honest "not available offline" tombstones
+    (``resolver=None``) — substrate data stays OUT of the file by invariant.
+    """
+    # Lazy import: html_projection does not import antiek_format (no cycle),
+    # and this keeps the dependency scoped to the one place that needs it.
+    from services.html_projection.context import Provenance, RenderContext
+    from services.html_projection.renderer import render as render_projection
+
+    content_nodes = (
+        canonical_tiptap.get("content", [])
+        if isinstance(canonical_tiptap, dict)
+        else []
+    )
+    # Sort edges by edge_id so the shell's embedded doc-model island is
+    # byte-stable the same way edges.jsonl is (canonical_edges_bytes sorts).
+    sorted_edges = sorted(
+        (dict(e) for e in edges), key=lambda e: str(e.get("edge_id", ""))
+    )
+    doc_model = {"content": content_nodes, "title": title, "edges": sorted_edges}
+    ctx = RenderContext(
+        resolver=None,
+        provenance=Provenance(
+            document_id=document_id,
+            notebook_id=notebook_id,
+            title=title,
+            content_class=content_class,
+            schema_version=SCHEMA_VERSION,
+            creator_user_id=creator_user_id,
+            rendered_at=created_at_iso,
+            signature_valid=None,
+        ),
+        schema_version="1",
+    )
+    return render_projection(doc_model, ctx).encode("utf-8")
+
+
+_EMBEDDING_ARRAY_RE = re.compile(r"\[\s*(?:-?\d+\.\d+\s*,\s*){15,}-?\d+\.\d+\s*\]")
+"""An inline array of 16+ floats — embedding-vector-shaped. The shell is
+rendered from a key-checked doc-model, but a float array can hide in a
+NON-forbidden-named field (the ``data-x="[0.0123, ...]"`` leak the
+master-spec invariant targets); this catches it regardless of field name.
+Threshold 16 is far below any real embedding (384-1536 dims) yet above any
+plausible inline decimal list a notebook would legitimately carry."""
+
+
+def _assert_no_forbidden_bytes(data: bytes, *, where: str) -> None:
+    """Byte-grep an opaque entry (the ``projection.html`` shell) for leaked
+    substrate-derived data — the M4 backstop the master-spec invariant
+    requires over EVERY entry, including HTML.
+
+    Two prongs, both designed NOT to false-positive on legitimate prose that
+    merely mentions "embeddings" or "chunks":
+
+    1. A forbidden field NAME used STRUCTURALLY — as a JSON key
+       (``"chunk_id":``), an HTML attribute (``data-embedding=``), or a
+       labeled identifier in a comment (``chunk_id:``). Prose ("word
+       embeddings are useful") has no ``:``/``=`` after the token, so it
+       passes.
+    2. An embedding-vector-shaped float array (16+ inline floats), which has
+       no field name to grep — the ``data-x="[0.0123, ...]"`` leak.
+    """
+    text = data.decode("utf-8", errors="ignore").lower()
+    for field in _FORBIDDEN_SUBSTRATE_FIELDS:
+        pattern = re.compile(
+            r"(?<![a-z0-9_])" + re.escape(field) + r"\s*[\"']?\s*[:=]"
+        )
+        if pattern.search(text):
+            raise ValueError(
+                f"write_antiek: forbidden substrate-derived field {field!r} "
+                f"used structurally in {where} bytes. The .antiek shell MUST "
+                f"NOT carry substrate-derived artifacts. See SPEC.md §9."
+            )
+    if _EMBEDDING_ARRAY_RE.search(text):
+        raise ValueError(
+            f"write_antiek: an embedding-vector-shaped float array (16+ "
+            f"inline floats) was found in {where} bytes. Substrate-derived "
+            f"embeddings MUST NOT enter a .antiek file. See SPEC.md §9."
+        )
+
+
 def _build_deterministic_zip(entries: list[tuple[str, bytes]]) -> bytes:
     """Pack entries into a byte-identical zip. See SPEC.md §6.
 
@@ -423,6 +567,7 @@ __all__ = [
     "ENTRY_CONTENT",
     "ENTRY_EDGES",
     "ENTRY_MANIFEST",
+    "ENTRY_PROJECTION",
     "ENTRY_SIGNATURE",
     "SCHEMA_VERSION",
     "WriterInput",

@@ -184,8 +184,12 @@ def test_writer_emits_canonical_manifest_keys(complex_notebook_input, keypair):
         "created_at", "creator_user_id", "creator_pubkey",
     ]:
         assert req in manifest, f"manifest missing required key {req!r}"
-    assert manifest["schema_version"] == "1.0.0"
+    assert manifest["schema_version"] == "1.1.0"
     assert manifest["content_class"] == "notebook"
+    # SPR-04: the signed manifest carries the shell's sha256 (the integrity
+    # binding for projection.html — same mechanism as audio_sha256).
+    assert manifest["projection_sha256"], "projection_sha256 not stamped"
+    assert len(manifest["projection_sha256"]) == 64
     assert manifest["blocks_index"], "blocks_index empty on complex fixture"
     # blocks_index entries inside the manifest have audio_path +
     # audio_sha256 stamped by the writer.

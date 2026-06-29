@@ -41,6 +41,7 @@ try:
         ENTRY_CONTENT,
         ENTRY_EDGES,
         ENTRY_MANIFEST,
+        ENTRY_PROJECTION,
         ENTRY_SIGNATURE,
         SCHEMA_VERSION,
         _canonical_tiptap_node,
@@ -60,6 +61,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         ENTRY_CONTENT,
         ENTRY_EDGES,
         ENTRY_MANIFEST,
+        ENTRY_PROJECTION,
         ENTRY_SIGNATURE,
         SCHEMA_VERSION,
         _canonical_tiptap_node,
@@ -129,6 +131,10 @@ class ReadResult:
     # Keys the reader didn't recognise. Carried forward on a round-trip
     # save so we don't strip newer-version metadata.
     manifest_unknown_keys: dict = field(default_factory=dict)
+    # SPR-04: the raw projection.html shell bytes, or None for a pre-1.1.0
+    # container that carries no shell. A DERIVED projection — never parse it
+    # back as canonical; content_tiptap stays the source of truth.
+    projection_html: Optional[bytes] = None
 
 
 # ── Public API ──
@@ -174,6 +180,12 @@ def read_antiek(data: bytes) -> ReadResult:
         content_bytes = zf.read(ENTRY_CONTENT)
         edges_bytes = zf.read(ENTRY_EDGES) if ENTRY_EDGES in names else b""
         signature_bytes = zf.read(ENTRY_SIGNATURE)
+        # SPR-04: the self-render shell is OPTIONAL (pre-1.1.0 containers
+        # carry none). Read it if present; its integrity is checked below
+        # against the signed manifest's projection_sha256.
+        projection_bytes = (
+            zf.read(ENTRY_PROJECTION) if ENTRY_PROJECTION in names else None
+        )
 
         # Collect blocks/ entries.
         audio_blobs: dict[str, bytes] = {}
@@ -192,6 +204,7 @@ def read_antiek(data: bytes) -> ReadResult:
         known_prefixes = {
             ENTRY_MANIFEST,
             ENTRY_CONTENT,
+            ENTRY_PROJECTION,
             ENTRY_EDGES,
             ENTRY_SIGNATURE,
         }
@@ -305,11 +318,38 @@ def read_antiek(data: bytes) -> ReadResult:
                 actual,
             )
 
+    # ── Per-shell integrity (SPR-04) ──
+    # Same mechanism as audio: the shell's sha256 is in the SIGNED manifest,
+    # so a mutated shell is caught here (signature_valid -> False) without
+    # widening the Ed25519 scope. A manifest that declares a projection_sha256
+    # but ships no shell (or a mismatching one) is treated as tampered.
+    expected_projection = manifest.get("projection_sha256")
+    if expected_projection:
+        if projection_bytes is None:
+            signature_valid = False
+            _log.warning(
+                "read_antiek: manifest declares projection_sha256 but no "
+                "projection.html entry is present; treating as tampered."
+            )
+        else:
+            import hashlib
+
+            actual_projection = hashlib.sha256(projection_bytes).hexdigest()
+            if actual_projection != expected_projection:
+                signature_valid = False
+                _log.warning(
+                    "read_antiek: projection.html SHA-256 mismatch (expected "
+                    "%s, got %s); treating as tampered.",
+                    expected_projection,
+                    actual_projection,
+                )
+
     # ── Surface unknown manifest keys ──
     known_top = {
         "schema_version", "content_class", "document_id", "parent_document_id",
         "created_at", "creator_user_id", "creator_pubkey",
         "title", "notebook_id", "format_version", "edges_present",
+        "projection_sha256",
         "blocks_index",
     }
     unknown = {k: v for k, v in manifest.items() if k not in known_top}
@@ -337,6 +377,7 @@ def read_antiek(data: bytes) -> ReadResult:
         audio_blobs=audio_blobs,
         signature_valid=signature_valid,
         manifest_unknown_keys=unknown,
+        projection_html=projection_bytes,
     )
 
 
