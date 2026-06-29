@@ -208,6 +208,16 @@ import from there; they do NOT redefine palette values.
 
 from __future__ import annotations
 
+from services.html_projection import tokens
+
+from . import bar_chart as _bar_chart_module
+from . import cite_block as _cite_block_module
+from . import dep_graph as _dep_graph_module
+from . import donut as _donut_module
+from . import sparkline as _sparkline_module
+from . import stat_chip as _stat_chip_module
+from . import timeline as _timeline_module
+
 # The seven widget kinds, in the canonical order the spec lists them.
 # Used by the fan-out builders + any registry/dispatch. A tuple (not a
 # set) so the order is deterministic.
@@ -221,4 +231,58 @@ WIDGET_KINDS = (
     "cite_block",
 )
 
-__all__ = ["WIDGET_KINDS"]
+stat_chip = _stat_chip_module.render
+bar_chart = _bar_chart_module.render
+sparkline = _sparkline_module.render
+donut = _donut_module.render
+timeline = _timeline_module.render
+dep_graph = _dep_graph_module.render
+cite_block = _cite_block_module.render
+
+
+def _stat_chip_adapter(kind: str, attrs: dict) -> str:
+    return _stat_chip_module.render(attrs)
+
+
+def _bar_chart_adapter(kind: str, attrs: dict) -> str:
+    return _bar_chart_module.render(attrs)
+
+
+def _sparkline_adapter(kind: str, attrs: dict) -> str:
+    return _sparkline_module.render(attrs)
+
+
+def _donut_adapter(kind: str, attrs: dict) -> str:
+    return _donut_module.render(attrs)
+
+
+def _timeline_adapter(kind: str, attrs: dict) -> str:
+    return _timeline_module.render(attrs)
+
+
+def _dep_graph_adapter(kind: str, attrs: dict) -> str:
+    return _dep_graph_module.render(attrs)
+
+
+def _cite_block_adapter(kind: str, attrs: dict) -> str:
+    return _cite_block_module.render(attrs)
+
+
+tokens.register_widget("stat_chip", _stat_chip_adapter)
+tokens.register_widget("bar_chart", _bar_chart_adapter)
+tokens.register_widget("sparkline", _sparkline_adapter)
+tokens.register_widget("donut", _donut_adapter)
+tokens.register_widget("timeline", _timeline_adapter)
+tokens.register_widget("dep_graph", _dep_graph_adapter)
+tokens.register_widget("cite_block", _cite_block_adapter)
+
+__all__ = [
+    "WIDGET_KINDS",
+    "stat_chip",
+    "bar_chart",
+    "sparkline",
+    "donut",
+    "timeline",
+    "dep_graph",
+    "cite_block",
+]
