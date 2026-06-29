@@ -925,7 +925,7 @@ describe("MasterMdViewer — artifact-export affordance (SPR-05 M5)", () => {
     );
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(String(apiFetchMock.mock.calls[0][0])).toContain(
-      "/api/syntheses/syn-9/artifact.html",
+      "/api/syntheses/syn-9/artifact?format=html",
     );
   });
 });

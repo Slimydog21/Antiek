@@ -188,6 +188,16 @@ function composedReviewDueByClaim(
 // surface constant; tuning it never touches the physics.
 const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 
+// SPR-08 M4 — the export formats, presented with EQUAL prominence + neutral
+// copy. A file-biased offer (pushing .antiek over the plain URL/HTML view)
+// would manufacture exactly the demand signal the gate measures, so order is
+// fixed and labels are plain — no "✨ new format ✨".
+const EXPORT_FORMATS: { id: string; label: string; ext: string }[] = [
+  { id: "html", label: "HTML", ext: "html" },
+  { id: "antiek", label: ".antiek", ext: "antiek" },
+  { id: "antiek_html", label: ".antiek.html", ext: "antiek.html" },
+];
+
 export default function MasterMdViewer({
   synthesis,
 }: {
@@ -203,13 +213,13 @@ export default function MasterMdViewer({
   const [exporting, setExporting] = useState(false);
   const synthesisId = synthesis.synthesisId;
 
-  async function handleExportArtifact(): Promise<void> {
+  async function handleExportArtifact(format: string): Promise<void> {
     if (!synthesisId || exporting) return;
     setExporting(true);
     setExportError(null);
     try {
       const resp = await apiFetch(
-        `${API_BASE}/api/syntheses/${encodeURIComponent(synthesisId)}/artifact.html`,
+        `${API_BASE}/api/syntheses/${encodeURIComponent(synthesisId)}/artifact?format=${encodeURIComponent(format)}`,
       );
       if (resp.status === 403) {
         const body = (await resp.json().catch(() => null)) as
@@ -225,10 +235,12 @@ export default function MasterMdViewer({
         return;
       }
       const blob = await resp.blob();
+      const ext =
+        EXPORT_FORMATS.find((f) => f.id === format)?.ext ?? "html";
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `synthesis-${synthesisId}.html`;
+      anchor.download = `synthesis-${synthesisId}.${ext}`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -334,12 +346,24 @@ export default function MasterMdViewer({
             <div className="mb-3">
               <button
                 type="button"
-                onClick={handleExportArtifact}
+                onClick={() => handleExportArtifact("html")}
                 disabled={exporting}
                 className="text-xs font-mono underline decoration-dotted underline-offset-2 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
               >
                 {exporting ? "Exporting…" : "Export artifact"}
               </button>
+              {/* SPR-08 M4 — the other formats, equal prominence, neutral copy. */}
+              {EXPORT_FORMATS.slice(1).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => handleExportArtifact(f.id)}
+                  disabled={exporting}
+                  className="ml-3 text-xs font-mono underline decoration-dotted underline-offset-2 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
+                >
+                  {f.label}
+                </button>
+              ))}
               {exportError && (
                 <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
                   Export refused: {exportError}
