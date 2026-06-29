@@ -114,6 +114,180 @@ TOKENS_CSS: Final[str] = """\
 """
 
 
+# ── Lemon-UI widget palette + geometry (HPRJ SPR-03) ──
+#
+# SPR-03 builds the WIDGET LIBRARY: 7 pure-function SVG/CSS widgets
+# (stat_chip, bar_chart, sparkline, donut, timeline, dep_graph,
+# cite_block). These widgets have their OWN visual language — the
+# Lemon-UI token palette — which is DISTINCT from the renderer-chrome
+# palette in TOKENS_CSS above. The two palettes intentionally differ:
+#
+#   * TOKENS_CSS (--antiek-*) is the PROJECTION CHROME — the container
+#     blocks, footers, tombstones the renderer emits. It is byte-pinned
+#     by the determinism tests (M5 renders the golden corpus and
+#     byte-compares, and the rendered HTML embeds TOKENS_CSS verbatim),
+#     so it MUST NOT change shape. It stays exactly as SPR-02 shipped.
+#
+#   * The Lemon-UI palette below is the WIDGET language — chunky 2px
+#     black borders, 4px offset hard shadows, a yellow accent, a blue
+#     primary, and the success/warning/danger/info semantic set. Widgets
+#     read THESE constants (never the --antiek-* vars) so a widget's
+#     bytes are a function of this palette alone.
+#
+# WHY A SEPARATE PALETTE AND NOT THE CHROME PALETTE: the chrome palette
+# is a constrained PostHog-feel neutral set (one accent, one warn). The
+# widget library needs the full semantic set (success/warning/danger/
+# info) for categorical charts, donut segments, and stat-chip deltas —
+# colors the chrome palette deliberately lacks. Giving widgets their
+# own palette means SPR-03 adds here without reworking the chrome
+# (additive, non-breaking), and a future operator-theme override
+# (SPR-04) can retone one without touching the other.
+#
+# Determinism: every constant below is a literal. No wall-clock, no
+# randomness, no dict/set iteration. Widgets that index these MUST
+# iterate in a fixed, declared order (see e.g. CATEGORY_COLORS below)
+# so two renders of the same data are byte-identical.
+
+# ── Core palette ──
+LEMON_PRIMARY: Final[str] = "#1d4aff"
+"""The Lemon-UI primary — a saturated royal blue. The default fill for a
+primary affordance (a selected bar, a primary stat, the dep-graph root
+node)."""
+
+LEMON_ACCENT: Final[str] = "#F9BD2B"
+"""The Lemon-UI accent — a warm sun-yellow. The highlight/featured fill:
+a featured bar, the sparkline stroke, the active timeline node, the
+donut's leading slice. This is the brand hook that makes a widget read
+Lemon-UI."""
+
+LEMON_INK: Final[str] = "#0F1419"
+"""Near-black ink for text, axes, and the hard 2px borders + offset
+shadow cast. Same ink as the chrome palette's surface text so a widget
+embedded in a projection shares its text color with the surrounding
+chrome (no color jump at the widget boundary)."""
+
+LEMON_SURFACE: Final[str] = "#FFFFFF"
+"""The widget card / SVG background. White so the offset shadow reads
+and the categorical fills pop."""
+
+# ── Semantic set (success / warning / danger / info) ──
+# Used for stat-chip deltas (up = success, down = danger), donut
+# segments, and any widget state that carries a severity. Each is a
+# literal; the ORDER of this tuple is the deterministic dispatch order
+# a widget MUST use when mapping categories to colors (so the same
+# category list always maps to the same color sequence).
+LEMON_SUCCESS: Final[str] = "#2EA043"
+LEMON_WARNING: Final[str] = "#D29922"
+LEMON_DANGER: Final[str] = "#DA3633"
+LEMON_INFO: Final[str] = "#1F6FEB"
+
+# ── Neutrals ──
+# A 5-step neutral ramp for muted/secondary widget surfaces: axis text,
+# gridlines, unfilled bars, a donut's "other" slice. Ordered light→dark
+# so a widget can step down emphasis deterministically.
+LEMON_NEUTRALS: Final[tuple[str, ...]] = (
+    "#F4F7FA",  # 0 — panel/inset background
+    "#DCE5ED",  # 1 — divider / gridline
+    "#9AB0C0",  # 2 — muted bar / secondary segment
+    "#4F5F70",  # 3 — secondary text / axis label
+    "#0F1419",  # 4 — ink (== LEMON_INK)
+)
+
+# ── Tag tints ──
+# Soft background + matching ink for pill/tag chips (a stat_chip's
+# label, a cite_block's source-type tag, a timeline node's kind). Each
+# tint is a (background, ink) pair. The ORDER of this tuple is the
+# deterministic dispatch order for tinting categories.
+LEMON_TAG_TINTS: Final[tuple[tuple[str, str], ...]] = (
+    ("#EEF2FF", "#1d4aff"),  # primary tint — blue
+    ("#FFF7E0", "#8a6500"),  # accent tint — yellow
+    ("#E6F4EA", "#1a6b33"),  # success tint — green
+    ("#FFE9E7", "#9a1f1c"),  # danger tint — red
+    ("#E8F1FF", "#0a4a9c"),  # info tint — blue
+    ("#EEF1F4", "#384858"),  # neutral tint — slate
+)
+
+# ── Categorical dispatch sequence ──
+# The ordered color sequence a categorical widget (bar_chart, donut,
+# dep_graph node fills) MUST walk when assigning colors to categories.
+# Walking this tuple in order — NOT a dict/set — is what makes
+# "categories [A, B, C]" always map to [accent, primary, info] and
+# renders byte-identical across processes. The accent leads (the
+# featured/first category carries the Lemon-UI brand hook).
+LEMON_CATEGORY_COLORS: Final[tuple[str, ...]] = (
+    LEMON_ACCENT,    # 0 — first category (brand hook)
+    LEMON_PRIMARY,   # 1
+    LEMON_INFO,      # 2
+    LEMON_SUCCESS,   # 3
+    LEMON_WARNING,   # 4
+    LEMON_DANGER,    # 5
+    LEMON_NEUTRALS[2],  # 6+ — overflow stays muted, deterministic
+)
+
+# ── Geometry ──
+LEMON_BORDER_WIDTH: Final[str] = "2px"
+"""Every Lemon-UI widget surface carries a 2px solid LEMON_INK border.
+This is the load-bearing Lemon-UI geometry constant — the chunky black
+outline is what makes a widget read Lemon-UI rather than flat-SaaS."""
+
+LEMON_BORDER: Final[str] = f"{LEMON_BORDER_WIDTH} solid {LEMON_INK}"
+"""The full border shorthand a widget emits: ``2px solid #0F1419``."""
+
+LEMON_SHADOW: Final[str] = f"4px 4px 0 0 {LEMON_INK}"
+"""The Lemon-UI offset hard shadow: 4px down, 4px right, 0 blur, 0
+spread, cast in ink. No blur — a hard stamp-printed shadow, not a soft
+Material elevation. Applied to every elevated widget surface (cards,
+chips, nodes)."""
+
+LEMON_RADIUS: Final[str] = "6px"
+"""Corner radius for widget cards/chips. Matches the chrome radius
+family (tokens.css --radius: 6px) so a widget's corners agree with the
+surrounding projection chrome."""
+
+# ── Spacing scale ──
+# A 4px-base spacing scale (== Tailwind's base unit) so widget padding,
+# gaps, and SVG insets come from one ladder. Ordered; widgets index by
+# integer step. Literal values (not calc) so emitted CSS/SVG bytes are
+# stable.
+LEMON_SPACING: Final[tuple[str, ...]] = (
+    "0",      # 0
+    "2px",    # 1 — hairline gap
+    "4px",    # 2 — base unit
+    "8px",    # 3 — small padding
+    "12px",   # 4 — card padding
+    "16px",   # 5 — block gap
+    "24px",   # 6 — section gap
+)
+
+# ── Widget stylesheet (inlined CSS for widget surfaces) ──
+# Widgets emit their own inline <style> (or class attributes) drawn
+# from this palette. This string is the shared widget-surface CSS a
+# widget MAY inline at the top of its output so repeated widgets share
+# one rule block. It is OPTIONAL — a widget may also emit inline
+# styles directly. Either way, the bytes come from the constants above
+# so the palette is the single source of truth.
+#
+# Like TOKENS_CSS: no @import, no url(), no expression(). The
+# zero-script gate (gate.py) runs on the full projection, widgets
+# included, so this CSS MUST be script-free — it is (plain literals).
+# Built as an f-string so EVERY color + geometry value DERIVES from the
+# atomic constants above — no duplicated hex literal lives in this string.
+# This is the M1 "tokens are the single source of truth" contract, and it
+# is mechanically enforced by ``tests/test_tokens_css_derives.py`` (every
+# ``#rrggbb`` in this CSS must trace to a non-``_CSS`` LEMON_* constant).
+# The interpolated output is byte-identical to the prior hand-written CSS.
+LEMON_WIDGET_CSS: Final[str] = f"""\
+.lemon{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:{LEMON_INK};background:{LEMON_SURFACE};border:{LEMON_BORDER};border-radius:{LEMON_RADIUS};box-shadow:{LEMON_SHADOW};}}
+.lemon-card{{padding:{LEMON_SPACING[4]};}}
+.lemon-label{{font-size:.8rem;font-weight:600;color:{LEMON_NEUTRALS[3]};text-transform:uppercase;letter-spacing:.04em;}}
+.lemon-value{{font-size:1.5rem;font-weight:700;color:{LEMON_INK};}}
+.lemon-muted{{color:{LEMON_NEUTRALS[3]};font-size:.85rem;}}
+.lemon-tag{{display:inline-block;padding:{LEMON_SPACING[1]} {LEMON_SPACING[3]};border-radius:9999px;font-size:.75rem;font-weight:600;}}
+.lemon-axis{{stroke:{LEMON_NEUTRALS[2]};stroke-width:1;}}
+.lemon-grid{{stroke:{LEMON_NEUTRALS[1]};stroke-width:1;}}
+"""
+
+
 # ── Widget-call seam (SPR-03 target, empty in SPR-02) ──
 
 
@@ -180,6 +354,23 @@ def _escape_widget_kind(kind: str) -> str:
 
 __all__ = [
     "TOKENS_CSS",
+    "LEMON_PRIMARY",
+    "LEMON_ACCENT",
+    "LEMON_INK",
+    "LEMON_SURFACE",
+    "LEMON_SUCCESS",
+    "LEMON_WARNING",
+    "LEMON_DANGER",
+    "LEMON_INFO",
+    "LEMON_NEUTRALS",
+    "LEMON_TAG_TINTS",
+    "LEMON_CATEGORY_COLORS",
+    "LEMON_BORDER_WIDTH",
+    "LEMON_BORDER",
+    "LEMON_SHADOW",
+    "LEMON_RADIUS",
+    "LEMON_SPACING",
+    "LEMON_WIDGET_CSS",
     "WidgetRenderer",
     "register_widget",
     "render_widget",
