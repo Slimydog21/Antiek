@@ -1397,6 +1397,10 @@ def create_app(
     # route wires the in-path zero-script gate + 403-with-reason on refusal.
     from .synthesis_artifact import register_synthesis_artifact_routes
     register_synthesis_artifact_routes(app)
+    # HPRJ SPR-06 — notebook-artifact export: GET /api/notebooks/{id}/artifact
+    # (?format=html|antiek|antiek_html). Rights filter in adapt_notebook_for_export.
+    from .notebook_artifact import register_notebook_artifact_routes
+    register_notebook_artifact_routes(app)
     # Read SPR-09 — ad-border surfaces: per-window frame-attention telemetry
     # (composes the SPR-05 accrual engine + the one escrow seam; accrues, never
     # disburses) + reader slot fill (house fill is the zero-buyer default).
