@@ -110,7 +110,7 @@ describe("Outline — no id, honest generate, real editor", () => {
   it("surfaces AIActionFailure (no fake draft) when generation 503s without keys", async () => {
     getSectionBlocksMock.mockResolvedValue([block()]);
     generateSectionMock.mockRejectedValue(
-      new ApiError("generation unavailable", 503, "creative_writer not in dispatch config"),
+      new ApiError("generation unavailable", 503, "dispatch provider unavailable"),
     );
     render(
       <Outline deliverableId="dlv-1" sections={[section({ block_count: 1 })]} onChanged={vi.fn()} />,
