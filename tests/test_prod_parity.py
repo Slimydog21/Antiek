@@ -195,6 +195,106 @@ def test_run_live_flywheel_all_clean_exits_zero(monkeypatch):
     assert rc == 0, "SHA match + providers + live flywheel must exit 0"
 
 
+def test_run_auth_probe_composes_after_parity_pass(monkeypatch):
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(build_sha=_GOOD_SHA, providers=["openrouter"]),
+    )
+    seen = {}
+
+    def fake_run_auth_probe(base_url, *, origin="https://antiek.ai"):
+        seen["base_url"] = base_url
+        seen["origin"] = origin
+        return 0
+
+    monkeypatch.setattr(parity, "run_auth_probe", fake_run_auth_probe)
+
+    rc = parity.run(
+        "https://api.antiek.ai/health",
+        expected_sha=_GOOD_SHA,
+        auth_probe=True,
+        auth_origin="https://app.antiek.ai",
+    )
+
+    assert rc == 0
+    assert seen == {
+        "base_url": "https://api.antiek.ai/health",
+        "origin": "https://app.antiek.ai",
+    }
+
+
+def test_run_auth_probe_is_skipped_when_parity_fails(monkeypatch):
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(build_sha=_OTHER_SHA, providers=["openrouter"]),
+    )
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("auth_probe must not run after a parity failure")
+
+    monkeypatch.setattr(parity, "run_auth_probe", fail_if_called)
+
+    rc = parity.run(
+        "https://api.antiek.ai",
+        expected_sha=_GOOD_SHA,
+        auth_probe=True,
+    )
+
+    assert rc == 1
+
+
+def test_run_auth_probe_env_base_enables_probe_without_flag(monkeypatch):
+    monkeypatch.setenv("ANTIEK_API_BASE", "https://api.antiek.ai/env-base/")
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(build_sha=_GOOD_SHA, providers=["openrouter"]),
+    )
+    seen = {}
+
+    def fake_run_auth_probe(base_url, *, origin="https://antiek.ai"):
+        seen["base_url"] = base_url
+        seen["origin"] = origin
+        return 0
+
+    monkeypatch.setattr(parity, "run_auth_probe", fake_run_auth_probe)
+
+    rc = parity.run("https://ignored.example", expected_sha=_GOOD_SHA)
+
+    assert rc == 0
+    assert seen == {
+        "base_url": "https://api.antiek.ai/env-base",
+        "origin": "https://antiek.ai",
+    }
+
+
+def test_run_auth_probe_maps_stage_failure_to_exit_one(monkeypatch, capsys):
+    from tools.auth_probe import StageResult
+
+    monkeypatch.setattr(
+        parity,
+        "fetch_health",
+        lambda url, **kw: _fake_health(build_sha=_GOOD_SHA, providers=["openrouter"]),
+    )
+    monkeypatch.setattr(
+        "tools.auth_probe.run_stages",
+        lambda base_url, origin, email: [
+            StageResult("health", "A", True, 200, "status ok"),
+            StageResult("auth_request_dry_run", "B", False, 500, "boom"),
+        ],
+    )
+
+    rc = parity.run("https://api.antiek.ai", expected_sha=_GOOD_SHA, auth_probe=True)
+
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert '"name": "health"' in captured.out
+    assert '"pass": false' in captured.out
+    assert "prod-parity: auth-probe FAIL" in captured.err
+
+
 # ── run() exit-code level: the load-bearing "it must red, not log" cases ─
 #
 # These monkeypatch the network fetch so no live call is made, and assert
