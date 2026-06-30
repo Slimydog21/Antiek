@@ -84,6 +84,7 @@ def test_caddy_allowlist_pins_economics_dashboard_routes() -> None:
         line = next(row for row in fh if "@api_routes path" in row)
     assert "/marketplace*" in line
     assert "/me/payouts*" in line
+    assert "/operator/advertiser-campaigns*" in line
     assert "/operator/payouts/dashboard*" in line
     assert "/operator*" not in line
 

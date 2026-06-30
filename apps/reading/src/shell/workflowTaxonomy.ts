@@ -580,8 +580,10 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     workflow: "shared",
     label: "Advertiser console",
     blurb: "Operator-only ad inventory + campaign console (Sprint 23-24).",
-    built: false,
-    sharedReason: "Ad-economics console (Sprint 23-24); cross-cutting, unrouted.",
+    built: true,
+    route: "/operator/advertiser-campaigns",
+    sharedReason:
+      "Operator-only ad-economics console (Sprint 23-24); manual campaign management, not advertiser self-service.",
   },
   {
     id: "CreatorPayouts",

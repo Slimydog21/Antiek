@@ -1701,6 +1701,10 @@ def create_app(
     # Sprint 23-24 phase 5 — advertiser campaign performance.
     from .campaigns import register_campaign_routes
     register_campaign_routes(app)
+    from .operator_advertiser_campaigns import (
+        register_operator_advertiser_campaign_routes,
+    )
+    register_operator_advertiser_campaign_routes(app)
     # Read SPR-01 — servable-corpus query API. The Library (SPR-02) +
     # Reader (SPR-03) consume this; the full-text endpoint routes through
     # the deny-by-default gate in substrate/books/serve.py.
