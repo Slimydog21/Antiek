@@ -503,7 +503,7 @@ CREATE TABLE IF NOT EXISTS federation_config (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS payout_transfers (
     transfer_attempt_id     TEXT PRIMARY KEY,
-    decision_id             TEXT NOT NULL,
+    decision_id             TEXT NOT NULL UNIQUE,
     stripe_transfer_id      TEXT,
     recipient_account_id    TEXT,
     amount_usd_cents        INTEGER NOT NULL,
@@ -515,6 +515,8 @@ CREATE TABLE IF NOT EXISTS payout_transfers (
     initiated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_payout_transfers_decision
+    ON payout_transfers(decision_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_transfers_decision_unique
     ON payout_transfers(decision_id);
 CREATE INDEX IF NOT EXISTS idx_payout_transfers_recipient
     ON payout_transfers(recipient_account_id);
