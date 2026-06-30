@@ -65,9 +65,10 @@ export type WindowPageRenderer =
  *
  *   1. CONTRACT-VERIFIED route pages — pages that ALSO have a full-page route
  *      and satisfy the (a)+(b) window-adaptation contract (drop opaque bg +
- *      fill container, no internal dock). Stats + Library carry the two-line
- *      `useInWindow()` diff (SPR-09 M4); more can be added as they are verified
- *      contract-safe. These are mapped from routes via ROUTE_TO_KIND below.
+ *      fill container, no internal dock). Stats, Library, and Documents carry
+ *      the `useInWindow()` route/window diff (SPR-09 M4); more can be added as
+ *      they are verified contract-safe. These are mapped from routes via
+ *      ROUTE_TO_KIND below.
  *
  *   2. WINDOW-NATIVE pages — purpose-built to render ONLY in a window, so they
  *      are authored glass-native and need no (a)+(b) route contract. `subaction`
@@ -88,6 +89,10 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
   library: {
     title: "Library",
     renderer: lazy(() => import("../../modes/Library")),
+  },
+  documents: {
+    title: "Documents",
+    renderer: lazy(() => import("../../modes/DocumentsIndex")),
   },
   // SPR-04 M1 — the sub-action window. Window-native (no full-page route),
   // hosted when a product is activated from the launcher. Reads { workflow }
@@ -113,6 +118,7 @@ export function isWindowEligible(kind: string): kind is WindowEligibleKind {
 const ROUTE_TO_KIND: Record<string, WindowEligibleKind> = {
   "/stats": "stats",
   "/library": "library",
+  "/documents": "documents",
 };
 
 export function windowKindForRoute(route: string | undefined): WindowEligibleKind | null {
