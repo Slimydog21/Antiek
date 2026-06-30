@@ -45,7 +45,7 @@ would misreport the product. No PostHog voice, mascot, or palette.
 variables (for Storybook + raw CSS); `tailwind.config.js` exposes it as
 utilities. **These three must agree** — drift is a bug.
 
-- **Brand (invariant across modes):** `sun #F5DF24` (the constant edge), `sun-deep #B89A00` (day) / `#8A7300` (night), `sun-glow`.
+- **Brand (invariant across modes):** `sun #F5DF24` (the constant edge), weathered `sun-deep #9C8636` (day) / `#84722F` (night), `sun-glow #F1E08F` (day) / `#F2DE9A` (night).
 - **Day surface ramp:** `ice-0 #FFFFFF` → `ice-4 #DCE5ED` → `glacial-1/2` → `shadow-1 #4F5F70` → `shadow-2 #384858` → `ink #0F1419`.
 - **Night surface ramp:** `void #040508` → `space-1/2` → `charcoal-1/2` → `slate-1/2` → `moonlight #6B7585` → `starlight #C4CCD7` → `bright #EEF1F6`.
 - **Shadows (chunky offset):** day `z1/z2/z3 = 3/5/8px 3/5/8px 0 0 ink`; night casts the same offsets in `sun-deep` (the edge glows).

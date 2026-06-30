@@ -5,7 +5,7 @@
 // Werner + bottom-bar accent. Day = layered off-whites + glacials. Night =
 // ten-layer off-black "majestic night sky".
 // Source of truth: src/design/tokens.ts (+ tokens.css for the rgba/var tokens).
-// Keep these in sync — every value carrying an AMS-SPR-01 note mirrors one there.
+// Keep these in sync — every value carrying an AMS-SPR-01/09 note mirrors one there.
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -15,8 +15,12 @@ export default {
       colors: {
         // THE brand — invariant across modes
         sun: "#F5DF24",
-        "sun-deep": "#B89A00",
-        "sun-glow": "#FCE85E",
+        // Weathered sun chrome (AMS-SPR-09 + D17 closure). These static
+        // Tailwind day utilities mirror tokens.ts `sun.deep.day` /
+        // `sun.glow.day`; night-specific sun depth is mirrored in boxShadow
+        // below because Tailwind cannot media-swap a single color key.
+        "sun-deep": "#9C8636",
+        "sun-glow": "#F1E08F",
 
         // Neutral "light" chrome border (AMS-SPR-01). Was the default border
         // = sun #F5DF24; the operator asked to "replace that yellowness with
@@ -85,11 +89,12 @@ export default {
         z2: "5px 5px 0 0 #0F1419",
         z3: "8px 8px 0 0 #0F1419",
         lift: "12px 12px 0 0 #0F1419",
-        // Night: sun-deep-cast glow
-        "z1-night": "3px 3px 0 0 #8A7300",
-        "z2-night": "5px 5px 0 0 #8A7300",
-        "z3-night": "8px 8px 0 0 #8A7300",
-        "lift-night": "12px 12px 0 0 #8A7300",
+        // Night: weathered sun-deep-cast glow. Mirrors tokens.ts shadow.night
+        // and tokens.css night --sun-deep (#84722F).
+        "z1-night": "3px 3px 0 0 #84722F",
+        "z2-night": "5px 5px 0 0 #84722F",
+        "z3-night": "8px 8px 0 0 #84722F",
+        "lift-night": "12px 12px 0 0 #84722F",
       },
       borderColor: {
         // Default border = neutral "light" rule (AMS-SPR-01). Was the brand

@@ -53,11 +53,12 @@ diverges. Both v1 failures are now verified dead — see
 - **Hotkeys are `⌘O`/`⌘I` + per-product `⌘`-combos, not `g`-chords.** The
   `g`-chords were removed in SPR-08; the SPR-07 page's `bindingForProduct("home")
   → g h` notation is the pre-SPR-08 stale form, corrected in the write-back.
-- **The yellow re-tone is var-deep only.** SPR-09 softened the design *tokens*
-  (`apps/reading/src/design/tokens.css` + `tokens.ts`) and proved AA, but the
-  Tailwind mirror (`apps/reading/tailwind.config.js`) still carries the loud
-  hexes for ~56 utility consumers — a **disclosed follow-up**, not done here
-  (out of SPR-09 scope). Tracked as **D17** in `engineering_deferrals.md`.
+- **The yellow re-tone shipped in two steps.** SPR-09 softened the design
+  *tokens* (`apps/reading/src/design/tokens.css` + `tokens.ts`) and proved AA;
+  the Tailwind mirror was a disclosed follow-up at ship time. D17 closed that
+  follow-up on 2026-06-30 by mirroring the weathered `sun-deep` / `sun-glow`
+  values and night shadows in `apps/reading/tailwind.config.js`, with
+  `tokens.contrast.test.ts` guarding future drift.
 - **v2 is the build default; v1 is the wired rollback.** `VITE_ANTIEK_UI ?? "v2"`
   selects the v2 shell; `VITE_ANTIEK_UI=v1` + redeploy falls back to
   `apps/reading/src/AppLegacy.tsx`. Rollback is a flag flip, not a revert.

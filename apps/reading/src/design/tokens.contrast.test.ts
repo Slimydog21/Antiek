@@ -43,6 +43,8 @@
 import { describe, expect, it } from "vitest";
 
 import { contrastRatio, over, relativeLuminance, type Rgb, type Rgba } from "../../e2e/_ams/visible";
+// @ts-expect-error tailwind.config.js is the JS runtime config this guard verifies.
+import tailwindConfig from "../../tailwind.config.js";
 
 import { barAccent, shadow, sun, sunLight, surface } from "./tokens";
 
@@ -187,6 +189,26 @@ describe("AMS-SPR-09 token re-tone — every consumed pair still clears WCAG", (
       const glowN = hex(sun.glow.night);
       const vn = rgba(sun.highlight.night);
       expect([vn.r, vn.g, vn.b]).toEqual([glowN.r, glowN.g, glowN.b]);
+    });
+  });
+
+  describe("D17 — Tailwind mirror stays in sync with the weathered sun tokens", () => {
+    const extendedTheme = tailwindConfig.theme?.extend as {
+      colors?: Record<string, string>;
+      boxShadow?: Record<string, string>;
+    };
+
+    it("mirrors sun.deep/glow day utilities and keeps bar-accent loud", () => {
+      expect(extendedTheme.colors?.["sun-deep"]).toBe(sun.deep.day);
+      expect(extendedTheme.colors?.["sun-glow"]).toBe(sun.glow.day);
+      expect(extendedTheme.colors?.["bar-accent"]).toBe(barAccent.day);
+    });
+
+    it("mirrors night sun-deep shadows", () => {
+      expect(extendedTheme.boxShadow?.["z1-night"]).toBe(shadow.night.z1);
+      expect(extendedTheme.boxShadow?.["z2-night"]).toBe(shadow.night.z2);
+      expect(extendedTheme.boxShadow?.["z3-night"]).toBe(shadow.night.z3);
+      expect(extendedTheme.boxShadow?.["lift-night"]).toBe(shadow.night.lift);
     });
   });
 

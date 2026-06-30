@@ -95,17 +95,14 @@ real `KREA_API_TOKEN`.
   Storybook regressions. They are flagged here for the UI-redesign-track owner;
   they are out of scope for this shell re-execution and do not gate the v2 shell
   (whose own `ams-real` matrix is fully green).
-- **Yellow re-tone is var-deep only (Tailwind mirror follow-up).** SPR-09 softened
-  the CSS custom properties (`--sun-glow`, `--sun-hl-*`, `--sun-deep` → ~0.34
-  chroma + a new `--sun-light` ramp) but, per its ownership boundary, did **not**
-  touch `apps/reading/tailwind.config.js`, which still carries the loud
-  `sun-deep: #B89A00` / `sun-glow: #FCE85E`. ~56 component consumers that resolve
-  through Tailwind utilities (`text-sun-deep`, `bg-sun-glow`, `border-sun-deep`)
-  therefore still render the loud hue on screen. To fully realize "softer chrome",
-  a future sprint should re-tone the `tailwind.config.js` mirror to match
-  (`sun-deep → #9C8636`, `sun-glow → #F1E08F` day), **keeping** `bg-sun` /
-  `--bar-accent` loud (`#F5DF24`) and re-running the contrast + ams-real gates.
-  No CI guard currently catches this var↔Tailwind divergence.
+- **Yellow re-tone Tailwind mirror closed (2026-06-30).** SPR-09 softened the
+  CSS custom properties (`--sun-glow`, `--sun-hl-*`, `--sun-deep` → ~0.34
+  chroma + a new `--sun-light` ramp). The D17 follow-up now mirrors those
+  weathered day values in `apps/reading/tailwind.config.js`
+  (`sun-deep #9C8636`, `sun-glow #F1E08F`) and mirrors the night shadow glow
+  (`#84722F`) while keeping `bg-sun` / `--bar-accent` loud (`#F5DF24`).
+  `tokens.contrast.test.ts` imports Tailwind config and asserts the mirror
+  remains byte-identical to `tokens.ts`, so var↔Tailwind drift now reds.
 - **Minor deferred nits** (tracked in the spec ledger, none gating): SPR-08 binds
   `⌘G` (browser Find-Next, page-interceptable) to a Research sub-action — consider
   a punctuation key; the `SCENE_MARGIN_REGION` literal is reused across specs (now
