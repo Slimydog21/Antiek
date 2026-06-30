@@ -29,6 +29,7 @@ Failure-mode discipline (mirrors decomposer + evidence_retriever):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -61,6 +62,13 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+
+DEFAULT_PARAMETER_EXTRACTOR_TIMEOUT_S = 600.0
+PARAMETER_EXTRACTOR_TIMEOUT_ENV = "ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S"
+PARAMETER_EXTRACTOR_TIMEOUT_POLICY_ID = "parameter-extractor-fallback/timeout"
+PARAMETER_EXTRACTOR_UNEXPECTED_POLICY_ID = (
+    "parameter-extractor-fallback/unexpected-error"
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,6 +148,17 @@ def _extract_canonical_chunk_ids(evidence_block: str) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _parameter_extractor_timeout_s() -> float:
+    raw = os.environ.get(PARAMETER_EXTRACTOR_TIMEOUT_ENV)
+    if raw is None or not raw.strip():
+        return DEFAULT_PARAMETER_EXTRACTOR_TIMEOUT_S
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return DEFAULT_PARAMETER_EXTRACTOR_TIMEOUT_S
+    return max(0.001, parsed)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch + parse
 # ---------------------------------------------------------------------------
@@ -185,6 +204,54 @@ def _dispatch_and_parse(
         return None, policy_id
 
 
+async def _dispatch_and_parse_bounded(
+    prompt: str,
+    event: Event,
+    *,
+    canonical_chunk_ids: tuple[str, ...] = (),
+) -> tuple[ParameterExtractResult | None, str]:
+    """Run dispatch+parse off-loop with a bounded wait.
+
+    Historical Phase A used a loky fan-out around parameter extraction; a killed
+    parent could leave worker state wedged so the next invocation hung. The live
+    bridge must therefore never await this role unboundedly. On timeout, emit the
+    same safe empty Delivered shape as provider/parse failures.
+    """
+    timeout_s = _parameter_extractor_timeout_s()
+
+    def run_dispatch() -> tuple[ParameterExtractResult | None, str]:
+        try:
+            return _dispatch_and_parse(
+                prompt,
+                event,
+                canonical_chunk_ids=canonical_chunk_ids,
+            )
+        except TypeError as exc:
+            if "canonical_chunk_ids" not in str(exc):
+                raise
+            return _dispatch_and_parse(prompt, event)
+
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(run_dispatch),
+            timeout=timeout_s,
+        )
+    except TimeoutError:
+        print(
+            "parameter_extractor.handle: dispatch timed out after "
+            f"{timeout_s:.3f}s",
+            flush=True,
+        )
+        return None, PARAMETER_EXTRACTOR_TIMEOUT_POLICY_ID
+    except Exception as exc:
+        print(
+            "parameter_extractor.handle: dispatch raised unexpectedly — "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+        return None, PARAMETER_EXTRACTOR_UNEXPECTED_POLICY_ID
+
+
 # ---------------------------------------------------------------------------
 # Handler factory
 # ---------------------------------------------------------------------------
@@ -204,7 +271,7 @@ def make_parameter_extractor_handler(
         canonical_chunk_ids = _extract_canonical_chunk_ids(evidence_block)
 
         prompt = render_full_prompt(evidence_block=evidence_block)
-        result, policy_id = _dispatch_and_parse(
+        result, policy_id = await _dispatch_and_parse_bounded(
             prompt,
             event,
             canonical_chunk_ids=canonical_chunk_ids,

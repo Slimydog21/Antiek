@@ -36,18 +36,23 @@ actual_failure: |
   cannot make progress.
 
 harness_check_that_now_catches: |
-  GAP — there is currently no mechanism that periodically reaps stale
-  loky semaphore trackers or asserts that the worker pool is alive
-  before a parameter_extractor invocation. The phase_runner's
-  verify_phase catches missing outputs but does not detect a hung
-  call. Mitigation candidate: timeout wrapper around
-  parameter_extractor with explicit pool teardown on signal.
+  interfaces/research/api/parameter_extractor.py — the bridge now runs
+  dispatch+parse through _dispatch_and_parse_bounded(), which moves the
+  synchronous role call off the event loop and bounds the wait with
+  ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S. On timeout it emits the same safe empty
+  ParameterExtractDeliveredPayload used for provider/parse failures, stamped
+  with policy_id parameter-extractor-fallback/timeout, so the orchestrator sees
+  a typed result instead of hanging on a wedged worker/process call.
+  Covered by tests/test_parameter_extractor_bridge.py, including a deterministic
+  wedged-dispatch analogue that proves the delivered fallback is emitted.
 
-fix_commit: GAP
+fix_commit: SPR-08
 
 notes: |
   The Phase A handoff (2026-05-14) flagged this as a real failure
   mode. The compounding loop has not closed once on real data per
-  the same memory; this fixture documents one reason why. A real
-  mitigation should land before Phase 8 SkillPatchGate flips to
-  enforcing.
+  the same memory; this fixture documents one reason why. The current Antiek
+  tree no longer contains a loky-backed parameter_extractor pool, so the
+  mitigation lives at the live bridge boundary: any wedged synchronous
+  parameter_extractor call becomes a typed timeout fallback instead of blocking
+  Phase 3 indefinitely.
