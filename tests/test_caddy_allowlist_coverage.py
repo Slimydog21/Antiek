@@ -53,7 +53,7 @@ def _registered_prefixes() -> set[str]:
 
 def _allowlist_prefixes() -> set[str]:
     with open(_CADDY, encoding="utf-8") as fh:
-        line = next(l for l in fh if "@api_routes path" in l)
+        line = next(row for row in fh if "@api_routes path" in row)
     toks = line.split()[2:]  # tokens after "@api_routes" "path"
     # tokens are glob prefixes like "/ad-impressions*" or "/api/ad/*" — strip
     # the trailing "*" AND reduce to the top-level segment before comparing.
@@ -77,6 +77,14 @@ def test_caddy_allowlist_covers_every_registered_route() -> None:
         "Add each to the @api_routes path line (or, if a route is intentionally "
         "SPA-only, to _ALLOWLIST_EXCEPTIONS in this test with a reason)."
     )
+
+
+def test_caddy_allowlist_pins_marketplace_and_operator_dashboard_routes() -> None:
+    with open(_CADDY, encoding="utf-8") as fh:
+        line = next(row for row in fh if "@api_routes path" in row)
+    assert "/marketplace*" in line
+    assert "/operator/payouts/dashboard*" in line
+    assert "/operator*" not in line
 
 
 def test_drift_guard_is_not_vacuous() -> None:

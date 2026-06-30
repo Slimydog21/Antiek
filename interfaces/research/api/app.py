@@ -1694,6 +1694,10 @@ def create_app(
     # Sprint 23-24 phase 4 — creator payouts dashboard data source.
     from .creator_payouts import register_creator_payouts_routes
     register_creator_payouts_routes(app)
+    from .marketplace import register_marketplace_routes
+    register_marketplace_routes(app)
+    from .payout_dashboard import register_payout_dashboard_routes
+    register_payout_dashboard_routes(app)
     # Sprint 23-24 phase 5 — advertiser campaign performance.
     from .campaigns import register_campaign_routes
     register_campaign_routes(app)
