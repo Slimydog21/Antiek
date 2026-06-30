@@ -190,6 +190,57 @@ describe("UnifiedSearch — M1 instant local hits (no key)", () => {
     await vi.advanceTimersByTimeAsync(200);
     await screen.findByText(/Nothing in your corpus matched/i);
   });
+
+  it("selected file text searches locally and renders hits even with the input left empty", async () => {
+    corpusSearchMock.mockResolvedValue({
+      query: "file",
+      hits: [hit({ document_title: "File-Matched Book" })],
+      count: 1,
+    });
+    renderSearch("research");
+    const input = screen.getByLabelText("Unified search") as HTMLInputElement;
+    const file = new File(["margin notes about embodied cognition"], "notes.md", {
+      type: "text/markdown",
+    });
+
+    fireEvent.change(screen.getByLabelText("Choose a file to search by"), {
+      target: { files: [file] },
+    });
+
+    await waitFor(() =>
+      expect(corpusSearchMock).toHaveBeenCalledWith(
+        "margin notes about embodied cognition",
+      ),
+    );
+    expect(input.value).toBe("");
+    expect(await screen.findByText("File-Matched Book")).toBeTruthy();
+    expect(screen.getByTestId("unified-search-signal").textContent).toMatch(
+      /books like "notes\.md"/,
+    );
+  });
+
+  it("dropped file text searches locally and renders hits", async () => {
+    corpusSearchMock.mockResolvedValue({
+      query: "file",
+      hits: [hit({ document_title: "Dropped-File Book" })],
+      count: 1,
+    });
+    renderSearch("library");
+    const file = new File(["notes on probabilistic programming"], "drop.txt", {
+      type: "text/plain",
+    });
+
+    fireEvent.drop(screen.getByTestId("unified-search"), {
+      dataTransfer: { files: [file] },
+    });
+
+    await waitFor(() =>
+      expect(corpusSearchMock).toHaveBeenCalledWith(
+        "notes on probabilistic programming",
+      ),
+    );
+    expect(await screen.findByText("Dropped-File Book")).toBeTruthy();
+  });
 });
 
 describe("UnifiedSearch — M2 Enter escalates (cassette)", () => {
