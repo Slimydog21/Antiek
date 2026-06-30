@@ -68,6 +68,53 @@ The final verdict must be one of:
 - **ROLL BACK CLAIM** — structural convergence remains useful, but the product
   claim "Read is done" is withdrawn.
 
+## Executable log check
+
+The dogfood log is JSONL: one session object per line. The validator is:
+
+```bash
+python tools/activation/read_dogfood.py path/to/read-dogfood.jsonl
+```
+
+It is intentionally a **closure guard**, not a session recorder and not an AI
+quality judge. It checks that the log has the required fields, 10 distinct valid
+sessions, at least 5 sessions with live provider-backed AI, at least 3 sessions
+with citation/source tracing, at least 1 session from a non-Library door, and a
+concrete follow-up issue for every logged failure or irritation. A green result
+means the log satisfies the mechanical closure rule; the operator's session
+notes still carry the qualitative verdict.
+
+Minimal record shape:
+
+```json
+{
+  "session_id": "2026-06-30-faisal-001",
+  "date": "2026-06-30",
+  "build_sha": "abc123",
+  "url": "https://app.example/read/doc-1",
+  "operator": "Faisal",
+  "document_id": "doc-1",
+  "entry_door": "library",
+  "provider_status": "ready",
+  "live_provider_ai": true,
+  "citation_traced": true,
+  "minutes_reading": 22,
+  "steps": {
+    "1": {"status": "pass"},
+    "2": {"status": "pass"},
+    "3": {"status": "pass"},
+    "4": {"status": "pass"},
+    "5": {"status": "pass"},
+    "6": {"status": "pass"},
+    "7": {"status": "pass"}
+  }
+}
+```
+
+For pre-key walks, steps 3 and 4 may use `"status": "inert"`; those sessions do
+not satisfy the live-provider count. Any step with `"status": "fail"` or a
+non-empty `"irritation"` must include `"followup_issue": "..."`.
+
 ## CI proxy
 
 These commands remain useful before the live walk, but they do not replace it:
