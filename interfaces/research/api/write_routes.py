@@ -292,7 +292,10 @@ def get_trace_target(outline_block_id: str) -> dict:
         "kind": target.kind,
         "full_text_allowed": target.full_text_allowed,  # the no-leak bit
         "document_id": target.document_id, "document_title": target.document_title,
-        "chunk_ids": target.chunk_ids, "servability_status": target.servability_status,
+        "chunk_ids": target.chunk_ids,
+        "primary_chunk_index": target.primary_chunk_index,
+        "primary_section_path": target.primary_section_path,
+        "servability_status": target.servability_status,
         "detail": target.detail,
     }
 

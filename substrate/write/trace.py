@@ -64,6 +64,8 @@ class TraceTarget:
     document_id: str | None = None
     document_title: str | None = None
     chunk_ids: list[str] = field(default_factory=list)
+    primary_chunk_index: int | None = None
+    primary_section_path: str | None = None
     servability_status: str | None = None
     detail: str = ""
 
@@ -95,12 +97,19 @@ def resolve_trace_target(con: Any, block: OutlineBlock | str) -> TraceTarget:
     content_class, taken_down = _document_gate_state(con, chain.document_id)
     status = servability_of(content_class, taken_down=taken_down)
     full_ok = is_servable_full_text(status)
+    primary_chunk_index, primary_section_path = (
+        _primary_chunk_locator(con, chain.chunk_ids[0] if chain.chunk_ids else None)
+        if full_ok
+        else (None, None)
+    )
     return TraceTarget(
         kind="source_span" if full_ok else "servable_snippet",
         full_text_allowed=full_ok,
         document_id=chain.document_id,
         document_title=chain.document_title,
         chunk_ids=list(chain.chunk_ids),
+        primary_chunk_index=primary_chunk_index,
+        primary_section_path=primary_section_path,
         servability_status=status.value,
         detail=(
             f"servable at span (status {status.value})"
@@ -131,3 +140,25 @@ def _document_gate_state(con: Any, document_id: str) -> tuple[str | None, bool]:
         # book_assets may not exist in an older DB; absence ⇒ not taken down.
         taken_down = False
     return content_class, taken_down
+
+
+def _primary_chunk_locator(
+    con: Any,
+    chunk_id: str | None,
+) -> tuple[int | None, str | None]:
+    """Return stable locator metadata for the trace's primary chunk.
+
+    This is deliberately weaker than a ``Region``: chunk rows carry a
+    document-order index and optional section path, not a block id or char span.
+    Missing chunk rows degrade to ``None`` so a dangling edge cannot break the
+    no-leak trace endpoint.
+    """
+    if not chunk_id:
+        return None, None
+    row = con.execute(
+        "SELECT chunk_index, section_path FROM chunks WHERE chunk_id = ? LIMIT 1",
+        [chunk_id],
+    ).fetchone()
+    if row is None:
+        return None, None
+    return int(row[0]) if row[0] is not None else None, row[1]
