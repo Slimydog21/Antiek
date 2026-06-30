@@ -364,10 +364,17 @@ synthesis output. Roles, middleware, orchestration, archive — direct
 migrations with the `orchestrate.py` monolith split.
 
 **P2 — Loop 2: document wrestling.** This is the new surface and the
-differentiator. PDF render + chat panel + selection-to-question +
-streaming background note panel + question-highlight overlay +
-cross-document question→answer linking. `interfaces/reading/` and
-`processing/note_taking/` are the homes; both are net-new code.
+differentiator. The full vision remains PDF render + chat panel +
+selection-to-question + streaming background note panel +
+question-highlight overlay + cross-document question→answer linking. Historical
+notes pointed at `interfaces/reading/`; the current mounted Read surface lives
+in `apps/reading/src/modes/Reading`, with serve-gated backend support in
+`interfaces/research/api/books.py` and `substrate/books/serve_guard.py`.
+`interfaces/reading/` is now only a compatibility marker. Do not read this as
+full Loop 2 closure: activation dogfood and the deeper note-taking /
+cross-document layers still have their own gates. `processing/note_taking/`
+remains the substrate-side home for background note-taking work when that layer
+is executed.
 
 **P3 — Loop 3: trajectory consumption (RL).** No surface — the event
 log captured during Loops 1 and 2 is the training data. SFT first,
@@ -381,10 +388,15 @@ trajectories accumulate to be worth training on.
   the Rust prosody crate, voice-realtime integration). The same
   graph-population mechanic as document wrestling, but on a different
   acquisition surface. Wait until the graph + create loop is stable.
-- **Creation surface** (`interfaces/creation/` — outline editor with
-  lego-block assembly, instant prose/chart generation). Deferred not
-  because it's hard but because there's nothing in the graph to
-  assemble until Loop 2 has populated it for a while.
+- **Creation surface package** (`interfaces/creation/`). The old empty package
+  remains a compatibility marker, but the current Write loop is mounted at
+  `apps/reading/src/modes/Write` and backed by
+  `interfaces/research/api/write_routes.py` + `substrate/write/`. Product
+  hardening and live model quality still depend on provider configuration and
+  dogfood, and the original create-after-consume constraint still matters:
+  graph-backed assembly improves only as Loop 2 populates the graph. The surface
+  is no longer an unimplemented package scaffold, but creation is not declared
+  strategically complete.
 - **Training and fine-tuning.** Event logs are captured (they are the
   eventual training data) but no training happens in this build.
 - **Local model hosting.** All calls go through APIs. The dispatch
@@ -504,10 +516,11 @@ user.reject_distillation        user rejected — counter-trajectory data
 user.edit_distillation          user edited — preference signal
 ```
 
-These are emitted by `interfaces/reading/` into the same Parquet
-trajectory store as Loop 1 events. Policy_id stamps the model that
-produced each artifact, which is what lets the eventual RL pipeline
-exclude closed-weight trajectories from open-weight training.
+These are emitted by the Read surface (`apps/reading/src/modes/Reading` and
+the shared FloatMenu/event paths) into the same trajectory store as Loop 1
+events. Policy_id stamps the model that produced each artifact, which is what
+lets the eventual RL pipeline exclude closed-weight trajectories from
+open-weight training.
 
 ### 9.2 Why this is RL training data, not just telemetry
 
