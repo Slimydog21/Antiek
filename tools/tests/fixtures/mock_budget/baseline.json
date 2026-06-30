@@ -1,0 +1,15 @@
+{
+  "captured_at": "2026-06-30T12:00:00+00:00",
+  "census_tree_sha": "fixture-baseline-sha",
+  "modules": {
+    "tests/fixture_alpha.py": {
+      "locked_ratio": 0.5,
+      "n_tests": 4
+    },
+    "tests/fixture_beta.py": {
+      "locked_ratio": 0.25,
+      "n_tests": 8
+    }
+  },
+  "suite_locked_mock_ratio": 0.3333
+}
