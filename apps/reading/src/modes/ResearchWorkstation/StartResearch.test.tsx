@@ -1,81 +1,72 @@
 /**
- * StartResearch.test.tsx — the Research-home start flow (UI four-product
- * simplify, milestones 1 + 2).
+ * StartResearch.test.tsx — compatibility contract after SPR-08.
  *
- * Pins the behaviour the operator complaint was about ("I can't even
- * start a research"): a fresh `/` MUST present a real, working composer
- * — autofocused input, a visible Ask button (disabled under 3 chars,
- * enabled past it), example pills that populate the input — and
- * submitting MUST call the real `startInvestigation` and then surface a
- * genuine working state driven by the REAL event stream (here mocked at
- * the hook boundary so jsdom needs no WebSocket), not a silent `…`.
- *
- * The POST and the stream are mocked at their module boundaries so this
- * is a true unit of the start surface; we assert it calls the sanctioned
- * `startInvestigation` (never reimplements it) and renders the live
- * event count + cost from the streamed events.
+ * StartResearch is no longer its own composer. It is a deprecated export that
+ * keeps historical imports alive while rendering the single UnifiedSearch
+ * research surface.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-import type { Event } from "../../generated/types";
+import type { ProviderKeysState } from "../../hooks/useProviderKeys";
+import type { StartInvestigationState } from "../../hooks/useStartInvestigation";
 
-const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
+const { investigationStateRef, providerKeysRef, openDocumentMock } = vi.hoisted(
   () => ({
-    startInvestigationMock: vi.fn(),
-    navigateMock: vi.fn(),
-    eventStreamState: {
+    openDocumentMock: vi.fn(),
+    investigationStateRef: {
       current: {
-        events: [] as Event[],
-        status: "closed" as "connecting" | "open" | "closed" | "error",
-        reconnects: 0,
-      },
+        startedId: null,
+        phase: "idle",
+        events: [],
+        liveCost: 0,
+        failed: false,
+        failureReason: null,
+        error: null,
+        busy: false,
+        submit: vi.fn(),
+        reset: vi.fn(),
+      } as StartInvestigationState,
+    },
+    providerKeysRef: {
+      current: {
+        status: "ready" as const,
+        providers: ["deepseek"],
+        refresh: vi.fn(),
+      } as ProviderKeysState & { refresh: () => void },
     },
   }),
 );
 
-vi.mock("../../lib/api", async (orig) => {
-  const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, startInvestigation: startInvestigationMock };
+vi.mock("../../api/corpusSearch", async (orig) => {
+  const actual = await orig<typeof import("../../api/corpusSearch")>();
+  return { ...actual, corpusSearch: vi.fn() };
 });
 
-// Mock the stream at the hook boundary — useStartInvestigation reads it.
-// We control its returned state per-test so we exercise the REAL phase
-// logic without opening a socket in jsdom.
-vi.mock("../../hooks/useEventStream", () => ({
-  useEventStream: (id: string | null) =>
-    id ? eventStreamState.current : { events: [], status: "closed", reconnects: 0 },
+vi.mock("../../hooks/useProviderKeys", () => ({
+  useProviderKeys: () => providerKeysRef.current,
 }));
 
-vi.mock("react-router-dom", async (orig) => {
-  const actual = await orig<typeof import("react-router-dom")>();
-  return { ...actual, useNavigate: () => navigateMock };
+vi.mock("../../hooks/useStartInvestigation", () => ({
+  useStartInvestigation: () => investigationStateRef.current,
+}));
+
+vi.mock("../../lib/openDocument", async (orig) => {
+  const actual = await orig<typeof import("../../lib/openDocument")>();
+  return { ...actual, useOpenDocument: () => openDocumentMock };
 });
 
-// Mock the cascade child at its boundary: this file is a unit of the toggle,
-// not of the proposal (CascadeProposal has its own test). The stub renders a
-// marker + a launch button so we can prove the toggle mounts it on the same
-// surface and that a launch navigates to the session monitor.
-vi.mock("./CascadeProposal", () => ({
-  default: ({ problem, onLaunched }: { problem: string; onLaunched: (id: string) => void }) => (
-    <div data-testid="cascade-proposal">
-      <span>cascade for: {problem}</span>
-      <button type="button" onClick={() => onLaunched("session-xyz")}>
-        launch-stub
-      </button>
+vi.mock("./MyResearch", () => ({
+  default: ({ embedded }: { embedded?: boolean }) => (
+    <div data-testid="my-research-log">
+      {embedded ? "Embedded research log" : "Standalone research log"}
     </div>
   ),
 }));
 
 import StartResearch from "./StartResearch";
 
-// AMS2-SPR-03: the idle home now wraps its content column in GlassSurface
-// (landing-glass, M2 for `/`), and GlassSurface reads `prefers-reduced-motion`
-// via window.matchMedia — which jsdom lacks. Stub it (no reduced motion) so the
-// surface renders its glass path; mirrors the AppShell + GlassSurface suites'
-// stub. This is an environment dependency of the newly-rendered primitive, not
-// a weakening of any assertion below.
 function installMatchMedia(reducedMotion = false) {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
@@ -93,300 +84,70 @@ function installMatchMedia(reducedMotion = false) {
   });
 }
 
-function renderStart() {
+function resetInvestigationState(over: Partial<StartInvestigationState> = {}) {
+  investigationStateRef.current = {
+    startedId: null,
+    phase: "idle",
+    events: [],
+    liveCost: 0,
+    failed: false,
+    failureReason: null,
+    error: null,
+    busy: false,
+    submit: vi.fn(),
+    reset: vi.fn(),
+    ...over,
+  };
+}
+
+function renderStart(embedded = false) {
   return render(
     <MemoryRouter>
-      <StartResearch />
+      <StartResearch variant="research" embedded={embedded} />
     </MemoryRouter>,
   );
 }
 
 beforeEach(() => {
   installMatchMedia(false);
-  startInvestigationMock.mockReset();
-  navigateMock.mockReset();
-  eventStreamState.current = { events: [], status: "closed", reconnects: 0 };
+  openDocumentMock.mockReset();
+  providerKeysRef.current = {
+    status: "ready",
+    providers: ["deepseek"],
+    refresh: vi.fn(),
+  };
+  resetInvestigationState();
 });
+
 afterEach(() => cleanup());
 
-// SPR-08: StartResearch is a deprecated re-export of UnifiedSearch — coverage in UnifiedSearch.test.tsx.
-describe.skip("StartResearch — the start-a-research entry (M1)", () => {
-  it("wraps the idle `/` home column in a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", () => {
-    // Audit §3 item 1: the idle `/` home is the landing-glass counterpart of the
-    // dense /inv/:id IDE. Its content column rides on GlassSurface variant="glass"
-    // so the bare heading clears AA over the scrim while the scene shows through
-    // the margins. A refactor swapping it to an opaque body / solid would re-
-    // occlude the mountain on `/`; this enforces the variant per-route (rigor #5).
+describe("StartResearch — deprecated UnifiedSearch compatibility", () => {
+  it("renders the current research UnifiedSearch home, not the retired composer", () => {
     const { container } = renderStart();
-    const surface = container.querySelector("[data-glass-surface]");
-    expect(surface, "the idle home column must render through GlassSurface").toBeTruthy();
-    expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+
+    expect(screen.getByRole("heading", { name: "Search & research" })).toBeTruthy();
+    expect(screen.getByLabelText("Unified search")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Research this" })).toBeTruthy();
+    expect(container.querySelector("[data-glass-surface]")).toBeTruthy();
+
+    expect(screen.queryByLabelText("Research question")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
   });
 
-  it("renders a real composer: input + Ask button + example pills", () => {
+  it("keeps example prompts on the research landing surface", () => {
     renderStart();
-    expect(screen.getByLabelText("Research question")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ask" })).toBeTruthy();
-    // Three clickable example pills.
+
     expect(screen.getByText(/strongest case against this thesis/i)).toBeTruthy();
     expect(screen.getByText(/how this idea evolved/i)).toBeTruthy();
     expect(screen.getByText(/Where do these authors disagree/i)).toBeTruthy();
   });
 
-  it("Ask is disabled under 3 chars and enabled past it", () => {
-    renderStart();
-    const ask = screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement;
-    expect(ask.disabled).toBe(true); // empty
-    const input = screen.getByLabelText("Research question");
-    fireEvent.change(input, { target: { value: "ab" } });
-    expect(ask.disabled).toBe(true); // 2 chars
-    fireEvent.change(input, { target: { value: "abc" } });
-    expect(ask.disabled).toBe(false); // 3 chars
-  });
+  it("embedded mode composes the search box above the research log", () => {
+    renderStart(true);
 
-  it("clicking an example pill populates the input", () => {
-    renderStart();
-    const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
-    fireEvent.click(screen.getByText(/strongest case against this thesis/i));
-    expect(input.value).toMatch(/strongest case against this thesis/i);
-    // ...and the Ask button is now enabled.
-    expect(
-      (screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
-  });
-
-  it("submitting calls the sanctioned startInvestigation (not a reimplemented POST)", async () => {
-    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-42" });
-    renderStart();
-    const input = screen.getByLabelText("Research question");
-    fireEvent.change(input, { target: { value: "What is the strongest counter-thesis?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    await waitFor(() =>
-      expect(startInvestigationMock).toHaveBeenCalledWith(
-        expect.objectContaining({ question: "What is the strongest counter-thesis?" }),
-      ),
+    expect(screen.getByTestId("unified-search")).toBeTruthy();
+    expect(screen.getByTestId("my-research-log").textContent).toContain(
+      "Embedded research log",
     );
-  });
-
-  it("defaults the research tier to deep and submits it (SPR-01 M3)", async () => {
-    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-tier" });
-    renderStart();
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "Does the moat compound with more dispatches?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    await waitFor(() =>
-      expect(startInvestigationMock).toHaveBeenCalledWith(
-        expect.objectContaining({ research_tier: "deep" }),
-      ),
-    );
-  });
-
-  it("selecting Fast changes the submitted tier (SPR-01 M3)", async () => {
-    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fast" });
-    renderStart();
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "A quick exploratory scan of this topic." },
-    });
-    // The curated closed-set control — pick "Fast".
-    fireEvent.click(screen.getByRole("radio", { name: "Fast" }));
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    await waitFor(() =>
-      expect(startInvestigationMock).toHaveBeenCalledWith(
-        expect.objectContaining({ research_tier: "fast" }),
-      ),
-    );
-  });
-
-  it("rejects a too-short question without POSTing", async () => {
-    renderStart();
-    const input = screen.getByLabelText("Research question");
-    // Bypass the button's disabled state via the ⌘+Enter submit path.
-    fireEvent.change(input, { target: { value: "ab" } });
-    fireEvent.keyDown(input, { key: "Enter", metaKey: true });
-    // (LemonTextarea only fires onSubmit for non-empty; "ab" is non-empty
-    //  but the hook validates >= 3 and refuses to POST.)
-    await waitFor(() =>
-      expect(screen.getByText(/at least 3 characters/i)).toBeTruthy(),
-    );
-    expect(startInvestigationMock).not.toHaveBeenCalled();
-  });
-});
-
-describe.skip("StartResearch — cascade mode beside the one-shot Ask (SPR-01 M1)", () => {
-  it("shows two clearly-labelled actions; cascade is disabled under 3 chars", () => {
-    renderStart();
-    const ask = screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement;
-    const cascade = screen.getByRole("button", {
-      name: /Break into sub-questions/i,
-    }) as HTMLButtonElement;
-    expect(ask).toBeTruthy();
-    expect(cascade.disabled).toBe(true); // empty composer
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "How will the energy transition reshape geopolitics?" },
-    });
-    expect(cascade.disabled).toBe(false);
-  });
-
-  it("choosing cascade renders the proposal in place — no navigation away, no POST of a one-shot", () => {
-    renderStart();
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "How will the energy transition reshape geopolitics?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Break into sub-questions/i }));
-    // The proposal mounted on the SAME surface.
-    expect(screen.getByTestId("cascade-proposal")).toBeTruthy();
-    expect(screen.getByText(/cascade for: How will the energy transition/i)).toBeTruthy();
-    // It did NOT start a one-shot investigation.
-    expect(startInvestigationMock).not.toHaveBeenCalled();
-    // The one-shot composer is gone (we're in cascade mode).
-    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
-  });
-
-  it("a launched cascade navigates to the session monitor", () => {
-    renderStart();
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "Where do the authors disagree across the corpus?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Break into sub-questions/i }));
-    fireEvent.click(screen.getByRole("button", { name: "launch-stub" }));
-    expect(navigateMock).toHaveBeenCalledWith("/deep-research/session-xyz");
-  });
-});
-
-describe.skip("StartResearch — the AI is felt during start (M2)", () => {
-  it("shows a genuine connecting state from the REAL stream once the id returns", async () => {
-    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-7" });
-    eventStreamState.current = { events: [], status: "connecting", reconnects: 0 };
-    renderStart();
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "Trace this idea across the corpus" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    // Working surface, not a silent `…`.
-    await waitFor(() => expect(screen.getByText(/Starting your research/i)).toBeTruthy());
-    expect(screen.getByText(/connecting to the live trajectory/i)).toBeTruthy();
-  });
-
-  it("surfaces the live event count + accumulated cost from streamed dispatch.call events", async () => {
-    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-9" });
-    // An open stream carrying two real events, one of which is a costed
-    // dispatch.call — the cost line must reflect it, never a fake.
-    eventStreamState.current = {
-      status: "open",
-      reconnects: 0,
-      events: [
-        {
-          event_id: "e1",
-          investigation_id: "inv-9",
-          action_type: "phase.enter",
-          payload: {} as never,
-          param_version: "v1",
-          emitted_at: "2026-05-25T00:00:00Z",
-        },
-        {
-          event_id: "e2",
-          investigation_id: "inv-9",
-          action_type: "dispatch.call",
-          payload: { cost_usd: 0.0123 } as never,
-          param_version: "v1",
-          emitted_at: "2026-05-25T00:00:01Z",
-        },
-      ] as Event[],
-    };
-    renderStart();
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "Where do the authors disagree?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-    await waitFor(() => expect(screen.getByText(/Working on it/i)).toBeTruthy());
-    expect(screen.getByText(/2 events so far/i)).toBeTruthy();
-    expect(screen.getByText(/\$0\.0123/)).toBeTruthy();
-    // With events present, it routes to the full investigation surface.
-    await waitFor(() =>
-      expect(navigateMock).toHaveBeenCalledWith("/inv/inv-9"),
-    );
-  });
-});
-
-describe.skip("StartResearch — a failed run is surfaced honestly, never a dead route (M3)", () => {
-  it("shows an honest error and does NOT navigate when the stream carries investigation.failed", async () => {
-    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fail" });
-    // The substrate emits a terminal investigation.failed (Loop 1 aborted —
-    // exactly what happens in prod when the model provider isn't configured).
-    // The id was returned, but navigating to /inv/:id would strand the
-    // operator on a dead surface, so the start surface must catch it.
-    eventStreamState.current = {
-      status: "open",
-      reconnects: 0,
-      events: [
-        {
-          event_id: "f1",
-          investigation_id: "inv-fail",
-          action_type: "investigation.failed",
-          payload: {
-            action_type: "investigation.failed",
-            phase: 1,
-            reason: "no model provider configured",
-          } as never,
-          param_version: "v1",
-          emitted_at: "2026-05-25T00:00:00Z",
-        },
-      ] as Event[],
-    };
-    renderStart();
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: "What changed my mind about the thesis?" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-
-    // Honest failure copy on the START surface, not the working spinner.
-    await waitFor(() =>
-      expect(screen.getByText(/research didn’t complete/i)).toBeTruthy(),
-    );
-    expect(screen.queryByText(/Working on it/i)).toBeNull();
-    expect(screen.queryByText(/Starting your research/i)).toBeNull();
-    // The diagnostic reason is shown (framed, not raw-as-prose).
-    expect(screen.getByText(/no model provider configured/i)).toBeTruthy();
-    // It MUST NOT have navigated to the dead /inv/:id route.
-    expect(navigateMock).not.toHaveBeenCalled();
-    // A Try-again action is offered.
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
-  });
-
-  it("keeps the typed question recoverable after a failure (not cleared)", async () => {
-    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fail2" });
-    eventStreamState.current = {
-      status: "open",
-      reconnects: 0,
-      events: [
-        {
-          event_id: "f1",
-          investigation_id: "inv-fail2",
-          action_type: "investigation.failed",
-          payload: {
-            action_type: "investigation.failed",
-            phase: 1,
-            reason: "provider keys missing",
-          } as never,
-          param_version: "v1",
-          emitted_at: "2026-05-25T00:00:00Z",
-        },
-      ] as Event[],
-    };
-    renderStart();
-    const question = "Trace how this idea evolved across the sources.";
-    fireEvent.change(screen.getByLabelText("Research question"), {
-      target: { value: question },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
-
-    await waitFor(() =>
-      expect(screen.getByText(/research didn’t complete/i)).toBeTruthy(),
-    );
-    // The composer is back and the question survived the failed run.
-    const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
-    expect(input.value).toBe(question);
-    expect(navigateMock).not.toHaveBeenCalled();
   });
 });
