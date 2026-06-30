@@ -426,8 +426,6 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     }
 
 
-_LOG = logging.getLogger(__name__)
-
 
 async def _run_to_completion(session: CascadeSession) -> None:
     # RDR SPR-07 M3: ``join_and_merge`` drains the promotion funnel (source
