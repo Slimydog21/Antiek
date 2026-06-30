@@ -25,7 +25,7 @@ import pytest
 # Repo root: ``substrate/contracts/__tests__/`` → four parents up.
 _REPO = Path(__file__).resolve().parents[3]
 _READING_SRC = _REPO / "apps" / "reading" / "src"
-_MIGRATION_MAP = Path.home() / "specs" / "antiek-reader" / "migration-map.md"
+_MIGRATION_MAP = _REPO / "docs/specs/antiek-reader/migration-map.md"
 
 
 # ───────────────────────────────────────────────────────────────────────────
