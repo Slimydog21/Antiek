@@ -8,13 +8,20 @@ only read-only connections through ``runtime.db_lock.connect_read``.
 
 from __future__ import annotations
 
-from .errors import EmptyQueryError, LicensingRequiredError, NoteNotFoundError
-from .tools import search_personal, search_public
+from .errors import (
+    EmptyQueryError,
+    LicensingRequiredError,
+    NoteNotFoundError,
+    SourceNotFoundError,
+)
+from .tools import cite_source, search_personal, search_public
 
 __all__ = [
     "EmptyQueryError",
     "LicensingRequiredError",
     "NoteNotFoundError",
+    "SourceNotFoundError",
+    "cite_source",
     "search_personal",
     "search_public",
 ]

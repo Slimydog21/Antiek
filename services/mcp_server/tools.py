@@ -20,7 +20,7 @@ from mcp.server.fastmcp import FastMCP
 
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
-from .errors import EmptyQueryError
+from .errors import EmptyQueryError, SourceNotFoundError
 from .reader import _resolve_db_path
 
 # ---------------------------------------------------------------------------
@@ -333,6 +333,127 @@ def search_public(
     }
 
 
+def _iso_date(value: Any) -> str | None:
+    """Serialize DuckDB timestamp/date-ish values to YYYY-MM-DD where possible."""
+    if hasattr(value, "date"):
+        result: str = value.date().isoformat()
+        return result
+    return str(value) if value else None
+
+
+def _format_citation(
+    *,
+    title: str | None,
+    author: str | None,
+    published_at: Any,
+    acquired_at: Any,
+) -> str:
+    """Return a compact citation from document metadata."""
+    date_text = _iso_date(published_at) or _iso_date(acquired_at) or "n.d."
+    parts = [p for p in (author, title, date_text) if p]
+    return ". ".join(parts) + "."
+
+
+def cite_source(
+    con: duckdb.DuckDBPyConnection,
+    source_id: str,
+    *,
+    id_type: str = "chunk",
+) -> dict[str, Any]:
+    """Resolve a chunk or document id to citation metadata.
+
+    Returns the provenance chain needed by external LLMs: chunk_id,
+    document_id, title, author, date, source_tier, content_class, ip_holder_id,
+    and a formatted citation string.
+    """
+    source_id = source_id.strip()
+    id_type = id_type.strip().lower()
+    if not source_id:
+        raise SourceNotFoundError(source_id, id_type)
+
+    if id_type == "chunk":
+        row = con.execute(
+            """
+            SELECT c.chunk_id, c.document_id, c.chunk_index, c.section_path,
+                   d.title, d.author, d.published_at, d.acquired_at,
+                   d.source_tier, d.document_type, d.content_class,
+                   d.ip_holder_id
+            FROM chunks c
+            JOIN documents d ON d.document_id = c.document_id
+            WHERE c.chunk_id = ?
+            """,
+            [source_id],
+        ).fetchone()
+        if row is None:
+            raise SourceNotFoundError(source_id, id_type)
+
+        (
+            chunk_id,
+            document_id,
+            chunk_index,
+            section_path,
+            title,
+            author,
+            published_at,
+            acquired_at,
+            source_tier,
+            document_type,
+            content_class,
+            ip_holder_id,
+        ) = row
+    elif id_type in {"document", "note"}:
+        row = con.execute(
+            """
+            SELECT document_id, title, author, published_at, acquired_at,
+                   source_tier, document_type, content_class, ip_holder_id
+            FROM documents
+            WHERE document_id = ?
+            """,
+            [source_id],
+        ).fetchone()
+        if row is None:
+            raise SourceNotFoundError(source_id, id_type)
+
+        (
+            document_id,
+            title,
+            author,
+            published_at,
+            acquired_at,
+            source_tier,
+            document_type,
+            content_class,
+            ip_holder_id,
+        ) = row
+        chunk_id = None
+        chunk_index = None
+        section_path = None
+    else:
+        raise ValueError(f"Unsupported id_type for cite_source: {id_type}")
+
+    return {
+        "source_id": source_id,
+        "id_type": id_type,
+        "chunk_id": chunk_id,
+        "document_id": document_id,
+        "chunk_index": chunk_index,
+        "section_path": section_path,
+        "title": title,
+        "author": author,
+        "date": _iso_date(published_at) or _iso_date(acquired_at),
+        "source_tier": source_tier,
+        "document_type": document_type,
+        "content_class": content_class,
+        "ip_holder_id": ip_holder_id,
+        "formatted_citation": _format_citation(
+            title=title,
+            author=author,
+            published_at=published_at,
+            acquired_at=acquired_at,
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 # MCP tool registration
 # ---------------------------------------------------------------------------
@@ -377,6 +498,26 @@ def register_tools(mcp: FastMCP) -> None:
         con = connect_read(db_path)
         try:
             result = search_public(con, query, top_k=top_k)
+        finally:
+            con.close()
+        return json.dumps(result, default=str)
+
+    @mcp.tool(
+        name="cite_source",
+        description=(
+            "Resolve a chunk, document, or note id to citation metadata: "
+            "chunk_id, document_id, title, author, date, source_tier, "
+            "content_class, ip_holder_id, and formatted_citation."
+        ),
+    )
+    def cite_source_tool(id: str, id_type: str = "chunk") -> str:
+        """Resolve source citation metadata."""
+        from runtime.db_lock import connect_read
+
+        db_path = _resolve_db_path()
+        con = connect_read(db_path)
+        try:
+            result = cite_source(con, id, id_type=id_type)
         finally:
             con.close()
         return json.dumps(result, default=str)
