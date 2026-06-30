@@ -288,10 +288,11 @@ export default function UnifiedSearch({
     query.trim().length >= 3 &&
     !needsKeyDismissed &&
     !start.startedId;
+  const hasVisibleLocalSearch = query.trim().length > 0 || signal !== null;
 
   const inputPlaceholder =
     variant === "research"
-      ? "Search your library — press Enter to research the web"
+      ? "Search your library — drop a file, or press Enter to research the web"
       : "Search your books — or drop a file to find books like it";
 
   const searchPanel = (
@@ -337,29 +338,25 @@ export default function UnifiedSearch({
               : "w-full font-serif text-[15px] leading-relaxed bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright rounded-hog border border-rule dark:border-charcoal-1 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-sun focus-visible:ring-offset-2 focus-visible:ring-offset-ice-0 dark:focus-visible:ring-offset-charcoal-2"
           }
         />
-        {variant === "library" && (
-          <>
-            <LemonButton
-              type="button"
-              size="sm"
-              variant="tertiary"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              ＋ File
-            </LemonButton>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              aria-label="Choose a file to find similar books"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void biasFromFile(f);
-                e.target.value = "";
-              }}
-            />
-          </>
-        )}
+        <LemonButton
+          type="button"
+          size="sm"
+          variant="tertiary"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          ＋ File
+        </LemonButton>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          aria-label="Choose a file to search by"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void biasFromFile(f);
+            e.target.value = "";
+          }}
+        />
         <LemonButton
           type="button"
           size="sm"
@@ -414,7 +411,7 @@ export default function UnifiedSearch({
       )}
 
       <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight" role="note">
-        Type for instant local hits (no key).{" "}
+        Type or drop a file for instant local hits (no key).{" "}
         <kbd className="border border-ink dark:border-bright rounded px-1 text-[10px]">↵</kbd>{" "}
         escalates the same query to agentic research.
       </p>
@@ -460,13 +457,13 @@ export default function UnifiedSearch({
         </p>
       )}
 
-      {searchBusy && query.trim().length > 0 && (
+      {searchBusy && hasVisibleLocalSearch && (
         <p className="text-[12px] text-shadow-1 dark:text-moonlight italic" role="status">
           Searching locally…
         </p>
       )}
 
-      {localHits !== null && query.trim().length > 0 && !searchBusy && (
+      {localHits !== null && hasVisibleLocalSearch && !searchBusy && (
         <div data-testid="unified-search-local-results">
           {localHits.length === 0 ? (
             <p className="text-[13px] text-shadow-1 dark:text-moonlight italic">
