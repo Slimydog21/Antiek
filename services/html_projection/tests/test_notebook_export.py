@@ -10,7 +10,10 @@ from __future__ import annotations
 import json
 
 from services.html_projection.adapters.notebook import ResolvedRefData
-from services.html_projection.adapters.notebook_export import adapt_notebook_for_export
+from services.html_projection.adapters.notebook_export import (
+    adapt_notebook_for_export,
+    collect_ref_ids,
+)
 from services.html_projection.context import RenderContext
 from services.html_projection.gate import assert_script_free
 from services.html_projection.island import extract_island
@@ -70,6 +73,12 @@ def test_deleted_and_missing_refs_become_visible_markers():
 def test_non_ref_nodes_kept_verbatim():
     dm = adapt_notebook_for_export(_nb([PROSE]), title="t", resolved_refs=REFS)
     assert dm["content"][0] == PROSE
+
+
+def test_collect_ref_ids_in_order_deduped():
+    nb = _nb([CLAIM, NOTE_PR, PROSE, CLAIM])  # CLAIM repeated
+    assert collect_ref_ids(nb) == ["c1", "n1"]  # ordered, deduped, prose skipped
+    assert collect_ref_ids({"type": "doc", "content": []}) == []
 
 
 def test_export_doc_model_is_self_contained_and_gate_clean():

@@ -65,6 +65,28 @@ def _inline(node: dict, resolver: RightsAwareResolver) -> dict:
     return {"type": node_type, "attrs": dict(resolved.payload)}
 
 
+def collect_ref_ids(content_tiptap: dict) -> list[str]:
+    """Every substrate ref_id a notebook's top-level nodes cite, in document
+    order, deduped. This is the INPUT to the substrate ref-resolver: the export
+    resolver fetches exactly the refs the notebook references, then hands the
+    resolved map to ``adapt_notebook_for_export``."""
+    nodes = (
+        content_tiptap.get("content", [])
+        if isinstance(content_tiptap, dict)
+        else []
+    )
+    seen: list[str] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        ref_attr = _REF_ATTR.get(_bare(str(node.get("type", ""))))
+        attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+        ref_id = attrs.get(ref_attr) if ref_attr else None
+        if ref_id and str(ref_id) not in seen:
+            seen.append(str(ref_id))
+    return seen
+
+
 def adapt_notebook_for_export(
     content_tiptap: dict,
     *,
@@ -83,4 +105,4 @@ def adapt_notebook_for_export(
     return {"content": out, "title": title, "edges": []}
 
 
-__all__ = ["adapt_notebook_for_export"]
+__all__ = ["adapt_notebook_for_export", "collect_ref_ids"]
