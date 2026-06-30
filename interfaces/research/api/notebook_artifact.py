@@ -50,15 +50,12 @@ def resolve_notebook_export(
 ) -> Optional[NotebookExportSource]:
     """Read a notebook into a NotebookExportSource, or None if it does not exist.
 
-    NOTE (rigor #1): the substrate ref-resolution (claim/note/region/question ->
-    text + the source document's content_class/ip_holder) is NOT wired here —
-    there are 0 local notebook rows to validate it against, and a resolver
-    asserted to work on data it never saw is the dishonesty the rigor forbids.
-    So ``resolved_refs`` is empty and ref-bearing blocks export as a visible
-    '[... unavailable]' marker; the notebook's own structure (prose, headings)
-    exports correctly. When a real notebook + the graph land, populate
-    ``resolved_refs`` from the substrate (claims/notes/chunks/documents) — the
-    export adapter already rights-filters whatever it is handed.
+    The notebook's ref-bearing nodes (claim/insight/question) are resolved
+    against the substrate via ``resolve_refs`` — each ref's text + the SOURCE
+    document's content_class/ip_holder — and handed to the export adapter, which
+    rights-filters (cite-only on non-servable). A ref the graph cannot resolve
+    is omitted and exports as a visible '[... unavailable]' marker (honest, not
+    faked). The notebook's own structure (prose, headings) always exports.
     """
     from runtime.db_lock import connect_read
 
@@ -90,13 +87,19 @@ def resolve_notebook_export(
         blocks.append({"content_json": cj})
     content_tiptap = compose(blocks)
 
+    from services.html_projection.adapters.notebook_export import collect_ref_ids
+    from services.html_projection.resolvers.substrate_refs import resolve_refs
+
+    ref_ids = collect_ref_ids(content_tiptap)
+    resolved_refs = resolve_refs(ref_ids, db_path=db) if ref_ids else {}
+
     return NotebookExportSource(
         content_tiptap=content_tiptap,
         title=row[1],
         document_id=row[4] or notebook_id,
         owner_user_id=row[3] or "__operator__",
         content_class="notebook",
-        resolved_refs={},  # degraded — see docstring
+        resolved_refs=resolved_refs,
     )
 
 
