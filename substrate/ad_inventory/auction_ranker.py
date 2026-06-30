@@ -41,6 +41,7 @@ candidate is scored twice and no ordering is computed then thrown away.
 
 from __future__ import annotations
 
+import logging
 import os
 
 from .ad_bidding import AdInventoryItem
@@ -58,6 +59,7 @@ LEARNED_RANKER_ENV = "ANTIEK_LEARNED_AD_RANKER"
 MODEL_PATH_ENV = "ANTIEK_AD_RANKER_MODEL_PATH"
 
 _TRUTHY = frozenset({"1", "true", "on", "yes"})
+logger = logging.getLogger(__name__)
 
 
 def learned_ranker_enabled() -> bool:
@@ -69,16 +71,27 @@ def learned_ranker_enabled() -> bool:
 def _load_model_from_env() -> AuctionModel | None:
     """Load the artifact named by ``ANTIEK_AD_RANKER_MODEL_PATH``. Returns None
     (NOT raises) on any problem — a missing/unreadable/stale artifact must
-    degrade to rule-based, not error. In-process file read only; no network."""
+    degrade to rule-based, not error. In-process file read only; no network.
+    The degradation is logged so an enabled-but-broken model is observable."""
     path = os.environ.get(MODEL_PATH_ENV, "").strip()
     if not path:
+        logger.warning(
+            "learned ad ranker enabled without %s; falling back to rule-based",
+            MODEL_PATH_ENV,
+        )
         return None
     try:
         with open(path, encoding="utf-8") as fh:
             return AuctionModel.from_json(fh.read())
     except Exception:
-        # Missing file, bad JSON, stale feature schema — all degrade silently to
-        # rule-based. The slot is never blanked by a model artifact problem.
+        # Missing file, bad JSON, stale feature schema — all degrade to
+        # rule-based. The slot is never blanked by a model artifact problem,
+        # but the operator can see that the learned path is not active.
+        logger.warning(
+            "learned ad ranker could not load model artifact %r; falling back to rule-based",
+            path,
+            exc_info=True,
+        )
         return None
 
 
@@ -226,6 +239,10 @@ def select_ad(
     except Exception:
         # ANY learned-path exception → guaranteed rule-based fallback. A model
         # problem must never blank a slot (rigor #1).
+        logger.warning(
+            "learned ad ranker failed during selection; falling back to rule-based",
+            exc_info=True,
+        )
         return select_targeted_ad_rule_based(
             context=context,
             targeted_inventory=targeted_inventory,

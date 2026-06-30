@@ -6,6 +6,7 @@ matcher and the slot is still filled — a model problem never blanks a slot."""
 from __future__ import annotations
 
 import json
+import logging
 from decimal import Decimal
 
 import pytest
@@ -119,15 +120,53 @@ def test_forced_model_failure_falls_back_and_fills_slot() -> None:
     assert chosen.inventory_id == rule.inventory_id  # exact rule-based result
 
 
+def test_forced_model_failure_is_observable(caplog: pytest.LogCaptureFixture) -> None:
+    inv = [_ti("a", "5.0", sectors=("defense",)),
+           _ti("b", "9.0", sectors=("defense",))]
+
+    with caplog.at_level(logging.WARNING, logger="substrate.ad_inventory.auction_ranker"):
+        chosen = select_ad(
+            context=_CTX, targeted_inventory=inv, model=_ExplodingModel(),  # type: ignore[arg-type]
+        )
+
+    assert chosen is not None
+    assert any(
+        "learned ad ranker failed during selection" in record.message
+        for record in caplog.records
+    )
+
+
 def test_flag_on_but_missing_artifact_falls_back(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     monkeypatch.setenv(LEARNED_RANKER_ENV, "1")
     monkeypatch.setenv(MODEL_PATH_ENV, "/nonexistent/path/model.json")
     inv = [_ti("a", "5.0", sectors=("defense",))]
-    chosen = select_ad(context=_CTX, targeted_inventory=inv)
+    with caplog.at_level(logging.WARNING, logger="substrate.ad_inventory.auction_ranker"):
+        chosen = select_ad(context=_CTX, targeted_inventory=inv)
     assert chosen is not None
     assert chosen.inventory_id == "a"
+    assert any("could not load model artifact" in record.message for record in caplog.records)
+
+
+def test_flag_on_but_empty_model_path_is_observable(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv(LEARNED_RANKER_ENV, "1")
+    monkeypatch.delenv(MODEL_PATH_ENV, raising=False)
+    inv = [_ti("a", "5.0", sectors=("defense",))]
+
+    with caplog.at_level(logging.WARNING, logger="substrate.ad_inventory.auction_ranker"):
+        chosen = select_ad(context=_CTX, targeted_inventory=inv)
+
+    assert chosen is not None
+    assert chosen.inventory_id == "a"
+    assert any(
+        f"enabled without {MODEL_PATH_ENV}" in record.message
+        for record in caplog.records
+    )
 
 
 def test_flag_on_but_stale_schema_artifact_falls_back(
