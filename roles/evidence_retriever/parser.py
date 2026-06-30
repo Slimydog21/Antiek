@@ -32,11 +32,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 try:
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import InvalidReference, validate_refs
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import InvalidReference, validate_refs
 
 
 # Closed vocabularies — kept here for fail-loud parser-side checks.
@@ -169,7 +169,14 @@ def _parse_claim(
     if canonical_chunk_ids is None:
         chunk_ids = tuple(raw_chunk_ids)
     else:
-        chunk_ids = validate_refs(raw_chunk_ids, canonical_chunk_ids).valid
+        try:
+            chunk_ids = validate_refs(
+                raw_chunk_ids,
+                canonical_chunk_ids,
+                on_invalid="raise" if canonical_edge_ids is not None else "drop",
+            ).valid
+        except InvalidReference as exc:
+            raise EvidenceValidationError(f"{ctx}.chunk_ids: {exc}") from exc
     if not chunk_ids and evidence_type != "gap":
         raise EvidenceValidationError(
             f"{ctx}: chunk_ids cannot be empty when evidence_type="
@@ -179,7 +186,14 @@ def _parse_claim(
     if canonical_edge_ids is None:
         edge_ids = tuple(raw_edge_ids)
     else:
-        edge_ids = validate_refs(raw_edge_ids, canonical_edge_ids).valid
+        try:
+            edge_ids = validate_refs(
+                raw_edge_ids,
+                canonical_edge_ids,
+                on_invalid="raise" if canonical_chunk_ids is not None else "drop",
+            ).valid
+        except InvalidReference as exc:
+            raise EvidenceValidationError(f"{ctx}.edge_ids: {exc}") from exc
     confidence = _require_str(obj.get("confidence"), "confidence", ctx)
     if confidence not in EVIDENCE_CONFIDENCE_LEVELS:
         raise EvidenceValidationError(

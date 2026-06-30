@@ -331,6 +331,28 @@ def test_parse_non_string_chunk_id_rejected():
         parse_evidence_response(json.dumps(payload))
 
 
+def test_parse_hallucinated_chunk_id_rejected_against_canonical_set():
+    payload = _good_response()
+    payload["supporting_claims"][0]["chunk_ids"] = ["chunk-1", "chunk-made-up"]
+    with pytest.raises(EvidenceValidationError, match="canonical set"):
+        parse_evidence_response(
+            json.dumps(payload),
+            canonical_chunk_ids=("chunk-1", "chunk-2"),
+            canonical_edge_ids=("edge-1",),
+        )
+
+
+def test_parse_hallucinated_edge_id_rejected_against_canonical_set():
+    payload = _good_response()
+    payload["supporting_claims"][0]["edge_ids"] = ["edge-1", "edge-made-up"]
+    with pytest.raises(EvidenceValidationError, match="canonical set"):
+        parse_evidence_response(
+            json.dumps(payload),
+            canonical_chunk_ids=("chunk-1", "chunk-2"),
+            canonical_edge_ids=("edge-1",),
+        )
+
+
 def test_parse_non_gap_claim_with_empty_chunks_rejected():
     payload = _good_response()
     payload["supporting_claims"][0]["chunk_ids"] = []

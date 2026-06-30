@@ -327,6 +327,59 @@ async def test_parse_failure_preserves_paths_and_dispatch_stamp(
     assert e.policy_id == "stub-connector/stub-pro-model"
 
 
+@pytest.mark.asyncio
+async def test_parse_failure_from_fabricated_refs_falls_back_to_traversal(
+    monkeypatch, app_and_bus, async_client, db_path,
+):
+    _, bus = app_and_bus
+    inv = "inv-conn-fabricated"
+    src, tgt, _ = _seed_two_node_path(db_path)
+
+    bad = _good_response(
+        source_node_id="n-made-up",
+        target_node_id=tgt,
+        edge_id="e-made-up",
+    )
+    register_provider(_StubConnector(json.dumps(bad)))
+    _patch_dispatch_config(monkeypatch, _connector_config("stub-connector"))
+
+    await _post_request(
+        async_client, investigation_id=inv,
+        seed_pairs=[{"source_node_id": src, "target_node_id": tgt}],
+        keyword_mappings=[{
+            "keyword": "TSMC",
+            "matched_node_id": src,
+            "matched_node_label": "TSMC",
+            "matched_node_type": "entity",
+            "similarity": 0.92,
+            "low_confidence": False,
+        }],
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.CONNECTOR_DELIVERED.value
+    ]
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    p = e.payload
+    assert isinstance(p, ConnectorDeliveredPayload)
+    assert p.natural_language_relationships == []
+    assert p.keyword_mappings[0].matched_node_id == src
+    assert all(
+        "made-up" not in node_id
+        for path in p.paths
+        for node_id in path.path_nodes
+    )
+    assert all(
+        "made-up" not in edge_id
+        for path in p.paths
+        for edge_id in path.edge_ids
+    )
+    assert e.policy_id == "stub-connector/stub-pro-model"
+
+
 # ---------------------------------------------------------------------------
 # 4. Empty seed_pairs
 # ---------------------------------------------------------------------------

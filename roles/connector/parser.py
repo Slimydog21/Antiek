@@ -40,11 +40,12 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 try:
-    from substrate.provenance.validate_refs import validate_ref, validate_refs
+    from substrate.provenance import InvalidReference, validate_ref, validate_refs
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.provenance.validate_refs import (
+    from substrate.provenance import (
+        InvalidReference,
         validate_ref,
         validate_refs,
     )
@@ -145,6 +146,8 @@ def _parse_keyword_mapping(
     obj: Any,
     idx: int,
     canonical_node_ids: Iterable[str] | None = None,
+    *,
+    canonical_matched_node_ids: Iterable[str] | None = None,
 ) -> ParsedKeywordMapping:
     ctx = f"keyword_mappings[{idx}]"
     if not isinstance(obj, dict):
@@ -176,6 +179,14 @@ def _parse_keyword_mapping(
     matched_node_id = _opt_str(obj.get("matched_node_id"), "matched_node_id", ctx)
     if canonical_node_ids is not None:
         matched_node_id = validate_ref(matched_node_id, canonical_node_ids)
+    if matched_node_id is not None and canonical_matched_node_ids is not None:
+        validated = validate_ref(matched_node_id, canonical_matched_node_ids)
+        if validated is None:
+            raise ConnectorValidationError(
+                f"{ctx}.matched_node_id: reference {matched_node_id!r} "
+                "is not in canonical set"
+            )
+        matched_node_id = validated
 
     return ParsedKeywordMapping(
         keyword=keyword,
@@ -192,6 +203,9 @@ def _parse_path(
     idx: int,
     canonical_node_ids: Iterable[str] | None = None,
     canonical_edge_ids: Iterable[str] | None = None,
+    *,
+    canonical_path_node_ids: Iterable[str] | None = None,
+    strict_edge_ids: bool = False,
 ) -> ParsedGraphPath:
     ctx = f"paths[{idx}]"
     if not isinstance(obj, dict):
@@ -211,7 +225,23 @@ def _parse_path(
     if canonical_edge_ids is None:
         edge_ids = tuple(raw_edge_ids)
     else:
-        edge_ids = validate_refs(raw_edge_ids, canonical_edge_ids).valid
+        try:
+            edge_ids = validate_refs(
+                raw_edge_ids,
+                canonical_edge_ids,
+                on_invalid="raise" if strict_edge_ids else "drop",
+            ).valid
+        except InvalidReference as exc:
+            raise ConnectorValidationError(f"{ctx}.edge_ids: {exc}") from exc
+    if canonical_path_node_ids is not None:
+        try:
+            nodes = validate_refs(
+                raw_nodes,
+                canonical_path_node_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise ConnectorValidationError(f"{ctx}.path_nodes: {exc}") from exc
     depth_raw = obj.get("depth")
     if not isinstance(depth_raw, int) or isinstance(depth_raw, bool) or depth_raw < 0:
         raise ConnectorValidationError(
@@ -260,6 +290,8 @@ def parse_connector_response(
     text: str,
     *,
     canonical_node_ids: Iterable[str] | None = None,
+    canonical_matched_node_ids: Iterable[str] | None = None,
+    canonical_path_node_ids: Iterable[str] | None = None,
     canonical_edge_ids: Iterable[str] | None = None,
 ) -> ConnectorResult:
     """Parse + validate a Connector role's raw response."""
@@ -273,7 +305,12 @@ def parse_connector_response(
     if not isinstance(mappings_raw, list):
         raise ConnectorValidationError("top: keyword_mappings must be a list")
     keyword_mappings = tuple(
-        _parse_keyword_mapping(m, i, canonical_node_ids)
+        _parse_keyword_mapping(
+            m,
+            i,
+            canonical_node_ids,
+            canonical_matched_node_ids=canonical_matched_node_ids,
+        )
         for i, m in enumerate(mappings_raw)
     )
 
@@ -293,7 +330,17 @@ def parse_connector_response(
     if not isinstance(paths_raw, list):
         raise ConnectorValidationError("top: paths must be a list")
     paths = tuple(
-        _parse_path(p, i, canonical_node_ids, canonical_edge_ids)
+        _parse_path(
+            p,
+            i,
+            canonical_node_ids,
+            canonical_edge_ids,
+            canonical_path_node_ids=canonical_path_node_ids,
+            strict_edge_ids=(
+                canonical_path_node_ids is not None
+                and canonical_node_ids is None
+            ),
+        )
         for i, p in enumerate(paths_raw)
     )
 

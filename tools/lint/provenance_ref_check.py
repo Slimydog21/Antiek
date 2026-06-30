@@ -20,10 +20,16 @@ _REPO = Path(__file__).resolve().parent.parent.parent
 _TARGET_FIELDS: frozenset[str] = frozenset({
     "source_chunk_ids",
     "supporting_chunk_ids",
+    "chunk_ids",
     "source_event_ids",
     "attribution_region_ids",
     "cited_chunk_ids",
     "located_chunk_id",
+    "matched_node_id",
+    "path_nodes",
+    "edge_ids",
+    "path_node_ids",
+    "path_edge_ids",
 })
 
 _BRIDGE_VALIDATED_EXCEPTIONS: frozenset[str] = frozenset({

@@ -218,6 +218,8 @@ def _dispatch_and_parse(
     event: Event,
     *,
     canonical_node_ids: tuple[str, ...] = (),
+    canonical_matched_node_ids: tuple[str, ...] | None = None,
+    canonical_path_node_ids: tuple[str, ...] | None = None,
     canonical_edge_ids: tuple[str, ...] = (),
 ) -> tuple[ConnectorResult | None, str]:
     try:
@@ -241,6 +243,8 @@ def _dispatch_and_parse(
         parsed = parse_connector_response(
             response_text,
             canonical_node_ids=canonical_node_ids,
+            canonical_matched_node_ids=canonical_matched_node_ids,
+            canonical_path_node_ids=canonical_path_node_ids,
             canonical_edge_ids=canonical_edge_ids,
         )
         return parsed, policy_id
@@ -315,6 +319,16 @@ def make_connector_handler(
             req,
             traversed_paths,
         )
+        canonical_matched_node_ids = tuple(
+            mapping.matched_node_id
+            for mapping in req.keyword_mappings
+            if mapping.matched_node_id
+        )
+        canonical_path_node_ids = tuple(
+            node_id
+            for path in traversed_paths
+            for node_id in path.path_nodes
+        )
 
         # ── 2. Render prompt blocks ──
         mappings_block = render_mappings_block(list(req.keyword_mappings))
@@ -329,6 +343,8 @@ def make_connector_handler(
             prompt,
             event,
             canonical_node_ids=canonical_node_ids,
+            canonical_matched_node_ids=canonical_matched_node_ids,
+            canonical_path_node_ids=canonical_path_node_ids,
             canonical_edge_ids=canonical_edge_ids,
         )
 

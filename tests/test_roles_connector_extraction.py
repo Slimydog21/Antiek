@@ -235,6 +235,42 @@ def test_parser_filters_fabricated_edge_ids_with_canonical_set():
     assert out.paths[0].edge_ids == ("e-1",)
 
 
+def test_parser_hallucinated_matched_node_id_rejected_against_canonical_set():
+    payload = _good_response()
+    payload["keyword_mappings"][0]["matched_node_id"] = "n-made-up"
+    with pytest.raises(ConnectorValidationError, match="canonical set"):
+        parse_connector_response(
+            json.dumps(payload),
+            canonical_matched_node_ids=("n-tsmc",),
+            canonical_path_node_ids=("n-tsmc", "n-asml"),
+            canonical_edge_ids=("e-1",),
+        )
+
+
+def test_parser_hallucinated_path_node_rejected_against_canonical_set():
+    payload = _good_response()
+    payload["paths"][0]["path_nodes"] = ["n-tsmc", "n-made-up"]
+    with pytest.raises(ConnectorValidationError, match="canonical set"):
+        parse_connector_response(
+            json.dumps(payload),
+            canonical_matched_node_ids=("n-tsmc",),
+            canonical_path_node_ids=("n-tsmc", "n-asml"),
+            canonical_edge_ids=("e-1",),
+        )
+
+
+def test_parser_hallucinated_edge_id_rejected_against_canonical_set():
+    payload = _good_response()
+    payload["paths"][0]["edge_ids"] = ["e-1", "e-made-up"]
+    with pytest.raises(ConnectorValidationError, match="canonical set"):
+        parse_connector_response(
+            json.dumps(payload),
+            canonical_matched_node_ids=("n-tsmc",),
+            canonical_path_node_ids=("n-tsmc", "n-asml"),
+            canonical_edge_ids=("e-1",),
+        )
+
+
 def test_parser_negative_source_path_index_rejected():
     payload = _good_response()
     payload["natural_language_relationships"][0]["source_path_index"] = -1
