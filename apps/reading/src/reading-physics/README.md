@@ -142,45 +142,38 @@ capability — a **spatial transform** (section collapse) — and proves the
 what/where separation (PR-4 + PR-5) by adding a **minimap** that is a *second
 render pass of the same facets*.
 
-### ⚠️ Not yet live — wiring gap (read this first)
+### Live surface status — geometry is real, some gestures remain dormant
 
-**The spatial-transform facet, the collapse controller, and the minimap are
-complete and tested, but they CANNOT run live yet.** They are mounted NOWHERE on
-the production reading surface. The reason is a single, identifiable gap:
+The spatial-transform facet, collapse controller, minimap, and layout-map
+machinery are still scoped to `reading-physics/`, but the production synthesis
+surface now feeds them real geometry:
 
-- The reading surface (`apps/reading/src/modes/ResearchWorkstation/MasterMdViewer.tsx`)
-  feeds **`EMPTY_LAYOUT_MAP`** into every render context (it imports it at the top
-  and passes it at lines ~581/591/593). `EMPTY_LAYOUT_MAP.resolve` returns `null`
-  for every anchor — the surface measures **no DOM geometry**. With no real
-  `BaseGeometry`, `createLayoutMap` has nothing to fold a collapse pipeline over,
-  so the collapse and the minimap have no positions to transform or project.
-- **No sprint has built the surface's geometry-measurement pass** — the piece that
-  would, in a `useLayoutEffect`, call `getBoundingClientRect()` per laid-out
-  anchor, assemble an `anchorKey → Rect` map, and hand it to `baseGeometryFromMap`
-  → `createLayoutMap` so the layout-map resolves **real** geometry. (Per PR-4/PR-5
-  this pass is the **one** place `getBoundingClientRect` is called — inside the
-  surface, never in an augmentation; the reading-physics CI guard forbids it
-  anywhere under `augmentations/`/`facets/`.)
+- `MasterMdViewer.tsx` mounts `readingGeometryPass.ts` in a `useLayoutEffect`.
+  The pass is the one allowed surface measurement point: it calls
+  `getBoundingClientRect()` for laid-out semantic markers, builds an
+  `anchorKey → Rect` map with `measureAnchorGeometry`, and hands that through
+  `baseGeometryFromMap` → `createLayoutMap`.
+- The mounted map is no longer permanently `EMPTY_LAYOUT_MAP`. `EMPTY_LAYOUT_MAP`
+  is only the honest first-paint/default state before the first measurement.
+- Claim anchors (`data-claim-id`) and source chunk anchors (`data-chunk-id`) are
+  measured. The minimap is mounted as a second pass over the same resolved
+  decorations and live layout map.
 
-**Why this is correct, not a regression.** SPR-05's milestone is the
-reading-physics-`/`-scoped capability: the transform math, the
-widgets-follow-the-transform proof, the minimap-shares-the-facet proof, the
-viewport-scoping perf mitigation — all proved against in-memory `BaseGeometry`
-fixtures in `spatial-transform.test.ts`. Building the live DOM-geometry pass is a
-**separate, cross-cutting surface integration** (it touches `MasterMdViewer`'s
-render lifecycle and scroll handling), deliberately out of SPR-05's scope. So the
-capability ships **dormant-but-on-the-real-engine**: it runs on the actual
-layout-map seam, not a prototype, and flips on the moment the geometry pass exists.
+**What remains deliberately dormant:**
 
-**The exact next step (one cross-cutting integration).** Build the surface
-geometry-measurement pass described above; then (1) wire the `⌘/Ctrl+scroll`
-collapse gesture to mutate the ephemeral `CollapseState` and feed
-`collapsePipelineFor(state)` into `createLayoutMap`/`createViewportScopedLayoutMap`,
-and (2) mount `renderMinimap` as a second pass. That single integration unblocks
-collapse, the minimap, **and** the not-yet-live `AccrualView` / `ChaseThread`
-gutter widgets simultaneously (they all wait on the same real `BaseGeometry`; only
-`QualityCue` is live today, and it renders without geometry because it pins to the
-header). Filed in full at `docs/decisions/spr-05-geometry-pass-gap.md`.
+- Exact marginalia passage anchors (`{kind:"passage", chunkId, start, end}`) need
+  rendered `data-passage-*` spans before the surface can measure them. Chunk-level
+  bounded/withheld anchors are live; exact passage-offset anchors are not.
+- The `⌘/Ctrl+scroll` collapse gesture is not bound yet. The controller and
+  `collapsePipelineFor(state)` are tested, and `buildLayoutMap(root, transforms)`
+  is ready to fold the pipeline, but no surface handler mutates `CollapseState`.
+- `AccrualView` / `ChaseThread` gutter widgets are not mounted in
+  `MasterMdViewer` yet. They share the anchored-widget facet and can consume the
+  live map when wired.
+
+The full accounting is recorded in
+`docs/decisions/spr-05-geometry-pass-gap.md`; do not infer "all geometry features
+done" from the live map alone.
 
 | File | What it is |
 |---|---|
