@@ -9,6 +9,17 @@ import { clampRectToViewport } from "./panelLayoutLogic";
 import { openPopoutFor } from "./popout";
 import type { PanelMode } from "./panel.types";
 
+export function panelHandleChromeClasses(draggable: boolean, focused: boolean): string {
+  return (
+    "shrink-0 flex items-center gap-2 px-2.5 py-1.5 " +
+    "border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2 " +
+    (draggable
+      ? `cursor-grab active:cursor-grabbing select-none shadow-z1 dark:shadow-z1-night ${press} `
+      : "") +
+    (focused ? "" : "opacity-90")
+  );
+}
+
 /**
  * PanelHandle — the title strip rendered at the top of every panel.
  *
@@ -129,12 +140,7 @@ export function PanelHandle({ id, draggable, resizable = false }: Props) {
   return (
     <>
       <div
-        className={
-          "shrink-0 flex items-center gap-2 px-2.5 py-1.5 " +
-          "border-b-edge border-sun bg-ice-1 dark:bg-charcoal-2 " +
-          (draggable ? `cursor-grab active:cursor-grabbing select-none shadow-z1 dark:shadow-z1-night ${press} ` : "") +
-          (focused ? "" : "opacity-90")
-        }
+        className={panelHandleChromeClasses(draggable, focused)}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
