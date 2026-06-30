@@ -143,6 +143,39 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # publicly servable/attributable, so a regression that widened this path
         # would be caught there too.
         "orchestration/monitoring/monitor.py",
+        # The research-runner provenance ingest verifier reads raw_text only as
+        # an INTERNAL readiness check: a cited document is considered readable
+        # when it has a content_class and either raw_text or structured_blocks
+        # before provenance edges are attached. It returns a boolean to the
+        # ingest pipeline; no body or snippet is emitted to a serving caller.
+        "runtime/research_runner/provenance_ingest.py",
+        # The MCP private-note resource is an owner path: get_note requires both
+        # document_id and owner_user_id and returns the operator's own note/body
+        # through antiek://private/notes/{user_id}/{note_id}. The public MCP full
+        # note path in this same file is deliberately routed through
+        # serve_full_text_guarded, so this exception is not a public body bypass.
+        "services/mcp_server/reader.py",
+        # MCP search reads raw_text for bounded snippets only. search_personal is
+        # scoped by owner_user_id (owner path); search_public applies
+        # non_privileged_chunk_sql_clause before scoring and wraps the returned
+        # snippet in the untrusted-content envelope. Neither tool returns a full
+        # body. Full public note reads remain forced through serve_full_text_guarded
+        # in services/mcp_server/reader.py.
+        "services/mcp_server/tools.py",
+        # The typed-block backfill is an internal migration path. It reads rows
+        # whose raw_text exists and structured_blocks is NULL, parses the body
+        # into structured_blocks under the write lock, and returns only counts /
+        # document_ids in its BackfillReport. It has no serving surface.
+        "substrate/graph/backfill_structured_blocks.py",
+        # Graph ops reads raw_text for ingestion-time source dedup only: it hashes
+        # candidate bodies to avoid conflating same-URL/different-body revisions.
+        # The body hash decides whether to reuse a document_id; no body is served
+        # from this path.
+        "substrate/graph/ops.py",
+        # Source census is an internal corpus-value gate. It scans raw_text to
+        # compute coverage/quality metrics for a named source and returns aggregate
+        # census fields, not source bodies.
+        "tools/source_census.py",
     }
 )
 
@@ -158,9 +191,7 @@ def _is_body_read_sql(value: str) -> bool:
         and _DOCUMENTS_RE.search(value)
     ):
         return True
-    if _STAR_FROM_DOCUMENTS_RE.search(value):
-        return True
-    return False
+    return bool(_STAR_FROM_DOCUMENTS_RE.search(value))
 
 
 def _concat_constant_str(node: ast.AST) -> str | None:

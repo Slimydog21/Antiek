@@ -122,6 +122,7 @@ DECLARED_MYPY_TARGETS: tuple[str, ...] = (
     "interfaces",
     "compounding",
     "runtime",
+    "services",
 )
 
 

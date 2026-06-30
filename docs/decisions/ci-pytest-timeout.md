@@ -138,18 +138,18 @@ cheaper than) the xdist/sharding fix above, which remains the right move for the
 `pytest` job's own wall-clock. **Reconsider-if:** the suite is sharded so the
 keystone can re-home into a shard cheaply.
 
-## 2026-06-30 — xdist validation attempt, not yet wired
+## 2026-06-30 — xdist validation attempt, then wired
 
-The required throughput fix was validated far enough to prove it is viable, but
-**not** far enough to wire into CI. The intended command remains:
+The required throughput fix is now wired into CI. The pytest command is:
 
 ```bash
 python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope
 ```
 
-`pytest-xdist` is already declared in the `dev` extra. The workflow still runs
-serial at the 40-minute stopgap because the full xdist run is not green yet. Do
-not lower the timeout or add `-n auto` to CI until the blockers below are closed.
+`pytest-xdist` is already declared in the `dev` extra. The workflow now runs the
+full suite with xdist and lowers the timeout stopgap from 40 minutes to 20
+minutes. This is not a coverage change: the same `tests/ -m "not integration"`
+suite runs and still fails on any real failure.
 
 Validation completed:
 
@@ -167,19 +167,12 @@ Validation completed:
   `tests/test_personal_reading_lane.py tests/test_personal_lane_read_side.py tests/test_retrieval_substrate_personal_reading.py tests/test_get_chunk_personal_reading.py tests/test_x_byok_training_exclusion.py -q -n 4 --dist loadscope`
   → 34 passed.
 
-Full-suite validation result:
+First full-suite validation result:
 
 ```bash
 python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope --tb=short
 # 5815 passed, 14 skipped, 12 failed before operator interrupt during teardown
 ```
-
-Remaining blockers observed in that run:
-
-- `tests/test_declared_bar.py::test_mypy_targets_match_wheel_packages` saw
-  `services` in wheel packages but not declared mypy targets.
-- `tests/test_compliance_invariants.py::test_raw_body_scanner_reports_zero_violations_on_the_current_tree`
-  reported existing raw-body SQL reads outside the serve gate.
 
 Closed after the first full-suite attempt:
 
@@ -193,14 +186,50 @@ Closed after the first full-suite attempt:
 - `tests/test_dispatch_bootstrap.py::test_health_endpoint_reports_registered_providers`
   now clears ambient provider keys in the test fixture and opts in only the
   providers under test.
+- `tests/test_declared_bar.py::test_mypy_targets_match_wheel_packages` now
+  includes `services` in `DECLARED_MYPY_TARGETS`, matching the wheel-package
+  list instead of leaving newly shipped service code outside the declared mypy
+  surface.
+- `tests/test_compliance_invariants.py::test_raw_body_scanner_reports_zero_violations_on_the_current_tree`
+  is clean again. The public MCP full-note path no longer selects `raw_text`
+  directly: it now routes through `serve_full_text_guarded`, while the remaining
+  raw-body reads are explicitly documented as owner-only, bounded-snippet, or
+  internal maintenance/audit paths in the scanner allowlist.
+- `tests/test_notebook_tiptap_codec.py::{test_put_content_malformed_doc_422,test_save_by_doc_creates_bound_notebook_and_decomposes_tiptap}`
+  now use the canonical `ANTIEK_DUCKDB_PATH` env var and explicitly initialize a
+  temp graph DB instead of accidentally writing to the operator's default
+  `~/.antiek/research_graph.duckdb` under xdist.
+- `tests/test_distill_routes.py::test_challenge_with_no_provider_is_honest_503`
+  now resets the dispatch provider registry and clears ambient provider API-key
+  env vars in its fixture, so a previous test in the same xdist worker cannot
+  leak a live OpenRouter/DeepSeek/etc. provider into the "no provider" case.
 
 Verification for the closed blockers:
 
 ```bash
 python -m pytest tests/test_weekly_report.py tests/test_krea_routes.py tests/test_retrieval_substrate_interface.py tests/test_retrieval_bench.py tests/test_dispatch_bootstrap.py -q -n 4 --dist loadscope --tb=short
 # 76 passed, 1 skipped
+
+python -m pytest tests/test_declared_bar.py::test_mypy_targets_match_wheel_packages tests/test_compliance_invariants.py::test_raw_body_scanner_reports_zero_violations_on_the_current_tree -q --tb=short
+# 2 passed
+
+python -m pytest tests/test_declared_bar.py tests/test_compliance_invariants.py tests/test_mcp_resources.py tests/test_mcp_tools.py tests/test_mcp_defenses.py -q -n 4 --dist loadscope --tb=short
+# 115 passed
+
+python -m pytest tests/test_notebook_tiptap_codec.py::test_put_content_malformed_doc_422 tests/test_notebook_tiptap_codec.py::test_save_by_doc_creates_bound_notebook_and_decomposes_tiptap tests/test_distill_routes.py::test_challenge_with_no_provider_is_honest_503 -q -n 3 --dist loadscope --tb=short
+# 3 passed
+
+python -m pytest tests/test_declared_bar.py tests/test_compliance_invariants.py tests/test_mcp_resources.py tests/test_mcp_tools.py tests/test_mcp_defenses.py tests/test_notebook_tiptap_codec.py tests/test_distill_routes.py -q -n 4 --dist loadscope --tb=short
+# 135 passed
 ```
 
-Next CI-infra slice: close or quarantine the remaining full-suite blockers
-above, then rerun the exact full xdist command before changing
-`.github/workflows/ci.yml`.
+Final full-suite validation:
+
+```bash
+python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope --tb=short
+# 5859 passed, 14 skipped, 25 warnings in 330.82s (0:05:30)
+```
+
+Decision: `.github/workflows/ci.yml` now uses the proven xdist command and drops
+the pytest job timeout to 20 minutes. Reconsider if GitHub-hosted runners
+approach ~18 minutes or show worker-order flakiness.

@@ -73,7 +73,7 @@ def _seed_public_notes(_init_db: str) -> str:
         doc_id="pub-1",
         title="Public Note",
         raw_text="This is a public note about quantum physics.",
-        content_class=None,
+        content_class="source_declared_open",
     )
     _insert_doc(
         con,
