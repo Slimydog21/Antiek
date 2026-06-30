@@ -45,7 +45,7 @@
 
 import type { PanelKind, PanelMode } from "../../workspace/panel.types";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
-import { postTypedEvent } from "../../lib/api";
+import { postTypedEvent, undoAiAction } from "../../lib/api";
 import type { AIActionAppliedPayload, AIActionUndonePayload } from "../../generated/types";
 
 // ─── Action schema ───────────────────────────────────────────────────
@@ -199,7 +199,9 @@ export type DispatchedAction = {
   /** A one-line summary the UI renders ("📓 Added a note to scratch"). */
   label: string;
   /** Undo handle — calling it reverses the action where possible. */
-  undo: (() => void) | null;
+  undo: (() => void | Promise<void>) | null;
+  /** Event-log id for the applied action, when substrate recording is enabled. */
+  appliedEventId?: Promise<string | null>;
   /** Timestamp for ordering / display. */
   at: number;
 };
@@ -322,24 +324,38 @@ export function dispatchAiAction(
   const at = Date.now();
 
   /** Wrap a result with event-log bridging. Records ai.action.applied
-   * (fire-and-forget) and wraps undo to record ai.action.undone. */
+   * and wraps undo to route through the substrate /ai/undo path first. */
   const withEventLog = (
     d: DispatchedAction,
     descriptor: AiEventDescriptor | null,
   ): DispatchedAction => {
     if (!context || !descriptor) return d;
     const eventIdPromise = recordAiActionApplied(context, descriptor);
-    if (d.undo === null) return d;
+    if (d.undo === null) return { ...d, appliedEventId: eventIdPromise };
     const originalUndo = d.undo;
     return {
       ...d,
-      undo: () => {
-        originalUndo();
-        void eventIdPromise.then((eventId) => {
-          if (eventId) {
-            void recordAiActionUndone(context, eventId, descriptor);
+      appliedEventId: eventIdPromise,
+      undo: async () => {
+        const eventId = await eventIdPromise;
+        if (eventId) {
+          try {
+            await undoAiAction({
+              event_id: eventId,
+              investigation_id: context.investigation_id,
+            });
+            await originalUndo();
+            return;
+          } catch {
+            // Fall back to the local inverse below. UI-layout actions may be
+            // client-owned; failed audit writes must not strand the operator.
           }
-        });
+        }
+
+        await originalUndo();
+        if (eventId) {
+          await recordAiActionUndone(context, eventId, descriptor);
+        }
       },
     };
   };
@@ -422,12 +438,13 @@ export function dispatchAiAction(
           label: `❌ Closed ${action.id}`,
           // Best-effort undo: reopen at the previous descriptor.
           undo: existing
-            ? () =>
+            ? () => {
                 useWorkspace.getState().open(existing.kind, existing.props, {
                   id: existing.id,
                   mode: existing.mode,
                   title: existing.title,
-                })
+                });
+              }
             : null,
           at,
         },

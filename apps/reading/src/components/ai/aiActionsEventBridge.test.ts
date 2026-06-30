@@ -1,18 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock postTypedEvent BEFORE importing aiActions so the named-import
+// Mock API helpers BEFORE importing aiActions so the named-import
 // binding in aiActions.ts picks up the mock. vi.mock factories are
 // hoisted to the top of the module by vitest.
+const { postTypedEventMock, undoAiActionMock } = vi.hoisted(() => ({
+  postTypedEventMock: vi.fn(),
+  undoAiActionMock: vi.fn(),
+}));
+
 vi.mock("../../lib/api", () => ({
-  postTypedEvent: vi.fn(),
+  postTypedEvent: postTypedEventMock,
+  undoAiAction: undoAiActionMock,
 }));
 
 import { dispatchAiAction, type AiActionContext } from "./aiActions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
-import { postTypedEvent } from "../../lib/api";
-
-const postTypedEventMock = postTypedEvent as ReturnType<typeof vi.fn>;
 
 /**
  * Event-log bridging tests for the AISidecar dispatcher.
@@ -37,17 +40,41 @@ const CONTEXT: AiActionContext = {
   investigation_id: "inv-test-bridge",
 };
 
+function installLocalStorageShim(): void {
+  if (typeof window.localStorage?.getItem === "function") {
+    window.localStorage.clear();
+    return;
+  }
+  const store = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+      removeItem: (key: string) => store.delete(key),
+      clear: () => store.clear(),
+    },
+  });
+}
+
 beforeEach(() => {
   useWorkspace.setState({ ...EMPTY_SNAPSHOT });
+  installLocalStorageShim();
   postTypedEventMock.mockReset();
   postTypedEventMock.mockResolvedValue({
     event_id: "evt-fixture",
     action_type: "ai.action.applied",
   });
+  undoAiActionMock.mockReset();
+  undoAiActionMock.mockResolvedValue({
+    event_id: "evt-undone-fixture",
+    action_type: "ai.action.undone",
+  });
 });
 
 afterEach(() => {
   postTypedEventMock.mockReset();
+  undoAiActionMock.mockReset();
 });
 
 /** Helper: flush pending fire-and-forget Promises before asserting.
@@ -167,7 +194,7 @@ describe("AISidecar event-log bridge", () => {
     expect(postTypedEventMock).not.toHaveBeenCalled();
   });
 
-  it("undo wrapper fires AIActionUndone when the underlying undo runs", async () => {
+  it("undo wrapper calls /ai/undo with the applied event id before local rollback", async () => {
     // Pre-open a panel so set_panel_mode has a real prev mode.
     useWorkspace.getState().open(
       "FakeSidebar",
@@ -177,10 +204,6 @@ describe("AISidecar event-log bridge", () => {
     postTypedEventMock.mockResolvedValueOnce({
       event_id: "evt-applied-002",
       action_type: "ai.action.applied",
-    });
-    postTypedEventMock.mockResolvedValueOnce({
-      event_id: "evt-undone-002",
-      action_type: "ai.action.undone",
     });
 
     const record = dispatchAiAction(
@@ -197,22 +220,21 @@ describe("AISidecar event-log bridge", () => {
     // AGH SPR-04 vitest gate caught (green locally, 0-calls under CI). waitFor
     // retries until the mock is actually called, deterministic on any host.
     await vi.waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(1));
+    expect(useWorkspace.getState().panels["ai:mode:real"].mode).toBe(
+      "docked-right",
+    );
 
     expect(record.undo).toBeTypeOf("function");
-    record.undo!();
-    await vi.waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(2));
-    const undonePayload = postTypedEventMock.mock.calls[1][0].payload as {
-      action_type: string;
-      inverted_event_id: string;
-      target_kind: string;
-      target_id: string;
-      reason?: string;
-    };
-    expect(undonePayload.action_type).toBe("ai.action.undone");
-    expect(undonePayload.inverted_event_id).toBe("evt-applied-002");
-    expect(undonePayload.target_kind).toBe("ui_layout");
-    expect(undonePayload.target_id).toBe("ai:mode:real");
-    expect(undonePayload.reason).toBe("operator_undo");
+    await record.undo!();
+
+    expect(undoAiActionMock).toHaveBeenCalledWith({
+      event_id: "evt-applied-002",
+      investigation_id: CONTEXT.investigation_id,
+    });
+    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    expect(useWorkspace.getState().panels["ai:mode:real"].mode).toBe(
+      "floating",
+    );
   });
 
   it("network failure in event POST is silently swallowed (best-effort observability)", async () => {

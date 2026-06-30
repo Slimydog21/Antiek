@@ -1,5 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { postTypedEventMock, undoAiActionMock } = vi.hoisted(() => ({
+  postTypedEventMock: vi.fn(),
+  undoAiActionMock: vi.fn(),
+}));
+
+vi.mock("../../lib/api", async (importActual) => {
+  const actual = await importActual<typeof import("../../lib/api")>();
+  return {
+    ...actual,
+    postTypedEvent: postTypedEventMock,
+    undoAiAction: undoAiActionMock,
+  };
+});
+
 import { dispatchAiAction, parseAssistantReply } from "./aiActions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
@@ -17,9 +31,37 @@ import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
  * it dispatches a workspace open(PdfViewer, ...) action."
  */
 
+function installLocalStorageShim(): void {
+  if (typeof window.localStorage?.getItem === "function") {
+    window.localStorage.clear();
+    return;
+  }
+  const store = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+      removeItem: (key: string) => store.delete(key),
+      clear: () => store.clear(),
+    },
+  });
+}
+
 beforeEach(() => {
   // Reset the workspace store to a known baseline before each test.
   useWorkspace.setState({ ...EMPTY_SNAPSHOT });
+  installLocalStorageShim();
+  postTypedEventMock.mockReset();
+  postTypedEventMock.mockResolvedValue({
+    event_id: "evt-ai-applied-1",
+    action_type: "ai.action.applied",
+  });
+  undoAiActionMock.mockReset();
+  undoAiActionMock.mockResolvedValue({
+    event_id: "evt-ai-undone-1",
+    action_type: "ai.action.undone",
+  });
   // Silence the deferred LemonToast dynamic-import — we test the
   // dispatched action records, not the toast renderer.
   vi.useFakeTimers();
@@ -79,6 +121,79 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().panels["ai:test:undo"]).toBeTruthy();
     r.undo!();
     expect(useWorkspace.getState().panels["ai:test:undo"]).toBeFalsy();
+  });
+
+  it("contextual dispatch retains the applied event id and undo calls /ai/undo before local rollback", async () => {
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "open_panel",
+            panel_kind: "FakeSidebar",
+            id: "ai:test:event-undo",
+            mode: "docked-left",
+          },
+        ]) +
+        "\n@@end",
+    );
+    const r = dispatchAiAction(actions[0], {
+      investigation_id: "__sidecar__",
+      operator_prompt: "open the sidebar",
+    });
+
+    expect(useWorkspace.getState().panels["ai:test:event-undo"]).toBeTruthy();
+    await expect(r.appliedEventId).resolves.toBe("evt-ai-applied-1");
+    expect(postTypedEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        investigation_id: "__sidecar__",
+        role: "ai_sidecar",
+        payload: expect.objectContaining({
+          action_type: "ai.action.applied",
+          target_kind: "ui_layout",
+          target_id: "ai:test:event-undo",
+          operator_prompt: "open the sidebar",
+        }),
+      }),
+    );
+
+    await r.undo?.();
+
+    expect(undoAiActionMock).toHaveBeenCalledWith({
+      event_id: "evt-ai-applied-1",
+      investigation_id: "__sidecar__",
+    });
+    expect(useWorkspace.getState().panels["ai:test:event-undo"]).toBeFalsy();
+  });
+
+  it("contextual undo falls back to local rollback and direct undone event when /ai/undo fails", async () => {
+    undoAiActionMock.mockRejectedValueOnce(new Error("offline"));
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "open_panel",
+            panel_kind: "FakeSidebar",
+            id: "ai:test:event-fallback",
+          },
+        ]) +
+        "\n@@end",
+    );
+    const r = dispatchAiAction(actions[0], {
+      investigation_id: "__sidecar__",
+      operator_prompt: "open the sidebar",
+    });
+
+    await r.undo?.();
+
+    expect(useWorkspace.getState().panels["ai:test:event-fallback"]).toBeFalsy();
+    expect(postTypedEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          action_type: "ai.action.undone",
+          inverted_event_id: "evt-ai-applied-1",
+        }),
+      }),
+    );
   });
 
   it("close_panel removes a previously-open panel", () => {

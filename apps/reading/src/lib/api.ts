@@ -194,6 +194,30 @@ export async function postTypedEvent(
   return resp.json();
 }
 
+export interface AIUndoRequest {
+  event_id: string;
+  investigation_id: string;
+}
+
+export async function undoAiAction(
+  req: AIUndoRequest,
+): Promise<EmittedEventResponse> {
+  const resp = await apiFetch(`${API_BASE}/ai/undo`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new ApiError(
+      `POST /ai/undo failed: HTTP ${resp.status}`,
+      resp.status,
+      body,
+    );
+  }
+  return resp.json();
+}
+
 export async function getTrajectory(
   investigationId: string,
   limit?: number,
