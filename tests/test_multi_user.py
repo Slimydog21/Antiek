@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from runtime.db_lock import connect_write
+from substrate.ducklake import DuckLakeCatalog, HashPrefixSharding, InMemoryCatalogBackend
 from substrate.multi_user import (
     AuthError,
     GraphRouter,
@@ -96,6 +97,43 @@ def test_resolve_personal_graph_returns_handle():
     assert handle.user_id == "alice"
     assert handle.db_path.endswith("alice.duckdb")
     assert handle.encryption_key_ref == "key-alice"
+
+
+def test_graph_router_consults_ducklake_catalog_first():
+    catalog = DuckLakeCatalog(backend=InMemoryCatalogBackend())
+    catalog.register(
+        user_id="alice",
+        db_path="/catalog/shard-7/alice.duckdb",
+        encryption_key_ref="catalog-key-alice",
+        shard_id="7",
+    )
+    router = GraphRouter(personal_graphs_dir="/tmp/test", catalog=catalog)
+
+    assert router.personal_graph_path("alice") == "/catalog/shard-7/alice.duckdb"
+    handle = resolve_personal_graph(router, user_id="alice")
+    assert handle.db_path == "/catalog/shard-7/alice.duckdb"
+    assert handle.encryption_key_ref == "catalog-key-alice"
+
+
+def test_graph_router_falls_back_when_catalog_has_no_entry():
+    catalog = DuckLakeCatalog(backend=InMemoryCatalogBackend())
+    router = GraphRouter(personal_graphs_dir="/tmp/test", catalog=catalog)
+
+    assert router.personal_graph_path("missing-user") == "/tmp/test/missing-user.duckdb"
+
+
+def test_graph_router_uses_sharding_strategy_for_uncatalogued_users():
+    catalog = DuckLakeCatalog(backend=InMemoryCatalogBackend())
+    router = GraphRouter(
+        personal_graphs_dir="/tmp/test",
+        catalog=catalog,
+        sharding_strategy=HashPrefixSharding(hex_chars=2),
+    )
+
+    path = router.personal_graph_path("alice")
+    assert path.startswith("/tmp/test/")
+    assert path.endswith("/alice.duckdb")
+    assert len(path.removeprefix("/tmp/test/").split("/", 1)[0]) == 2
 
 
 def test_resolve_shared_substrate_returns_handle():
