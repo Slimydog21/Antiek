@@ -13,6 +13,8 @@ from substrate.marketplace_metrics import (
     PublisherEscrowReport,
     PublisherStatusCounts,
     assemble_snapshot,
+    build_snapshot_from_conn,
+    build_snapshot_from_inputs,
     compute_advertiser_retention,
     compute_creator_distribution,
     compute_publisher_escrow,
@@ -81,6 +83,12 @@ def test_buckets_classify_correctly():
     assert by_lo[100_000] == 1
 
 
+def test_creator_distribution_rejects_malformed_cents():
+    for bad in (-1, 1.5, True):
+        with pytest.raises(ValueError, match="creator_paid_cents"):
+            compute_creator_distribution({"u-bad": bad})
+
+
 # ── Publisher escrow ──────────────────────────────────────────────
 
 
@@ -119,6 +127,66 @@ def test_compute_publisher_escrow_aggregates():
     assert report.unclaimed_escrow_cents == 12_000
     # ip-1, ip-2, ip-3 each ≥ 1000c ($10 threshold); ip-4 = 0.
     assert report.publishers_with_nontrivial_accrual == 3
+
+
+def test_publisher_escrow_rejects_malformed_cents():
+    for bad in (-1, 1.5, True):
+        with pytest.raises(ValueError, match="publisher_accrual_cents"):
+            compute_publisher_escrow(
+                publisher_status_rows=[("ip-1", "invited")],
+                publisher_accrual_cents={"ip-1": bad},
+                publisher_paid_cents={},
+            )
+    with pytest.raises(ValueError, match="publisher_paid_cents"):
+        compute_publisher_escrow(
+            publisher_status_rows=[("ip-1", "claimed")],
+            publisher_accrual_cents={"ip-1": 100},
+            publisher_paid_cents={"ip-1": 1.5},
+        )
+    with pytest.raises(ValueError, match="publisher_paid_cents"):
+        compute_publisher_escrow(
+            publisher_status_rows=[("ip-1", "claimed")],
+            publisher_accrual_cents={"ip-1": 100},
+            publisher_paid_cents={"ip-1": True},
+        )
+    for threshold in (-1, True):
+        with pytest.raises(ValueError, match="nontrivial_threshold_cents"):
+            compute_publisher_escrow(
+                publisher_status_rows=[],
+                publisher_accrual_cents={},
+                publisher_paid_cents={},
+                nontrivial_threshold_cents=threshold,
+            )
+
+
+def test_build_snapshot_from_inputs_rejects_malformed_cents():
+    with pytest.raises(ValueError, match="creator_paid_cents"):
+        build_snapshot_from_inputs(
+            creator_paid_cents={"creator-bad": -1},
+            publisher_status_rows=[],
+            publisher_accrual_cents={},
+            publisher_paid_cents={},
+            current_advertiser_spend={},
+            prior_advertiser_spend={},
+        )
+    with pytest.raises(ValueError, match="current_period_spend"):
+        build_snapshot_from_inputs(
+            creator_paid_cents={},
+            publisher_status_rows=[],
+            publisher_accrual_cents={},
+            publisher_paid_cents={},
+            current_advertiser_spend={"adv-bad": -1},
+            prior_advertiser_spend={},
+        )
+    with pytest.raises(ValueError, match="publisher_accrual_cents"):
+        build_snapshot_from_inputs(
+            creator_paid_cents={},
+            publisher_status_rows=[("ip-bad", "invited")],
+            publisher_accrual_cents={"ip-bad": -1},
+            publisher_paid_cents={},
+            current_advertiser_spend={},
+            prior_advertiser_spend={},
+        )
 
 
 # ── Advertiser retention ──────────────────────────────────────────
@@ -172,6 +240,33 @@ def test_empty_periods():
     r = compute_advertiser_retention(current_period_spend={}, prior_period_spend={})
     assert r.advertiser_count_current == 0
     assert r.retention_rate == 0.0
+
+
+def test_advertiser_retention_rejects_malformed_spend():
+    for bad in (-1, 1.5, True):
+        with pytest.raises(ValueError, match="current_period_spend"):
+            compute_advertiser_retention(
+                current_period_spend={"adv-bad": bad},
+                prior_period_spend={},
+            )
+    for bad in (-1, 1.5, True):
+        with pytest.raises(ValueError, match="prior_period_spend"):
+            compute_advertiser_retention(
+                current_period_spend={},
+                prior_period_spend={"adv-bad": bad},
+            )
+
+
+def test_build_snapshot_from_inputs_rejects_malformed_prior_advertiser_spend():
+    with pytest.raises(ValueError, match="prior_period_spend"):
+        build_snapshot_from_inputs(
+            creator_paid_cents={},
+            publisher_status_rows=[],
+            publisher_accrual_cents={},
+            publisher_paid_cents={},
+            current_advertiser_spend={},
+            prior_advertiser_spend={"adv-bad": -1},
+        )
 
 
 # ── Composite snapshot + health classification ────────────────────
@@ -354,3 +449,32 @@ def test_marketplace_accrual_source_rejects_corrupt_balance():
 
     with pytest.raises(MarketplaceMetricsSourceError, match="invalid escrow balance"):
         fetch_publisher_accrual_cents(con)
+
+
+def test_marketplace_accrual_source_rejects_negative_balance():
+    con = _FakeConn(
+        {
+            "SELECT ip_holder_id, escrow_balance_usd FROM ip_holders": [
+                ("ip-negative", "-0.01"),
+            ]
+        }
+    )
+
+    with pytest.raises(MarketplaceMetricsSourceError, match="negative escrow balance"):
+        fetch_publisher_accrual_cents(con)
+
+
+def test_build_snapshot_from_conn_rejects_malformed_overrides():
+    con = _FakeConn(
+        {
+            "SELECT ip_holder_id, status FROM ip_holders": [],
+            "SELECT ip_holder_id, escrow_balance_usd FROM ip_holders": [],
+        }
+    )
+
+    with pytest.raises(ValueError, match="creator_paid_cents"):
+        build_snapshot_from_conn(con, creator_paid_cents_override={"creator-bad": -1})
+    with pytest.raises(ValueError, match="current_period_spend"):
+        build_snapshot_from_conn(con, current_advertiser_spend_override={"adv-bad": -1})
+    with pytest.raises(ValueError, match="prior_period_spend"):
+        build_snapshot_from_conn(con, prior_advertiser_spend_override={"adv-bad": -1})

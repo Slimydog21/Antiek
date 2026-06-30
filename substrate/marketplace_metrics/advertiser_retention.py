@@ -48,6 +48,8 @@ def compute_advertiser_retention(
     current_period_spend: Mapping[str, int],  # advertiser_id → cents
     prior_period_spend: Mapping[str, int],
 ) -> AdvertiserRetentionReport:
+    _require_non_negative_cents(current_period_spend, "current_period_spend")
+    _require_non_negative_cents(prior_period_spend, "prior_period_spend")
     current_ids = set(current_period_spend.keys())
     prior_ids = set(prior_period_spend.keys())
 
@@ -78,3 +80,12 @@ def compute_advertiser_retention(
         retention_rate=retention_rate,
         activities=tuple(activities),
     )
+
+
+def _require_non_negative_cents(cents_by_id: Mapping[str, int], field: str) -> None:
+    for entity_id, cents in cents_by_id.items():
+        if isinstance(cents, bool) or not isinstance(cents, int) or cents < 0:
+            raise ValueError(
+                f"{field}[{entity_id!r}] must be a non-negative integer cents value, "
+                f"got {cents!r}"
+            )

@@ -82,6 +82,17 @@ def compute_publisher_escrow(
     publisher_paid_cents: dict[str, int],  # ip_holder_id → paid cents
     nontrivial_threshold_cents: int = 1_000,  # $10 per §9.5
 ) -> PublisherEscrowReport:
+    _require_non_negative_cents(publisher_accrual_cents, "publisher_accrual_cents")
+    _require_non_negative_cents(publisher_paid_cents, "publisher_paid_cents")
+    if (
+        isinstance(nontrivial_threshold_cents, bool)
+        or not isinstance(nontrivial_threshold_cents, int)
+        or nontrivial_threshold_cents < 0
+    ):
+        raise ValueError(
+            "nontrivial_threshold_cents must be a non-negative integer cents value, "
+            f"got {nontrivial_threshold_cents!r}"
+        )
     counts = {"pre_onboarded": 0, "invited": 0, "claimed": 0, "opted_out": 0}
     claimed_set: set[str] = set()
     for ip_id, status in publisher_status_rows:
@@ -111,3 +122,12 @@ def compute_publisher_escrow(
         unclaimed_escrow_cents=unclaimed,
         publishers_with_nontrivial_accrual=nontrivial,
     )
+
+
+def _require_non_negative_cents(cents_by_id: dict[str, int], field: str) -> None:
+    for entity_id, cents in cents_by_id.items():
+        if isinstance(cents, bool) or not isinstance(cents, int) or cents < 0:
+            raise ValueError(
+                f"{field}[{entity_id!r}] must be a non-negative integer cents value, "
+                f"got {cents!r}"
+            )

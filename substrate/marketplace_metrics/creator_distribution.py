@@ -83,6 +83,7 @@ def compute_creator_distribution(
             long_tail_mass=0.0,
             buckets=(),
         )
+    _require_non_negative_cents(creator_paid_cents, "creator_paid_cents")
 
     sorted_vals = sorted(creator_paid_cents.values())
     total = sum(sorted_vals)
@@ -116,3 +117,12 @@ def compute_creator_distribution(
         long_tail_mass=long_tail_mass,
         buckets=tuple(buckets),
     )
+
+
+def _require_non_negative_cents(cents_by_id: dict[str, int], field: str) -> None:
+    for entity_id, cents in cents_by_id.items():
+        if isinstance(cents, bool) or not isinstance(cents, int) or cents < 0:
+            raise ValueError(
+                f"{field}[{entity_id!r}] must be a non-negative integer cents value, "
+                f"got {cents!r}"
+            )
