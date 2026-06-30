@@ -130,3 +130,57 @@ def test_substrate_restart_inherits_replay_state(db):
         db, nonce="n-survivor", partner_id="prt-x",
         retention_seconds=100, now_unix=1050,
     ) is False
+
+
+class _RaceInsertConn:
+    """Simulate two writers racing between SELECT-miss and INSERT."""
+
+    def __init__(self):
+        self.insert_attempts = 0
+        self._seen = False
+        self._last_select_found = False
+
+    def execute(self, sql: str, params: list | None = None):
+        normalized = " ".join(sql.split())
+        if normalized.startswith("CREATE TABLE"):
+            return self
+        if normalized.startswith("DELETE FROM federation_nonces"):
+            return self
+        if normalized.startswith("SELECT 1 FROM federation_nonces"):
+            self._last_select_found = self._seen
+            return self
+        if normalized.startswith("INSERT INTO federation_nonces"):
+            self.insert_attempts += 1
+            self._seen = True
+            raise RuntimeError("duplicate key")
+        raise AssertionError(f"unexpected SQL: {normalized}")
+
+    def fetchone(self):
+        return (1,) if self._last_select_found else None
+
+
+def test_persistent_nonce_duplicate_insert_race_counts_as_replay():
+    con = _RaceInsertConn()
+
+    assert remember_nonce_persistent(
+        con, nonce="n-race", partner_id="prt-x", now_unix=1000,
+    ) is False
+    assert con.insert_attempts == 1
+
+
+class _BrokenInsertConn(_RaceInsertConn):
+    def execute(self, sql: str, params: list | None = None):
+        normalized = " ".join(sql.split())
+        if normalized.startswith("INSERT INTO federation_nonces"):
+            self.insert_attempts += 1
+            raise RuntimeError("disk full")
+        return super().execute(sql, params)
+
+
+def test_persistent_nonce_non_duplicate_insert_failure_still_raises():
+    con = _BrokenInsertConn()
+
+    with pytest.raises(RuntimeError, match="disk full"):
+        remember_nonce_persistent(
+            con, nonce="n-broken", partner_id="prt-x", now_unix=1000,
+        )
