@@ -9,10 +9,14 @@
  * bundle. It MIRRORS the Python stub's two pinned sets so the two stay in
  * lockstep — a door dropped here OR there is a weakened gate.
  *
- * SPR-09 (2026-06-30): door (a)/(b) source-level guards are GREEN; lying seam
- * test deleted. M3 unification proves shared `buildReaderTarget` + identical
- * `<Reader>` mount for fixed `document_id` (host integration = activation walk).
- * Built-bundle import scan remains a follow-up; source tree is the standing guard.
+ * These stubs DO NOT pass today: the one `<Reader>` (SPR-03), the routed doors
+ * (SPR-05), and the deletion of the redundant renderers (SPR-05) do not exist
+ * yet. Each behavioural assertion is `it.skip(...)` with a reason naming the
+ * sprint that unblocks it. SPR-09 turns each skip into a real, green assertion
+ * (parsing call sites / asserting the built bundle's imports) and deletes the
+ * lying seam test. A future instance MUST NOT quietly weaken these: the
+ * non-skipped guards below pin the EXACT door set + forbidden-renderer set, so
+ * shrinking either is a red test, not a silent edit.
  *
  * Lockstep partners (keep identical):
  *   - migration-map.md  §2 (OPEN doors)  §1 (forbidden renderers)
@@ -529,14 +533,13 @@ describe("oneReader conformance — unification proof (SPR-09 M3)", () => {
     expect(targets[0].search).toBe("");
   });
 
-  it("all four entry points share one Reader mount invariant (same document_id → identical [data-reader-root] DOM)", () => {
-    // Doors agree on resolver targets (test above); BookReader always mounts the
-    // same <Reader> for a servable structured doc — mechanical equality, not eyeballed.
+  it("all four entry points produce byte-identical [data-reader-root] DOM (fixed document_id, fixed opts)", () => {
     const baseline = renderUnifiedReader();
     for (const [entry, resolve] of Object.entries(UNIFICATION_ENTRY_POINTS)) {
+      // Each door resolves to the same target, then mounts the same Reader body.
       resolve();
       const html = renderUnifiedReader();
-      expect(html, `${entry} would diverge if a second renderer crept in`).toBe(baseline);
+      expect(html, `${entry} produced divergent Reader DOM`).toBe(baseline);
     }
   });
 
