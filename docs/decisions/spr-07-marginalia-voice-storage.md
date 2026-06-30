@@ -81,9 +81,12 @@ and the PR-2 grep is clean).
 
 ## The exact next step
 
-1. **Resolve:** read the persisted note events for the synthesis, run each
-   through `reResolveNote(authored, ctx)` (re-resolves the anchor BY QUOTE), and
-   hand the `ResolvedMarginNote[]` to `makeMarginaliaAugmentation`.
+1. **Exact servable synthesis passage mount:** bounded/restricted marginalia is
+   now visible in `MasterMdViewer` (persisted `marginalia.noted` →
+   `reResolveNote` → `makeMarginaliaAugmentation`). The remaining synthesis
+   surface gap is the servable exact-passage case: it needs a rendered
+   `data-passage-*` marker for the resolved `{kind:"passage"}` anchor, not a
+   fabricated chunk fallback.
 2. The augmentation already maps resolved notes → anchored widgets; no
    augmentation change needed.
 

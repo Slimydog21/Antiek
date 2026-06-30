@@ -169,9 +169,13 @@ surface now feeds them real geometry:
 **What remains deliberately dormant:**
 
 - Exact passage geometry is now available when the rendered structured citation
-  carries `char_start` / `char_end`. The marginalia gutter experience is still
-  dormant because its gutter widget is not mounted in the synthesis surface yet;
-  do not round passage measurement up into mounted marginalia UI.
+  carries `char_start` / `char_end`. Completed research answers also mount the
+  bounded marginalia gutter path: persisted `marginalia.noted` events are
+  re-resolved, restricted targets anchor to the measured source chunk chip, and
+  the gutter card renders without exposing the withheld excerpt. The exact
+  servable passage card in the synthesis surface still requires a rendered
+  `data-passage-*` marker for that passage; do not round bounded marginalia up
+  into full exact-passage synthesis marginalia.
 - `AccrualView` is mounted in `MasterMdViewer` as of 2026-07-01 through the
   anchored-widget facet when the surface has a persisted synthesis id.
   `ChaseThread` remains dormant; it shares the facet and can consume the live map

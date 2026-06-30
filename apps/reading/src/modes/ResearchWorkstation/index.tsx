@@ -381,6 +381,7 @@ export function CompletedInvestigationContent({
           <MasterMdViewer
             synthesis={synth}
             synthesisId={synthesisId}
+            events={investigation.events}
             reviewDueEnabled={reviewDuePolicyEnabled}
             reviewDueClaims={visibleReviewDueClaims}
             onReviewClaim={reviewDuePolicyEnabled ? handleReviewClaim : undefined}

@@ -20,6 +20,7 @@ import type {
   AttributionReportResponse,
   ConsentViewResponse,
 } from "../../lib/api";
+import type { Event } from "../../generated/types";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
 const {
@@ -62,7 +63,11 @@ vi.mock("../../components/lemon/LemonToast", () => ({
   toast: { ok: vi.fn(), err: vi.fn() },
 }));
 
-import MasterMdViewer, { ClaimBlock, reviewDueDecorationsFor } from "./MasterMdViewer";
+import MasterMdViewer, {
+  ClaimBlock,
+  authoredMarginNotesFromEvents,
+  reviewDueDecorationsFor,
+} from "./MasterMdViewer";
 import { RESTRICTED_CLASS, SERVABLE_CLASS } from "../../reading-physics/augmentations/servability";
 import { REVIEW_DUE_CLASS } from "../../reading-physics/augmentations/review-due";
 import { SITESEE_CITED_CLASS } from "../../reading-physics/augmentations/sitesee";
@@ -419,6 +424,161 @@ describe("MasterMdViewer — named-source read (M1)", () => {
     await waitFor(() => expect(screen.getByText(/A Restricted Book/)).toBeTruthy());
     expect(screen.getByText(/not available to open/)).toBeTruthy();
     expect(screen.queryByText(/published by/)).toBeNull();
+  });
+});
+
+function eventOf(
+  actionType: string,
+  payload: Record<string, unknown>,
+  over: Partial<Event> = {},
+): Event {
+  return {
+    event_id: over.event_id ?? `ev-${actionType}`,
+    investigation_id: "inv-1",
+    action_type: actionType,
+    payload: { action_type: actionType, ...payload } as Event["payload"],
+    param_version: "0.1.0",
+    emitted_at: "2026-07-01T00:00:00.000Z",
+    ...over,
+  } as Event;
+}
+
+describe("MasterMdViewer — marginalia anchored widget wiring (SPR-07)", () => {
+  it("adapts marginalia.noted events into authored notes with replay dedupe and synthesis scoping", () => {
+    const note = eventOf(
+      "marginalia.noted",
+      {
+        note_id: "mn-1",
+        note_text: "Remember the provenance point.",
+        excerpt: "the moat is provenance",
+        chunk_id: "c1",
+      },
+      { event_id: "ev-note-1", synthesis_id: "syn-1" },
+    );
+    const otherSynthesis = eventOf(
+      "marginalia.noted",
+      {
+        note_id: "mn-2",
+        note_text: "Wrong answer.",
+        excerpt: "other quote",
+        chunk_id: "c2",
+      },
+      { event_id: "ev-note-2", synthesis_id: "syn-other" },
+    );
+    const malformed = eventOf(
+      "marginalia.noted",
+      { note_id: "mn-empty", note_text: "", excerpt: "quote" },
+      { event_id: "ev-note-3", synthesis_id: "syn-1" },
+    );
+
+    expect(
+      authoredMarginNotesFromEvents(
+        [note, note, otherSynthesis, malformed],
+        "syn-1",
+      ),
+    ).toEqual([
+      {
+        id: "mn-1",
+        comment: "Remember the provenance point.",
+        anchorQuote: "the moat is provenance",
+        targetChunkId: "c1",
+        clip: null,
+      },
+    ]);
+  });
+
+  it("renders a marginalia note through the anchored-widget facet for a bounded restricted source", async () => {
+    getChunkMock.mockResolvedValue(
+      chunk({
+        chunk_id: "c1",
+        document_title: "A Restricted Book",
+        text: "",
+        servable: false,
+        servability: "restricted",
+      }),
+    );
+
+    const observers: CapturedRO[] = [];
+    class StubResizeObserver {
+      private readonly rec: CapturedRO;
+      constructor(callback: ResizeObserverCallback) {
+        this.rec = { callback, observed: [], disconnected: false };
+        observers.push(this.rec);
+      }
+      observe(el: Element) {
+        this.rec.observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {
+        this.rec.disconnected = true;
+      }
+    }
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+      StubResizeObserver as unknown as typeof ResizeObserver;
+
+    const geomSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const isArticle = this.tagName === "ARTICLE";
+        const chunkId = this.getAttribute("data-chunk-id");
+        const r = chunkId === "c1"
+          ? { top: 180, left: 42, width: 160, height: 22 }
+          : isArticle
+            ? { top: 0, left: 0, width: 800, height: 4000 }
+            : { top: 0, left: 0, width: 0, height: 0 };
+        return {
+          top: r.top,
+          left: r.left,
+          width: r.width,
+          height: r.height,
+          right: r.left + r.width,
+          bottom: r.top + r.height,
+          x: r.left,
+          y: r.top,
+          toJSON() {
+            return r;
+          },
+        } as DOMRect;
+      });
+
+    try {
+      render(
+        <MasterMdViewer
+          synthesis={synth()}
+          synthesisId="syn-1"
+          events={[
+            eventOf(
+              "marginalia.noted",
+              {
+                note_id: "mn-1",
+                note_text: "Reader note on a restricted source.",
+                excerpt: "withheld quoted passage",
+                chunk_id: "c1",
+              },
+              { event_id: "ev-note-1", synthesis_id: "syn-1" },
+            ),
+          ]}
+        />,
+      );
+
+      await screen.findByText(/A Restricted Book/);
+      await waitFor(() => expect(getChunkMock).toHaveBeenCalled());
+      expect(observers).toHaveLength(1);
+      act(() => {
+        observers[0].callback([], observers[0] as unknown as ResizeObserver);
+      });
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText("Reader note on a restricted source.")).toBeTruthy(),
+      );
+      expect(screen.getByText("restricted source")).toBeTruthy();
+      expect(screen.queryByText("withheld quoted passage")).toBeNull();
+    } finally {
+      geomSpy.mockRestore();
+    }
   });
 });
 
