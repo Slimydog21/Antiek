@@ -28,7 +28,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
       { path: "/documents", title: "Documents", description: "Substrate-attached sources by tier" },
       { path: "/notebooks", title: "Notebooks", description: "Wedge 2 literate-analysis surface" },
       { path: "/sources", title: "Sources", description: "Acquisition adapters" },
-      { path: "/interviews", title: "Interviews", description: "Loop 4 informant projects + invites" },
+      { path: "/speak", title: "Speak", description: "One door for interview projects + invited voices" },
       { path: "/skill-rules", title: "Skill rules", description: "Cross-user discovered rules" },
     ],
   },
