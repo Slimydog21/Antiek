@@ -136,15 +136,21 @@ async def async_client(app_and_bus):
 
 
 async def _post_synthesize(
-    ac, *, investigation_id, constraints=None,
+    ac,
+    *,
+    investigation_id,
+    constraints=None,
+    evidence_block="[evidence]",
+    parameters_block="[parameters]",
+    substrate_block="[substrate]",
 ):
     payload = {
         "action_type": "synthesize.requested",
         "question": "Is X causally linked to Y?",
         "decomposition_block": "[decomposition]",
-        "evidence_block": "[evidence]",
-        "parameters_block": "[parameters]",
-        "substrate_block": "[substrate]",
+        "evidence_block": evidence_block,
+        "parameters_block": parameters_block,
+        "substrate_block": substrate_block,
         "constraints": constraints or [],
     }
     r = await ac.post(
@@ -196,6 +202,35 @@ def _good_thesis(*, attributed: bool = True, summary: str = "X is causally linke
         }],
         "conviction_level": 0.7,
     }
+
+
+def _evidence_block(*chunk_ids: str) -> str:
+    return json.dumps([
+        {
+            "supporting_claims": [
+                {
+                    "claim": "evidence claim",
+                    "chunk_ids": list(chunk_ids),
+                    "edge_ids": [],
+                }
+            ]
+        }
+    ])
+
+
+def _connector_block(
+    *,
+    path_nodes: list[str] | None = None,
+    edge_ids: list[str] | None = None,
+) -> str:
+    return json.dumps({
+        "paths": [
+            {
+                "path_nodes": path_nodes or ["n-1", "n-2"],
+                "edge_ids": edge_ids or ["e-1"],
+            }
+        ]
+    })
 
 
 def _must_attribute_spec(*, strictness: str = "hard") -> dict:
@@ -427,6 +462,66 @@ async def test_first_dispatch_parse_failure_fallback(
     assert p.thesis_components == []
     # Dispatch succeeded — parse failed; policy_id reflects the model.
     assert e.policy_id == "stub-synthesizer/stub-synth-model"
+
+
+@pytest.mark.asyncio
+async def test_fabricated_supporting_chunk_ref_triggers_self_repair(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-synth-fake-chunk"
+    fabricated = _good_thesis(summary="FABRICATED")
+    fabricated["thesis_components"][0]["supporting_chunk_ids"] = ["chunk-made-up"]
+    repaired = _good_thesis(summary="REPAIRED")
+    provider = _StubSynthesizer([json.dumps(fabricated), json.dumps(repaired)])
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _synth_config("stub-synthesizer"))
+
+    await _post_synthesize(
+        async_client,
+        investigation_id=inv,
+        evidence_block=_evidence_block("chunk-1"),
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered_row = next(
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.SYNTHESIZE_DELIVERED.value
+    )
+    p = Event.model_validate(delivered_row).payload
+    assert provider.call_count == 2
+    assert p.thesis_summary == "REPAIRED"
+    assert p.thesis_components[0].supporting_chunk_ids == ["chunk-1"]
+
+
+@pytest.mark.asyncio
+async def test_fabricated_reasoning_path_ref_triggers_self_repair(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-synth-fake-path"
+    fabricated = _good_thesis(summary="FABRICATED")
+    fabricated["reasoning_paths_used"][0]["path_node_ids"] = ["n-1", "n-made-up"]
+    repaired = _good_thesis(summary="REPAIRED")
+    provider = _StubSynthesizer([json.dumps(fabricated), json.dumps(repaired)])
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _synth_config("stub-synthesizer"))
+
+    await _post_synthesize(
+        async_client,
+        investigation_id=inv,
+        substrate_block=_connector_block(path_nodes=["n-1", "n-2"], edge_ids=["e-1"]),
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered_row = next(
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.SYNTHESIZE_DELIVERED.value
+    )
+    p = Event.model_validate(delivered_row).payload
+    assert provider.call_count == 2
+    assert p.thesis_summary == "REPAIRED"
+    assert p.reasoning_paths_used[0].path_node_ids == ["n-1", "n-2"]
 
 
 # ---------------------------------------------------------------------------
