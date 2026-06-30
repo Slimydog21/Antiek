@@ -14,15 +14,16 @@ import { useState } from "react";
 import LemonButton from "../../components/lemon/LemonButton";
 import type { PlanNode, PlanTree } from "../../api/research";
 
+export type PlanEdit =
+  | { op: "add_child" | "remove" | "reword"; target_local_id: string; question?: string }
+  | { op: "set_budget"; target_local_id: string; budget_usd?: number; max_depth?: number }
+  | { op: "split"; target_local_id: string; into: string[] };
+
 export interface PlanEditorProps {
   tree: PlanTree;
   launchable: boolean;
   busy?: boolean;
-  onEdit: (edit: {
-    op: "add_child" | "remove" | "reword";
-    target_local_id: string;
-    question?: string;
-  }) => void;
+  onEdit: (edit: PlanEdit) => void;
   onApprove: () => void;
   onLaunch: () => void;
 }
@@ -72,7 +73,21 @@ function PlanNodeRow({
   onEdit: PlanEditorProps["onEdit"];
 }) {
   const [editing, setEditing] = useState(false);
+  const [budgeting, setBudgeting] = useState(false);
+  const [splitting, setSplitting] = useState(false);
   const [draft, setDraft] = useState(node.question);
+  const [budgetDraft, setBudgetDraft] = useState(node.budget_usd === null ? "" : String(node.budget_usd));
+  const [depthDraft, setDepthDraft] = useState(node.max_depth === null ? "" : String(node.max_depth));
+  const [splitDraft, setSplitDraft] = useState("");
+  const canEditDepth = node.children.length > 0;
+  const parsedBudget = parseOptionalNumber(budgetDraft);
+  const parsedDepth = canEditDepth ? parseOptionalInteger(depthDraft) : undefined;
+  const budgetValid = !budgetDraft.trim() || parsedBudget !== undefined;
+  const depthValid = !canEditDepth || !depthDraft.trim() || parsedDepth !== undefined;
+  const budgetChanged = parsedBudget !== undefined && parsedBudget !== node.budget_usd;
+  const depthChanged = parsedDepth !== undefined && parsedDepth !== node.max_depth;
+  const canSaveLimits = budgetValid && depthValid && (budgetChanged || depthChanged);
+  const splitTargets = splitQuestions(splitDraft);
 
   return (
     <div style={{ paddingLeft: depth * 14 }} className="py-0.5">
@@ -119,6 +134,29 @@ function PlanNodeRow({
               >
                 + sub
               </button>
+              <button
+                className="text-[11px] text-shadow-1 hover:text-aurora dark:text-moonlight"
+                disabled={busy}
+                onClick={() => {
+                  setBudgetDraft(node.budget_usd === null ? "" : String(node.budget_usd));
+                  setDepthDraft(node.max_depth === null ? "" : String(node.max_depth));
+                  setBudgeting((v) => !v);
+                  setSplitting(false);
+                }}
+              >
+                budget
+              </button>
+              <button
+                className="text-[11px] text-shadow-1 hover:text-aurora dark:text-moonlight"
+                disabled={busy}
+                onClick={() => {
+                  setSplitDraft("");
+                  setSplitting((v) => !v);
+                  setBudgeting(false);
+                }}
+              >
+                split
+              </button>
               {!isRoot && (
                 <button
                   className="text-[11px] text-shadow-1 hover:text-emperor dark:text-moonlight"
@@ -132,11 +170,92 @@ function PlanNodeRow({
           </>
         )}
       </div>
+      {budgeting && (
+        <form
+          className="ml-5 mt-1 flex flex-wrap items-end gap-2 rounded border border-ice-3 bg-ice-1 p-2 dark:border-slate-2 dark:bg-charcoal-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!canSaveLimits) return;
+            onEdit({
+              op: "set_budget",
+              target_local_id: node.local_id,
+              ...(parsedBudget === undefined ? {} : { budget_usd: parsedBudget }),
+              ...(parsedDepth === undefined ? {} : { max_depth: parsedDepth }),
+            });
+            setBudgeting(false);
+          }}
+        >
+          <label className="flex flex-col gap-1 text-[11px] text-shadow-1 dark:text-moonlight">
+            budget USD
+            <input
+              className="w-24 rounded border border-ice-4 bg-ice-0 px-2 py-1 text-sm text-ink dark:border-slate-2 dark:bg-charcoal-2 dark:text-bright"
+              value={budgetDraft}
+              inputMode="decimal"
+              onChange={(e) => setBudgetDraft(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] text-shadow-1 dark:text-moonlight">
+            max depth
+            <input
+              className="w-20 rounded border border-ice-4 bg-ice-0 px-2 py-1 text-sm text-ink dark:border-slate-2 dark:bg-charcoal-2 dark:text-bright"
+              value={depthDraft}
+              disabled={!canEditDepth}
+              inputMode="numeric"
+              onChange={(e) => setDepthDraft(e.target.value)}
+            />
+          </label>
+          <LemonButton size="sm" variant="primary" type="submit" disabled={busy || !canSaveLimits}>Save limits</LemonButton>
+        </form>
+      )}
+      {splitting && (
+        <form
+          className="ml-5 mt-1 flex flex-col gap-2 rounded border border-ice-3 bg-ice-1 p-2 dark:border-slate-2 dark:bg-charcoal-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (splitTargets.length >= 2) {
+              onEdit({ op: "split", target_local_id: node.local_id, into: splitTargets });
+              setSplitting(false);
+            }
+          }}
+        >
+          <textarea
+            className="min-h-20 rounded border border-ice-4 bg-ice-0 px-2 py-1 text-sm text-ink dark:border-slate-2 dark:bg-charcoal-2 dark:text-bright"
+            value={splitDraft}
+            onChange={(e) => setSplitDraft(e.target.value)}
+            aria-label="split sub-questions"
+            placeholder="One focused sub-question per line"
+          />
+          <div className="flex justify-end">
+            <LemonButton size="sm" variant="primary" type="submit" disabled={busy || splitTargets.length < 2}>Split</LemonButton>
+          </div>
+        </form>
+      )}
       {node.children.map((c) => (
         <PlanNodeRow key={c.local_id} node={c} depth={depth + 1} busy={busy} onEdit={onEdit} />
       ))}
     </div>
   );
+}
+
+function parseOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function parseOptionalInteger(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!/^[1-9]\d*$/.test(trimmed)) return undefined;
+  return Number.parseInt(trimmed, 10);
+}
+
+function splitQuestions(value: string): string[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function countLeaves(node: PlanNode): number {

@@ -38,6 +38,7 @@ import type { DistilledNode } from "../../lib/api";
 import { useOpenDocument } from "../../lib/openDocument";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
+import type { PlanEdit } from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
@@ -95,7 +96,7 @@ function Workspace() {
       setSessionId(null);
     });
 
-  const handleEdit = (edit: { op: "add_child" | "remove" | "reword"; target_local_id: string; question?: string }) =>
+  const handleEdit = (edit: PlanEdit) =>
     guard(async () => {
       if (!plan) return;
       const r = await editPlan(plan.rootNodeId, edit);
