@@ -6,10 +6,8 @@ import Federation from "./index";
  * Federation config page — operator surface for the substrate-wide
  * cross-graph federation policy (master-spec §13.9 Phase 3).
  *
- * In Storybook (no backend) the page renders with empty config and
- * displays the strict-default explainer. The add/remove partner UI
- * works locally; the Save button posts to a missing endpoint and
- * surfaces the error inline.
+ * In Storybook (no backend) the page surfaces the same inline network
+ * error path operators see if /federation/config is unavailable.
  */
 const meta = {
   title: "Trust / Federation",
